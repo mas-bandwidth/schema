@@ -6206,7 +6206,10 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_(tabledemo_table_rea
         directory[k+1].type_id=id; directory[k+1].offset=UINT64_MAX;
         if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
         if (type!=NULL && type->blob==2 && !tabledemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
-        if (type==NULL) { unknown++; }
+        if (type==NULL) {
+            if(tabledemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            unknown++;
+        }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=tabledemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
@@ -6330,7 +6333,11 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_retain_(tabledemo_ta
         k++;
         continue;
         }
-        if (type==NULL) { unknown++;
+        if (type==NULL) {
+            if(tabledemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return 0;
+            }
+            unknown++;
         }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=tabledemo_table_node_wire_storage(type,&body);
