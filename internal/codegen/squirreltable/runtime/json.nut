@@ -1472,16 +1472,21 @@ local scanBytes = function(r, capacity) {
   r.p++;
   local out = [];
   local oor = false;
+  // whether ANY code point decoded to U+0000, one past the capacity included
+  local zero = false;
   for (;;) {
     local u = scanUnit(r);
     if (u == null) return null;
     if (u == "done") break;
+    if (u.len() == 1 && u[0] == 0) {
+      zero = true;
+    }
     // A CLAMP IS A PREFIX: once one code point does not fit, nothing after it
     // is placed
     if (oor || (capacity >= 0 && out.len() + u.len() > capacity)) { oor = true; continue; }
     out.extend(u);
   }
-  return [out, oor];
+  return [out, oor, zero];
 };
 
 // a key, compared as a string
@@ -1493,17 +1498,37 @@ local scanKey = function(r) {
 
 // docs/SPEC-TABLES.md 16.3: a JSON string the read would place in text
 // storage that decodes to U+0000 refuses the read, its reason naming the
-// innermost field. A string the read only SKIPS stores nothing and is not
-// this event, so the check lives at the storage call sites and never in
-// scanBytes or scanKey.
+// innermost field. That check lives at the storage call sites, never in
+// scanBytes or scanKey: scanKey also reads enum and flag names, which the
+// rule does not cover.
 local hasZero = function(b) {
-  for (local i = 0; i < b.len(); i++) if (b[i] == 0) return true;
+  for (local i = 0; i < b.len(); i++) {
+    if (b[i] == 0) {
+      return true;
+    }
+  }
   return false;
 };
 local textZero = function(r, name) {
   if (!("reason" in r.report) || r.report.reason == null) r.report.reason <- "text_holds_zero: " + name;
   r.bad = true;
   return false;
+};
+
+// an object key, or a string the walk only SKIPS (the value of an unknown
+// key), is held to a placed string's rule (docs/SPEC-TABLES.md §16.2, §16.3;
+// read.go scanKey): a U+0000 refuses the read. No field holds it, so the
+// refusal is plain malformed, with no reason.
+local scanHeldKey = function(r) {
+  local s = scanBytes(r, MAX_KEY);
+  if (s == null) {
+    return null;
+  }
+  if (s[2]) {
+    r.bad = true;
+    return null;
+  }
+  return bytesToString(s[0]);
 };
 
 // ONE RFC 8259 number (read.go walkNumber, scanNumber): [token, integral] or
@@ -1574,7 +1599,17 @@ skipValue = function(r, depth) {
   local c = peek(r);
   if (c == '{') return skipContainer(r, '}', depth);
   if (c == '[') return skipContainer(r, ']', depth);
-  if (c == '"') return scanBytes(r, 0) != null;
+  if (c == '"') {
+    local s = scanBytes(r, 0);
+    if (s == null) {
+      return false;
+    }
+    if (s[2]) {
+      r.bad = true;
+      return false;
+    }
+    return true;
+  }
   if (c == 't') return literal(r, "true");
   if (c == 'f') return literal(r, "false");
   if (c == 'n') return literal(r, "null");
@@ -1594,7 +1629,7 @@ skipContainer = function(r, close, depth) {
     if (c == close) { r.p++; return true; }
     if (c == 0) { r.bad = true; return false; }
     if (close == '}') {
-      local key = scanKey(r);
+      local key = scanHeldKey(r);
       if (key == null) return false;
       if (peek(r) != ':') { r.bad = true; return false; }
       r.p++;
@@ -1662,7 +1697,7 @@ readKeys = function(T, c, r, v, depth, firstKey) {
       local ch = peek(r);
       if (ch == '}') { r.p++; return checkRequired(T, c, r, v, seen); }
       if (ch == 0) { r.bad = true; return false; }
-      key = scanKey(r);
+      key = scanHeldKey(r);
       if (key == null) return false;
       if (peek(r) != ':') { r.bad = true; return false; }
       r.p++;
@@ -1938,7 +1973,7 @@ readKeyed = function(T, c, fd, r, v, depth) {
     local ch = peek(r);
     if (ch == '}') { r.p++; break; }
     if (ch == 0) { r.bad = true; return false; }
-    local key = scanKey(r);
+    local key = scanHeldKey(r);
     if (key == null) return false;
     if (peek(r) != ':') { r.bad = true; return false; }
     r.p++;
@@ -2087,7 +2122,7 @@ readPointerCell = function(T, c, r, holder, key, depth) {
   local ch = peek(r);
   if (ch == '}') { r.p++; holder[key] = c.make(); return true; }
   if (ch == 0) { r.bad = true; return false; }
-  local k = scanKey(r);
+  local k = scanHeldKey(r);
   if (k == null) return false;
   if (peek(r) != ':') { r.bad = true; return false; }
   r.p++;
@@ -2366,7 +2401,7 @@ readUnion = function(T, u, r, holder, key, depth) {
   local inst = u.make();
   holder[key] = inst;
   if (peek(r) == '}') { r.p++; return true; }
-  local name = scanKey(r);
+  local name = scanHeldKey(r);
   if (name == null) return false;
   if (peek(r) != ':') { r.bad = true; return false; }
   r.p++;
