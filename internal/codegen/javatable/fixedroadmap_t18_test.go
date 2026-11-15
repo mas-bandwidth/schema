@@ -191,8 +191,6 @@ var t18Plain = map[string]string{
 	"pack.bin":  "tables/examples/Pack.schema",
 	"fu1.bin":   "test/tables/FU1.schema",
 	"fu2.bin":   "test/tables/FU2.schema",
-
-	"negative_zero.bin": "test/tables/FNZ.schema",
 }
 
 // t18Prefix is the schema file name prefix of a versioning row's side

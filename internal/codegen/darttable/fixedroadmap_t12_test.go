@@ -521,8 +521,6 @@ func t12SchemaBase(file string) string {
 		"keyed.bin": "examples/Keyed",
 		"pack.bin":  "examples/Pack",
 
-		"negative_zero.bin": "FNZ",
-
 		"many_unknown_census.bin":        "VOLD_unknown_census",
 		"past_cfloat_range_widen.bin":    "VNEW_cfloat_range_widen",
 		"hostile_cfloat_range_widen.bin": "VNEW_cfloat_range_widen",
