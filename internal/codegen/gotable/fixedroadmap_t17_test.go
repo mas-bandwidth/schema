@@ -56,11 +56,10 @@ type ArmB struct {
 type PickType uint8
 
 const (
-	PickTypeNone  PickType = 0
-	PickTypeA     PickType = 1
-	PickTypeB     PickType = 2
-	PickTypeCount PickType = 2
-	PickTypeMax   PickType = 2
+	PickTypeNone PickType = 0
+	PickTypeA    PickType = 1
+	PickTypeB    PickType = 2
+	PickTypeMax  PickType = PickTypeB
 )
 
 type Pick struct {

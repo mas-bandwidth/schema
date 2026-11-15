@@ -652,7 +652,10 @@ func (g *gen) flatScalarPiece(f *ir.Field, name string) (flatPiece, bool) {
 		w := int64(f.Type.Width)
 		storage := g.goFieldType(f.Type)
 		return flatPiece{
-			bits: w, guard: noGuard,
+			bits: w,
+			guard: func(ind string, idx int) {
+				g.emitBitsWidthGuard(f, name, ind)
+			},
 			emit: g.constEmit(bitsValue(storage, name), w, ""),
 			read: func(ind, src string) {
 				if storage == "uint64" {
@@ -792,8 +795,10 @@ func (g *gen) flatCompressedPiece(f *ir.Field, name string) (flatPiece, bool) {
 			}
 			g.pf("%s\tif !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too\n", ind)
 			g.pf("%s\t\tnormalizedValue = 0\n%s\t} else if !(normalizedValue <= 1) {\n%s\t\tnormalizedValue = 1\n%s\t}\n", ind, ind, ind, ind)
-			g.pf("%s\tf%d = %s\n", ind, idx,
-				masked(fmt.Sprintf("uint64(uint32(float32(normalizedValue*%s) + 0.5))", f32lit(float32(steps))), bits))
+			g.pf("%s\tintegerValue := uint32(float32(normalizedValue*%s) + 0.5)\n", ind, f32lit(float32(steps)))
+			g.pf("%s\t// the integer clamp is normative\n", ind)
+			g.pf("%s\tif integerValue > %d { integerValue = %d }\n", ind, steps, steps)
+			g.pf("%s\tf%d = %s\n", ind, idx, masked("uint64(integerValue)", bits))
 			g.pf("%s}\n", ind)
 		},
 		read: func(ind, src string) {

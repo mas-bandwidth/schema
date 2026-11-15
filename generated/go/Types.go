@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 // The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package example
@@ -33,8 +33,17 @@ const Vec3MaxBytes = 24
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteVec3(stream *serialize.WriteStream, value *Vec3) error {
+	if math.Float64bits(value.X)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	stream.SerializeFloat64(&value.X)
+	if math.Float64bits(value.Y)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	stream.SerializeFloat64(&value.Y)
+	if math.Float64bits(value.Z)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	stream.SerializeFloat64(&value.Z)
 	return stream.Err()
 }
@@ -70,9 +79,21 @@ const QuatMaxBytes = 32
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteQuat(stream *serialize.WriteStream, value *Quat) error {
+	if math.Float64bits(value.X)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	stream.SerializeFloat64(&value.X)
+	if math.Float64bits(value.Y)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	stream.SerializeFloat64(&value.Y)
+	if math.Float64bits(value.Z)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	stream.SerializeFloat64(&value.Z)
+	if math.Float64bits(value.W)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	stream.SerializeFloat64(&value.W)
 	return stream.Err()
 }

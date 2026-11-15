@@ -51,10 +51,11 @@ Floats never become moo numbers in generated code. Game code that needs one
 crosses the boundary on purpose (`serialize.Float32.toNumber`,
 `Float32.fromNumber`), which is the boundary moo's design names; the schema
 records that game state holds are `fixed` and integer fields, and those are moo
-numbers natively. A float `const` is folded to the nearest Q48.16 value (moo's
-literal rule, round to nearest, ties to even), written exactly, with the
-original value in a trailing comment where they differ; a constant moo cannot
-hold is refused by name at generation.
+numbers natively. A float `const` holds the one value every language holds
+(SPEC §4.3): a `float32` const is a `serialize.Float32` over its binary32
+pattern and a `float64` const a `serialize.Uint64` over its binary64 pattern —
+the same boundary its field rides, exact for the subnormals and the largest
+finite.
 
 Fields are named by `ir.GoExportName` (PascalCase, Luau's idiom, and the Go
 spelling, so the checker's collision claims cover moo). Every module exports a
@@ -80,8 +81,10 @@ and union, against serialize.moo's streams; there is no private bit writer.
   the reason (`past_end`, `value_out_of_range`, `non_finite_float`,
   `embedded_nul`, `invalid_utf8`, `nonzero_padding`), or, for a rule only
   schema knows (`const`, `reserved`), by returning
-  `false` unlatched. Hostile bytes never raise. A packet reader calls
-  `stream:serializeEnd()` after the top-level read.
+  `false` unlatched. Hostile bytes never raise. The generated `Read<T>` calls
+  `stream:serializeEnd()` once, after the top-level object, refusing a whole
+  byte left over (`trailing_data`) or non-zero unused bits in the final byte
+  (`nonzero_padding`); a nested type's read does not end (SPEC §5).
 - **Constants are built once.** Wide literals and Float32 declarations live in a
   module-level pool (`K1`, `K2`, …) built at load; a compressed float's steps
   come from `serialize.compressedFloatParams` once per declaration, in the

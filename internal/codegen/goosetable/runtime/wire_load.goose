@@ -2,11 +2,11 @@
 // §3, §3.1, §3.2, §4; docs/PORT-GOOSE.md, THE LOADED VALUE): the strict read
 // of form 1, ported decision for decision from the Go reference engine
 // (internal/tablewire decode.go, decodenodes.go, nodetable.go). Any reader
-// reads any data and the differences are REPORTED, never fatal: unknown ids
-// are skipped by their length and counted, a kind that grew is widened and
-// counted, out-of-range values clamp and count, a repeated map key counts
-// repeated, and a form byte this reader does not carry is refused. Damage
-// anywhere discards the whole load; no partial root is returned (§4).
+// reads any data, and every difference refuses the read: unknown ids are
+// skipped by their length and counted and a kind that grew is widened and
+// counted, while an out-of-range value, a repeated map key, a kind it cannot
+// land, a form byte it does not carry, a non-finite float or damage anywhere
+// refuses the whole load with the engine's reason; no partial root is returned (§4, §6.5).
 //
 // The walk is driven by THE LOAD DISPATCH TABLE (schema_tables.goose,
 // load_registry): each value's descriptor names its Loader, and the field,
@@ -193,10 +193,12 @@ struct LoadVal {
 }
 
 // LoadNode is one node record of the flat node table (docs/SPEC-TABLES.md
-// §3.1): wire index i + 2. tab is the record's table, -1 for a record this
-// root cannot place (counted unknown, every pointer naming it reads null);
-// blob is KindString or KindArray for a *string or *bytes record, its bytes a
-// view (off, len); val is the record's LoadVal.
+// §3.1): wire index i + 2. tab is the record's table; -1 for a record of a
+// type this reader does not declare (counted unknown, every pointer naming it
+// reads null), -2 for one of a type it DECLARES but this root cannot place (a
+// pointer naming it is a wrong-type target, §6.5); blob is KindString or
+// KindArray for a *string or *bytes record, its bytes a view (off, len); val is
+// the record's LoadVal.
 struct LoadNode { tab: i64, blob: u8, off: i64, len: i64, val: i64, named: bool }
 
 // Rd is one reader's window over the input: [off, end).
@@ -540,6 +542,26 @@ fn field_kind(d: FieldDesc) -> u8 {
     return d.kind;
 }
 
+// elem_kind_allowed is the closed list an array body's element kind may draw
+// from (docs/SPEC-TABLES.md §3, §4): 1–13, 15, 17, 18–30. Any other kind is
+// damage, not a mismatch, under any count, a count of 0 included.
+fn elem_kind_allowed(kind: u8) -> bool {
+    if kind >= 1 && kind <= 13 { return true; }
+    if kind == 15 || kind == 17 { return true; }
+    if kind >= 18 && kind <= 30 { return true; }
+    return false;
+}
+
+// keyed_elem_kind_allowed is the closed list an enum-keyed body's element kind
+// may draw from: the array list without 12, 15 and 17 (docs/SPEC-TABLES.md §3,
+// §4). Any other kind is damage under any count.
+fn keyed_elem_kind_allowed(kind: u8) -> bool {
+    if kind >= 1 && kind <= 11 { return true; }
+    if kind == 13 || kind == 30 { return true; }
+    if kind >= 18 && kind <= 29 { return true; }
+    return false;
+}
+
 // collection_cap is §2.9's int32 storage cap: a builder refuses its partial
 // value; a reader with no builder reports damage and resumes after L.
 fn collection_cap(c: LoadCtx&) -> bool {
@@ -693,7 +715,7 @@ fn resolve(c: LoadCtx&, v: i64, d: FieldDesc, index: u64) {
     }
     if index - 2 >= c.node_n as! u64 { c.report.body_damaged = true; return; }
     let n = (index - 2) as! i64;
-    if c.nodes[n].tab < 0 && c.nodes[n].blob == 0 { return; }
+    if c.nodes[n].tab == -1 && c.nodes[n].blob == 0 { return; } // a type this reader cannot name reads null
     if blob {
         let want = if d.shape == ShapeSBlob { KindString } else { KindArray };
         if c.nodes[n].blob != want { c.report.mismatch += 1; return; }
@@ -943,6 +965,13 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
             if d.optional { ride(c, slot); }
             return true, false;
         }
+        // THE ELEMENT KIND IS CLOSED, judged under any count before any
+        // comparison with the reader's declaration (§3, §4).
+        if !elem_kind_allowed(ek) {
+            c.report.body_damaged = true;
+            r.off = end;
+            return true, false;
+        }
         let want = if bytes { 6 } else { d.ek };
         if ek != want && !widens(ek, want) {
             c.report.mismatch += 1;
@@ -1138,6 +1167,9 @@ fn load_keyed(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool 
     let ek = rd_u8(c, r);
     let count, good = leb(c, r);
     if !good { c.report.body_damaged = true; r.off = end; return true; }
+    // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under any
+    // count before the reader's declaration (§3, §4).
+    if !keyed_elem_kind_allowed(ek) { c.report.body_damaged = true; r.off = end; return true; }
     if ek != d.ek {
         if !widens(ek, d.ek) { c.report.mismatch += 1; r.off = end; return true; }
         c.report.widened += 1;
@@ -1238,11 +1270,19 @@ fn map_key_scan(c: LoadCtx&, body: Rd, kd: FieldDesc, key: LoadVal&, kind_bad: b
 // key_order: byte-wise then by length for a string key, numeric otherwise —
 // signed where the declaration is (tabletext.MapKeyOrder).
 fn key_order(c: LoadCtx&, kd: FieldDesc, a: LoadVal, b: LoadVal) -> i64 {
+    return map_key_cmp(c.data, kd, a, b);
+}
+
+// map_key_cmp is THE ONE KEY ORDER (§2.8, tabletext.MapKeyOrder) the reader
+// checks and every writer derives: byte-wise then by length for a string
+// key, numeric otherwise — signed where the declaration is. A text key's
+// bytes are data[off .. off + len].
+fn map_key_cmp(data: const u8[:], kd: FieldDesc, a: LoadVal, b: LoadVal) -> i64 {
     if kd.shape == ShapeStr || kd.shape == ShapeText {
         let n = if a.len < b.len { a.len } else { b.len };
         for i in n {
-            let x = c.data[a.off + i];
-            let y = c.data[b.off + i];
+            let x = data[a.off + i];
+            let y = data[b.off + i];
             if x != y { return if x < y { -1 } else { 1 }; }
         }
         if a.len != b.len { return if a.len < b.len { -1 } else { 1 }; }
@@ -1258,6 +1298,31 @@ fn key_order(c: LoadCtx&, kd: FieldDesc, a: LoadVal, b: LoadVal) -> i64 {
     return 0;
 }
 
+// map_entry_order is THE WRITER'S SORT (§2.8; docs/PORTING.md M19): the n
+// entries of a map whose records start at slot `first` of the value table,
+// as their slots, in ASCENDING key order (an entry's key is its record's
+// first field), appended to `order`. The save and the cook each derive the
+// order here from whatever order the value holds the entries in, so nothing
+// a writer emits rests on the storage being sorted — a load leaves it
+// sorted, but a caller may build or edit the value table in any order. A
+// stable insertion: entries that compare equal keep their storage order.
+// `order` is the writer's one sort stack: a caller reads its entries at
+// [mark, mark + n) and resizes it back to mark when the map is done, so a map
+// an entry holds sorts above it (a recursive walk keeps no growable local).
+fn map_entry_order(data: const u8[:], vals: const LoadVal[:], kd: FieldDesc, first: i64, n: i64, order: i64[>..<]&) {
+    let mark = order.len;
+    for k in n {
+        order.push(first + k);
+        var j = order.len - 1;
+        while j > mark && map_key_cmp(data, kd, vals[vals[order[j - 1]].first], vals[vals[order[j]].first]) > 0 {
+            let t = order[j - 1];
+            order[j - 1] = order[j];
+            order[j] = t;
+            j -= 1;
+        }
+    }
+}
+
 // load_map decodes one map (docs/SPEC-TABLES.md §2.8): ascending keys, a
 // repeated key last-wins and counts repeated, a descending key stops the map
 // as malformed, a key past the bound drops its entry and counts oor, a
@@ -1270,6 +1335,9 @@ fn load_map(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
         let ek = rd_u8(c, r);
         let count, good = leb(c, r);
         if !good { c.report.body_damaged = true; r.off = end; return true; }
+        // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind is
+        // held to the array list first, under any count (§3, §4).
+        if !elem_kind_allowed(ek) { c.report.body_damaged = true; r.off = end; return true; }
         if ek != KindTable { c.report.mismatch += 1; r.off = end; return true; }
         if count > 0x7FFFFFFF { r.off = end; return collection_cap(c); }
         var sub = Rd { off: r.off, end: if end < r.off { r.off } else { end } };
@@ -1584,6 +1652,9 @@ fn scan_nodes(c: LoadCtx&, payload: Rd) -> bool {
         let len, lg = leb(c, r);
         if !lg || !fits(r, len) { return false; }
         let type_id, named = idof(c, ref);
+        // A RESERVED ID IS NO RECORD'S TYPE (§3.1, §3.3, §5): it is damage
+        // anywhere but its own transport. The two blob ids are lawful types.
+        if type_id == NodeWireId || type_id == BuildVersionWireId || type_id == VocabularyWireId { return false; }
         c.nodes.push(LoadNode { tab: -1, blob: 0, off: r.off, len: len as! i64, val: -1, named: false });
         // the type id rides in val's place until pass one names it
         c.nodes[c.nodes.len - 1].val = type_id as! i64;
@@ -1613,30 +1684,48 @@ fn load_variable(c: LoadCtx&, body: Rd) -> bool {
     else if !scanned { c.report.body_damaged = true; }
     else { c.good = true; }
     // PASS ONE: what each record IS, from the framing — the types this root
-    // can place, and the two blob ids where an edge below it names them
+    // can place, the two blob ids where an edge below it names them, and the
+    // types this reader DECLARES but this root cannot place (a pointer naming
+    // one of those is a wrong-type target, not an unknown record, §3.1, §6.5)
     let root = c.root_tab;
     for k in c.node_n {
         let type_id = c.nodes[k].val as! u64;
         c.nodes[k].val = -1;
-        if c.unit.tables[root].place_str && type_id == StringTypeId {
-            if !text_valid(c.data, c.nodes[k].off, c.nodes[k].len) {
-                c.report.body_damaged = true;
+        if type_id == StringTypeId {
+            c.nodes[k].blob = KindString;
+            if c.unit.tables[root].place_str {
+                if !text_valid(c.data, c.nodes[k].off, c.nodes[k].len) {
+                    c.report.body_damaged = true;
+                }
                 continue;
             }
-            c.nodes[k].blob = KindString;
+            // a blob this root reaches no *string edge for is counted unknown,
+            // as before; its type is still known, so a slot naming it is a
+            // wrong-type target rather than a null
+            c.report.unknown += 1;
+            if c.retaining { c.report.retain_lost += 1; } // an excluded class (§6.6)
             continue;
         }
-        if c.unit.tables[root].place_bytes && type_id == BytesTypeId {
+        if type_id == BytesTypeId {
             c.nodes[k].blob = KindArray;
+            if c.unit.tables[root].place_bytes { continue; }
+            c.report.unknown += 1;
+            if c.retaining { c.report.retain_lost += 1; } // an excluded class (§6.6)
             continue;
         }
         var t: i64 = -1;
+        var declared = false;
         for d, i in c.unit.tables {
-            if d.id == type_id && place_named(c, root, d.name) { t = i; break; }
+            if d.id != type_id { continue; }
+            declared = true;
+            if place_named(c, root, d.name) { t = i; break; }
         }
         if t < 0 {
             c.report.unknown += 1;
             if c.retaining { c.report.retain_lost += 1; } // an excluded class (§6.6)
+            // a type this reader declares but this root cannot place: a pointer
+            // that names it is damage, not an unnameable record (§3.1)
+            if declared { c.nodes[k].tab = -2; }
             continue;
         }
         c.nodes[k].tab = t;
@@ -1845,6 +1934,9 @@ fn wc_header(w: WireCheck&, at: i64, end: i64) -> u8, u64, i64, bool {
 recursive fn wc_array(w: WireCheck&, at: i64, end: i64) -> bool {
     let ek, count, first, ok = wc_header(w, at, end);
     if !ok { return false; }
+    // THE ELEMENT KIND IS CLOSED, and it is judged under ANY count, a count
+    // of 0 included (docs/SPEC-TABLES.md §3, §4).
+    if !elem_kind_allowed(ek) { return wc_damage(w); }
     var off = first;
     var i: u64 = 0;
     while i < count {
@@ -1859,6 +1951,9 @@ recursive fn wc_array(w: WireCheck&, at: i64, end: i64) -> bool {
 recursive fn wc_keyed(w: WireCheck&, at: i64, end: i64) -> bool {
     let ek, count, first, ok = wc_header(w, at, end);
     if !ok { return false; }
+    // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under ANY
+    // count, a count of 0 included (docs/SPEC-TABLES.md §3, §4).
+    if !keyed_elem_kind_allowed(ek) { return wc_damage(w); }
     let scope, mark = wc_open(w);
     var off = first;
     var i: u64 = 0;

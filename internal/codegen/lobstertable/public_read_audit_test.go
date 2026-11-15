@@ -79,6 +79,8 @@ print("pass")
 
 // Every enclosing structured payload adds one framed level; the file body is
 // depth zero. The text-array case proves that a leaf's length adds no level.
+// A union whose arm is a table is two levels, the union and the table body
+// (docs/SPEC-TABLES.md §4), so union-table nests one pair for every two levels.
 func auditUnknownDepthWire(levels int, leaf string) []byte {
 	inner, kind := []byte{0}, byte(13)
 	switch leaf {
@@ -99,7 +101,7 @@ func auditUnknownDepthWire(levels int, leaf string) []byte {
 		}
 		inner = append(append([]byte{1, 15}, inner...), 0)
 	case "union-table":
-		for range levels {
+		for range (levels + 1) / 2 {
 			arm := binary.AppendUvarint([]byte{1, 13}, uint64(len(inner)))
 			arm = append(arm, inner...)
 			inner = append(append([]byte{1, 15}, arm...), 0)

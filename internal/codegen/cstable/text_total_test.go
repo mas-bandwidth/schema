@@ -2,7 +2,6 @@ package cstable
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
@@ -41,11 +40,10 @@ func TestTextTotalCSharp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	witnesses := textTotalGoWitnesses(t, wire)
-	if witnesses["json"] != witnesses["wire"] {
-		t.Fatal("Go JSON and wire chose different prefixes", witnesses)
-	}
-	extra := strings.NewReplacer("SOURCE_WIRE", hex.EncodeToString(wire), "EXPECTED_WIRE", witnesses["wire"]).Replace(textTotalNativeProbe)
+	// THE STRICT READ (docs/SPEC-TABLES.md §4, §6.5): text past its total is a
+	// refusal of the whole load, never a kept prefix, in generated Go as here.
+	textTotalGoRefuses(t, wire)
+	extra := strings.NewReplacer("SOURCE_WIRE", hex.EncodeToString(wire)).Replace(textTotalNativeProbe)
 	runCarryCS(t, textTotalSchema, []string{`{}`, textTotalInput,
 		`{"a":["ab","cde"],"b":[null,"","abc"],"c":["a","b","c","d","e"],"d":[null,"","12345"]}`,
 		`{"a":["abc","def","123456789\u0000"],"b":["abc","def","123456789\u0000"],"c":["abc","def","123456789\u0000"],"d":["abc","def","123456789\u0000"]}`,
@@ -53,24 +51,21 @@ func TestTextTotalCSharp(t *testing.T) {
 }
 
 const textTotalNativeProbe = `unsafe {
- byte[] source=Convert.FromHexString("SOURCE_WIRE"),expected=Convert.FromHexString("EXPECTED_WIRE");
+ byte[] source=Convert.FromHexString("SOURCE_WIRE");
  var root=new Root();var report=new TableReport();
- if(!Schema.RootLoad(root,source,report)||report.Clamped!=10||report.ClampedField!="Root.a"||report.Malformed)throw new Exception("wire total prefix counters "+report.Clamped+" "+report.ClampedField);
- byte[] canonical=new byte[Schema.RootMeasure(root)];Schema.RootSave(root,canonical);if(!canonical.AsSpan().SequenceEqual(expected))throw new Exception("wire total prefix differs from Go");
+ if(Schema.RootLoad(root,source,report)||report.Reason==null)throw new Exception("wire past its text total must refuse");
  var type=Schema.RootTableType();long size=Schema.RootLoadMeasure(source);
- void* memory=System.Runtime.InteropServices.NativeMemory.AlignedAlloc((nuint)((size+15)&~15L),16);
- try{
-  Span<ulong> ids=stackalloc ulong[4096];Span<int> slots=stackalloc int[4096];
-  var nativeReport=new TableReport();IntPtr ptr=Schema.TableWire.LoadRegion(type,(IntPtr)memory,size,source,nativeReport);
-  if(ptr==IntPtr.Zero||nativeReport.Clamped!=10||nativeReport.ClampedField!="Root.a")throw new Exception("native total prefix");
-  byte[] saved=new byte[Schema.TableWire.SaveRegion(ptr,type,Span<byte>.Empty,ids,true)];Schema.TableWire.SaveRegion(ptr,type,saved,ids,false);if(!saved.AsSpan().SequenceEqual(expected))throw new Exception("native total canonical bytes");
-  TableRetain retain=default;var retainedReport=new TableReport();ptr=Schema.TableWire.LoadRetainRegion(type,(IntPtr)memory,size,source,ref retain,retainedReport);
-  if(ptr==IntPtr.Zero||retainedReport.Clamped!=10||retainedReport.ClampedField!="Root.a")throw new Exception("retained total prefix");
-  saved=new byte[Schema.TableWire.SaveRetainRegion(ptr,type,Span<byte>.Empty,ids,slots,ref retain,null,true)];Schema.TableWire.SaveRetainRegion(ptr,type,saved,ids,slots,ref retain,new TableReport(),false);if(!saved.AsSpan().SequenceEqual(expected))throw new Exception("retained total canonical bytes");
- }finally{System.Runtime.InteropServices.NativeMemory.AlignedFree(memory);}
+ if(size>=0){
+  void* memory=System.Runtime.InteropServices.NativeMemory.AlignedAlloc((nuint)((size+15)&~15L),16);
+  try{
+   var nativeReport=new TableReport();
+   if(Schema.TableWire.LoadRegion(type,(IntPtr)memory,size,source,nativeReport)!=IntPtr.Zero||nativeReport.Reason==null)throw new Exception("native load past its text total must refuse");
+   TableRetain retain=default;var retainedReport=new TableReport();
+   if(Schema.TableWire.LoadRetainRegion(type,(IntPtr)memory,size,source,ref retain,retainedReport)!=IntPtr.Zero||retainedReport.Reason==null)throw new Exception("retained load past its text total must refuse");
+  }finally{System.Runtime.InteropServices.NativeMemory.AlignedFree(memory);}
+ }
  using(var builder=new RootBuilder()){
-  var r=new TableReport();if(!builder.Load(source,r)||r.Clamped!=10)throw new Exception("builder total prefix");
-  byte[] saved=new byte[builder.Measure()];builder.Save(saved);if(!saved.AsSpan().SequenceEqual(expected))throw new Exception("builder total canonical bytes");
+  var r=new TableReport();if(builder.Load(source,r)||r.Reason==null)throw new Exception("builder load past its text total must refuse");
  }
  var appended=new Root();
  if(!Schema.RootAAppend(appended,Encoding.UTF8.GetBytes("éé"))||!Schema.RootAAppend(appended,Encoding.UTF8.GetBytes("a"))||Schema.RootAAppend(appended,Encoding.UTF8.GetBytes("b"))||appended.ACount!=2)throw new Exception("managed total append transaction");
@@ -86,7 +81,7 @@ const textTotalNativeProbe = `unsafe {
  if(Schema.WrapMeasure(new Wrap{Child=appended})!=-1)throw new Exception("nested total writer preflight");
 }`
 
-func textTotalGoWitnesses(t *testing.T, wire []byte) map[string]string {
+func textTotalGoRefuses(t *testing.T, wire []byte) {
 	t.Helper()
 	u := unitFrom(t, textTotalSchema)
 	files, err := golang.Generate(u)
@@ -99,18 +94,16 @@ func textTotalGoWitnesses(t *testing.T, wire []byte) map[string]string {
 	}
 	maps.Copy(files, tables)
 	dir := t.TempDir()
-	output := filepath.Join(dir, "witnesses.json")
+	output := filepath.Join(dir, "refused")
 	runtime := slowtest.SerializeGo(t, "../../../")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
 	files["oracle_test.go"] = []byte(fmt.Sprintf(`package probe
-import("encoding/hex";"encoding/json";"os";"testing")
+import("encoding/hex";"os";"testing")
 func TestTotalOracle(t *testing.T){
- out:=map[string]string{};var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();var r TableReport
- if !RootFromJSONTolerant(&b,[]byte(%q),&r)||r.Clamped!=8||r.ClampedField!="Root.a"{t.Fatal("JSON prefix",r)}
- saved:=make([]byte,RootMeasure(b.GetRoot(),&b.Arena));RootSave(b.GetRoot(),saved,&b.Arena);out["json"]=hex.EncodeToString(saved)
- wire,_:=hex.DecodeString(%q);r=TableReport{};if !RootLoadBuilderTolerant(&b,wire,&r)||r.Clamped!=10||r.ClampedField!="Root.a"{t.Fatal("wire prefix",r)}
- saved=make([]byte,RootMeasure(b.GetRoot(),&b.Arena));RootSave(b.GetRoot(),saved,&b.Arena);out["wire"]=hex.EncodeToString(saved)
- data,_:=json.Marshal(out);if err:=os.WriteFile(%q,data,0600);err!=nil{t.Fatal(err)}
+ var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();var r TableReport
+ if RootFromJSON(&b,[]byte(%q),&r)||!r.Refused(){t.Fatal("JSON past its total must refuse",r)}
+ wire,_:=hex.DecodeString(%q);r=TableReport{};if RootLoadBuilder(&b,wire,&r)||!r.Refused(){t.Fatal("wire past its total must refuse",r)}
+ if err:=os.WriteFile(%q,[]byte("ok"),0600);err!=nil{t.Fatal(err)}
 }
 `, textTotalInput, hex.EncodeToString(wire), output))
 	for name, data := range files {
@@ -123,13 +116,7 @@ func TestTotalOracle(t *testing.T){
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("Go total oracle: %v\n%s", err, out)
 	}
-	data, err := os.ReadFile(output)
-	if err != nil {
+	if _, err := os.Stat(output); err != nil {
 		t.Fatal(err)
 	}
-	var values map[string]string
-	if err := json.Unmarshal(data, &values); err != nil {
-		t.Fatal(err)
-	}
-	return values
 }

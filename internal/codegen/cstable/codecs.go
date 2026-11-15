@@ -9,6 +9,7 @@ package cstable
 import (
 	"fmt"
 	"math/big"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -569,6 +570,21 @@ func bigToDouble(v *big.Int) string {
 	return formatFloat64(f)
 }
 
+// declaredTables is every table this unit DECLARES, in a stable order: the
+// node table's records are named from this whole set, not only from what a
+// pointer below one root can place (docs/SPEC-TABLES.md §3.1).
+func declaredTables(u *ir.Unit) []*ir.Struct {
+	closure := ir.TableClosure(u)
+	out := make([]*ir.Struct, 0, len(closure))
+	for name := range closure {
+		if st := u.Tables[name]; st != nil && !st.IsMapEntry() {
+			out = append(out, st)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
 // emitTableDescriptor emits <X>TableType() — the reflection descriptor, built
 // once on first use and published through the nested static holder idiom
 // (schema#411).
@@ -645,6 +661,14 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	}
 	pts.WriteString("}; };\n")
 	g.pf("    %s", pts.String())
+
+	var dt strings.Builder
+	dt.WriteString("info.DeclaredType = delegate (ulong id) { switch (id) { ")
+	for _, target := range declaredTables(g.unit) {
+		fmt.Fprintf(&dt, "case 0x%016xul: return %sTableType(); ", ir.TableWireId(target.WireName()), target.Name)
+	}
+	dt.WriteString("default: return null; } };\n")
+	g.pf("    %s", dt.String())
 	bytesEdge, stringEdge := ir.PointerReachableBlobs(st)
 	g.pf("    info.BytesEdge = %t; info.StringEdge = %t;\n", bytesEdge, stringEdge)
 	if len(st.Fields) == 0 {
@@ -695,7 +719,7 @@ func (g *tableGen) emitTagsStatic(name string, tags []string) bool {
 	if len(tags) == 0 {
 		return false
 	}
-	g.pf("    private static readonly string[] %s = { %s };\n", name, ir.QuotedTags(tags))
+	g.pf("    private static readonly string[] %s = { %s };\n", name, csQuoteList(tags))
 	return true
 }
 
@@ -704,7 +728,7 @@ func (g *tableGen) emitTagsStatic(name string, tags []string) bool {
 func annotationColumns(doc string, tags []string, tagsName string) (string, string, string) {
 	docColumn := "TableDocNone"
 	if doc != "" {
-		docColumn = ir.QuoteDoc(doc)
+		docColumn = csQuote(doc)
 	}
 	list := "null"
 	if len(tags) > 0 {
@@ -984,7 +1008,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		tags = armTags(f.Tags)
 	}
 
-	jsonName := fmt.Sprintf("%q", ir.TableFieldJsonKey(f))
+	jsonName := csQuote(ir.TableFieldJsonKey(f))
 	if g.outside {
 		jsonName = "null"
 	}

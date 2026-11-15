@@ -11,15 +11,22 @@
 
 # test-python: the leg's make test half. The toolchain and serialize.py
 # (python-toolchain-check, its control, python-serialize-test) are
-# prerequisites from their own fragments; here the emitter packages, which
-# generate into temp directories and run the generated package under both
+# prerequisites from their own fragments; here the emitter's package, which
+# generates into temp directories and runs the generated package under both
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
-.PHONY: test-python update-goldens-python python-table-core-negative-control
+.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control
 test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
-	go test -tags schema_leg_python ./compiler -run 'Python' -count=1
+	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
 update-goldens-python: ;
+
+# python-packet-core-negative-control: the packet core's own control. It edits
+# a COPY of a generated reader and requires TestPythonPacketCoreNegativeControl
+# to find the write-back marker red. It is a Go test under the slow gate,
+# because the probe runs under both pinned interpreters.
+python-packet-core-negative-control: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketCoreNegativeControl ./internal/codegen/python/
 
 # build/schema-python is the tagged compiler the conformance tree is generated
 # with; the ordinary bin/schema does not carry the target until the packet

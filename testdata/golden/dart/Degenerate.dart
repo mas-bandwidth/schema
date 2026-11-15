@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 import 'dart:typed_data';
 
@@ -70,7 +70,8 @@ int writeVec2(Vec2 value, ByteData view) {
 }
 
 // readVec2 decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readVec2(Vec2 value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -135,6 +136,17 @@ bool readVec2(Vec2 value, ByteData view, int numBits) {
     return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   value.y = Schema.doubleFromFloat64Bits(lo);
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -188,7 +200,8 @@ int writeSpanF64(SpanF64 value, ByteData view) {
 }
 
 // readSpanF64 decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readSpanF64(SpanF64 value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -234,6 +247,17 @@ bool readSpanF64(SpanF64 value, ByteData view, int numBits) {
       return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
     }
     value.values[i0] = Schema.doubleFromFloat64Bits(lo);
+  }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
   }
   return true;
 }
@@ -287,7 +311,8 @@ int writeSpanU64(SpanU64 value, ByteData view) {
 }
 
 // readSpanU64 decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readSpanU64(SpanU64 value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -330,6 +355,17 @@ bool readSpanU64(SpanU64 value, ByteData view, int numBits) {
     bitsRead += 32;
     lo |= v << 32;
     value.values[i0] = lo;
+  }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
   }
   return true;
 }
@@ -383,7 +419,8 @@ int writeSpanI64(SpanI64 value, ByteData view) {
 }
 
 // readSpanI64 decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readSpanI64(SpanI64 value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -426,6 +463,17 @@ bool readSpanI64(SpanI64 value, ByteData view, int numBits) {
     bitsRead += 32;
     lo |= v << 32;
     value.values[i0] = lo;
+  }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
   }
   return true;
 }
@@ -479,7 +527,8 @@ int writeSpanOne(SpanOne value, ByteData view) {
 }
 
 // readSpanOne decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readSpanOne(SpanOne value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -522,6 +571,17 @@ bool readSpanOne(SpanOne value, ByteData view, int numBits) {
     bitsRead += 32;
     lo |= v << 32;
     value.values[i0] = lo;
+  }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
   }
   return true;
 }
@@ -575,7 +635,8 @@ int writeSpanChunk(SpanChunk value, ByteData view) {
 }
 
 // readSpanChunk decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readSpanChunk(SpanChunk value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -608,6 +669,17 @@ bool readSpanChunk(SpanChunk value, ByteData view, int numBits) {
     v = window & 0xffff;
     bitsRead += 16;
     value.values[i0] = v;
+  }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
   }
   return true;
 }
@@ -674,7 +746,8 @@ int writeSpanTail(SpanTail value, ByteData view) {
 }
 
 // readSpanTail decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readSpanTail(SpanTail value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -729,6 +802,17 @@ bool readSpanTail(SpanTail value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   value.tail = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -797,7 +881,8 @@ int writeSpanTwice(SpanTwice value, ByteData view) {
 }
 
 // readSpanTwice decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readSpanTwice(SpanTwice value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -866,6 +951,17 @@ bool readSpanTwice(SpanTwice value, ByteData view, int numBits) {
     }
     value.b[i0] = Schema.doubleFromFloat64Bits(lo);
   }
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -925,7 +1021,8 @@ int writeTrio(Trio value, ByteData view) {
 }
 
 // readTrio decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTrio(Trio value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -968,6 +1065,17 @@ bool readTrio(Trio value, ByteData view, int numBits) {
   v = window & 0xffffff;
   bitsRead += 24;
   value.c = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1021,7 +1129,8 @@ int writeTrioSole(TrioSole value, ByteData view) {
 }
 
 // readTrioSole decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTrioSole(TrioSole value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -1064,6 +1173,17 @@ bool readTrioSole(TrioSole value, ByteData view, int numBits) {
   v = window & 0xffffff;
   bitsRead += 24;
   value.inner.c = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1135,7 +1255,8 @@ int writeVec3Sole(Vec3Sole value, ByteData view) {
 }
 
 // readVec3Sole decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readVec3Sole(Vec3Sole value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -1220,6 +1341,17 @@ bool readVec3Sole(Vec3Sole value, ByteData view, int numBits) {
     return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   value.v.z = Schema.doubleFromFloat64Bits(lo);
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1285,7 +1417,8 @@ int writeTrioFirst(TrioFirst value, ByteData view) {
 }
 
 // readTrioFirst decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTrioFirst(TrioFirst value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -1331,6 +1464,17 @@ bool readTrioFirst(TrioFirst value, ByteData view, int numBits) {
   v = (window >>> 24) & 0xffff;
   bitsRead += 16;
   value.trailer = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }
 
@@ -1456,7 +1600,8 @@ int writeTrioStraddle(TrioStraddle value, ByteData view) {
 }
 
 // readTrioStraddle decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTrioStraddle(TrioStraddle value, ByteData view, int numBits) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
@@ -1588,5 +1733,16 @@ bool readTrioStraddle(TrioStraddle value, ByteData view, int numBits) {
   v = window & 0xffffff;
   bitsRead += 24;
   value.inner.c = v;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
   return true;
 }

@@ -20,14 +20,9 @@ type pythonTarget struct{}
 
 func (pythonTarget) Names() []string { return []string{"python"} }
 
-// Generate emits the unit's table surface beside the packet skeleton. A unit
-// that declares tables goes to pythontable, whose generated classes and form-1
-// runtime carry the fixed and variable classes; a field whose type is a packet
-// type is refused there by name until the packet layer lands. A table-free
-// unit takes the skeleton path, where the shared refusal chain refuses, by
-// name, each construct the target does not carry (docs/PORT-PYTHON.md, THE
-// CARD MAP: P3). A unit declaring both is a table unit until the packet layer
-// joins the two halves.
+// Generate selects the table frame for a table unit and the packet core
+// otherwise. Each emitter holds the identifier rules and names any construct
+// outside its carried surface (docs/PORT-PYTHON.md).
 func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if len(u.Tables) > 0 {
 		return pythontable.Generate(u)

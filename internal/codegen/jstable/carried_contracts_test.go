@@ -231,6 +231,7 @@ for (const [a, b, c, d] of [
     fail("fixed one-sided in-range read: " + show(back) + " " + reason(report));
   }
 }
+// THE WRITER REFUSES A VALUE OFF A ONE-SIDED RANGE BEFORE A BYTE (§5.1 row 1).
 for (const [a, b, c, d] of [
   [-1n, 9, -3, 18446744073709551610n],
   [0n, 65535, -3, 18446744073709551610n],
@@ -239,13 +240,40 @@ for (const [a, b, c, d] of [
 ]) {
   const value = new T(); InitT(value);
   value.a = a; value.b = b; value.c = c; value.d = d;
+  const raw = new Uint8Array(TMeasure(1) + 32);
+  raw.fill(0xa5);
+  let wrote;
+  try { wrote = TSave([value],1,raw); }
+  catch (e) { fail("one-sided writer threw: " + e.name); continue; }
+  if (wrote !== -1) { fail("one-sided value was written: " + String(a) + "," + b + "," + c + "," + String(d)); continue; }
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] !== 0xa5) { fail("a refused one-sided write changed the buffer at " + i); break; }
+  }
+}
+// THE READER STILL REFUSES THOSE BYTES out_of_range: patch one field at a time
+// into a lawful record and hold the read to the named refusal.
+const { TFixedRecordBytes: recordBytes } = await import("./ProbeTable.js");
+const rec = TMeasure(1) - recordBytes;
+const lawful = () => {
+  const value = new T(); InitT(value);
+  value.a = 0n; value.b = 9; value.c = -3; value.d = 18446744073709551610n;
   const raw = new Uint8Array(TMeasure(1));
-  if (TSave([value],1,raw) !== raw.length) { fail("raw fixed write failed"); }
+  if (TSave([value],1,raw) !== raw.length) { fail("the control one-sided write failed"); }
+  return raw;
+};
+for (const [name, patch] of [
+  ["a", (view) => view.setBigInt64(rec + 8, -1n, true)],
+  ["b", (view) => view.setUint16(rec + 16, 65535, true)],
+  ["c", (view) => view.setInt8(rec + 18, -128)],
+  ["d", (view) => view.setBigUint64(rec + 19, 18446744073709551615n, true)],
+]) {
+  const raw = lawful();
+  patch(new DataView(raw.buffer, raw.byteOffset, raw.byteLength));
   const back = [new T()]; InitT(back[0]);
   const report = new TableFixedReport();
   const count = TLoad(back,1,raw,raw.length,plan,report);
   if (count !== -1 || report.refused !== TableFixedRefusal.OutOfRange || report.damaged || report.oor !== 0) {
-    fail("fixed one-sided refusal: " + show(back) + " " + reason(report));
+    fail("fixed one-sided refusal (" + name + "): " + show(back) + " " + reason(report));
   }
 }
 `

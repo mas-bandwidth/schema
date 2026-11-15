@@ -28,6 +28,19 @@ func buildUnit(t *testing.T, src string) *ir.Unit {
 	return u
 }
 
+func TestJsonKeyCannotHoldZero(t *testing.T) {
+	bad := "package t\ntable Tab { a int32 | json = \"a\x00b\" }\n"
+	errs := checkerErrors(t, bad)
+	if len(errs) != 1 || !strings.Contains(errs[0], "U+0000") {
+		t.Fatalf("json key containing U+0000: want one named refusal, got %v", errs)
+	}
+
+	good := "package t\ntable Tab { a int32 | json = \"a\x01b\" }\n"
+	if got := ir.TableFieldJsonKey(buildUnit(t, good).Tables["Tab"].Fields[0]); got != "a\x01b" {
+		t.Fatalf("nearby valid json key = %q", got)
+	}
+}
+
 // TestTableRefusals is the tables extension of the break-the-language suite:
 // every way to misuse a table that the checker provably catches.
 func TestTableRefusals(t *testing.T) {
@@ -87,7 +100,7 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { x int32 }\nunion U\n{\n    tab Tab\n}\ntype P { u U }\ntable Holder { p P }\n"},
 		{name: "a table arm holding its own union by value is a cycle", want: "type composition cycle",
 			src: "package t\ntable Tab { u U }\nunion U\n{\n    tab Tab\n}\ntable Holder { u U }\n"},
-		{name: "enum headroom has no name to ride under", want: "headroom value has no NAME",
+		{name: "enum max is the declaration's refusal even in a table", want: "takes no | max",
 			src: "package t\nenum E | max = 8\n{ A, B }\ntable Tab { e E }\n"},
 		{name: "a keyed array of unions stays a named follow-on", want: "an enum-keyed array of unions",
 			src: "package t\nenum E { A, B }\ntype P { x int32 }\nunion U\n{\n    p P\n}\ntable Tab { us [E]U }\n"},
@@ -250,11 +263,12 @@ func TestTableRefusals(t *testing.T) {
 		{name: "an optional literal-ranged enum-keyed array names the bound", want: "a BOUNDED enum-keyed array is refused with the ? and without it",
 			src: "package t\nenum E { A, B }\ntable Tab { xs ?[2..E]int32 }\n"},
 		// a KEY is a closure vocabulary: it rides under a variant hash exactly
-		// as a value does, so both §5 refusals are owed to it even when the
-		// enum reaches the closure ONLY as a key
-		{name: "headroom on an enum reaching a closure only as a key", want: "reserves values above the declared variants",
+		// as a value does, so the §5 id-collision refusal is owed to it even
+		// when the enum reaches the closure ONLY as a key. An enum's | max is
+		// refused at its declaration whether or not a key reaches it.
+		{name: "enum max on an enum reaching a closure only as a key", want: "takes no | max",
 			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
-		{name: "the key refusal names the keying field as the reaching edge", want: "field s, which keys an array by E, reaches it",
+		{name: "the key-only max refusal names the enum declaration", want: "enum E takes no | max",
 			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
 
 		// ---- maps, `map[K]V` (docs/SPEC-TABLES.md §2.8, §11) ----
@@ -705,7 +719,7 @@ fixed table Config
     ship_type int32
     label     string(32)
 }
-type Keyed
+type Weighted
 {
     weight float32
 }
@@ -716,7 +730,7 @@ fixed table Config
     ship_type int32      | json = "type"
     label     string(32) | json = "name"
 }
-type Keyed
+type Weighted
 {
     weight float32
 }

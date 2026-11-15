@@ -29,6 +29,9 @@ make/checks/schema-shared-hostile-corpus.mk
     push/pull request fast gate; schedule/workflow_dispatch negative control.
 ```
 
+`internal/ci/hostilecorpus/wide/` is a second corpus directory in the same format: its own `manifest.tsv`, `inputs/` and schema, built and checked by the same `Generate` and `Verify`.
+Each leg's own card reads it in its own test; a later card folds it into the main manifest once every leg holds it.
+
 The corpus directory is the contract: a port needs only a line reader, access
 to the raw `inputs/` files, and its own decoder. It does not need Go or JSON.
 

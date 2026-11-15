@@ -526,7 +526,11 @@ function TableVariableNodeTableScan(bytes, table, end, report) {
     if (rec.bad || tref === 0 || tref > table.length) { report.damaged = true; return null; }
     const tlen = rec.leb();
     if (rec.bad || rec.at + tlen > rec.end) { report.damaged = true; return null; }
-    raw.push({ tid: table[tref - 1], body: payload.slice(rec.at, rec.at + tlen) });
+    // A RESERVED ID IS NO RECORD'S TYPE (§3.1, §3.3, §5): it is damage
+    // anywhere but its own transport. The two blob ids are lawful types.
+    const tid = table[tref - 1];
+    if (tid === TableNodeTableId || tid === TableBuildVersionId || tid === TableMessageVocabularyId) { report.damaged = true; return null; }
+    raw.push({ tid, body: payload.slice(rec.at, rec.at + tlen) });
     rec.at += tlen;
   }
   if (count !== raw.length) { report.damaged = true; return null; }
@@ -663,6 +667,10 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 	case f.KeyEnum != "" || f.Array == ir.ArrayFixed:
 		// one slot per keyed variant or fixed bound, each at the element's default (§2.4, §2.9)
 		return fmt.Sprintf("Array.from({ length: %d }, () => %s)", f.ArrayBound, g.elemDefaultExpr(f))
+	case f.Array == ir.ArrayCounted && f.ArrayMin > 0:
+		// a counted array is BORN AT ITS MINIMUM count (docs/SPEC.md §5), each
+		// slot at the element's default
+		return fmt.Sprintf("Array.from({ length: %d }, () => %s)", f.ArrayMin, g.elemDefaultExpr(f))
 	case f.Array != ir.ArrayNone:
 		return "[]"
 	case f.Type.Pointer:
@@ -915,6 +923,15 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 		g.pf("  },\n")
 	}
 	g.pf("};\n")
+	// THE TYPES THIS READER DECLARES, whatever a pointer below a root reaches
+	// (§3.1): a record of one that a slot names at the wrong type is damage,
+	// and only a record of a type outside this set reads null.
+	declared := make([]string, 0, len(g.unit.Tables))
+	for _, st := range g.unit.Tables {
+		declared = append(declared, jsId(ir.TableWireId(st.WireName())))
+	}
+	sort.Strings(declared)
+	g.pf("const TableVariableDeclaredTypes = new Set([%s]);\n", strings.Join(declared, ", "))
 	g.pf("TableVariableLink(TableVariableCodecs, TableVariableUnions);\n")
 	g.pf("TableVariableFreeze(TableVariableCodecs);\n")
 	g.pf("TableVariableFreeze(TableVariableUnions);\n\n")
@@ -985,8 +1002,12 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 		if f.IsTextList() {
 			fmt.Fprintf(&b, "tl: true, plain: %v, total: %d, ", ir.TextListPlain(f), f.TextTotal)
 		}
-		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, fixed: %v, bound: %d, ek: %d, esz: %d, eal: %d, e: %s }",
-			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayBound, ir.TableWireElemKind(f), lsize, lalign, g.keyedElemDesc(f))
+		min := ""
+		if f.Array == ir.ArrayCounted && f.ArrayMin != 0 {
+			min = fmt.Sprintf(", min: %d", f.ArrayMin)
+		}
+		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, fixed: %v, bound: %d%s, ek: %d, esz: %d, eal: %d, e: %s }",
+			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayBound, min, ir.TableWireElemKind(f), lsize, lalign, g.keyedElemDesc(f))
 	case f.Type.Pointer && f.Type.Blob() && f.Type.Kind == ir.TString:
 		b.WriteString("s: \"sblob\", js: \"s\" }")
 	case f.Type.Pointer && f.Type.Blob():
@@ -1161,6 +1182,9 @@ func (g *variableGen) emitRootCodec(st *ir.Struct) {
 		g.pf("export function %sFromJson(text, report) {\n", st.Name)
 		g.pf("  return TableVariableFromJson(%s, text, report);\n", c)
 		g.pf("}\n\n")
+		g.pf("export function %sFromJsonBytes(bytes, report) {\n", st.Name)
+		g.pf("  return TableVariableFromJsonBytes(%s, bytes, report);\n", c)
+		g.pf("}\n\n")
 	}
 	g.emitRootLoadMeasure(st)
 }
@@ -1206,6 +1230,9 @@ func (g *variableGen) emitNoFileFormRoot(st *ir.Struct) {
 		g.pf("export function %sFromJson(text, report) {\n", st.Name)
 		g.pf("  return TableVariableFromJson(%s, text, report);\n", c)
 		g.pf("}\n\n")
+		g.pf("export function %sFromJsonBytes(bytes, report) {\n", st.Name)
+		g.pf("  return TableVariableFromJsonBytes(%s, bytes, report);\n", c)
+		g.pf("}\n\n")
 	}
 	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
 	g.pf("  return -1;\n")
@@ -1222,9 +1249,9 @@ func (g *variableGen) emitNoFileFormRoot(st *ir.Struct) {
 func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	align := ir.TableRegionAlign(g.unit)
 	rootSize := (ir.RecordLayout(g.unit, st).Size + align - 1) & -align
-	// A fixed-class root needs no variable region: even on a wire whose framing
-	// is damaged or refused before any field decodes, a non-variable read starts
-	// at its declared defaults and answers that root (docs/SPEC-TABLES.md §3, §4).
+	// A fixed-class root's measure answers its declared-default region on a wire
+	// whose framing is damaged or refused before any field decodes; the load
+	// still refuses the read (docs/SPEC-TABLES.md §3, §4).
 	refused := "-1"
 	if !g.variable[st.Name] {
 		refused = fmt.Sprintf("%d", rootSize+16)

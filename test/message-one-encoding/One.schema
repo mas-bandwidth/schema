@@ -1,0 +1,13 @@
+package messageone
+
+fixed table One
+{
+    mode  uint8 = 7
+    count uint8
+    pick  Pick
+}
+
+union Pick
+{
+    plain int32
+}

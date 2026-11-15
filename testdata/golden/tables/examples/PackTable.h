@@ -1792,7 +1792,7 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( f.packing == 0 ) { return true; }
         if ( f.packing == 1 && kind != 10 )
         {
-            if ( !TableMessageLeb( in, size, at, v ) || (int64_t) v > TableMessageKindBits( kind ) ) { return false; }
+            if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) TableMessageKindBits( kind ) ) { return false; }
             f.value_bits = (int64_t) v;
             if ( kind == 18 || kind == 19 || TableMessageFixedKind( kind ) )
             {
@@ -3761,10 +3761,89 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
         }
         default:
         {
+            // A FLOAT AND A RANGED ELEMENT carry the condition a named read
+            // applies, so they are held by the field's own skip at the
+            // element's shape
+            if ( entry.elem_kind == 10 || entry.elem_kind == 11 || entry.elem_packing == 1 )
+            {
+                TableMessageEntry element;
+                element.kind = entry.elem_kind;
+                element.packing = entry.elem_packing;
+                element.value_bits = entry.elem_value_bits;
+                element.base_lo = entry.elem_base_lo;
+                element.base_hi = entry.elem_base_hi;
+                element.qcount = entry.elem_qcount;
+                return TableMessageSkip( r, vocabulary, index_bits, element, depth );
+            }
             const int64_t elem = entry.elem_value_bits;
             return elem >= 0 && r.skip( elem );
         }
     }
+}
+
+// TableMessageSignedKind is a kind whose domain is two's complement.
+inline bool TableMessageSignedKind( uint8_t kind )
+{
+    return ( kind >= 2 && kind <= 5 ) || kind == 18 || ( kind >= 20 && kind <= 24 );
+}
+
+// TableMessageSkipRanged steps over a RANGED value and holds base plus offset
+// to the kind's own domain, the bound a named read holds it to: the offset's
+// bits can spell a value past the sender's range (§3.3). The base and the
+// offset are added exactly as the named read adds them. The arithmetic is on
+// 64-bit words, since this runtime carries no 128-bit type of its own.
+inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t width, int64_t base_lo, int64_t base_hi )
+{
+    uint64_t lo = 0, hi = 0;
+    if ( width < 0 || !r.get( lo, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi, width - 64 ) ) ) { return false; }
+    const bool is_signed = TableMessageSignedKind( kind );
+    const int64_t domain = TableMessageKindBits( kind );
+    if ( domain == 128 )
+    {
+        // the room above the base is top minus base, exact at 128 bits
+        // because no base lies above the top of its own domain
+        const uint64_t top_hi = is_signed ? uint64_t( INT64_MAX ) : UINT64_MAX;
+        const uint64_t room_lo = UINT64_MAX - (uint64_t) base_lo;
+        const uint64_t room_hi = top_hi - (uint64_t) base_hi;
+        return hi < room_hi || ( hi == room_hi && lo <= room_lo );
+    }
+    // AT SIXTY-FOUR BITS OR FEWER the offset is one word and so is the base,
+    // sign-extended for a signed kind, and the sum is held to both ends
+    if ( !is_signed )
+    {
+        const uint64_t top = domain == 64 ? UINT64_MAX : ( uint64_t( 1 ) << domain ) - 1;
+        const uint64_t base = (uint64_t) base_lo;
+        return base <= top && lo <= top - base;
+    }
+    const int64_t top = domain == 64 ? INT64_MAX : (int64_t) ( ( uint64_t( 1 ) << ( domain - 1 ) ) - 1 );
+    const int64_t bottom = -top - 1;
+    if ( base_lo > top || lo > (uint64_t) top - (uint64_t) base_lo ) { return false; }
+    return base_lo >= bottom || lo >= (uint64_t) bottom - (uint64_t) base_lo;
+}
+
+// THE SKIP PATH'S SEEN SET is a fixed bitmap over an id's FIRST vocabulary
+// slot, so a skip allocates nothing and the depth cap bounds the walk. An ID
+// is the wire's own name (§3.2, §3.3), not the slot that happened to carry
+// it: one name may be announced at two shapes, and naming it twice is a
+// repeat whichever slot it rode. The bitmap covers every slot a 64 KiB
+// announcement can carry; a slot past it is damage, never silently untracked.
+static const int64_t kTableMessageSeenBits = 65536;
+
+// TableMessageSeenOnce records one id of a body or one key of a keyed array
+// and answers false on a repeat, whether or not this reader can name the field
+// (§3.2, §3.3).
+inline bool TableMessageSeenOnce( uint64_t * seen, const TableVocabulary & vocabulary, uint64_t ref, uint64_t id )
+{
+    uint64_t slot = ref;
+    for ( uint64_t i = 1; i < ref; i++ )
+    {
+        if ( TableVocabularyEntryAt( vocabulary, i ).id == id ) { slot = i; break; }
+    }
+    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return false; }
+    const uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
+    if ( ( seen[slot >> 6] & bit ) != 0 ) { return false; }
+    seen[slot >> 6] |= bit;
+    return true;
 }
 
 // TableMessageElementRunBits is the bits ONE element of an array or a keyed
@@ -3772,7 +3851,7 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
 // is one multiplication, and -1 where the element's width is its own
 // content's. A ZERO is a real answer, and it is why this exists: a ranged
 // element whose min equals its max rides no bits at all (§3.3).
-inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, const TableMessageEntry & entry )
+inline int64_t TableMessageElementRunBits( const TableMessageEntry & entry )
 {
     int64_t elem = 0;
     switch ( entry.elem_kind )
@@ -3789,7 +3868,13 @@ inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, c
         default: elem = entry.elem_value_bits; break;
     }
     if ( elem < 0 ) { return -1; }
-    if ( entry.kind == 16 ) { elem += vocabulary.ref_bits; } // a keyed slot's own key reference
+    // a keyed slot resolves its own key reference, a zero-bit slot as well
+    if ( entry.kind == 16 ) { return -1; }
+    if ( elem == 0 ) { return 0; }
+    // a float, a ranged value and a quantized value carry a condition a named
+    // read applies, so the element is walked rather than multiplied
+    if ( entry.elem_kind == 10 || entry.elem_kind == 11 ) { return -1; }
+    if ( entry.elem_packing == 1 || entry.elem_packing == 2 ) { return -1; }
     return elem;
 }
 
@@ -3828,6 +3913,9 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         {
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
+            if ( n > (uint64_t) ( ( r.bits - r.offset ) / 8 ) ) { return false; }
+            const uint8_t * text = r.buffer + ( r.offset >> 3 );
+            if ( !TableUtf8Valid( text, n ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
         case 31:
@@ -3837,6 +3925,25 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             uint64_t n = 0;
             if ( !r.align() || !r.get( n, 32 ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
+        }
+        case 10:
+        {
+            if ( entry.packing == 2 )
+            {
+                uint64_t index = 0;
+                if ( !r.get( index, entry.value_bits ) ) { return false; }
+                if ( index > (uint64_t) entry.qcount ) { return false; } // above the step count
+                return true;
+            }
+            uint64_t raw = 0;
+            if ( !r.get( raw, 32 ) ) { return false; }
+            return TableBitsFinite32( (uint32_t) raw );
+        }
+        case 11:
+        {
+            uint64_t raw = 0;
+            if ( !r.get( raw, 64 ) ) { return false; }
+            return TableBitsFinite64( raw );
         }
         case 14:
         case 16:
@@ -3850,33 +3957,54 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
                 if ( !r.get( raw, width ) ) { return false; }
                 n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
             }
+            if ( n > (uint64_t) entry.max ) { return false; } // a count above its announced maximum
             if ( entry.kind == 14 && entry.elem_kind == 6 && !r.align() ) { return false; }
             // A RUN OF FIXED-WIDTH ELEMENTS IS ONE MULTIPLICATION (§3.3), and
             // only an element whose width is its own content's is walked
-            const int64_t run = TableMessageElementRunBits( vocabulary, entry );
+            const int64_t run = TableMessageElementRunBits( entry );
             if ( run >= 0 ) { return TableMessageSkipRun( r, n, run ); }
+            // A STRUCTURAL ELEMENT NESTS ONE LEVEL DEEPER; a fixed-width one
+            // does not, so the depth cap counts what §4 says it counts.
+            const bool nested = entry.elem_kind == 13 || entry.elem_kind == 14 || entry.elem_kind == 15 ||
+                entry.elem_kind == 16 || entry.elem_kind == 17 || entry.elem_kind == 30;
+            uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
             for ( uint64_t i = 0; i < n; i++ )
             {
-                if ( entry.kind == 16 && !r.skip( vocabulary.ref_bits ) ) { return false; }
-                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; }
+                if ( entry.kind == 16 )
+                {
+                    uint64_t key_ref = 0;
+                    TableMessageEntry key_entry;
+                    if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
+                    if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
+                    if ( !TableMessageSeenOnce( seen, vocabulary, key_ref, key_entry.id ) ) { return false; } // one key twice
+                }
+                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, nested ? depth + 1 : depth ) ) { return false; }
             }
             return true;
         }
     }
     const int64_t width = entry.value_bits;
+    if ( entry.packing == 1 && ( TableMessageIntegerKind( entry.kind ) || TableMessageFixedKind( entry.kind ) ) )
+    {
+        return TableMessageSkipRanged( r, entry.kind, width, entry.base_lo, entry.base_hi );
+    }
     return width >= 0 && r.skip( width );
 }
 
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth )
 {
     if ( depth > 128 ) { return false; }
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
         if ( ref == 0 ) { return true; }
         if ( ref > (uint64_t) vocabulary.count ) { return false; }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, TableVocabularyEntryAt( vocabulary, ref ), depth ) ) { return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        if ( TableMessageReserved( entry.id ) ) { return false; }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
+        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
 }
 
@@ -4331,6 +4459,13 @@ struct TableFixedEntry
     // length one and two). Zero count is "the two inline lanes only".
     uint32_t guard_count = 0;
     uint32_t guard_index = 0;
+    // elem IS A COPY ENTRY'S ELEMENT WIDTH IN BYTES (1, 2, 4 or 8; a 128-bit
+    // value rides as two 8-byte lanes). The wire is little-endian on every
+    // host (§3.4), so on a big-endian host a copy must reverse each element
+    // rather than land the wire bytes in host order. Zero is a raw byte copy,
+    // which is every non-copy op and every byte-sized element. It sits last
+    // so existing positional initializers keep their meaning.
+    uint8_t elem = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -4396,6 +4531,26 @@ inline uint64_t TableFixedGet64( const uint8_t * b )
     for ( int i = 0; i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
     return v;
 }
+// A LITTLE-ENDIAN LOAD OF 1..8 BYTES, zero-extended. The widen, ordinal and
+// const ops read their source through this, never through a memcpy into a
+// native word, which would read the wire in host order.
+inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
+{
+    uint64_t v = 0;
+    for ( uint32_t i = 0; i < size && i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
+    return v;
+}
+// THIS BUILD'S HOST ORDER, for the fixed form only. The wire is
+// little-endian on every host, so only a store into native storage consults
+// it. SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile
+// the big-endian path so a test can hold its byte image.
+#if defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN )
+constexpr bool TableFixedBigEndianHost = true;
+#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+constexpr bool TableFixedBigEndianHost = true;
+#else
+constexpr bool TableFixedBigEndianHost = false;
+#endif
 
 // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
 // byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
@@ -4498,6 +4653,66 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
     memcpy( d, s, n );
 }
 
+// A COPY FROM THE WIRE INTO NATIVE STORAGE. On a little-endian host the bulk
+// copy above IS the wire image and stays one copy. On a big-endian host each
+// element of elem bytes is reversed, so the value lands in this host's order
+// and not in the wire's. An elem of 0 or 1, or a size that is not a whole
+// number of elements, is a raw byte copy.
+inline void TableFixedCopyLe( uint8_t * dst, const uint8_t * src, uint32_t size, uint8_t elem )
+{
+    if ( TableFixedBigEndianHost && ( elem == 2 || elem == 4 || elem == 8 ) && size % elem == 0 )
+    {
+        for ( uint32_t i = 0; i < size; i += elem )
+        {
+            for ( uint8_t j = 0; j < elem; ++j ) { dst[i + j] = src[i + elem - 1 - j]; }
+        }
+        return;
+    }
+    TableFixedCopyRun( dst, src, size );
+}
+
+// A STORE OF ONE PLAN OP'S VALUE INTO NATIVE STORAGE. On a little-endian host
+// the destination width's own word IS the value and stays one copy; on a
+// big-endian host the value's bytes are written most-significant first, so the
+// native word holds the value and a forced build holds the same byte image the
+// copy path writes.
+inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
+{
+    if ( TableFixedBigEndianHost )
+    {
+        for ( uint32_t i = 0; i < size && i < 8; ++i ) { dst[i] = (uint8_t) ( v >> ( 8 * ( size - 1 - i ) ) ); }
+        return;
+    }
+    switch ( size )
+    {
+        case 1:
+        {
+            uint8_t t = (uint8_t) v;
+            memcpy( dst, &t, 1 );
+            break;
+        }
+        case 2:
+        {
+            uint16_t t = (uint16_t) v;
+            memcpy( dst, &t, 2 );
+            break;
+        }
+        case 4:
+        {
+            uint32_t t = (uint32_t) v;
+            memcpy( dst, &t, 4 );
+            break;
+        }
+        case 8:
+        {
+            uint64_t t = v;
+            memcpy( dst, &t, 8 );
+            break;
+        }
+        default: break;
+    }
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -4511,7 +4726,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
     {
         case kTableFixedCopy:
         {
-            TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
+            TableFixedCopyLe( dst + p.dst, src + p.src, p.size, p.elem );
             break;
         }
         case kTableFixedBool:
@@ -4555,7 +4770,9 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
-            TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
+            // text is bytes, so an elem of 1: a raw copy on either host, through
+            // the one wire-to-storage copy the bulk op takes too
+            TableFixedCopyLe( dst + p.aux, src + p.src + 4, p.size, 1 );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
@@ -4572,7 +4789,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
@@ -4584,13 +4801,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // tests THIS reader's own top value — which a remapped 0 never
             // trips, so the two never count the one event twice.
             else if ( raw != 0 ) { oor_count++; }
-            memcpy( dst + p.dst, &v, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, v, p.dstsize );
             break;
         }
         case kTableFixedWiden:
         {
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             if ( p.sign != 0 )
             {
                 // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
@@ -4599,14 +4816,19 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            memcpy( dst + p.dst, &raw, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, raw, p.dstsize );
             widened++;
             break;
         }
         case kTableFixedWidenF:
         {
+            // f32 INTO f64 (docs/FIXED-FORM-ALGORITHM.md §4's float rung): the
+            // bits are read little-endian, then the hardware cast.
             float f = 0.0f;
-            memcpy( &f, src + p.src, 4 );
+            {
+                const uint32_t bits = TableFixedGet32( src + p.src );
+                memcpy( &f, &bits, 4 );
+            }
             const double d = (double) f;
             memcpy( dst + p.dst, &d, 8 );
             widened++;
@@ -4618,13 +4840,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // bytes, and a memcpy of p.size out of the four-byte aux lane
             // reads the member beside it (§4.5, §5.8 row 7).
             const uint64_t lands = p.aux;
-            memcpy( dst + p.dst, &lands, p.size );
+            TableFixedStoreNative( dst + p.dst, lands, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
             // a tag past that set lands None (already written) and COUNTS.
             if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
             {
                 uint64_t raw = 0;
-                memcpy( &raw, src + p.src, p.size );
+                raw = TableFixedGetLe( src + p.src, p.size );
                 if ( raw > (uint64_t) p.dstsize ) { oor_count++; }
             }
             break;
@@ -4640,10 +4862,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // the payload copy above laid the wire's bytes down; when the flag
             // is 0 those bytes are slack and never a value, so the reader
             // overwrites them with the caller's own Reset image. Aux is the
-            // payload's storage offset and Size its storage bytes.
+            // payload's storage offset and Size its storage bytes. A plain
+            // memcpy and not the run mover: the mover's 32-byte moves let
+            // GCC's array-bounds pass form offsets past a small Reset image
+            // on a size branch no entry of this op reaches, and an absent
+            // payload is the cold path.
             const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
             dst[p.dst] = flag;
-            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }
             break;
         }
         default: break;
@@ -5851,6 +6077,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size;
                 e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
+                e.elem = (uint8_t) ( me.size == 16 ? 8 : me.size );
                 TableFixedPush( c, e );
             }
             else if ( te.size < me.size && me.size <= 8 )
@@ -5912,7 +6139,7 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
             plan[out - 1].guard == plan[i].guard && plan[out - 1].arg == plan[i].arg &&
             plan[out - 1].argw == plan[i].argw &&
             plan[out - 1].guard2 == plan[i].guard2 && plan[out - 1].arg2 == plan[i].arg2 &&
-            plan[out - 1].argw2 == plan[i].argw2 &&
+            plan[out - 1].argw2 == plan[i].argw2 && plan[out - 1].elem == plan[i].elem &&
             plan[out - 1].src + plan[out - 1].size == plan[i].src &&
             plan[out - 1].dst + plan[out - 1].size == plan[i].dst )
         {
@@ -7059,7 +7286,23 @@ struct TableNodeMap
     // it is one blob_shared event and resolves to the ONE decoded node. The Go
     // oracle is internal/codegen/gotable/regions.go (TableNodeMap.Once).
     bool once = false;
+    // DECLARED answers whether this reader declares a record's type id, so a
+    // record it placed no storage for can still be told apart: a type it does
+    // not declare reads null, and a type it declares that is not the slot's
+    // target is a wrong-type pointer target (docs/SPEC-TABLES.md §3.1).
+    bool ( *declared )( uint64_t type_id ) = NULL;
 };
+
+// TableNodeWrongTarget: a pointer naming a record of a type this reader
+// declares that is not the type its slot requires. It is damage, so every read,
+// the retaining one included, discards the whole load (docs/SPEC-TABLES.md
+// §3.1, §4); the reason stays the one the strict read has always named.
+inline void TableNodeWrongTarget( TableReport * report )
+{
+    report->damaged = true;
+    report->refused = true;
+    report->refuse_reason = kind_mismatch;
+}
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
 // is one of §4's events with the pointer left null. The declared TARGET type id
@@ -7080,7 +7323,13 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     {
         // a node whose type id this build could not name KEEPS ITS INDEX, and
         // every pointer naming it reads null. The unknown was counted once, at
-        // the node, not once per pointer.
+        // the node, not once per pointer. A node of a type this reader DOES
+        // declare that is not the slot's target is a wrong-type pointer
+        // target, below, though this root placed no storage for it.
+        if ( entry.type_id != target && map.declared != NULL && map.declared( entry.type_id ) )
+        {
+            TableNodeWrongTarget( report );
+        }
         return;
     }
     if ( entry.type_id != target )
@@ -7092,8 +7341,7 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true;
-            report->refuse_reason = kind_mismatch;
+            TableNodeWrongTarget( report );
             return;
         }
         report->refused = true;
@@ -7405,6 +7653,15 @@ inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint
         return false;
     }
     type_id = s.ids->at( ref );
+    // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+    // MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3): the node table, the build
+    // version and the vocabulary are transports, so no record's TYPE reference
+    // may resolve to one of their ids. The two blob type ids are lawful.
+    if ( type_id == kTableNodeTableFieldId || type_id == kTableBuildVersionFieldId || type_id == kTableMessageVocabularyFieldId )
+    {
+        s.damaged = true;
+        return false;
+    }
     uint64_t declared_length = 0;
     if ( !rec.getleb( declared_length ) )
     {
@@ -7431,6 +7688,373 @@ inline bool TableNodeScanWhole( TableNodeScan & s )
     if ( s.damaged ) { return false; }
     if ( !s.present ) { return true; } // no node table at all is not a broken one
     return s.declared == (uint64_t) s.records;
+}
+
+// ---- THE GRAPH, OVER EVERY KIND-17 PAYLOAD (docs/SPEC-TABLES.md §3.1, §6.5) ----
+//
+// The graph conditions are checked over the WHOLE input, not over the fields
+// this reader can name: every record body and the root body are walked by the
+// wire's own framing, every kind-17 payload is collected, and a cycle, an
+// unreachable record, a blob record named from two slots and an ill-formed
+// string blob record are judged wherever they sit. A record under a type id
+// this build cannot name still contributes its edges, so a cycle through it is
+// still refused; when it is reached and acyclic it reads null, which is
+// evolution and stays a read (§3.1, §4).
+//
+// THE POINTER WALK IS ITERATIVE: the scratch is the caller's node directory,
+// borrowed before it is filled, and carries the work list and its links, so a
+// legal chain of any length costs no recursion and no allocation. The nested
+// framing is the wire's own 128-level bound (§4), not a pointer edge.
+static const uint64_t kTableGraphBlob = 0x8000000000000000ull;      // scratch offset: a blob record
+static const uint64_t kTableGraphBodyMask = 0x7FFFFFFFFFFFFFFFull;  // scratch offset: the body's start
+static const uint64_t kTableGraphVisited = 0x8000000000000000ull;   // scratch type: reached
+static const uint64_t kTableGraphQueued = 0x8000000000000000ull;    // scratch type: on the work list
+static const uint64_t kTableGraphLinkMask = 0x7FFFFFFFFFFFFFFFull;  // scratch type: the next link
+static const int kTableGraphMaxDepth = 128;
+
+struct TableGraphCollect
+{
+    const TableIdTable * ids;
+    void * ctx;
+    bool ( *edge )( void * ctx, uint64_t index );
+    bool damaged;
+};
+
+inline int32_t TableGraphWidth( uint8_t kind )
+{
+    switch ( kind )
+    {
+        case 1: case 2: case 6: case 20: case 25: return 1;
+        case 3: case 7: case 21: case 26: return 2;
+        case 4: case 8: case 10: case 22: case 27: return 4;
+        case 5: case 9: case 11: case 23: case 28: case 36: return 8;
+        case 18: case 19: case 24: case 29: return 16;
+    }
+    return 0;
+}
+
+inline bool TableGraphUnion( TableGraphCollect & c, TableReader & r, int depth );
+inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t n, uint8_t kind, int depth );
+
+inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t kind, int depth )
+{
+    const int32_t width = TableGraphWidth( kind );
+    if ( width > 0 )
+    {
+        if ( !r.has( width ) ) { c.damaged = true; return false; }
+        r.offset += width;
+        return true;
+    }
+    switch ( kind )
+    {
+        case 17:
+        {
+            uint64_t index = 0;
+            if ( !r.getleb( index ) ) { c.damaged = true; return false; }
+            if ( !c.edge( c.ctx, index ) ) { c.damaged = true; return false; }
+            return true;
+        }
+        case 30:
+        {
+            uint64_t ref = 0;
+            if ( !r.getleb( ref ) || c.ids == NULL || ref > (uint64_t) c.ids->count ) { c.damaged = true; return false; }
+            return true;
+        }
+        case 15:
+            return TableGraphUnion( c, r, depth );
+        case 12: case 31: case 32: case 13: case 14: case 16:
+        {
+            uint64_t n = 0;
+            if ( !r.getleb( n ) || !r.room( n ) ) { c.damaged = true; return false; }
+            const uint8_t * b = r.buffer + r.offset;
+            r.offset += (int64_t) n;
+            return TableGraphContent( c, b, (int64_t) n, kind, depth );
+        }
+    }
+    c.damaged = true;
+    return false;
+}
+
+inline bool TableGraphBody( TableGraphCollect & c, const uint8_t * b, int64_t n, bool root, bool exact, int depth )
+{
+    if ( depth > kTableGraphMaxDepth ) { c.damaged = true; return false; }
+    TableReport ignored;
+    TableReader r( b, n, &ignored, c.ids );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.getleb( ref ) ) { c.damaged = true; return false; }
+        if ( ref == 0 ) { if ( exact && r.offset != n ) { c.damaged = true; return false; } return true; }
+        if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) ) { c.damaged = true; return false; }
+        const uint64_t id = c.ids->at( ref );
+        const uint8_t kind = r.get8();
+        if ( id == kTableNodeTableFieldId )
+        {
+            if ( !root || kind != 12 ) { c.damaged = true; return false; }
+            uint64_t len = 0;
+            if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+            r.offset += (int64_t) len;
+            continue;
+        }
+        if ( !TableGraphPayload( c, r, kind, depth ) ) { return false; }
+    }
+}
+
+inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t n, uint8_t kind, int depth )
+{
+    const int32_t width = TableGraphWidth( kind );
+    if ( width > 0 )
+    {
+        if ( n != width ) { c.damaged = true; return false; }
+        return true;
+    }
+    switch ( kind )
+    {
+        case 12:
+            if ( !TableUtf8Valid( b, (uint64_t) n ) ) { c.damaged = true; return false; }
+            return true;
+        case 31:
+            return true; // opaque: the one kind whose meaning a reader may not know (§3)
+        case 32:
+            if ( n != 0 ) { c.damaged = true; return false; }
+            return true;
+        case 13:
+            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+            return TableGraphBody( c, b, n, false, true, depth + 1 );
+        case 14:
+        {
+            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+            if ( n < 2 ) { c.damaged = true; return false; }
+            TableReport ignored;
+            TableReader r( b + 1, n - 1, &ignored, c.ids );
+            const uint8_t elem = b[0];
+            uint64_t count = 0;
+            if ( !r.getleb( count ) ) { c.damaged = true; return false; }
+            if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
+            for ( uint64_t i = 0; i < count; i++ ) { if ( !TableGraphPayload( c, r, elem, depth + 1 ) ) { return false; } }
+            return true;
+        }
+        case 16:
+        {
+            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+            if ( n < 2 ) { c.damaged = true; return false; }
+            TableReport ignored;
+            TableReader r( b + 1, n - 1, &ignored, c.ids );
+            const uint8_t elem = b[0];
+            uint64_t count = 0;
+            if ( !r.getleb( count ) ) { c.damaged = true; return false; }
+            if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
+            for ( uint64_t i = 0; i < count; i++ )
+            {
+                uint64_t key = 0;
+                if ( !r.getleb( key ) || key == 0 || c.ids == NULL || key > (uint64_t) c.ids->count ) { c.damaged = true; return false; }
+                uint64_t len = 0;
+                if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+                const uint8_t * eb = r.buffer + r.offset;
+                r.offset += (int64_t) len;
+                if ( !TableGraphContent( c, eb, (int64_t) len, elem, depth + 1 ) ) { return false; }
+            }
+            return true;
+        }
+        case 15:
+        {
+            TableReport ignored;
+            TableReader r( b, n, &ignored, c.ids );
+            return TableGraphUnion( c, r, depth );
+        }
+        case 17: case 30:
+        {
+            TableReport ignored;
+            TableReader r( b, n, &ignored, c.ids );
+            if ( !TableGraphPayload( c, r, kind, depth ) ) { return false; }
+            if ( r.offset != n ) { c.damaged = true; return false; }
+            return true;
+        }
+    }
+    c.damaged = true;
+    return false;
+}
+
+inline bool TableGraphUnion( TableGraphCollect & c, TableReader & r, int depth )
+{
+    uint64_t ref = 0;
+    if ( !r.getleb( ref ) ) { c.damaged = true; return false; }
+    if ( ref == 0 ) { return true; }
+    if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) ) { c.damaged = true; return false; }
+    const uint8_t kind = r.get8();
+    uint64_t len = 0;
+    if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+    const uint8_t * b = r.buffer + r.offset;
+    r.offset += (int64_t) len;
+    const bool structural = kind == 13 || kind == 14 || kind == 15 || kind == 16;
+    if ( structural )
+    {
+        if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+        if ( !TableGraphContent( c, b, (int64_t) len, kind, depth + 1 ) ) { return false; }
+    }
+    else if ( !TableGraphContent( c, b, (int64_t) len, kind, depth ) ) { return false; }
+    return true;
+}
+
+struct TableGraphCount
+{
+    TableNodeDirEntry * nodes;
+    int64_t count;
+    bool bad;
+};
+
+inline bool TableGraphCountEdge( void * ctx, uint64_t index )
+{
+    TableGraphCount * c = (TableGraphCount *) ctx;
+    if ( index == 0 ) { return true; }
+    if ( index - 1 >= (uint64_t) c->count ) { c->bad = true; return false; }
+    c->nodes[index - 1].type_id += 1;
+    return true;
+}
+
+struct TableGraphKahn
+{
+    TableNodeDirEntry * nodes;
+    int64_t count;
+    int64_t head;
+    uint64_t processed;
+    bool bad;
+};
+
+inline void TableGraphKahnPush( TableGraphKahn & k, int64_t p )
+{
+    k.nodes[p].type_id = kTableGraphQueued | (uint64_t) ( k.head + 1 );
+    k.head = p;
+}
+
+inline bool TableGraphKahnEdge( void * ctx, uint64_t index )
+{
+    TableGraphKahn * k = (TableGraphKahn *) ctx;
+    if ( index == 0 ) { return true; }
+    if ( index - 1 >= (uint64_t) k->count ) { k->bad = true; return false; }
+    TableNodeDirEntry & e = k->nodes[index - 1];
+    if ( ( e.type_id & kTableGraphQueued ) != 0 || e.type_id == 0 ) { k->bad = true; return false; }
+    e.type_id -= 1;
+    if ( e.type_id == 0 ) { TableGraphKahnPush( *k, (int64_t) index - 1 ); }
+    return true;
+}
+
+struct TableGraphReach
+{
+    TableNodeDirEntry * nodes;
+    int64_t count;
+    int64_t head;
+    int64_t tail;
+    bool bad;
+};
+
+inline bool TableGraphReachEdge( void * ctx, uint64_t index )
+{
+    TableGraphReach * r = (TableGraphReach *) ctx;
+    if ( index == 0 ) { return true; }
+    if ( index - 1 >= (uint64_t) r->count ) { r->bad = true; return false; }
+    const int64_t t = (int64_t) index - 1;
+    if ( ( r->nodes[t].type_id & kTableGraphVisited ) != 0 ) { return true; }
+    r->nodes[t].type_id = kTableGraphVisited;
+    if ( r->tail < 0 ) { r->head = t; }
+    else { r->nodes[r->tail].type_id = kTableGraphVisited | (uint64_t) ( t + 1 ); }
+    r->tail = t;
+    return true;
+}
+
+inline bool TableGraphParseNode( TableGraphCollect & c, const uint8_t * wire, int64_t wire_bytes, uint64_t start, bool root )
+{
+    if ( start > (uint64_t) wire_bytes ) { c.damaged = true; return false; }
+    return TableGraphBody( c, wire + start, wire_bytes - (int64_t) start, root, root, 0 );
+}
+
+inline bool TableGraphFail( TableReport * report )
+{
+    report->damaged = true;
+    report->refuse_reason = wire_damaged;
+    return false;
+}
+
+// TableGraphCheck judges the pointer graph over one form-1 file's root body.
+// The scratch holds count entries (the root plus every record) and may be the
+// caller's node directory before it is filled; a true answer leaves it
+// clobbered and a false answer is a refused load, so neither is observed.
+inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const TableIdTable * ids, TableNodeDirEntry * scratch, int64_t count, TableReport * report )
+{
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+    int64_t records = 0;
+    {
+        TableReport ignored;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, ids );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            const int64_t k = records + 1;
+            if ( k >= count ) { return true; } // a scan this check cannot frame is the typed read's to judge
+            scratch[k].offset = (uint64_t) ( body - wire );
+            if ( type_id == kTableStringTypeId || type_id == kTableBytesTypeId ) { scratch[k].offset |= kTableGraphBlob; }
+            if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, (uint64_t) length ) ) { return TableGraphFail( report ); }
+            records++;
+        }
+        if ( !TableNodeScanWhole( scan ) || records + 1 != count ) { return true; } // the typed read names the framing
+    }
+    scratch[0].offset = 0;
+    scratch[0].type_id = 0;
+    const int64_t n = count;
+
+    for ( int64_t i = 0; i < n; i++ ) { scratch[i].type_id = 0; }
+    {
+        TableGraphCount counts = { scratch, n, false };
+        TableGraphCollect collect = { ids, &counts, &TableGraphCountEdge, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[0].offset, true ) ) { return counts.bad ? TableGraphFail( report ) : true; }
+        for ( int64_t i = 1; i < n; i++ )
+        {
+            if ( ( scratch[i].offset & kTableGraphBlob ) != 0 ) { continue; }
+            if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[i].offset & kTableGraphBodyMask, false ) ) { return counts.bad ? TableGraphFail( report ) : true; }
+        }
+        for ( int64_t i = 1; i < n; i++ )
+        {
+            if ( ( scratch[i].offset & kTableGraphBlob ) != 0 && scratch[i].type_id > 1 )
+            {
+                report->refused = true;
+                report->refuse_reason = blob_shared;
+                return false;
+            }
+        }
+    }
+
+    TableGraphKahn kahn = { scratch, n, -1, 0, false };
+    for ( int64_t i = 0; i < n; i++ ) { if ( scratch[i].type_id == 0 ) { TableGraphKahnPush( kahn, i ); } }
+    while ( kahn.head >= 0 )
+    {
+        const int64_t p = kahn.head;
+        kahn.head = (int64_t) ( scratch[p].type_id & kTableGraphLinkMask ) - 1;
+        kahn.processed++;
+        if ( ( scratch[p].offset & kTableGraphBlob ) != 0 ) { continue; }
+        TableGraphCollect collect = { ids, &kahn, &TableGraphKahnEdge, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return kahn.bad ? TableGraphFail( report ) : true; }
+    }
+    if ( kahn.bad || kahn.processed != (uint64_t) n ) { return TableGraphFail( report ); }
+
+    for ( int64_t i = 0; i < n; i++ ) { scratch[i].type_id = 0; }
+    TableGraphReach reach = { scratch, n, 0, 0, false };
+    scratch[0].type_id = kTableGraphVisited;
+    while ( reach.head >= 0 )
+    {
+        const int64_t p = reach.head;
+        reach.head = (int64_t) ( scratch[p].type_id & kTableGraphLinkMask ) - 1;
+        if ( reach.head < 0 ) { reach.tail = -1; }
+        if ( ( scratch[p].offset & kTableGraphBlob ) != 0 ) { continue; }
+        TableGraphCollect collect = { ids, &reach, &TableGraphReachEdge, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return reach.bad ? TableGraphFail( report ) : true; }
+    }
+    if ( reach.bad ) { return TableGraphFail( report ); }
+    for ( int64_t i = 1; i < n; i++ )
+    {
+        if ( ( scratch[i].type_id & kTableGraphVisited ) == 0 ) { return TableGraphFail( report ); }
+    }
+    return true;
 }
 
 } // namespace tabledemo
@@ -7930,10 +8554,10 @@ inline void TableRetainIdsWrite( TableWriter & w, const TableRetainIds & ids )
 //
 // A retained record's inner nesting is the WRITER's and not this build's, so
 // it is the one depth on this path a file can drive. The cap counts NESTED
-// BODIES, and a record past it is dropped on the same rule as any other shape
-// the walk cannot take. Time no longer rests on it: it is a small stated
-// constant and nothing more.
-static const int32_t kTableRetainWalkDepthMax = 64;
+// BODIES as §4 counts them, and a record past it is dropped on the same rule
+// as any other shape the walk cannot take. Time no longer rests on it: it is a
+// small stated constant and nothing more.
+static const int32_t kTableRetainWalkDepthMax = 128;
 
 // the three RESERVED ids (§3.1, §3.3). One inside a retained record's payload
 // would be re-emitted into a nested body, where it is malformed, so meeting
@@ -7951,6 +8575,7 @@ struct TableRetainIn
     const TableIdTable * ids;
     uint8_t * out;   // NULL: measuring, and nothing is written
     int64_t out_at;
+    bool too_deep;   // the walk met §4's nesting bound: the FILE is malformed
 };
 
 inline void TableRetainInRaw( TableRetainIn & s, const uint8_t * from, int64_t bytes )
@@ -8057,7 +8682,7 @@ inline int64_t TableRetainInFramed( TableRetainIn & s, uint8_t kind, int64_t len
 
 inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t length, int32_t depth )
 {
-    if ( depth > kTableRetainWalkDepthMax ) { return -1; }
+    if ( depth > kTableRetainWalkDepthMax ) { s.too_deep = true; return -1; }
     if ( length < 0 || s.at + length > s.size ) { return -1; }
     const int64_t end = s.at + length;
     const int64_t began = s.out_at;
@@ -8118,7 +8743,11 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
                 uint64_t slot_bytes = 0;
                 if ( !TableRetainInLebRead( s, slot_bytes ) ) { return -1; }
                 if ( slot_bytes > (uint64_t) ( end - s.at ) ) { return -1; }
-                if ( TableRetainInFramed( s, elem_kind, (int64_t) slot_bytes, depth + 1 ) < 0 ) { return -1; }
+                // The keyed entry's framing adds nothing by itself (§4): what
+                // it frames is its element, and only a structural element is a
+                // level.
+                const int32_t elem_depth = depth + ( elem_kind == 13 || elem_kind == 14 || elem_kind == 16 ? 1 : 0 );
+                if ( TableRetainInFramed( s, elem_kind, (int64_t) slot_bytes, elem_depth ) < 0 ) { return -1; }
             }
             break;
         }
@@ -8242,7 +8871,11 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
             if ( length > (uint64_t) ( s.size - s.at ) ) { return -1; }
-            if ( TableRetainInFramed( s, arm_kind, (int64_t) length, depth + 1 ) < 0 ) { return -1; }
+            // A UNION WHOSE ARM IS STRUCTURAL ADDS TWO LEVELS (§4): the union,
+            // then the table, array or keyed body inside it. A union arm that is
+            // another union adds one, and a scalar or None arm adds none.
+            const int32_t arm_depth = depth + ( arm_kind == 15 ? 1 : ( arm_kind == 13 || arm_kind == 14 || arm_kind == 16 ? 2 : 0 ) );
+            if ( TableRetainInFramed( s, arm_kind, (int64_t) length, arm_depth ) < 0 ) { return -1; }
             break;
         }
         case 30: // an ENUM's variant reference, zero for None
@@ -8292,7 +8925,15 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     probe.ids = r.ids;
     probe.out = NULL;
     probe.out_at = 0;
+    probe.too_deep = false;
     const int64_t payload = TableRetainInPayload( probe, kind, 0 );
+    if ( probe.too_deep )
+    {
+        // §4's ONE NESTING BOUND IS THE WALK'S VERDICT, not a retention
+        // capacity: a file past it is malformed, and the whole load refuses.
+        r.report->damaged = true;
+        return false;
+    }
     if ( payload < 0 || probe.at != wire_bytes )
     {
         r.report->retain_lost++;
@@ -8327,6 +8968,7 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     write.ids = r.ids;
     write.out = record + kTableRetainRecordHeader + 8 * (int64_t) path.depth;
     write.out_at = 0;
+    write.too_deep = false;
     if ( TableRetainInPayload( write, kind, 0 ) < 0 )
     {
         r.report->retain_lost++;
@@ -8574,7 +9216,10 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             for ( uint64_t i = 0; i < n; i++ )
             {
                 if ( !TableRetainOutRef( s ) ) { return false; }
-                if ( !TableRetainOutFramed( s, elem_kind, depth + 1 ) ) { return false; }
+                // The keyed entry's framing adds nothing by itself (§4), as on
+                // the capture side.
+                const int32_t elem_depth = depth + ( elem_kind == 13 || elem_kind == 14 || elem_kind == 16 ? 1 : 0 );
+                if ( !TableRetainOutFramed( s, elem_kind, elem_depth ) ) { return false; }
             }
             break;
         }
@@ -8680,7 +9325,10 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             if ( s.at >= s.size ) { return false; }
             const uint8_t arm_kind = s.in[s.at++];
             TableRetainOutRaw( s, &arm_kind, 1 );
-            if ( !TableRetainOutFramed( s, arm_kind, depth + 1 ) ) { return false; }
+            // A UNION WHOSE ARM IS STRUCTURAL ADDS TWO LEVELS (§4), as on the
+            // capture side.
+            const int32_t arm_depth = depth + ( arm_kind == 15 ? 1 : ( arm_kind == 13 || arm_kind == 14 || arm_kind == 16 ? 2 : 0 ) );
+            if ( !TableRetainOutFramed( s, arm_kind, arm_depth ) ) { return false; }
             break;
         }
         case 30:
@@ -9580,6 +10228,8 @@ inline int64_t GunnerSettingsMeasureBody( TableIds & ids, const GunnerSettings &
     return bytes;
 }
 
+inline bool GunnerSettingsFixedWriteAdmits( const GunnerSettings & value );
+
 inline int64_t GunnerSettingsMeasure( const GunnerSettings & value )
 {
     TableIds ids;
@@ -9944,6 +10594,7 @@ inline bool GunnerSettingsSaveMessageBody( TableBitWriter & w, const GunnerSetti
 inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, GunnerSettings & value )
 {
     GunnerSettingsReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -9972,6 +10623,11 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xb75aa3662201646aull: // reaction
@@ -10129,6 +10785,7 @@ inline int64_t GunnerSettingsMeasureMessages( const GunnerSettings * values, int
     {
         const int64_t body = GunnerSettingsMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( GunnerSettingsFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -10147,6 +10804,7 @@ inline int64_t GunnerSettingsSaveMessages( const GunnerSettings * values, int64_
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !GunnerSettingsSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( GunnerSettingsFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == GunnerSettingsMeasureMessages( values, count, report )
@@ -10222,6 +10880,8 @@ inline int64_t ShipEntryMeasureBody( TableIds & ids, const ShipEntry & value )
     }
     return bytes;
 }
+
+inline bool ShipEntryFixedWriteAdmits( const ShipEntry & value );
 
 inline int64_t ShipEntryMeasure( const ShipEntry & value )
 {
@@ -10815,6 +11475,7 @@ inline bool ShipEntrySaveMessageBody( TableBitWriter & w, const ShipEntry & valu
 inline bool ShipEntryLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, ShipEntry & value )
 {
     ShipEntryReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -10843,6 +11504,11 @@ inline bool ShipEntryLoadMessageBody( TableBitReader & r, const TableVocabulary 
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x2d21d7cd66bd5a5dull: // display_name
@@ -11207,6 +11873,7 @@ inline int64_t ShipEntryMeasureMessages( const ShipEntry * values, int64_t count
     {
         const int64_t body = ShipEntryMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( ShipEntryFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -11225,6 +11892,7 @@ inline int64_t ShipEntrySaveMessages( const ShipEntry * values, int64_t count, u
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !ShipEntrySaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( ShipEntryFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == ShipEntryMeasureMessages( values, count, report )
@@ -11305,6 +11973,8 @@ inline int64_t GlobalSettingsMeasureBody( TableIds & ids, const GlobalSettings &
     }
     return bytes;
 }
+
+inline bool GlobalSettingsFixedWriteAdmits( const GlobalSettings & value );
 
 inline int64_t GlobalSettingsMeasure( const GlobalSettings & value )
 {
@@ -11836,6 +12506,7 @@ inline bool GlobalSettingsSaveMessageBody( TableBitWriter & w, const GlobalSetti
 inline bool GlobalSettingsLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, GlobalSettings & value )
 {
     GlobalSettingsReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -11864,6 +12535,11 @@ inline bool GlobalSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xa65f859b617deaf3ull: // tick_rate
@@ -12145,6 +12821,7 @@ inline int64_t GlobalSettingsMeasureMessages( const GlobalSettings * values, int
     {
         const int64_t body = GlobalSettingsMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( GlobalSettingsFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -12163,6 +12840,7 @@ inline int64_t GlobalSettingsSaveMessages( const GlobalSettings * values, int64_
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !GlobalSettingsSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( GlobalSettingsFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == GlobalSettingsMeasureMessages( values, count, report )
@@ -12284,6 +12962,8 @@ inline int64_t PackConfigMeasureBody( TableIds & ids, const PackConfig & value )
     }
     return bytes;
 }
+
+inline bool PackConfigFixedWriteAdmits( const PackConfig & value );
 
 inline int64_t PackConfigMeasure( const PackConfig & value )
 {
@@ -13212,6 +13892,7 @@ inline bool PackConfigSaveMessageBody( TableBitWriter & w, const PackConfig & va
 inline bool PackConfigLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, PackConfig & value )
 {
     PackConfigReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -13240,6 +13921,11 @@ inline bool PackConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xbb62c62c9808ea37ull: // version
@@ -13536,6 +14222,7 @@ inline int64_t PackConfigMeasureMessages( const PackConfig * values, int64_t cou
     {
         const int64_t body = PackConfigMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( PackConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -13554,6 +14241,7 @@ inline int64_t PackConfigSaveMessages( const PackConfig * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !PackConfigSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( PackConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == PackConfigMeasureMessages( values, count, report )
@@ -13730,6 +14418,16 @@ TABLE_FIXED_INLINE bool GunnerSettingsFixedInRange( const GunnerSettings & value
     return bad == 0;
 }
 
+// GunnerSettings's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool GunnerSettingsFixedWriteAdmits( const GunnerSettings & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.callsign_length >= 0 && value.callsign_length <= 24 && !TableUtf8Valid( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length ) );
+    return bad == 0;
+}
+
 // GunnerSettings's read-side bounds.
 inline void GunnerSettingsFixedClampBody( GunnerSettings & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -13756,6 +14454,24 @@ TABLE_FIXED_INLINE bool ShipEntryFixedInRange( const ShipEntry & value )
     if ( value.gunner_present )
     {
         bad |= (int) !GunnerSettingsFixedInRange( value.gunner );
+    }
+    return bad == 0;
+}
+
+// ShipEntry's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool ShipEntryFixedWriteAdmits( const ShipEntry & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.display_name_length >= 0 && value.display_name_length <= 32 && !TableUtf8Valid( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length ) );
+    for ( int64_t i = 0; i < ( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ? (int64_t) value.hardpoints_count : 0 ); ++i )
+    {
+        bad |= (int) ( value.hardpoints[i] < 0 ) | (int) ( value.hardpoints[i] > 8 );
+    }
+    if ( value.gunner_present )
+    {
+        bad |= (int) !GunnerSettingsFixedWriteAdmits( value.gunner );
     }
     return bad == 0;
 }
@@ -13793,6 +14509,18 @@ TABLE_FIXED_INLINE bool GlobalSettingsFixedInRange( const GlobalSettings & value
     return bad == 0;
 }
 
+// GlobalSettings's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool GlobalSettingsFixedWriteAdmits( const GlobalSettings & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.tick_rate < 1 ) | (int) ( value.tick_rate > 240 );
+    bad |= (int) ( (uint64_t) value.difficulty > 3u );
+    bad |= (int) ( value.build_note_length >= 0 && value.build_note_length <= 48 && !TableUtf8Valid( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length ) );
+    return bad == 0;
+}
+
 // GlobalSettings's read-side bounds.
 inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -13826,6 +14554,28 @@ TABLE_FIXED_INLINE bool PackConfigFixedInRange( const PackConfig & value )
     for ( int64_t i = 0; i < (int64_t) value.reserves_count; ++i )
     {
         bad |= (int) !ShipEntryFixedInRange( value.reserves[i] );
+    }
+    return bad == 0;
+}
+
+// PackConfig's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool PackConfigFixedWriteAdmits( const PackConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !GlobalSettingsFixedWriteAdmits( value.settings );
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) !ShipEntryFixedWriteAdmits( value.ships.slots[i] );
+    }
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) ( value.thresholds.slots[i] < 0 ) | (int) ( value.thresholds.slots[i] > 1000 );
+    }
+    for ( int64_t i = 0; i < ( value.reserves_count >= 0 && value.reserves_count <= 3 ? (int64_t) value.reserves_count : 0 ); ++i )
+    {
+        bad |= (int) !ShipEntryFixedWriteAdmits( value.reserves[i] );
     }
     return bad == 0;
 }
@@ -13976,9 +14726,9 @@ constexpr TableFixedDst GunnerSettingsFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry GunnerSettingsFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 4u, 4u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 5u, 32u, 24u, 5u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 4u, 4u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 5u, 32u, 24u, 5u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
 };
 constexpr int32_t GunnerSettingsFixedPlanCount = 3;
 constexpr int32_t GunnerSettingsFixedPlanGuarded = 3;
@@ -14043,6 +14793,11 @@ inline int64_t GunnerSettingsFixedSave( const GunnerSettings * values, int64_t c
 {
     const int64_t need = GunnerSettingsFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( GunnerSettingsFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, GunnerSettingsFixedHash );
@@ -14231,7 +14986,7 @@ inline int64_t GunnerSettingsFixedLoadWalk( GunnerSettings * values, int64_t cap
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -14471,17 +15226,21 @@ constexpr TableFixedDst ShipEntryFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry ShipEntryFixedPlan[] = {
-    { 0u, 36u, 32u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
-    { 36u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 44u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
-    { 48u, 48u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
-    { 65u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 69u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 70u, 100u, 24u, 73u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
-    { 64u, 104u, 36u, 68u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
+    { 0u, 36u, 32u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // display_name
+    { 36u, 40u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 40u, 44u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 44u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // hardpoints count
+    { 48u, 48u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 52u, 52u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 56u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 60u, 60u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 65u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 69u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 70u, 100u, 24u, 73u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
+    { 64u, 104u, 36u, 68u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // gunner present, absent payload defaults
 };
-constexpr int32_t ShipEntryFixedPlanCount = 8;
-constexpr int32_t ShipEntryFixedPlanGuarded = 7;
+constexpr int32_t ShipEntryFixedPlanCount = 12;
+constexpr int32_t ShipEntryFixedPlanGuarded = 11;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink ShipEntryFixedGuards[] = {
@@ -14551,6 +15310,11 @@ inline int64_t ShipEntryFixedSave( const ShipEntry * values, int64_t count, uint
 {
     const int64_t need = ShipEntryFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( ShipEntryFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, ShipEntryFixedHash );
@@ -14739,7 +15503,7 @@ inline int64_t ShipEntryFixedLoadWalk( ShipEntry * values, int64_t capacity, con
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -14968,12 +15732,15 @@ constexpr TableFixedDst GlobalSettingsFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry GlobalSettingsFixedPlan[] = {
-    { 0u, 0u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tick_rate
-    { 5u, 56u, 48u, 5u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // build_note
-    { 57u, 60u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // spawn_delays, whole
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // tick_rate
+    { 4u, 4u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // tick_rate
+    { 5u, 56u, 48u, 5u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // build_note
+    { 57u, 60u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // spawn_delays, whole
+    { 61u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // spawn_delays, whole
+    { 65u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // spawn_delays, whole
 };
-constexpr int32_t GlobalSettingsFixedPlanCount = 3;
-constexpr int32_t GlobalSettingsFixedPlanGuarded = 3;
+constexpr int32_t GlobalSettingsFixedPlanCount = 6;
+constexpr int32_t GlobalSettingsFixedPlanGuarded = 6;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink GlobalSettingsFixedGuards[] = {
@@ -15040,6 +15807,11 @@ inline int64_t GlobalSettingsFixedSave( const GlobalSettings * values, int64_t c
 {
     const int64_t need = GlobalSettingsFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( GlobalSettingsFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, GlobalSettingsFixedHash );
@@ -15228,7 +16000,7 @@ inline int64_t GlobalSettingsFixedLoadWalk( GlobalSettings * values, int64_t cap
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -15607,62 +16379,92 @@ constexpr TableFixedDst PackConfigFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry PackConfigFixedPlan[] = {
-    { 0u, 0u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // version
-    { 9u, 60u, 48u, 9u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // build_note
-    { 61u, 64u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // spawn_delays, whole
-    { 73u, 112u, 32u, 76u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
-    { 109u, 116u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 117u, 140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
-    { 121u, 124u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
-    { 138u, 144u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 142u, 148u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 143u, 176u, 24u, 149u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
-    { 171u, 220u, 32u, 184u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
-    { 207u, 224u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 215u, 248u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
-    { 219u, 232u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
-    { 236u, 252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 240u, 256u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 241u, 284u, 24u, 257u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
-    { 269u, 328u, 32u, 292u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
-    { 305u, 332u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 313u, 356u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
-    { 317u, 340u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
-    { 334u, 360u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 338u, 364u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 339u, 392u, 24u, 365u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
-    { 367u, 400u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // thresholds, whole
-    { 379u, 736u, 3u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reserves count
-    { 383u, 448u, 32u, 412u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
-    { 419u, 452u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 427u, 476u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
-    { 431u, 460u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
-    { 448u, 480u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 452u, 484u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 453u, 512u, 24u, 485u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
-    { 481u, 556u, 32u, 520u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
-    { 517u, 560u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 525u, 584u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
-    { 529u, 568u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
-    { 546u, 588u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 550u, 592u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 551u, 620u, 24u, 593u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
-    { 579u, 664u, 32u, 628u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // display_name
-    { 615u, 668u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 623u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints count
-    { 627u, 676u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // hardpoints, whole
-    { 644u, 696u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
-    { 648u, 700u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
-    { 649u, 728u, 24u, 701u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // callsign
-    { 137u, 180u, 36u, 144u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
-    { 235u, 288u, 36u, 252u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
-    { 333u, 396u, 36u, 360u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
-    { 447u, 516u, 36u, 480u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
-    { 545u, 624u, 36u, 588u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
-    { 643u, 732u, 36u, 696u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // version
+    { 4u, 4u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // version
+    { 8u, 8u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // version
+    { 9u, 60u, 48u, 9u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // build_note
+    { 61u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // spawn_delays, whole
+    { 65u, 68u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // spawn_delays, whole
+    { 69u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // spawn_delays, whole
+    { 73u, 112u, 32u, 76u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // display_name
+    { 109u, 116u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 113u, 120u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 117u, 140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // hardpoints count
+    { 121u, 124u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 125u, 128u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 129u, 132u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 133u, 136u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 138u, 144u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 142u, 148u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 143u, 176u, 24u, 149u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
+    { 171u, 220u, 32u, 184u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // display_name
+    { 207u, 224u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 211u, 228u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 215u, 248u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // hardpoints count
+    { 219u, 232u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 223u, 236u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 227u, 240u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 231u, 244u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 236u, 252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 240u, 256u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 241u, 284u, 24u, 257u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
+    { 269u, 328u, 32u, 292u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // display_name
+    { 305u, 332u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 309u, 336u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 313u, 356u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // hardpoints count
+    { 317u, 340u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 321u, 344u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 325u, 348u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 329u, 352u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 334u, 360u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 338u, 364u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 339u, 392u, 24u, 365u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
+    { 367u, 400u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // thresholds, whole
+    { 371u, 404u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // thresholds, whole
+    { 375u, 408u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // thresholds, whole
+    { 379u, 736u, 3u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // reserves count
+    { 383u, 448u, 32u, 412u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // display_name
+    { 419u, 452u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 423u, 456u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 427u, 476u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // hardpoints count
+    { 431u, 460u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 435u, 464u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 439u, 468u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 443u, 472u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 448u, 480u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 452u, 484u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 453u, 512u, 24u, 485u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
+    { 481u, 556u, 32u, 520u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // display_name
+    { 517u, 560u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 521u, 564u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 525u, 584u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // hardpoints count
+    { 529u, 568u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 533u, 572u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 537u, 576u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 541u, 580u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 546u, 588u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 550u, 592u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 551u, 620u, 24u, 593u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
+    { 579u, 664u, 32u, 628u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // display_name
+    { 615u, 668u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 619u, 672u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // health
+    { 623u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // hardpoints count
+    { 627u, 676u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 631u, 680u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 635u, 684u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 639u, 688u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // hardpoints, whole
+    { 644u, 696u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // reaction
+    { 648u, 700u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tracking
+    { 649u, 728u, 24u, 701u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // callsign
+    { 137u, 180u, 36u, 144u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // gunner present, absent payload defaults
+    { 235u, 288u, 36u, 252u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // gunner present, absent payload defaults
+    { 333u, 396u, 36u, 360u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // gunner present, absent payload defaults
+    { 447u, 516u, 36u, 480u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // gunner present, absent payload defaults
+    { 545u, 624u, 36u, 588u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // gunner present, absent payload defaults
+    { 643u, 732u, 36u, 696u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // gunner present, absent payload defaults
 };
-constexpr int32_t PackConfigFixedPlanCount = 53;
-constexpr int32_t PackConfigFixedPlanGuarded = 47;
+constexpr int32_t PackConfigFixedPlanCount = 83;
+constexpr int32_t PackConfigFixedPlanGuarded = 77;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink PackConfigFixedGuards[] = {
@@ -15786,6 +16588,11 @@ inline int64_t PackConfigFixedSave( const PackConfig * values, int64_t count, ui
 {
     const int64_t need = PackConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( PackConfigFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, PackConfigFixedHash );
@@ -15974,7 +16781,7 @@ inline int64_t PackConfigFixedLoadWalk( PackConfig * values, int64_t capacity, c
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;

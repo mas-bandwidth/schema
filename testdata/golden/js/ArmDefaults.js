@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 import { InitProbeConfig, ProbeConfig, ReadProbeConfig, WriteProbeConfig, ZeroProbeConfig } from "./Wire.js";
 
@@ -66,13 +66,13 @@ export function WriteDefaultArm(stream, value) {
   return true;
 }
 
-export function ReadDefaultArm(stream, value) {
+export function ReadDefaultArm(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // the count guards the loop (§6.3)
     return false;
   }
   value.entriesCount = NUMBER_SCRATCH.value;
   for (let i = 0; i < value.entriesCount; i++) {
-    if (!ReadProbeConfig(stream, value.entries[i])) {
+    if (!ReadProbeConfig(stream, value.entries[i], true)) {
       return false;
     }
   }
@@ -80,7 +80,7 @@ export function ReadDefaultArm(stream, value) {
     return false;
   }
   value.marker = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -147,7 +147,7 @@ export function WriteDefaultChoice(stream, value) {
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
 
-export function ReadDefaultChoice(stream, value) {
+export function ReadDefaultChoice(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
   }
@@ -155,12 +155,18 @@ export function ReadDefaultChoice(stream, value) {
   switch (value.type) {
     case DefaultChoiceType.First:
       InitDefaultArm(value.first); // fresh declared defaults on every selection
-      return ReadDefaultArm(stream, value.first);
+      if (!ReadDefaultArm(stream, value.first, true)) {
+        return false;
+      }
+      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
     case DefaultChoiceType.Second:
       InitDefaultArm(value.second); // fresh declared defaults on every selection
-      return ReadDefaultArm(stream, value.second);
+      if (!ReadDefaultArm(stream, value.second, true)) {
+        return false;
+      }
+      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
   }
-  return true; // None
+  return nested === true || stream.serializeEnd(); // None
 }
 
 // type DefaultChoicePacket
@@ -192,11 +198,11 @@ export function WriteDefaultChoicePacket(stream, value) {
   return true;
 }
 
-export function ReadDefaultChoicePacket(stream, value) {
-  if (!ReadDefaultChoice(stream, value.choice)) {
+export function ReadDefaultChoicePacket(stream, value, nested) {
+  if (!ReadDefaultChoice(stream, value.choice, true)) {
     return false;
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type DefaultBulkArm
@@ -244,8 +250,8 @@ export function WriteDefaultBulkArm(stream, value) {
   return true;
 }
 
-export function ReadDefaultBulkArm(stream, value) {
-  if (!ReadDefaultArm(stream, value.payload)) {
+export function ReadDefaultBulkArm(stream, value, nested) {
+  if (!ReadDefaultArm(stream, value.payload, true)) {
     return false;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // the length guards the slice (§6.3)
@@ -255,7 +261,7 @@ export function ReadDefaultBulkArm(stream, value) {
   if (!stream.serializeBytes(value.data.subarray(0, value.dataLength))) {
     return false;
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -322,7 +328,7 @@ export function WriteDefaultBulkChoice(stream, value) {
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
 
-export function ReadDefaultBulkChoice(stream, value) {
+export function ReadDefaultBulkChoice(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
   }
@@ -330,11 +336,17 @@ export function ReadDefaultBulkChoice(stream, value) {
   switch (value.type) {
     case DefaultBulkChoiceType.First:
       InitDefaultBulkArm(value.first); // fresh declared defaults on every selection
-      return ReadDefaultBulkArm(stream, value.first);
+      if (!ReadDefaultBulkArm(stream, value.first, true)) {
+        return false;
+      }
+      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
     case DefaultBulkChoiceType.Second:
       InitDefaultBulkArm(value.second); // fresh declared defaults on every selection
-      return ReadDefaultBulkArm(stream, value.second);
+      if (!ReadDefaultBulkArm(stream, value.second, true)) {
+        return false;
+      }
+      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
   }
-  return true; // None
+  return nested === true || stream.serializeEnd(); // None
 }
 

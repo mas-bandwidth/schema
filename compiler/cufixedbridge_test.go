@@ -73,6 +73,7 @@ func TestCUfixedBridgeEmittedShapes(t *testing.T) {
 }
 
 func TestCUfixedBridgeRuntimeAgainstSerializeC(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the C compiler (cc)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {

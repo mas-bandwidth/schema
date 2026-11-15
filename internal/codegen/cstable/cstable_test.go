@@ -12,15 +12,18 @@ import (
 // memory (docs/PORTING.md I1, docs/SPEC-TABLES.md "What allocates, and what
 // never does"). TableWire.Load once allocated a fresh TableReport for a null
 // report, which made a null-report read the one allocating path; the cached
-// ignored ledger is the fix, and this holds it.
+// per-thread ignored ledger is the fix, and this holds it.
 func TestNullReportLoadDoesNotAllocate(t *testing.T) {
 	if strings.Contains(tableWireSource, "if (report == null) { report = new TableReport(); }") {
 		t.Fatal("TableWire.Load constructs a TableReport for a null report — a null-report read allocates")
 	}
-	if !strings.Contains(tableWireSource, "if (report == null) { report = Ignored; }") {
+	if !strings.Contains(tableWireSource, "if (report == null) { report = IgnoredReport(); }") {
 		t.Fatal("TableWire.Load does not route a null report through the cached ignored ledger")
 	}
-	if !strings.Contains(tableWireSource, "public static readonly TableReport Ignored = new TableReport();") {
+	if !strings.Contains(tableWireSource, "[ThreadStatic]\n    static TableReport ignored;") {
+		t.Fatal("TableWire does not keep the ignored ledger a null report needs on its own thread")
+	}
+	if !strings.Contains(tableWireSource, "static TableReport IgnoredReport() { return ignored ?? (ignored = new TableReport()); }") {
 		t.Fatal("TableWire does not cache the ignored ledger a null report needs")
 	}
 }

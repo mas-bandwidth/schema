@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 //
 // The TypeScript declarations of WireFlat.js (SPEC §6.3).
 
@@ -12,49 +12,65 @@ export declare const FlatReadSlack: 8;
 
 export declare function WriteProbeHeaderFlat(view: DataView, value: ProbeHeader): number;
 export declare function ReadProbeHeaderFlat(view: DataView, numBits: number, value: ProbeHeader): boolean;
+export declare function ReadProbeHeaderFlatBits(view: DataView, numBits: number, value: ProbeHeader): number | false;
 
 export declare function WriteProbeBitsFlat(view: DataView, value: ProbeBits): number;
 export declare function ReadProbeBitsFlat(view: DataView, numBits: number, value: ProbeBits): boolean;
+export declare function ReadProbeBitsFlatBits(view: DataView, numBits: number, value: ProbeBits): number | false;
 
 export declare function WriteProbeSampleFlat(view: DataView, value: ProbeSample): number;
 export declare function ReadProbeSampleFlat(view: DataView, numBits: number, value: ProbeSample): boolean;
+export declare function ReadProbeSampleFlatBits(view: DataView, numBits: number, value: ProbeSample): number | false;
 
 export declare function WriteProbeRingFlat(view: DataView, value: ProbeRing): number;
 export declare function ReadProbeRingFlat(view: DataView, numBits: number, value: ProbeRing): boolean;
+export declare function ReadProbeRingFlatBits(view: DataView, numBits: number, value: ProbeRing): number | false;
 
 export declare function WriteProbeSlabFlat(view: DataView, value: ProbeSlab): number;
 export declare function ReadProbeSlabFlat(view: DataView, numBits: number, value: ProbeSlab): boolean;
+export declare function ReadProbeSlabFlatBits(view: DataView, numBits: number, value: ProbeSlab): number | false;
 
 export declare function WriteProbeShapeFlat(view: DataView, value: ProbeShape): number;
 export declare function ReadProbeShapeFlat(view: DataView, numBits: number, value: ProbeShape): boolean;
+export declare function ReadProbeShapeFlatBits(view: DataView, numBits: number, value: ProbeShape): number | false;
 
 export declare function WriteProbeColliderFlat(view: DataView, value: ProbeCollider): number;
 export declare function ReadProbeColliderFlat(view: DataView, numBits: number, value: ProbeCollider): boolean;
+export declare function ReadProbeColliderFlatBits(view: DataView, numBits: number, value: ProbeCollider): number | false;
 
 export declare function WriteProbeConfigFlat(view: DataView, value: ProbeConfig): number;
 export declare function ReadProbeConfigFlat(view: DataView, numBits: number, value: ProbeConfig): boolean;
+export declare function ReadProbeConfigFlatBits(view: DataView, numBits: number, value: ProbeConfig): number | false;
 
 export declare function WriteProbeArrayFlat(view: DataView, value: ProbeArray): number;
 export declare function ReadProbeArrayFlat(view: DataView, numBits: number, value: ProbeArray): boolean;
+export declare function ReadProbeArrayFlatBits(view: DataView, numBits: number, value: ProbeArray): number | false;
 
 export declare function WriteHeartbeatFlat(view: DataView, value: Heartbeat): number;
 export declare function ReadHeartbeatFlat(view: DataView, numBits: number, value: Heartbeat): boolean;
+export declare function ReadHeartbeatFlatBits(view: DataView, numBits: number, value: Heartbeat): number | false;
 
 export declare function WriteTestFlat(view: DataView, value: Test): number;
 export declare function ReadTestFlat(view: DataView, numBits: number, value: Test): boolean;
+export declare function ReadTestFlatBits(view: DataView, numBits: number, value: Test): number | false;
 
 export declare function WriteBlockFlat(view: DataView, value: Block): number;
 export declare function ReadBlockFlat(view: DataView, numBits: number, value: Block): boolean;
+export declare function ReadBlockFlatBits(view: DataView, numBits: number, value: Block): number | false;
 
 export declare function WriteChatFlat(view: DataView, value: Chat): number;
 export declare function ReadChatFlat(view: DataView, numBits: number, value: Chat): boolean;
+export declare function ReadChatFlatBits(view: DataView, numBits: number, value: Chat): number | false;
 
 export declare function WriteProbeReportFlat(view: DataView, value: ProbeReport): number;
 export declare function ReadProbeReportFlat(view: DataView, numBits: number, value: ProbeReport): boolean;
+export declare function ReadProbeReportFlatBits(view: DataView, numBits: number, value: ProbeReport): number | false;
 
 export declare function WriteTestDataFlat(view: DataView, value: TestData): number;
 export declare function ReadTestDataFlat(view: DataView, numBits: number, value: TestData): boolean;
+export declare function ReadTestDataFlatBits(view: DataView, numBits: number, value: TestData): number | false;
 
 export declare function WriteCompressedProbeFlat(view: DataView, value: CompressedProbe): number;
 export declare function ReadCompressedProbeFlat(view: DataView, numBits: number, value: CompressedProbe): boolean;
+export declare function ReadCompressedProbeFlatBits(view: DataView, numBits: number, value: CompressedProbe): number | false;
 

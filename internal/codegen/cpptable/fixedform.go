@@ -268,17 +268,33 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 		case *ir.Struct:
 			fixedCollectTypes(r, seen, order)
 		case *ir.Union:
-			for _, v := range r.Variants {
-				if v.F == nil {
-					continue // a payload-free arm names no type (§2.6)
-				}
-				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
-					fixedCollectTypes(s, seen, order)
-				}
-			}
+			fixedCollectUnion(r, seen, order)
 		}
 	}
 	*order = append(*order, st)
+}
+
+// fixedCollectUnion descends an ARM exactly as a field is descended (§2.6): an
+// arm may hold a struct or another union by value, so the closure reaches
+// through every nested union rather than only the structs a union names
+// directly. The union's own name is marked so a legal cycle cannot revisit it.
+func fixedCollectUnion(un *ir.Union, seen map[string]bool, order *[]*ir.Struct) {
+	key := "union:" + un.Name
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	for _, v := range un.Variants {
+		if v.F == nil || v.F.Type.Kind != ir.TNamed {
+			continue // a payload-free arm names no type (§2.6)
+		}
+		switch r := v.F.Type.Ref.(type) {
+		case *ir.Struct:
+			fixedCollectTypes(r, seen, order)
+		case *ir.Union:
+			fixedCollectUnion(r, seen, order)
+		}
+	}
 }
 
 // ---- the writer ------------------------------------------------------------
@@ -540,8 +556,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// FIRST, then the arms, then any guardless present-defaults entry that must\n")
 	g.pf("// run after the guarded payload it replaces: the entries that are nearly\n")
 	g.pf("// all of a plan never test a guard at all.\n")
+	// THE EMITTED PLAN IS THE COALESCED PLAN, SPLIT ONLY WHERE A COPY ENTRY
+	// SPANS LEAVES OF DIFFERENT WIDTHS, so a big-endian copy knows its element
+	// width (ir.TableFixedSplitByWidth, the same split the C leg lays down).
+	split := ir.TableFixedSplitByWidth(entries, plan, guarded)
 	g.pf("constexpr TableFixedEntry %sFixedPlan[] = {\n", st.Name)
-	for _, e := range plan {
+	for i, e := range split.Plan {
 		guard := "kTableFixedNoGuard"
 		if e.Guard != ir.TableFixedNoGuard {
 			guard = fmt.Sprintf("%du", e.Guard)
@@ -567,13 +587,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if e.GuardCount > 0 {
 			guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s }, // %s\n",
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d }, // %s\n",
 			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
-			e.GuardCount, guardIndex, e.Note)
+			e.GuardCount, guardIndex, split.Elems[i], e.Note)
 	}
 	g.pf("};\n")
-	g.pf("constexpr int32_t %sFixedPlanCount = %d;\n", st.Name, len(plan))
-	g.pf("constexpr int32_t %sFixedPlanGuarded = %d;\n", st.Name, guarded)
+	g.pf("constexpr int32_t %sFixedPlanCount = %d;\n", st.Name, len(split.Plan))
+	g.pf("constexpr int32_t %sFixedPlanGuarded = %d;\n", st.Name, split.Guarded)
 	g.pf("// THE GUARD POOL: the (guard, arg, argw) links every chain above points\n")
 	g.pf("// into, OUTERMOST FIRST (§5.8 row 6).\n")
 	g.pf("constexpr TableFixedGuardLink %sFixedGuards[] = {\n", st.Name)
@@ -625,6 +645,16 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("inline int64_t %sFixedSave( const %s * values, int64_t count, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
 	g.pf("    const int64_t need = %sFixedMeasure( count );\n", st.Name)
 	g.pf("    if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+	// the header and the layout are never written with no record behind them.
+	// The write contract is a DEBUG assert by rule (docs/rulings.json
+	// write-refusal), as the leg's other write checks are.
+	g.pf("    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)\n")
+	if g.writeAdmits(st) != "" {
+		g.pf("    for ( int64_t k = 0; k < count; ++k )\n    {\n")
+		g.emitWriteAssert(st, "values[k]", "        ")
+		g.pf("    }\n")
+	}
 	g.pf("    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header\n")
 	g.pf("    buffer[0] = kTableFixedForm;\n")
 	g.pf("    TableFixedPut64( buffer + kTableFixedHashAt, %sFixedHash );\n", st.Name)
@@ -775,7 +805,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // the identity lane is a plan too, and a caller's short plan owes the\n")
 	g.pf("    // same name there as it does for a lineage entry.\n")
 	g.pf("    if ( entry_count > plan_capacity )\n    {\n        report->refused = true;\n        report->reason = TableMessageReason::plan_too_large;\n        return -1;\n    }\n")
-	g.pf("    if ( record_bytes <= 8 || rest %% record_bytes != 0 )\n    {\n        report->damaged = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §3.4,
+	// §22.6; docs/FIXED-FORM-ALGORITHM.md §5.3 step 9): a header and a layout
+	// followed by no record is `truncated`, never a batch of none.
+	g.pf("    if ( rest == 0 || record_bytes <= 8 || rest %% record_bytes != 0 )\n    {\n        report->damaged = true;\n        report->reason = TableFixedReason::truncated;\n        return -1;\n    }\n")
 	g.pf("    const int64_t n = rest / record_bytes;\n")
 	g.pf("    if ( n > capacity )\n    {\n        report->refused = true;\n        report->reason = TableMessageReason::batch_too_large;\n        return -1;\n    }\n")
 	g.pf("    // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own\n")
@@ -1088,6 +1121,27 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 	}
 	g.fixedCheck = false
 	g.pf("    return bad == 0;\n}\n\n")
+	// THE WRITE CHECK (docs/SPEC.md §5.1, docs/rulings.json `write-refusal`):
+	// every writer refuses a value its declaration does not admit, and C++ is
+	// an ASSERT LEG, so the check is schema_assert and nothing else. The
+	// closed list it holds — a range, a bits width, an enum ordinal, a union
+	// tag, the text rule — is the read side's, so it is the same walk. It
+	// stays inside the storage: an element loop runs only for a count the
+	// array holds and the text rule is asked only of a length the storage
+	// holds, because those two bounds are the writer's own storage checks.
+	g.pf("// %s's write check (docs/SPEC.md §5.1): true when every value it holds\n", st.Name)
+	g.pf("// is one its declaration admits. Only a schema_assert calls it.\n")
+	g.pf("inline bool %sFixedWriteAdmits( const %s & value )\n{\n", st.Name, st.Name)
+	g.pf("    (void) value;\n")
+	g.pf("    int bad = 0;\n")
+	g.fixedCheck = true
+	g.fixedWriteCheck = true
+	for _, f := range st.Fields {
+		g.emitFixedClampField(f, "value", 4)
+	}
+	g.fixedCheck = false
+	g.fixedWriteCheck = false
+	g.pf("    return bad == 0;\n}\n\n")
 	g.pf("// %s's read-side bounds.\n", st.Name)
 	// THE COUNTERS ARE TABLE_CLAMP_RESTRICT: they never alias the value, and
 	// the runtime spells that per compiler, as measured.
@@ -1097,6 +1151,23 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 		g.emitFixedClampField(f, "value", 4)
 	}
 	g.pf("}\n\n")
+}
+
+// writeAdmits is the check a writer of table st asserts (docs/SPEC.md §5.1),
+// or "" when the fixed form bounds nothing in st's closure.
+func (g *tableGen) writeAdmits(st *ir.Struct) string {
+	if g.isVar(st.Name) || !ir.TableFixedEmitted(g.unit, st) || !ir.TableFixedClampNeeded(st) {
+		return ""
+	}
+	return st.Name + "FixedWriteAdmits"
+}
+
+// emitWriteAssert is a writer's one line of the write contract: a debug-only
+// assert over the value it was handed, gone under NDEBUG.
+func (g *tableGen) emitWriteAssert(st *ir.Struct, value, ind string) {
+	if a := g.writeAdmits(st); a != "" {
+		g.pf("%sschema_assert( %s( %s ) ); // the write contract, debug only (docs/SPEC.md §5.1)\n", ind, a, value)
+	}
 }
 
 // emitFixedClamp is the ROOT's entry point: the one call a read makes, and the
@@ -1171,7 +1242,14 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 	case f.Array == ir.ArrayCounted:
 		// THE LIVE COUNT AND NOT THE BOUND: the slack is the template's zeros
 		// and a zero nobody wrote is not a value to hold to a range.
-		g.pf("%sfor ( int64_t i = 0; i < (int64_t) %s.%s_count; ++i )\n%s{\n", ind, val, f.Name, ind)
+		count := fmt.Sprintf("(int64_t) %s.%s_count", val, f.Name)
+		if g.fixedWriteCheck {
+			// the walk stays inside the array; the count's own bound is the
+			// writer's storage check
+			count = fmt.Sprintf("( %s.%s_count >= 0 && %s.%s_count <= %d ? (int64_t) %s.%s_count : 0 )",
+				val, f.Name, val, f.Name, f.ArrayBound, val, f.Name)
+		}
+		g.pf("%sfor ( int64_t i = 0; i < %s; ++i )\n%s{\n", ind, count, ind)
 		g.emitFixedClampElement(f, val+"."+f.Name+"[i]", indent+4)
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
@@ -1195,6 +1273,13 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 // §4.5, fix 11). The slack is unspecified on read and never judged.
 func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 	call := fmt.Sprintf("TableUtf8Valid( (const uint8_t *) %s.%s, (uint64_t) %s.%s_length )", val, f.Name, val, f.Name)
+	if g.fixedWriteCheck {
+		// the rule is asked only of a length the storage holds; the length's
+		// own bound is the writer's storage check
+		g.pf("%sbad |= (int) ( %s.%s_length >= 0 && %s.%s_length <= %d && !%s );\n",
+			ind, val, f.Name, val, f.Name, f.Type.Size, call)
+		return
+	}
 	if g.fixedCheck {
 		g.pf("%sbad |= (int) !%s;\n", ind, call)
 		return
@@ -1221,9 +1306,12 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if ir.TableFixedClampNeeded(r) {
-				if g.fixedCheck {
+				switch {
+				case g.fixedWriteCheck:
+					g.pf("%sbad |= (int) !%sFixedWriteAdmits( %s );\n", ind, r.Name, expr)
+				case g.fixedCheck:
 					g.pf("%sbad |= (int) !%sFixedInRange( %s );\n", ind, r.Name, expr)
-				} else {
+				default:
 					g.pf("%s%sFixedClampBody( %s, oor_count, damaged );\n", ind, r.Name, expr)
 				}
 			}
@@ -1284,6 +1372,10 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	}
 	width := int(ir.TableFixedStorageBytes(f.Type))
 	switch {
+	case g.fixedWriteCheck && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64):
+		// A FLOAT'S RANGE IS ROW 10, not the write check's (docs/SPEC.md
+		// §5.1): a quantized float past its range is the message form's to
+		// clamp, and the writers hold row 10 where the table says they do.
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		g.fixedClampBoth(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:

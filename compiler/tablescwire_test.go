@@ -22,6 +22,7 @@ import (
 // Nested frames must measure with the vocabulary already accumulated by their
 // parent, and repeated saves must not retain a previous call's vocabulary.
 func TestCTableWireReferenceBoundary(t *testing.T) {
+	t.Parallel()
 	var schema, fill strings.Builder
 	schema.WriteString(`package probe
 
@@ -238,6 +239,7 @@ int main(void)
 // landing nothing; the writer refuses the NaN, and a -0 rides by
 // its bits.
 func TestCTableWireWidening(t *testing.T) {
+	t.Parallel()
 	crossed := unitFromSource(t, `package probe
     table Root {
         low int32 = 1000 | min = 1000, max = 2000
@@ -363,6 +365,7 @@ func TestCTableWireWidening(t *testing.T) {
 // the read answers 0 with the value at its declared defaults. An explicit empty
 // value remains an edit and survives a save/load cycle.
 func TestCTableWireDefaultRecovery(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, `package probe
 flags Caps { Jump, Crouch }
 fixed table Root {
@@ -436,6 +439,7 @@ int main(void) {
 // Only the leaf rides, so checking each ancestor for elision should stop at
 // that first field and measuring its frame must walk the payload once.
 func TestCTableWireDeepFrames(t *testing.T) {
+	t.Parallel()
 	var schema, member strings.Builder
 	schema.WriteString("package probe\nfixed table Layer0 { value uint8 }\n")
 	for i := 1; i <= 24; i++ {
@@ -458,6 +462,7 @@ int main(void) {
 }
 
 func TestCTableWireGraphIdentity(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, `package probe
 table Node {
  value uint32
@@ -616,6 +621,7 @@ int main(void) {
 // Fail each allocation in a complete authoring round trip. Every path must
 // return to its caller and release through the same pair that allocated it.
 func TestCTableWireAllocatorFailures(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, `package probe
 fixed table Node { value uint32 }
 table Payload { entries map[int32]*Node }
@@ -682,6 +688,7 @@ int main(void) {
 }
 
 func TestCTableKeyedBounds(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, `package probe
 enum Key {
 First
@@ -738,6 +745,7 @@ int main(void) {
 }
 
 func TestCTableWireNestedLists(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, `package probe
 table Row { numbers []int32 }
 table Root {
@@ -807,6 +815,7 @@ int main(void) {
 }
 
 func TestCTableWireMaps(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, `package probe
  table Row { numbers []int32 }
  table Root {
@@ -906,6 +915,7 @@ func TestCTableMapEntryNotRoot(t *testing.T) {
 }
 
 func TestCTableMapWideningCount(t *testing.T) {
+	t.Parallel()
 	source := unitFromSource(t, "package probe\ntable Root { entries map[int8]int8 }\n")
 	target := unitFromSource(t, "package probe\ntable Root { entries map[int32]int32 }\n")
 	m := tabletext.NewModel(source)

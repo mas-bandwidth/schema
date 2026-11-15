@@ -196,7 +196,10 @@ fixed table C14 {
         { printf( "C14: the live out-of-range value did not refuse out_of_range: n=%lld refused=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.refuse_reason ); return 1; }
     printf( "C14 ok\n" );
 `
-	out, err := cppT07Run(t, src, "c14", body)
+	// The body saves a live out-of-range value to forge what the load must
+	// refuse; the C++ writer asserts the write contract in debug builds only
+	// (an assert leg), so the probe is a release build.
+	out, err := cppT07Run(t, src, "c14", body, "-DNDEBUG")
 	if err != nil {
 		t.Fatalf("C14: %v\n%s", err, out)
 	}

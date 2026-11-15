@@ -89,7 +89,12 @@ type tableGen struct {
 	fixedOwner *ir.Struct
 	// fixedCheck makes the clamp walk emit <T>FixedInRange — each clamp's
 	// count expression or'd into `bad`, and no store — instead of the body.
-	fixedCheck  bool
+	fixedCheck bool
+	// fixedWriteCheck, with fixedCheck, makes the same walk emit
+	// <T>FixedWriteAdmits: the write contract's check (docs/SPEC.md §5.1),
+	// walked only inside the storage a caller filled.
+	fixedWriteCheck bool
+
 	unit        *ir.Unit
 	file        *ir.File
 	anyVariable bool // the unit declares at least one variable-length table
@@ -428,6 +433,54 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// unitJsonSeenWords sizes the text walk's per-object seen bitmaps by what the
+// unit declares, so a repeated key is tracked at every field index and every
+// keyed slot (docs/SPEC-TABLES.md §16.2). The walk keeps the bitmaps on the
+// stack, so this is a compile-time width and no allocation per object: one
+// word for a table of 64 or fewer fields, a wider array only for a wider
+// declaration.
+func unitJsonSeenWords(u *ir.Unit, closure map[string]bool) (fieldWords, slotWords int32) {
+	fieldWords, slotWords = 1, 1
+	// A union ARM is a field line too (docs/SPEC-TABLES.md §2.6), so a keyed
+	// array declared there sizes the slot bitmap exactly as a table's does.
+	slot := func(f *ir.Field) {
+		if f == nil || f.KeyEnum == "" {
+			return
+		}
+		bound := f.ArrayBound
+		if f.KeyEnumRef != nil {
+			bound = f.KeyEnumRef.Max
+		}
+		if bound < 0 {
+			bound = 0
+		}
+		if n := int32((bound + 63) / 64); n > slotWords {
+			slotWords = n
+		}
+	}
+	for name := range closure {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		if n := int32((len(st.Fields) + 63) / 64); n > fieldWords {
+			fieldWords = n
+		}
+		for _, f := range st.Fields {
+			slot(f)
+		}
+	}
+	for _, un := range u.TableUnions {
+		for _, v := range un.Variants {
+			slot(v.F)
+		}
+	}
+	return fieldWords, slotWords
 }
 
 // tableKeyedStorage is the storage type behind `ships [ShipType]ShipConfig`
@@ -1934,6 +1987,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 	anyList := unitHasList(u, closure)
 	anyTextList := ir.UnitHasTextLists(u)
 	anyExtent := anyMap || anyList || ir.UnitHasUnboundedText(u)
+	jsonFieldWords, jsonSlotWords := unitJsonSeenWords(u, closure)
 	// THE WIDENING HELPERS take their census the same way and for the same
 	// reason (docs/SPEC-TABLES.md §4): a unit carries the runtime for the
 	// kinds it DECLARES, and the list runtime's own extent term is one more
@@ -1987,28 +2041,11 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		}
 		unions := tableUnionsOf(f)
 		if len(members) > 0 {
-			// a table-armed union is emitted before the first table that holds
-			// it and after its same-file arms, which orderTables placed ahead
-			// of that holder; one no same-file table holds follows the structs
-			emittedUnion := map[string]bool{}
-			for _, st := range members {
-				if !st.IsTable {
-					continue
-				}
-				for _, un := range tableUnionsHeldBy(st, unions) {
-					if !emittedUnion[un.Name] {
-						emittedUnion[un.Name] = true
-						g.emitTableUnion(un)
-					}
-				}
-				g.emitTableStruct(st)
-			}
-			for _, un := range unions {
-				if !emittedUnion[un.Name] {
-					emittedUnion[un.Name] = true
-					g.emitTableUnion(un)
-				}
-			}
+			// every table and table-armed union is emitted after the full
+			// by-value closure it names, not only after the tables orderTables
+			// can see from a field: an arm may hold another union, whose own
+			// arm holds a table or a third union.
+			g.emitTableShapes(members, unions)
 			for _, e := range tableEnums(members) {
 				g.emitEnumIdentity(e)
 			}
@@ -2120,9 +2157,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 				}
 			}
 		} else {
-			for _, un := range unions {
-				g.emitTableUnion(un) // its arms are all cross-file: nothing here precedes it
-			}
+			g.emitTableShapes(nil, unions)
 			g.pf("// no tables declared or referenced in this file — codecs are emitted\n")
 			g.pf("// for the table closure only (`table` declarations and what they reach)\n")
 		}
@@ -2143,8 +2178,12 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// THE FIXED FORM'S WRITE-SIDE BOUNDS need schema_assert and nothing
 		// else (docs/SPEC-TABLES.md §3.4): a text field's used length and a
 		// counted array's live count, checked debug-only, with no abort behind
-		// them. A unit of plain scalars declares neither and gets no hook.
-		if !anyKeyed && !anyList && !anyTextList && ir.TableFixedHasWriteBound(u) {
+		// them. The §5.1 write contract (range, bits width, enum ordinal,
+		// union tag, ill-formed text) asserts through the same hook, and so
+		// does every fixed save's at-least-one-record check (§22.6), so a file
+		// that emits the fixed form carries the hook. A unit with no fixed
+		// form and nothing to check gets no hook.
+		if !anyKeyed && !anyList && !anyTextList && (ir.TableFixedHasWriteCheck(u) || len(g.fixedRoots(members)) > 0) {
 			h.WriteString(tableAssertHook)
 		}
 		if anyKeyed || anyList || anyTextList {
@@ -2262,7 +2301,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			c.WriteString("#include <string> // the hand-editable text form (§16.9)\n")
 			c.WriteString("#include <vector> // the hand-editable text form (§16.9)\n")
 			c.WriteString("#include <string.h> // the hand-editable text form (§16.9)\n\n")
-			c.WriteString(tableJsonWalk(u.Package, anyVariable, anyMap, anyList))
+			c.WriteString(tableJsonWalk(u.Package, anyVariable, anyMap, anyList, jsonFieldWords, jsonSlotWords))
 			c.WriteString(tableTextFormWalk(u.Package))
 			fmt.Fprintf(&c, "\nnamespace %s {\n\n", u.Package)
 			cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,

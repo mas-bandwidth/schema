@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 package example;
 
@@ -229,9 +229,21 @@ public final class ArmDefaults {
     }
 
     // readDefaultArm decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readDefaultArm(DefaultArm value, byte[] data, int numBits) {
-        return readDefaultArmBits(value, data, 0, numBits) >= 0;
+        final int end = readDefaultArmBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order
@@ -367,9 +379,21 @@ public final class ArmDefaults {
     }
 
     // readDefaultChoice decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readDefaultChoice(DefaultChoice value, byte[] data, int numBits) {
-        return readDefaultChoiceBits(value, data, 0, numBits) >= 0;
+        final int end = readDefaultChoiceBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type DefaultChoicePacket
@@ -446,10 +470,22 @@ public final class ArmDefaults {
     }
 
     // readDefaultChoicePacket decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readDefaultChoicePacket(
             DefaultChoicePacket value, byte[] data, int numBits) {
-        return readDefaultChoicePacketBits(value, data, 0, numBits) >= 0;
+        final int end = readDefaultChoicePacketBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type DefaultBulkArm
@@ -566,9 +602,21 @@ public final class ArmDefaults {
     }
 
     // readDefaultBulkArm decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readDefaultBulkArm(DefaultBulkArm value, byte[] data, int numBits) {
-        return readDefaultBulkArmBits(value, data, 0, numBits) >= 0;
+        final int end = readDefaultBulkArmBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in
@@ -707,8 +755,20 @@ public final class ArmDefaults {
     }
 
     // readDefaultBulkChoice decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readDefaultBulkChoice(DefaultBulkChoice value, byte[] data, int numBits) {
-        return readDefaultBulkChoiceBits(value, data, 0, numBits) >= 0;
+        final int end = readDefaultBulkChoiceBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 }

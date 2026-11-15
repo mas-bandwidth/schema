@@ -12,7 +12,7 @@ import (
 func TestMigrateRewritesRetiredSpellings(t *testing.T) {
 	old := "package t\n" +
 		"\n" +
-		"enum Weapon [max = 15] { Laser, Missile }\n" +
+		"flags Weapon [max = 15] { Laser, Missile }\n" +
 		"\n" +
 		"type T {\n" +
 		"    health int16 [min = 0, max = 100]\n" +
@@ -23,7 +23,7 @@ func TestMigrateRewritesRetiredSpellings(t *testing.T) {
 		"}\n"
 	want := "package t\n" +
 		"\n" +
-		"enum Weapon | max = 15\n" +
+		"flags Weapon | max = 15\n" +
 		"{ Laser, Missile }\n" +
 		"\n" +
 		"type T\n" +

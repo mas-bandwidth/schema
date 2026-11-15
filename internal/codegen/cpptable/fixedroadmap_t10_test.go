@@ -64,6 +64,23 @@ func cppRunCapability(t *testing.T, schema, pkg, body string) ([]byte, error) {
 // unitHas128) takes the sibling serialize checkout's include path, the same
 // directory cppRunVersionProbe passes. Every other step is identical.
 func cppRunUnit(t *testing.T, schema, pkg, body string, includes []string) ([]byte, error) {
+	t.Helper()
+	return cppRunUnitFlags(t, schema, pkg, body, includes, nil)
+}
+
+// cppRunForging is cppRunUnit for a probe that FORGES hostile bytes by saving
+// values the write contract refuses, so a reader has something to refuse. The
+// C++ writer is an assert leg: it checks the write contract in debug builds
+// only (docs/SPEC.md §5.1), so such a save aborts unless the probe is built
+// as a release build. The probe therefore compiles with -DNDEBUG; what it
+// checks is the reader, with its own printf-and-return checks.
+func cppRunForging(t *testing.T, schema, pkg, body string, includes []string) ([]byte, error) {
+	t.Helper()
+	return cppRunUnitFlags(t, schema, pkg, body, includes, []string{"-DNDEBUG"})
+}
+
+// cppRunUnitFlags is cppRunUnit with extra compiler flags.
+func cppRunUnitFlags(t *testing.T, schema, pkg, body string, includes, flags []string) ([]byte, error) {
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
@@ -136,6 +153,7 @@ int main( void )
 		cxx = "c++"
 	}
 	args := []string{"-std=c++17", "-O1", "-I" + outDir}
+	args = append(args, flags...)
 	args = append(args, includeArgs(includes)...)
 	args = append(args, filepath.Join(outDir, "probe.cpp"), "-o", filepath.Join(outDir, "probe"))
 	build := exec.Command(cxx, args...)

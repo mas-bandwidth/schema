@@ -124,7 +124,7 @@ func restrictFormRuntime(u *ir.Unit, names []string, runtime, cook string) (stri
 // wire report merging, framing, reference identity and extent measurement stay.
 func withoutJSONForm(runtime string) string {
 	extra := map[string]bool{}
-	for _, name := range []string{"to_json", "to_json_identity", "from_json", "tally_field", "tally_node", "tally_refs", "fixed_text", "fixed_digits", "fixed_raw", "hex2", "hex_digit", "hexdigit", "indent", "clamp_json_int", "int_domain_bounds", "clamp_between", "timestamp_text", "timestamp_parse"} {
+	for _, name := range []string{"to_json", "to_json_identity", "from_json", "tally_field", "tally_node", "tally_refs", "fixed_text", "fixed_digits", "fixed_raw", "hex2", "hex_digit", "hexdigit", "indent", "clamp_json_int", "int_domain_bounds", "clamp_between", "timestamp_text", "timestamp_parse", "utf8_prefix"} {
 		extra[name] = true
 	}
 	return dropTopLevel(runtime, func(head string) bool {

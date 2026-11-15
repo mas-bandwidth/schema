@@ -798,9 +798,9 @@ void main() {
 
     expectAssert(() {
       final bad = ShipCreate();
-      bad.shipType = ShipType(99); // enum headroom above the wire range
+      bad.shipType = ShipType(99); // an enum value above the wire range
       writeShipCreate(bad, writeView);
-    }, 'enum headroom above the wire range must trip the writer contract');
+    }, 'an enum value above the wire range must trip the writer contract');
   }
 
   // ---- flagName / flagNames: per-bit names and the set renderer ----
@@ -822,7 +822,7 @@ void main() {
       enumNameWeapon(Weapon.railgun) == 'Railgun',
       'enumName names a variant',
     );
-    check(enumNameWeapon(15) == '???', 'enumName is headroom-safe');
+    check(enumNameWeapon(16) == '???', 'enumName is out-of-range safe');
   }
 
   // ============== THE BENCH CORPUS (BENCH-STANDARD.md §1.5) ==============

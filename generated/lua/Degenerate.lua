@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package example — protocol id 0xeb26c970fde3fd71
+-- package example — protocol id 0xf35accd0582cdd84
 
 local Types_ = require("Types")
 
@@ -131,9 +131,17 @@ function _M.ZeroVec2(value)
   value.Y = 0.0
 end
 
--- ReadVec2 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadVec2 reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadVec2(stream, value)
+  if not _M.ReadVec2Body(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadVec2Body reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadVec2Body(stream, value)
   if not stream:serializeDouble(BYTES) then return false end
   value.X = BYTES.value
   if not stream:serializeDouble(BYTES) then return false end
@@ -148,9 +156,17 @@ function _M.ZeroSpanF64(value)
   end
 end
 
--- ReadSpanF64 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadSpanF64 reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadSpanF64(stream, value)
+  if not _M.ReadSpanF64Body(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadSpanF64Body reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadSpanF64Body(stream, value)
   for i = 1, 2 do
     if not stream:serializeDouble(BYTES) then return false end
     value.Values[i] = BYTES.value
@@ -165,9 +181,17 @@ function _M.ZeroSpanU64(value)
   end
 end
 
--- ReadSpanU64 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadSpanU64 reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadSpanU64(stream, value)
+  if not _M.ReadSpanU64Body(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadSpanU64Body reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadSpanU64Body(stream, value)
   for i = 1, 2 do
     if not stream:serializeBits64(BIG, 64) then return false end
     value.Values[i] = BIG.value
@@ -182,9 +206,17 @@ function _M.ZeroSpanI64(value)
   end
 end
 
--- ReadSpanI64 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadSpanI64 reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadSpanI64(stream, value)
+  if not _M.ReadSpanI64Body(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadSpanI64Body reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadSpanI64Body(stream, value)
   for i = 1, 2 do
     if not stream:serializeBits64(BIG, 64) then return false end
     value.Values[i] = BIG.value
@@ -199,9 +231,17 @@ function _M.ZeroSpanOne(value)
   end
 end
 
--- ReadSpanOne reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadSpanOne reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadSpanOne(stream, value)
+  if not _M.ReadSpanOneBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadSpanOneBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadSpanOneBody(stream, value)
   for i = 1, 1 do
     if not stream:serializeBits64(BIG, 64) then return false end
     value.Values[i] = BIG.value
@@ -216,9 +256,17 @@ function _M.ZeroSpanChunk(value)
   end
 end
 
--- ReadSpanChunk reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadSpanChunk reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadSpanChunk(stream, value)
+  if not _M.ReadSpanChunkBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadSpanChunkBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadSpanChunkBody(stream, value)
   for i = 1, 4 do
     if not stream:serializeBits(BITS, 16) then return false end
     value.Values[i] = BITS.value
@@ -234,9 +282,17 @@ function _M.ZeroSpanTail(value)
   value.Tail = 0
 end
 
--- ReadSpanTail reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadSpanTail reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadSpanTail(stream, value)
+  if not _M.ReadSpanTailBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadSpanTailBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadSpanTailBody(stream, value)
   for i = 1, 2 do
     if not stream:serializeDouble(BYTES) then return false end
     value.Values[i] = BYTES.value
@@ -256,9 +312,17 @@ function _M.ZeroSpanTwice(value)
   end
 end
 
--- ReadSpanTwice reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadSpanTwice reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadSpanTwice(stream, value)
+  if not _M.ReadSpanTwiceBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadSpanTwiceBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadSpanTwiceBody(stream, value)
   for i = 1, 2 do
     if not stream:serializeDouble(BYTES) then return false end
     value.A[i] = BYTES.value
@@ -277,9 +341,17 @@ function _M.ZeroTrio(value)
   value.C = 0
 end
 
--- ReadTrio reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadTrio reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadTrio(stream, value)
+  if not _M.ReadTrioBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadTrioBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadTrioBody(stream, value)
   if not stream:serializeBits(BITS, 20) then return false end
   value.A = BITS.value
   if not stream:serializeBits(BITS, 20) then return false end
@@ -294,10 +366,18 @@ function _M.ZeroTrioSole(value)
   _M.ZeroTrio(value.Inner)
 end
 
--- ReadTrioSole reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadTrioSole reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadTrioSole(stream, value)
-  if not _M.ReadTrio(stream, value.Inner) then return false end
+  if not _M.ReadTrioSoleBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadTrioSoleBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadTrioSoleBody(stream, value)
+  if not _M.ReadTrioBody(stream, value.Inner) then return false end
   return true
 end
 
@@ -306,10 +386,18 @@ function _M.ZeroVec3Sole(value)
   Types_.ZeroVec3(value.V)
 end
 
--- ReadVec3Sole reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadVec3Sole reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadVec3Sole(stream, value)
-  if not Types_.ReadVec3(stream, value.V) then return false end
+  if not _M.ReadVec3SoleBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadVec3SoleBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadVec3SoleBody(stream, value)
+  if not Types_.ReadVec3Body(stream, value.V) then return false end
   return true
 end
 
@@ -319,10 +407,18 @@ function _M.ZeroTrioFirst(value)
   value.Trailer = 0
 end
 
--- ReadTrioFirst reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadTrioFirst reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadTrioFirst(stream, value)
-  if not _M.ReadTrio(stream, value.Inner) then return false end
+  if not _M.ReadTrioFirstBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadTrioFirstBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadTrioFirstBody(stream, value)
+  if not _M.ReadTrioBody(stream, value.Inner) then return false end
   if not stream:serializeBits(BITS, 16) then return false end
   value.Trailer = BITS.value
   return true
@@ -339,9 +435,17 @@ function _M.ZeroTrioStraddle(value)
   _M.ZeroTrio(value.Inner)
 end
 
--- ReadTrioStraddle reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadTrioStraddle reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadTrioStraddle(stream, value)
+  if not _M.ReadTrioStraddleBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadTrioStraddleBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadTrioStraddleBody(stream, value)
   if not stream:serializeBits64(BIG, 64) then return false end
   value.Pad0 = BIG.value
   if not stream:serializeBits64(BIG, 64) then return false end
@@ -354,7 +458,7 @@ function _M.ReadTrioStraddle(stream, value)
   value.Pad4 = BIG.value
   if not stream:serializeBits(BITS, 24) then return false end
   value.Pad5 = BITS.value
-  if not _M.ReadTrio(stream, value.Inner) then return false end
+  if not _M.ReadTrioBody(stream, value.Inner) then return false end
   return true
 end
 

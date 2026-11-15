@@ -118,7 +118,7 @@ lua-generated-loads: toolchain-lua generated/lua/.stamp generated/lua-ludicrous/
 # variant probes) run here instead of skipping green. The wire-fuzz pair is
 # -skip'd only because tables-lua-wire-fuzz-differential, a prerequisite above,
 # has just run it through test/slowgate/proof.
-test-lua: toolchain-lua lua-generated-loads tables-lua-finite-float tables-lua-finite-float-negative-control tables-lua-release-negative-control conformance-negative-control-lua-absent tables-lua-usage tables-lua-usage-negative-control tables-lua-bench-gate tables-lua-bench-gate-negative-control conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing conformance-negative-control-lua-cycle tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control packet-utf8-lua packet-utf8-lua-negative-control packet-defaults-lua packet-defaults-lua-negative-control tables-lua-alloc tables-lua-alloc-negative-control tables-lua-alloc-runtime-negative-control tables-lua-soak tables-lua-soak-negative-control
+test-lua: toolchain-lua lua-generated-loads tables-lua-finite-float tables-lua-finite-float-negative-control tables-lua-release-negative-control conformance-negative-control-lua-absent tables-lua-usage tables-lua-usage-negative-control tables-lua-bench-gate tables-lua-bench-gate-negative-control conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing conformance-negative-control-lua-cycle conformance-negative-control-lua-write tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control packet-utf8-lua packet-utf8-lua-negative-control packet-defaults-lua packet-defaults-lua-negative-control packet-end-lua packet-end-lua-negative-control tables-lua-alloc tables-lua-alloc-negative-control tables-lua-alloc-runtime-negative-control tables-lua-soak tables-lua-soak-negative-control
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s -skip '^TestLuaWireFuzz'
 update-goldens-lua: ;
 
@@ -461,3 +461,35 @@ tables-lua-damage-discard-negative-control: toolchain-lua
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/luatable -run '^TestLua(Message)?DamageDiscardNegativeControl$$'
 
 test-lua: tables-lua-damage-discard-negative-control
+
+# ---------------------------------------------------------------- packet end
+# SPEC §5: the generated public Read<T> is the one-packet read and ends with
+# the runtime's end check; a nested type reads through Read<T>Body, which does
+# not end. The shared End.schema vectors are read with ReadEnd: the exact
+# three-bit packet accepted, one whole trailing byte refused, and the final
+# byte's unused bits set refused.
+build/packet-end/lua/.stamp: bin/schema test/packet-end/End.schema
+	@rm -rf build/packet-end/lua && mkdir -p build/packet-end/lua
+	./bin/schema generate --lang lua --out build/packet-end/lua/generated test/packet-end/End.schema
+	@touch $@
+
+.PHONY: packet-end-lua packet-end-lua-negative-control
+packet-end-lua: toolchain-lua build/packet-end/lua/.stamp
+	$(LUA) test/packet-end/lua/main.lua build/packet-end/lua/generated testdata/wire/packet-end
+
+packet-end-lua-negative-control: packet-end-lua
+	@rm -rf build/packet-end/lua-negative && mkdir -p build/packet-end/lua-negative
+	go run ./tools/sabotage -name packet-end-lua-end-check -out build/packet-end/lua-negative/read.gotext internal/codegen/lua/read.go
+	@printf '{"Replace":{"%s/internal/codegen/lua/read.go":"%s/build/packet-end/lua-negative/read.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-end/lua-negative/overlay.json
+	go build -overlay=build/packet-end/lua-negative/overlay.json -o build/packet-end/lua-negative/schema ./cmd/schema
+	./build/packet-end/lua-negative/schema generate --lang lua --out build/packet-end/lua-negative/generated test/packet-end/End.schema
+	@if $(LUA) test/packet-end/lua/main.lua build/packet-end/lua-negative/generated testdata/wire/packet-end > build/packet-end/lua-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the Lua packet end check was removed and the end gate stayed green'; exit 1; fi
+	@grep -Fq 'FAILED: trailing: accepted as 3' build/packet-end/lua-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the trailing byte was not the failure'; cat build/packet-end/lua-negative/log; exit 1; }
+	@grep -Fq 'FAILED: padding: accepted as 3' build/packet-end/lua-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the set padding was not the failure'; cat build/packet-end/lua-negative/log; exit 1; }
+	@if grep -F 'FAILED: ' build/packet-end/lua-negative/log | grep -Fvq -e 'FAILED: trailing: ' -e 'FAILED: padding: '; then \
+		cat build/packet-end/lua-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the end check went red'; exit 1; fi
+	@echo 'packet end Lua negative control: removed end check accepts the trailing byte and the set padding'

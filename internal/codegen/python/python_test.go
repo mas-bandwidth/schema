@@ -3,6 +3,7 @@ package python
 import (
 	"bytes"
 	"maps"
+	"math/big"
 	"os"
 	"path/filepath"
 	"slices"
@@ -176,27 +177,54 @@ func TestPythonStrictGateGoesRed(t *testing.T) {
 	}
 }
 
-// TestPythonRefusesDeclarationsByName: the skeleton carries no declaration,
-// so each kind is refused by its kind and name, naming the layer that
-// carries it, and nothing is emitted.
-func TestPythonRefusesDeclarationsByName(t *testing.T) {
+// TestPythonRefusesUncarriedKindsByName: the packet core carries the class
+// surface of every declaration and the wire of the kinds it names; a field or
+// item of any other kind is refused at generate time by its kind, naming P4.
+func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	generates := []struct {
+		name string
+		decl ir.Decl
+	}{
+		{"const", &ir.Const{Name: "MaxPlayers", Int: big.NewInt(64)}},
+		{"enum", &ir.Enum{Name: "Weapon", Variants: []string{"Laser"}, Max: 1}},
+		{"flags", &ir.Flags{Name: "Caps", Variants: []string{"Armed"}, WireBits: 1}},
+		{"type", &ir.Struct{Name: "Player", Fields: []*ir.Field{
+			{Name: "health", Type: ir.FieldType{Kind: ir.TInt, Width: 16, Signed: true}},
+			{Name: "alive", Type: ir.FieldType{Kind: ir.TBool}},
+		}}},
+		{"union", &ir.Union{Name: "Event"}},
+	}
+	for _, c := range generates {
+		u := emptyUnit("game", "Game")
+		u.Files[0].Decls = []ir.Decl{c.decl}
+		if _, err := Generate(u); err != nil {
+			t.Errorf("%s: a carried declaration was refused: %v", c.name, err)
+		}
+	}
+	refused := []struct {
+		name string
 		decl ir.Decl
 		want string
 	}{
-		{&ir.Const{Name: "MaxPlayers"}, "declares const MaxPlayers, and the Python target does not carry constants yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)"},
-		{&ir.Enum{Name: "Weapon"}, "declares enum Weapon, and the Python target does not carry enums yet"},
-		{&ir.Flags{Name: "Caps"}, "declares flags Caps, and the Python target does not carry flags sets yet"},
-		{&ir.Struct{Name: "Player"}, "declares type Player, and the Python target does not carry types yet"},
-		{&ir.Union{Name: "Event"}, "declares union Event, and the Python target does not carry unions yet"},
+		{"bits", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "small", Type: ir.FieldType{Kind: ir.TBits, Width: 9}}}}, "uses bits"},
+		{"fixed", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, IntBits: 16, FracBits: 16}}}}, "uses fixed"},
+		{"float32", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat32}}}}, "uses float32"},
+		{"float64", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat64}}}}, "uses float64"},
+		{"string", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TString, Size: 8}}}}, "uses string"},
+		{"bytes", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TBytes, Size: 8}}}}, "uses bytes"},
+		{"int128", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}}}, "uses int128"},
+		{"array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses array"},
+		{"const item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ConstItem{Value: big.NewInt(1), Bits: 8}}}, "uses const"},
+		{"reserved item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ReservedItem{Bits: 5}}}, "uses reserved"},
+		{"align item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.AlignItem{}}}, "uses align"},
 	}
-	for _, c := range cases {
+	for _, c := range refused {
 		u := emptyUnit("game", "Game")
 		u.Files[0].Decls = []ir.Decl{c.decl}
 		files, err := Generate(u)
-		if err == nil || !strings.Contains(err.Error(), "python: Game.schema "+c.want) {
-			t.Errorf("%T: got %v (%d files), want a refusal containing %q", c.decl, err, len(files), c.want)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: got %v (%d files), want a refusal containing %q", c.name, err, len(files), c.want)
 		}
 	}
 	u := emptyUnit("game", "Game")

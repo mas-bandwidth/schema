@@ -2,17 +2,12 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
 // fills it.
 const SC = new DataView(new ArrayBuffer(8));
-
-// The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):
-// bundlers statically replace NODE_ENV, so production bundles tree-shake
-// the checked writers out. Existence-guarded for browsers without process.
-const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
 
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
@@ -69,8 +64,7 @@ function validText(bytes, length) {
 // ---- type ArmsAgree: the flat codec ----
 
 // WriteArmsAgreeFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold ArmsAgreeMaxBytes.
+// writer contract. The buffer behind view must hold ArmsAgreeMaxBytes.
 export function WriteArmsAgreeFlat(view, value) {
   let lo = 0;
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
@@ -110,14 +104,47 @@ export function ReadArmsAgreeFlat(view, numBits, value) {
   out = (view.getUint32(2, true) >>> 1) | (view.getUint32(6, true) << 31);
   v = (out & 0x7f) >>> 0;
   value.tail = v;
+  if (((24 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
+}
+
+// ReadArmsAgreeFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadArmsAgreeFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadArmsAgreeFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (24 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1f) >>> 0;
+  value.lead = v;
+  v = (out >>> 5) & 0x1;
+  value.flag = v !== 0;
+  if (value.flag) {
+    out = (view.getUint32(0, true) >>> 6) | (view.getUint32(4, true) << 26);
+    v = (out & 0x7ff) >>> 0;
+    value.a = v;
+    value.b = 0;
+  } else {
+    out = (view.getUint32(0, true) >>> 6) | (view.getUint32(4, true) << 26);
+    v = (out & 0x7ff) >>> 0;
+    value.b = v;
+    value.a = 0;
+  }
+  out = (view.getUint32(2, true) >>> 1) | (view.getUint32(6, true) << 31);
+  v = (out & 0x7f) >>> 0;
+  value.tail = v;
+  return 24;
 }
 
 // ---- type ArmsDisagree: the flat codec ----
 
 // WriteArmsDisagreeFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold ArmsDisagreeMaxBytes.
+// writer contract. The buffer behind view must hold ArmsDisagreeMaxBytes.
 export function WriteArmsDisagreeFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
@@ -208,14 +235,77 @@ export function ReadArmsDisagreeFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7f) >>> 0;
   value.tail = v;
+  br += 7;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadArmsDisagreeFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadArmsDisagreeFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadArmsDisagreeFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (6 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1f) >>> 0;
+  value.lead = v;
+  v = (out >>> 5) & 0x1;
+  value.flag = v !== 0;
+  br = 6;
+  if (value.flag) {
+    if (br + 11 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x7ff) >>> 0;
+    value.a = v;
+    value.b = 0;
+    br += 11;
+  } else {
+    if (br + 3 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x7) >>> 0;
+    value.b = v;
+    value.a = 0;
+    br += 3;
+  }
+  if (br + 7 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7f) >>> 0;
+  value.tail = v;
+  br += 7;
+  return br;
 }
 
 // ---- type ArmEmpty: the flat codec ----
 
 // WriteArmEmptyFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold ArmEmptyMaxBytes.
+// writer contract. The buffer behind view must hold ArmEmptyMaxBytes.
 export function WriteArmEmptyFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
@@ -284,14 +374,65 @@ export function ReadArmEmptyFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7f) >>> 0;
   value.tail = v;
+  br += 7;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadArmEmptyFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadArmEmptyFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadArmEmptyFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (6 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1f) >>> 0;
+  value.lead = v;
+  v = (out >>> 5) & 0x1;
+  value.flag = v !== 0;
+  br = 6;
+  if (value.flag) {
+    if (br + 19 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x7ffff) >>> 0;
+    value.a = v;
+    br += 19;
+  } else {
+    value.a = 0;
+  }
+  if (br + 7 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7f) >>> 0;
+  value.tail = v;
+  br += 7;
+  return br;
 }
 
 // ---- type ArmsNested: the flat codec ----
 
 // WriteArmsNestedFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold ArmsNestedMaxBytes.
+// writer contract. The buffer behind view must hold ArmsNestedMaxBytes.
 export function WriteArmsNestedFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   lo = ((value.lead & 0x7) | ((value.outer ? 1 : 0) << 3));
@@ -432,84 +573,108 @@ export function ReadArmsNestedFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x3f) >>> 0;
   value.tail = v;
+  br += 6;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadArmsNestedFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadArmsNestedFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadArmsNestedFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (4 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x7) >>> 0;
+  value.lead = v;
+  v = (out >>> 3) & 0x1;
+  value.outer = v !== 0;
+  br = 4;
+  if (value.outer) {
+    if (br + 1 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1) >>> 0;
+    value.inner = v !== 0;
+    br += 1;
+    if (value.inner) {
+      if (br + 29 > numBits) {
+        return false;
+      }
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0x1fffffff) >>> 0;
+      value.x = v;
+      value.y = 0;
+      br += 29;
+    } else {
+      if (br + 5 > numBits) {
+        return false;
+      }
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0x1f) >>> 0;
+      value.y = v;
+      value.x = 0;
+      br += 5;
+    }
+    value.z = 0;
+  } else {
+    if (br + 13 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1fff) >>> 0;
+    value.z = v;
+    value.inner = false;
+    value.x = 0;
+    value.y = 0;
+    br += 13;
+  }
+  if (br + 6 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x3f) >>> 0;
+  value.tail = v;
+  br += 6;
+  return br;
 }
 
 // ---- type ArmAlign: the flat codec ----
 
-function writeArmAlignFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
-  sb = 6;
-  if (value.flag) {
-    v = (((value.sLength) & 0x7)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 3;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (3 - sb);
-    }
-    sb = (sb + 7) & -8;
-    if (sb === 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      lo = 0;
-      sb = 0;
-    }
-    {
-      let i0 = 0;
-      for (; i0 + 4 <= value.sLength; i0 += 4) {
-        v = (value.s[i0] | (value.s[i0 + 1] << 8) | (value.s[i0 + 2] << 16) | (value.s[i0 + 3] << 24)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-      }
-      for (; i0 < value.sLength; i0++) {
-        v = value.s[i0];
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 8;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (8 - sb);
-        }
-      }
-    }
-  } else {
-    v = ((value.b & 0x3ff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 10;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (10 - sb);
-    }
-  }
-  v = ((value.tail & 0x7f)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 7;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (7 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeArmAlignFlatChecked(view, value) {
+// WriteArmAlignFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ArmAlignMaxBytes.
+export function WriteArmAlignFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
   sb = 6;
@@ -583,11 +748,6 @@ function writeArmAlignFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteArmAlignFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ArmAlignMaxBytes.
-export const WriteArmAlignFlat = PRODUCTION ? writeArmAlignFlatProduction : writeArmAlignFlatChecked;
 
 // ReadArmAlignFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -664,63 +824,104 @@ export function ReadArmAlignFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7f) >>> 0;
   value.tail = v;
+  br += 7;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadArmAlignFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadArmAlignFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadArmAlignFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (6 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1f) >>> 0;
+  value.lead = v;
+  v = (out >>> 5) & 0x1;
+  value.flag = v !== 0;
+  br = 6;
+  if (value.flag) {
+    if (br + 3 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x7) >>> 0;
+    if (v > 4) { // the length guards the slice — reject, never clamp
+      return false;
+    }
+    value.sLength = v;
+    br += 3;
+    s2 = br & 7;
+    if (s2 !== 0) {
+      if (br + (8 - s2) > numBits) {
+        return false;
+      }
+      if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
+        return false;
+      }
+      br += 8 - s2;
+    }
+    if (br + value.sLength * 8 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    for (let i0 = 0; i0 < value.sLength; i0++) {
+      value.s[i0] = view.getUint8(bi + i0);
+    }
+    br += value.sLength * 8;
+    if (!validText(value.s, value.sLength)) {
+      return false;
+    }
+    value.b = 0;
+  } else {
+    if (br + 10 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x3ff) >>> 0;
+    value.b = v;
+    value.s.fill(0);
+    value.sLength = 0;
+    br += 10;
+  }
+  if (br + 7 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7f) >>> 0;
+  value.tail = v;
+  br += 7;
+  return br;
 }
 
 // ---- type ArmArray: the flat codec ----
 
-function writeArmArrayFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
-  sb = 6;
-  if (value.flag) {
-    v = (((value.itemsCount) & 0x3)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 2;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (2 - sb);
-    }
-    for (let i0 = 0; i0 < value.itemsCount; i0++) {
-      v = (((value.items[i0]) & 0x1fff)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 13;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (13 - sb);
-      }
-    }
-  } else {
-    v = ((value.b & 0x1ff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 9;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (9 - sb);
-    }
-  }
-  v = ((value.tail & 0x7f)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 7;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (7 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeArmArrayFlatChecked(view, value) {
+// WriteArmArrayFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ArmArrayMaxBytes.
+export function WriteArmArrayFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   lo = ((value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5));
   sb = 6;
@@ -776,11 +977,6 @@ function writeArmArrayFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteArmArrayFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ArmArrayMaxBytes.
-export const WriteArmArrayFlat = PRODUCTION ? writeArmArrayFlatProduction : writeArmArrayFlatChecked;
 
 // ReadArmArrayFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -846,14 +1042,91 @@ export function ReadArmArrayFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7f) >>> 0;
   value.tail = v;
+  br += 7;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadArmArrayFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadArmArrayFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadArmArrayFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (6 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1f) >>> 0;
+  value.lead = v;
+  v = (out >>> 5) & 0x1;
+  value.flag = v !== 0;
+  br = 6;
+  if (value.flag) {
+    if (br + 2 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x3) >>> 0;
+    value.itemsCount = v;
+    br += 2;
+    if (br + value.itemsCount * 13 > numBits) {
+      return false;
+    }
+    for (let i0 = 0; i0 < value.itemsCount; i0++) {
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0x1fff) >>> 0;
+      value.items[i0] = v | 0;
+      br += 13;
+    }
+    value.b = 0;
+  } else {
+    if (br + 9 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1ff) >>> 0;
+    value.b = v;
+    value.items.fill(0);
+    value.itemsCount = 0;
+    br += 9;
+  }
+  if (br + 7 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7f) >>> 0;
+  value.tail = v;
+  br += 7;
+  return br;
 }
 
 // ---- type Narrow: the flat codec ----
 
 // WriteNarrowFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold NarrowMaxBytes.
+// writer contract. The buffer behind view must hold NarrowMaxBytes.
 export function WriteNarrowFlat(view, value) {
   let lo = 0;
   lo = ((value.n & 0x7));
@@ -871,14 +1144,34 @@ export function ReadNarrowFlat(view, numBits, value) {
   out = view.getUint32(0, true);
   v = (out & 0x7) >>> 0;
   value.n = v;
+  if (((3 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(0) & 0xf8) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadNarrowFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadNarrowFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadNarrowFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (3 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x7) >>> 0;
+  value.n = v;
+  return 3;
 }
 
 // ---- type Wide: the flat codec ----
 
 // WriteWideFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold WideMaxBytes.
+// writer contract. The buffer behind view must hold WideMaxBytes.
 export function WriteWideFlat(view, value) {
   let v = 0, lo = 0;
   SC.setBigUint64(0, value.w, true);
@@ -906,58 +1199,42 @@ export function ReadWideFlat(view, numBits, value) {
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.w = bg;
+  if (((37 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(4) & 0xe0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadWideFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadWideFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadWideFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  let bg = 0n;
+  if (37 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(4, true);
+  v = (out & 0x1f) >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.w = bg;
+  return 37;
 }
 
 // ---- union Uneven: the flat codec ----
 
-function writeUnevenFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = ((value.type & 0x3));
-  sb = 2;
-  switch (value.type) {
-    case 1: {
-      v = ((value.narrow.n & 0x7)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 3;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (3 - sb);
-      }
-      break;
-    }
-    case 2: {
-      SC.setBigUint64(0, value.wide.w, true);
-      v = SC.getUint32(0, true);
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-      v = SC.getUint32(4, true) & 0x1f;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 5;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (5 - sb);
-      }
-      break;
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeUnevenFlatChecked(view, value) {
+// WriteUnevenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold UnevenMaxBytes.
+export function WriteUnevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
@@ -1005,11 +1282,6 @@ function writeUnevenFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteUnevenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold UnevenMaxBytes.
-export const WriteUnevenFlat = PRODUCTION ? writeUnevenFlatProduction : writeUnevenFlatChecked;
 
 // ReadUnevenFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1068,67 +1340,84 @@ export function ReadUnevenFlat(view, numBits, value) {
       break;
     }
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadUnevenFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadUnevenFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadUnevenFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (2 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x3) >>> 0;
+  if (v > 2) { // not a wire-legal tag (SPEC §4.8)
+    return false;
+  }
+  value.type = v;
+  br = 2;
+  switch (value.type) {
+    case 1: {
+      value.narrow.n = 0;
+      if (br + 3 > numBits) {
+        return false;
+      }
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0x7) >>> 0;
+      value.narrow.n = v;
+      br += 3;
+      break;
+    }
+    case 2: {
+      value.wide.w = 0n;
+      if (br + 37 > numBits) {
+        return false;
+      }
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = out >>> 0;
+      SC.setUint32(0, v, true);
+      br += 32;
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0x1f) >>> 0;
+      SC.setUint32(4, v, true);
+      bg = SC.getBigUint64(0, true);
+      value.wide.w = bg;
+      br += 5;
+      break;
+    }
+  }
+  return br;
 }
 
 // ---- type HoldsUneven: the flat codec ----
 
-function writeHoldsUnevenFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = ((value.lead & 0x1f) | ((value.u.type & 0x3) << 5));
-  sb = 7;
-  switch (value.u.type) {
-    case 1: {
-      v = ((value.u.narrow.n & 0x7)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 3;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (3 - sb);
-      }
-      break;
-    }
-    case 2: {
-      SC.setBigUint64(0, value.u.wide.w, true);
-      v = SC.getUint32(0, true);
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-      v = SC.getUint32(4, true) & 0x1f;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 5;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (5 - sb);
-      }
-      break;
-    }
-  }
-  v = ((value.tail & 0x7ff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 11;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (11 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeHoldsUnevenFlatChecked(view, value) {
+// WriteHoldsUnevenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold HoldsUnevenMaxBytes.
+export function WriteHoldsUnevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.u.type) || value.u.type < 0 || value.u.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
@@ -1185,11 +1474,6 @@ function writeHoldsUnevenFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteHoldsUnevenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold HoldsUnevenMaxBytes.
-export const WriteHoldsUnevenFlat = PRODUCTION ? writeHoldsUnevenFlatProduction : writeHoldsUnevenFlatChecked;
 
 // ReadHoldsUnevenFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1264,79 +1548,102 @@ export function ReadHoldsUnevenFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7ff) >>> 0;
   value.tail = v;
+  br += 11;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadHoldsUnevenFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadHoldsUnevenFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadHoldsUnevenFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (5 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1f) >>> 0;
+  value.lead = v;
+  if (7 > numBits) {
+    return false;
+  }
+  out = (view.getUint32(0, true) >>> 5) | (view.getUint32(4, true) << 27);
+  v = (out & 0x3) >>> 0;
+  if (v > 2) { // not a wire-legal tag (SPEC §4.8)
+    return false;
+  }
+  value.u.type = v;
+  br = 7;
+  switch (value.u.type) {
+    case 1: {
+      value.u.narrow.n = 0;
+      if (br + 3 > numBits) {
+        return false;
+      }
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0x7) >>> 0;
+      value.u.narrow.n = v;
+      br += 3;
+      break;
+    }
+    case 2: {
+      value.u.wide.w = 0n;
+      if (br + 37 > numBits) {
+        return false;
+      }
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = out >>> 0;
+      SC.setUint32(0, v, true);
+      br += 32;
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0x1f) >>> 0;
+      SC.setUint32(4, v, true);
+      bg = SC.getBigUint64(0, true);
+      value.u.wide.w = bg;
+      br += 5;
+      break;
+    }
+  }
+  if (br + 11 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7ff) >>> 0;
+  value.tail = v;
+  br += 11;
+  return br;
 }
 
 // ---- type ArrUneven: the flat codec ----
 
-function writeArrUnevenFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = ((value.lead & 0x1f) | (((value.itemsCount) & 0x3) << 5));
-  sb = 7;
-  for (let i0 = 0; i0 < value.itemsCount; i0++) {
-    const e0 = value.items[i0];
-    v = ((e0.type & 0x3)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 2;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (2 - sb);
-    }
-    switch (e0.type) {
-      case 1: {
-        v = ((e0.narrow.n & 0x7)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 3;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (3 - sb);
-        }
-        break;
-      }
-      case 2: {
-        SC.setBigUint64(0, e0.wide.w, true);
-        v = SC.getUint32(0, true);
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        v = SC.getUint32(4, true) & 0x1f;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 5;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (5 - sb);
-        }
-        break;
-      }
-    }
-  }
-  v = ((value.tail & 0x7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeArrUnevenFlatChecked(view, value) {
+// WriteArrUnevenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ArrUnevenMaxBytes.
+export function WriteArrUnevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
@@ -1408,11 +1715,6 @@ function writeArrUnevenFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteArrUnevenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ArrUnevenMaxBytes.
-export const WriteArrUnevenFlat = PRODUCTION ? writeArrUnevenFlatProduction : writeArrUnevenFlatChecked;
 
 // ReadArrUnevenFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1501,101 +1803,116 @@ export function ReadArrUnevenFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7) >>> 0;
   value.tail = v;
+  br += 3;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadArrUnevenFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadArrUnevenFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadArrUnevenFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (5 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1f) >>> 0;
+  value.lead = v;
+  if (7 > numBits) {
+    return false;
+  }
+  out = (view.getUint32(0, true) >>> 5) | (view.getUint32(4, true) << 27);
+  v = (out & 0x3) >>> 0;
+  value.itemsCount = v;
+  br = 7;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    const e0 = value.items[i0];
+    if (br + 2 > numBits) {
+      return false;
+    }
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x3) >>> 0;
+    if (v > 2) { // not a wire-legal tag (SPEC §4.8)
+      return false;
+    }
+    e0.type = v;
+    br += 2;
+    switch (e0.type) {
+      case 1: {
+        e0.narrow.n = 0;
+        if (br + 3 > numBits) {
+          return false;
+        }
+        bi = br >>> 3;
+        wlo = view.getUint32(bi, true);
+        whi = view.getUint32(bi + 4, true);
+        s2 = br & 7;
+        out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+        v = (out & 0x7) >>> 0;
+        e0.narrow.n = v;
+        br += 3;
+        break;
+      }
+      case 2: {
+        e0.wide.w = 0n;
+        if (br + 37 > numBits) {
+          return false;
+        }
+        bi = br >>> 3;
+        wlo = view.getUint32(bi, true);
+        whi = view.getUint32(bi + 4, true);
+        s2 = br & 7;
+        out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+        v = out >>> 0;
+        SC.setUint32(0, v, true);
+        br += 32;
+        bi = br >>> 3;
+        wlo = view.getUint32(bi, true);
+        whi = view.getUint32(bi + 4, true);
+        s2 = br & 7;
+        out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+        v = (out & 0x1f) >>> 0;
+        SC.setUint32(4, v, true);
+        bg = SC.getBigUint64(0, true);
+        e0.wide.w = bg;
+        br += 5;
+        break;
+      }
+    }
+  }
+  if (br + 3 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7) >>> 0;
+  value.tail = v;
+  br += 3;
+  return br;
 }
 
 // ---- type RegainAfterAlign: the flat codec ----
 
-function writeRegainAfterAlignFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = ((value.lead & 0x1f) | (((value.itemsCount) & 0x3) << 5));
-  sb = 7;
-  for (let i0 = 0; i0 < value.itemsCount; i0++) {
-    v = (((value.items[i0]) & 0x1fff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 13;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (13 - sb);
-    }
-  }
-  v = (((value.sLength) & 0x7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
-  {
-    let i0 = 0;
-    for (; i0 + 4 <= value.sLength; i0 += 4) {
-      v = (value.s[i0] | (value.s[i0 + 1] << 8) | (value.s[i0 + 2] << 16) | (value.s[i0 + 3] << 24)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-    }
-    for (; i0 < value.sLength; i0++) {
-      v = value.s[i0];
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 8;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (8 - sb);
-      }
-    }
-  }
-  v = ((value.p >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.q & 0x1fffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 29;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (29 - sb);
-  }
-  v = ((value.r & 0x7ffff) | ((value.tail & 0xf) << 19)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeRegainAfterAlignFlatChecked(view, value) {
+// WriteRegainAfterAlignFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold RegainAfterAlignMaxBytes.
+export function WriteRegainAfterAlignFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
@@ -1693,11 +2010,6 @@ function writeRegainAfterAlignFlatChecked(view, value) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteRegainAfterAlignFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold RegainAfterAlignMaxBytes.
-export const WriteRegainAfterAlignFlat = PRODUCTION ? writeRegainAfterAlignFlatProduction : writeRegainAfterAlignFlatChecked;
-
 // ReadRegainAfterAlignFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
 export function ReadRegainAfterAlignFlat(view, numBits, value) {
@@ -1791,6 +2103,113 @@ export function ReadRegainAfterAlignFlat(view, numBits, value) {
   value.r = v;
   v = (out >>> 19) & 0xf;
   value.tail = v;
+  br += 23;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadRegainAfterAlignFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadRegainAfterAlignFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadRegainAfterAlignFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (5 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1f) >>> 0;
+  value.lead = v;
+  if (7 > numBits) {
+    return false;
+  }
+  out = (view.getUint32(0, true) >>> 5) | (view.getUint32(4, true) << 27);
+  v = (out & 0x3) >>> 0;
+  value.itemsCount = v;
+  br = 7;
+  if (br + value.itemsCount * 13 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0x1fff) >>> 0;
+    value.items[i0] = v | 0;
+    br += 13;
+  }
+  if (br + 3 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7) >>> 0;
+  if (v > 4) { // the length guards the slice — reject, never clamp
+    return false;
+  }
+  value.sLength = v;
+  br += 3;
+  s2 = br & 7;
+  if (s2 !== 0) {
+    if (br + (8 - s2) > numBits) {
+      return false;
+    }
+    if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
+      return false;
+    }
+    br += 8 - s2;
+  }
+  if (br + value.sLength * 8 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  for (let i0 = 0; i0 < value.sLength; i0++) {
+    value.s[i0] = view.getUint8(bi + i0);
+  }
+  br += value.sLength * 8;
+  if (!validText(value.s, value.sLength)) {
+    return false;
+  }
+  if (br + 84 > numBits) {
+    return false;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  value.p = v;
+  br += 32;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x1fffffff) >>> 0;
+  value.q = v;
+  br += 29;
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = (out & 0x7ffff) >>> 0;
+  value.r = v;
+  v = (out >>> 19) & 0xf;
+  value.tail = v;
+  br += 23;
+  return br;
 }
 

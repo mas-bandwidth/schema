@@ -23,6 +23,7 @@ local HASH_AT = 8
 local ENTRY = 17
 local LAYOUT_HEADER = 4
 local RECORD_MAX = 65536
+local MAX_RECORDS = 4096
 local PLAN_MAX = 4096
 local COUNT = 4
 local PRESENT = 1
@@ -109,6 +110,17 @@ local function boolByte(buf: buffer, at: number): boolean
 	local b = buffer.readu8(buf, at)
 	if b > 1 then error({ name = "wire_damaged", field = _owner .. "." .. _field }, 0) end
 	return b == 1
+end
+
+-- A DEAD SPAN IS THE WRITER'S IMAGE (docs/FIXED-FORM-ALGORITHM.md §3.1, §5.3
+-- step 11): every byte zero, or the whole load refuses wire_damaged. A span
+-- of nothing is already zero. The bytes are not read as values.
+local function deadZero(buf: buffer, at: number, n: number)
+	for i = 0, n - 1 do
+		if buffer.readu8(buf, at + i) ~= 0 then
+			error({ name = "wire_damaged", field = _owner .. "." .. _field }, 0)
+		end
+	end
 end
 
 local function asInt(v: any): integer
@@ -467,9 +479,13 @@ local function bounds(f: any, v: any, cx: Cx): any
 			error(outOfRange(f), 0)
 		end
 	end
-	if f.bits ~= nil and f.bits > 0 and f.bits < 53 then
+	if f.bits ~= nil and f.bits > 0 and f.bits < 64 then
+		-- the top is exact at every width: an integer value's top is built as
+		-- an integer (1 << N, less one) and compared unsigned
 		local top: any = 2 ^ f.bits - 1
-		if typeof(v) == "integer" then top = integer.create(top) end
+		if typeof(v) == "integer" then
+			top = integer.sub(integer.lshift(1i, integer.create(f.bits)), 1i)
+		end
 		if lessThan(top, v, false) then error(outOfRange(f), 0) end
 	end
 	return v
@@ -494,6 +510,10 @@ local function readTable(d: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 					v[f.present] = present
 					if present then
 						got, companion = readPair(f, wc.children[1], rc.children[1], buf, at, cx, v[slot])
+					elseif wc.size > PRESENT then
+						-- an absent optional's payload is dead whole, nested
+						-- types included; it is not read as values
+						deadZero(buf, wc.off + at + PRESENT, wc.size - PRESENT)
 					end
 				elseif rc.kind == 35 then
 					-- T INTO ?T (bill §12.8): the writer always carried the
@@ -529,6 +549,9 @@ local function readText(f: any, w: Node, buf: buffer, at: number): (any, any)
 	elseif utf8IllFormed(buf, w.off + at + COUNT, length) then
 		error(refuse("text_ill_formed"), 0)
 	end
+	-- the bytes past the used length are dead, the remainder inside the
+	-- field included; the content rule already held the used units
+	deadZero(buf, w.off + at + COUNT + length * unit, w.size - COUNT - length * unit)
 	local bound = f.bound or length
 	if length > bound then length = bound end
 	local b = buffer.create(bound * unit)
@@ -564,14 +587,23 @@ end
 local function readUnion(f: any, w: Node, r: Node, buf: buffer, at: number, cx: Cx): any
 	local d = S.lookup(f.t)
 	local v = d.new()
-	local tag = leU(buf, w.off + at, tagWidth(w))
+	local tagw = tagWidth(w)
+	local tag = leU(buf, w.off + at, tagw)
+	local span = w.size - tagw
 	if tag == 0 then
+		-- tag 0 names no arm: the arm bytes are dead, and are not read
+		deadZero(buf, w.off + at + tagw, span)
 		v.Type = 0
 		return v
 	end
 	if tag > #w.children then
 		-- a tag past the WRITER's arm count names no arm: out_of_range (§4.6)
 		error(outOfRange(f), 0)
+	end
+	-- the bytes past a narrower taken arm, inside the widest arm's span, are dead
+	local armNode = w.children[tag]
+	if span > armNode.size then
+		deadZero(buf, w.off + at + tagw + armNode.size, span - armNode.size)
 	end
 	local k = if w == r then tag else childIndexById(r.children, w.children[tag].id)
 	v.Type = k
@@ -629,6 +661,7 @@ local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		local length = buffer.readu32(buf, w.off + at)
 		local cap = w.size - COUNT
 		if length > cap then error(refuse("length_over_bound"), 0) end
+		deadZero(buf, w.off + at + COUNT + length, w.size - COUNT - length)
 		local bound = f.bound or length
 		if length > bound then length = bound end
 		local b = buffer.create(bound)
@@ -643,6 +676,11 @@ local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		local count = buffer.readu32(buf, w.off + at)
 		-- the bound THE PLAN CARRIES is the WRITER's own (bill §12.5)
 		if count > theirs then error(refuse("count_over_bound"), 0) end
+		-- slots past the live count are dead, up to the writer's bound; the
+		-- remainder past floor(capacity) is not part of that span
+		if we.size > 0 then
+			deadZero(buf, w.off + at + head + count * we.size, (theirs - count) * we.size)
+		end
 		if count > mine then count = mine end
 		local out = slots(def, mine)
 		for i = 1, count do
@@ -941,6 +979,9 @@ function F.save(d: any, fixed: Fixed, values: { any }): buffer
 		fixed = fixedFor(d) :: any
 		if fixed == nil then error(refuse("unknown_form"), 0) end
 	end
+	-- A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6), so a
+	-- save of zero records is refused before any byte is written.
+	if #values == 0 then error(refuse("truncated"), 0) end
 	local layout = fixed.layout
 	local trailer = if declaresIntegrity(d) then TRAILER else 0
 	local bytes = HEADER + 4 + 4 + #layout * ENTRY
@@ -1059,10 +1100,11 @@ end
 -- REFUSE IS TOTAL: the values are built and returned only when every record
 -- read, so a refusal at record k lands nothing at all, and the counters move
 -- only on a read that returns — the compile census once, after the loop
--- (§5.3, §5.9 #6). `batch_too_large` has no Luau surface: read takes no
--- capacity, so no batch can outgrow it; `plan_too_large` is the lineage
--- entry's own lane (a layout past PLAN_MAX entries).
-function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
+-- (§5.3, §5.9 #6). `batch_too_large` is the caller's capacity: a file holding
+-- more records than it refuses before any record is checked or lands, and an
+-- omitted capacity is MAX_RECORDS; `plan_too_large` is the lineage entry's own
+-- lane (a layout past PLAN_MAX entries).
+function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?, capacity: number?): { any }?
 	local rep: any = report or {}
 	rep.reason = nil
 	rep.unknown, rep.kindMismatch, rep.widened = 0, 0, 0
@@ -1116,12 +1158,17 @@ function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
 	-- comparison and never a hash a runtime computed (§5.3)
 	local plan = planFor(d, fixed, k, k.hash == fixed.hash)
 	if plan.refused ~= nil then return no(plan.refused) end
-	-- 9: the records must fill the rest of the file exactly
+	-- 9: the records must fill the rest of the file exactly, and there must
+	-- be at least one: a header and a layout followed by no record is a batch
+	-- of none, which holds no value to read (§5.3 step 9)
 	local at0 = HEADER + 4 + length
 	local rest = buffer.len(file) - at0
 	local stride = k.recordBytes
-	if stride <= 8 or rest % stride ~= 0 then return no("truncated") end
+	if rest == 0 or stride <= 8 or rest % stride ~= 0 then return no("truncated") end
 	local count = rest // stride
+	-- 10: the caller's capacity, the default when none was given
+	local cap = capacity or MAX_RECORDS
+	if count > cap then return no("batch_too_large") end
 	-- 11: EVERY record's hash before the first one lands (§5.3, TOTAL OVER
 	-- THE BATCH)
 	for r = 0, count - 1 do
@@ -1154,9 +1201,9 @@ end
 -- (kind_mismatch), with report.reason that name and nothing handed back.
 -- unknown and widened alone never refuse. The verdict is the contract; the
 -- name is this leg's diagnostic (docs/rulings.json refusal-verdict-only).
-function F.read(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
+function F.read(d: any, fixed: Fixed, file: buffer, report: any?, capacity: number?): { any }?
 	local rep: any = report or {}
-	local out = F.loadWalk(d, fixed, file, rep)
+	local out = F.loadWalk(d, fixed, file, rep, capacity)
 	if out == nil then return nil end
 	if rep.kindMismatch > 0 then rep.reason = "kind_mismatch"; return nil end
 	return out
@@ -1165,9 +1212,9 @@ end
 -- load is the plain strict read for a caller that wants the refusal raised:
 -- the values, or an error { name, layoutHash, field } carrying the name
 -- read reports.
-function F.load(d: any, fixed: Fixed, file: buffer, report: any?): { any }
+function F.load(d: any, fixed: Fixed, file: buffer, report: any?, capacity: number?): { any }
 	local rep: any = report or {}
-	local out = F.read(d, fixed, file, rep)
+	local out = F.read(d, fixed, file, rep, capacity)
 	if out == nil then
 		error({ name = rep.reason, layoutHash = rep.layoutHash, field = rep.field }, 0)
 	end

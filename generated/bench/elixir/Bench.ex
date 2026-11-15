@@ -588,7 +588,7 @@ defmodule Bench.Bench do
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_bench_packet_blob(value_blob, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZbench_packetZblob(value_blob, data, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
@@ -614,7 +614,7 @@ defmodule Bench.Bench do
           {:ok, Bench.BenchPacket.t(), non_neg_integer()} | :error
   def read_bench_packet_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -660,7 +660,7 @@ defmodule Bench.Bench do
       # nonzero padding is refused (SPEC §4.3)
       if rd(data, 249, 7) != 0, do: throw(:invalid)
       if 392 > num_bits, do: throw(:invalid)
-      {bits_read, v_blob} = r_bench_packet_blob_align(17, [], data, num_bits, 256)
+      {bits_read, v_blob} = rZbench_packetZblobZalign(17, [], data, num_bits, 256)
 
       value = %Bench.BenchPacket{
         a: v_a,
@@ -882,7 +882,7 @@ defmodule Bench.Bench do
           {:ok, Bench.BenchInts.t(), non_neg_integer()} | :error
   def read_bench_ints_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1051,7 +1051,7 @@ defmodule Bench.Bench do
           {:ok, Bench.BenchBits.t(), non_neg_integer()} | :error
   def read_bench_bits_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1425,7 +1425,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedEntity.t(), non_neg_integer()} | :error
   def read_mixed_entity_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1575,7 +1575,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedStat.t(), non_neg_integer()} | :error
   def read_mixed_stat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1695,7 +1695,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedHitEvent.t(), non_neg_integer()} | :error
   def read_mixed_hit_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1806,7 +1806,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedChatEvent.t(), non_neg_integer()} | :error
   def read_mixed_chat_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1908,7 +1908,7 @@ defmodule Bench.Bench do
   def read_mixed_pickup_event_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2113,7 +2113,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedEvent.t(), non_neg_integer()} | :error
   def read_mixed_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2379,7 +2379,7 @@ defmodule Bench.Bench do
     scratch_bits = 4
 
     {data, scratch, scratch_bits} =
-      w_bench_mixed_entities(value_entities, data, scratch, scratch_bits)
+      wZbench_mixedZentities(value_entities, data, scratch, scratch_bits)
 
     n = length(value_stats)
 
@@ -2394,7 +2394,7 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    {data, scratch, scratch_bits} = w_bench_mixed_stats(value_stats, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZbench_mixedZstats(value_stats, data, scratch, scratch_bits)
 
     v =
       case value_game_event do
@@ -2531,7 +2531,7 @@ defmodule Bench.Bench do
     end
 
     {data, scratch, scratch_bits} =
-      w_bench_mixed_loadout(value_loadout, data, scratch, scratch_bits)
+      wZbench_mixedZloadout(value_loadout, data, scratch, scratch_bits)
 
     if byte_size(value_player_name) > 15 do
       raise ArgumentError, "value.player_name longer than the declared 15-byte bound"
@@ -2682,7 +2682,7 @@ defmodule Bench.Bench do
           {:ok, Bench.BenchMixed.t(), non_neg_integer()} | :error
   def read_bench_mixed_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2740,7 +2740,7 @@ defmodule Bench.Bench do
       v = rv &&& 0x7
       n = v + 1
       if 356 + n * 135 > num_bits, do: throw(:invalid)
-      {bits_read, v_entities} = r_bench_mixed_entities(n, [], data, num_bits, 356)
+      {bits_read, v_entities} = rZbench_mixedZentities(n, [], data, num_bits, 356)
       if bits_read + 7 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x7F
@@ -2748,7 +2748,7 @@ defmodule Bench.Bench do
       if v > 80, do: throw(:invalid)
       n = v
       if bits_read + 7 + n * 18 > num_bits, do: throw(:invalid)
-      {bits_read, v_stats} = r_bench_mixed_stats_align(n, [], data, num_bits, bits_read + 7)
+      {bits_read, v_stats} = rZbench_mixedZstatsZalign(n, [], data, num_bits, bits_read + 7)
       if bits_read + 2 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x3
@@ -2816,7 +2816,7 @@ defmodule Bench.Bench do
         end
 
       if bits_read + 32 > num_bits, do: throw(:invalid)
-      {bits_read, v_loadout} = r_bench_mixed_loadout_align(4, [], data, num_bits, bits_read)
+      {bits_read, v_loadout} = rZbench_mixedZloadoutZalign(4, [], data, num_bits, bits_read)
       if bits_read + 4 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xF
@@ -2994,9 +2994,9 @@ defmodule Bench.Bench do
     end
   end
 
-  defp w_bench_packet_blob([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZbench_packetZblob([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_bench_packet_blob([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZbench_packetZblob([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     v = e1 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3013,10 +3013,10 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_bench_packet_blob(rest, data, scratch, scratch_bits)
+    wZbench_packetZblob(rest, data, scratch, scratch_bits)
   end
 
-  defp w_bench_packet_blob([e | rest], data, scratch, scratch_bits) do
+  defp wZbench_packetZblob([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3024,13 +3024,13 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_bench_packet_blob(rest, data, scratch, scratch_bits)
+    wZbench_packetZblob(rest, data, scratch, scratch_bits)
   end
 
-  defp r_bench_packet_blob(0, acc, _data, _num_bits, bits_read),
+  defp rZbench_packetZblob(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_packetZblob(remaining, acc, data, num_bits, bits_read)
        when remaining >= 4 do
     rv = rd(data, bits_read, 32)
     v = rv &&& 0xFF
@@ -3041,17 +3041,17 @@ defmodule Bench.Bench do
     e3 = v
     v = rv >>> 24
     e4 = v
-    r_bench_packet_blob(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
+    rZbench_packetZblob(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
   end
 
-  defp r_bench_packet_blob(remaining, acc, data, num_bits, bits_read) do
+  defp rZbench_packetZblob(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 8)
     v = rv
     e = v
-    r_bench_packet_blob(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
+    rZbench_packetZblob(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
   end
 
-  defp r_bench_packet_blob_align(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_packetZblobZalign(remaining, acc, data, num_bits, bits_read)
        when remaining >= 9 do
     i = bits_read >>> 3
     q = bits_read &&& 7
@@ -3059,15 +3059,15 @@ defmodule Bench.Bench do
     if q == 0 do
       case data do
         <<_::binary-size(^i), rest::binary>> ->
-          r_bench_packet_blob_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+          rZbench_packetZblobZfast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
 
         _ ->
-          r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+          rZbench_packetZblob(remaining, acc, data, num_bits, bits_read)
       end
     else
       case data do
         <<_::binary-size(^i), b0, rest::binary>> ->
-          r_bench_packet_blob_fast(
+          rZbench_packetZblobZfast(
             remaining,
             acc,
             data,
@@ -3079,15 +3079,15 @@ defmodule Bench.Bench do
           )
 
         _ ->
-          r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+          rZbench_packetZblob(remaining, acc, data, num_bits, bits_read)
       end
     end
   end
 
-  defp r_bench_packet_blob_align(remaining, acc, data, num_bits, bits_read),
-    do: r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_packetZblobZalign(remaining, acc, data, num_bits, bits_read),
+    do: rZbench_packetZblob(remaining, acc, data, num_bits, bits_read)
 
-  defp r_bench_packet_blob_fast(
+  defp rZbench_packetZblobZfast(
          remaining,
          acc,
          data,
@@ -3120,7 +3120,7 @@ defmodule Bench.Bench do
     e9 = v
 
     {bits_read, tail} =
-      r_bench_packet_blob_fast(
+      rZbench_packetZblobZfast(
         remaining - 9,
         acc,
         data,
@@ -3134,12 +3134,12 @@ defmodule Bench.Bench do
     {bits_read, [e1, e2, e3, e4, e5, e6, e7, e8, e9 | tail]}
   end
 
-  defp r_bench_packet_blob_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
-    do: r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_packetZblobZfast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: rZbench_packetZblob(remaining, acc, data, num_bits, bits_read)
 
-  defp w_bench_mixed_entities([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZbench_mixedZentities([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_bench_mixed_entities([e | rest], data, scratch, scratch_bits) do
+  defp wZbench_mixedZentities([e | rest], data, scratch, scratch_bits) do
     %{
       entity_id: e_entity_id,
       pos_x: e_pos_x,
@@ -3283,12 +3283,12 @@ defmodule Bench.Bench do
 
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_bench_mixed_entities(rest, data, scratch, scratch_bits)
+    wZbench_mixedZentities(rest, data, scratch, scratch_bits)
   end
 
-  defp w_bench_mixed_stats([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZbench_mixedZstats([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_bench_mixed_stats([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZbench_mixedZstats([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     %{stat_id: e1_stat_id, delta: e1_delta} = e1
     v = e1_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
@@ -3361,10 +3361,10 @@ defmodule Bench.Bench do
     data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_bench_mixed_stats(rest, data, scratch, scratch_bits)
+    wZbench_mixedZstats(rest, data, scratch, scratch_bits)
   end
 
-  defp w_bench_mixed_stats([e | rest], data, scratch, scratch_bits) do
+  defp wZbench_mixedZstats([e | rest], data, scratch, scratch_bits) do
     %{stat_id: e_stat_id, delta: e_delta} = e
     v = e_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
@@ -3385,12 +3385,12 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_bench_mixed_stats(rest, data, scratch, scratch_bits)
+    wZbench_mixedZstats(rest, data, scratch, scratch_bits)
   end
 
-  defp w_bench_mixed_loadout([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZbench_mixedZloadout([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_bench_mixed_loadout([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZbench_mixedZloadout([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     v = e1 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3407,10 +3407,10 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_bench_mixed_loadout(rest, data, scratch, scratch_bits)
+    wZbench_mixedZloadout(rest, data, scratch, scratch_bits)
   end
 
-  defp w_bench_mixed_loadout([e | rest], data, scratch, scratch_bits) do
+  defp wZbench_mixedZloadout([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3418,13 +3418,13 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_bench_mixed_loadout(rest, data, scratch, scratch_bits)
+    wZbench_mixedZloadout(rest, data, scratch, scratch_bits)
   end
 
-  defp r_bench_mixed_entities(0, acc, _data, _num_bits, bits_read),
+  defp rZbench_mixedZentities(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_bench_mixed_entities(remaining, acc, data, num_bits, bits_read) do
+  defp rZbench_mixedZentities(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFF
     e_entity_id = v
@@ -3482,13 +3482,13 @@ defmodule Bench.Bench do
       firing: e_firing
     }
 
-    r_bench_mixed_entities(remaining - 1, [e | acc], data, num_bits, bits_read + 135)
+    rZbench_mixedZentities(remaining - 1, [e | acc], data, num_bits, bits_read + 135)
   end
 
-  defp r_bench_mixed_stats(0, acc, _data, _num_bits, bits_read),
+  defp rZbench_mixedZstats(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZstats(remaining, acc, data, num_bits, bits_read)
        when remaining >= 2 do
     rv = rdw(data, bits_read, 36)
     v = rv &&& 0xFF
@@ -3501,20 +3501,20 @@ defmodule Bench.Bench do
     v = rv >>> 26
     e2_delta = v - 512
     e2 = %Bench.MixedStat{stat_id: e2_stat_id, delta: e2_delta}
-    r_bench_mixed_stats(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read + 36)
+    rZbench_mixedZstats(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read + 36)
   end
 
-  defp r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read) do
+  defp rZbench_mixedZstats(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 18)
     v = rv &&& 0xFF
     e_stat_id = v
     v = rv >>> 8
     e_delta = v - 512
     e = %Bench.MixedStat{stat_id: e_stat_id, delta: e_delta}
-    r_bench_mixed_stats(remaining - 1, [e | acc], data, num_bits, bits_read + 18)
+    rZbench_mixedZstats(remaining - 1, [e | acc], data, num_bits, bits_read + 18)
   end
 
-  defp r_bench_mixed_stats_align(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZstatsZalign(remaining, acc, data, num_bits, bits_read)
        when remaining >= 4 do
     i = bits_read >>> 3
     q = bits_read &&& 7
@@ -3522,15 +3522,15 @@ defmodule Bench.Bench do
     if q == 0 do
       case data do
         <<_::binary-size(^i), rest::binary>> ->
-          r_bench_mixed_stats_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+          rZbench_mixedZstatsZfast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
 
         _ ->
-          r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+          rZbench_mixedZstats(remaining, acc, data, num_bits, bits_read)
       end
     else
       case data do
         <<_::binary-size(^i), b0, rest::binary>> ->
-          r_bench_mixed_stats_fast(
+          rZbench_mixedZstatsZfast(
             remaining,
             acc,
             data,
@@ -3542,15 +3542,15 @@ defmodule Bench.Bench do
           )
 
         _ ->
-          r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+          rZbench_mixedZstats(remaining, acc, data, num_bits, bits_read)
       end
     end
   end
 
-  defp r_bench_mixed_stats_align(remaining, acc, data, num_bits, bits_read),
-    do: r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZstatsZalign(remaining, acc, data, num_bits, bits_read),
+    do: rZbench_mixedZstats(remaining, acc, data, num_bits, bits_read)
 
-  defp r_bench_mixed_stats_fast(
+  defp rZbench_mixedZstatsZfast(
          remaining,
          acc,
          data,
@@ -3585,7 +3585,7 @@ defmodule Bench.Bench do
     e4 = %Bench.MixedStat{stat_id: e4_stat_id, delta: e4_delta}
 
     {bits_read, tail} =
-      r_bench_mixed_stats_fast(
+      rZbench_mixedZstatsZfast(
         remaining - 4,
         acc,
         data,
@@ -3599,13 +3599,13 @@ defmodule Bench.Bench do
     {bits_read, [e1, e2, e3, e4 | tail]}
   end
 
-  defp r_bench_mixed_stats_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
-    do: r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZstatsZfast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: rZbench_mixedZstats(remaining, acc, data, num_bits, bits_read)
 
-  defp r_bench_mixed_loadout(0, acc, _data, _num_bits, bits_read),
+  defp rZbench_mixedZloadout(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZloadout(remaining, acc, data, num_bits, bits_read)
        when remaining >= 4 do
     rv = rd(data, bits_read, 32)
     v = rv &&& 0xFF
@@ -3616,17 +3616,17 @@ defmodule Bench.Bench do
     e3 = v
     v = rv >>> 24
     e4 = v
-    r_bench_mixed_loadout(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
+    rZbench_mixedZloadout(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
   end
 
-  defp r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read) do
+  defp rZbench_mixedZloadout(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 8)
     v = rv
     e = v
-    r_bench_mixed_loadout(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
+    rZbench_mixedZloadout(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
   end
 
-  defp r_bench_mixed_loadout_align(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZloadoutZalign(remaining, acc, data, num_bits, bits_read)
        when remaining >= 4 do
     i = bits_read >>> 3
     q = bits_read &&& 7
@@ -3634,15 +3634,15 @@ defmodule Bench.Bench do
     if q == 0 do
       case data do
         <<_::binary-size(^i), rest::binary>> ->
-          r_bench_mixed_loadout_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+          rZbench_mixedZloadoutZfast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
 
         _ ->
-          r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+          rZbench_mixedZloadout(remaining, acc, data, num_bits, bits_read)
       end
     else
       case data do
         <<_::binary-size(^i), b0, rest::binary>> ->
-          r_bench_mixed_loadout_fast(
+          rZbench_mixedZloadoutZfast(
             remaining,
             acc,
             data,
@@ -3654,15 +3654,15 @@ defmodule Bench.Bench do
           )
 
         _ ->
-          r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+          rZbench_mixedZloadout(remaining, acc, data, num_bits, bits_read)
       end
     end
   end
 
-  defp r_bench_mixed_loadout_align(remaining, acc, data, num_bits, bits_read),
-    do: r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZloadoutZalign(remaining, acc, data, num_bits, bits_read),
+    do: rZbench_mixedZloadout(remaining, acc, data, num_bits, bits_read)
 
-  defp r_bench_mixed_loadout_fast(
+  defp rZbench_mixedZloadoutZfast(
          remaining,
          acc,
          data,
@@ -3684,7 +3684,7 @@ defmodule Bench.Bench do
     e4 = v
 
     {bits_read, tail} =
-      r_bench_mixed_loadout_fast(
+      rZbench_mixedZloadoutZfast(
         remaining - 4,
         acc,
         data,
@@ -3698,6 +3698,6 @@ defmodule Bench.Bench do
     {bits_read, [e1, e2, e3, e4 | tail]}
   end
 
-  defp r_bench_mixed_loadout_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
-    do: r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZloadoutZfast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: rZbench_mixedZloadout(remaining, acc, data, num_bits, bits_read)
 end

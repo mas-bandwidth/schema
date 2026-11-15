@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 package example;
 
@@ -119,6 +119,18 @@ public final class Wire {
         public static final byte LASER = 1;
         public static final byte MISSILE = 2;
         public static final byte RAILGUN = 3;
+        public static final byte FLAK = 4;
+        public static final byte BEAM = 5;
+        public static final byte PLASMA = 6;
+        public static final byte TORPEDO = 7;
+        public static final byte MINE = 8;
+        public static final byte DRONE = 9;
+        public static final byte SWARM = 10;
+        public static final byte PULSE = 11;
+        public static final byte LANCE = 12;
+        public static final byte COMET = 13;
+        public static final byte QUAKE = 14;
+        public static final byte ARC = 15;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 15;
     }
@@ -137,6 +149,42 @@ public final class Wire {
         }
         if (value == Weapon.RAILGUN) {
             return "Railgun";
+        }
+        if (value == Weapon.FLAK) {
+            return "Flak";
+        }
+        if (value == Weapon.BEAM) {
+            return "Beam";
+        }
+        if (value == Weapon.PLASMA) {
+            return "Plasma";
+        }
+        if (value == Weapon.TORPEDO) {
+            return "Torpedo";
+        }
+        if (value == Weapon.MINE) {
+            return "Mine";
+        }
+        if (value == Weapon.DRONE) {
+            return "Drone";
+        }
+        if (value == Weapon.SWARM) {
+            return "Swarm";
+        }
+        if (value == Weapon.PULSE) {
+            return "Pulse";
+        }
+        if (value == Weapon.LANCE) {
+            return "Lance";
+        }
+        if (value == Weapon.COMET) {
+            return "Comet";
+        }
+        if (value == Weapon.QUAKE) {
+            return "Quake";
+        }
+        if (value == Weapon.ARC) {
+            return "Arc";
         }
         return "???";
     }
@@ -316,9 +364,21 @@ public final class Wire {
     }
 
     // readProbeHeader decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeHeader(ProbeHeader value, byte[] data, int numBits) {
-        return readProbeHeaderBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeHeaderBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeBits
@@ -456,9 +516,21 @@ public final class Wire {
     }
 
     // readProbeBits decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeBits(ProbeBits value, byte[] data, int numBits) {
-        return readProbeBitsBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeBitsBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeSample
@@ -703,9 +775,21 @@ public final class Wire {
     }
 
     // readProbeSample decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeSample(ProbeSample value, byte[] data, int numBits) {
-        return readProbeSampleBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeSampleBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeRing
@@ -790,9 +874,21 @@ public final class Wire {
     }
 
     // readProbeRing decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeRing(ProbeRing value, byte[] data, int numBits) {
-        return readProbeRingBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeRingBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeSlab
@@ -891,9 +987,21 @@ public final class Wire {
     }
 
     // readProbeSlab decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeSlab(ProbeSlab value, byte[] data, int numBits) {
-        return readProbeSlabBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeSlabBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC
@@ -1028,9 +1136,21 @@ public final class Wire {
     }
 
     // readProbeShape decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeShape(ProbeShape value, byte[] data, int numBits) {
-        return readProbeShapeBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeShapeBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeCollider
@@ -1175,9 +1295,21 @@ public final class Wire {
     }
 
     // readProbeCollider decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeCollider(ProbeCollider value, byte[] data, int numBits) {
-        return readProbeColliderBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeColliderBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeConfig
@@ -1273,9 +1405,21 @@ public final class Wire {
     }
 
     // readProbeConfig decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeConfig(ProbeConfig value, byte[] data, int numBits) {
-        return readProbeConfigBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeConfigBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeArray
@@ -1375,9 +1519,21 @@ public final class Wire {
     }
 
     // readProbeArray decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeArray(ProbeArray value, byte[] data, int numBits) {
-        return readProbeArrayBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeArrayBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type Heartbeat
@@ -1443,9 +1599,21 @@ public final class Wire {
     }
 
     // readHeartbeat decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readHeartbeat(Heartbeat value, byte[] data, int numBits) {
-        return readHeartbeatBits(value, data, 0, numBits) >= 0;
+        final int end = readHeartbeatBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type Test
@@ -1572,9 +1740,21 @@ public final class Wire {
     }
 
     // readTest decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readTest(Test value, byte[] data, int numBits) {
-        return readTestBits(value, data, 0, numBits) >= 0;
+        final int end = readTestBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type Block
@@ -1681,9 +1861,21 @@ public final class Wire {
     }
 
     // readBlock decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readBlock(Block value, byte[] data, int numBits) {
-        return readBlockBits(value, data, 0, numBits) >= 0;
+        final int end = readBlockBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type Chat
@@ -1821,9 +2013,21 @@ public final class Wire {
     }
 
     // readChat decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readChat(Chat value, byte[] data, int numBits) {
-        return readChatBits(value, data, 0, numBits) >= 0;
+        final int end = readChatBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeReport
@@ -1925,9 +2129,21 @@ public final class Wire {
     }
 
     // readProbeReport decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeReport(ProbeReport value, byte[] data, int numBits) {
-        return readProbeReportBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeReportBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type TestData
@@ -2380,9 +2596,21 @@ public final class Wire {
     }
 
     // readTestData decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readTestData(TestData value, byte[] data, int numBits) {
-        return readTestDataBits(value, data, 0, numBits) >= 0;
+        final int end = readTestDataBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type CompressedProbe
@@ -2510,8 +2738,20 @@ public final class Wire {
     }
 
     // readCompressedProbe decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readCompressedProbe(CompressedProbe value, byte[] data, int numBits) {
-        return readCompressedProbeBits(value, data, 0, numBits) >= 0;
+        final int end = readCompressedProbeBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 }

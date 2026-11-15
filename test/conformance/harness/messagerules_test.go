@@ -247,6 +247,39 @@ func TestTheMasksWidth(t *testing.T) {
 	}
 }
 
+// TestTheMasksWidthOnAMessage is the message half of TestTheMasksWidth, which
+// is skipped for its file half (the form-3 size of a fixed root, re-pinned at
+// layer 3): the mask rides at its declared W, three bits, and reads back. Red
+// if a leg announces or writes sixty-four bits on a message.
+func TestTheMasksWidthOnAMessage(t *testing.T) {
+	unit := tempUnit(t, "package rowdemo\n\nflags Perks { Shielded, Cloaked, Turbo }\n\nfixed table Masked\n{\n    perks Perks\n}\n")
+	model := tabletext.NewModel(unit)
+	v := vocabularyOf(t, unit)
+	loadout := model.Lookup("Masked")
+	perks := fieldOf(t, model.New(loadout), "perks").Def
+	entry := ir.TableFieldEntry(perks)
+	if entry.Kind != ir.TableKindU64 || entry.Shape.Packing != ir.TableMessageRanged || entry.Shape.Bits != 3 {
+		t.Fatalf("perks is announced at kind %d packing %d bits %d, not a three-bit ranged mask", entry.Kind, entry.Shape.Packing, entry.Shape.Bits)
+	}
+	if got := v.Entries()[slotOf(t, v, entry.Id, entry.Kind)-1]; got.Shape.Bits != 3 {
+		t.Errorf("the announcement carries perks at %d bits, not three", got.Shape.Bits)
+	}
+	masked := model.New(loadout)
+	setU64(t, masked, "perks", 5) // Shielded and Turbo
+	message, err := tablewire.EncodeMessage(model, masked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the count, a reference, three bits, and the terminator
+	if want := 1 + (8+2*v.RefBits()+3+7)/8; len(message) != want {
+		t.Errorf("a masked message is %d bytes, three bits at the mask says %d", len(message), want)
+	}
+	back, ok, report, derr := decodeOne(t, model, "Masked", v, message)
+	if derr != nil || !ok || !report.Silent() || instU64(t, back, "perks") != 5 {
+		t.Errorf("the mask did not read back: ok=%v err=%v report=%+v perks=%d", ok, derr, report, instU64(t, back, "perks"))
+	}
+}
+
 // TestTheRetiredAndReservedKindsRefuseTheAnnouncement: kind 33 is retired and
 // kind 34 is reserved for float16 (docs/SPEC-TABLES.md §3), so neither is in
 // this major's closed set and an announcement entry carrying one is damage. The
@@ -507,6 +540,27 @@ func TestARangeThatMoved(t *testing.T) {
 			t.Errorf("narrow reading wide: a refused batch handed back score=%d", got)
 		}
 	}
+	// AND THE FIELD AFTER IT: the value is decoded at the SENDER's 17 bits,
+	// so the field that follows lands on its own bit. A reader that spends
+	// its own 18 bits reads one bit of the next reference into the score, and
+	// the rest of the body off its frame.
+	{
+		narrow := tempUnit(t, "package rowdemo\n\nfixed table Tally\n{\n    score int32 = 0 | min = 0, max = 100000\n    tag uint32 = 0\n}\n")
+		wide := tempUnit(t, "package rowdemo\n\nfixed table Tally\n{\n    score int32 = 0 | min = 0, max = 200000\n    tag uint32 = 0\n}\n")
+		nm, wm := tabletext.NewModel(narrow), tabletext.NewModel(wide)
+		nv := vocabularyOf(t, narrow)
+		inst := nm.New(nm.Lookup("Tally"))
+		setI64(t, inst, "score", 90000)
+		setU64(t, inst, "tag", 0xA5A5A5A5)
+		message, err := tablewire.EncodeMessage(nm, inst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		back, ok, report, derr := decodeOne(t, wm, "Tally", nv, message)
+		if derr != nil || !ok || !report.Silent() || fieldOf(t, back, "score").Cell.I != 90000 || instU64(t, back, "tag") != 0xA5A5A5A5 {
+			t.Errorf("wide reading narrow, the field after: ok=%v err=%v report=%+v score=%d tag=%#x", ok, derr, report, fieldOf(t, back, "score").Cell.I, instU64(t, back, "tag"))
+		}
+	}
 }
 
 // TestTheShapesOneRowAKind: an announcement carrying every kind of the closed
@@ -700,10 +754,12 @@ func TestAHostileShape(t *testing.T) {
 		t.Errorf("an array over element kind 12: err=%v report=%+v announced=%v entries=%d", serr, sreport, sv.Announced(), len(sv.Entries()))
 	}
 	// AND EACH CEILING'S OWN VALUE IS ACCEPTED, because an unbounded array
-	// announces the array one (§2.9) and a `string(N)` may declare the other
+	// announces the array one (§2.9) and a `string(N)` may declare the other.
+	// The array ceiling is spelled here, 2^32 - 1, and not read back from
+	// ir.TableMessageListMax: a reader whose ceiling moved must go red.
 	ceilings := ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...),
 		ir.TableVocabularyEntry{Id: ir.TableWireId("edge_string"), Kind: ir.TableKindString, Shape: ir.TableMessageShape{Max: math.MaxInt32}},
-		ir.TableVocabularyEntry{Id: ir.TableWireId("edge_array"), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: ir.TableMessageListMax, Elem: ir.TableKindU8, Inner: &ir.TableMessageShape{}}}))
+		ir.TableVocabularyEntry{Id: ir.TableWireId("edge_array"), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 1<<32 - 1, Elem: ir.TableKindU8, Inner: &ir.TableMessageShape{}}}))
 	body := append(versionField(backendVocabulary.BuildVersion()), vocabularyField(ceilings)...)
 	body = append(body, 0)
 	v, report, err := readAnnouncement(forgeAnnouncement(body, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId))
@@ -767,6 +823,13 @@ func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 	}
 	if report.Unknown != 1 || report.Refused {
 		t.Errorf("the tolerant row's report is %+v", report)
+	}
+	// AND THE TOLERANCE STOPS AT THE FILE'S OWN RULE: the same unknown field
+	// twice is the same field id twice in one body, which refuses the
+	// announcement as it refuses any file (§6.5), and sets no vocabulary
+	twice := forgeAnnouncement(terminated(versionField(0x8877665544332211), []byte{3, 8, 9, 0, 0, 0}, []byte{3, 8, 9, 0, 0, 0}, vocabularyField(vocab)), ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId, 0x1122334455667788)
+	if tv, treport, terr := readAnnouncement(twice); !readRefused(terr, treport) || tv.Announced() {
+		t.Errorf("an unknown field twice: err=%v announced=%v report=%+v", terr, tv.Announced(), treport)
 	}
 }
 
@@ -1266,6 +1329,19 @@ func TestTheSixFindings(t *testing.T) {
 		read, ok, report, derr := decodeOne(t, model, "Bases", own, message)
 		if ok || !readRefused(derr, report) || instU64(t, read, "narrow") != instU64(t, model.New(model.Lookup("Bases")), "narrow") {
 			t.Errorf("the offset body refuses: ok=%v err=%v report=%+v narrow=%d", ok, derr, report, instU64(t, read, "narrow"))
+		}
+		// and read by a peer whose own range is [0, 10], where the wrapped
+		// value would land INSIDE the bound: offset 60 reconstructs 260,
+		// which is past 10 and refuses, and never wraps to 4 and reads
+		low := tempUnit(t, "package basesdemo\n\nfixed table Bases\n{\n    narrow uint8 = 0 | min = 0, max = 10\n}\n")
+		lm := tabletext.NewModel(low)
+		wrap := &bitw{}
+		wrap.put(narrowSlot, own.RefBits())
+		wrap.put(60, 6)
+		wrap.put(0, own.RefBits())
+		lread, lok, lreport, lerr := decodeOne(t, lm, "Bases", own, batchOf(wrap))
+		if lok || !readRefused(lerr, lreport) || instU64(t, lread, "narrow") != 0 {
+			t.Errorf("260 read by [0, 10] refuses: ok=%v err=%v report=%+v narrow=%d", lok, lerr, lreport, instU64(t, lread, "narrow"))
 		}
 	}
 	// M4 rides TestTheBasesTwoEncodings and M5 rides

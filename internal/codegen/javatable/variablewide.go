@@ -152,22 +152,83 @@ const variableWideJsonRuntime = `
         return text.indexOf('.')<0?text+".0":text;
     }
     // Exact raw-scale conversion, with the oracle's bounded decimal band.
-    // A huge exponent is classified before integer allocation (§15, §16.2).
+    // The decimal point is placed by one scan of the token; only a bounded
+    // run of significant digits reaches a big-number conversion (§15, §16.2).
     static java.math.BigInteger readWide(In in,boolean signed,int fraction,java.math.BigInteger lo,java.math.BigInteger hi){
         int c=in.peek();if(c!='-'&&(c<'0'||c>'9')){in.skipValue();in.rep.refuse("kind_mismatch");return null;}
         String token=in.scanNumber(new boolean[1]);if(in.bad||token==null)return null;
         java.math.BigInteger domainHi=java.math.BigInteger.ONE.shiftLeft(signed?127:128).subtract(java.math.BigInteger.ONE);
         java.math.BigInteger domainLo=signed?java.math.BigInteger.ONE.shiftLeft(127).negate():java.math.BigInteger.ZERO;
-        boolean nonzero=false;for(int i=0;i<token.length()&&token.charAt(i)!='e'&&token.charAt(i)!='E';i++)if(token.charAt(i)>='1'&&token.charAt(i)<='9')nonzero=true;
+        int n=token.length(),at=0;boolean negative=false;
+        if(token.charAt(at)=='-'){negative=true;at++;}
+        int intStart=at;while(at<n&&token.charAt(at)>='0'&&token.charAt(at)<='9')at++;
+        int intLen=at-intStart,fracStart=-1,fracLen=0;
+        if(at<n&&token.charAt(at)=='.'){at++;fracStart=at;while(at<n&&token.charAt(at)>='0'&&token.charAt(at)<='9')at++;fracLen=at-fracStart;}
+        long exp=0;boolean expNegative=false;
+        if(at<n&&(token.charAt(at)=='e'||token.charAt(at)=='E')){
+            at++;if(at<n&&(token.charAt(at)=='-'||token.charAt(at)=='+')){expNegative=token.charAt(at)=='-';at++;}
+            long cap=(long)n+100L;
+            while(at<n&&token.charAt(at)>='0'&&token.charAt(at)<='9'){if(exp<cap)exp=exp*10+(token.charAt(at)-'0');at++;}
+            if(expNegative)exp=-exp;
+        }
+        int first=-1,last=-1;
+        for(int k=0;k<intLen+fracLen;k++){
+            char d=k<intLen?token.charAt(intStart+k):token.charAt(fracStart+k-intLen);
+            if(d!='0'){if(first<0)first=k;last=k;}
+        }
         java.math.BigInteger raw=java.math.BigInteger.ZERO;
-        if(nonzero){
-            try{
-                java.math.BigDecimal value=new java.math.BigDecimal(token);long point=(long)value.precision()-value.scale();
-                if(point>40){in.rep.refuse("out_of_range");raw=token.charAt(0)=='-'?domainLo:domainHi;}
-                else if(point< -40){in.rep.refuse("kind_mismatch");return null;}
-                else{try{raw=value.multiply(new java.math.BigDecimal(java.math.BigInteger.ONE.shiftLeft(fraction))).toBigIntegerExact();}catch(ArithmeticException finer){in.rep.refuse("kind_mismatch");return null;}raw=TableVariable.clampInteger(raw,domainLo,domainHi,in.rep);}
-            }catch(NumberFormatException exponent){int e=Math.max(token.indexOf('e'),token.indexOf('E'));if(e>=0&&e+1<token.length()&&token.charAt(e+1)=='-'){in.rep.refuse("kind_mismatch");return null;}in.rep.refuse("out_of_range");raw=token.charAt(0)=='-'?domainLo:domainHi;}
+        if(first>=0){
+            long point=(long)intLen+exp-(long)first;int sig=last-first+1;
+            if(point>40){in.rep.refuse("out_of_range");raw=negative?domainLo:domainHi;}
+            else if(point< -40){in.rep.refuse("kind_mismatch");return null;}
+            else{
+                long scale=point-(long)sig;
+                if(scale< -(long)fraction){in.rep.refuse("kind_mismatch");return null;}
+                StringBuilder digits=new StringBuilder(sig);
+                for(int q=first;q<=last;q++)digits.append(q<intLen?token.charAt(intStart+q):token.charAt(fracStart+q-intLen));
+                raw=new java.math.BigInteger(digits.toString()).shiftLeft(fraction);
+                if(scale>=0){raw=raw.multiply(java.math.BigInteger.TEN.pow((int)scale));}
+                else{
+                    java.math.BigInteger[] qr=raw.divideAndRemainder(java.math.BigInteger.TEN.pow((int)-scale));
+                    if(qr[1].signum()!=0){in.rep.refuse("kind_mismatch");return null;}
+                    raw=qr[0];
+                }
+                if(negative)raw=raw.negate();
+                raw=TableVariable.clampInteger(raw,domainLo,domainHi,in.rep);
+            }
         }
         return TableVariable.clampInteger(raw,lo,hi,in.rep);
+    }
+    // A map key is an exact integer token, answered from its significant
+    // digits: a token past the band is refused before any big-number work.
+    static java.math.BigInteger exactIntegerToken(String token){
+        int n=token.length(),at=0;boolean negative=false;
+        if(at<n&&(token.charAt(at)=='-'||token.charAt(at)=='+')){negative=token.charAt(at)=='-';at++;}
+        int intStart=at;while(at<n&&token.charAt(at)>='0'&&token.charAt(at)<='9')at++;
+        int intLen=at-intStart,fracStart=-1,fracLen=0;
+        if(at<n&&token.charAt(at)=='.'){at++;fracStart=at;while(at<n&&token.charAt(at)>='0'&&token.charAt(at)<='9')at++;fracLen=at-fracStart;}
+        long exp=0;boolean expNegative=false;
+        if(at<n&&(token.charAt(at)=='e'||token.charAt(at)=='E')){
+            at++;if(at<n&&(token.charAt(at)=='-'||token.charAt(at)=='+')){expNegative=token.charAt(at)=='-';at++;}
+            long cap=2147483649L;
+            while(at<n&&token.charAt(at)>='0'&&token.charAt(at)<='9'){if(exp<cap)exp=exp*10+(token.charAt(at)-'0');at++;}
+            if(expNegative)exp=-exp;
+        }
+        int first=-1,last=-1;
+        for(int k=0;k<intLen+fracLen;k++){
+            char d=k<intLen?token.charAt(intStart+k):token.charAt(fracStart+k-intLen);
+            if(d!='0'){if(first<0)first=k;last=k;}
+        }
+        if(first<0){
+            if(exp>2147483648L||exp< -2147483647L)return null;
+            return java.math.BigInteger.ZERO;
+        }
+        long point=(long)intLen+exp-(long)first;int sig=last-first+1;long scale=point-(long)sig;
+        if(point>40||scale<0)return null;
+        StringBuilder digits=new StringBuilder(sig);
+        for(int q=first;q<=last;q++)digits.append(q<intLen?token.charAt(intStart+q):token.charAt(fracStart+q-intLen));
+        java.math.BigInteger value=new java.math.BigInteger(digits.toString());
+        if(scale>0)value=value.multiply(java.math.BigInteger.TEN.pow((int)scale));
+        return negative?value.negate():value;
     }
 `

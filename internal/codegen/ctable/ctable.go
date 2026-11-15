@@ -167,7 +167,11 @@ type tableGen struct {
 	// names its table; fixedLoop is that body's element-loop nesting depth.
 	fixedTable string
 	fixedLoop  int
-	includes   map[string]bool // referenced files -> #include "<base>Table.h"
+	// fixedWriteCheck is set while the bounds pass is emitted as the WRITE
+	// CHECK (docs/SPEC.md §5.1) rather than the read-side clamp: the same
+	// closed list of value bounds, over const storage a caller filled.
+	fixedWriteCheck bool
+	includes        map[string]bool // referenced files -> #include "<base>Table.h"
 }
 
 func (g *tableGen) canProbe(st *ir.Struct) bool {
@@ -1032,11 +1036,11 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 		// needs <stdlib.h> whether or not NDEBUG keeps the assert.
 		h.WriteString("#include <assert.h> /* the keyed accessor's None refusal, in a debug build */\n")
 		h.WriteString("#include <stdlib.h> /* and its abort, which NDEBUG does not remove */\n")
-	} else if ir.TableFixedHasWriteBound(u) {
-		// THE FIXED FORM'S WRITE-SIDE BOUNDS need the assert and NOTHING after
-		// it (docs/SPEC-TABLES.md §3.4): a text field's used length and a
-		// counted array's live count, debug-only, with no abort behind them —
-		// so this unit takes <assert.h> and not <stdlib.h>.
+	} else if unitHasWriteBound(u) {
+		// THE WRITE-SIDE CHECKS need the assert and NOTHING after it
+		// (docs/SPEC.md §5.1): a text field's used length, a counted array's
+		// live count and the value bounds, debug-only, with no abort behind
+		// them — so this unit takes <assert.h> and not <stdlib.h>.
 		h.WriteString("#include <assert.h> /* the fixed form's write-side bounds, in a debug build */\n")
 	}
 	fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
@@ -1099,7 +1103,10 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 			if anyBlob {
 				blobGraph = tableBlobGraphRuntime
 			}
-			h.WriteString(strings.Replace(tableGraphRuntime, "@BLOB_GRAPH@", blobGraph, 1))
+			graph := strings.Replace(tableGraphRuntime, "@BLOB_GRAPH@", blobGraph, 1)
+			graph = strings.ReplaceAll(graph, "@BYTES_TYPE_ID@", fmt.Sprintf("0x%016x", ir.BytesWireTypeId))
+			graph = strings.ReplaceAll(graph, "@STRING_TYPE_ID@", fmt.Sprintf("0x%016x", ir.StringWireTypeId))
+			h.WriteString(graph)
 		}
 	}
 	// the COOKED FORM's read side (docs/SPEC-TABLES.md §7) and the BUILD VERSION

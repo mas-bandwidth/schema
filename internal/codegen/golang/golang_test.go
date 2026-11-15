@@ -80,13 +80,12 @@ func TestBareFloatConstExportsTypedFloat64(t *testing.T) {
 }
 
 // Every generated enum surface carries its extent as the member Max (SPEC
-// §4.2 — the exported-extent rule): declared enums (headroom
-// included) and the generated <Union>Type tag enum alike, in each target's
-// own convention. Call sites then state ranges against E.Max's generated
+// §4.2 — the exported-extent rule): declared enums and the generated
+// <Union>Type tag enum alike, in each target's own convention. Call sites then state ranges against E.Max's generated
 // twin instead of a hand-declared count constant.
 func TestEnumExtentEmitted(t *testing.T) {
 	src := "package t\n\n" +
-		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
+		"enum Weapon\n{ Laser, Missile, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15 }\n\n" +
 		"type Box { w Weapon }\n\n" +
 		"type Ball { y uint8 }\n\n" +
 		"union Shape {\n    rect  Box\n    ball Ball\n}\n"
@@ -160,11 +159,10 @@ func TestEnumExtentEmitted(t *testing.T) {
 // An enum has no Count (SPEC §4.2, the 2026-09-13 ruling): its declared
 // variant count is its Max, and no target emits an enum Count: every
 // expectation below pins the Count spelling at zero and the Max at one. Both
-// enums are pinned, the widened one (| max = K) asserting Max past its
-// variants.
+// enums are pinned; an enum's Max is its variant count.
 func TestEnumDeclaredCountEmitted(t *testing.T) {
 	src := "package t\n\n" +
-		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
+		"enum Weapon\n{ Laser, Missile, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15 }\n\n" +
 		"enum Team { Red, Blue, Green }\n\n" +
 		"type Box {\n    w Weapon\n    t Team\n}\n"
 	f, perrs := parser.Parse("Counts.schema", []byte(src))
@@ -178,8 +176,8 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 	if len(cerrs) > 0 {
 		t.Fatalf("check: %v", cerrs[0])
 	}
-	if got, max := len(u.Enums["Weapon"].Variants), u.Enums["Weapon"].Max; int64(got) >= max {
-		t.Fatalf("Weapon: Count = %d, Max = %d — the headroom case must have Count < Max", got, max)
+	if got, max := len(u.Enums["Weapon"].Variants), u.Enums["Weapon"].Max; int64(got) != max {
+		t.Fatalf("Weapon: variant count = %d, Max = %d — an enum's Max is its variant count", got, max)
 	}
 
 	type expectation struct {
@@ -525,16 +523,22 @@ func TestFlatFallbackReEmitsItemsNotPieces(t *testing.T) {
 		}
 	}
 
-	// A file whose every float run falls back imports no math: needsMath is
-	// set at emission, not during the speculative classification every run
-	// accumulator performs.
+	// A file whose every float run falls back imports math exactly as far as
+	// it reaches it: needsMath is set at emission, not during the speculative
+	// classification every run accumulator performs. The fallback's only
+	// reach is the per-field write's finite guard, one per float (SPEC §5.1
+	// row 7); the read leaves the rule to serialize's own float calls.
 	files = generateGo(t, "Vec", "package t\n\ntype Vec2\n{\n    x float64\n    y float64\n}\n")
-	if got := countAcross(files, `"math"`); got != 0 {
-		t.Errorf("a bare two-float unit imported math %d times — nothing in it reaches "+
-			"math, so the import does not compile", got)
+	if got := countAcross(files, `"math"`); got != 1 {
+		t.Errorf("a bare two-float unit imported math %d times, want once — its write "+
+			"guards reach math", got)
 	}
-	if got := countAcross(files, "math."); got != 0 {
-		t.Errorf("a bare two-float unit referenced math %d times — its runs fall back "+
+	if got := countAcross(files, "math."); got != 2 {
+		t.Errorf("a bare two-float unit referenced math %d times, want one finite "+
+			"guard per float", got)
+	}
+	if got := strings.Count(funcBody(t, files, "func ReadVec2("), "math."); got != 0 {
+		t.Errorf("ReadVec2 referenced math %d times — its runs fall back "+
 			"to serialize's own float calls", got)
 	}
 }
@@ -676,8 +680,9 @@ func TestClampTopOfRange(t *testing.T) {
 // reaches serialize.go's SerializeFloat32/64, so the generated writer must
 // refuse a NaN or an infinity, and the generated reader a pattern whose
 // exponent field is all ones, each with serialize.ErrNonFiniteFloat. A
-// single-float struct keeps the per-field form, whose runtime call carries
-// the rule, and emits no guard of its own. make packet-finite-go runs the
+// single-float struct keeps the per-field form: its write emits the same
+// guard before the runtime call (SPEC §5.1 row 7, a refusal in every build),
+// and its read leaves the rule to the runtime call. make packet-finite-go runs the
 // vectors and packet-finite-go-negative-control proves each guard is load
 // bearing.
 func TestGoFlatFloatsAreFiniteOnly(t *testing.T) {
@@ -711,8 +716,12 @@ func TestGoFlatFloatsAreFiniteOnly(t *testing.T) {
 		if !strings.Contains(body, "stream.SerializeFloat32(&value.X)") {
 			t.Errorf("%s left the per-field form, so the shape under test did not arise\n%s", decl, body)
 		}
-		if strings.Contains(body, "ErrNonFiniteFloat") {
-			t.Errorf("%s guards a float the runtime already refuses\n%s", decl, body)
+		guards := strings.Count(body, "return serialize.ErrNonFiniteFloat")
+		if decl == "func WriteSingle(" && guards != 1 {
+			t.Errorf("%s refuses non_finite_float %d times, want once before the runtime write\n%s", decl, guards, body)
+		}
+		if decl == "func ReadSingle(" && guards != 0 {
+			t.Errorf("%s guards a float the runtime read already refuses\n%s", decl, body)
 		}
 	}
 }

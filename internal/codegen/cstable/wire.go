@@ -126,7 +126,7 @@ func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 			childName := childSt.Name
 			if f.CountedOnWire() {
 				g.pf("    int count_%d = v.%sCount;\n", i, prop)
-				g.pf("    if (count_%d < 0 || count_%d > %d) return false;\n", i, i, f.ArrayBound)
+				g.pf("    System.Diagnostics.Debug.Assert(count_%d >= 0 && count_%d <= %d);\n", i, i, f.ArrayBound)
 				g.pf("    if (count_%d > 0)\n    {\n", i)
 				g.pf("        if (!ids.Add(0x%016xul)) return false;\n", id)
 				g.pf("        for (int i_%d = 0; i_%d < count_%d; i_%d++)\n        {\n", i, i, i, i)
@@ -489,12 +489,15 @@ public static partial class TableWire
 {
     public enum Verdict { Ok, Refused, Damaged, BodyStopped }
 
-    // A null report is DISCARDED, not created: one cached instance carries the
-    // ledger for a caller who supplies no report, so a null-report read
-    // allocates nothing (docs/SPEC-TABLES.md §6.5). The head of every read
-    // resets it exactly as it resets a caller-supplied report, so no earlier
-    // read's verdict leaks into the next.
-    public static readonly TableReport Ignored = new TableReport();
+    // A null report is DISCARDED, not created: the ledger for a caller who
+    // supplies no report is per thread, so no read on another thread can reach
+    // it, and a read never re-enters on its own thread. Each thread caches its
+    // ledger on first use, so a null-report read allocates nothing after that
+    // (docs/SPEC-TABLES.md §6.5). The head of every read resets it exactly as
+    // it resets a caller-supplied report.
+    [ThreadStatic]
+    static TableReport ignored;
+    static TableReport IgnoredReport() { return ignored ?? (ignored = new TableReport()); }
 
     // One schema-bounded vocabulary lives on the caller's stack for a save.
     // Collect follows the emitted fields in order. Measuring and writing then
@@ -643,12 +646,12 @@ public static partial class TableWire
         {
             switch (n)
             {
-                case 1: Byte((byte)v); return;
-                case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)v); break;
-                case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), (uint)v); break;
+                case 1: Byte(unchecked((byte)v)); return;
+                case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), unchecked((ushort)v)); break;
+                case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), unchecked((uint)v)); break;
                 case 8: System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(Buffer.Slice(Offset), v); break;
                 default:
-                    for (int i = 0; i < n; i++) { Byte((byte)v); v >>= 8; }
+                    for (int i = 0; i < n; i++) { Byte(unchecked((byte)v)); v >>= 8; }
                     return;
             }
             Offset += n;
@@ -672,9 +675,9 @@ public static partial class TableWire
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Var(ulong v)
         {
-            if (v < 128) { Byte((byte)v); return; }
-            while (v >= 128) { Byte((byte)(v | 128)); v >>= 7; }
-            Byte((byte)v);
+            if (v < 128) { Byte(unchecked((byte)v)); return; }
+            while (v >= 128) { Byte(unchecked((byte)(v | 128))); v >>= 7; }
+            Byte(unchecked((byte)v));
         }
     }
 
@@ -839,12 +842,14 @@ public static partial class TableWire
         {
             object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0];
             int count = Count(child, text);
-            return count >= 0 && count <= text.ArrayBound && TextValid(text.GetBuffer(child).AsSpan(0, count));
+            System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
+            return TextValid(text.GetBuffer(child).AsSpan(0, count));
         }
         if (!f.IsArray && f.Kind == 12)
         {
             int count = Count(value, f);
-            return count >= 0 && count <= f.ArrayBound && TextValid(f.GetBuffer(value).AsSpan(0, count));
+            System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
+            return TextValid(f.GetBuffer(value).AsSpan(0, count));
         }
         if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
         if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
@@ -873,7 +878,7 @@ public static partial class TableWire
     {
         if (f == null) { return true; } // selected, payload-free arm
         int count = Count(value, f);
-        if (f.Counted && (count < 0 || count > f.ArrayBound)) { return false; }
+        if (f.Counted) { System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound); }
         if (f.TextTotal > 0 && !TextFits(value, f)) { return false; }
         if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
         for (int i = 0; i < count; i++)
@@ -893,7 +898,7 @@ public static partial class TableWire
         {
             if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
             if (f.Optional && !f.GetPresent(value)) { continue; }
-            if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+            if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
             if (Rides(value, f) && (!ids.Add(f.Id) || !CollectPayload(value, f, ref ids))) { return false; }
         }
         return true;
@@ -1012,7 +1017,7 @@ public static partial class TableWire
         else if (f.GetWide != null)
         {
             UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
-            w.Fixed((ulong)raw, Math.Min(width, 8)); if (width == 16) { w.Fixed((ulong)(raw >> 64), 8); }
+            w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         }
         else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i), Width(f.Kind)); }
     }
@@ -1082,7 +1087,7 @@ public static partial class TableWire
     {
         if (f.WireGuard != null && !f.WireGuard(value)) { return true; }
         if (f.Optional && !f.GetPresent(value)) { return true; }
-        if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+        if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
         return !Rides(value, f) || (ids.Add(f.Id) && CollectPayload(value, f, ref ids));
     }
     public static long BodySizeField(object value, TableFieldInfo f, ref Ids ids, scoped Span<long> elemCache, out long payload)
@@ -1690,7 +1695,7 @@ public static partial class TableWire
     static Verdict Finish(TableReport report, Verdict verdict) { report.Verdict = verdict; return verdict; }
     public static Verdict Load(object value, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableReport report)
     {
-        if (report == null) { report = Ignored; }
+        if (report == null) { report = IgnoredReport(); }
         type.Reset(value);
         report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
         if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }

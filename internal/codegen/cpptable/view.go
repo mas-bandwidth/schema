@@ -421,10 +421,10 @@ func (v *viewGen) emitUnionVocabulary(g *tableGen, un *ir.Union) {
 		case va.Void():
 			// a PAYLOAD-FREE arm's name and its tag are all there is of it
 		case va.Body():
-			payloadName = fmt.Sprintf("%q", ir.FieldTypeSpelling(va.F))
+			payloadName = cStringLit([]byte(ir.FieldTypeSpelling(va.F)))
 			payload = va.Type + "TableType()"
 		default:
-			payloadName = fmt.Sprintf("%q", ir.FieldTypeSpelling(va.F))
+			payloadName = cStringLit([]byte(ir.FieldTypeSpelling(va.F)))
 			field = fmt.Sprintf("&%s_view_arm_fields[%d]", un.Name, row)
 			row++
 		}

@@ -4,8 +4,9 @@ package squirreltable_test
 // ENGINE (docs/SPEC-TABLES.md §3.3, §4, §7.6; SPEC.md §4.3):
 //
 //   - TestSquirrelCompressedFloatClampsLikeGo: the variable form's read of a
-//     COMPRESSED float32 clamps a finite value past an end to that end and
-//     counts clamped, and lands a -0 as +0, exactly as tablewire's scalarAt.
+//     COMPRESSED float32 refuses a wire carrying a finite value past an end
+//     (the strict read: never clamped, §7.6) and reads every in-range value
+//     bit for bit, exactly as tablewire.Decode.
 //   - TestSquirrelMessageQuantizerIsGos: the message form's quantizer and
 //     dequantizer are ir.TableMessageQuantize / TableMessageDequantize in
 //     float32, fuzzed over random values, step midpoints and their
@@ -22,6 +23,8 @@ package squirreltable_test
 // The fuzz is seeded: no real time, no randomness between runs.
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -249,40 +252,87 @@ func fpField(t *testing.T, st *ir.Struct, name string) *ir.Field {
 	return nil
 }
 
-// ---- 1. the variable form's compressed clamp --------------------------------
+// ---- 1. the variable form's compressed range --------------------------------
 
+// fpPatchF32 overwrites the one little-endian float32 payload holding from
+// with to's bits: the writer refuses a value past an end (invalid_value), so
+// a wire carrying one is the in-range value's wire with its four bytes moved.
+func fpPatchF32(t *testing.T, wire []byte, from, to float32) []byte {
+	t.Helper()
+	var old, now [4]byte
+	binary.LittleEndian.PutUint32(old[:], math.Float32bits(from))
+	binary.LittleEndian.PutUint32(now[:], math.Float32bits(to))
+	if n := bytes.Count(wire, old[:]); n != 1 {
+		t.Fatalf("the payload %08x appears %d times in the wire, want exactly once", math.Float32bits(from), n)
+	}
+	return bytes.Replace(wire, old[:], now[:], 1)
+}
+
+// fpClampRows: each row is a V wire whose q and r carry the fuzz values. A
+// value inside its declared range is written as it is; a value past an end
+// is forged into the wire (fpPatchF32). The Go engine's strict read is the
+// verdict: the in-range rows read, bit for bit, and a row carrying a value
+// past an end refuses, never clamped (docs/SPEC-TABLES.md §7.6: a leg that
+// lands or clamps a finite value past an end is out of conformance). The
+// leg's strict read must answer the same verdict and bits.
 func fpClampRows(t *testing.T, model *tabletext.Model) ([]fpRow, map[string][]byte) {
 	st := model.Lookup("V")
 	q, r := fpField(t, st, "q"), fpField(t, st, "r")
 	rng := rand.New(rand.NewPCG(1, 2))
 	qs, rs := fpValues(rng, q, 400), fpValues(rng, r, 400)
+	inside := func(f *ir.Field, x float32) bool { return float64(x) >= f.FMin && float64(x) <= f.FMax }
+	// the stand-ins a forged value replaces: in range, nonzero (a zero is
+	// elided by the writer) and distinct, so each payload is found once
+	const qStandIn, rStandIn = float32(0.5), float32(0.25)
 	inputs := map[string][]byte{}
 	var rows []fpRow
 	for i := range qs {
+		wq, wr := qs[i], rs[i]
+		if !inside(q, wq) {
+			wq = qStandIn
+		}
+		if !inside(r, wr) {
+			wr = rStandIn
+		}
 		inst := model.New(st)
-		nfField(t, inst, "q").Cell.F = float64(qs[i])
-		nfField(t, inst, "r").Cell.F = float64(rs[i])
+		nfField(t, inst, "q").Cell.F = float64(wq)
+		nfField(t, inst, "r").Cell.F = float64(wr)
 		wire, err := tablewire.Encode(model, inst)
 		if err != nil {
-			t.Fatalf("clamp row %d: the oracle refused %v, %v: %v", i, qs[i], rs[i], err)
+			t.Fatalf("clamp row %d: the oracle refused %v, %v: %v", i, wq, wr, err)
 		}
-		back := model.New(st)
-		var rep tabletext.Report
-		if ok, err := tablewire.Decode(model, back, wire, &rep); !ok || err != nil {
-			t.Fatalf("clamp row %d: the oracle's reader answered %v %v", i, ok, err)
+		past := false
+		if !inside(q, qs[i]) {
+			wire, past = fpPatchF32(t, wire, qStandIn, qs[i]), true
 		}
-		gq := math.Float32bits(float32(nfField(t, back, "q").Cell.F))
-		gr := math.Float32bits(float32(nfField(t, back, "r").Cell.F))
+		if !inside(r, rs[i]) {
+			wire, past = fpPatchF32(t, wire, rStandIn, rs[i]), true
+		}
 		key := fmt.Sprintf("clamp:%d", i)
 		inputs[key] = wire
+		back := model.New(st)
+		var rep tabletext.Report
+		ok, err := tablewire.Decode(model, back, wire, &rep)
+		want := key + " refused"
+		switch {
+		case past && (ok || err == nil):
+			t.Fatalf("clamp row %d: the oracle read %v, %v, a value past an end", i, qs[i], rs[i])
+		case !past && (!ok || err != nil):
+			t.Fatalf("clamp row %d: the oracle refused %v, %v: %v", i, qs[i], rs[i], err)
+		case !past:
+			gq := math.Float32bits(float32(nfField(t, back, "q").Cell.F))
+			gr := math.Float32bits(float32(nfField(t, back, "r").Cell.F))
+			want = fmt.Sprintf("%s read %08x,%08x", key, gq, gr)
+		}
 		rows = append(rows, fpRow{
 			key:  key,
-			code: fmt.Sprintf(`{ local rep = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0, bodyDamaged = false, refused = false }; local v = L.loadWalk(T, "V", I[%q], rep); print(%q + " " + rep.oor + " " + f32bits(v.Q) + "," + f32bits(v.R) + "\n"); }`, key, key),
-			want: fmt.Sprintf("%s %d %08x,%08x", key, rep.Unknown, gq, gr),
-			// the control lands every value as written: the rows the engine
-			// clamped go red, and only those (a -0 is elided by the writer, as
-			// +0 is, so it never reaches the read)
-			red: rep.Unknown > 0,
+			code: fmt.Sprintf(`{ local rep = {}; local v = L.load(T, "V", I[%q], rep); print(%q + (v == null ? " refused" : " read " + f32bits(v.Q) + "," + f32bits(v.R)) + "\n"); }`, key, key),
+			want: want,
+			// the control lands every value as written: the rows carrying a
+			// value past an end read where they must refuse, and only those
+			// (a -0 is elided by the writer, as +0 is, so it never reaches
+			// the read)
+			red: past,
 		})
 	}
 	return rows, inputs
@@ -296,7 +346,6 @@ var fpClampSabotage = [][2]string{{
 }}
 
 func TestSquirrelCompressedFloatClampsLikeGo(t *testing.T) {
-	t.Skip("layer 4 (squirrel): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	sqrun.Require(t)
 	u, model := fpUnit(t)
@@ -305,7 +354,6 @@ func TestSquirrelCompressedFloatClampsLikeGo(t *testing.T) {
 }
 
 func TestSquirrelCompressedFloatClampNegativeControl(t *testing.T) {
-	t.Skip("layer 4 (squirrel): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	sqrun.Require(t)
 	u, model := fpUnit(t)

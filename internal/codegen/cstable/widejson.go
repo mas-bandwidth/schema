@@ -31,10 +31,10 @@ const tableWideJsonSource = `
         if (fraction == 0) { o.Put((byte)'0'); return; }
         while (fraction != 0)
         {
-            UInt128 low = (UInt128)(ulong)fraction * 10;
+            UInt128 low = (UInt128)unchecked((ulong)fraction) * 10;
             UInt128 high = (fraction >> 64) * 10 + (low >> 64);
             uint carry = (uint)(high >> 64);
-            fraction = (high << 64) | (ulong)low;
+            fraction = (high << 64) | unchecked((ulong)low);
             ulong digit = (ulong)(fraction >> frac);
             if (frac > 64) { digit |= (ulong)carry << (128 - frac); }
             o.Put((byte)('0' + (int)digit)); fraction &= mask;
@@ -42,7 +42,7 @@ const tableWideJsonSource = `
     }
     static bool ReadWide(ReadOnlySpan<char> token, ref In input, object owner, TableFieldInfo f, int index)
     {
-        Span<byte> digits = stackalloc byte[MaxNumber];
+        byte[] digits = new byte[token.Length];
         int pos = 0, n = 0, integer = 0;
         bool negative = token[0] == '-';
         if (negative) { pos++; }
@@ -70,7 +70,7 @@ const tableWideJsonSource = `
         else if (point < -40) { return RefuseText(ref input, "kind_mismatch"); }
         else
         {
-            Span<byte> fractionDigits = stackalloc byte[MaxNumber + 48];
+            byte[] fractionDigits = new byte[token.Length + 48];
             int fn = 0;
             for (int z = point; z < 0; z++) { fractionDigits[fn++] = 0; }
             for (int k = Math.Max(point, 0) + start; k < end; k++) { fractionDigits[fn++] = digits[k]; }

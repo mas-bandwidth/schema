@@ -31,6 +31,7 @@ func TestCppVariableWideAlignment(t *testing.T) {
 		{"nested", "fixed table Wide { n uint128 }\ntable Root { value Wide\nnext *Root }", `{"value":{"n":1267650600228229401496703205383}}`, 16},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			u := unitFromSource(t, "package fixture\n"+tc.source+"\n")
 			if got := ir.TableRegionAlign(u); got != tc.align {
 				t.Fatalf("alignment %d, want %d", got, tc.align)
@@ -120,9 +121,12 @@ func referenceCompileRun(t *testing.T, files map[string][]byte, source string, f
 	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
+	// The three builds are independent compiles of the same source, each to its
+	// own binary, so they run side by side rather than one after another.
 	for _, mode := range []string{"debug", "release", "sanitize"} {
 		t.Run(mode, func(t *testing.T) {
-			bin := filepath.Join(dir, "probe")
+			t.Parallel()
+			bin := filepath.Join(dir, "probe-"+mode)
 			args := []string{"-std=c++17", "-O1", "-g", "-Wall", "-Wextra", "-Werror", "-I" + runtime, path, "-o", bin}
 			args = append(args, flags...)
 			if mode == "release" {
