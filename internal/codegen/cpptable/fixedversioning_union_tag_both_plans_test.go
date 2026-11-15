@@ -5,9 +5,12 @@ package cpptable
 // forge sets the ONE-BYTE `pick.type` tag of `old_union_append.bin`'s single
 // record to 9 — past the OLD writer's two arms and the NEW reader's three —
 // located by the nine-byte needle 01 07 00 00 00 0F 00 00 00, asserted to occur
-// EXACTLY ONCE before the write. `out_of_range` is `== 1` and never `>= 1`: a leg
-// that counts the tag in the plan's op AND again in the decode projection lands
-// 2, and the looser read is precisely what this row exists to catch.
+// EXACTLY ONCE before the write; the four arm bytes behind the tag are cleared
+// because a tag that names no arm leaves the whole arm span DEAD, and the dead
+// bytes must be zero for the tag to be the only fault. `out_of_range` is `== 1`
+// and never `>= 1`: a leg that counts the tag in the plan's op AND again in the
+// decode projection lands 2, and the looser read is precisely what this row
+// exists to catch.
 //
 // MEASURED 2026-09-19 ON THE GATE RIG AT 380f1cad, one leg at a time, each edit
 // counted to exactly 1 and each file restored and proved restored: the union tag
@@ -60,6 +63,8 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
         }
         if ( found < 0 ) { printf( "the locator (pick.type=alpha, alpha.m=7, seq=15) matched nowhere\n" ); return 1; }
         data[found] = 9; /* the forge */
+        /* A TAG THAT NAMES NO ARM MAKES THE WHOLE ARM SPAN DEAD (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3 step 11): clear the widest arm's four bytes so the tag is the record's only fault. */
+        memset( data + found + 1, 0, 4 );
     }
 `
 

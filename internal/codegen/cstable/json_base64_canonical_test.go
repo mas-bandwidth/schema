@@ -61,7 +61,7 @@ table Blob {
 	if err != nil {
 		t.Fatalf("read vector manifest: %v", err)
 	}
-	for _, line := range strings.Split(string(manifest), "\n") {
+	for line := range strings.SplitSeq(string(manifest), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
