@@ -8732,10 +8732,10 @@ func TableEntityFixedMeasure(count int64) int64 {
 }
 
 // TableEntityFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func TableEntityFixedSave(values []TableEntity, buffer []byte) int64 {
 	need := TableEntityFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -8848,7 +8848,7 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
+	if recordBytes <= 8 || rest%recordBytes != 0 || rest == 0 {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
@@ -8988,10 +8988,10 @@ func TableStatFixedMeasure(count int64) int64 {
 }
 
 // TableStatFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func TableStatFixedSave(values []TableStat, buffer []byte) int64 {
 	need := TableStatFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -9104,7 +9104,7 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
+	if recordBytes <= 8 || rest%recordBytes != 0 || rest == 0 {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
@@ -9468,10 +9468,10 @@ func TableMixedFixedMeasure(count int64) int64 {
 }
 
 // TableMixedFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func TableMixedFixedSave(values []TableMixed, buffer []byte) int64 {
 	need := TableMixedFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -9585,7 +9585,7 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
+	if recordBytes <= 8 || rest%recordBytes != 0 || rest == 0 {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1

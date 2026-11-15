@@ -734,7 +734,7 @@ func TestGoWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 		bin := goBuildWireFuzzPlantedDriver(
 			t,
 			"examples/TablesTable.go",
-			"if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {",
+			"if recordBytes <= 8 || rest%recordBytes != 0 || rest == 0 {",
 			"if recordBytes <= 8 || rest%recordBytes != 0 {",
 			4,
 		)

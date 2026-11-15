@@ -1206,16 +1206,16 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 
 	// THE WRITE-SIDE CONTRACT (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md
 	// "Writes are the caller's responsibility"): Go has no debug-only idiom, so
-	// FixedSave REFUSES in every build — a count past Max, a length past N, a
-	// value off its min/max, an ordinal past its set, ill-formed text — with -1,
-	// and FixedSaveReason names it TableRefuseInvalidValue. The whole batch is
-	// checked before the first byte is stored, so a refused batch leaves the
-	// buffer untouched; nothing is clamped.
+	// FixedSave REFUSES in every build — an empty batch, a count past Max, a
+	// length past N, a value off its min/max, an ordinal past its set,
+	// ill-formed text — with -1, and FixedSaveReason names it TableRefuseInvalidValue.
+	// The whole batch is checked before the first byte is stored, so a refused
+	// batch leaves the buffer untouched; nothing is clamped.
 	g.pf("// %sFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a\n", st.Name)
-	g.pf("// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.\n")
+	g.pf("// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.\n")
 	g.pf("func %sFixedSave(values []%s, buffer []byte) int64 {\n", st.Name, st.Name)
 	g.pf("\tneed := %sFixedMeasure(int64(len(values)))\n", st.Name)
-	g.pf("\tif int64(len(buffer)) < need {\n\t\treturn -1\n\t}\n")
+	g.pf("\tif len(values) == 0 || int64(len(buffer)) < need {\n\t\treturn -1\n\t}\n")
 	if fixedCheckNeededStruct(st, map[string]bool{}) {
 		g.pf("\tfor k := range values {\n\t\tif !%sFixedCheckBody(&values[k]) {\n\t\t\treturn -1\n\t\t}\n\t}\n", st.Name)
 	}
@@ -1347,7 +1347,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// STEP 9 and STEP 10.
 	g.pf("\tat := data[TableFixedHeaderBytes+4+layoutBytes:]\n")
 	g.pf("\trest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)\n")
-	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 || (rest == 0 && len(values) == 1) {\n\t\treport.Refuse(TableRefuseWireDamaged, \"\")\n\t\treport.Reason = TableRefuseTruncated.Error()\n\t\treturn -1\n\t}\n")
+	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 || rest == 0 {\n\t\treport.Refuse(TableRefuseWireDamaged, \"\")\n\t\treport.Reason = TableRefuseTruncated.Error()\n\t\treturn -1\n\t}\n")
 	g.pf("\tn := rest / recordBytes\n")
 	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())\n\t}\n")
 	// Prefill is the dest ranges the winning plan does not land, copied from
