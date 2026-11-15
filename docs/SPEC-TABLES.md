@@ -13862,7 +13862,7 @@ in build version (§20.5).
   SaveText  LoadText  LoadTextForm  SaveTextForm  EditTextForm
   ReadStrict
   MeasureMessages  SaveMessages  LoadMessages
-  LoadMessagesMeasure  SaveMessageBody  LoadMessageBody
+  LoadMessagesMeasure  SaveMessageBody  LoadMessageBody  MessageBodyOk
   LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
   LoadBodyRetain LoadMessageBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
@@ -13870,7 +13870,7 @@ in build version (§20.5).
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
   FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedFiniteBody  FixedRefuseBatch
-  FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  GenPastBound
+  FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
   FixedKnown  FixedFloor  FixedLineagePlans  FixedBoundsKnown
@@ -13882,7 +13882,9 @@ in build version (§20.5).
   §2.9 and §2.13), and Type is the union tag type (§2.6); none of these is
   emitted from the bare table name, so none is claimed here — a declaration
   spelling one is not a collision. The fixed-form image and hole names and the
-  maximum plan capacity are package-level Go data (§3.4), GenPastBound is
+  maximum plan capacity are package-level Go data (§3.4), FixedReadPlan is the
+  plain load's package plan buffer (§3.4), MessageBodyOk is the JavaScript
+  message body's write preflight (docs/SPEC.md §5.1), GenPastBound is
   the exported bound probe helper (§4), and FixedBoundsKnown<i> is a Go table pass holding a record read under lineage entry i to that writer's ranges
   (docs/FIXED-FORM-ALGORITHM.md §4.5).
 

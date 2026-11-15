@@ -512,7 +512,7 @@ func RootConfigLoad(value *RootConfig, data []byte, report *TableReport) bool {
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]RootConfig
-		if RootConfigFixedLoad(fixed[:], data, tableFixedReadPlanRootConfig, read) != 1 {
+		if RootConfigFixedLoad(fixed[:], data, RootConfigFixedReadPlan, read) != 1 {
 			RootConfigReset(value)
 			return false
 		}
@@ -1404,7 +1404,7 @@ func WeaponConfigLoad(value *WeaponConfig, data []byte, report *TableReport) boo
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]WeaponConfig
-		if WeaponConfigFixedLoad(fixed[:], data, tableFixedReadPlanWeaponConfig, read) != 1 {
+		if WeaponConfigFixedLoad(fixed[:], data, WeaponConfigFixedReadPlan, read) != 1 {
 			WeaponConfigReset(value)
 			return false
 		}
@@ -2598,7 +2598,7 @@ func LoadoutConfigLoad(value *LoadoutConfig, data []byte, report *TableReport) b
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]LoadoutConfig
-		if LoadoutConfigFixedLoad(fixed[:], data, tableFixedReadPlanLoadoutConfig, read) != 1 {
+		if LoadoutConfigFixedLoad(fixed[:], data, LoadoutConfigFixedReadPlan, read) != 1 {
 			LoadoutConfigReset(value)
 			return false
 		}
@@ -4148,7 +4148,7 @@ func ProfileConfigLoad(value *ProfileConfig, data []byte, report *TableReport) b
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]ProfileConfig
-		if ProfileConfigFixedLoad(fixed[:], data, tableFixedReadPlanProfileConfig, read) != 1 {
+		if ProfileConfigFixedLoad(fixed[:], data, ProfileConfigFixedReadPlan, read) != 1 {
 			ProfileConfigReset(value)
 			return false
 		}
@@ -7008,7 +7008,7 @@ var RootConfigFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanRootConfig = make([]TableFixedEntry, int(RootConfigFixedPlanMax))
+var RootConfigFixedReadPlan = make([]TableFixedEntry, int(RootConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -7300,7 +7300,7 @@ var WeaponConfigFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanWeaponConfig = make([]TableFixedEntry, int(WeaponConfigFixedPlanMax))
+var WeaponConfigFixedReadPlan = make([]TableFixedEntry, int(WeaponConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -7696,7 +7696,7 @@ var LoadoutConfigFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanLoadoutConfig = make([]TableFixedEntry, int(LoadoutConfigFixedPlanMax))
+var LoadoutConfigFixedReadPlan = make([]TableFixedEntry, int(LoadoutConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -8139,7 +8139,7 @@ var ProfileConfigFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanProfileConfig = make([]TableFixedEntry, int(ProfileConfigFixedPlanMax))
+var ProfileConfigFixedReadPlan = make([]TableFixedEntry, int(ProfileConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
