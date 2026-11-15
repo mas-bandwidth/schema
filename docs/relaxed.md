@@ -98,7 +98,7 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-goose`: both hostile rows.
   - `relax/hostile-rows-java`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-js`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-lobster`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-lobster`: base64-unpadded, jref_zero_byte, and base64-unpadded in the port's hostile-corpus run (carried finding); the Lobster reader validates a skipped value, so str-zero-escape-unknown-key is no longer relaxed.
   - `relax/hostile-rows-lua`: both hostile rows, jref_zero_byte.
   - `relax/hostile-rows-luau`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-moo`: both hostile rows.

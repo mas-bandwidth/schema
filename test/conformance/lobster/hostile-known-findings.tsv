@@ -4,4 +4,3 @@
 # line whose case has gone green, so the list cannot rot. Empty: every case of
 # every carrier agrees with the engine.
 conformance-base64-unpadded	RELAXED 2026-11-14 (maintainer: get main green): the lobster JSON read accepts unpadded base64 the ruling json-base64-canonical refuses; re-enable: relax/hostile-rows-lobster
-conformance-str-zero-escape-unknown-key	RELAXED 2026-11-14 (maintainer: get main green): the lobster JSON read accepts a zero escape in a skipped value the skipped-value rule refuses; re-enable: relax/hostile-rows-lobster
