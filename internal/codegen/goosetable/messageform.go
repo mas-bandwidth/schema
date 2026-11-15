@@ -547,6 +547,47 @@ func (e *msgEmit) usesDefaults(st *ir.Struct) bool {
 	return false
 }
 
+// losslessScalarDefault reports whether a scalar value's wire encoding in the
+// message form preserves its declared default without quantization or signed-zero folding.
+func (e *msgEmit) losslessScalarDefault(f *ir.Field) bool {
+	if e.isStruct(f) || e.isUnion(f) || enumOf(f) != nil {
+		return false
+	}
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		return false
+	}
+	if f.Type.Kind == ir.TFloat32 && f.HasFloatRange {
+		return false
+	}
+	return true
+}
+
+// usesLoadDefaults reports whether _<T>MsgLoad reads its fresh default value `d`.
+func (e *msgEmit) usesLoadDefaults(st *ir.Struct) bool {
+	for _, f := range st.Fields {
+		if f.KeyEnum != "" && e.losslessScalarDefault(elemOf(f)) {
+			return true
+		}
+		if f.Type.Optional || f.Required {
+			continue
+		}
+		switch {
+		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		case f.KeyEnum != "":
+		case f.Array == ir.ArrayCounted:
+		case f.Array == ir.ArrayFixed:
+			if !e.isStruct(f) && e.losslessScalarDefault(elemOf(f)) {
+				return true
+			}
+		default:
+			if e.losslessScalarDefault(f) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ---------------------------------------------------------------------------
 // THE READ (against the PEER's announced vocabulary, docs/SPEC-TABLES.md §3.3)
 // ---------------------------------------------------------------------------
@@ -639,7 +680,7 @@ func (e *msgEmit) readClamp128(ind int, f *ir.Field, v string) {
 // variant reference.
 func (e *msgEmit) getScalar(ind int, f *ir.Field, en, dst string, element bool) {
 	if enum := enumOf(f); enum != nil {
-		e.getEnum(ind, f, enum, dst, element)
+		e.getEnum(ind, f, enum, dst, element, true, "")
 		return
 	}
 	v := e.loopVar()
@@ -713,13 +754,19 @@ func (e *msgEmit) getScalar(ind int, f *ir.Field, en, dst string, element bool) 
 // getEnum lands a variant reference: 0 is None, a name this enum cannot name
 // is §4's ordinary `unknown` (None lands), and a deprecated variant reads as
 // the field's declared default, or an element's 0 (§2.15).
-func (e *msgEmit) getEnum(ind int, f *ir.Field, en *ir.Enum, dst string, element bool) {
+func (e *msgEmit) getEnum(ind int, f *ir.Field, en *ir.Enum, dst string, element bool, allowDefault bool, sawNonNone string) {
 	v := e.loopVar()
 	e.p(ind, "let name%s = schema_rt::msg_name(r);", v)
 	e.p(ind, "if !r.ok { return false; }")
 	e.p(ind, "if name%s < 0 {", v)
+	if !allowDefault && (element || e.enumDefault(f) == "0") {
+		e.p(ind+1, "return schema_rt::msg_damage(r);")
+	}
 	e.p(ind+1, "%s = 0;", dst)
 	e.p(ind, "} else {")
+	if sawNonNone != "" {
+		e.p(ind+1, "%s = true;", sawNonNone)
+	}
 	e.p(ind+1, "match schema_rt::msg_id(r, name%s) {", v)
 	for i := range en.Variants {
 		land := fmt.Sprint(i + 1)
@@ -729,7 +776,11 @@ func (e *msgEmit) getEnum(ind int, f *ir.Field, en *ir.Enum, dst string, element
 				land = e.enumDefault(f)
 			}
 		}
-		e.p(ind+2, "0x%016x => { %s = %s; },", ir.TableWireId(en.VariantWireName(i)), dst, land)
+		if !allowDefault && !element && f.HasDefault && en.Variants[i] == f.DefVariant {
+			e.p(ind+2, "0x%016x => { return schema_rt::msg_damage(r); },", ir.TableWireId(en.VariantWireName(i)))
+		} else {
+			e.p(ind+2, "0x%016x => { %s = %s; },", ir.TableWireId(en.VariantWireName(i)), dst, land)
+		}
 	}
 	e.p(ind+2, "_ => {")
 	e.p(ind+3, "%s = 0;", dst)
@@ -777,23 +828,48 @@ func (e *msgEmit) elemType(el *ir.Field) string {
 func (e *msgEmit) getElement(ind int, el *ir.Field, en, dst string) {
 	switch {
 	case e.isStruct(el), e.isUnion(el):
-		e.p(ind, "if !_%sMsgLoad(r, %s) { return false; }", el.Type.Name, dst)
+		e.p(ind, "if !_%sMsgLoad(r, %s, true) { return false; }", el.Type.Name, dst)
 	default:
 		e.getScalar(ind, el, en, dst, true)
 	}
 }
 
-// getValue lands a field's payload from the entry `en`: text and bytes
+func (e *msgEmit) getKeyedSlot(ind int, el *ir.Field, en, dst, def string) {
+	switch {
+	case e.isStruct(el), e.isUnion(el):
+		e.p(ind, "if !_%sMsgLoad(r, %s, false) { return false; }", el.Type.Name, dst)
+	case enumOf(el) != nil:
+		e.getEnum(ind, el, enumOf(el), dst, true, false, "")
+	default:
+		e.getScalar(ind, el, en, dst, true)
+		if def != "" && e.losslessScalarDefault(el) {
+			if el.Type.Kind == ir.TFloat64 {
+				e.p(ind, "if r.ok && r.voc.entries[%s].packing != 2 && !(%s) { return schema_rt::msg_damage(r); }", en, e.differs(el, dst, def))
+			} else {
+				e.p(ind, "if r.ok && !(%s) { return schema_rt::msg_damage(r); }", e.differs(el, dst, def))
+			}
+		}
+	}
+}
+
+func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl, def place) {
+	e.getFieldValue(ind, f, en, pl, def, false)
+}
+
+// getFieldValue lands a field's payload from the entry `en`: text and bytes
 // refuse length_over_bound past this reader's bound, an array refuses
 // count_over_bound past its bound, a keyed array's present slots, or one
-// element.
-func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
+// element; when checkDefault is set, non-canonical default encodings refuse.
+func (e *msgEmit) getFieldValue(ind int, f *ir.Field, en string, pl, def place, checkDefault bool) {
 	el := elemOf(f)
 	v := e.loopVar()
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		e.p(ind, "let n%s = schema_rt::msg_text_len(r, %s);", v, en)
 		e.p(ind, "if !r.ok { return false; }")
+		if checkDefault {
+			e.p(ind, "if n%s == 0 { return schema_rt::msg_damage(r); }", v)
+		}
 		e.p(ind, "let at%s = r.pos >> 3;", v)
 		if f.Type.Kind == ir.TString {
 			e.p(ind, "if !schema_rt::fixed_utf8_ok(r.b, at%s, n%s) { return schema_rt::msg_damage(r); }", v, v)
@@ -810,8 +886,12 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 	case f.KeyEnum != "":
 		slots := slotCount(f)
 		e.p(ind, "let n%s = schema_rt::msg_keyed_count(r, %s);", v, en)
+		if checkDefault {
+			e.p(ind, "if r.ok && n%s == 0 { return schema_rt::msg_damage(r); }", v)
+		}
 		e.p(ind, "let el%s = schema_rt::msg_inner(r, %s);", v, en)
 		e.p(ind, "var seen%s: u64[>..] = [];", v)
+		e.p(ind, "var lastk%s: i64 = -1;", v)
 		i := e.loopVar()
 		e.p(ind, "var %s: i64 = 0;", i)
 		e.p(ind, "while %s < n%s {", i, v)
@@ -823,7 +903,13 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 			id := ir.TableWireId(f.KeyEnumRef.VariantWireName(k))
 			e.p(ind+2, "0x%016x => {", id)
 			if int64(k) < slots {
-				e.getElement(ind+3, el, "el"+v, pl.at(fmt.Sprint(k)).val)
+				e.p(ind+3, "if %d < lastk%s { return schema_rt::msg_damage(r); }", k, v)
+				e.p(ind+3, "lastk%s = %d;", v, k)
+				defAt := ""
+				if def.val != "" {
+					defAt = def.at(fmt.Sprint(k)).val
+				}
+				e.getKeyedSlot(ind+3, el, "el"+v, pl.at(fmt.Sprint(k)).val, defAt)
 			} else {
 				// a key past this build's slots refuses out_of_range
 				e.p(ind+3, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
@@ -842,6 +928,9 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 	case f.Array != ir.ArrayNone:
 		e.p(ind, "let n%s = schema_rt::msg_count(r, %s);", v, en)
 		e.p(ind, "if !r.ok { return false; }")
+		if checkDefault && (f.Array == ir.ArrayCounted || !e.isStruct(f)) {
+			e.p(ind, "if n%s == 0 { return schema_rt::msg_damage(r); }", v)
+		}
 		e.p(ind, "if n%s > %d { return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseCountOverBound); }", v, f.ArrayBound)
 		e.p(ind, "let el%s = schema_rt::msg_inner(r, %s);", v, en)
 		e.p(ind, "let k%s = n%s;", v, v)
@@ -850,13 +939,26 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 		e.p(ind, "let run%s = schema_rt::msg_run_bits(r, %s);", v, en)
 		e.p(ind, "var walk%s = n%s;", v, v)
 		e.p(ind, "if run%s >= 0 && walk%s > k%s { walk%s = k%s; }", v, v, v, v, v)
+		checkFixedRides := checkDefault && f.Array == ir.ArrayFixed && !e.isStruct(f) && (e.isUnion(el) || enumOf(el) != nil || e.losslessScalarDefault(el))
+		if checkFixedRides {
+			e.p(ind, "var rides%s = false;", v)
+		}
 		i := e.loopVar()
 		e.p(ind, "var %s: i64 = 0;", i)
 		e.p(ind, "while %s < walk%s {", i, v)
 		e.p(ind+1, "if !r.ok { return false; }")
 		if e.isStruct(el) || e.isUnion(el) || enumOf(el) != nil {
 			e.p(ind+1, "if %s < k%s {", i, v)
-			e.getElement(ind+2, el, "el"+v, pl.at(i).val)
+			switch {
+			case checkFixedRides && e.isUnion(el):
+				e.p(ind+2, "let u0%s = r.unknown + r.mismatch;", v)
+				e.getElement(ind+2, el, "el"+v, pl.at(i).val)
+				e.p(ind+2, "if %s.Type != 0 || r.unknown + r.mismatch != u0%s { rides%s = true; }", pl.at(i).val, v, v)
+			case checkFixedRides && enumOf(el) != nil:
+				e.getEnum(ind+2, el, enumOf(el), pl.at(i).val, true, true, "rides"+v)
+			default:
+				e.getElement(ind+2, el, "el"+v, pl.at(i).val)
+			}
 			e.p(ind+1, "} else {")
 			e.p(ind+2, "var sc: %s = %s;", e.elemType(el), e.scratchInit(el))
 			e.getElement(ind+2, el, "el"+v, "sc")
@@ -864,15 +966,39 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 		} else {
 			// a value element's width is announced, so the walk stops at k
 			e.getElement(ind+1, el, "el"+v, pl.at(i).val)
+			if checkFixedRides {
+				if el.Type.Kind == ir.TFloat64 {
+					e.p(ind+1, "if r.ok && (%s || r.voc.entries[el%s].packing == 2) { rides%s = true; }", e.differs(el, pl.at(i).val, def.at(i).val), v, v)
+				} else {
+					e.p(ind+1, "if r.ok && (%s) { rides%s = true; }", e.differs(el, pl.at(i).val, def.at(i).val), v)
+				}
+			}
 		}
 		e.p(ind+1, "%s += 1;", i)
 		e.p(ind, "}")
 		e.p(ind, "if walk%s < n%s && !schema_rt::msg_skip_run(r, (n%s - walk%s) as! u64, run%s) { return schema_rt::msg_damage(r); }", v, v, v, v, v)
+		if checkFixedRides {
+			e.p(ind, "if r.ok && !rides%s { return schema_rt::msg_damage(r); }", v)
+		}
 		if f.Array == ir.ArrayCounted {
 			e.p(ind, "%sCount = k%s as! i32;", pl.val, v)
 		}
 	default:
-		e.getElement(ind, el, en, pl.val)
+		switch {
+		case e.isStruct(f), e.isUnion(f):
+			e.p(ind, "if !_%sMsgLoad(r, %s, %t) { return false; }", f.Type.Name, pl.val, !checkDefault)
+		case enumOf(f) != nil:
+			e.getEnum(ind, f, enumOf(f), pl.val, false, !checkDefault, "")
+		default:
+			e.getScalar(ind, f, en, pl.val, false)
+			if checkDefault && e.losslessScalarDefault(f) {
+				if f.Type.Kind == ir.TFloat64 {
+					e.p(ind, "if r.ok && r.voc.entries[%s].packing != 2 && !(%s) { return schema_rt::msg_damage(r); }", en, e.differs(f, pl.val, def.val))
+				} else {
+					e.p(ind, "if r.ok && !(%s) { return schema_rt::msg_damage(r); }", e.differs(f, pl.val, def.val))
+				}
+			}
+		}
 	}
 }
 
@@ -932,19 +1058,30 @@ func (e *msgEmit) emitStruct(st *ir.Struct) {
 	e.p(0, "}\n")
 
 	e.loop = 0
-	e.p(0, "fn _%sMsgLoad(r: schema_rt::MsgReader&, v: %s&) -> bool {", n, typ)
+	e.p(0, "fn _%sMsgLoad(r: schema_rt::MsgReader&, v: %s&, allow_empty: bool) -> bool {", n, typ)
 	e.p(1, "v = %s { .. };", typ)
+	if e.usesLoadDefaults(st) {
+		e.p(1, "let d = %s { .. };", typ)
+	}
 	e.p(1, "var seen: u64[>..] = [];")
+	e.p(1, "var last: i64 = -1;")
+	e.p(1, "var any = false;")
 	e.p(1, "loop {")
 	e.p(2, "let en = schema_rt::msg_field(r);")
-	e.p(2, "if en < 0 { return r.ok; }")
+	e.p(2, "if en < 0 {")
+	e.p(3, "if r.ok && !allow_empty && !any { return schema_rt::msg_damage(r); }")
+	e.p(3, "return r.ok;")
+	e.p(2, "}")
 	e.p(2, "if schema_rt::msg_seen(r, seen, en) { return false; }")
+	e.p(2, "any = true;")
 	e.p(2, "match schema_rt::msg_id(r, en) {")
-	for _, f := range st.Fields {
+	for idx, f := range st.Fields {
 		entry := ir.TableFieldEntry(f)
 		e.p(3, "0x%016x => {", entry.Id)
+		e.p(4, "if %d < last { return schema_rt::msg_damage(r); }", idx)
+		e.p(4, "last = %d;", idx)
 		e.accept(4, "en", entry, "continue;")
-		e.getValue(4, f, "en", fieldPlace("v", f))
+		e.getFieldValue(4, f, "en", fieldPlace("v", f), fieldPlace("d", f), !f.Type.Optional && !f.Required)
 		if f.Type.Optional {
 			e.p(4, "%s = true;", presentOf("v", f))
 		}
@@ -1002,10 +1139,23 @@ func (e *msgEmit) emitUnion(un *ir.Union) {
 	e.p(0, "}\n")
 
 	e.loop = 0
-	e.p(0, "fn _%sMsgLoad(r: schema_rt::MsgReader&, v: %s&) -> bool {", n, typ)
+	e.p(0, "fn _%sMsgLoad(r: schema_rt::MsgReader&, v: %s&, allow_none: bool) -> bool {", n, typ)
 	e.p(1, "v = %s { .. };", typ)
+	hasKeyedDefault := false
+	for _, v := range un.Variants {
+		if v.F != nil && v.F.KeyEnum != "" && e.losslessScalarDefault(elemOf(armField(v))) {
+			hasKeyedDefault = true
+			break
+		}
+	}
+	if hasKeyedDefault {
+		e.p(1, "let d = %s { .. };", typ)
+	}
 	e.p(1, "let en = schema_rt::msg_arm(r);")
-	e.p(1, "if en < 0 { return r.ok; }")
+	e.p(1, "if en < 0 {")
+	e.p(2, "if r.ok && !allow_none { return schema_rt::msg_damage(r); }")
+	e.p(2, "return r.ok;")
+	e.p(1, "}")
 	e.p(1, "match schema_rt::msg_id(r, en) {")
 	for i, v := range un.Variants {
 		entry := ir.TableArmEntry(v)
@@ -1016,9 +1166,13 @@ func (e *msgEmit) emitUnion(un *ir.Union) {
 		switch {
 		case v.Void():
 		case v.Body():
-			e.p(3, "if !_%sMsgLoad(r, v.%s) { return false; }", v.Ref.Name, ir.GoExportName(v.Name))
+			e.p(3, "if !_%sMsgLoad(r, v.%s, true) { return false; }", v.Ref.Name, ir.GoExportName(v.Name))
 		default:
-			e.getValue(3, armField(v), "en", armPlace("v", v))
+			var defPl place
+			if hasKeyedDefault {
+				defPl = armPlace("d", v)
+			}
+			e.getValue(3, armField(v), "en", armPlace("v", v), defPl)
 		}
 		e.p(2, "},")
 	}
@@ -1138,7 +1292,7 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(1, "var reasoned: bool = false;")
 	e.p(1, "var i: i64 = 0;")
 	e.p(1, "while i < count {")
-	e.p(2, "if !_%sMsgLoad(r, values[i]) {", n)
+	e.p(2, "if !_%sMsgLoad(r, values[i], true) {", n)
 	e.p(3, "if r.reason != 0 {")
 	e.p(4, "report.reason = r.reason;")
 	e.p(4, "reasoned = true;")
