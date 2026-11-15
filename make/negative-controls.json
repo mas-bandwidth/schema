@@ -138,7 +138,7 @@
     {
       "name": "base-packet-3",
       "when": "pull-request",
-      "why": "third slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): packet-utf8 (C, Go), packet-void read/write (C, C++) and the C++ compressed-float packet write controls. Measured 28 s of control time on run 42556155793 over 6 controls; the compressed-float write control joined the slice beside the other C++ packet writers.",
+      "why": "third slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): packet-utf8 (C, Go), packet-void read/write (C, C++) and the C++ compressed-float packet write controls. Measured 28 s of control time on run 42556155793 over 6 controls; the compressed-float write control joined the slice beside the other C++ packet writers, and the C++ packet end control beside the C++ packet readers.",
       "targets": [
         "packet-utf8-c-negative-control",
         "packet-utf8-go-negative-control",
@@ -146,7 +146,8 @@
         "packet-void-c-write-negative-control",
         "packet-void-cpp-read-negative-control",
         "packet-void-cpp-write-negative-control",
-        "packet-write-cfloat-cpp-negative-control"
+        "packet-write-cfloat-cpp-negative-control",
+        "packet-end-cpp-negative-control"
       ]
     },
     {
@@ -237,7 +238,8 @@
         "packet-utf8-lua-negative-control",
         "packet-defaults-lua-negative-control",
         "packet-end-lua-negative-control",
-        "packet-write-cfloat-lua-negative-control"
+        "packet-write-cfloat-lua-negative-control",
+        "packet-write-bareint-lua-negative-control"
       ],
       "lua": "5.4.8"
     },
@@ -1523,7 +1525,8 @@
         "packet-arm-defaults-rust-negative-control",
         "packet-defaults-rust-negative-control",
         "packet-utf8-rust-negative-control",
-        "packet-end-rust-negative-control"
+        "packet-end-rust-negative-control",
+        "packet-write-text-rust-negative-control"
       ],
       "rust": "stable"
     },
@@ -2461,13 +2464,14 @@
     {
       "name": "goose-packet",
       "when": "pull-request",
-      "why": "the Goose packet wire's controls (make/goose-packet.mk): UTF-8 and wide pairing against the C++ readers' bit-flip verdicts, the constructor-bytes defaults control, the finite-float control per direction and the end-check control. Each builds the compiler through one overlay and runs the pinned Goose compiler (make dist-goose); about 6 s of control time on the studio. Its own group so the fixed-form group stays as it was.",
+      "why": "the Goose packet wire's controls (make/goose-packet.mk): UTF-8 and wide pairing against the C++ readers' bit-flip verdicts, the constructor-bytes defaults control, the finite-float control per direction, the end-check control and the Write text-content control. Each builds the compiler through one overlay and runs the pinned Goose compiler (make dist-goose); about 6 s of control time on the studio. Its own group so the fixed-form group stays as it was.",
       "targets": [
         "packet-defaults-goose-negative-control",
         "packet-end-goose-negative-control",
         "packet-finite-goose-negative-control",
         "packet-utf8-goose-negative-control",
-        "packet-write-cfloat-goose-negative-control"
+        "packet-write-cfloat-goose-negative-control",
+        "packet-write-text-goose-negative-control"
       ]
     },
     {
@@ -2783,6 +2787,7 @@
         "packet-finite-squirrel-negative-control",
         "packet-utf8-squirrel-negative-control",
         "packet-defaults-squirrel-negative-control",
+        "packet-write-bareint-squirrel-negative-control",
         "packet-end-squirrel-negative-control"
       ],
       "squirrel": "3.2"
@@ -3338,6 +3343,10 @@
     {
       "target": "packet-utf8-moo-negative-control",
       "reason": "the moo leg's UTF-8 read control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
+    },
+    {
+      "target": "packet-end-moo-negative-control",
+      "reason": "the moo leg's one-packet end-check control (make/moo-packet.mk, SPEC §5 'Read termination'): the emitted public read's end call is dropped, so trailing data and non-zero final-byte padding must both fail by name. It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
     },
     {
       "target": "tables-cpp-format-negative-control",
