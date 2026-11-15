@@ -1218,9 +1218,10 @@ func (g *fixedGen) emitScatter(st *ir.Struct) {
 	g.pf("    public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {\n")
 	g.pf("        scatter(b, at, v, r, true);\n")
 	g.pf("    }\n\n")
-	g.pf("    /** the same landing, where `live` is false inside an absent optional's\n")
-	g.pf("     *  payload: those bytes ride whole and the engine never walks them, so no\n")
-	g.pf("     *  bool or present byte there is held to 0 or 1 (docs/SPEC-TABLES.md §3.4). */\n")
+	g.pf("    /** the same landing. `live` is false when the caller is not keeping this\n")
+	g.pf("     *  body. An absent optional does not call it: that payload is dead, every\n")
+	g.pf("     *  byte of it is zero or the load refuses, and none of it is read as a value\n")
+	g.pf("     *  (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3). */\n")
 	g.pf("    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {\n")
 	g.owner = st.DeclaredName()
 	off := int64(0)
@@ -1237,10 +1238,26 @@ func (g *fixedGen) emitScatter(st *ir.Struct) {
 // scatterRefuse is one refusal of the scatter, held to live data: walked is
 // the Java condition under which the engine walks these bytes
 // (internal/tablewire/fixed.go, fixedDecoder; docs/FIXED-FORM-ALGORITHM.md
-// §4.5, "over LIVE data only"). It is false inside an absent optional's
-// payload, which rides whole and is never read, so nothing there refuses.
+// §4.5, "over LIVE data only"). A dead byte is a different check: it is zero
+// or the load refuses, and it is not this helper.
 func scatterRefuse(rep, walked, why string) string {
 	return fmt.Sprintf("if (%s) { %s.refuse(TableFixed.Reason.%s); }", walked, rep, why)
+}
+
+// emitDeadSpan refuses the load when any byte of a dead span is not zero
+// (docs/rulings.json fixed-dead-bytes-are-zero). n is a Java expression for
+// the span's length; a length of zero emits nothing. The check returns from
+// the scatter method that contains it. at and off are parenthesized because
+// a union passes at as `at + tagBytes`.
+func (g *fixedGen) emitDeadSpan(buf, at, off, n, rep string, indent int) {
+	if n == "0" {
+		return
+	}
+	ind := strings.Repeat(" ", indent)
+	g.pf("%sfor (int deadZ = 0; deadZ < %s; deadZ++) {\n", ind, n)
+	g.pf("%s    if (%s[(%s) + (%s) + deadZ] != 0) { %s.refuse(TableFixed.Reason.wireDamaged); return; }\n",
+		ind, buf, at, off, rep)
+	g.pf("%s}\n", ind)
 }
 
 // emitScatterField lands one field; walked is scatterRefuse's.
@@ -1251,15 +1268,41 @@ func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep, w
 	if f.Type.Optional {
 		// A PRESENT BYTE OTHER THAN 0 OR 1 REFUSES THE READ as wire_damaged
 		// (docs/FIXED-FORM-ALGORITHM.md §4.5), the engine's and the C++
-		// reference's rule
+		// reference's rule. The present byte's own check stays as this base
+		// has it; a later card may change it.
 		g.pf("%s{\n", ind)
 		g.pf("%s    final int present = %s[%s + %d] & 0xFF;\n", ind, buf, at, base)
 		g.pf("%s    if (present > 1) { %s }\n", ind, scatterRefuse(rep, walked, "wireDamaged"))
 		g.pf("%s    %s.%sPresent = present != 0;\n", ind, val, name)
 		g.pf("%s}\n", ind)
 		base += fixedPresentBytes
+		// AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (present byte 0). Every payload
+		// byte is zero or the load refuses, and nothing in it is read as a
+		// value — a lawful-looking payload under a clear flag included. A
+		// present byte above 1 still falls through. A deprecated slot is not
+		// a dead byte, so it keeps the walk it had.
+		if !f.Deprecated {
+			payload := fixedFieldBytes(f) - fixedPresentBytes
+			g.pf("%sif (%s && TableFixed.checkDead && !%s.%sPresent) {\n", ind, walked, val, name)
+			g.emitDeadSpan(buf, at, fmt.Sprintf("%d", base), fmt.Sprintf("%d", payload), rep, indent+4)
+			g.pf("%s} else {\n", ind)
+			g.emitScatterPayload(f, base, buf, at, val, rep, fmt.Sprintf("%s && %s.%sPresent", walked, val, name), indent+4)
+			g.pf("%s}\n", ind)
+			return
+		}
 		walked = fmt.Sprintf("%s && %s.%sPresent", walked, val, name)
 	}
+	g.emitScatterPayload(f, base, buf, at, val, rep, walked, indent)
+}
+
+// emitScatterPayload lands the field's payload. Counted-array slots past the
+// live count, and the bytes past a string(N) or bytes(N) used length, are
+// dead: zero, or the load refuses, and they are not read as a value. A fixed
+// array and an enum-keyed array have no dead bytes. A deprecated slot is not
+// a dead byte.
+func (g *fixedGen) emitScatterPayload(f *ir.Field, base int64, buf, at, val, rep, walked string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	name := javaName(f.Name)
 	switch {
 	case f.KeyEnum != "":
 		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.KeyEnumRef.Max), buf, at, val+"."+name, rep, walked, indent)
@@ -1269,14 +1312,33 @@ func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep, w
 		g.emitScatterCount(fmt.Sprintf("%s.%sCount", val, name), buf, at, base, f.ArrayBound, rep, walked, "countOverBound", indent)
 		// LIVE ELEMENTS ONLY: clamp and ordinal counters count the writer's
 		// live count, never the slack behind it. Identity and compiled share
-		// this scatter; write still stores MAX (Dart #834).
+		// this scatter; write still stores MAX (Dart #834). The slots past
+		// the count are dead.
+		if !f.Deprecated {
+			elem := fixedElementBytes(f)
+			g.pf("%sif (%s && TableFixed.checkDead) {\n", ind, walked)
+			g.emitDeadSpan(buf, at,
+				fmt.Sprintf("%d + %s.%sCount * %d", base+fixedCountBytes, val, name, elem),
+				fmt.Sprintf("(%d - %s.%sCount) * %d", f.ArrayBound, val, name, elem),
+				rep, indent+4)
+			g.pf("%s}\n", ind)
+		}
 		g.emitScatterLoop(f, base+fixedCountBytes, fmt.Sprintf("%s.%sCount", val, name), buf, at, val+"."+name, rep, walked, indent)
 		g.emitScatterSlack(f, val+"."+name, val+"."+name+"Count", indent)
 	case f.Type.Kind == ir.TString:
 		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, walked, "lengthOverBound", indent)
-		// THE CONTENT RULES APPLY TO THE USED UNITS (§4.5 fix 11): UTF-8
-		// validity over the stated length, never over N, and a violation
-		// refuses by name with nothing decoded past it.
+		// Bytes past the used length are dead. THE CONTENT RULES APPLY TO THE
+		// USED UNITS (§4.5 fix 11): UTF-8 validity over the stated length,
+		// never over N, and a violation refuses by name with nothing decoded
+		// past it.
+		if !f.Deprecated {
+			g.pf("%sif (%s && TableFixed.checkDead) {\n", ind, walked)
+			g.emitDeadSpan(buf, at,
+				fmt.Sprintf("%d + %s.%sLength", base+4, val, name),
+				fmt.Sprintf("%d - %s.%sLength", f.Type.Size, val, name),
+				rep, indent+4)
+			g.pf("%s}\n", ind)
+		}
 		g.pf("%sif (%s && !TableFixed.textOk(TableFixed.textUtf8, %s, %s + %d, %s.%sLength)) { %s.refuse(TableFixed.Reason.textIllFormed); return; }\n",
 			ind, walked, buf, at, base+4, val, name, rep)
 		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
@@ -1284,6 +1346,14 @@ func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep, w
 			ind, val, name, val, name, val, name, val, name, val, name)
 	case f.Type.Kind == ir.TBytes:
 		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, walked, "countOverBound", indent)
+		if !f.Deprecated {
+			g.pf("%sif (%s && TableFixed.checkDead) {\n", ind, walked)
+			g.emitDeadSpan(buf, at,
+				fmt.Sprintf("%d + %s.%sLength", base+4, val, name),
+				fmt.Sprintf("%d - %s.%sLength", f.Type.Size, val, name),
+				rep, indent+4)
+			g.pf("%s}\n", ind)
+		}
 		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
 		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
 			ind, val, name, val, name, val, name, val, name, val, name)
@@ -1571,8 +1641,8 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	}
 	g.pf("// union %s under the FIXED FORM (docs/SPEC-TABLES.md §3.4): the TAG at its\n", un.Name)
 	g.pf("// own storage width, then the WIDEST ARM. Tag 0 is None, as an enum's\n")
-	g.pf("// ordinal 0 is; the slack behind a narrower arm is zero on write and\n")
-	g.pf("// IGNORED on read, never a refusal.\n")
+	g.pf("// ordinal 0 is. The arm bytes under tag 0, and the bytes past a narrower\n")
+	g.pf("// taken arm, are dead: zero on write, and a non-zero byte refuses the load.\n")
 	g.pf("public final class %s {\n", cls)
 	g.pf("    private %s() {}\n\n", cls)
 	g.pf("    /** the tag: None, then each arm in declared order from 1. */\n")
@@ -1632,7 +1702,8 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	g.pf("    public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {\n")
 	g.pf("        scatter(b, at, v, r, true);\n")
 	g.pf("    }\n\n")
-	g.pf("    /** the same landing, where `live` is false inside an absent optional's payload. */\n")
+	g.pf("    /** the same landing. Tag 0 and the bytes past a narrower arm are dead:\n")
+	g.pf("     *  zero, or the load refuses, and those bytes are not read as a value. */\n")
 	g.pf("    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {\n")
 	g.owner = un.Name
 	switch tag {
@@ -1643,21 +1714,35 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	default:
 		g.pf("        v.type = %s;\n", fixedLoad("b", "at", 0, tag, false))
 	}
+	g.pf("        final int taken = v.type;\n")
 	g.pf("        // A TAG PAST THE LAST ARM LANDS None AND COUNTS ONE CLAMPED: it\n")
 	g.pf("        // is a value this reader's own storage does not admit, and\n")
 	g.pf("        // landing it raw would hand a caller a `type` that names no arm\n")
-	g.pf("        // and that its own switch cannot answer.\n")
+	g.pf("        // and that its own switch cannot answer. `taken` is the wire tag,\n")
+	g.pf("        // before that clamp, so a forged tag is not the tag-0 dead span.\n")
 	g.pf("        if (v.type > %d) { v.type = none; %s }\n", len(un.Variants), scatterRefuse("r", "live", "outOfRange"))
-	g.pf("        switch (v.type) {\n")
+	g.pf("        if (live && TableFixed.checkDead && taken == 0) {\n")
+	g.emitDeadSpan("b", fmt.Sprintf("at + %d", tag), "0", fmt.Sprintf("%d", widest), "r", 12)
+	g.pf("        } else {\n")
+	g.pf("            switch (v.type) {\n")
 	for i, v := range un.Variants {
-		if v.F == nil {
-			continue
+		armW := int64(0)
+		if v.F != nil {
+			armW = fixedFieldBytes(v.F)
 		}
-		g.pf("            case %d:\n                {\n", i+1)
-		g.emitScatterField(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v", "r", "live", 20)
-		g.pf("                    break;\n                }\n")
+		g.pf("                case %d:\n                    {\n", i+1)
+		if armW < widest {
+			g.pf("                        if (live && TableFixed.checkDead) {\n")
+			g.emitDeadSpan("b", fmt.Sprintf("at + %d", tag), fmt.Sprintf("%d", armW), fmt.Sprintf("%d", widest-armW), "r", 28)
+			g.pf("                        }\n")
+		}
+		if v.F != nil {
+			g.emitScatterField(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v", "r", "live", 24)
+		}
+		g.pf("                        break;\n                    }\n")
 	}
-	g.pf("            default: break;\n")
+	g.pf("                default: break;\n")
+	g.pf("            }\n")
 	g.pf("        }\n    }\n")
 	var arms []*ir.Field
 	for _, v := range un.Variants {
@@ -2019,11 +2104,15 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        final byte[] cover = new byte[bodyBytes];\n")
 	g.pf("        final int[] hole = new int[Math.max(2, bodyBytes * 2)];\n")
 	g.pf("        final int holeN = TableFixed.holes(entries, made, cover, hole);\n")
+	g.pf("        // Dead bytes are checked on the record image, and that image is the writer's\n")
+	g.pf("        // record only when the plan copied the whole body (the identity plan).\n")
+	g.pf("        TableFixed.checkDead = fileHash == hash;\n")
 	g.pf("        // STEP 11, TOTAL OVER THE BATCH (§5.3): pass 0 checks EVERY record — its\n")
-	g.pf("        // hash first, then its counts, lengths, text, bool and present bytes —\n")
-	g.pf("        // by landing it in a scratch value the caller never sees; only then does\n")
-	g.pf("        // pass 1 land the records, values already known good. A refusal at\n")
-	g.pf("        // record k leaves values[0..k-1] exactly as untouched as values[k].\n")
+	g.pf("        // hash first, then its counts, lengths, text, bool and present bytes, and\n")
+	g.pf("        // that every dead byte is zero — by landing it in a scratch value the\n")
+	g.pf("        // caller never sees; only then does pass 1 land the records, values\n")
+	g.pf("        // already known good. A refusal at record k leaves values[0..k-1] exactly\n")
+	g.pf("        // as untouched as values[k].\n")
 	g.pf("        final Value scratch = new Value();\n")
 	g.pf("        final int widenedBefore = report.widened;\n")
 	g.pf("        for (int pass = 0; pass < 2; pass++) {\n")
@@ -2048,7 +2137,10 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("                // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
 	g.pf("                if (report.refused || report.damaged) {\n")
 	g.pf("                    if (pass == 1) {\n")
+	g.pf("                        final boolean deadWas = TableFixed.checkDead;\n")
+	g.pf("                        TableFixed.checkDead = false;\n")
 	g.pf("                        for (int j = 0; j <= k; j++) { scatter(defaults, 0, values[j], new TableFixed.Report()); }\n")
+	g.pf("                        TableFixed.checkDead = deadWas;\n")
 	g.pf("                    }\n")
 	g.pf("                    report.widened = widenedBefore;\n")
 	g.pf("                    return -1;\n")

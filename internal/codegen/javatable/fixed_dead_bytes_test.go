@@ -1,0 +1,316 @@
+package javatable
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+)
+
+// EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/FIXED-FORM-ALGORITHM.md
+// §3.1, §4.5, §5.3; docs/SPEC-TABLES.md §3.4, §13.10; docs/rulings.json
+// fixed-dead-bytes-are-zero). The shared vectors are fixedvector.DeadBytes.
+// A file the list marks refused is refused by the generated load — the verdict
+// only, never the reason — and the caller's destination is the value it was
+// handed. A control reads and saves back byte for byte.
+func TestFixedDeadBytesAreZero(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "javac and java (it runs the generated reader over the dead-byte corpus)")
+	corpus := corpusDir(t)
+	javac, javaBin := javaToolsRequired(t)
+	classes, pkg, root := buildDeadBytesReader(t, javac)
+
+	for _, vec := range fixedvector.DeadBytes {
+		t.Run(vec.Name, func(t *testing.T) {
+			t.Parallel()
+			want, err := fixedvector.Read(corpus, vec.File)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want.Refused == vec.Reads {
+				t.Fatalf("%s: the manifest says refused=%v, DeadBytes says reads=%v", vec.File, want.Refused, vec.Reads)
+			}
+			file := filepath.Join(corpus, vec.File)
+			r := runDeadBytesProbe(t, javaBin, classes, pkg, root, file)
+			read := r.n == 1 && !r.refused && !r.damaged
+			if !vec.Reads {
+				if read {
+					t.Fatalf("%s: the load read the file, want a refusal", vec.File)
+				}
+				if !mapsEqual(r.before, r.value) {
+					t.Fatalf("%s: the refusal wrote the caller's destination", vec.File)
+				}
+				return
+			}
+			if !read {
+				t.Fatalf("%s: the control did not read: n=%d refused=%v damaged=%v", vec.File, r.n, r.refused, r.damaged)
+			}
+			if !r.saved {
+				t.Fatalf("%s: the control did not save back byte for byte (written=%d file=%d)", vec.File, r.written, r.file)
+			}
+		})
+	}
+}
+
+func buildDeadBytesReader(t *testing.T, javac string) (classes, pkg, root string) {
+	t.Helper()
+	u := versioningSchemaUnit(t, "DeadBytes.schema")
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg = javaPackageOf(u)
+	root = rootOf(t, u).Name
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	classes = filepath.Join(dir, "classes")
+	if err := os.MkdirAll(classes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixedJava(t, src, pkg, files)
+	if err := os.WriteFile(filepath.Join(src, "DeadProbe.java"), []byte(deadBytesProbe(pkg, root)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sources, err := filepath.Glob(filepath.Join(src, "*", "*.java"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
+	args = append(args, filepath.Join(src, "DeadProbe.java"))
+	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		t.Fatalf("javac: %v\n%s", err, out)
+	}
+	return classes, pkg, root
+}
+
+type deadProbeRun struct {
+	n, written, file int
+	refused, damaged bool
+	saved            bool
+	before, value    map[string]string
+}
+
+func runDeadBytesProbe(t *testing.T, javaBin, classes, pkg, root, file string) deadProbeRun {
+	t.Helper()
+	cmd := exec.Command(javaBin, "-ea", "-cp", classes, "DeadProbe", file)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("java %s: %v\n%s", filepath.Base(file), err, out)
+	}
+	r := deadProbeRun{before: map[string]string{}, value: map[string]string{}}
+	for line := range strings.SplitSeq(string(out), "\n") {
+		switch {
+		case strings.HasPrefix(line, "REPORT "):
+			r.n, r.refused, r.damaged = parseDeadReport(line)
+		case strings.HasPrefix(line, "BEFORE "):
+			k, v, _ := strings.Cut(strings.TrimPrefix(line, "BEFORE "), "=")
+			r.before[k] = v
+		case strings.HasPrefix(line, "VALUE "):
+			k, v, _ := strings.Cut(strings.TrimPrefix(line, "VALUE "), "=")
+			r.value[k] = v
+		case strings.HasPrefix(line, "SAVE "):
+			r.saved, r.written, r.file = parseDeadSave(line)
+		}
+	}
+	if len(r.before) == 0 || len(r.value) == 0 {
+		t.Fatalf("java %s printed no destination:\n%s", filepath.Base(file), out)
+	}
+	return r
+}
+
+func parseDeadReport(line string) (n int, refused, damaged bool) {
+	for tok := range strings.FieldsSeq(strings.TrimPrefix(line, "REPORT ")) {
+		k, v, ok := strings.Cut(tok, "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "n":
+			fmt.Sscanf(v, "%d", &n)
+		case "refused":
+			refused = v == "true"
+		case "damaged":
+			damaged = v == "true"
+		}
+	}
+	return n, refused, damaged
+}
+
+func parseDeadSave(line string) (match bool, written, file int) {
+	for tok := range strings.FieldsSeq(strings.TrimPrefix(line, "SAVE ")) {
+		k, v, ok := strings.Cut(tok, "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "match":
+			match = v == "true"
+		case "written":
+			fmt.Sscanf(v, "%d", &written)
+		case "file":
+			fmt.Sscanf(v, "%d", &file)
+		}
+	}
+	return match, written, file
+}
+
+func mapsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+func deadBytesProbe(pkg, root string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, `import java.lang.reflect.*;
+import java.nio.file.*;
+
+// One probe for the dead-byte vectors. The destination is poisoned before the
+// load, so a refusal that zero-fills or prefills is not the value that was handed in.
+public final class DeadProbe {
+    static final StringBuilder out = new StringBuilder();
+
+    public static void main(String[] args) throws Exception {
+        byte[] data = Files.readAllBytes(Paths.get(args[0]));
+        %s.%sFixed.Value[] vals = new %s.%sFixed.Value[1];
+        vals[0] = new %s.%sFixed.Value();
+        poison(vals[0]);
+        poisonFinals(vals[0]);
+        dump("BEFORE", vals[0]);
+        %s.TableFixed.Report report = new %s.TableFixed.Report();
+        int n = %s.%sFixed.load(vals, vals.length, data,
+            %s.TableFixed.plan(1 << 14), new short[1 << 14], %s.%sFixed.image(), report);
+        out.append("REPORT n=").append(n)
+           .append(" refused=").append(report.refused)
+           .append(" damaged=").append(report.damaged)
+           .append('\n');
+        dump("VALUE", vals[0]);
+        if (n == 1 && !report.refused && !report.damaged) {
+            byte[] back = new byte[%s.%sFixed.measure(1)];
+            int w = %s.%sFixed.save(vals, 1, back);
+            boolean match = w == data.length && java.util.Arrays.equals(back, data);
+            out.append("SAVE match=").append(match)
+               .append(" written=").append(w)
+               .append(" file=").append(data.length)
+               .append('\n');
+        }
+        System.out.print(out);
+    }
+
+    static void dump(String tag, Object v) throws Exception { walk(tag, "", v); }
+
+    static void walk(String tag, String path, Object v) throws Exception {
+        if (v == null) { out.append(tag).append(' ').append(path).append("=null\n"); return; }
+        Class<?> c = v.getClass();
+        if (c.isArray()) {
+            int n = Array.getLength(v);
+            Class<?> el = c.getComponentType();
+            if (el == byte.class) {
+                byte[] a = (byte[]) v;
+                StringBuilder h = new StringBuilder();
+                for (byte x : a) { h.append(String.format("%%02x", x)); }
+                out.append(tag).append(' ').append(path).append("=bytes:").append(h).append('\n');
+                return;
+            }
+            if (el.isPrimitive()) {
+                StringBuilder s = new StringBuilder();
+                for (int i = 0; i < n; i++) { if (i > 0) { s.append(','); } s.append(String.valueOf(Array.get(v, i))); }
+                out.append(tag).append(' ').append(path).append("=list:").append(s).append('\n');
+                return;
+            }
+            for (int i = 0; i < n; i++) { walk(tag, path + "[" + i + "]", Array.get(v, i)); }
+            return;
+        }
+        if (v instanceof Float) {
+            out.append(tag).append(' ').append(path).append('=').append(String.valueOf(v))
+               .append("|0x").append(String.format("%%08X", Float.floatToRawIntBits((Float) v))).append('\n');
+            return;
+        }
+        if (v instanceof Double) {
+            out.append(tag).append(' ').append(path).append('=').append(String.valueOf(v))
+               .append("|0x").append(String.format("%%016X", Double.doubleToRawLongBits((Double) v))).append('\n');
+            return;
+        }
+        if (c == String.class || c.isPrimitive() || v instanceof Number || v instanceof Boolean
+                || v instanceof Character || c.isEnum()) {
+            out.append(tag).append(' ').append(path).append('=').append(String.valueOf(v)).append('\n');
+            return;
+        }
+        Field[] fs = c.getFields();
+        java.util.Arrays.sort(fs, (a, b) -> a.getName().compareTo(b.getName()));
+        for (Field f : fs) {
+            if (Modifier.isStatic(f.getModifiers())) { continue; }
+            String p = path.isEmpty() ? f.getName() : path + "." + f.getName();
+            walk(tag, p, f.get(v));
+        }
+    }
+
+    static void poisonFinals(Object v) throws Exception {
+        if (v == null) { return; }
+        Class<?> c = v.getClass();
+        if (c.isArray()) {
+            if (c.getComponentType().isPrimitive()) { return; }
+            for (int i = 0, n = Array.getLength(v); i < n; i++) {
+                Object kid = Array.get(v, i);
+                if (kid != null) { poison(kid); poisonFinals(kid); }
+            }
+            return;
+        }
+        for (Field f : c.getFields()) {
+            if (Modifier.isStatic(f.getModifiers())) { continue; }
+            Class<?> t = f.getType();
+            if (t.isPrimitive() || t == String.class) { continue; }
+            Object kid = f.get(v);
+            if (kid != null) { poison(kid); poisonFinals(kid); }
+        }
+    }
+
+    static void poison(Object v) throws Exception {
+        if (v == null) { return; }
+        Class<?> c = v.getClass();
+        if (c.isArray()) {
+            int n = Array.getLength(v);
+            Class<?> el = c.getComponentType();
+            for (int i = 0; i < n; i++) {
+                if (el == byte.class) { Array.setByte(v, i, (byte) 0x5A); }
+                else if (el == short.class) { Array.setShort(v, i, (short) 0x5A5A); }
+                else if (el == int.class) { Array.setInt(v, i, 0x5A5A5A5A); }
+                else if (el == long.class) { Array.setLong(v, i, 0x5A5A5A5A5A5A5A5AL); }
+                else if (el == float.class) { Array.setFloat(v, i, Float.intBitsToFloat(0x5A5A5A5A)); }
+                else if (el == double.class) { Array.setDouble(v, i, Double.longBitsToDouble(0x5A5A5A5A5A5A5A5AL)); }
+                else if (el == boolean.class) { Array.setBoolean(v, i, true); }
+                else if (el == char.class) { Array.setChar(v, i, (char) 0x5A5A); }
+                else { poison(Array.get(v, i)); }
+            }
+            return;
+        }
+        for (Field f : c.getFields()) {
+            if (Modifier.isStatic(f.getModifiers()) || Modifier.isFinal(f.getModifiers())) { continue; }
+            Class<?> t = f.getType();
+            if (t == byte.class) { f.setByte(v, (byte) 0x5A); }
+            else if (t == short.class) { f.setShort(v, (short) 0x5A5A); }
+            else if (t == int.class) { f.setInt(v, 0x5A5A5A5A); }
+            else if (t == long.class) { f.setLong(v, 0x5A5A5A5A5A5A5A5AL); }
+            else if (t == float.class) { f.setFloat(v, Float.intBitsToFloat(0x5A5A5A5A)); }
+            else if (t == double.class) { f.setDouble(v, Double.longBitsToDouble(0x5A5A5A5A5A5A5A5AL)); }
+            else if (t == boolean.class) { f.setBoolean(v, true); }
+            else if (t == char.class) { f.setChar(v, (char) 0x5A5A); }
+            else if (t == String.class) { f.set(v, "ZZZZZZZZ"); }
+            else { poison(f.get(v)); }
+        }
+    }
+}
+`, pkg, root, pkg, root, pkg, root, pkg, pkg, pkg, root, pkg, pkg, root, pkg, root, pkg, root)
+	return b.String()
+}

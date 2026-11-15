@@ -67,9 +67,9 @@ public final class MixedHitEventFixed {
     }
 
     /**
-     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
-     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
-     * (docs/SPEC-TABLES.md §3.4).
+     * the same landing. `live` is false when the caller is not keeping this body. An absent
+     * optional does not call it: that payload is dead, every byte of it is zero or the load
+     * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
      */
     static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
         v.targetId = TableFixed.get32(b, at + 0);

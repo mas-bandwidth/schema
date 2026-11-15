@@ -56,9 +56,9 @@ public final class FixedTableFixed {
     }
 
     /**
-     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
-     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
-     * (docs/SPEC-TABLES.md §3.4).
+     * the same landing. `live` is false when the caller is not keeping this body. An absent
+     * optional does not call it: that payload is dead, every byte of it is zero or the load
+     * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
      */
     static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
         BenchMixedFixed.scatter(b, at + 0, v.value, r, live);
@@ -410,11 +410,15 @@ public final class FixedTableFixed {
         final byte[] cover = new byte[bodyBytes];
         final int[] hole = new int[Math.max(2, bodyBytes * 2)];
         final int holeN = TableFixed.holes(entries, made, cover, hole);
+        // Dead bytes are checked on the record image, and that image is the writer's
+        // record only when the plan copied the whole body (the identity plan).
+        TableFixed.checkDead = fileHash == hash;
         // STEP 11, TOTAL OVER THE BATCH (§5.3): pass 0 checks EVERY record — its
-        // hash first, then its counts, lengths, text, bool and present bytes —
-        // by landing it in a scratch value the caller never sees; only then does
-        // pass 1 land the records, values already known good. A refusal at
-        // record k leaves values[0..k-1] exactly as untouched as values[k].
+        // hash first, then its counts, lengths, text, bool and present bytes, and
+        // that every dead byte is zero — by landing it in a scratch value the
+        // caller never sees; only then does pass 1 land the records, values
+        // already known good. A refusal at record k leaves values[0..k-1] exactly
+        // as untouched as values[k].
         final Value scratch = new Value();
         final int widenedBefore = report.widened;
         for (int pass = 0; pass < 2; pass++) {
@@ -436,9 +440,12 @@ public final class FixedTableFixed {
                 // DAMAGE DISCARDS THE WHOLE LOAD (§4)
                 if (report.refused || report.damaged) {
                     if (pass == 1) {
+                        final boolean deadWas = TableFixed.checkDead;
+                        TableFixed.checkDead = false;
                         for (int j = 0; j <= k; j++) {
                             scatter(defaults, 0, values[j], new TableFixed.Report());
                         }
+                        TableFixed.checkDead = deadWas;
                     }
                     report.widened = widenedBefore;
                     return -1;

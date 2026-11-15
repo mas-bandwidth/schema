@@ -196,9 +196,9 @@ public final class BenchMixedFixed {
     }
 
     /**
-     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
-     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
-     * (docs/SPEC-TABLES.md §3.4).
+     * the same landing. `live` is false when the caller is not keeping this body. An absent
+     * optional does not call it: that payload is dead, every byte of it is zero or the load
+     * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
      */
     static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
         v.sequence = TableFixed.get32(b, at + 0);
@@ -293,6 +293,14 @@ public final class BenchMixedFixed {
             }
             v.entitiesCount = n;
         }
+        if (live && TableFixed.checkDead) {
+            for (int deadZ = 0; deadZ < (8 - v.entitiesCount) * 51; deadZ++) {
+                if (b[(at) + (56 + v.entitiesCount * 51) + deadZ] != 0) {
+                    r.refuse(TableFixed.Reason.wireDamaged);
+                    return;
+                }
+            }
+        }
         for (int i = 0; i < v.entitiesCount; i++) {
             MixedEntityFixed.scatter(b, at + 56 + i * 51 + 0, v.entities[i], r, live);
         }
@@ -310,6 +318,14 @@ public final class BenchMixedFixed {
                 }
             }
             v.statsCount = n;
+        }
+        if (live && TableFixed.checkDead) {
+            for (int deadZ = 0; deadZ < (80 - v.statsCount) * 8; deadZ++) {
+                if (b[(at) + (468 + v.statsCount * 8) + deadZ] != 0) {
+                    r.refuse(TableFixed.Reason.wireDamaged);
+                    return;
+                }
+            }
         }
         for (int i = 0; i < v.statsCount; i++) {
             MixedStatFixed.scatter(b, at + 468 + i * 8 + 0, v.stats[i], r, live);
@@ -333,6 +349,14 @@ public final class BenchMixedFixed {
             }
             v.playerNameLength = n;
         }
+        if (live && TableFixed.checkDead) {
+            for (int deadZ = 0; deadZ < 15 - v.playerNameLength; deadZ++) {
+                if (b[(at) + (1130 + v.playerNameLength) + deadZ] != 0) {
+                    r.refuse(TableFixed.Reason.wireDamaged);
+                    return;
+                }
+            }
+        }
         if (live && !TableFixed.textOk(TableFixed.textUtf8, b, at + 1130, v.playerNameLength)) {
             r.refuse(TableFixed.Reason.textIllFormed);
             return;
@@ -355,6 +379,14 @@ public final class BenchMixedFixed {
                 }
             }
             v.payloadLength = n;
+        }
+        if (live && TableFixed.checkDead) {
+            for (int deadZ = 0; deadZ < 16 - v.payloadLength; deadZ++) {
+                if (b[(at) + (1149 + v.payloadLength) + deadZ] != 0) {
+                    r.refuse(TableFixed.Reason.wireDamaged);
+                    return;
+                }
+            }
         }
         System.arraycopy(b, at + 1149, v.payload, 0, v.payloadLength);
         if (v.payloadLength < v.payload.length) {

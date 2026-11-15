@@ -34,6 +34,14 @@ package bench;
 public final class TableFixed {
     private TableFixed() {}
 
+    /**
+     * Dead-byte checks read the record image. That image is the writer's record only on the
+     * identity plan, which copies the whole body. A compiled plan's holes are this reader's
+     * defaults, not the writer's dead bytes, so load sets this only when the file hash is this
+     * build's own.
+     */
+    static boolean checkDead;
+
     /** the form byte this class reads and writes, and no other. */
     public static final byte form = 3;
 
