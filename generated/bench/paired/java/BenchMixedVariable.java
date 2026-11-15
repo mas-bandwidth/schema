@@ -2855,9 +2855,13 @@ public final class BenchMixedVariable {
                         if (text != null) {
                             try {
                                 byte[] bytes = java.util.Base64.getDecoder().decode(text);
-                                int keep = Math.min(bytes.length, 16);
-                                v.payload = java.util.Arrays.copyOf(bytes, keep);
-                                if (bytes.length > keep) in.rep.refuse("out_of_range");
+                                if (!java.util.Base64.getEncoder().encodeToString(bytes).equals(text)) {
+                                    in.rep.refuse("base64_not_canonical");
+                                } else {
+                                    int keep = Math.min(bytes.length, 16);
+                                    v.payload = java.util.Arrays.copyOf(bytes, keep);
+                                    if (bytes.length > keep) in.rep.refuse("out_of_range");
+                                }
                             } catch (IllegalArgumentException invalid) {
                                 in.rep.refuse("kind_mismatch");
                             }
