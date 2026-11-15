@@ -1910,3 +1910,47 @@ packet-end-dart-negative-control: packet-end-dart
 	@echo 'negative control: with no end check, the trailing byte and the set final-byte bits are accepted'
 
 test-dart: packet-end-dart packet-end-dart-negative-control
+
+# PACKET COMPRESSED FLOATS HOLD THEIR RANGE (docs/SPEC.md §5.1 row 10,
+# docs/PACKET-WIRE-ALGORITHM.md §2.5): the writer checks the value finite and
+# inside [min, max] before quantizing, and the integer clamp after rounding
+# stays. The shared cases run on the checked twin, where every refused case
+# must fire the assert; the release twin trusts the caller by design, so it
+# only writes the lawful cases and reads them back.
+build/packet-write-cfloat/dart/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/dart.mk
+	./bin/schema generate --lang dart --out build/packet-write-cfloat/dart test/packet-write-cfloat/CFloat.schema
+	@touch $@
+
+.PHONY: packet-write-cfloat-dart packet-write-cfloat-dart-negative-control
+packet-write-cfloat-dart: build/packet-write-cfloat/dart/.stamp
+	$(DART) analyze build/packet-write-cfloat/dart test/packet-write-cfloat/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-write-cfloat/dart test/packet-write-cfloat/dart
+	$(DART) --enable-asserts test/packet-write-cfloat/dart/main.dart test/packet-write-cfloat/cases.txt
+	$(DART) compile exe -o build/packet-write-cfloat/dart/checker test/packet-write-cfloat/dart/main.dart >/dev/null
+	./build/packet-write-cfloat/dart/checker test/packet-write-cfloat/cases.txt
+
+packet-write-cfloat-dart-negative-control: packet-write-cfloat-dart
+	@rm -rf build/packet-write-cfloat/dart-negative && mkdir -p build/packet-write-cfloat/dart-negative
+	go run ./tools/sabotage -name packet-write-cfloat-dart-range -out build/packet-write-cfloat/dart-negative/functions.gotext internal/codegen/dart/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/dart/functions.go":"%s/build/packet-write-cfloat/dart-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-write-cfloat/dart-negative/overlay.json
+	go run -overlay=build/packet-write-cfloat/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-write-cfloat/dart-negative/generated test/packet-write-cfloat/CFloat.schema
+	@sed 's|../../../build/packet-write-cfloat/dart/|$(CURDIR)/build/packet-write-cfloat/dart-negative/generated/|' test/packet-write-cfloat/dart/main.dart > build/packet-write-cfloat/dart-negative/main.dart
+	@if $(DART) --enable-asserts build/packet-write-cfloat/dart-negative/main.dart test/packet-write-cfloat/cases.txt > build/packet-write-cfloat/dart-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the range check is removed and the driver stayed green'; \
+		cat build/packet-write-cfloat/dart-negative/log; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-cfloat above-max: off-range value was written' build/packet-write-cfloat/dart-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: above-max was not the failure'; cat build/packet-write-cfloat/dart-negative/log; exit 1; }
+	@grep -Fq 'FAILED: packet-write-cfloat below-min: off-range value was written' build/packet-write-cfloat/dart-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: below-min was not the failure'; cat build/packet-write-cfloat/dart-negative/log; exit 1; }
+	@grep -Fq 'FAILED: packet-write-cfloat largest-finite-float32: off-range value was written' build/packet-write-cfloat/dart-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: largest-finite-float32 was not the failure'; cat build/packet-write-cfloat/dart-negative/log; exit 1; }
+	@if grep -F 'FAILED: ' build/packet-write-cfloat/dart-negative/log | grep -Fvq \
+		-e 'FAILED: packet-write-cfloat above-max: off-range value was written' \
+		-e 'FAILED: packet-write-cfloat below-min: off-range value was written' \
+		-e 'FAILED: packet-write-cfloat largest-finite-float32: off-range value was written'; then \
+		echo 'NEGATIVE CONTROL FAILED: a case other than the three finite off-range values went red'; \
+		cat build/packet-write-cfloat/dart-negative/log; exit 1; fi
+	@grep -m1 'FAILED: packet-write-cfloat above-max: off-range value was written' build/packet-write-cfloat/dart-negative/log
+	@echo 'negative control: with no range check, the three finite off-range cases are written and nothing else goes red'
+
+test-dart: packet-write-cfloat-dart packet-write-cfloat-dart-negative-control

@@ -538,6 +538,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   {
     final x = Schema.fround(value.f004Cf32);
     assert(x.isFinite);
+    assert(x >= 0.0 && x <= 2000.0); // SPEC §5.1 row 10
     var n = Schema.fround(x / 2000.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -747,6 +748,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   {
     final x = Schema.fround(value.f027Cf32);
     assert(x.isFinite);
+    assert(x >= -2.0 && x <= 2.0); // SPEC §5.1 row 10
     var n = Schema.fround(Schema.fround(x + 2.0) / 4.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -991,6 +993,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   {
     final x = Schema.fround(value.f061Cf32);
     assert(x.isFinite);
+    assert(x >= -90.0 && x <= 90.0); // SPEC §5.1 row 10
     var n = Schema.fround(Schema.fround(x + 90.0) / 180.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -1042,6 +1045,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   {
     final x = Schema.fround(value.f065Cf32);
     assert(x.isFinite);
+    assert(x >= 0.0 && x <= 30.0); // SPEC §5.1 row 10
     var n = Schema.fround(x / 30.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -1073,6 +1077,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   {
     final x = Schema.fround(value.f067Cf32);
     assert(x.isFinite);
+    assert(x >= -100.0 && x <= 100.0); // SPEC §5.1 row 10
     var n = Schema.fround(Schema.fround(x + 100.0) / 200.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -1093,6 +1098,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   {
     final x = Schema.fround(value.f068Cf32);
     assert(x.isFinite);
+    assert(x >= 0.0 && x <= 2000.0); // SPEC §5.1 row 10
     var n = Schema.fround(x / 2000.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -1126,6 +1132,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   {
     final x = Schema.fround(value.f071Cf32);
     assert(x.isFinite);
+    assert(x >= 0.0 && x <= 10.0); // SPEC §5.1 row 10
     var n = Schema.fround(x / 10.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -1146,6 +1153,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   {
     final x = Schema.fround(value.f072Cf32);
     assert(x.isFinite);
+    assert(x >= 0.0 && x <= 100.0); // SPEC §5.1 row 10
     var n = Schema.fround(x / 100.0);
     if (!(n >= 0.0)) {
       n = 0.0;

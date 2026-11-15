@@ -1895,7 +1895,8 @@
         "cards-dart-conformance-negative-control",
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
-        "packet-end-dart-negative-control"
+        "packet-end-dart-negative-control",
+        "packet-write-cfloat-dart-negative-control"
       ],
       "dart": "3.13.2"
     },

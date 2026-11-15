@@ -922,18 +922,21 @@ func f32lit(v float64) string {
 }
 
 // emitWriteCompressedFloat is the family's two-rounding float32 quantization
-// with the declaration folded: round to float32, normalize, clamp (which
-// also grounds NaN), quantize — every step through _fround (SPEC §4.3).
+// with the declaration folded: round to float32, check the value is finite and
+// inside [min, max], normalize, clamp, quantize — every step through _fround
+// (SPEC §4.3, §5.1 row 10).
 func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	g.chunkFlush(ind) // statement-form merge: v is computed in a block
 	g.useRuntime()
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
-	deltaF := float32(f.FMax) - minF
+	maxF := float32(f.FMax)
+	deltaF := maxF - minF
 	mivF := float32(maxInt)
 	g.pf("%s{\n", ind)
 	g.pf("%s  final x = Schema.fround(%s);\n", ind, name)
 	g.pf("%s  assert(x.isFinite);\n", ind)
+	g.pf("%s  assert(x >= %s && x <= %s); // SPEC §5.1 row 10\n", ind, f32lit(float64(minF)), f32lit(float64(maxF)))
 	// x - min, spelled exactly: subtracting a negative min is adding its
 	// magnitude, and x - 0.0 is x itself (already a float32, -0.0 included)
 	shifted := "x"

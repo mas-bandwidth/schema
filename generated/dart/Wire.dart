@@ -571,6 +571,7 @@ int writeProbeSample(ProbeSample value, ByteData view) {
   {
     final x = Schema.fround(value.orientation);
     assert(x.isFinite);
+    assert(x >= -180.0 && x <= 180.0); // SPEC §5.1 row 10
     var n = Schema.fround(Schema.fround(x + 180.0) / 360.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -1798,6 +1799,7 @@ int writeProbeArray(ProbeArray value, ByteData view) {
     {
       final x = Schema.fround(e0.orientation);
       assert(x.isFinite);
+      assert(x >= -180.0 && x <= 180.0); // SPEC §5.1 row 10
       var n = Schema.fround(Schema.fround(x + 180.0) / 360.0);
       if (!(n >= 0.0)) {
         n = 0.0;
@@ -3122,6 +3124,7 @@ int writeTestData(TestData value, ByteData view) {
   {
     final x = Schema.fround(value.compressedFloatValue);
     assert(x.isFinite);
+    assert(x >= 0.0 && x <= 10.0); // SPEC §5.1 row 10
     var n = Schema.fround(x / 10.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -3652,6 +3655,7 @@ int writeCompressedProbe(CompressedProbe value, ByteData view) {
   {
     final x = Schema.fround(value.boundary);
     assert(x.isFinite);
+    assert(x >= 0.0 && x <= 10.0); // SPEC §5.1 row 10
     var n = Schema.fround(x / 10.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -3666,6 +3670,7 @@ int writeCompressedProbe(CompressedProbe value, ByteData view) {
   {
     final x = Schema.fround(value.offset);
     assert(x.isFinite);
+    assert(x >= -5.0 && x <= 5.0); // SPEC §5.1 row 10
     var n = Schema.fround(Schema.fround(x + 5.0) / 10.0);
     if (!(n >= 0.0)) {
       n = 0.0;
