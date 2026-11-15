@@ -369,18 +369,23 @@ both shapes to the same value.
 For pointer arrays and guarded fields, `TestPythonVtPointerArraysShapeBench`
 runs a nine-field table (`[]*Leaf`, `[4]*Leaf`, `[..6]*Leaf`, `if active` with
 `[]*Leaf`, nested `if !muted`, and `else *Leaf`, over shared and null `Leaf`
-nodes) under both pins on a 16-core AMD EPYC 9124 host (minimum of five rounds
-of 5,000 iterations after warm-up, in nanoseconds per operation):
+nodes) under both pins. The figures are from the iterative save walks, on a
+shared 16-core AMD Ryzen 9 7950X3D fleet bench whose load average stood
+between 3 and 6 while they were taken: each is the minimum over six sittings
+of the minimum of five rounds of 5,000 iterations after warm-up, in
+nanoseconds per operation:
 
 | operation | 3.15.2 generated | 3.15.2 descriptor | 3.11.18 generated | 3.11.18 descriptor |
 |---|---:|---:|---:|---:|
-| save | 35,794 | 36,010 | 33,254 | 34,265 |
-| load | 56,507 | 57,631 | 62,756 | 62,981 |
+| save | 30,728 | 31,481 | 29,257 | 29,738 |
+| load | 44,192 | 44,857 | 48,323 | 48,290 |
 
-The generated pair with bound locals and inline guard checks is faster on every
-cell (up to 3% faster on save under 3.11.18 and 2% faster on load under 3.15.2;
-save and load together, 1.5% faster on 3.15.2 and 1.3% faster on 3.11.18), so
-the generated pair is kept for pointer-array and guarded tables as well.
+The generated pair with bound locals and inline guard checks is faster on save
+under both pins (2.4% under 3.15.2, 1.6% under 3.11.18) and on load under
+3.15.2 (1.5%), and ties the descriptor walk on load under 3.11.18 (0.1%
+slower). Save and load together it is 1.9% faster on 3.15.2 and 0.6% faster on
+3.11.18, so the generated pair is kept for pointer-array and guarded tables as
+well.
 
 ### Maps bench
 
@@ -393,25 +398,29 @@ default, then the end mark) without the object. `TestPythonMapShapeBench`
 (internal/codegen/pythontable) times both on a 64-entry `map[uint32]int32`
 and a 16-entry `map[uint16]*Node`, and the load of each, under both pins.
 Each figure is the minimum of five rounds of 2,000 iterations after warm-up,
-taken over six sittings, in microseconds per operation. They were measured on
-a shared fleet bench whose load average stood between 67 and 112 on 16 cores,
-so single sittings swing by up to 2x; the minima are the figures to compare:
+taken over six sittings, in microseconds per operation. They were re-measured
+once the save walks became iterative, on the same shared 16-core AMD Ryzen 9
+7950X3D fleet
+bench as the pointer-array figures (load average between 3 and 6); the minima
+are the figures to compare:
 
 | operation | 3.15.2 | 3.11.18 |
 |---|---:|---:|
-| scalar map save, direct entry bodies (kept) | 141.1 | 135.9 |
-| scalar map save, entry objects | 162.0 | 155.2 |
-| pointer map save, direct entry bodies (kept) | 73.1 | 67.5 |
-| pointer map save, entry objects | 75.6 | 75.8 |
-| scalar map load | 184.3 | 202.0 |
-| pointer map load | 82.7 | 88.2 |
+| scalar map save, direct entry bodies (kept) | 138.4 | 127.2 |
+| scalar map save, entry objects | 162.5 | 152.7 |
+| pointer map save, direct entry bodies (kept) | 77.2 | 74.2 |
+| pointer map save, entry objects | 82.7 | 80.8 |
+| scalar map load | 288.7 | 316.2 |
+| pointer map load | 132.2 | 145.1 |
 
-The direct save is 13% faster on the scalar map under 3.15.2 and 12% under
-3.11.18, and 3% and 11% faster on the pointer map, whose time goes mostly to
-the node table; in 21 of the 24 comparisons across both pins it was the faster
-of the two. `kind_map.py` writes the direct shape. The load reads each entry
-through `read_body`, which holds the unknown-field skip, the repeated-field
-and kind checks and the pointer fix-up in one place, so it has one shape.
+The direct save is 15% faster on the scalar map under 3.15.2 and 17% under
+3.11.18, and 7% and 8% faster on the pointer map, whose time goes mostly to
+the node table; in all 24 comparisons across both pins and the six sittings it
+was the faster of the two. `kind_map.py` writes the direct shape. The load
+reads each entry through `read_body`, which holds the unknown-field skip, the
+repeated-field and kind checks and the pointer fix-up in one place, so it has
+one shape. The figures come from another host than the ones they replace, so
+they are compared only with each other.
 
 ## IDENTIFIERS
 
