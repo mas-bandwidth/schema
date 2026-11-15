@@ -1,6 +1,8 @@
 // The Goose packet-text driver (test/packet-text/README.md): one hex wire per
 // stdin line; for each, REFUSE, or OK with the consumed bits, the payload,
-// and the canonical rewrite's bits and bytes. The make target generates
+// and the canonical rewrite's bits and bytes. It reads through _ReadNarrow,
+// the composable read that reports bits and runs no end check (the end check
+// is packet-end-goose's). The make target generates
 // test/packet-text/Narrow.schema beside this file.
 import os;
 import .Narrow;
@@ -18,7 +20,7 @@ fn main() {
         var v = packettext::Narrow { .. };
         for &c in v.Text { c = 0x7f; }
         var out: u8[>..] = [];
-        if !packettext::ReadNarrow(r, v) {
+        if !packettext::_ReadNarrow(r, v) {
             print("REFUSE");
             continue;
         }

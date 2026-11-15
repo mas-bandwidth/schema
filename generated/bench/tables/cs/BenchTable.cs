@@ -275,6 +275,15 @@ namespace Benchtable
 
         public static bool ReadTableHitEvent(ReadStream stream, TableHitEvent value)
         {
+            if (!ReadTableHitEventBody(stream, value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadTableHitEventBody(ReadStream stream, TableHitEvent value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadTableHitEventBatch(ref batch, value);
             batch.End();
@@ -348,6 +357,15 @@ namespace Benchtable
 
         public static bool ReadTableChatEvent(ReadStream stream, TableChatEvent value)
         {
+            if (!ReadTableChatEventBody(stream, value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadTableChatEventBody(ReadStream stream, TableChatEvent value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadTableChatEventBatch(ref batch, value);
             batch.End();
@@ -416,6 +434,15 @@ namespace Benchtable
         }
 
         public static bool ReadTablePickupEvent(ReadStream stream, TablePickupEvent value)
+        {
+            if (!ReadTablePickupEventBody(stream, value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadTablePickupEventBody(ReadStream stream, TablePickupEvent value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadTablePickupEventBatch(ref batch, value);
@@ -511,6 +538,15 @@ namespace Benchtable
         }
 
         public static bool ReadTableEvent(ReadStream stream, TableEvent value)
+        {
+            if (!ReadTableEventBody(stream, value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadTableEventBody(ReadStream stream, TableEvent value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadTableEventBatch(ref batch, value);
