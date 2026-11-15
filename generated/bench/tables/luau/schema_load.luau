@@ -418,6 +418,9 @@ local function scalar_at(r: any, fd: any, kind: number, report: any): any
 			x = 0.0
 		else
 			x = f32_of(bits)
+			-- a ranged float's -0 lands as +0, uncounted (docs/SPEC-TABLES.md
+			-- §3.3, the special values); a plain float keeps its sign
+			if fd.s == "float" and fd.lo ~= nil and x == 0 then x = 0 end
 		end
 	elseif kind == 11 then
 		-- the high half holds the whole exponent field; the width is checked above
