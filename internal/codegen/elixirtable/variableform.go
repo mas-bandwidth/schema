@@ -2402,6 +2402,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {_len, <<elem_kind, count_rest::binary>>} ->
         case leb(count_rest) do
           {n, elems} ->
+            # THE ELEMENT KIND IS CLOSED (docs/SPEC-TABLES.md §3, §4): judged
+            # under any count before the declaration, so a kind off the array
+            # list is damage rather than a mismatch.
+            if not array_element_kind?(elem_kind), do: throw(:wire_damaged)
+
             # a narrower scalar element kind widens and counts once
             # (docs/SPEC-TABLES.md §2.9, §4). Any other disagreement skips
             # the field and counts a kind mismatch.
@@ -2732,6 +2737,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # length-framed slot is then decoded at that incoming width (§3.2, §4).
   defp keyed_reader(f, kind, report) do
     cond do
+      not keyed_element_kind?(kind) ->
+        {:mismatch, throw(:wire_damaged)}
+
       kind == f.elem_kind ->
         {:ok, f, report}
 
