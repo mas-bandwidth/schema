@@ -191,21 +191,9 @@ public final class Degenerate {
     }
 
     // readVec2 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readVec2(Vec2 value, byte[] data, int numBits) {
-        final int end = readVec2Bits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readVec2Bits(value, data, 0, numBits) >= 0;
     }
 
     // type SpanF64
@@ -309,21 +297,9 @@ public final class Degenerate {
     }
 
     // readSpanF64 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readSpanF64(SpanF64 value, byte[] data, int numBits) {
-        final int end = readSpanF64Bits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readSpanF64Bits(value, data, 0, numBits) >= 0;
     }
 
     // type SpanU64
@@ -417,21 +393,9 @@ public final class Degenerate {
     }
 
     // readSpanU64 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readSpanU64(SpanU64 value, byte[] data, int numBits) {
-        final int end = readSpanU64Bits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readSpanU64Bits(value, data, 0, numBits) >= 0;
     }
 
     // type SpanI64
@@ -525,21 +489,9 @@ public final class Degenerate {
     }
 
     // readSpanI64 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readSpanI64(SpanI64 value, byte[] data, int numBits) {
-        final int end = readSpanI64Bits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readSpanI64Bits(value, data, 0, numBits) >= 0;
     }
 
     // type SpanOne
@@ -633,21 +585,9 @@ public final class Degenerate {
     }
 
     // readSpanOne decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readSpanOne(SpanOne value, byte[] data, int numBits) {
-        final int end = readSpanOneBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readSpanOneBits(value, data, 0, numBits) >= 0;
     }
 
     // type SpanChunk
@@ -738,21 +678,9 @@ public final class Degenerate {
     }
 
     // readSpanChunk decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readSpanChunk(SpanChunk value, byte[] data, int numBits) {
-        final int end = readSpanChunkBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readSpanChunkBits(value, data, 0, numBits) >= 0;
     }
 
     // type SpanTail
@@ -866,21 +794,9 @@ public final class Degenerate {
     }
 
     // readSpanTail decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readSpanTail(SpanTail value, byte[] data, int numBits) {
-        final int end = readSpanTailBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readSpanTailBits(value, data, 0, numBits) >= 0;
     }
 
     // type SpanTwice
@@ -1010,21 +926,9 @@ public final class Degenerate {
     }
 
     // readSpanTwice decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readSpanTwice(SpanTwice value, byte[] data, int numBits) {
-        final int end = readSpanTwiceBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readSpanTwiceBits(value, data, 0, numBits) >= 0;
     }
 
     // type Trio
@@ -1062,12 +966,6 @@ public final class Degenerate {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + TRIO_MAX_BITS;
-        assert value.a >= 0;
-        assert value.a <= 1048575;
-        assert value.b >= 0;
-        assert value.b <= 1048575;
-        assert value.c >= 0;
-        assert value.c <= 16777215;
         return true;
     }
 
@@ -1129,21 +1027,9 @@ public final class Degenerate {
     }
 
     // readTrio decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readTrio(Trio value, byte[] data, int numBits) {
-        final int end = readTrioBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readTrioBits(value, data, 0, numBits) >= 0;
     }
 
     // type TrioSole
@@ -1218,21 +1104,9 @@ public final class Degenerate {
     }
 
     // readTrioSole decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readTrioSole(TrioSole value, byte[] data, int numBits) {
-        final int end = readTrioSoleBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readTrioSoleBits(value, data, 0, numBits) >= 0;
     }
 
     // type Vec3Sole
@@ -1307,21 +1181,9 @@ public final class Degenerate {
     }
 
     // readVec3Sole decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readVec3Sole(Vec3Sole value, byte[] data, int numBits) {
-        final int end = readVec3SoleBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readVec3SoleBits(value, data, 0, numBits) >= 0;
     }
 
     // type TrioFirst
@@ -1356,8 +1218,6 @@ public final class Degenerate {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + TRIO_FIRST_MAX_BITS;
-        assert value.trailer >= 0;
-        assert value.trailer <= 65535;
         return true;
     }
 
@@ -1414,21 +1274,9 @@ public final class Degenerate {
     }
 
     // readTrioFirst decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readTrioFirst(TrioFirst value, byte[] data, int numBits) {
-        final int end = readTrioFirstBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readTrioFirstBits(value, data, 0, numBits) >= 0;
     }
 
     // type TrioStraddle
@@ -1478,8 +1326,6 @@ public final class Degenerate {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + TRIO_STRADDLE_MAX_BITS;
-        assert value.pad5 >= 0;
-        assert value.pad5 <= 16777215;
         return true;
     }
 
@@ -1593,20 +1439,8 @@ public final class Degenerate {
     }
 
     // readTrioStraddle decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readTrioStraddle(TrioStraddle value, byte[] data, int numBits) {
-        final int end = readTrioStraddleBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readTrioStraddleBits(value, data, 0, numBits) >= 0;
     }
 }

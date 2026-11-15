@@ -109,23 +109,15 @@ function _M.ZeroDefaultArm(value)
   value.Marker = 0
 end
 
--- ReadDefaultArm reads one packet: the type wire (SPEC §4.3, §6.1), then the
--- end check (SPEC §5). false refuses without a latch (a stream overflow
--- rides stream:error()).
+-- ReadDefaultArm reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- (a stream overflow rides stream:error()).
 function _M.ReadDefaultArm(stream, value)
-  if not _M.ReadDefaultArmBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadDefaultArmBody reads the type wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadDefaultArmBody(stream, value)
   if not stream:serializeInt(BITS, 0, 2) then -- the count guards the loop (SPEC §6.3)
     return false
   end
   value.EntriesCount = BITS.value
   for i = 1, value.EntriesCount do
-    if not Wire_.ReadProbeConfigBody(stream, value.Entries[i]) then return false end
+    if not Wire_.ReadProbeConfig(stream, value.Entries[i]) then return false end
   end
   if not stream:serializeInt(BITS, 0, 7) then return false end
   value.Marker = BITS.value
@@ -137,27 +129,18 @@ function _M.ZeroDefaultChoice(value)
   value.Type = 0
 end
 
--- ReadDefaultChoice reads one packet: the union wire (SPEC §4.8), then the end check
--- (SPEC §5).
 function _M.ReadDefaultChoice(stream, value)
-  if not _M.ReadDefaultChoiceBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadDefaultChoiceBody reads the union wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadDefaultChoiceBody(stream, value)
   if not stream:serializeInt(BITS, 0, 2) then -- rejects a tag above the count (SPEC §4.8)
     return false
   end
   value.Type = BITS.value
   if value.Type == _M.DefaultChoiceType.First then
     value.First = _M.NewDefaultArm() -- fresh declared defaults on every selection
-    return _M.ReadDefaultArmBody(stream, value.First)
+    return _M.ReadDefaultArm(stream, value.First)
   end
   if value.Type == _M.DefaultChoiceType.Second then
     value.Second = _M.NewDefaultArm() -- fresh declared defaults on every selection
-    return _M.ReadDefaultArmBody(stream, value.Second)
+    return _M.ReadDefaultArm(stream, value.Second)
   end
   return true -- None
 end
@@ -167,18 +150,10 @@ function _M.ZeroDefaultChoicePacket(value)
   _M.ZeroDefaultChoice(value.Choice)
 end
 
--- ReadDefaultChoicePacket reads one packet: the type wire (SPEC §4.3, §6.1), then the
--- end check (SPEC §5). false refuses without a latch (a stream overflow
--- rides stream:error()).
+-- ReadDefaultChoicePacket reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- (a stream overflow rides stream:error()).
 function _M.ReadDefaultChoicePacket(stream, value)
-  if not _M.ReadDefaultChoicePacketBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadDefaultChoicePacketBody reads the type wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadDefaultChoicePacketBody(stream, value)
-  if not _M.ReadDefaultChoiceBody(stream, value.Choice) then return false end
+  if not _M.ReadDefaultChoice(stream, value.Choice) then return false end
   return true
 end
 
@@ -188,18 +163,10 @@ function _M.ZeroDefaultBulkArm(value)
   value.Data = ""
 end
 
--- ReadDefaultBulkArm reads one packet: the type wire (SPEC §4.3, §6.1), then the
--- end check (SPEC §5). false refuses without a latch (a stream overflow
--- rides stream:error()).
+-- ReadDefaultBulkArm reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- (a stream overflow rides stream:error()).
 function _M.ReadDefaultBulkArm(stream, value)
-  if not _M.ReadDefaultBulkArmBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadDefaultBulkArmBody reads the type wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadDefaultBulkArmBody(stream, value)
-  if not _M.ReadDefaultArmBody(stream, value.Payload) then return false end
+  if not _M.ReadDefaultArm(stream, value.Payload) then return false end
   do
     if not stream:serializeInt(BITS, 0, 2) then -- the length guards the payload (§6.3)
       return false
@@ -216,27 +183,18 @@ function _M.ZeroDefaultBulkChoice(value)
   value.Type = 0
 end
 
--- ReadDefaultBulkChoice reads one packet: the union wire (SPEC §4.8), then the end check
--- (SPEC §5).
 function _M.ReadDefaultBulkChoice(stream, value)
-  if not _M.ReadDefaultBulkChoiceBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadDefaultBulkChoiceBody reads the union wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadDefaultBulkChoiceBody(stream, value)
   if not stream:serializeInt(BITS, 0, 2) then -- rejects a tag above the count (SPEC §4.8)
     return false
   end
   value.Type = BITS.value
   if value.Type == _M.DefaultBulkChoiceType.First then
     value.First = _M.NewDefaultBulkArm() -- fresh declared defaults on every selection
-    return _M.ReadDefaultBulkArmBody(stream, value.First)
+    return _M.ReadDefaultBulkArm(stream, value.First)
   end
   if value.Type == _M.DefaultBulkChoiceType.Second then
     value.Second = _M.NewDefaultBulkArm() -- fresh declared defaults on every selection
-    return _M.ReadDefaultBulkArmBody(stream, value.Second)
+    return _M.ReadDefaultBulkArm(stream, value.Second)
   end
   return true -- None
 end

@@ -249,15 +249,6 @@ namespace Example
 
         public static bool ReadArmsAgree(ReadStream stream, ref ArmsAgree value)
         {
-            if (!ReadArmsAgreeBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadArmsAgreeBody(ReadStream stream, ref ArmsAgree value)
-        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadArmsAgreeBatch(ref batch, ref value);
             batch.End();
@@ -367,15 +358,6 @@ namespace Example
 
         public static bool ReadArmsDisagree(ReadStream stream, ref ArmsDisagree value)
         {
-            if (!ReadArmsDisagreeBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadArmsDisagreeBody(ReadStream stream, ref ArmsDisagree value)
-        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadArmsDisagreeBatch(ref batch, ref value);
             batch.End();
@@ -476,15 +458,6 @@ namespace Example
         }
 
         public static bool ReadArmEmpty(ReadStream stream, ref ArmEmpty value)
-        {
-            if (!ReadArmEmptyBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadArmEmptyBody(ReadStream stream, ref ArmEmpty value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadArmEmptyBatch(ref batch, ref value);
@@ -606,15 +579,6 @@ namespace Example
 
         public static bool ReadArmsNested(ReadStream stream, ref ArmsNested value)
         {
-            if (!ReadArmsNestedBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadArmsNestedBody(ReadStream stream, ref ArmsNested value)
-        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadArmsNestedBatch(ref batch, ref value);
             batch.End();
@@ -712,7 +676,7 @@ namespace Example
             {
                 Debug.Assert(value.SLength >= 0 && value.SLength <= 4, "value.SLength out of range [0, 4]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
                 {
-                    uint offsetValue = unchecked((uint)(value.SLength));
+                    uint offsetValue = (uint)(value.SLength);
                     if (!stream.SerializeBits(ref offsetValue, 3))
                     {
                         return false;
@@ -738,15 +702,6 @@ namespace Example
         }
 
         public static bool ReadArmAlign(ReadStream stream, ref ArmAlign value)
-        {
-            if (!ReadArmAlignBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadArmAlignBody(ReadStream stream, ref ArmAlign value)
         {
             {
                 // flat run: 6 bits in 1 chunk(s) — one bounds check per chunk,
@@ -861,7 +816,7 @@ namespace Example
             {
                 Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
                 {
-                    uint offsetValue = unchecked((uint)(value.ItemsCount));
+                    uint offsetValue = (uint)(value.ItemsCount);
                     if (!batch.SerializeBits(ref offsetValue, 2))
                     {
                         return false;
@@ -871,7 +826,7 @@ namespace Example
                 {
                     Debug.Assert(value.Items[i] <= 8191, "value.Items[i] out of range [0, 8191]");
                     {
-                        uint offsetValue = unchecked((uint)(value.Items[i]));
+                        uint offsetValue = (uint)(value.Items[i]);
                         if (!batch.SerializeBits(ref offsetValue, 13))
                         {
                             return false;
@@ -894,15 +849,6 @@ namespace Example
         }
 
         public static bool ReadArmArray(ReadStream stream, ref ArmArray value)
-        {
-            if (!ReadArmArrayBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadArmArrayBody(ReadStream stream, ref ArmArray value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadArmArrayBatch(ref batch, ref value);
@@ -996,15 +942,6 @@ namespace Example
 
         public static bool ReadNarrow(ReadStream stream, ref Narrow value)
         {
-            if (!ReadNarrowBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadNarrowBody(ReadStream stream, ref Narrow value)
-        {
             if (!stream.SerializeBits(ref value.N, 3))
             {
                 return false;
@@ -1055,15 +992,6 @@ namespace Example
         }
 
         public static bool ReadWide(ReadStream stream, ref Wide value)
-        {
-            if (!ReadWideBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadWideBody(ReadStream stream, ref Wide value)
         {
             if (!stream.SerializeBits64(ref value.W, 37))
             {
@@ -1147,15 +1075,6 @@ namespace Example
 
         public static bool ReadUneven(ReadStream stream, ref Uneven value)
         {
-            if (!ReadUnevenBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadUnevenBody(ReadStream stream, ref Uneven value)
-        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadUnevenBatch(ref batch, ref value);
             batch.End();
@@ -1228,15 +1147,6 @@ namespace Example
 
         public static bool ReadHoldsUneven(ReadStream stream, ref HoldsUneven value)
         {
-            if (!ReadHoldsUnevenBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadHoldsUnevenBody(ReadStream stream, ref HoldsUneven value)
-        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadHoldsUnevenBatch(ref batch, ref value);
             batch.End();
@@ -1299,7 +1209,7 @@ namespace Example
             }
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = unchecked((uint)(value.ItemsCount));
+                uint offsetValue = (uint)(value.ItemsCount);
                 if (!batch.SerializeBits(ref offsetValue, 2))
                 {
                     return false;
@@ -1320,15 +1230,6 @@ namespace Example
         }
 
         public static bool ReadArrUneven(ReadStream stream, ref ArrUneven value)
-        {
-            if (!ReadArrUnevenBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadArrUnevenBody(ReadStream stream, ref ArrUneven value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadArrUnevenBatch(ref batch, ref value);
@@ -1389,7 +1290,7 @@ namespace Example
             }
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = unchecked((uint)(value.ItemsCount));
+                uint offsetValue = (uint)(value.ItemsCount);
                 if (!stream.SerializeBits(ref offsetValue, 2))
                 {
                     return false;
@@ -1399,7 +1300,7 @@ namespace Example
             {
                 Debug.Assert(value.Items[i] <= 8191, "value.Items[i] out of range [0, 8191]");
                 {
-                    uint offsetValue = unchecked((uint)(value.Items[i]));
+                    uint offsetValue = (uint)(value.Items[i]);
                     if (!stream.SerializeBits(ref offsetValue, 13))
                     {
                         return false;
@@ -1408,7 +1309,7 @@ namespace Example
             }
             Debug.Assert(value.SLength >= 0 && value.SLength <= 4, "value.SLength out of range [0, 4]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = unchecked((uint)(value.SLength));
+                uint offsetValue = (uint)(value.SLength);
                 if (!stream.SerializeBits(ref offsetValue, 3))
                 {
                     return false;
@@ -1439,15 +1340,6 @@ namespace Example
         }
 
         public static bool ReadRegainAfterAlign(ReadStream stream, ref RegainAfterAlign value)
-        {
-            if (!ReadRegainAfterAlignBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadRegainAfterAlignBody(ReadStream stream, ref RegainAfterAlign value)
         {
             if (!stream.SerializeBits(ref value.Lead, 5))
             {

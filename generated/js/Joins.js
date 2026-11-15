@@ -127,7 +127,7 @@ export function WriteArmsAgree(stream, value) {
   return true;
 }
 
-export function ReadArmsAgree(stream, value, nested) {
+export function ReadArmsAgree(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
@@ -153,7 +153,7 @@ export function ReadArmsAgree(stream, value, nested) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type ArmsDisagree
@@ -224,7 +224,7 @@ export function WriteArmsDisagree(stream, value) {
   return true;
 }
 
-export function ReadArmsDisagree(stream, value, nested) {
+export function ReadArmsDisagree(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
@@ -250,7 +250,7 @@ export function ReadArmsDisagree(stream, value, nested) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type ArmEmpty
@@ -310,7 +310,7 @@ export function WriteArmEmpty(stream, value) {
   return true;
 }
 
-export function ReadArmEmpty(stream, value, nested) {
+export function ReadArmEmpty(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
@@ -331,7 +331,7 @@ export function ReadArmEmpty(stream, value, nested) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type ArmsNested
@@ -425,7 +425,7 @@ export function WriteArmsNested(stream, value) {
   return true;
 }
 
-export function ReadArmsNested(stream, value, nested) {
+export function ReadArmsNested(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
@@ -466,7 +466,7 @@ export function ReadArmsNested(stream, value, nested) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type ArmAlign
@@ -546,7 +546,7 @@ export function WriteArmAlign(stream, value) {
   return true;
 }
 
-export function ReadArmAlign(stream, value, nested) {
+export function ReadArmAlign(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
@@ -579,7 +579,7 @@ export function ReadArmAlign(stream, value, nested) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type ArmArray
@@ -665,7 +665,7 @@ export function WriteArmArray(stream, value) {
   return true;
 }
 
-export function ReadArmArray(stream, value, nested) {
+export function ReadArmArray(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
@@ -698,7 +698,7 @@ export function ReadArmArray(stream, value, nested) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type Narrow
@@ -731,12 +731,12 @@ export function WriteNarrow(stream, value) {
   return true;
 }
 
-export function ReadNarrow(stream, value, nested) {
+export function ReadNarrow(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
   value.n = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type Wide
@@ -769,12 +769,12 @@ export function WriteWide(stream, value) {
   return true;
 }
 
-export function ReadWide(stream, value, nested) {
+export function ReadWide(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 37)) {
     return false;
   }
   value.w = BIGINT_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // UnevenType: union Uneven's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -841,7 +841,7 @@ export function WriteUneven(stream, value) {
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
 
-export function ReadUneven(stream, value, nested) {
+export function ReadUneven(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
   }
@@ -849,18 +849,12 @@ export function ReadUneven(stream, value, nested) {
   switch (value.type) {
     case UnevenType.Narrow:
       InitNarrow(value.narrow); // fresh declared defaults on every selection
-      if (!ReadNarrow(stream, value.narrow, true)) {
-        return false;
-      }
-      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+      return ReadNarrow(stream, value.narrow);
     case UnevenType.Wide:
       InitWide(value.wide); // fresh declared defaults on every selection
-      if (!ReadWide(stream, value.wide, true)) {
-        return false;
-      }
-      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+      return ReadWide(stream, value.wide);
   }
-  return nested === true || stream.serializeEnd(); // None
+  return true; // None
 }
 
 // type HoldsUneven
@@ -906,19 +900,19 @@ export function WriteHoldsUneven(stream, value) {
   return true;
 }
 
-export function ReadHoldsUneven(stream, value, nested) {
+export function ReadHoldsUneven(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
   value.lead = NUMBER_SCRATCH.value;
-  if (!ReadUneven(stream, value.u, true)) {
+  if (!ReadUneven(stream, value.u)) {
     return false;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type ArrUneven
@@ -981,7 +975,7 @@ export function WriteArrUneven(stream, value) {
   return true;
 }
 
-export function ReadArrUneven(stream, value, nested) {
+export function ReadArrUneven(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
@@ -991,7 +985,7 @@ export function ReadArrUneven(stream, value, nested) {
   }
   value.itemsCount = NUMBER_SCRATCH.value;
   for (let i = 0; i < value.itemsCount; i++) {
-    if (!ReadUneven(stream, value.items[i], true)) {
+    if (!ReadUneven(stream, value.items[i])) {
       return false;
     }
   }
@@ -999,7 +993,7 @@ export function ReadArrUneven(stream, value, nested) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type RegainAfterAlign
@@ -1098,7 +1092,7 @@ export function WriteRegainAfterAlign(stream, value) {
   return true;
 }
 
-export function ReadRegainAfterAlign(stream, value, nested) {
+export function ReadRegainAfterAlign(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
@@ -1139,6 +1133,6 @@ export function ReadRegainAfterAlign(stream, value, nested) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 

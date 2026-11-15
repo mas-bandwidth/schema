@@ -220,7 +220,7 @@ export function WriteProbeHeader(stream, value) {
   return true;
 }
 
-export function ReadProbeHeader(stream, value, nested) {
+export function ReadProbeHeader(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
@@ -244,7 +244,7 @@ export function ReadProbeHeader(stream, value, nested) {
     return false;
   }
   value.probeId = BIGINT_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type ProbeBits
@@ -301,9 +301,6 @@ export function WriteProbeBits(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
-    return false;
-  }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.nonce);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
@@ -311,7 +308,7 @@ export function WriteProbeBits(stream, value) {
   return true;
 }
 
-export function ReadProbeBits(stream, value, nested) {
+export function ReadProbeBits(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
@@ -332,7 +329,7 @@ export function ReadProbeBits(stream, value, nested) {
     return false;
   }
   value.nonce = BIGINT_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type ProbeSample
@@ -399,12 +396,6 @@ export function WriteProbeSample(stream, value) {
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  {
-    const x = Math.fround(value.orientation);
-    if (!Number.isFinite(x) || x < -180.0 || x > 180.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
-  }
   NUMBER_SCRATCH.value = value.orientation;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -180.0, 180.0, 0.01)) {
     return false;
@@ -457,7 +448,7 @@ export function WriteProbeSample(stream, value) {
   return true;
 }
 
-export function ReadProbeSample(stream, value, nested) {
+export function ReadProbeSample(stream, value) {
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
@@ -511,7 +502,7 @@ export function ReadProbeSample(stream, value, nested) {
     }
     value.samples[i] = NUMBER_SCRATCH.value;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type ProbeRing
@@ -544,12 +535,12 @@ export function WriteProbeRing(stream, value) {
   return true;
 }
 
-export function ReadProbeRing(stream, value, nested) {
+export function ReadProbeRing(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
   value.radius = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type ProbeSlab
@@ -592,7 +583,7 @@ export function WriteProbeSlab(stream, value) {
   return true;
 }
 
-export function ReadProbeSlab(stream, value, nested) {
+export function ReadProbeSlab(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 100)) {
     return false;
   }
@@ -601,7 +592,7 @@ export function ReadProbeSlab(stream, value, nested) {
     return false;
   }
   value.height = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -668,7 +659,7 @@ export function WriteProbeShape(stream, value) {
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
 
-export function ReadProbeShape(stream, value, nested) {
+export function ReadProbeShape(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
   }
@@ -676,18 +667,12 @@ export function ReadProbeShape(stream, value, nested) {
   switch (value.type) {
     case ProbeShapeType.Ring:
       InitProbeRing(value.ring); // fresh declared defaults on every selection
-      if (!ReadProbeRing(stream, value.ring, true)) {
-        return false;
-      }
-      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+      return ReadProbeRing(stream, value.ring);
     case ProbeShapeType.Slab:
       InitProbeSlab(value.slab); // fresh declared defaults on every selection
-      if (!ReadProbeSlab(stream, value.slab, true)) {
-        return false;
-      }
-      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+      return ReadProbeSlab(stream, value.slab);
   }
-  return nested === true || stream.serializeEnd(); // None
+  return true; // None
 }
 
 // type ProbeCollider
@@ -755,15 +740,15 @@ export function WriteProbeCollider(stream, value) {
   return true;
 }
 
-export function ReadProbeCollider(stream, value, nested) {
+export function ReadProbeCollider(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
   value.armor = NUMBER_SCRATCH.value;
-  if (!ReadProbeShape(stream, value.shape, true)) {
+  if (!ReadProbeShape(stream, value.shape)) {
     return false;
   }
-  if (!ReadProbeShape(stream, value.backup, true)) {
+  if (!ReadProbeShape(stream, value.backup)) {
     return false;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // the count guards the loop (§6.3)
@@ -771,11 +756,11 @@ export function ReadProbeCollider(stream, value, nested) {
   }
   value.extrasCount = NUMBER_SCRATCH.value;
   for (let i = 0; i < value.extrasCount; i++) {
-    if (!ReadProbeShape(stream, value.extras[i], true)) {
+    if (!ReadProbeShape(stream, value.extras[i])) {
       return false;
     }
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type ProbeConfig
@@ -818,7 +803,7 @@ export function WriteProbeConfig(stream, value) {
   return true;
 }
 
-export function ReadProbeConfig(stream, value, nested) {
+export function ReadProbeConfig(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
@@ -827,7 +812,7 @@ export function ReadProbeConfig(stream, value, nested) {
     return false;
   }
   value.preferred = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type ProbeArray
@@ -872,16 +857,16 @@ export function WriteProbeArray(stream, value) {
   return true;
 }
 
-export function ReadProbeArray(stream, value, nested) {
+export function ReadProbeArray(stream, value) {
   for (let i = 0; i < 2; i++) {
-    if (!ReadProbeSample(stream, value.samples[i], true)) {
+    if (!ReadProbeSample(stream, value.samples[i])) {
       return false;
     }
   }
-  if (!ReadProbeConfig(stream, value.config, true)) {
+  if (!ReadProbeConfig(stream, value.config)) {
     return false;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type Heartbeat
@@ -910,9 +895,8 @@ export function WriteHeartbeat() {
   return true;
 }
 
-export function ReadHeartbeat(stream, value, nested) {
-  // empty body — presence is the payload (SPEC §4.6)
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+export function ReadHeartbeat() {
+  return true;
 }
 
 // type Test
@@ -975,7 +959,7 @@ export function WriteTest(stream, value) {
   return true;
 }
 
-export function ReadTest(stream, value, nested) {
+export function ReadTest(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
@@ -992,7 +976,7 @@ export function ReadTest(stream, value, nested) {
     return false;
   }
   value.testD = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type Block
@@ -1034,7 +1018,7 @@ export function WriteBlock(stream, value) {
   return true;
 }
 
-export function ReadBlock(stream, value, nested) {
+export function ReadBlock(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, MaxBlockSize)) { // the length guards the slice (§6.3)
     return false;
   }
@@ -1042,7 +1026,7 @@ export function ReadBlock(stream, value, nested) {
   if (!stream.serializeBytes(value.data.subarray(0, value.dataLength))) {
     return false;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type Chat
@@ -1084,7 +1068,7 @@ export function WriteChat(stream, value) {
   return true;
 }
 
-export function ReadChat(stream, value, nested) {
+export function ReadChat(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, MaxChatLength)) { // the length guards the slice (§6.3)
     return false;
   }
@@ -1095,7 +1079,7 @@ export function ReadChat(stream, value, nested) {
   if (!validText(value.text, value.textLength)) {
     return false;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type ProbeReport
@@ -1146,18 +1130,18 @@ export function WriteProbeReport(stream, value) {
   return true;
 }
 
-export function ReadProbeReport(stream, value, nested) {
-  if (!ReadProbeHeader(stream, value.header, true)) {
+export function ReadProbeReport(stream, value) {
+  if (!ReadProbeHeader(stream, value.header)) {
     return false;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
   value.flags = BigInt(NUMBER_SCRATCH.value);
-  if (!ReadTest(stream, value.echo, true)) {
+  if (!ReadTest(stream, value.echo)) {
     return false;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type TestData
@@ -1306,12 +1290,6 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  {
-    const x = Math.fround(value.compressedFloatValue);
-    if (!Number.isFinite(x) || x < 0.0 || x > 10.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
-  }
   NUMBER_SCRATCH.value = value.compressedFloatValue;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
     return false;
@@ -1374,7 +1352,7 @@ export function WriteTestData(stream, value) {
   return true;
 }
 
-export function ReadTestData(stream, value, nested) {
+export function ReadTestData(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -100, 100)) {
     return false;
   }
@@ -1473,7 +1451,7 @@ export function ReadTestData(stream, value, nested) {
   if (!validText(value.text, value.textLength)) {
     return false;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type CompressedProbe
@@ -1502,21 +1480,9 @@ export function ZeroCompressedProbe(value) {
 }
 
 export function WriteCompressedProbe(stream, value) {
-  {
-    const x = Math.fround(value.boundary);
-    if (!Number.isFinite(x) || x < 0.0 || x > 10.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
-  }
   NUMBER_SCRATCH.value = value.boundary;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
     return false;
-  }
-  {
-    const x = Math.fround(value.offset);
-    if (!Number.isFinite(x) || x < -5.0 || x > 5.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
   }
   NUMBER_SCRATCH.value = value.offset;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -5.0, 5.0, 0.001)) {
@@ -1525,7 +1491,7 @@ export function WriteCompressedProbe(stream, value) {
   return true;
 }
 
-export function ReadCompressedProbe(stream, value, nested) {
+export function ReadCompressedProbe(stream, value) {
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
     return false;
   }
@@ -1534,6 +1500,6 @@ export function ReadCompressedProbe(stream, value, nested) {
     return false;
   }
   value.offset = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 

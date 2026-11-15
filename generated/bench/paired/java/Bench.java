@@ -196,12 +196,6 @@ public final class Bench {
         assert value.b <= 65535;
         assert value.c >= -1000000;
         assert value.c <= 1000000;
-        assert value.bits7 >= 0;
-        assert value.bits7 <= 127;
-        assert value.bits13 >= 0;
-        assert value.bits13 <= 8191;
-        assert value.bits23 >= 0;
-        assert value.bits23 <= 8388607;
         assert value.x - value.x == 0.0f; // finite: NaN and both infinities fail this
         assert value.y - value.y == 0.0f; // finite: NaN and both infinities fail this
         assert value.z - value.z == 0.0f; // finite: NaN and both infinities fail this
@@ -360,21 +354,9 @@ public final class Bench {
     }
 
     // readBenchPacket decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readBenchPacket(BenchPacket value, byte[] data, int numBits) {
-        final int end = readBenchPacketBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readBenchPacketBits(value, data, 0, numBits) >= 0;
     }
 
     // type BenchInts
@@ -577,21 +559,9 @@ public final class Bench {
     }
 
     // readBenchInts decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readBenchInts(BenchInts value, byte[] data, int numBits) {
-        final int end = readBenchIntsBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readBenchIntsBits(value, data, 0, numBits) >= 0;
     }
 
     // type BenchBits
@@ -644,22 +614,6 @@ public final class Bench {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + BENCH_BITS_MAX_BITS;
-        assert value.b7 >= 0;
-        assert value.b7 <= 127;
-        assert value.b13 >= 0;
-        assert value.b13 <= 8191;
-        assert value.b23 >= 0;
-        assert value.b23 <= 8388607;
-        assert value.b3 >= 0;
-        assert value.b3 <= 7;
-        assert value.b32 >= 0;
-        assert value.b32 <= 4294967295L;
-        assert value.b11 >= 0;
-        assert value.b11 <= 2047;
-        assert value.b19 >= 0;
-        assert value.b19 <= 524287;
-        assert value.b48 >= 0;
-        assert value.b48 <= 281474976710655L;
         return true;
     }
 
@@ -753,21 +707,9 @@ public final class Bench {
     }
 
     // readBenchBits decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readBenchBits(BenchBits value, byte[] data, int numBits) {
-        final int end = readBenchBitsBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readBenchBitsBits(value, data, 0, numBits) >= 0;
     }
 
     // MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
@@ -1028,18 +970,12 @@ public final class Bench {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + MIXED_ENTITY_MAX_BITS;
-        assert value.entityId >= 0;
-        assert value.entityId <= 4095;
         assert value.posX >= -16383;
         assert value.posX <= 16383;
         assert value.posY >= -16383;
         assert value.posY <= 16383;
         assert value.posZ >= -16383;
         assert value.posZ <= 16383;
-        assert value.yaw >= 0;
-        assert value.yaw <= 511;
-        assert value.pitch >= 0;
-        assert value.pitch <= 511;
         assert value.velX >= -2048;
         assert value.velX <= 2047;
         assert value.velY >= -2048;
@@ -1180,21 +1116,9 @@ public final class Bench {
     }
 
     // readMixedEntity decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readMixedEntity(MixedEntity value, byte[] data, int numBits) {
-        final int end = readMixedEntityBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readMixedEntityBits(value, data, 0, numBits) >= 0;
     }
 
     // type MixedStat
@@ -1230,8 +1154,6 @@ public final class Bench {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + MIXED_STAT_MAX_BITS;
-        assert value.statId >= 0;
-        assert value.statId <= 255;
         assert value.delta >= -512;
         assert value.delta <= 511;
         return true;
@@ -1290,21 +1212,9 @@ public final class Bench {
     }
 
     // readMixedStat decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readMixedStat(MixedStat value, byte[] data, int numBits) {
-        final int end = readMixedStatBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readMixedStatBits(value, data, 0, numBits) >= 0;
     }
 
     // type MixedHitEvent
@@ -1348,8 +1258,6 @@ public final class Bench {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + MIXED_HIT_EVENT_MAX_BITS;
-        assert value.targetId >= 0;
-        assert value.targetId <= 4095;
         assert value.damage >= 0;
         assert value.damage <= 4095;
         assert value.hitKind >= 0;
@@ -1421,21 +1329,9 @@ public final class Bench {
     }
 
     // readMixedHitEvent decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readMixedHitEvent(MixedHitEvent value, byte[] data, int numBits) {
-        final int end = readMixedHitEventBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readMixedHitEventBits(value, data, 0, numBits) >= 0;
     }
 
     // type MixedChatEvent
@@ -1474,8 +1370,6 @@ public final class Bench {
         assert (long) data.length * 8 >= (long) bitOffset + MIXED_CHAT_EVENT_MAX_BITS;
         assert value.channel >= 0;
         assert value.channel <= 3;
-        assert value.speaker >= 0;
-        assert value.speaker <= 4095;
         return true;
     }
 
@@ -1533,21 +1427,9 @@ public final class Bench {
     }
 
     // readMixedChatEvent decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readMixedChatEvent(MixedChatEvent value, byte[] data, int numBits) {
-        final int end = readMixedChatEventBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readMixedChatEventBits(value, data, 0, numBits) >= 0;
     }
 
     // type MixedPickupEvent
@@ -1584,8 +1466,6 @@ public final class Bench {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + MIXED_PICKUP_EVENT_MAX_BITS;
-        assert value.itemId >= 0;
-        assert value.itemId <= 1023;
         assert value.amount >= 0;
         assert value.amount <= 255;
         return true;
@@ -1646,21 +1526,9 @@ public final class Bench {
     }
 
     // readMixedPickupEvent decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readMixedPickupEvent(MixedPickupEvent value, byte[] data, int numBits) {
-        final int end = readMixedPickupEventBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readMixedPickupEventBits(value, data, 0, numBits) >= 0;
     }
 
     // MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC
@@ -1804,21 +1672,9 @@ public final class Bench {
     }
 
     // readMixedEvent decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readMixedEvent(MixedEvent value, byte[] data, int numBits) {
-        final int end = readMixedEventBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readMixedEventBits(value, data, 0, numBits) >= 0;
     }
 
     // type BenchMixed
@@ -1973,18 +1829,12 @@ public final class Bench {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + BENCH_MIXED_MAX_BITS;
-        assert value.sequence >= 0;
-        assert value.sequence <= 65535;
         assert value.ackSequence >= 0;
         assert value.ackSequence <= 65535;
-        assert value.ackBits >= 0;
-        assert value.ackBits <= 4294967295L;
         assert value.clientId >= 0;
         assert value.clientId <= 4294967295L;
         assert value.worldTime >= -1000000000000L;
         assert value.worldTime <= 1000000000000L;
-        assert value.frameTick >= 0;
-        assert value.frameTick <= 281474976710655L;
         assert value.serverTime >= 0;
         assert value.serverTime <= 16776960;
         assert value.entitiesCount >= 1;
@@ -2008,8 +1858,6 @@ public final class Bench {
         }
         assert value.ping >= 0;
         assert value.ping <= 64000;
-        assert value.crcHint >= 0;
-        assert value.crcHint <= 16777215;
         assert value.extra >= 0;
         assert value.extra <= 255;
         assert value.idleTicks >= 0;
@@ -2484,20 +2332,8 @@ public final class Bench {
     }
 
     // readBenchMixed decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readBenchMixed(BenchMixed value, byte[] data, int numBits) {
-        final int end = readBenchMixedBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readBenchMixedBits(value, data, 0, numBits) >= 0;
     }
 }

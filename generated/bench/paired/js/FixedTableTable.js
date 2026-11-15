@@ -24,7 +24,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTableFixedCheckBody, FixedTableFixedCheckDead, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
+import { FixedTableFixedCheckBody, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
@@ -364,9 +364,7 @@ export function FixedTableFixedMeasure(count) {
 // writer does; nothing here throws.
 export function FixedTableFixedSave(values, count, bytes) {
   const need = FixedTableFixedMeasure(count);
-  // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6): an
-  // empty batch is refused before it writes a byte.
-  if (count <= 0 || bytes === null || bytes.length < need) { return -1; }
+  if (count < 0 || bytes === null || bytes.length < need) { return -1; }
   // A NaN OR AN INFINITY IS REFUSED BEFORE A BYTE IS WRITTEN (docs/SPEC-TABLES.md
   // §3.3): no form carries one, so the save answers -1 and the buffer is untouched.
   for (let k = 0; k < count; k++) { if (!FixedTableFixedCheckBody(values[k])) { return -1; } }
@@ -469,11 +467,9 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   // against this build's; digest is not on the wire, so the header hash is
   // not a hash of the layout bytes alone (§3, bill §13).
   const rest = byteLength - layoutAt - layoutBytes;
-  // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6): a
-  // header and a layout with no record behind them is refused, never read
-  // as a batch of none. BYTES LEFT OVER ARE damaged, which is §3's rule for
-  // the same reason: the two ends of the file have met.
-  if (rest === 0 || recordBytes <= 8 || rest % recordBytes !== 0) { report.damaged = true; return -1; }
+  // BYTES LEFT OVER ARE damaged, which is §3's rule for the same reason:
+  // the two ends of the file have met.
+  if (recordBytes <= 8 || rest % recordBytes !== 0) { report.damaged = true; return -1; }
   const n = (rest / recordBytes) | 0;
   if (n > capacity) { report.refused = TableFixedRefusal.BatchTooLarge; return -1; }
   const image = plan.image, imageView = plan.view;
@@ -495,16 +491,10 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
       report.refused = TableFixedRefusal.NoLayout; return -1;
     }
     if (identity) {
-      FixedTableFixedCheckDead(srcView, at + 8, stage);
-      if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(values, k, stage, report); }
       FixedTableFixedDecode(values[k], srcView, at + 8, stage);
       if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(values, k, stage, report); }
       at += recordBytes;
       continue;
-    }
-    if (entries === FixedTableFixedIdentity && holeN === 0) {
-      FixedTableFixedCheckDead(srcView, at + 8, stage);
-      if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(values, k, stage, report); }
     }
     for (let h = 0; h < holeN; h++) {
       const o = plan.holes[h * 2], z = plan.holes[h * 2 + 1];

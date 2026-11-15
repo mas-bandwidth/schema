@@ -66,13 +66,13 @@ export function WriteDefaultArm(stream, value) {
   return true;
 }
 
-export function ReadDefaultArm(stream, value, nested) {
+export function ReadDefaultArm(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // the count guards the loop (§6.3)
     return false;
   }
   value.entriesCount = NUMBER_SCRATCH.value;
   for (let i = 0; i < value.entriesCount; i++) {
-    if (!ReadProbeConfig(stream, value.entries[i], true)) {
+    if (!ReadProbeConfig(stream, value.entries[i])) {
       return false;
     }
   }
@@ -80,7 +80,7 @@ export function ReadDefaultArm(stream, value, nested) {
     return false;
   }
   value.marker = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -147,7 +147,7 @@ export function WriteDefaultChoice(stream, value) {
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
 
-export function ReadDefaultChoice(stream, value, nested) {
+export function ReadDefaultChoice(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
   }
@@ -155,18 +155,12 @@ export function ReadDefaultChoice(stream, value, nested) {
   switch (value.type) {
     case DefaultChoiceType.First:
       InitDefaultArm(value.first); // fresh declared defaults on every selection
-      if (!ReadDefaultArm(stream, value.first, true)) {
-        return false;
-      }
-      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+      return ReadDefaultArm(stream, value.first);
     case DefaultChoiceType.Second:
       InitDefaultArm(value.second); // fresh declared defaults on every selection
-      if (!ReadDefaultArm(stream, value.second, true)) {
-        return false;
-      }
-      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+      return ReadDefaultArm(stream, value.second);
   }
-  return nested === true || stream.serializeEnd(); // None
+  return true; // None
 }
 
 // type DefaultChoicePacket
@@ -198,11 +192,11 @@ export function WriteDefaultChoicePacket(stream, value) {
   return true;
 }
 
-export function ReadDefaultChoicePacket(stream, value, nested) {
-  if (!ReadDefaultChoice(stream, value.choice, true)) {
+export function ReadDefaultChoicePacket(stream, value) {
+  if (!ReadDefaultChoice(stream, value.choice)) {
     return false;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type DefaultBulkArm
@@ -250,8 +244,8 @@ export function WriteDefaultBulkArm(stream, value) {
   return true;
 }
 
-export function ReadDefaultBulkArm(stream, value, nested) {
-  if (!ReadDefaultArm(stream, value.payload, true)) {
+export function ReadDefaultBulkArm(stream, value) {
+  if (!ReadDefaultArm(stream, value.payload)) {
     return false;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // the length guards the slice (§6.3)
@@ -261,7 +255,7 @@ export function ReadDefaultBulkArm(stream, value, nested) {
   if (!stream.serializeBytes(value.data.subarray(0, value.dataLength))) {
     return false;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -328,7 +322,7 @@ export function WriteDefaultBulkChoice(stream, value) {
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
 
-export function ReadDefaultBulkChoice(stream, value, nested) {
+export function ReadDefaultBulkChoice(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
   }
@@ -336,17 +330,11 @@ export function ReadDefaultBulkChoice(stream, value, nested) {
   switch (value.type) {
     case DefaultBulkChoiceType.First:
       InitDefaultBulkArm(value.first); // fresh declared defaults on every selection
-      if (!ReadDefaultBulkArm(stream, value.first, true)) {
-        return false;
-      }
-      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+      return ReadDefaultBulkArm(stream, value.first);
     case DefaultBulkChoiceType.Second:
       InitDefaultBulkArm(value.second); // fresh declared defaults on every selection
-      if (!ReadDefaultBulkArm(stream, value.second, true)) {
-        return false;
-      }
-      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+      return ReadDefaultBulkArm(stream, value.second);
   }
-  return nested === true || stream.serializeEnd(); // None
+  return true; // None
 }
 

@@ -375,17 +375,8 @@ defmodule Example.Types do
   @spec read_vec3(binary(), non_neg_integer()) :: {:ok, Example.Vec3.t()} | :error
   def read_vec3(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_vec3_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -469,17 +460,8 @@ defmodule Example.Types do
   @spec read_quat(binary(), non_neg_integer()) :: {:ok, Example.Quat.t()} | :error
   def read_quat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_quat_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -579,17 +561,8 @@ defmodule Example.Types do
   @spec read_handle(binary(), non_neg_integer()) :: {:ok, Example.Handle.t()} | :error
   def read_handle(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_handle_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -722,17 +695,8 @@ defmodule Example.Types do
           {:ok, Example.QuantizedPosition.t()} | :error
   def read_quantized_position(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_quantized_position_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -864,17 +828,8 @@ defmodule Example.Types do
           {:ok, Example.QuantizedVelocity.t()} | :error
   def read_quantized_velocity(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_quantized_velocity_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1015,17 +970,8 @@ defmodule Example.Types do
           {:ok, Example.QuantizedRotation.t()} | :error
   def read_quantized_rotation(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_quantized_rotation_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1311,17 +1257,8 @@ defmodule Example.Types do
   @spec read_rigid_body(binary(), non_neg_integer()) :: {:ok, Example.RigidBody.t()} | :error
   def read_rigid_body(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_rigid_body_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1508,17 +1445,8 @@ defmodule Example.Types do
   @spec read_input(binary(), non_neg_integer()) :: {:ok, Example.Input.t()} | :error
   def read_input(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_input_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1666,17 +1594,8 @@ defmodule Example.Types do
   @spec read_input_packet(binary(), non_neg_integer()) :: {:ok, Example.InputPacket.t()} | :error
   def read_input_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_input_packet_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -2079,17 +1998,8 @@ defmodule Example.Types do
   @spec read_ship_create(binary(), non_neg_integer()) :: {:ok, Example.ShipCreate.t()} | :error
   def read_ship_create(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_ship_create_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -2197,17 +2107,8 @@ defmodule Example.Types do
           {:ok, Example.ExpressionProbe.t()} | :error
   def read_expression_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_expression_probe_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -2426,17 +2327,8 @@ defmodule Example.Types do
           {:ok, Example.ExtremeProbe.t()} | :error
   def read_extreme_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_extreme_probe_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -2605,17 +2497,8 @@ defmodule Example.Types do
   @spec read_extreme_row(binary(), non_neg_integer()) :: {:ok, Example.ExtremeRow.t()} | :error
   def read_extreme_row(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_extreme_row_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 

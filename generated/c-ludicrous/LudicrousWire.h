@@ -71,7 +71,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_fixed_probe( seri
 }
 
 /* Reads FixedProbe. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_fixed_probe_body_( serialize_read_stream_t * stream, ludicrous_fixed_probe_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_fixed_probe( serialize_read_stream_t * stream, ludicrous_fixed_probe_t * value )
 {
     /* fixed 156-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 156 )
@@ -133,16 +133,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_fixed_probe_
     return 1;
 }
 
-/* Reads FixedProbe as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_fixed_probe( serialize_read_stream_t * stream, ludicrous_fixed_probe_t * value )
-{
-    if ( !schema_ludicrous_read_fixed_probe_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
-}
-
 /* Writes UnsignedProbe. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_unsigned_probe( serialize_write_stream_t * stream, const ludicrous_unsigned_probe_t * value )
 {
@@ -196,7 +186,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_unsigned_probe( s
 }
 
 /* Reads UnsignedProbe. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_unsigned_probe_body_( serialize_read_stream_t * stream, ludicrous_unsigned_probe_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_unsigned_probe( serialize_read_stream_t * stream, ludicrous_unsigned_probe_t * value )
 {
     /* fixed 196-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 196 )
@@ -262,16 +252,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_unsigned_pro
     return 1;
 }
 
-/* Reads UnsignedProbe as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_unsigned_probe( serialize_read_stream_t * stream, ludicrous_unsigned_probe_t * value )
-{
-    if ( !schema_ludicrous_read_unsigned_probe_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
-}
-
 /* Writes WideProbe. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_wide_probe( serialize_write_stream_t * stream, const ludicrous_wide_probe_t * value )
 {
@@ -299,7 +279,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_wide_probe( seria
 }
 
 /* Reads WideProbe. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_wide_probe_body_( serialize_read_stream_t * stream, ludicrous_wide_probe_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_wide_probe( serialize_read_stream_t * stream, ludicrous_wide_probe_t * value )
 {
     /* fixed 403-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 403 )
@@ -328,16 +308,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_wide_probe_b
         return 0;
     }
     return 1;
-}
-
-/* Reads WideProbe as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_wide_probe( serialize_read_stream_t * stream, ludicrous_wide_probe_t * value )
-{
-    if ( !schema_ludicrous_read_wide_probe_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes LudicrousState. */
@@ -386,7 +356,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_ludicrous_state( 
 }
 
 /* Reads LudicrousState. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_ludicrous_state_body_( serialize_read_stream_t * stream, ludicrous_ludicrous_state_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_ludicrous_state( serialize_read_stream_t * stream, ludicrous_ludicrous_state_t * value )
 {
     {
         serialize_uint32_t enum_value = 0;
@@ -396,11 +366,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_ludicrous_st
         }
         value->mode = (ludicrous_drive_mode_t) enum_value;
     }
-    if ( !schema_ludicrous_read_fixed_probe_body_( stream, &value->probe ) )
+    if ( !ludicrous_read_fixed_probe( stream, &value->probe ) )
     {
         return 0;
     }
-    if ( !schema_ludicrous_read_wide_probe_body_( stream, &value->wide ) )
+    if ( !ludicrous_read_wide_probe( stream, &value->wide ) )
     {
         return 0;
     }
@@ -440,16 +410,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_ludicrous_st
     return 1;
 }
 
-/* Reads LudicrousState as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_ludicrous_state( serialize_read_stream_t * stream, ludicrous_ludicrous_state_t * value )
-{
-    if ( !schema_ludicrous_read_ludicrous_state_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
-}
-
 /* Writes DegenerateProbe. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_degenerate_probe( serialize_write_stream_t * stream, const ludicrous_degenerate_probe_t * value )
 {
@@ -464,7 +424,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_degenerate_probe(
 }
 
 /* Reads DegenerateProbe. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_degenerate_probe_body_( serialize_read_stream_t * stream, ludicrous_degenerate_probe_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_degenerate_probe( serialize_read_stream_t * stream, ludicrous_degenerate_probe_t * value )
 {
     /* fixed 8-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 8 )
@@ -484,16 +444,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_degenerate_p
         value->tail = (uint8_t) raw;
     }
     return 1;
-}
-
-/* Reads DegenerateProbe as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_degenerate_probe( serialize_read_stream_t * stream, ludicrous_degenerate_probe_t * value )
-{
-    if ( !schema_ludicrous_read_degenerate_probe_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes FixedVec. */
@@ -524,7 +474,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_fixed_vec( serial
 }
 
 /* Reads FixedVec. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_fixed_vec_body_( serialize_read_stream_t * stream, ludicrous_fixed_vec_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_fixed_vec( serialize_read_stream_t * stream, ludicrous_fixed_vec_t * value )
 {
     /* fixed 102-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 102 )
@@ -562,16 +512,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_fixed_vec_bo
     return 1;
 }
 
-/* Reads FixedVec as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_fixed_vec( serialize_read_stream_t * stream, ludicrous_fixed_vec_t * value )
-{
-    if ( !schema_ludicrous_read_fixed_vec_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
-}
-
 /* Writes FixedQuat. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_fixed_quat( serialize_write_stream_t * stream, const ludicrous_fixed_quat_t * value )
 {
@@ -607,7 +547,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_fixed_quat( seria
 }
 
 /* Reads FixedQuat. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_fixed_quat_body_( serialize_read_stream_t * stream, ludicrous_fixed_quat_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_fixed_quat( serialize_read_stream_t * stream, ludicrous_fixed_quat_t * value )
 {
     /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 128 )
@@ -652,16 +592,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_ludicrous_read_fixed_quat_b
         value->w = (int32_t) fixed_value;
     }
     return 1;
-}
-
-/* Reads FixedQuat as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_fixed_quat( serialize_read_stream_t * stream, ludicrous_fixed_quat_t * value )
-{
-    if ( !schema_ludicrous_read_fixed_quat_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 #ifdef __cplusplus

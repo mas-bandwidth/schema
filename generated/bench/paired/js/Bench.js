@@ -191,7 +191,7 @@ export function WriteBenchPacket(stream, value) {
   return true;
 }
 
-export function ReadBenchPacket(stream, value, nested) {
+export function ReadBenchPacket(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -100, 100)) {
     return false;
   }
@@ -242,7 +242,7 @@ export function ReadBenchPacket(stream, value, nested) {
   if (!stream.serializeBytes(value.blob.subarray(0, 17))) { // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
     return false;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type BenchInts
@@ -368,7 +368,7 @@ export function WriteBenchInts(stream, value) {
   return true;
 }
 
-export function ReadBenchInts(stream, value, nested) {
+export function ReadBenchInts(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -100, 100)) {
     return false;
   }
@@ -409,7 +409,7 @@ export function ReadBenchInts(stream, value, nested) {
     return false;
   }
   value.f9 = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type BenchBits
@@ -491,7 +491,7 @@ export function WriteBenchBits(stream, value) {
   return true;
 }
 
-export function ReadBenchBits(stream, value, nested) {
+export function ReadBenchBits(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
@@ -524,7 +524,7 @@ export function ReadBenchBits(stream, value, nested) {
     return false;
   }
   value.b48 = BIGINT_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
@@ -806,7 +806,7 @@ export function WriteMixedEntity(stream, value) {
   return true;
 }
 
-export function ReadMixedEntity(stream, value, nested) {
+export function ReadMixedEntity(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
@@ -863,7 +863,7 @@ export function ReadMixedEntity(stream, value, nested) {
     return false;
   }
   value.firing = BOOL_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type MixedStat
@@ -906,7 +906,7 @@ export function WriteMixedStat(stream, value) {
   return true;
 }
 
-export function ReadMixedStat(stream, value, nested) {
+export function ReadMixedStat(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
@@ -915,7 +915,7 @@ export function ReadMixedStat(stream, value, nested) {
     return false;
   }
   value.delta = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type MixedHitEvent
@@ -975,7 +975,7 @@ export function WriteMixedHitEvent(stream, value) {
   return true;
 }
 
-export function ReadMixedHitEvent(stream, value, nested) {
+export function ReadMixedHitEvent(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
@@ -992,7 +992,7 @@ export function ReadMixedHitEvent(stream, value, nested) {
     return false;
   }
   value.crit = BOOL_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type MixedChatEvent
@@ -1035,7 +1035,7 @@ export function WriteMixedChatEvent(stream, value) {
   return true;
 }
 
-export function ReadMixedChatEvent(stream, value, nested) {
+export function ReadMixedChatEvent(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) {
     return false;
   }
@@ -1044,7 +1044,7 @@ export function ReadMixedChatEvent(stream, value, nested) {
     return false;
   }
   value.speaker = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type MixedPickupEvent
@@ -1087,7 +1087,7 @@ export function WriteMixedPickupEvent(stream, value) {
   return true;
 }
 
-export function ReadMixedPickupEvent(stream, value, nested) {
+export function ReadMixedPickupEvent(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
@@ -1096,7 +1096,7 @@ export function ReadMixedPickupEvent(stream, value, nested) {
     return false;
   }
   value.amount = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -1169,7 +1169,7 @@ export function WriteMixedEvent(stream, value) {
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
 
-export function ReadMixedEvent(stream, value, nested) {
+export function ReadMixedEvent(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) { // rejects a tag above the count (SPEC §4.8)
     return false;
   }
@@ -1177,24 +1177,15 @@ export function ReadMixedEvent(stream, value, nested) {
   switch (value.type) {
     case MixedEventType.Hit:
       InitMixedHitEvent(value.hit); // fresh declared defaults on every selection
-      if (!ReadMixedHitEvent(stream, value.hit, true)) {
-        return false;
-      }
-      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+      return ReadMixedHitEvent(stream, value.hit);
     case MixedEventType.Chat:
       InitMixedChatEvent(value.chat); // fresh declared defaults on every selection
-      if (!ReadMixedChatEvent(stream, value.chat, true)) {
-        return false;
-      }
-      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+      return ReadMixedChatEvent(stream, value.chat);
     case MixedEventType.Pickup:
       InitMixedPickupEvent(value.pickup); // fresh declared defaults on every selection
-      if (!ReadMixedPickupEvent(stream, value.pickup, true)) {
-        return false;
-      }
-      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+      return ReadMixedPickupEvent(stream, value.pickup);
   }
-  return nested === true || stream.serializeEnd(); // None
+  return true; // None
 }
 
 // type BenchMixed
@@ -1347,9 +1338,6 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
-    return false;
-  }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.nonce);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
@@ -1422,31 +1410,13 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBytes(value.payload.subarray(0, value.payloadLength))) {
     return false;
   }
-  {
-    const x = Math.fround(value.aimX);
-    if (!Number.isFinite(x) || x < -1.0 || x > 1.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
-  }
   NUMBER_SCRATCH.value = value.aimX;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
     return false;
   }
-  {
-    const x = Math.fround(value.aimY);
-    if (!Number.isFinite(x) || x < -1.0 || x > 1.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
-  }
   NUMBER_SCRATCH.value = value.aimY;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
     return false;
-  }
-  {
-    const x = Math.fround(value.aimZ);
-    if (!Number.isFinite(x) || x < -1.0 || x > 1.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
   }
   NUMBER_SCRATCH.value = value.aimZ;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
@@ -1504,7 +1474,7 @@ export function WriteBenchMixed(stream, value) {
   return true;
 }
 
-export function ReadBenchMixed(stream, value, nested) {
+export function ReadBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
@@ -1552,7 +1522,7 @@ export function ReadBenchMixed(stream, value, nested) {
   }
   value.entitiesCount = NUMBER_SCRATCH.value;
   for (let i = 0; i < value.entitiesCount; i++) {
-    if (!ReadMixedEntity(stream, value.entities[i], true)) {
+    if (!ReadMixedEntity(stream, value.entities[i])) {
       return false;
     }
   }
@@ -1561,11 +1531,11 @@ export function ReadBenchMixed(stream, value, nested) {
   }
   value.statsCount = NUMBER_SCRATCH.value;
   for (let i = 0; i < value.statsCount; i++) {
-    if (!ReadMixedStat(stream, value.stats[i], true)) {
+    if (!ReadMixedStat(stream, value.stats[i])) {
       return false;
     }
   }
-  if (!ReadMixedEvent(stream, value.gameEvent, true)) {
+  if (!ReadMixedEvent(stream, value.gameEvent)) {
     return false;
   }
   for (let i = 0; i < 4; i++) {
@@ -1648,6 +1618,6 @@ export function ReadBenchMixed(stream, value, nested) {
     return false;
   }
   value.idleTicks = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 

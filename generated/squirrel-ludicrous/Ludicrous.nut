@@ -58,8 +58,8 @@ _M.FixedProbe <- class {
 _M.FixedProbeMaxBits <- 156;
 _M.FixedProbeMaxBytes <- 24;
 
-// ReadFixedProbeBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadFixedProbeBody <- function(stream, value) {
+// ReadFixedProbe reads into value's storage in place; false on a refused read.
+_M.ReadFixedProbe <- function(stream, value) {
   if (!stream.serializeFixed64(_h, 16, 16, -180, 180)) return false;
   value.Angle = _h.value;
   if (!stream.serializeFixed64(_h, 48, 16, -30000, 30000)) return false;
@@ -73,12 +73,6 @@ _M.ReadFixedProbeBody <- function(stream, value) {
     value.Samples[i] = _h.value;
   }
   return true;
-};
-
-// ReadFixedProbe reads one packet into value's storage in place; false on a refused read.
-_M.ReadFixedProbe <- function(stream, value) {
-  if (!_M.ReadFixedProbeBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteFixedProbe writes value in declared order; false on a refused value.
@@ -123,8 +117,8 @@ _M.UnsignedProbe <- class {
 _M.UnsignedProbeMaxBits <- 196;
 _M.UnsignedProbeMaxBytes <- 32;
 
-// ReadUnsignedProbeBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadUnsignedProbeBody <- function(stream, value) {
+// ReadUnsignedProbe reads into value's storage in place; false on a refused read.
+_M.ReadUnsignedProbe <- function(stream, value) {
   if (!stream.serializeFixed64(_h, 16, 16, 0, 360)) return false;
   value.Angle = _h.value;
   if (!stream.serializeFixed64(_h, 48, 16, 0, 281474976710655)) return false;
@@ -141,12 +135,6 @@ _M.ReadUnsignedProbeBody <- function(stream, value) {
   if (!stream.serializeBits(_h, 8)) return false;
   value.Tail = _h.value;
   return true;
-};
-
-// ReadUnsignedProbe reads one packet into value's storage in place; false on a refused read.
-_M.ReadUnsignedProbe <- function(stream, value) {
-  if (!_M.ReadUnsignedProbeBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteUnsignedProbe writes value in declared order; false on a refused value.
@@ -192,8 +180,8 @@ _M.WideProbe <- class {
 _M.WideProbeMaxBits <- 403;
 _M.WideProbeMaxBytes <- 56;
 
-// ReadWideProbeBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadWideProbeBody <- function(stream, value) {
+// ReadWideProbe reads into value's storage in place; false on a refused read.
+_M.ReadWideProbe <- function(stream, value) {
   if (!stream.serializeUint128(_h)) return false;
   value.EntityId = _h.value;
   if (!stream.serializeInt128(_h, [0xfffffffed5fa0e00, 0xffffffffffffffff], [5000000000, 0])) return false;
@@ -205,12 +193,6 @@ _M.ReadWideProbeBody <- function(stream, value) {
   if (!stream.serializeUint128(_h)) return false;
   value.Seed = _h.value;
   return true;
-};
-
-// ReadWideProbe reads one packet into value's storage in place; false on a refused read.
-_M.ReadWideProbe <- function(stream, value) {
-  if (!_M.ReadWideProbeBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteWideProbe writes value in declared order; false on a refused value.
@@ -255,12 +237,12 @@ _M.LudicrousState <- class {
 _M.LudicrousStateMaxBits <- 1205;
 _M.LudicrousStateMaxBytes <- 152;
 
-// ReadLudicrousStateBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadLudicrousStateBody <- function(stream, value) {
+// ReadLudicrousState reads into value's storage in place; false on a refused read.
+_M.ReadLudicrousState <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 3)) return false;
   value.Mode = _h.value;
-  if (!_M.ReadFixedProbeBody(stream, value.Probe)) return false;
-  if (!_M.ReadWideProbeBody(stream, value.Wide)) return false;
+  if (!_M.ReadFixedProbe(stream, value.Probe)) return false;
+  if (!_M.ReadWideProbe(stream, value.Wide)) return false;
   if (!stream.serializeInt(_h, 0, 4)) return false;
   value.KeysCount = _h.value;
   for (local i = 0; i < value.KeysCount; i++) {
@@ -276,12 +258,6 @@ _M.ReadLudicrousStateBody <- function(stream, value) {
     value.TargetId = [0, 0];
   }
   return true;
-};
-
-// ReadLudicrousState reads one packet into value's storage in place; false on a refused read.
-_M.ReadLudicrousState <- function(stream, value) {
-  if (!_M.ReadLudicrousStateBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteLudicrousState writes value in declared order; false on a refused value.
@@ -326,20 +302,14 @@ _M.DegenerateProbe <- class {
 _M.DegenerateProbeMaxBits <- 8;
 _M.DegenerateProbeMaxBytes <- 8;
 
-// ReadDegenerateProbeBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadDegenerateProbeBody <- function(stream, value) {
+// ReadDegenerateProbe reads into value's storage in place; false on a refused read.
+_M.ReadDegenerateProbe <- function(stream, value) {
   value.LockedFixed = -196608;
   value.LockedInt = 7;
   value.LockedWide = [0xfffff4c58c31d00e, 0xffffffffffffffff];
   if (!stream.serializeBits(_h, 8)) return false;
   value.Tail = _h.value;
   return true;
-};
-
-// ReadDegenerateProbe reads one packet into value's storage in place; false on a refused read.
-_M.ReadDegenerateProbe <- function(stream, value) {
-  if (!_M.ReadDegenerateProbeBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteDegenerateProbe writes value in declared order; false on a refused value.
@@ -373,8 +343,8 @@ _M.FixedVec <- class {
 _M.FixedVecMaxBits <- 102;
 _M.FixedVecMaxBytes <- 16;
 
-// ReadFixedVecBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadFixedVecBody <- function(stream, value) {
+// ReadFixedVec reads into value's storage in place; false on a refused read.
+_M.ReadFixedVec <- function(stream, value) {
   if (!stream.serializeFixed64(_h, 48, 16, -100000, 100000)) return false;
   value.X = _h.value;
   if (!stream.serializeFixed64(_h, 48, 16, -100000, 100000)) return false;
@@ -382,12 +352,6 @@ _M.ReadFixedVecBody <- function(stream, value) {
   if (!stream.serializeFixed64(_h, 48, 16, -100000, 100000)) return false;
   value.Z = _h.value;
   return true;
-};
-
-// ReadFixedVec reads one packet into value's storage in place; false on a refused read.
-_M.ReadFixedVec <- function(stream, value) {
-  if (!_M.ReadFixedVecBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteFixedVec writes value in declared order; false on a refused value.
@@ -420,8 +384,8 @@ _M.FixedQuat <- class {
 _M.FixedQuatMaxBits <- 128;
 _M.FixedQuatMaxBytes <- 16;
 
-// ReadFixedQuatBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadFixedQuatBody <- function(stream, value) {
+// ReadFixedQuat reads into value's storage in place; false on a refused read.
+_M.ReadFixedQuat <- function(stream, value) {
   if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
   value.X = _h.value;
   if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
@@ -431,12 +395,6 @@ _M.ReadFixedQuatBody <- function(stream, value) {
   if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
   value.W = _h.value;
   return true;
-};
-
-// ReadFixedQuat reads one packet into value's storage in place; false on a refused read.
-_M.ReadFixedQuat <- function(stream, value) {
-  if (!_M.ReadFixedQuatBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteFixedQuat writes value in declared order; false on a refused value.

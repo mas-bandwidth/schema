@@ -505,7 +505,7 @@ public final class MixedEventVariable {
             in.p++;
             return v;
         }
-        String armName = in.scanName();
+        String armName = in.scanString();
         if (in.bad) return v;
         if (in.peek() != ':') {
             in.bad = true;

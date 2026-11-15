@@ -29,8 +29,8 @@ _M.Vec3 <- class {
 _M.Vec3MaxBits <- 192;
 _M.Vec3MaxBytes <- 24;
 
-// ReadVec3Body reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadVec3Body <- function(stream, value) {
+// ReadVec3 reads into value's storage in place; false on a refused read.
+_M.ReadVec3 <- function(stream, value) {
   if (!stream.serializeDouble(_h)) return false;
   value.X = _h.value;
   if (!stream.serializeDouble(_h)) return false;
@@ -38,12 +38,6 @@ _M.ReadVec3Body <- function(stream, value) {
   if (!stream.serializeDouble(_h)) return false;
   value.Z = _h.value;
   return true;
-};
-
-// ReadVec3 reads one packet into value's storage in place; false on a refused read.
-_M.ReadVec3 <- function(stream, value) {
-  if (!_M.ReadVec3Body(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteVec3 writes value in declared order; false on a refused value.
@@ -76,8 +70,8 @@ _M.Quat <- class {
 _M.QuatMaxBits <- 256;
 _M.QuatMaxBytes <- 32;
 
-// ReadQuatBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadQuatBody <- function(stream, value) {
+// ReadQuat reads into value's storage in place; false on a refused read.
+_M.ReadQuat <- function(stream, value) {
   if (!stream.serializeDouble(_h)) return false;
   value.X = _h.value;
   if (!stream.serializeDouble(_h)) return false;
@@ -87,12 +81,6 @@ _M.ReadQuatBody <- function(stream, value) {
   if (!stream.serializeDouble(_h)) return false;
   value.W = _h.value;
   return true;
-};
-
-// ReadQuat reads one packet into value's storage in place; false on a refused read.
-_M.ReadQuat <- function(stream, value) {
-  if (!_M.ReadQuatBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteQuat writes value in declared order; false on a refused value.
@@ -123,19 +111,13 @@ _M.Handle <- class {
 _M.HandleMaxBits <- 22;
 _M.HandleMaxBytes <- 8;
 
-// ReadHandleBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadHandleBody <- function(stream, value) {
+// ReadHandle reads into value's storage in place; false on a refused read.
+_M.ReadHandle <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 9999)) return false;
   value.ObjectId = _h.value;
   if (!stream.serializeBits(_h, 8)) return false;
   value.ObjectSequence = _h.value;
   return true;
-};
-
-// ReadHandle reads one packet into value's storage in place; false on a refused read.
-_M.ReadHandle <- function(stream, value) {
-  if (!_M.ReadHandleBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteHandle writes value in declared order; false on a refused value.
@@ -165,8 +147,8 @@ _M.QuantizedPosition <- class {
 _M.QuantizedPositionMaxBits <- 75;
 _M.QuantizedPositionMaxBytes <- 16;
 
-// ReadQuantizedPositionBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadQuantizedPositionBody <- function(stream, value) {
+// ReadQuantizedPosition reads into value's storage in place; false on a refused read.
+_M.ReadQuantizedPosition <- function(stream, value) {
   if (!stream.serializeInt(_h, -8388608, 8388608)) return false;
   value.X = _h.value;
   if (!stream.serializeInt(_h, -8388608, 8388608)) return false;
@@ -174,12 +156,6 @@ _M.ReadQuantizedPositionBody <- function(stream, value) {
   if (!stream.serializeInt(_h, -8388608, 8388608)) return false;
   value.Z = _h.value;
   return true;
-};
-
-// ReadQuantizedPosition reads one packet into value's storage in place; false on a refused read.
-_M.ReadQuantizedPosition <- function(stream, value) {
-  if (!_M.ReadQuantizedPositionBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteQuantizedPosition writes value in declared order; false on a refused value.
@@ -210,8 +186,8 @@ _M.QuantizedVelocity <- class {
 _M.QuantizedVelocityMaxBits <- 69;
 _M.QuantizedVelocityMaxBytes <- 16;
 
-// ReadQuantizedVelocityBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadQuantizedVelocityBody <- function(stream, value) {
+// ReadQuantizedVelocity reads into value's storage in place; false on a refused read.
+_M.ReadQuantizedVelocity <- function(stream, value) {
   if (!stream.serializeInt(_h, -2097152, 2097152)) return false;
   value.X = _h.value;
   if (!stream.serializeInt(_h, -2097152, 2097152)) return false;
@@ -219,12 +195,6 @@ _M.ReadQuantizedVelocityBody <- function(stream, value) {
   if (!stream.serializeInt(_h, -2097152, 2097152)) return false;
   value.Z = _h.value;
   return true;
-};
-
-// ReadQuantizedVelocity reads one packet into value's storage in place; false on a refused read.
-_M.ReadQuantizedVelocity <- function(stream, value) {
-  if (!_M.ReadQuantizedVelocityBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteQuantizedVelocity writes value in declared order; false on a refused value.
@@ -257,8 +227,8 @@ _M.QuantizedRotation <- class {
 _M.QuantizedRotationMaxBits <- 48;
 _M.QuantizedRotationMaxBytes <- 8;
 
-// ReadQuantizedRotationBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadQuantizedRotationBody <- function(stream, value) {
+// ReadQuantizedRotation reads into value's storage in place; false on a refused read.
+_M.ReadQuantizedRotation <- function(stream, value) {
   if (!stream.serializeInt(_h, -1024, 1024)) return false;
   value.X = _h.value;
   if (!stream.serializeInt(_h, -1024, 1024)) return false;
@@ -268,12 +238,6 @@ _M.ReadQuantizedRotationBody <- function(stream, value) {
   if (!stream.serializeInt(_h, -1024, 1024)) return false;
   value.W = _h.value;
   return true;
-};
-
-// ReadQuantizedRotation reads one packet into value's storage in place; false on a refused read.
-_M.ReadQuantizedRotation <- function(stream, value) {
-  if (!_M.ReadQuantizedRotationBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteQuantizedRotation writes value in declared order; false on a refused value.
@@ -312,15 +276,15 @@ _M.RigidBody <- class {
 _M.RigidBodyMaxBits <- 833;
 _M.RigidBodyMaxBytes <- 112;
 
-// ReadRigidBodyBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadRigidBodyBody <- function(stream, value) {
-  if (!_M.ReadVec3Body(stream, value.Position)) return false;
-  if (!_M.ReadQuatBody(stream, value.Orientation)) return false;
+// ReadRigidBody reads into value's storage in place; false on a refused read.
+_M.ReadRigidBody <- function(stream, value) {
+  if (!_M.ReadVec3(stream, value.Position)) return false;
+  if (!_M.ReadQuat(stream, value.Orientation)) return false;
   if (!stream.serializeBool(_h)) return false;
   value.AtRest = _h.value;
   if (!value.AtRest) {
-    if (!_M.ReadVec3Body(stream, value.LinearVelocity)) return false;
-    if (!_M.ReadVec3Body(stream, value.AngularVelocity)) return false;
+    if (!_M.ReadVec3(stream, value.LinearVelocity)) return false;
+    if (!_M.ReadVec3(stream, value.AngularVelocity)) return false;
   } else {
     value.LinearVelocity.X = 0.0;
     value.LinearVelocity.Y = 0.0;
@@ -330,12 +294,6 @@ _M.ReadRigidBodyBody <- function(stream, value) {
     value.AngularVelocity.Z = 0.0;
   }
   return true;
-};
-
-// ReadRigidBody reads one packet into value's storage in place; false on a refused read.
-_M.ReadRigidBody <- function(stream, value) {
-  if (!_M.ReadRigidBodyBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteRigidBody writes value in declared order; false on a refused value.
@@ -388,8 +346,8 @@ _M.Input <- class {
 _M.InputMaxBits <- 168;
 _M.InputMaxBytes <- 24;
 
-// ReadInputBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadInputBody <- function(stream, value) {
+// ReadInput reads into value's storage in place; false on a refused read.
+_M.ReadInput <- function(stream, value) {
   if (!stream.serializeFloat(_h)) return false;
   value.StickX = _h.value;
   if (!stream.serializeFloat(_h)) return false;
@@ -417,12 +375,6 @@ _M.ReadInputBody <- function(stream, value) {
   if (!stream.serializeBool(_h)) return false;
   value.Ping = _h.value;
   return true;
-};
-
-// ReadInput reads one packet into value's storage in place; false on a refused read.
-_M.ReadInput <- function(stream, value) {
-  if (!_M.ReadInputBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteInput writes value in declared order; false on a refused value.
@@ -478,8 +430,8 @@ _M.InputPacket <- class {
 _M.InputPacketMaxBits <- 2837;
 _M.InputPacketMaxBytes <- 360;
 
-// ReadInputPacketBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadInputPacketBody <- function(stream, value) {
+// ReadInputPacket reads into value's storage in place; false on a refused read.
+_M.ReadInputPacket <- function(stream, value) {
   if (!stream.serializeBits(_h, 16)) return false;
   value.SynchronizeSequence = _h.value;
   if (!stream.serializeBits64(_h, 64)) return false;
@@ -489,15 +441,9 @@ _M.ReadInputPacketBody <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 16)) return false;
   value.InputsCount = _h.value;
   for (local i = 0; i < value.InputsCount; i++) {
-    if (!_M.ReadInputBody(stream, value.Inputs[i])) return false;
+    if (!_M.ReadInput(stream, value.Inputs[i])) return false;
   }
   return true;
-};
-
-// ReadInputPacket reads one packet into value's storage in place; false on a refused read.
-_M.ReadInputPacket <- function(stream, value) {
-  if (!_M.ReadInputPacketBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteInputPacket writes value in declared order; false on a refused value.
@@ -553,13 +499,13 @@ _M.ShipCreate <- class {
 _M.ShipCreateMaxBits <- 219;
 _M.ShipCreateMaxBytes <- 32;
 
-// ReadShipCreateBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadShipCreateBody <- function(stream, value) {
+// ReadShipCreate reads into value's storage in place; false on a refused read.
+_M.ReadShipCreate <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 5)) return false;
   value.ShipType = _h.value;
-  if (!_M.ReadQuantizedPositionBody(stream, value.Position)) return false;
-  if (!_M.ReadQuantizedRotationBody(stream, value.Rotation)) return false;
-  if (!_M.ReadQuantizedVelocityBody(stream, value.LinearVelocity)) return false;
+  if (!_M.ReadQuantizedPosition(stream, value.Position)) return false;
+  if (!_M.ReadQuantizedRotation(stream, value.Rotation)) return false;
+  if (!_M.ReadQuantizedVelocity(stream, value.LinearVelocity)) return false;
   if (!stream.serializeBool(_h)) return false;
   value.HasFlags = _h.value;
   if (value.HasFlags) {
@@ -577,12 +523,6 @@ _M.ReadShipCreateBody <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 0)) return false;
   value.Pending = _h.value;
   return true;
-};
-
-// ReadShipCreate reads one packet into value's storage in place; false on a refused read.
-_M.ReadShipCreate <- function(stream, value) {
-  if (!_M.ReadShipCreateBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteShipCreate writes value in declared order; false on a refused value.
@@ -626,19 +566,13 @@ _M.ExpressionProbe <- class {
 _M.ExpressionProbeMaxBits <- 16;
 _M.ExpressionProbeMaxBytes <- 8;
 
-// ReadExpressionProbeBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadExpressionProbeBody <- function(stream, value) {
+// ReadExpressionProbe reads into value's storage in place; false on a refused read.
+_M.ReadExpressionProbe <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 31)) return false;
   value.HardpointIndex = _h.value;
   if (!stream.serializeInt(_h, 1024, 2048)) return false;
   value.SpinRate = _h.value;
   return true;
-};
-
-// ReadExpressionProbe reads one packet into value's storage in place; false on a refused read.
-_M.ReadExpressionProbe <- function(stream, value) {
-  if (!_M.ReadExpressionProbeBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteExpressionProbe writes value in declared order; false on a refused value.
@@ -675,8 +609,8 @@ _M.ExtremeProbe <- class {
 _M.ExtremeProbeMaxBits <- 320;
 _M.ExtremeProbeMaxBytes <- 40;
 
-// ReadExtremeProbeBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadExtremeProbeBody <- function(stream, value) {
+// ReadExtremeProbe reads into value's storage in place; false on a refused read.
+_M.ReadExtremeProbe <- function(stream, value) {
   if (!stream.serializeInt64(_h, 0x8000000000000000, 100)) return false;
   value.FloorBound = _h.value;
   if (!stream.serializeInt64(_h, 0x8000000000000000, 100)) return false;
@@ -689,12 +623,6 @@ _M.ReadExtremeProbeBody <- function(stream, value) {
   if (!stream.serializeBits64(_h, 64)) return false;
   value.CeilingDefault = _h.value;
   return true;
-};
-
-// ReadExtremeProbe reads one packet into value's storage in place; false on a refused read.
-_M.ReadExtremeProbe <- function(stream, value) {
-  if (!_M.ReadExtremeProbeBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteExtremeProbe writes value in declared order; false on a refused value.
@@ -734,8 +662,8 @@ _M.ExtremeRow <- class {
 _M.ExtremeRowMaxBits <- 256;
 _M.ExtremeRowMaxBytes <- 32;
 
-// ReadExtremeRowBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadExtremeRowBody <- function(stream, value) {
+// ReadExtremeRow reads into value's storage in place; false on a refused read.
+_M.ReadExtremeRow <- function(stream, value) {
   if (!stream.serializeInt64(_h, 0x8000000000000000, 100)) return false;
   value.ClampedFloor = _h.value;
   if (!stream.serializeBits64(_h, 64)) return false;
@@ -746,12 +674,6 @@ _M.ReadExtremeRowBody <- function(stream, value) {
   if (!stream.serializeBits64(_h, 64)) return false;
   value.CeilingDef = _h.value;
   return true;
-};
-
-// ReadExtremeRow reads one packet into value's storage in place; false on a refused read.
-_M.ReadExtremeRow <- function(stream, value) {
-  if (!_M.ReadExtremeRowBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteExtremeRow writes value in declared order; false on a refused value.

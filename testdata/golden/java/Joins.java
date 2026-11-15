@@ -148,17 +148,6 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARMS_AGREE_MAX_BITS;
-        assert value.lead >= 0;
-        assert value.lead <= 31;
-        if (value.flag) {
-            assert value.a >= 0;
-            assert value.a <= 2047;
-        } else {
-            assert value.b >= 0;
-            assert value.b <= 2047;
-        }
-        assert value.tail >= 0;
-        assert value.tail <= 127;
         return true;
     }
 
@@ -238,21 +227,9 @@ public final class Joins {
     }
 
     // readArmsAgree decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readArmsAgree(ArmsAgree value, byte[] data, int numBits) {
-        final int end = readArmsAgreeBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readArmsAgreeBits(value, data, 0, numBits) >= 0;
     }
 
     // type ArmsDisagree
@@ -303,17 +280,6 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARMS_DISAGREE_MAX_BITS;
-        assert value.lead >= 0;
-        assert value.lead <= 31;
-        if (value.flag) {
-            assert value.a >= 0;
-            assert value.a <= 2047;
-        } else {
-            assert value.b >= 0;
-            assert value.b <= 7;
-        }
-        assert value.tail >= 0;
-        assert value.tail <= 127;
         return true;
     }
 
@@ -403,21 +369,9 @@ public final class Joins {
     }
 
     // readArmsDisagree decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readArmsDisagree(ArmsDisagree value, byte[] data, int numBits) {
-        final int end = readArmsDisagreeBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readArmsDisagreeBits(value, data, 0, numBits) >= 0;
     }
 
     // type ArmEmpty
@@ -462,14 +416,6 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARM_EMPTY_MAX_BITS;
-        assert value.lead >= 0;
-        assert value.lead <= 31;
-        if (value.flag) {
-            assert value.a >= 0;
-            assert value.a <= 524287;
-        }
-        assert value.tail >= 0;
-        assert value.tail <= 127;
         return true;
     }
 
@@ -548,21 +494,9 @@ public final class Joins {
     }
 
     // readArmEmpty decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readArmEmpty(ArmEmpty value, byte[] data, int numBits) {
-        final int end = readArmEmptyBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readArmEmptyBits(value, data, 0, numBits) >= 0;
     }
 
     // type ArmsNested
@@ -625,22 +559,6 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARMS_NESTED_MAX_BITS;
-        assert value.lead >= 0;
-        assert value.lead <= 7;
-        if (value.outer) {
-            if (value.inner) {
-                assert value.x >= 0;
-                assert value.x <= 536870911;
-            } else {
-                assert value.y >= 0;
-                assert value.y <= 31;
-            }
-        } else {
-            assert value.z >= 0;
-            assert value.z <= 8191;
-        }
-        assert value.tail >= 0;
-        assert value.tail <= 63;
         return true;
     }
 
@@ -756,21 +674,9 @@ public final class Joins {
     }
 
     // readArmsNested decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readArmsNested(ArmsNested value, byte[] data, int numBits) {
-        final int end = readArmsNestedBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readArmsNestedBits(value, data, 0, numBits) >= 0;
     }
 
     // type ArmAlign
@@ -825,17 +731,10 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARM_ALIGN_MAX_BITS;
-        assert value.lead >= 0;
-        assert value.lead <= 31;
         if (value.flag) {
             assert value.sLength >= 0;
             assert value.sLength <= 4;
-        } else {
-            assert value.b >= 0;
-            assert value.b <= 1023;
         }
-        assert value.tail >= 0;
-        assert value.tail <= 127;
         return true;
     }
 
@@ -976,21 +875,9 @@ public final class Joins {
     }
 
     // readArmAlign decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readArmAlign(ArmAlign value, byte[] data, int numBits) {
-        final int end = readArmAlignBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readArmAlignBits(value, data, 0, numBits) >= 0;
     }
 
     // type ArmArray
@@ -1045,8 +932,6 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARM_ARRAY_MAX_BITS;
-        assert value.lead >= 0;
-        assert value.lead <= 31;
         if (value.flag) {
             assert value.itemsCount >= 0;
             assert value.itemsCount <= 3;
@@ -1054,12 +939,7 @@ public final class Joins {
                 assert value.items[i0] >= 0;
                 assert value.items[i0] <= 8191;
             }
-        } else {
-            assert value.b >= 0;
-            assert value.b <= 511;
         }
-        assert value.tail >= 0;
-        assert value.tail <= 127;
         return true;
     }
 
@@ -1161,21 +1041,9 @@ public final class Joins {
     }
 
     // readArmArray decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readArmArray(ArmArray value, byte[] data, int numBits) {
-        final int end = readArmArrayBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readArmArrayBits(value, data, 0, numBits) >= 0;
     }
 
     // type Narrow
@@ -1207,8 +1075,6 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + NARROW_MAX_BITS;
-        assert value.n >= 0;
-        assert value.n <= 7;
         return true;
     }
 
@@ -1260,21 +1126,9 @@ public final class Joins {
     }
 
     // readNarrow decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readNarrow(Narrow value, byte[] data, int numBits) {
-        final int end = readNarrowBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readNarrowBits(value, data, 0, numBits) >= 0;
     }
 
     // type Wide
@@ -1306,8 +1160,6 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + WIDE_MAX_BITS;
-        assert value.w >= 0;
-        assert value.w <= 137438953471L;
         return true;
     }
 
@@ -1366,21 +1218,9 @@ public final class Joins {
     }
 
     // readWide decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readWide(Wide value, byte[] data, int numBits) {
-        final int end = readWideBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readWideBits(value, data, 0, numBits) >= 0;
     }
 
     // UnevenType: union Uneven's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -1513,21 +1353,9 @@ public final class Joins {
     }
 
     // readUneven decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readUneven(Uneven value, byte[] data, int numBits) {
-        final int end = readUnevenBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readUnevenBits(value, data, 0, numBits) >= 0;
     }
 
     // type HoldsUneven
@@ -1565,10 +1393,6 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + HOLDS_UNEVEN_MAX_BITS;
-        assert value.lead >= 0;
-        assert value.lead <= 31;
-        assert value.tail >= 0;
-        assert value.tail <= 2047;
         return true;
     }
 
@@ -1636,21 +1460,9 @@ public final class Joins {
     }
 
     // readHoldsUneven decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readHoldsUneven(HoldsUneven value, byte[] data, int numBits) {
-        final int end = readHoldsUnevenBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readHoldsUnevenBits(value, data, 0, numBits) >= 0;
     }
 
     // type ArrUneven
@@ -1703,12 +1515,8 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARR_UNEVEN_MAX_BITS;
-        assert value.lead >= 0;
-        assert value.lead <= 31;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 3;
-        assert value.tail >= 0;
-        assert value.tail <= 7;
         return true;
     }
 
@@ -1787,21 +1595,9 @@ public final class Joins {
     }
 
     // readArrUneven decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readArrUneven(ArrUneven value, byte[] data, int numBits) {
-        final int end = readArrUnevenBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readArrUnevenBits(value, data, 0, numBits) >= 0;
     }
 
     // type RegainAfterAlign
@@ -1860,8 +1656,6 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + REGAIN_AFTER_ALIGN_MAX_BITS;
-        assert value.lead >= 0;
-        assert value.lead <= 31;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 3;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
@@ -1870,14 +1664,6 @@ public final class Joins {
         }
         assert value.sLength >= 0;
         assert value.sLength <= 4;
-        assert value.p >= 0;
-        assert value.p <= 4294967295L;
-        assert value.q >= 0;
-        assert value.q <= 536870911;
-        assert value.r >= 0;
-        assert value.r <= 524287;
-        assert value.tail >= 0;
-        assert value.tail <= 15;
         return true;
     }
 
@@ -2033,20 +1819,8 @@ public final class Joins {
     }
 
     // readRegainAfterAlign decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readRegainAfterAlign(RegainAfterAlign value, byte[] data, int numBits) {
-        final int end = readRegainAfterAlignBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readRegainAfterAlignBits(value, data, 0, numBits) >= 0;
     }
 }

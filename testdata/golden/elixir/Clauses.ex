@@ -359,17 +359,8 @@ defmodule Example.Clauses do
   @spec read_w13(binary(), non_neg_integer()) :: {:ok, Example.W13.t()} | :error
   def read_w13(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w13_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -462,17 +453,8 @@ defmodule Example.Clauses do
   @spec read_w17(binary(), non_neg_integer()) :: {:ok, Example.W17.t()} | :error
   def read_w17(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w17_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -565,17 +547,8 @@ defmodule Example.Clauses do
   @spec read_w26(binary(), non_neg_integer()) :: {:ok, Example.W26.t()} | :error
   def read_w26(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w26_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -668,17 +641,8 @@ defmodule Example.Clauses do
   @spec read_w1(binary(), non_neg_integer()) :: {:ok, Example.W1.t()} | :error
   def read_w1(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w1_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -769,17 +733,8 @@ defmodule Example.Clauses do
   @spec read_w52(binary(), non_neg_integer()) :: {:ok, Example.W52.t()} | :error
   def read_w52(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w52_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -870,17 +825,8 @@ defmodule Example.Clauses do
   @spec read_w50(binary(), non_neg_integer()) :: {:ok, Example.W50.t()} | :error
   def read_w50(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w50_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -964,17 +910,8 @@ defmodule Example.Clauses do
   @spec read_f13(binary(), non_neg_integer()) :: {:ok, Example.F13.t()} | :error
   def read_f13(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_f13_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1006,26 +943,8 @@ defmodule Example.Clauses do
   @spec write_tri3!(Example.Tri3.t()) :: binary()
   def write_tri3!(value) do
     %{a: value_a, b: value_b} = value
-
-    if value_a < 0 do
-      raise ArgumentError, "value.a is below the wire minimum"
-    end
-
-    if value_a > 1 do
-      raise ArgumentError, "value.a is above the wire maximum"
-    end
-
     v = value_a &&& 0x1
     scratch = v
-
-    if value_b < 0 do
-      raise ArgumentError, "value.b is below the wire minimum"
-    end
-
-    if value_b > 3 do
-      raise ArgumentError, "value.b is above the wire maximum"
-    end
-
     v = value_b &&& 0x3
     scratch = scratch ||| v <<< 1
     # the residual byte, statically known to be there
@@ -1079,17 +998,8 @@ defmodule Example.Clauses do
   @spec read_tri3(binary(), non_neg_integer()) :: {:ok, Example.Tri3.t()} | :error
   def read_tri3(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_tri3_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1182,17 +1092,8 @@ defmodule Example.Clauses do
   @spec read_arr_tri3(binary(), non_neg_integer()) :: {:ok, Example.ArrTri3.t()} | :error
   def read_arr_tri3(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arr_tri3_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1224,26 +1125,8 @@ defmodule Example.Clauses do
   @spec write_eleven!(Example.Eleven.t()) :: binary()
   def write_eleven!(value) do
     %{a: value_a, b: value_b} = value
-
-    if value_a < 0 do
-      raise ArgumentError, "value.a is below the wire minimum"
-    end
-
-    if value_a > 7 do
-      raise ArgumentError, "value.a is above the wire maximum"
-    end
-
     v = value_a &&& 0x7
     scratch = v
-
-    if value_b < 0 do
-      raise ArgumentError, "value.b is below the wire minimum"
-    end
-
-    if value_b > 255 do
-      raise ArgumentError, "value.b is above the wire maximum"
-    end
-
     v = value_b &&& 0xFF
     scratch = scratch ||| v <<< 3
     data = <<scratch::little-size(1)-unit(8)>>
@@ -1299,17 +1182,8 @@ defmodule Example.Clauses do
   @spec read_eleven(binary(), non_neg_integer()) :: {:ok, Example.Eleven.t()} | :error
   def read_eleven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_eleven_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1393,17 +1267,8 @@ defmodule Example.Clauses do
   @spec read_arr_eleven(binary(), non_neg_integer()) :: {:ok, Example.ArrEleven.t()} | :error
   def read_arr_eleven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arr_eleven_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1478,17 +1343,8 @@ defmodule Example.Clauses do
   @spec read_empty_a(binary(), non_neg_integer()) :: {:ok, Example.EmptyA.t()} | :error
   def read_empty_a(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_empty_a_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1563,17 +1419,8 @@ defmodule Example.Clauses do
   @spec read_empty_b(binary(), non_neg_integer()) :: {:ok, Example.EmptyB.t()} | :error
   def read_empty_b(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_empty_b_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1698,17 +1545,8 @@ defmodule Example.Clauses do
   @spec read_empty_union(binary(), non_neg_integer()) :: {:ok, Example.EmptyUnion.t()} | :error
   def read_empty_union(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_empty_union_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1740,15 +1578,6 @@ defmodule Example.Clauses do
   @spec write_holds_empty_union!(Example.HoldsEmptyUnion.t()) :: binary()
   def write_holds_empty_union!(value) do
     %{lead: value_lead, u: value_u, tail: value_tail} = value
-
-    if value_lead < 0 do
-      raise ArgumentError, "value.lead is below the wire minimum"
-    end
-
-    if value_lead > 31 do
-      raise ArgumentError, "value.lead is above the wire maximum"
-    end
-
     v = value_lead &&& 0x1F
     scratch = v
 
@@ -1768,15 +1597,6 @@ defmodule Example.Clauses do
       end
 
     scratch = scratch ||| v <<< 5
-
-    if value_tail < 0 do
-      raise ArgumentError, "value.tail is below the wire minimum"
-    end
-
-    if value_tail > 127 do
-      raise ArgumentError, "value.tail is above the wire maximum"
-    end
-
     v = value_tail &&& 0x7F
     scratch = scratch ||| v <<< 7
     data = <<scratch::little-size(1)-unit(8)>>
@@ -1858,17 +1678,8 @@ defmodule Example.Clauses do
           {:ok, Example.HoldsEmptyUnion.t()} | :error
   def read_holds_empty_union(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_holds_empty_union_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1900,15 +1711,6 @@ defmodule Example.Clauses do
   @spec write_strs!(Example.Strs.t()) :: binary()
   def write_strs!(value) do
     %{lead: value_lead, s: value_s, b: value_b, tail: value_tail} = value
-
-    if value_lead < 0 do
-      raise ArgumentError, "value.lead is below the wire minimum"
-    end
-
-    if value_lead > 31 do
-      raise ArgumentError, "value.lead is above the wire maximum"
-    end
-
     v = value_lead &&& 0x1F
     scratch = v
 
@@ -1935,15 +1737,6 @@ defmodule Example.Clauses do
     data = <<data::binary, scratch>>
     # the used bytes ride whole — the stream is byte-aligned here
     data = <<data::binary, value_b::binary>>
-
-    if value_tail < 0 do
-      raise ArgumentError, "value.tail is below the wire minimum"
-    end
-
-    if value_tail > 7 do
-      raise ArgumentError, "value.tail is above the wire maximum"
-    end
-
     v = value_tail &&& 0x7
     scratch = v
     # the residual byte, statically known to be there
@@ -2039,17 +1832,8 @@ defmodule Example.Clauses do
   @spec read_strs(binary(), non_neg_integer()) :: {:ok, Example.Strs.t()} | :error
   def read_strs(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_strs_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -2081,15 +1865,6 @@ defmodule Example.Clauses do
   @spec write_arr_nested!(Example.ArrNested.t()) :: binary()
   def write_arr_nested!(value) do
     %{lead: value_lead, items: value_items, tail: value_tail} = value
-
-    if value_lead < 0 do
-      raise ArgumentError, "value.lead is below the wire minimum"
-    end
-
-    if value_lead > 31 do
-      raise ArgumentError, "value.lead is above the wire maximum"
-    end
-
     v = value_lead &&& 0x1F
     scratch = v
     n = length(value_items)
@@ -2104,15 +1879,6 @@ defmodule Example.Clauses do
     scratch_bits = 0
     scratch = 0
     {data, scratch, scratch_bits} = wZarr_nestedZitems(value_items, data, scratch, scratch_bits)
-
-    if value_tail < 0 do
-      raise ArgumentError, "value.tail is below the wire minimum"
-    end
-
-    if value_tail > 7 do
-      raise ArgumentError, "value.tail is above the wire maximum"
-    end
-
     v = value_tail &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
@@ -2180,17 +1946,8 @@ defmodule Example.Clauses do
   @spec read_arr_nested(binary(), non_neg_integer()) :: {:ok, Example.ArrNested.t()} | :error
   def read_arr_nested(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arr_nested_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -2221,14 +1978,6 @@ defmodule Example.Clauses do
   """
   @spec write_sole!(Example.Sole.t()) :: binary()
   def write_sole!(value) do
-    if value.only < 0 do
-      raise ArgumentError, "value.only is below the wire minimum"
-    end
-
-    if value.only > 8191 do
-      raise ArgumentError, "value.only is above the wire maximum"
-    end
-
     v = value.only &&& 0x1FFF
     scratch = v
     data = <<scratch::little-size(1)-unit(8)>>
@@ -2282,17 +2031,8 @@ defmodule Example.Clauses do
   @spec read_sole(binary(), non_neg_integer()) :: {:ok, Example.Sole.t()} | :error
   def read_sole(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_sole_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -3102,102 +2842,30 @@ defmodule Example.Clauses do
 
   defp wZarr_tri3Zitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     %{a: e1_a, b: e1_b} = e1
-
-    if e1_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e1_a > 1 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e1_a &&& 0x1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-
-    if e1_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e1_b > 3 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e1_b &&& 0x3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     %{a: e2_a, b: e2_b} = e2
-
-    if e2_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e2_a > 1 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e2_a &&& 0x1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-
-    if e2_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e2_b > 3 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e2_b &&& 0x3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     %{a: e3_a, b: e3_b} = e3
-
-    if e3_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e3_a > 1 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e3_a &&& 0x1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-
-    if e3_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e3_b > 3 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e3_b &&& 0x3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     %{a: e4_a, b: e4_b} = e4
-
-    if e4_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e4_a > 1 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e4_a &&& 0x1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-
-    if e4_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e4_b > 3 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e4_b &&& 0x3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
@@ -3210,27 +2878,9 @@ defmodule Example.Clauses do
 
   defp wZarr_tri3Zitems([e | rest], data, scratch, scratch_bits) do
     %{a: e_a, b: e_b} = e
-
-    if e_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e_a > 1 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e_a &&& 0x1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
-
-    if e_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e_b > 3 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e_b &&& 0x3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
@@ -3381,102 +3031,30 @@ defmodule Example.Clauses do
 
   defp wZarr_elevenZitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     %{a: e1_a, b: e1_b} = e1
-
-    if e1_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e1_a > 7 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e1_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
-
-    if e1_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e1_b > 255 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e1_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
     %{a: e2_a, b: e2_b} = e2
-
-    if e2_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e2_a > 7 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e2_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
-
-    if e2_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e2_b > 255 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e2_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
     %{a: e3_a, b: e3_b} = e3
-
-    if e3_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e3_a > 7 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e3_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
-
-    if e3_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e3_b > 255 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e3_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
     %{a: e4_a, b: e4_b} = e4
-
-    if e4_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e4_a > 7 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e4_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
-
-    if e4_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e4_b > 255 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e4_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3489,27 +3067,9 @@ defmodule Example.Clauses do
 
   defp wZarr_elevenZitems([e | rest], data, scratch, scratch_bits) do
     %{a: e_a, b: e_b} = e
-
-    if e_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e_a > 7 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
-
-    if e_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e_b > 255 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3562,102 +3122,30 @@ defmodule Example.Clauses do
 
   defp wZarr_nestedZitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     %{a: e1_a, b: e1_b} = e1
-
-    if e1_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e1_a > 7 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e1_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
-
-    if e1_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e1_b > 255 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e1_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
     %{a: e2_a, b: e2_b} = e2
-
-    if e2_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e2_a > 7 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e2_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
-
-    if e2_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e2_b > 255 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e2_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
     %{a: e3_a, b: e3_b} = e3
-
-    if e3_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e3_a > 7 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e3_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
-
-    if e3_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e3_b > 255 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e3_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
     %{a: e4_a, b: e4_b} = e4
-
-    if e4_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e4_a > 7 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e4_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
-
-    if e4_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e4_b > 255 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e4_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3670,27 +3158,9 @@ defmodule Example.Clauses do
 
   defp wZarr_nestedZitems([e | rest], data, scratch, scratch_bits) do
     %{a: e_a, b: e_b} = e
-
-    if e_a < 0 do
-      raise ArgumentError, "e.a is below the wire minimum"
-    end
-
-    if e_a > 7 do
-      raise ArgumentError, "e.a is above the wire maximum"
-    end
-
     v = e_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
-
-    if e_b < 0 do
-      raise ArgumentError, "e.b is below the wire minimum"
-    end
-
-    if e_b > 255 do
-      raise ArgumentError, "e.b is above the wire maximum"
-    end
-
     v = e_b &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8

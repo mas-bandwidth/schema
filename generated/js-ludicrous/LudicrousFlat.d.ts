@@ -12,29 +12,22 @@ export declare const FlatReadSlack: 8;
 
 export declare function WriteFixedProbeFlat(view: DataView, value: FixedProbe): number;
 export declare function ReadFixedProbeFlat(view: DataView, numBits: number, value: FixedProbe): boolean;
-export declare function ReadFixedProbeFlatBits(view: DataView, numBits: number, value: FixedProbe): number | false;
 
 export declare function WriteUnsignedProbeFlat(view: DataView, value: UnsignedProbe): number;
 export declare function ReadUnsignedProbeFlat(view: DataView, numBits: number, value: UnsignedProbe): boolean;
-export declare function ReadUnsignedProbeFlatBits(view: DataView, numBits: number, value: UnsignedProbe): number | false;
 
 export declare function WriteWideProbeFlat(view: DataView, value: WideProbe): number;
 export declare function ReadWideProbeFlat(view: DataView, numBits: number, value: WideProbe): boolean;
-export declare function ReadWideProbeFlatBits(view: DataView, numBits: number, value: WideProbe): number | false;
 
 export declare function WriteLudicrousStateFlat(view: DataView, value: LudicrousState): number;
 export declare function ReadLudicrousStateFlat(view: DataView, numBits: number, value: LudicrousState): boolean;
-export declare function ReadLudicrousStateFlatBits(view: DataView, numBits: number, value: LudicrousState): number | false;
 
 export declare function WriteDegenerateProbeFlat(view: DataView, value: DegenerateProbe): number;
 export declare function ReadDegenerateProbeFlat(view: DataView, numBits: number, value: DegenerateProbe): boolean;
-export declare function ReadDegenerateProbeFlatBits(view: DataView, numBits: number, value: DegenerateProbe): number | false;
 
 export declare function WriteFixedVecFlat(view: DataView, value: FixedVec): number;
 export declare function ReadFixedVecFlat(view: DataView, numBits: number, value: FixedVec): boolean;
-export declare function ReadFixedVecFlatBits(view: DataView, numBits: number, value: FixedVec): number | false;
 
 export declare function WriteFixedQuatFlat(view: DataView, value: FixedQuat): number;
 export declare function ReadFixedQuatFlat(view: DataView, numBits: number, value: FixedQuat): boolean;
-export declare function ReadFixedQuatFlatBits(view: DataView, numBits: number, value: FixedQuat): number | false;
 

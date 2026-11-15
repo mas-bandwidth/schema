@@ -758,22 +758,6 @@ struct TableIdTable
     }
 };
 
-// THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body (kind
-// 14) opens with one of 1–13, 15, 17, 18–29 or 30, and an enum-keyed body
-// (kind 16) with one of 1–11, 13, 18–29 or 30. Every other element kind is
-// damage under any count, a count of 0 included, in a declared field and in an
-// unknown one alike, so the header's kind byte is judged before any comparison
-// with the reader's own element kind.
-inline bool TableArrayElementKind( uint8_t kind )
-{
-    return ( kind >= 1 && kind <= 13 ) || kind == 15 || kind == 17 || ( kind >= 18 && kind <= 30 );
-}
-
-inline bool TableKeyedElementKind( uint8_t kind )
-{
-    return ( kind >= 1 && kind <= 11 ) || kind == 13 || ( kind >= 18 && kind <= 30 );
-}
-
 struct TableReader
 {
     const uint8_t * buffer;
@@ -895,164 +879,10 @@ struct TableReader
         return true;
     }
 
-    // THE CONTAINERS ARE OPENED FOR ONE QUESTION: is an inner array or keyed
-    // header off §3's closed element-kind list? An off-list header is damage
-    // under any count, a count of 0 included, so the walk follows a table,
-    // array, keyed body or union arm far enough to judge it. Framing damage is
-    // not this question and ends an inspection without a finding; the typed
-    // read names it where it declares the field. depth keeps the walk bounded.
-    bool badElementKindPayload( uint8_t kind, TableReader & r, int depth )
-    {
-        switch ( kind )
-        {
-            case 1:
-            case 2:
-            case 6:
-            case 20:
-            case 25: if ( r.has( 1 ) ) { r.offset += 1; } return false;
-            case 3:
-            case 7:
-            case 21:
-            case 26: if ( r.has( 2 ) ) { r.offset += 2; } return false;
-            case 4:
-            case 8:
-            case 10:
-            case 22:
-            case 27: if ( r.has( 4 ) ) { r.offset += 4; } return false;
-            case 5:
-            case 9:
-            case 11:
-            case 23:
-            case 28:
-            case 36: if ( r.has( 8 ) ) { r.offset += 8; } return false;
-            case 18:
-            case 19:
-            case 24:
-            case 29: if ( r.has( 16 ) ) { r.offset += 16; } return false;
-            case 17:
-            case 30:
-            {
-                uint64_t ignored = 0;
-                r.getleb( ignored );
-                return false;
-            }
-            case 12:
-            case 31:
-            case 32:
-            {
-                uint64_t n = 0;
-                if ( r.getleb( n ) && r.room( n ) ) { r.offset += (int64_t) n; }
-                return false;
-            }
-            case 13:
-            case 14:
-            case 16:
-            {
-                uint64_t n = 0;
-                if ( !r.getleb( n ) || !r.room( n ) ) return false;
-                const uint8_t * b = r.buffer + r.offset;
-                r.offset += (int64_t) n;
-                return badElementKindContent( kind, b, (int64_t) n, depth );
-            }
-            case 15: return badElementKindUnion( r, depth );
-        }
-        return false;
-    }
-
-    bool badElementKindContent( uint8_t kind, const uint8_t * b, int64_t n, int depth )
-    {
-        if ( depth >= 128 ) return false;
-        switch ( kind )
-        {
-            case 13: return badElementKindTable( b, n, depth + 1 );
-            case 14: return badElementKindArray( b, n, depth + 1 );
-            case 16: return badElementKindKeyed( b, n, depth + 1 );
-            case 15:
-            {
-                TableReader r( b, n, report, ids );
-                return badElementKindUnion( r, depth );
-            }
-        }
-        return false;
-    }
-
-    bool badElementKindTable( const uint8_t * b, int64_t n, int depth )
-    {
-        TableReader r( b, n, report, ids );
-        for ( ;; )
-        {
-            uint64_t ref = 0;
-            if ( !r.getleb( ref ) || ref == 0 ) return false;
-            if ( ids == NULL || ref > (uint64_t) ids->count || !r.has( 1 ) ) return false;
-            const uint8_t field_kind = r.get8();
-            const int64_t before = r.offset;
-            if ( badElementKindPayload( field_kind, r, depth ) ) return true;
-            if ( r.offset == before ) return false;
-        }
-    }
-
-    bool badElementKindArray( const uint8_t * b, int64_t n, int depth )
-    {
-        if ( n < 1 ) return false;
-        const uint8_t elem = b[0];
-        if ( !TableArrayElementKind( elem ) ) return true;
-        if ( n < 2 ) return false;
-        TableReader r( b + 1, n - 1, report, ids );
-        uint64_t count = 0;
-        if ( !r.getleb( count ) ) return false;
-        if ( count > (uint64_t) ( r.size - r.offset ) ) return false;
-        for ( uint64_t i = 0; i < count; i++ )
-        {
-            const int64_t before = r.offset;
-            if ( badElementKindPayload( elem, r, depth ) ) return true;
-            if ( r.offset == before ) return false;
-        }
-        return false;
-    }
-
-    bool badElementKindKeyed( const uint8_t * b, int64_t n, int depth )
-    {
-        if ( n < 1 ) return false;
-        const uint8_t elem = b[0];
-        if ( !TableKeyedElementKind( elem ) ) return true;
-        if ( n < 2 ) return false;
-        TableReader r( b + 1, n - 1, report, ids );
-        uint64_t count = 0;
-        if ( !r.getleb( count ) ) return false;
-        if ( count > (uint64_t) ( r.size - r.offset ) ) return false;
-        for ( uint64_t i = 0; i < count; i++ )
-        {
-            uint64_t key = 0;
-            if ( !r.getleb( key ) ) return false;
-            if ( key == 0 || ids == NULL || key > (uint64_t) ids->count ) return false;
-            uint64_t len = 0;
-            if ( !r.getleb( len ) || !r.room( len ) ) return false;
-            const uint8_t * eb = r.buffer + r.offset;
-            r.offset += (int64_t) len;
-            if ( badElementKindContent( elem, eb, (int64_t) len, depth ) ) return true;
-        }
-        return false;
-    }
-
-    bool badElementKindUnion( TableReader & r, int depth )
-    {
-        uint64_t arm = 0;
-        if ( !r.getleb( arm ) || arm == 0 ) return false;
-        if ( ids == NULL || arm > (uint64_t) ids->count || !r.has( 1 ) ) return false;
-        const uint8_t arm_kind = r.get8();
-        uint64_t n = 0;
-        if ( !r.getleb( n ) || !r.room( n ) ) return false;
-        const uint8_t * b = r.buffer + r.offset;
-        r.offset += (int64_t) n;
-        const bool structural = arm_kind == 13 || arm_kind == 14 || arm_kind == 15 || arm_kind == 16;
-        if ( !structural ) return false;
-        return badElementKindContent( arm_kind, b, (int64_t) n, depth );
-    }
-
     // skip one payload by kind; false = framing damage. FOUR RULES COVER THE
     // SET (docs/SPEC-TABLES.md §3), and a kind outside it is not skippable —
     // which is why the set is closed and why kind 31 exists.
-    bool skip( uint8_t kind, int depth = 0 )
+    bool skip( uint8_t kind )
     {
         switch ( kind )
         {
@@ -1092,7 +922,10 @@ struct TableReader
                 uint64_t ignored = 0;
                 return getleb( ignored );
             }
-            case 12: // a string body: its L is opaque here
+            case 12:
+            case 13:
+            case 14:
+            case 16:
             case 31:
             case 32: // 31 is the ESCAPE, 32 the payload-free kind
             {
@@ -1100,30 +933,16 @@ struct TableReader
                 if ( !getleb( n ) ) return false;
                 return room( n ) ? ( offset += (int64_t) n, true ) : false;
             }
-            case 13: // a TABLE body: open it for an off-list array or keyed header (§3, §4)
-            case 14: // an ARRAY body: its element kind is closed under any count (§3)
-            case 16: // an ENUM-KEYED body: its element kind has its own closed list (§3)
-            {
-                uint64_t n = 0;
-                if ( !getleb( n ) ) return false;
-                if ( !room( n ) ) return false;
-                const uint8_t * b = buffer + offset;
-                offset += (int64_t) n;
-                return !badElementKindContent( kind, b, (int64_t) n, depth );
-            }
             case 15: // union: the arm id reference, then its kind, its L and its payload (reference 0 = empty)
             {
                 uint64_t arm = 0;
                 if ( !getleb( arm ) ) return false;
                 if ( arm == 0 ) return true;
                 if ( !has( 1 ) ) return false;
-                const uint8_t arm_kind = get8();
+                offset += 1; // the arm's kind byte
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
-                if ( !room( n ) ) return false;
-                const uint8_t * b = buffer + offset;
-                offset += (int64_t) n;
-                return !badElementKindContent( arm_kind, b, (int64_t) n, depth );
+                return room( n ) ? ( offset += (int64_t) n, true ) : false;
             }
             // KIND 34 IS RESERVED FOR float16 AND IS NOT PART OF THIS MAJOR (§3):
             // no writer emits it and no reader has a rule for it, so a reader
@@ -1968,7 +1787,7 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( f.packing == 0 ) { return true; }
         if ( f.packing == 1 && kind != 10 )
         {
-            if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) TableMessageKindBits( kind ) ) { return false; }
+            if ( !TableMessageLeb( in, size, at, v ) || (int64_t) v > TableMessageKindBits( kind ) ) { return false; }
             f.value_bits = (int64_t) v;
             if ( kind == 18 || kind == 19 || TableMessageFixedKind( kind ) )
             {
@@ -2984,89 +2803,10 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
         }
         default:
         {
-            // A FLOAT AND A RANGED ELEMENT carry the condition a named read
-            // applies, so they are held by the field's own skip at the
-            // element's shape
-            if ( entry.elem_kind == 10 || entry.elem_kind == 11 || entry.elem_packing == 1 )
-            {
-                TableMessageEntry element;
-                element.kind = entry.elem_kind;
-                element.packing = entry.elem_packing;
-                element.value_bits = entry.elem_value_bits;
-                element.base_lo = entry.elem_base_lo;
-                element.base_hi = entry.elem_base_hi;
-                element.qcount = entry.elem_qcount;
-                return TableMessageSkip( r, vocabulary, index_bits, element, depth );
-            }
             const int64_t elem = entry.elem_value_bits;
             return elem >= 0 && r.skip( elem );
         }
     }
-}
-
-// TableMessageSignedKind is a kind whose domain is two's complement.
-inline bool TableMessageSignedKind( uint8_t kind )
-{
-    return ( kind >= 2 && kind <= 5 ) || kind == 18 || ( kind >= 20 && kind <= 24 );
-}
-
-// TableMessageSkipRanged steps over a RANGED value and holds base plus offset
-// to the kind's own domain, the bound a named read holds it to: the offset's
-// bits can spell a value past the sender's range (§3.3). The base and the
-// offset are added exactly as the named read adds them. The arithmetic is on
-// 64-bit words, since this runtime carries no 128-bit type of its own.
-inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t width, int64_t base_lo, int64_t base_hi )
-{
-    uint64_t lo = 0, hi = 0;
-    if ( width < 0 || !r.get( lo, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi, width - 64 ) ) ) { return false; }
-    const bool is_signed = TableMessageSignedKind( kind );
-    const int64_t domain = TableMessageKindBits( kind );
-    if ( domain == 128 )
-    {
-        // the room above the base is top minus base, exact at 128 bits
-        // because no base lies above the top of its own domain
-        const uint64_t top_hi = is_signed ? uint64_t( INT64_MAX ) : UINT64_MAX;
-        const uint64_t room_lo = UINT64_MAX - (uint64_t) base_lo;
-        const uint64_t room_hi = top_hi - (uint64_t) base_hi;
-        return hi < room_hi || ( hi == room_hi && lo <= room_lo );
-    }
-    // AT SIXTY-FOUR BITS OR FEWER the offset is one word and so is the base,
-    // sign-extended for a signed kind, and the sum is held to both ends
-    if ( !is_signed )
-    {
-        const uint64_t top = domain == 64 ? UINT64_MAX : ( uint64_t( 1 ) << domain ) - 1;
-        const uint64_t base = (uint64_t) base_lo;
-        return base <= top && lo <= top - base;
-    }
-    const int64_t top = domain == 64 ? INT64_MAX : (int64_t) ( ( uint64_t( 1 ) << ( domain - 1 ) ) - 1 );
-    const int64_t bottom = -top - 1;
-    if ( base_lo > top || lo > (uint64_t) top - (uint64_t) base_lo ) { return false; }
-    return base_lo >= bottom || lo >= (uint64_t) bottom - (uint64_t) base_lo;
-}
-
-// THE SKIP PATH'S SEEN SET is a fixed bitmap over an id's FIRST vocabulary
-// slot, so a skip allocates nothing and the depth cap bounds the walk. An ID
-// is the wire's own name (§3.2, §3.3), not the slot that happened to carry
-// it: one name may be announced at two shapes, and naming it twice is a
-// repeat whichever slot it rode. The bitmap covers every slot a 64 KiB
-// announcement can carry; a slot past it is damage, never silently untracked.
-static const int64_t kTableMessageSeenBits = 65536;
-
-// TableMessageSeenOnce records one id of a body or one key of a keyed array
-// and answers false on a repeat, whether or not this reader can name the field
-// (§3.2, §3.3).
-inline bool TableMessageSeenOnce( uint64_t * seen, const TableVocabulary & vocabulary, uint64_t ref, uint64_t id )
-{
-    uint64_t slot = ref;
-    for ( uint64_t i = 1; i < ref; i++ )
-    {
-        if ( TableVocabularyEntryAt( vocabulary, i ).id == id ) { slot = i; break; }
-    }
-    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return false; }
-    const uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
-    if ( ( seen[slot >> 6] & bit ) != 0 ) { return false; }
-    seen[slot >> 6] |= bit;
-    return true;
 }
 
 // TableMessageElementRunBits is the bits ONE element of an array or a keyed
@@ -3074,7 +2814,7 @@ inline bool TableMessageSeenOnce( uint64_t * seen, const TableVocabulary & vocab
 // is one multiplication, and -1 where the element's width is its own
 // content's. A ZERO is a real answer, and it is why this exists: a ranged
 // element whose min equals its max rides no bits at all (§3.3).
-inline int64_t TableMessageElementRunBits( const TableMessageEntry & entry )
+inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, const TableMessageEntry & entry )
 {
     int64_t elem = 0;
     switch ( entry.elem_kind )
@@ -3091,13 +2831,7 @@ inline int64_t TableMessageElementRunBits( const TableMessageEntry & entry )
         default: elem = entry.elem_value_bits; break;
     }
     if ( elem < 0 ) { return -1; }
-    // a keyed slot resolves its own key reference, a zero-bit slot as well
-    if ( entry.kind == 16 ) { return -1; }
-    if ( elem == 0 ) { return 0; }
-    // a float, a ranged value and a quantized value carry a condition a named
-    // read applies, so the element is walked rather than multiplied
-    if ( entry.elem_kind == 10 || entry.elem_kind == 11 ) { return -1; }
-    if ( entry.elem_packing == 1 || entry.elem_packing == 2 ) { return -1; }
+    if ( entry.kind == 16 ) { elem += vocabulary.ref_bits; } // a keyed slot's own key reference
     return elem;
 }
 
@@ -3136,9 +2870,6 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         {
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
-            if ( n > (uint64_t) ( ( r.bits - r.offset ) / 8 ) ) { return false; }
-            const uint8_t * text = r.buffer + ( r.offset >> 3 );
-            if ( !TableUtf8Valid( text, n ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
         case 31:
@@ -3148,25 +2879,6 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             uint64_t n = 0;
             if ( !r.align() || !r.get( n, 32 ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
-        }
-        case 10:
-        {
-            if ( entry.packing == 2 )
-            {
-                uint64_t index = 0;
-                if ( !r.get( index, entry.value_bits ) ) { return false; }
-                if ( index > (uint64_t) entry.qcount ) { return false; } // above the step count
-                return true;
-            }
-            uint64_t raw = 0;
-            if ( !r.get( raw, 32 ) ) { return false; }
-            return TableBitsFinite32( (uint32_t) raw );
-        }
-        case 11:
-        {
-            uint64_t raw = 0;
-            if ( !r.get( raw, 64 ) ) { return false; }
-            return TableBitsFinite64( raw );
         }
         case 14:
         case 16:
@@ -3180,54 +2892,33 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
                 if ( !r.get( raw, width ) ) { return false; }
                 n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
             }
-            if ( n > (uint64_t) entry.max ) { return false; } // a count above its announced maximum
             if ( entry.kind == 14 && entry.elem_kind == 6 && !r.align() ) { return false; }
             // A RUN OF FIXED-WIDTH ELEMENTS IS ONE MULTIPLICATION (§3.3), and
             // only an element whose width is its own content's is walked
-            const int64_t run = TableMessageElementRunBits( entry );
+            const int64_t run = TableMessageElementRunBits( vocabulary, entry );
             if ( run >= 0 ) { return TableMessageSkipRun( r, n, run ); }
-            // A STRUCTURAL ELEMENT NESTS ONE LEVEL DEEPER; a fixed-width one
-            // does not, so the depth cap counts what §4 says it counts.
-            const bool nested = entry.elem_kind == 13 || entry.elem_kind == 14 || entry.elem_kind == 15 ||
-                entry.elem_kind == 16 || entry.elem_kind == 17 || entry.elem_kind == 30;
-            uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
             for ( uint64_t i = 0; i < n; i++ )
             {
-                if ( entry.kind == 16 )
-                {
-                    uint64_t key_ref = 0;
-                    TableMessageEntry key_entry;
-                    if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
-                    if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
-                    if ( !TableMessageSeenOnce( seen, vocabulary, key_ref, key_entry.id ) ) { return false; } // one key twice
-                }
-                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, nested ? depth + 1 : depth ) ) { return false; }
+                if ( entry.kind == 16 && !r.skip( vocabulary.ref_bits ) ) { return false; }
+                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; }
             }
             return true;
         }
     }
     const int64_t width = entry.value_bits;
-    if ( entry.packing == 1 && ( TableMessageIntegerKind( entry.kind ) || TableMessageFixedKind( entry.kind ) ) )
-    {
-        return TableMessageSkipRanged( r, entry.kind, width, entry.base_lo, entry.base_hi );
-    }
     return width >= 0 && r.skip( width );
 }
 
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth )
 {
     if ( depth > 128 ) { return false; }
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
         if ( ref == 0 ) { return true; }
         if ( ref > (uint64_t) vocabulary.count ) { return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        if ( TableMessageReserved( entry.id ) ) { return false; }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
-        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
+        if ( !TableMessageSkip( r, vocabulary, index_bits, TableVocabularyEntryAt( vocabulary, ref ), depth ) ) { return false; }
     }
 }
 
@@ -3824,29 +3515,6 @@ inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
         }
         default: break;
     }
-}
-
-// A LOAD OF ONE VALUE OUT OF NATIVE STORAGE, zero-extended: the inverse of
-// TableFixedStoreNative. The known-range pass reads a landed value through
-// it, never through a memcpy of a narrow width into a 64-bit word, which on a
-// big-endian host fills the word's high bytes.
-inline uint64_t TableFixedLoadNative( const uint8_t * src, uint32_t size )
-{
-    uint64_t v = 0;
-    if ( TableFixedBigEndianHost )
-    {
-        for ( uint32_t i = 0; i < size && i < 8; ++i ) { v = ( v << 8 ) | (uint64_t) src[i]; }
-        return v;
-    }
-    switch ( size )
-    {
-        case 1: { uint8_t t = 0; memcpy( &t, src, 1 ); v = t; break; }
-        case 2: { uint16_t t = 0; memcpy( &t, src, 2 ); v = t; break; }
-        case 4: { uint32_t t = 0; memcpy( &t, src, 4 ); v = t; break; }
-        case 8: { memcpy( &v, src, 8 ); break; }
-        default: break;
-    }
-    return v;
 }
 
 // ---- THE ONE READ LOOP -----------------------------------------------------
@@ -5343,7 +5011,7 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         const TableFixedKnownRange & b = ranges[i];
         if ( b.width == 0 || b.width > 8 ) { continue; }
         uint64_t raw = 0;
-        raw = TableFixedLoadNative( dst + b.dst, b.width );
+        memcpy( &raw, dst + b.dst, b.width );
         // THE COMPARISON IS IN THE FIELD'S OWN TYPE: signed for a signed kind,
         // UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is past the
         // max and never below the min. An unsigned kind's bounds are never
@@ -5378,7 +5046,7 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         {
             continue;
         }
-        TableFixedStoreNative( dst + b.dst, landed, b.width );
+        memcpy( dst + b.dst, &landed, b.width );
     }
     if ( report != NULL )
     {
@@ -6669,7 +6337,6 @@ inline bool UserSaveMessageBody( TableBitWriter & w, const User & value )
 inline bool UserLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, User & value )
 {
     UserReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -6698,11 +6365,6 @@ inline bool UserLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
-        {
-            report->damaged = true;
-            return false;
-        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xc4bcadba8e631b86ull: // name
@@ -7191,7 +6853,6 @@ inline bool ScriptSaveMessageBody( TableBitWriter & w, const Script & value )
 inline bool ScriptLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Script & value )
 {
     ScriptReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -7220,11 +6881,6 @@ inline bool ScriptLoadMessageBody( TableBitReader & r, const TableVocabulary & v
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
-        {
-            report->damaged = true;
-            return false;
-        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x03c52d0debd70676ull: // path
@@ -7792,7 +7448,6 @@ inline bool SelectionSaveMessageBody( TableBitWriter & w, const Selection & valu
 inline bool SelectionLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Selection & value )
 {
     SelectionReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -7821,11 +7476,6 @@ inline bool SelectionLoadMessageBody( TableBitReader & r, const TableVocabulary 
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
-        {
-            report->damaged = true;
-            return false;
-        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xee5d97ad45ad251full: // start
@@ -8220,7 +7870,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                         const uint64_t arm_refu = ids.ref_at( 25, 0x7d6780e4032b48f2ull );
                         {
                             const int64_t arm_bodyu = UserMeasureBody( ids, value.origins[elem_i].user );
-                            if ( arm_bodyu < 0 ) { return false; }
+                            if ( arm_bodyu < 0 ) { return -1; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
                         body_origins += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -8232,7 +7882,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                         const uint64_t arm_refu = ids.ref_at( 34, 0xacfc82293c04634aull );
                         {
                             const int64_t arm_bodyu = ScriptMeasureBody( ids, value.origins[elem_i].script );
-                            if ( arm_bodyu < 0 ) { return false; }
+                            if ( arm_bodyu < 0 ) { return -1; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
                         body_origins += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -8250,12 +7900,12 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                     {
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
-                        if ( value.origins[elem_i].note.value_length < 0 || value.origins[elem_i].note.value_length > 24 ) { return false; } // storage invariant
+                        if ( value.origins[elem_i].note.value_length < 0 || value.origins[elem_i].note.value_length > 24 ) { return -1; } // storage invariant
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
                         body_origins += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
                     }
-                    default: return false; // invalid tag — the write side refuses it too
+                    default: return -1; // invalid tag — the write side refuses it too
                 }
             }
         }
@@ -8706,14 +8356,6 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
-                    // reader's declaration (§3, §4).
-                    if ( !TableArrayElementKind( elem_kind ) )
-                    {
-                        r.report->damaged = true;
-                        r.offset = body_end;
-                        break;
-                    }
                     else if ( elem_kind != 15 )
                     {
                         r.report->refused = true;
@@ -8935,14 +8577,6 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
-                    // reader's declaration (§3, §4).
-                    if ( !TableArrayElementKind( elem_kind ) )
-                    {
-                        r.report->damaged = true;
-                        r.offset = body_end;
-                        break;
-                    }
                     else if ( elem_kind != 30 )
                     {
                         r.report->refused = true;
@@ -9373,7 +9007,6 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
 inline bool InsertTextLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, InsertText & value )
 {
     InsertTextReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -9402,11 +9035,6 @@ inline bool InsertTextLoadMessageBody( TableBitReader & r, const TableVocabulary
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
-        {
-            report->damaged = true;
-            return false;
-        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x089c4e07b545a968ull: // at
@@ -10335,7 +9963,6 @@ inline bool RemoveTextSaveMessageBody( TableBitWriter & w, const RemoveText & va
 inline bool RemoveTextLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RemoveText & value )
 {
     RemoveTextReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -10364,11 +9991,6 @@ inline bool RemoveTextLoadMessageBody( TableBitReader & r, const TableVocabulary
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
-        {
-            report->damaged = true;
-            return false;
-        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x8b7dc019093cd0e1ull: // span
@@ -10946,13 +10568,6 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                             if ( !sub.has( 2 ) ) { break; }
                             {
                                 uint8_t arm_elem_kind = sub.get8();
-                                // THE ELEMENT KIND IS CLOSED, judged before the arm's own kind (§3, §4).
-                                if ( !TableArrayElementKind( arm_elem_kind ) )
-                                {
-                                    value.body.type = EditBodyType::None;
-                                    r.report->damaged = true;
-                                    break;
-                                }
                                 uint64_t arm_count = 0;
                                 if ( !sub.getleb( arm_count ) )
                                 {
@@ -11036,13 +10651,6 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                             if ( !sub.has( 2 ) ) { break; }
                             {
                                 uint8_t arm_elem_kind = sub.get8();
-                                // THE ELEMENT KIND IS CLOSED, judged before the arm's own kind (§3, §4).
-                                if ( !TableArrayElementKind( arm_elem_kind ) )
-                                {
-                                    value.body.type = EditBodyType::None;
-                                    r.report->damaged = true;
-                                    break;
-                                }
                                 uint64_t arm_count = 0;
                                 if ( !sub.getleb( arm_count ) )
                                 {
@@ -11386,7 +10994,6 @@ inline bool EditSaveMessageBody( TableBitWriter & w, const Edit & value )
 inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Edit & value )
 {
     EditReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -11415,11 +11022,6 @@ inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
-        {
-            report->damaged = true;
-            return false;
-        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xd6a4dbc46c8e8658ull: // revision
@@ -12323,7 +11925,6 @@ inline bool OpenDocumentSaveMessageBody( TableBitWriter & w, const OpenDocument 
 inline bool OpenDocumentLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, OpenDocument & value )
 {
     OpenDocumentReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -12352,11 +11953,6 @@ inline bool OpenDocumentLoadMessageBody( TableBitReader & r, const TableVocabula
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
-        {
-            report->damaged = true;
-            return false;
-        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x03c52d0debd70676ull: // path
@@ -12890,7 +12486,6 @@ inline bool SaveDocumentSaveMessageBody( TableBitWriter & w, const SaveDocument 
 inline bool SaveDocumentLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, SaveDocument & value )
 {
     SaveDocumentReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -12919,11 +12514,6 @@ inline bool SaveDocumentLoadMessageBody( TableBitReader & r, const TableVocabula
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
-        {
-            report->damaged = true;
-            return false;
-        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x03c52d0debd70676ull: // path
@@ -13298,7 +12888,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                             const uint64_t arm_refu = ids.ref_at( 20, 0x7271c68759916228ull );
                             {
                                 const int64_t arm_bodyu = InsertTextMeasureBody( ids, value.pending[elem_i].insert );
-                                if ( arm_bodyu < 0 ) { return false; }
+                                if ( arm_bodyu < 0 ) { return -1; }
                                 arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                             }
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -13310,7 +12900,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                             const uint64_t arm_refu = ids.ref_at( 57, 0xfff83d536a1d457dull );
                             {
                                 const int64_t arm_bodyu = RemoveTextMeasureBody( ids, value.pending[elem_i].remove );
-                                if ( arm_bodyu < 0 ) { return false; }
+                                if ( arm_bodyu < 0 ) { return -1; }
                                 arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                             }
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -13328,7 +12918,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         {
                             int64_t arm_payloadu = 0;
                             const uint64_t arm_refu = ids.ref_at( 27, 0x9077d4a4e1726e29ull );
-                            if ( value.pending[elem_i].marks.value_count < 0 || value.pending[elem_i].marks.value_count > 3 ) { return false; } // storage invariant
+                            if ( value.pending[elem_i].marks.value_count < 0 || value.pending[elem_i].marks.value_count > 3 ) { return -1; } // storage invariant
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.pending[elem_i].marks.value_count ) ); // the element kind byte and the count
                             arm_payloadu += (int64_t) ( value.pending[elem_i].marks.value_count ) * 2;
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -13338,7 +12928,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                         {
                             int64_t arm_payloadu = 0;
                             const uint64_t arm_refu = ids.ref_at( 45, 0xc573b39bc29148caull );
-                            if ( value.pending[elem_i].blob.value_length < 0 || value.pending[elem_i].blob.value_length > 4 ) { return false; } // storage invariant
+                            if ( value.pending[elem_i].blob.value_length < 0 || value.pending[elem_i].blob.value_length > 4 ) { return -1; } // storage invariant
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) value.pending[elem_i].blob.value_length ) + value.pending[elem_i].blob.value_length; // element kind 6, N, then the bytes
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                             break;
@@ -13349,13 +12939,13 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                             const uint64_t arm_refu = ids.ref_at( 6, 0x0d3deba2c41dadb2ull );
                             {
                                 uint64_t arm_variantu = 0;
-                                if ( !TableEnumRef( ids, value.pending[elem_i].mode, arm_variantu ) ) { return false; } // no variant names this value
+                                if ( !TableEnumRef( ids, value.pending[elem_i].mode, arm_variantu ) ) { return -1; } // no variant names this value
                                 arm_payloadu += TableLebBytes( arm_variantu ); // the variant's reference
                             }
                             body_pending += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                             break;
                         }
-                        default: return false; // invalid tag — the write side refuses it too
+                        default: return -1; // invalid tag — the write side refuses it too
                     }
                 }
             }
@@ -13643,14 +13233,6 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
-                    // reader's declaration (§3, §4).
-                    if ( !TableArrayElementKind( elem_kind ) )
-                    {
-                        r.report->damaged = true;
-                        r.offset = body_end;
-                        break;
-                    }
                     else if ( elem_kind != 13 )
                     {
                         r.report->refused = true;
@@ -13737,14 +13319,6 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
-                    // reader's declaration (§3, §4).
-                    if ( !TableArrayElementKind( elem_kind ) )
-                    {
-                        r.report->damaged = true;
-                        r.offset = body_end;
-                        break;
-                    }
                     else if ( elem_kind != 15 )
                     {
                         r.report->refused = true;
@@ -13898,13 +13472,6 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                             if ( !elem_arm.has( 2 ) ) { break; }
                                             {
                                                 uint8_t arm_elem_kinda = elem_arm.get8();
-                                                // THE ELEMENT KIND IS CLOSED, judged before the arm's own kind (§3, §4).
-                                                if ( !TableArrayElementKind( arm_elem_kinda ) )
-                                                {
-                                                    value.pending[(int32_t) i].type = EditBodyType::None;
-                                                    r.report->damaged = true;
-                                                    break;
-                                                }
                                                 uint64_t arm_counta = 0;
                                                 if ( !elem_arm.getleb( arm_counta ) )
                                                 {
@@ -13983,13 +13550,6 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                             if ( !elem_arm.has( 2 ) ) { break; }
                                             {
                                                 uint8_t arm_elem_kinda = elem_arm.get8();
-                                                // THE ELEMENT KIND IS CLOSED, judged before the arm's own kind (§3, §4).
-                                                if ( !TableArrayElementKind( arm_elem_kinda ) )
-                                                {
-                                                    value.pending[(int32_t) i].type = EditBodyType::None;
-                                                    r.report->damaged = true;
-                                                    break;
-                                                }
                                                 uint64_t arm_counta = 0;
                                                 if ( !elem_arm.getleb( arm_counta ) )
                                                 {
@@ -14094,14 +13654,6 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
-                    // reader's declaration (§3, §4).
-                    if ( !TableArrayElementKind( elem_kind ) )
-                    {
-                        r.report->damaged = true;
-                        r.offset = body_end;
-                        break;
-                    }
                     else if ( elem_kind != 8 )
                     {
                         if ( !TableKindWidens( elem_kind, 8 ) )
@@ -14199,14 +13751,6 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
-                    // reader's declaration (§3, §4).
-                    if ( !TableArrayElementKind( elem_kind ) )
-                    {
-                        r.report->damaged = true;
-                        r.offset = body_end;
-                        break;
-                    }
                     else if ( elem_kind != 13 )
                     {
                         r.report->refused = true;
@@ -14607,7 +14151,6 @@ inline bool TransactionSaveMessageBody( TableBitWriter & w, const Transaction & 
 inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Transaction & value )
 {
     TransactionReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -14636,11 +14179,6 @@ inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabular
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
-        {
-            report->damaged = true;
-            return false;
-        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x65e8d7f3474f2639ull: // reason
@@ -15820,7 +15358,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             const uint64_t arm_refa = ids.ref_at( 25, 0x7d6780e4032b48f2ull );
                             {
                                 const int64_t arm_bodya = UserMeasureBody( ids, value.body.origin.user );
-                                if ( arm_bodya < 0 ) { return false; }
+                                if ( arm_bodya < 0 ) { return -1; }
                                 arm_payloada += arm_bodya; // the arm's own table body (§3)
                             }
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
@@ -15832,7 +15370,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             const uint64_t arm_refa = ids.ref_at( 34, 0xacfc82293c04634aull );
                             {
                                 const int64_t arm_bodya = ScriptMeasureBody( ids, value.body.origin.script );
-                                if ( arm_bodya < 0 ) { return false; }
+                                if ( arm_bodya < 0 ) { return -1; }
                                 arm_payloada += arm_bodya; // the arm's own table body (§3)
                             }
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
@@ -15850,12 +15388,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         {
                             int64_t arm_payloada = 0;
                             const uint64_t arm_refa = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
-                            if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return false; } // storage invariant
+                            if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return -1; } // storage invariant
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
                         }
-                        default: return false; // invalid tag — the write side refuses it too
+                        default: return -1; // invalid tag — the write side refuses it too
                     }
                 }
                 w.header( arm_ref, 15 );
@@ -15953,7 +15491,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         const uint64_t arm_refu = ids.ref_at( 54, 0xf84f97b4633670e9ull );
                         {
                             const int64_t arm_bodyu = OpenDocumentMeasureBody( ids, value.history[elem_i].open );
-                            if ( arm_bodyu < 0 ) { return false; }
+                            if ( arm_bodyu < 0 ) { return -1; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
                         body_history += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -15965,7 +15503,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         const uint64_t arm_refu = ids.ref_at( 4, 0x096a5e18bf857c28ull );
                         {
                             const int64_t arm_bodyu = SaveDocumentMeasureBody( ids, value.history[elem_i].save );
-                            if ( arm_bodyu < 0 ) { return false; }
+                            if ( arm_bodyu < 0 ) { return -1; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
                         body_history += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -15977,7 +15515,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         const uint64_t arm_refu = ids.ref_at( 52, 0xed96bbf4dc6ff587ull );
                         {
                             const int64_t arm_bodyu = TransactionMeasureBody( ids, value.history[elem_i].transact );
-                            if ( arm_bodyu < 0 ) { return false; }
+                            if ( arm_bodyu < 0 ) { return -1; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
                         body_history += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -15989,7 +15527,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         const uint64_t arm_refu = ids.ref_at( 39, 0xbf30e00dc53307a9ull );
                         {
                             const int64_t arm_bodyu = PingMeasureBody( ids, value.history[elem_i].ping );
-                            if ( arm_bodyu < 0 ) { return false; }
+                            if ( arm_bodyu < 0 ) { return -1; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
                         body_history += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -16028,7 +15566,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                     const uint64_t arm_refua = ids.ref_at( 25, 0x7d6780e4032b48f2ull );
                                     {
                                         const int64_t arm_bodyua = UserMeasureBody( ids, value.history[elem_i].origin.user );
-                                        if ( arm_bodyua < 0 ) { return false; }
+                                        if ( arm_bodyua < 0 ) { return -1; }
                                         arm_payloadua += arm_bodyua; // the arm's own table body (§3)
                                     }
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
@@ -16040,7 +15578,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                     const uint64_t arm_refua = ids.ref_at( 34, 0xacfc82293c04634aull );
                                     {
                                         const int64_t arm_bodyua = ScriptMeasureBody( ids, value.history[elem_i].origin.script );
-                                        if ( arm_bodyua < 0 ) { return false; }
+                                        if ( arm_bodyua < 0 ) { return -1; }
                                         arm_payloadua += arm_bodyua; // the arm's own table body (§3)
                                     }
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
@@ -16058,12 +15596,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 {
                                     int64_t arm_payloadua = 0;
                                     const uint64_t arm_refua = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
-                                    if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return false; } // storage invariant
+                                    if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return -1; } // storage invariant
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
                                     break;
                                 }
-                                default: return false; // invalid tag — the write side refuses it too
+                                default: return -1; // invalid tag — the write side refuses it too
                             }
                         }
                         body_history += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -16077,7 +15615,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         body_history += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
                     }
-                    default: return false; // invalid tag — the write side refuses it too
+                    default: return -1; // invalid tag — the write side refuses it too
                 }
             }
         }
@@ -16190,7 +15728,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                     const uint64_t arm_refua = ids.ref_at( 25, 0x7d6780e4032b48f2ull );
                                     {
                                         const int64_t arm_bodyua = UserMeasureBody( ids, value.history[elem_i].origin.user );
-                                        if ( arm_bodyua < 0 ) { return false; }
+                                        if ( arm_bodyua < 0 ) { return -1; }
                                         arm_payloadua += arm_bodyua; // the arm's own table body (§3)
                                     }
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
@@ -16202,7 +15740,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                     const uint64_t arm_refua = ids.ref_at( 34, 0xacfc82293c04634aull );
                                     {
                                         const int64_t arm_bodyua = ScriptMeasureBody( ids, value.history[elem_i].origin.script );
-                                        if ( arm_bodyua < 0 ) { return false; }
+                                        if ( arm_bodyua < 0 ) { return -1; }
                                         arm_payloadua += arm_bodyua; // the arm's own table body (§3)
                                     }
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
@@ -16220,12 +15758,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 {
                                     int64_t arm_payloadua = 0;
                                     const uint64_t arm_refua = ids.ref_at( 11, 0x3bf8fbbad1587cddull );
-                                    if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return false; } // storage invariant
+                                    if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return -1; } // storage invariant
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
                                     break;
                                 }
-                                default: return false; // invalid tag — the write side refuses it too
+                                default: return -1; // invalid tag — the write side refuses it too
                             }
                         }
                         w.header( arm_refu, 15 );
@@ -16629,13 +16167,6 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                             if ( !sub.has( 2 ) ) { break; }
                             {
                                 uint8_t arm_elem_kind = sub.get8();
-                                // THE ELEMENT KIND IS CLOSED, judged before the arm's own kind (§3, §4).
-                                if ( !TableArrayElementKind( arm_elem_kind ) )
-                                {
-                                    value.body.type = ToolBodyType::None;
-                                    r.report->damaged = true;
-                                    break;
-                                }
                                 uint64_t arm_count = 0;
                                 if ( !sub.getleb( arm_count ) )
                                 {
@@ -16932,14 +16463,6 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
-                    // reader's declaration (§3, §4).
-                    if ( !TableArrayElementKind( elem_kind ) )
-                    {
-                        r.report->damaged = true;
-                        r.offset = body_end;
-                        break;
-                    }
                     else if ( elem_kind != 15 )
                     {
                         r.report->refused = true;
@@ -17092,13 +16615,6 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                             if ( !elem_arm.has( 2 ) ) { break; }
                                             {
                                                 uint8_t arm_elem_kinda = elem_arm.get8();
-                                                // THE ELEMENT KIND IS CLOSED, judged before the arm's own kind (§3, §4).
-                                                if ( !TableArrayElementKind( arm_elem_kinda ) )
-                                                {
-                                                    value.history[(int32_t) i].type = ToolBodyType::None;
-                                                    r.report->damaged = true;
-                                                    break;
-                                                }
                                                 uint64_t arm_counta = 0;
                                                 if ( !elem_arm.getleb( arm_counta ) )
                                                 {
@@ -17402,14 +16918,6 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
-                    // reader's declaration (§3, §4).
-                    if ( !TableArrayElementKind( elem_kind ) )
-                    {
-                        r.report->damaged = true;
-                        r.offset = body_end;
-                        break;
-                    }
                     else if ( elem_kind != 13 )
                     {
                         r.report->refused = true;
@@ -17497,14 +17005,6 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
-                    // reader's declaration (§3, §4).
-                    if ( !TableArrayElementKind( elem_kind ) )
-                    {
-                        r.report->damaged = true;
-                        r.offset = body_end;
-                        break;
-                    }
                     else if ( elem_kind != 30 )
                     {
                         r.report->refused = true;
@@ -18188,7 +17688,6 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
 inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, ToolMessage & value )
 {
     ToolMessageReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -18217,11 +17716,6 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
-        {
-            report->damaged = true;
-            return false;
-        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xaa38aca481f528a8ull: // sequence
@@ -19779,7 +19273,6 @@ inline bool CursorSaveMessageBody( TableBitWriter & w, const Cursor & value )
 inline bool CursorLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Cursor & value )
 {
     CursorReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -19808,11 +19301,6 @@ inline bool CursorLoadMessageBody( TableBitReader & r, const TableVocabulary & v
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
-        {
-            report->damaged = true;
-            return false;
-        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xbf4ba5ad694f5907ull: // line
@@ -20308,7 +19796,6 @@ inline bool PingSaveMessageBody( TableBitWriter & w, const Ping & value )
 inline bool PingLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Ping & value )
 {
     PingReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -20337,11 +19824,6 @@ inline bool PingLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
-        {
-            report->damaged = true;
-            return false;
-        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x73a94c71d60dc0d8ull: // nonce
@@ -22115,7 +21597,6 @@ inline int64_t UserFixedSave( const User * values, int64_t count, uint8_t * buff
 {
     const int64_t need = UserFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
-    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( UserFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -22307,7 +21788,7 @@ inline int64_t UserFixedLoadWalk( User * values, int64_t capacity, const uint8_t
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -22573,7 +22054,6 @@ inline int64_t ScriptFixedSave( const Script * values, int64_t count, uint8_t * 
 {
     const int64_t need = ScriptFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
-    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( ScriptFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -22765,7 +22245,7 @@ inline int64_t ScriptFixedLoadWalk( Script * values, int64_t capacity, const uin
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -23024,7 +22504,6 @@ inline int64_t SelectionFixedSave( const Selection * values, int64_t count, uint
 {
     const int64_t need = SelectionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
-    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, SelectionFixedHash );
@@ -23212,7 +22691,7 @@ inline int64_t SelectionFixedLoadWalk( Selection * values, int64_t capacity, con
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -23633,7 +23112,6 @@ inline int64_t InsertTextFixedSave( const InsertText * values, int64_t count, ui
 {
     const int64_t need = InsertTextFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
-    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( InsertTextFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -23825,7 +23303,7 @@ inline int64_t InsertTextFixedLoadWalk( InsertText * values, int64_t capacity, c
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -24086,7 +23564,6 @@ inline int64_t RemoveTextFixedSave( const RemoveText * values, int64_t count, ui
 {
     const int64_t need = RemoveTextFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
-    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RemoveTextFixedHash );
@@ -24274,7 +23751,7 @@ inline int64_t RemoveTextFixedLoadWalk( RemoveText * values, int64_t capacity, c
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -24820,7 +24297,6 @@ inline int64_t EditFixedSave( const Edit * values, int64_t count, uint8_t * buff
 {
     const int64_t need = EditFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
-    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( EditFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -25012,7 +24488,7 @@ inline int64_t EditFixedLoadWalk( Edit * values, int64_t capacity, const uint8_t
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -25303,7 +24779,6 @@ inline int64_t OpenDocumentFixedSave( const OpenDocument * values, int64_t count
 {
     const int64_t need = OpenDocumentFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
-    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( OpenDocumentFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -25495,7 +24970,7 @@ inline int64_t OpenDocumentFixedLoadWalk( OpenDocument * values, int64_t capacit
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -25761,7 +25236,6 @@ inline int64_t SaveDocumentFixedSave( const SaveDocument * values, int64_t count
 {
     const int64_t need = SaveDocumentFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
-    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( SaveDocumentFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -25953,7 +25427,7 @@ inline int64_t SaveDocumentFixedLoadWalk( SaveDocument * values, int64_t capacit
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -27121,7 +26595,6 @@ inline int64_t TransactionFixedSave( const Transaction * values, int64_t count, 
 {
     const int64_t need = TransactionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
-    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( TransactionFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -27313,7 +26786,7 @@ inline int64_t TransactionFixedLoadWalk( Transaction * values, int64_t capacity,
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -30481,7 +29954,6 @@ inline int64_t ToolMessageFixedSave( const ToolMessage * values, int64_t count, 
 {
     const int64_t need = ToolMessageFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
-    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( ToolMessageFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -30673,7 +30145,7 @@ inline int64_t ToolMessageFixedLoadWalk( ToolMessage * values, int64_t capacity,
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -31632,15 +31104,12 @@ inline bool InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
     }
     table_cook_put( at + 288, (uint64_t) (uint32_t) value.origins_count, 4, order );
     table_cook_put( at + 300, (uint64_t) ( value.modes_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    if ( value.modes_present )
+    // all 2 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 2; i++ )
     {
-        // all 2 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-        for ( int32_t i = 0; i < 2; i++ )
-        {
-            table_cook_put( at + 292 + i * 1, (uint64_t) value.modes[i], 1, order );
-        }
-        table_cook_put( at + 296, (uint64_t) (uint32_t) value.modes_count, 4, order );
+        table_cook_put( at + 292 + i * 1, (uint64_t) value.modes[i], 1, order );
     }
+    table_cook_put( at + 296, (uint64_t) (uint32_t) value.modes_count, 4, order );
     return true;
 }
 
@@ -31757,20 +31226,14 @@ inline bool TransactionCookBody( uint8_t * at, const Transaction & value, TableB
         }
     }
     table_cook_put( at + 1588, (uint64_t) ( value.checkpoints_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    if ( value.checkpoints_present )
+    for ( int32_t i = 0; i < 2; i++ )
     {
-        for ( int32_t i = 0; i < 2; i++ )
-        {
-            table_cook_put( at + 1580 + i * 4, (uint64_t) value.checkpoints[i], 4, order );
-        }
+        table_cook_put( at + 1580 + i * 4, (uint64_t) value.checkpoints[i], 4, order );
     }
     table_cook_put( at + 1624, (uint64_t) ( value.snapshots_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    if ( value.snapshots_present )
+    for ( int32_t i = 0; i < 2; i++ )
     {
-        for ( int32_t i = 0; i < 2; i++ )
-        {
-            if ( !SelectionCookBody( at + 1592 + i * 16, value.snapshots[i], order ) ) { return false; }
-        }
+        if ( !SelectionCookBody( at + 1592 + i * 16, value.snapshots[i], order ) ) { return false; }
     }
     return true;
 }
@@ -31809,13 +31272,13 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
                         case OriginType::Script: if ( !ScriptCookBody( at + 8 + 8 + 4, value.body.origin.script, order ) ) { return false; } break;
                         case OriginType::Pid:
                         {
-                            table_cook_put( at + 8 + 8 + 4, (uint64_t) value.body.origin.pid, 4, order );
+                table_cook_put( at + 8 + 8 + 4, (uint64_t) value.body.origin.pid, 4, order );
                             break;
                         }
                         case OriginType::Note:
                         {
-                            table_cook_bytes( at + 8 + 8 + 4, value.body.origin.note.value, value.body.origin.note.value_length, 25 );
-                            table_cook_put( at + 8 + 8 + 32, (uint64_t) (uint32_t) value.body.origin.note.value_length, 4, order );
+                table_cook_bytes( at + 8 + 8 + 4, value.body.origin.note.value, value.body.origin.note.value_length, 25 );
+                table_cook_put( at + 8 + 8 + 32, (uint64_t) (uint32_t) value.body.origin.note.value_length, 4, order );
                             break;
                         }
                         default: break; // every byte outside the set arm stays zero
@@ -31860,13 +31323,13 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
                             case OriginType::Script: if ( !ScriptCookBody( at + 1648 + i * 1640 + 8 + 4, value.history[i].origin.script, order ) ) { return false; } break;
                             case OriginType::Pid:
                             {
-                                table_cook_put( at + 1648 + i * 1640 + 8 + 4, (uint64_t) value.history[i].origin.pid, 4, order );
+                table_cook_put( at + 1648 + i * 1640 + 8 + 4, (uint64_t) value.history[i].origin.pid, 4, order );
                                 break;
                             }
                             case OriginType::Note:
                             {
-                                table_cook_bytes( at + 1648 + i * 1640 + 8 + 4, value.history[i].origin.note.value, value.history[i].origin.note.value_length, 25 );
-                                table_cook_put( at + 1648 + i * 1640 + 8 + 32, (uint64_t) (uint32_t) value.history[i].origin.note.value_length, 4, order );
+                table_cook_bytes( at + 1648 + i * 1640 + 8 + 4, value.history[i].origin.note.value, value.history[i].origin.note.value_length, 25 );
+                table_cook_put( at + 1648 + i * 1640 + 8 + 32, (uint64_t) (uint32_t) value.history[i].origin.note.value_length, 4, order );
                                 break;
                             }
                             default: break; // every byte outside the set arm stays zero
@@ -31880,22 +31343,16 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
     }
     table_cook_put( at + 4928, (uint64_t) (uint32_t) value.history_count, 4, order );
     table_cook_put( at + 5164, (uint64_t) ( value.trace_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    if ( value.trace_present )
+    // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 3; i++ )
     {
-        // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-        for ( int32_t i = 0; i < 3; i++ )
-        {
-            if ( !ScriptCookBody( at + 4932 + i * 76, value.trace[i], order ) ) { return false; }
-        }
-        table_cook_put( at + 5160, (uint64_t) (uint32_t) value.trace_count, 4, order );
+        if ( !ScriptCookBody( at + 4932 + i * 76, value.trace[i], order ) ) { return false; }
     }
+    table_cook_put( at + 5160, (uint64_t) (uint32_t) value.trace_count, 4, order );
     table_cook_put( at + 5167, (uint64_t) ( value.marks_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    if ( value.marks_present )
+    for ( int32_t i = 0; i < 2; i++ )
     {
-        for ( int32_t i = 0; i < 2; i++ )
-        {
-            table_cook_put( at + 5165 + i * 1, (uint64_t) value.marks[i], 1, order );
-        }
+        table_cook_put( at + 5165 + i * 1, (uint64_t) value.marks[i], 1, order );
     }
     return true;
 }

@@ -87,42 +87,11 @@ int writeDefaultArm(DefaultArm value, ByteData view) {
 }
 
 // readDefaultArm decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
-// and a whole byte or unused final-byte bits left after the object);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultArm(DefaultArm value, ByteData view, int numBits) {
-  final bitsRead = readDefaultArmBits(value, view, numBits, 0);
-  if (bitsRead < 0) return false;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
-}
-
-// readDefaultArmBits decodes value starting at bit bitOffset of view, reading no
-// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
-// when it refuses the wire, exactly as readDefaultArm does. It is the framing
-// entry: it runs no end-of-packet check, so several objects read in turn
-// from one buffer, each at the previous offset plus its bits consumed.
-int readDefaultArmBits(
-  DefaultArm value,
-  ByteData view,
-  int numBits,
-  int bitOffset,
-) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
-  }
-  if (bitOffset < 0 || bitOffset > numBits) {
-    return -1; // the start lies inside the bits the caller vouches for
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -136,11 +105,11 @@ int readDefaultArmBits(
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = bitOffset;
+  var bitsRead = 0;
   var window = 0;
   var v = 0;
   if (bitsRead + 2 > numBits) {
-    return -1;
+    return false;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -150,11 +119,11 @@ int readDefaultArmBits(
   v = window & 0x3;
   bitsRead += 2;
   if (v > 2) {
-    return -1; // the count guards the loop — reject, never clamp
+    return false; // the count guards the loop — reject, never clamp
   }
   value.entriesCount = v;
   if (bitsRead + value.entriesCount * 36 > numBits) {
-    return -1;
+    return false;
   }
   for (var i0 = 0; i0 < value.entriesCount; i0++) {
     final e0 = value.entries[i0];
@@ -171,7 +140,7 @@ int readDefaultArmBits(
     e0.preferred = Weapon(v);
   }
   if (bitsRead + 3 > numBits) {
-    return -1;
+    return false;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -181,7 +150,7 @@ int readDefaultArmBits(
   v = window & 0x7;
   bitsRead += 3;
   value.marker = v;
-  return bitsRead - bitOffset;
+  return true;
 }
 
 // DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -315,42 +284,11 @@ int writeDefaultChoice(DefaultChoice value, ByteData view) {
 }
 
 // readDefaultChoice decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
-// and a whole byte or unused final-byte bits left after the object);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultChoice(DefaultChoice value, ByteData view, int numBits) {
-  final bitsRead = readDefaultChoiceBits(value, view, numBits, 0);
-  if (bitsRead < 0) return false;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
-}
-
-// readDefaultChoiceBits decodes value starting at bit bitOffset of view, reading no
-// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
-// when it refuses the wire, exactly as readDefaultChoice does. It is the framing
-// entry: it runs no end-of-packet check, so several objects read in turn
-// from one buffer, each at the previous offset plus its bits consumed.
-int readDefaultChoiceBits(
-  DefaultChoice value,
-  ByteData view,
-  int numBits,
-  int bitOffset,
-) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
-  }
-  if (bitOffset < 0 || bitOffset > numBits) {
-    return -1; // the start lies inside the bits the caller vouches for
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -364,11 +302,11 @@ int readDefaultChoiceBits(
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = bitOffset;
+  var bitsRead = 0;
   var window = 0;
   var v = 0;
   if (bitsRead + 2 > numBits) {
-    return -1;
+    return false;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -378,7 +316,7 @@ int readDefaultChoiceBits(
   v = window & 0x3;
   bitsRead += 2;
   if (v > 2) {
-    return -1; // not a wire-legal tag (SPEC §4.8)
+    return false; // not a wire-legal tag (SPEC §4.8)
   }
   value.type = DefaultChoiceType(v);
   switch (value.type) {
@@ -390,7 +328,7 @@ int readDefaultChoiceBits(
       }
       value.first.entriesCount = 0;
       if (bitsRead + 2 > numBits) {
-        return -1;
+        return false;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -401,11 +339,11 @@ int readDefaultChoiceBits(
       v = window & 0x3;
       bitsRead += 2;
       if (v > 2) {
-        return -1; // the count guards the loop — reject, never clamp
+        return false; // the count guards the loop — reject, never clamp
       }
       value.first.entriesCount = v;
       if (bitsRead + value.first.entriesCount * 36 > numBits) {
-        return -1;
+        return false;
       }
       for (var i0 = 0; i0 < value.first.entriesCount; i0++) {
         final e0 = value.first.entries[i0];
@@ -423,7 +361,7 @@ int readDefaultChoiceBits(
         e0.preferred = Weapon(v);
       }
       if (bitsRead + 3 > numBits) {
-        return -1;
+        return false;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -442,7 +380,7 @@ int readDefaultChoiceBits(
       }
       value.second.entriesCount = 0;
       if (bitsRead + 2 > numBits) {
-        return -1;
+        return false;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -453,11 +391,11 @@ int readDefaultChoiceBits(
       v = window & 0x3;
       bitsRead += 2;
       if (v > 2) {
-        return -1; // the count guards the loop — reject, never clamp
+        return false; // the count guards the loop — reject, never clamp
       }
       value.second.entriesCount = v;
       if (bitsRead + value.second.entriesCount * 36 > numBits) {
-        return -1;
+        return false;
       }
       for (var i0 = 0; i0 < value.second.entriesCount; i0++) {
         final e0 = value.second.entries[i0];
@@ -475,7 +413,7 @@ int readDefaultChoiceBits(
         e0.preferred = Weapon(v);
       }
       if (bitsRead + 3 > numBits) {
-        return -1;
+        return false;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -487,7 +425,7 @@ int readDefaultChoiceBits(
       bitsRead += 3;
       value.second.marker = v;
   }
-  return bitsRead - bitOffset;
+  return true;
 }
 
 // type DefaultChoicePacket
@@ -597,46 +535,15 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
 }
 
 // readDefaultChoicePacket decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
-// and a whole byte or unused final-byte bits left after the object);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultChoicePacket(
   DefaultChoicePacket value,
   ByteData view,
   int numBits,
 ) {
-  final bitsRead = readDefaultChoicePacketBits(value, view, numBits, 0);
-  if (bitsRead < 0) return false;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
-}
-
-// readDefaultChoicePacketBits decodes value starting at bit bitOffset of view, reading no
-// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
-// when it refuses the wire, exactly as readDefaultChoicePacket does. It is the framing
-// entry: it runs no end-of-packet check, so several objects read in turn
-// from one buffer, each at the previous offset plus its bits consumed.
-int readDefaultChoicePacketBits(
-  DefaultChoicePacket value,
-  ByteData view,
-  int numBits,
-  int bitOffset,
-) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
-  }
-  if (bitOffset < 0 || bitOffset > numBits) {
-    return -1; // the start lies inside the bits the caller vouches for
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -650,11 +557,11 @@ int readDefaultChoicePacketBits(
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = bitOffset;
+  var bitsRead = 0;
   var window = 0;
   var v = 0;
   if (bitsRead + 2 > numBits) {
-    return -1;
+    return false;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -664,7 +571,7 @@ int readDefaultChoicePacketBits(
   v = window & 0x3;
   bitsRead += 2;
   if (v > 2) {
-    return -1; // not a wire-legal tag (SPEC §4.8)
+    return false; // not a wire-legal tag (SPEC §4.8)
   }
   value.choice.type = DefaultChoiceType(v);
   switch (value.choice.type) {
@@ -676,7 +583,7 @@ int readDefaultChoicePacketBits(
       }
       value.choice.first.entriesCount = 0;
       if (bitsRead + 2 > numBits) {
-        return -1;
+        return false;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -687,11 +594,11 @@ int readDefaultChoicePacketBits(
       v = window & 0x3;
       bitsRead += 2;
       if (v > 2) {
-        return -1; // the count guards the loop — reject, never clamp
+        return false; // the count guards the loop — reject, never clamp
       }
       value.choice.first.entriesCount = v;
       if (bitsRead + value.choice.first.entriesCount * 36 > numBits) {
-        return -1;
+        return false;
       }
       for (var i0 = 0; i0 < value.choice.first.entriesCount; i0++) {
         final e0 = value.choice.first.entries[i0];
@@ -709,7 +616,7 @@ int readDefaultChoicePacketBits(
         e0.preferred = Weapon(v);
       }
       if (bitsRead + 3 > numBits) {
-        return -1;
+        return false;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -728,7 +635,7 @@ int readDefaultChoicePacketBits(
       }
       value.choice.second.entriesCount = 0;
       if (bitsRead + 2 > numBits) {
-        return -1;
+        return false;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -739,11 +646,11 @@ int readDefaultChoicePacketBits(
       v = window & 0x3;
       bitsRead += 2;
       if (v > 2) {
-        return -1; // the count guards the loop — reject, never clamp
+        return false; // the count guards the loop — reject, never clamp
       }
       value.choice.second.entriesCount = v;
       if (bitsRead + value.choice.second.entriesCount * 36 > numBits) {
-        return -1;
+        return false;
       }
       for (var i0 = 0; i0 < value.choice.second.entriesCount; i0++) {
         final e0 = value.choice.second.entries[i0];
@@ -761,7 +668,7 @@ int readDefaultChoicePacketBits(
         e0.preferred = Weapon(v);
       }
       if (bitsRead + 3 > numBits) {
-        return -1;
+        return false;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -773,7 +680,7 @@ int readDefaultChoicePacketBits(
       bitsRead += 3;
       value.choice.second.marker = v;
   }
-  return bitsRead - bitOffset;
+  return true;
 }
 
 // type DefaultBulkArm
@@ -894,42 +801,11 @@ int writeDefaultBulkArm(DefaultBulkArm value, ByteData view) {
 }
 
 // readDefaultBulkArm decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
-// and a whole byte or unused final-byte bits left after the object);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultBulkArm(DefaultBulkArm value, ByteData view, int numBits) {
-  final bitsRead = readDefaultBulkArmBits(value, view, numBits, 0);
-  if (bitsRead < 0) return false;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
-}
-
-// readDefaultBulkArmBits decodes value starting at bit bitOffset of view, reading no
-// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
-// when it refuses the wire, exactly as readDefaultBulkArm does. It is the framing
-// entry: it runs no end-of-packet check, so several objects read in turn
-// from one buffer, each at the previous offset plus its bits consumed.
-int readDefaultBulkArmBits(
-  DefaultBulkArm value,
-  ByteData view,
-  int numBits,
-  int bitOffset,
-) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
-  }
-  if (bitOffset < 0 || bitOffset > numBits) {
-    return -1; // the start lies inside the bits the caller vouches for
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -943,11 +819,11 @@ int readDefaultBulkArmBits(
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = bitOffset;
+  var bitsRead = 0;
   var window = 0;
   var v = 0;
   if (bitsRead + 2 > numBits) {
-    return -1;
+    return false;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -957,11 +833,11 @@ int readDefaultBulkArmBits(
   v = window & 0x3;
   bitsRead += 2;
   if (v > 2) {
-    return -1; // the count guards the loop — reject, never clamp
+    return false; // the count guards the loop — reject, never clamp
   }
   value.payload.entriesCount = v;
   if (bitsRead + value.payload.entriesCount * 36 > numBits) {
-    return -1;
+    return false;
   }
   for (var i0 = 0; i0 < value.payload.entriesCount; i0++) {
     final e0 = value.payload.entries[i0];
@@ -978,7 +854,7 @@ int readDefaultBulkArmBits(
     e0.preferred = Weapon(v);
   }
   if (bitsRead + 3 > numBits) {
-    return -1;
+    return false;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -989,28 +865,28 @@ int readDefaultBulkArmBits(
   bitsRead += 3;
   value.payload.marker = v;
   if (bitsRead + 2 > numBits) {
-    return -1;
+    return false;
   }
   v = (window >>> 3) & 0x3;
   bitsRead += 2;
   if (v > 2) {
-    return -1; // the length guards the slice — reject, never clamp
+    return false; // the length guards the slice — reject, never clamp
   }
   value.dataLength = v;
   {
     final pad = bitsRead & 7;
     if (pad != 0) {
       if (bitsRead + (8 - pad) > numBits) {
-        return -1;
+        return false;
       }
       if (view.getUint8(bitsRead >>> 3) >>> pad != 0) {
-        return -1; // nonzero padding is refused (SPEC §4.3)
+        return false; // nonzero padding is refused (SPEC §4.3)
       }
       bitsRead += 8 - pad;
     }
   }
   if (bitsRead + value.dataLength * 8 > numBits) {
-    return -1;
+    return false;
   }
   {
     final base = bitsRead >>> 3;
@@ -1019,7 +895,7 @@ int readDefaultBulkArmBits(
     }
   }
   bitsRead += value.dataLength * 8;
-  return bitsRead - bitOffset;
+  return true;
 }
 
 // DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -1243,46 +1119,15 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
 }
 
 // readDefaultBulkChoice decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
-// and a whole byte or unused final-byte bits left after the object);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultBulkChoice(
   DefaultBulkChoice value,
   ByteData view,
   int numBits,
 ) {
-  final bitsRead = readDefaultBulkChoiceBits(value, view, numBits, 0);
-  if (bitsRead < 0) return false;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
-}
-
-// readDefaultBulkChoiceBits decodes value starting at bit bitOffset of view, reading no
-// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
-// when it refuses the wire, exactly as readDefaultBulkChoice does. It is the framing
-// entry: it runs no end-of-packet check, so several objects read in turn
-// from one buffer, each at the previous offset plus its bits consumed.
-int readDefaultBulkChoiceBits(
-  DefaultBulkChoice value,
-  ByteData view,
-  int numBits,
-  int bitOffset,
-) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
-  }
-  if (bitOffset < 0 || bitOffset > numBits) {
-    return -1; // the start lies inside the bits the caller vouches for
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1296,11 +1141,11 @@ int readDefaultBulkChoiceBits(
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = bitOffset;
+  var bitsRead = 0;
   var window = 0;
   var v = 0;
   if (bitsRead + 2 > numBits) {
-    return -1;
+    return false;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1310,7 +1155,7 @@ int readDefaultBulkChoiceBits(
   v = window & 0x3;
   bitsRead += 2;
   if (v > 2) {
-    return -1; // not a wire-legal tag (SPEC §4.8)
+    return false; // not a wire-legal tag (SPEC §4.8)
   }
   value.type = DefaultBulkChoiceType(v);
   switch (value.type) {
@@ -1325,7 +1170,7 @@ int readDefaultBulkChoiceBits(
       value.first.data.fillRange(0, value.first.data.length, 0);
       value.first.dataLength = 0;
       if (bitsRead + 2 > numBits) {
-        return -1;
+        return false;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -1336,11 +1181,11 @@ int readDefaultBulkChoiceBits(
       v = window & 0x3;
       bitsRead += 2;
       if (v > 2) {
-        return -1; // the count guards the loop — reject, never clamp
+        return false; // the count guards the loop — reject, never clamp
       }
       value.first.payload.entriesCount = v;
       if (bitsRead + value.first.payload.entriesCount * 36 > numBits) {
-        return -1;
+        return false;
       }
       for (var i0 = 0; i0 < value.first.payload.entriesCount; i0++) {
         final e0 = value.first.payload.entries[i0];
@@ -1358,7 +1203,7 @@ int readDefaultBulkChoiceBits(
         e0.preferred = Weapon(v);
       }
       if (bitsRead + 3 > numBits) {
-        return -1;
+        return false;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -1370,28 +1215,28 @@ int readDefaultBulkChoiceBits(
       bitsRead += 3;
       value.first.payload.marker = v;
       if (bitsRead + 2 > numBits) {
-        return -1;
+        return false;
       }
       v = (window >>> 3) & 0x3;
       bitsRead += 2;
       if (v > 2) {
-        return -1; // the length guards the slice — reject, never clamp
+        return false; // the length guards the slice — reject, never clamp
       }
       value.first.dataLength = v;
       {
         final pad = bitsRead & 7;
         if (pad != 0) {
           if (bitsRead + (8 - pad) > numBits) {
-            return -1;
+            return false;
           }
           if (view.getUint8(bitsRead >>> 3) >>> pad != 0) {
-            return -1; // nonzero padding is refused (SPEC §4.3)
+            return false; // nonzero padding is refused (SPEC §4.3)
           }
           bitsRead += 8 - pad;
         }
       }
       if (bitsRead + value.first.dataLength * 8 > numBits) {
-        return -1;
+        return false;
       }
       {
         final base = bitsRead >>> 3;
@@ -1411,7 +1256,7 @@ int readDefaultBulkChoiceBits(
       value.second.data.fillRange(0, value.second.data.length, 0);
       value.second.dataLength = 0;
       if (bitsRead + 2 > numBits) {
-        return -1;
+        return false;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -1422,11 +1267,11 @@ int readDefaultBulkChoiceBits(
       v = window & 0x3;
       bitsRead += 2;
       if (v > 2) {
-        return -1; // the count guards the loop — reject, never clamp
+        return false; // the count guards the loop — reject, never clamp
       }
       value.second.payload.entriesCount = v;
       if (bitsRead + value.second.payload.entriesCount * 36 > numBits) {
-        return -1;
+        return false;
       }
       for (var i0 = 0; i0 < value.second.payload.entriesCount; i0++) {
         final e0 = value.second.payload.entries[i0];
@@ -1444,7 +1289,7 @@ int readDefaultBulkChoiceBits(
         e0.preferred = Weapon(v);
       }
       if (bitsRead + 3 > numBits) {
-        return -1;
+        return false;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -1456,28 +1301,28 @@ int readDefaultBulkChoiceBits(
       bitsRead += 3;
       value.second.payload.marker = v;
       if (bitsRead + 2 > numBits) {
-        return -1;
+        return false;
       }
       v = (window >>> 3) & 0x3;
       bitsRead += 2;
       if (v > 2) {
-        return -1; // the length guards the slice — reject, never clamp
+        return false; // the length guards the slice — reject, never clamp
       }
       value.second.dataLength = v;
       {
         final pad = bitsRead & 7;
         if (pad != 0) {
           if (bitsRead + (8 - pad) > numBits) {
-            return -1;
+            return false;
           }
           if (view.getUint8(bitsRead >>> 3) >>> pad != 0) {
-            return -1; // nonzero padding is refused (SPEC §4.3)
+            return false; // nonzero padding is refused (SPEC §4.3)
           }
           bitsRead += 8 - pad;
         }
       }
       if (bitsRead + value.second.dataLength * 8 > numBits) {
-        return -1;
+        return false;
       }
       {
         final base = bitsRead >>> 3;
@@ -1487,5 +1332,5 @@ int readDefaultBulkChoiceBits(
       }
       bitsRead += value.second.dataLength * 8;
   }
-  return bitsRead - bitOffset;
+  return true;
 }

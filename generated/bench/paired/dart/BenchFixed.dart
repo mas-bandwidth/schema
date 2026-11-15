@@ -54,9 +54,8 @@ const int tableFixedForm = 3;
 /// The guard offset an entry that belongs to no union arm carries.
 const int tableFixedNoGuard = -1;
 
-/// THE OPS ARE THE WHOLE SET. The identity plan carries copy, count, text and
-/// the two dead-byte checks; the other four move or remap a value from a plan
-/// compiled from another writer's layout.
+/// THE OPS ARE THE WHOLE SET. The identity plan carries the first three; the
+/// other four are what a plan compiled from another writer's layout adds.
 abstract final class TableFixedOp {
   static const int copy = 0; // move size bytes
   static const int count = 1; // a count: clamp it to the reader's own bound
@@ -66,8 +65,6 @@ abstract final class TableFixedOp {
   static const int constant = 5; // a constant this reader's storage takes
   static const int widenFloat = 6; // f32 into f64, §4's float rung
   static const int present = 7; // a constant 1 into the reader's present byte
-  static const int dead = 8; // a source range must be zero; lands nothing
-  static const int presentCopy = 9; // the present byte, then its dead payload
 
   // the flavours a text entry lands its units under
   static const int textUtf8 = 1;
@@ -1085,7 +1082,6 @@ int tableFixedRun(
     final s = at + plan[b + TableFixedLane.src];
     final d = plan[b + TableFixedLane.dst];
     final size = plan[b + TableFixedLane.size];
-    final aux = plan[b + TableFixedLane.aux];
     switch (plan[b + TableFixedLane.op]) {
       case TableFixedOp.copy:
         image.setRange(d, d + size, source, s);
@@ -1094,14 +1090,6 @@ int tableFixedRun(
         final counted = sourceView.getInt32(s, Endian.little);
         if (counted < 0 || counted > size) {
           return TableFixedRefusal.countOverBound;
-        }
-        // THE SLOTS PAST THE LIVE COUNT ARE DEAD, and every dead byte is zero
-        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). aux is the
-        // element stride, so the check runs over the writer's own bound.
-        for (var i = s + 4 + counted * aux; i < s + 4 + size * aux; i++) {
-          if (source[i] != 0) {
-            return TableFixedRefusal.damaged;
-          }
         }
         imageView.setInt32(d, counted, Endian.little);
         break;
@@ -1123,13 +1111,6 @@ int tableFixedRun(
         )) {
           return TableFixedRefusal.textIllFormed;
         }
-        // THE UNITS PAST THE USED LENGTH ARE DEAD, and every dead byte is zero
-        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11).
-        for (var i = s + 4 + used; i < s + 4 + size; i++) {
-          if (source[i] != 0) {
-            return TableFixedRefusal.damaged;
-          }
-        }
         imageView.setInt32(d, used, Endian.little);
         image.setRange(
           plan[b + TableFixedLane.aux],
@@ -1137,31 +1118,6 @@ int tableFixedRun(
           source,
           s + 4,
         );
-        break;
-      case TableFixedOp.presentCopy:
-        // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/FIXED-FORM-ALGORITHM.md
-        // §3.1, §4.5, §5.3 step 11): aux is the writer's payload span, and a
-        // clear flag requires every byte of it to be zero. The present byte
-        // still lands for the decode's own 0/1 check.
-        final flag = source[s];
-        image[d] = flag;
-        if (flag == 0) {
-          for (var i = s + 1; i < s + 1 + aux; i++) {
-            if (source[i] != 0) {
-              return TableFixedRefusal.damaged;
-            }
-          }
-        }
-        break;
-      case TableFixedOp.dead:
-        // AN INACTIVE UNION ARM, or the bytes past a narrower taken arm, are
-        // DEAD and must be zero (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
-        // §5.3 step 11). The entry lands nothing.
-        for (var i = s; i < s + size; i++) {
-          if (source[i] != 0) {
-            return TableFixedRefusal.damaged;
-          }
-        }
         break;
       case TableFixedOp.ordinal:
         // A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose
@@ -1255,10 +1211,8 @@ int tableFixedRun(
 /// tableFixedTextIllFormed reports whether a text payload's USED units are the
 /// text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.4):
 /// well-formed UTF-8 with no zero byte for string(N). bytes(N) carries no
-/// content rule at all. The bytes past the used length are DEAD, and the text
-/// entry holds them to zero in tableFixedRun rather than judging them as
-/// content (docs/rulings.json fixed-dead-bytes-are-zero). used is the clamped
-/// length; at is the first byte.
+/// content rule at all, and the SLACK past the used bytes is unspecified and
+/// never a refusal. used is the clamped length; at is the first byte.
 bool tableFixedTextIllFormed(int meta, int used, Uint8List source, int at) {
   if (meta == TableFixedOp.textBytes) {
     return false;
@@ -1629,20 +1583,7 @@ abstract final class TableFixedCompiler {
     }
     switch (myKind) {
       case 35: // the OPTIONAL wrapper: the present byte, then the payload
-        // THE WRITER'S PRESENT BYTE AND ITS DEAD PAYLOAD: aux is the payload
-        // span, so a clear flag holds every byte behind it to zero
-        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11).
-        push(
-          plan,
-          TableFixedOp.presentCopy,
-          theirAt,
-          auxAt,
-          1,
-          theirSize > 0 ? theirSize - 1 : 0,
-          guard,
-          arg,
-          0,
-        );
+        push(plan, TableFixedOp.copy, theirAt, auxAt, 1, 0, guard, arg, 0);
         compileEntry(
           plan,
           ti + 1,
@@ -1688,7 +1629,7 @@ abstract final class TableFixedCompiler {
             theirAt,
             auxAt,
             theirN,
-            theirElem,
+            0,
             guard,
             arg,
             0,
@@ -1785,38 +1726,6 @@ abstract final class TableFixedCompiler {
           (theirArms >= 1 && theirArms <= 255) ? theirArms : 0,
         );
         plan.argw = innerArgw;
-        // THE DEAD BYTES OF THIS UNION ARE CHECKED IN THE PLAN (docs/FIXED-
-        // FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11): tag 0 names no arm, so
-        // every arm byte is dead; a taken arm leaves the bytes past it inside
-        // the widest arm's span dead. Each dead entry reads the writer's
-        // record and lands nothing.
-        final theirWidest = theirSize - theirTag;
-        if (theirWidest > 0) {
-          if (plan.chainLen >= 65) {
-            plan.overflow = true;
-            return;
-          }
-          final savedAt = plan.chainAt;
-          final l = plan.chainLen * 3;
-          plan.chain[l] = theirAt;
-          plan.chain[l + 1] = 0;
-          plan.chain[l + 2] = plan.argw <= 0 ? 1 : plan.argw;
-          plan.chainLen++;
-          plan.chainAt = -1;
-          push(
-            plan,
-            TableFixedOp.dead,
-            theirAt + theirTag,
-            0,
-            theirWidest,
-            0,
-            theirAt,
-            0,
-            0,
-          );
-          plan.chainLen--;
-          plan.chainAt = savedAt;
-        }
         var myArm = mi + 1;
         for (var k = 0; k < myArms; k++) {
           var theirArm = ti + 1;
@@ -1848,20 +1757,6 @@ abstract final class TableFixedCompiler {
                 j + 1,
                 0,
               );
-              final theirArmSize = theirs.size(theirArm);
-              if (theirWidest - theirArmSize > 0) {
-                push(
-                  plan,
-                  TableFixedOp.dead,
-                  theirAt + theirTag + theirArmSize,
-                  0,
-                  theirWidest - theirArmSize,
-                  0,
-                  theirAt,
-                  j + 1,
-                  0,
-                );
-              }
               compileEntry(
                 plan,
                 theirArm,
@@ -1934,11 +1829,14 @@ abstract final class TableFixedCompiler {
         );
         break;
       case 12: // string(N)
-        // EVERY TEXT NEEDS THE TEXT OP, same size or not: the bytes past the
-        // used length are DEAD and the op holds them to zero
-        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). A counted
-        // array of wrapped strings TEXTS every bound slot for that reason;
-        // the decode both paths share still clamps LIVE used-lengths.
+        // SAME-SIZE TEXT IS A COPY: a counted array of wrapped strings
+        // would otherwise TEXT every bound slot, and slack lengths would
+        // count. The decode both paths share clamps LIVE used-lengths.
+        // A bound that MOVED still needs the text op (min units).
+        if (theirSize == mySize) {
+          push(plan, TableFixedOp.copy, theirAt, at, mySize, 0, guard, arg, 0);
+          break;
+        }
         final units = (mySize - 4) < (theirSize - 4)
             ? (mySize - 4)
             : (theirSize - 4);
@@ -2027,9 +1925,6 @@ abstract final class TableFixedCompiler {
     lands[2] = 0;
     lands[3] = 0;
     switch (plan[b + TableFixedLane.op]) {
-      case TableFixedOp.dead:
-        // a check lands nothing
-        break;
       case TableFixedOp.count:
         lands[1] = dst + 4;
         break;
@@ -2262,12 +2157,6 @@ final class TableMessageShape {
   int base = 0;
   int baseLo = 0;
   int baseHi = 0;
-  /// The quantized triple's derived facts, kept so the SKIP path can hold an
-  /// index to its count and a dequantized value to a finite float, exactly as
-  /// a named read does (docs/SPEC-TABLES.md §3.3, §4).
-  double qMin = 0;
-  double qDelta = 0;
-  int qCount = 0;
   TableMessageShape? inner;
 
   /// Decodes ONE shape at at in an announced entry's signature, mirroring
@@ -2312,7 +2201,7 @@ final class TableMessageShape {
         return (s, b.$2);
       }
       if (s.packing == 2 && kind == 10) {
-        final bits = quantizedBits(sig, at, end, s);
+        final bits = quantizedBits(sig, at, end);
         if (bits == null) return null;
         s.bits = bits;
         return (s, at + 12);
@@ -2351,7 +2240,7 @@ final class TableMessageShape {
   /// The width of a quantized f32 (ir.DecodeShape, ir.TableMessageQuantization):
   /// bits.Len32 of ceil(float32((max - min) / res)), clamped to [1, 2^32 - 256],
   /// or null where the triple is not conforming.
-  static int? quantizedBits(Uint8List sig, int at, int end, TableMessageShape s) {
+  static int? quantizedBits(Uint8List sig, int at, int end) {
     if (at + 12 > end) return null;
     final view = ByteData.sublistView(sig, at, at + 12);
     final f = Float32List(3);
@@ -2371,14 +2260,10 @@ final class TableMessageShape {
     }
     var count = values.ceil();
     var width = 0;
-    final kept = count;
     while (count != 0) {
       width++;
       count >>= 1;
     }
-    s.qMin = f[0];
-    s.qDelta = delta;
-    s.qCount = kept;
     return width;
   }
 
@@ -3102,26 +2987,15 @@ bool tableMessageKindWidens(int from, int declared) {
   return false;
 }
 
-/// One body at [depth]. Fields of the body are skipped at this same depth,
-/// held to the same two framing rules a named body applies
-/// (docs/SPEC-TABLES.md §3.1, §3.3): a reserved id is damage, and an id met
-/// twice in one body is damage whether or not this reader can name it.
+/// One body at [depth]. Fields of the body are skipped at this same depth.
 bool tableMessageSkipBody(TableMessageReader r, int depth) {
   if (depth > 128) return false;
-  // A BODY'S OWN SEEN SET, the reference's per-body map
-  // (internal/tablewire/messagedecode.go, skipBody): a field id twice in one
-  // body is damage, known or unknown, and a nested body's ids do not shadow
-  // its host's.
-  final seen = <int>{};
   while (true) {
     final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) return false;
     if (ref == 0) return true;
     if (ref > r.vocabulary.count) return false;
-    final entry = r.vocabulary.entries[ref - 1];
-    if (tableMessageReservedId(entry.id)) return false;
-    if (!seen.add(entry.id)) return false;
-    if (!tableMessageSkipEntry(r, entry, depth)) return false;
+    if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1], depth)) return false;
   }
 }
 
@@ -3147,10 +3021,7 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
       final arm = r.vocabulary.entries[ref - 1];
       // bitDecoder.arm: a reserved id or a kind-0 entry is damage
       if (tableMessageReservedId(arm.id) || arm.kind == 0) return false;
-      // A UNION WHOSE ARM IS STRUCTURAL is one level deeper; a scalar or
-      // payload-free arm adds no level (docs/SPEC-TABLES.md §4).
-      return tableMessageSkipEntry(
-          r, arm, tableMessageStructural(arm.kind) ? depth + 1 : depth);
+      return tableMessageSkipEntry(r, arm, depth + 1);
     case 13:
       return tableMessageSkipBody(r, depth + 1);
     case 17:
@@ -3160,47 +3031,12 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
     case 12:
       final n = r.bits.get(TableMessageShape.bitsRequired(0, s.max));
       if (r.bits.failed || !r.bits.align()) return false;
-      final start = r.bits.offset >> 3;
-      if (!r.bits.skip(n * 8)) return false;
-      // ILL-FORMED TEXT, OR A ZERO BYTE, IS DAMAGE ON THE SKIP PATH TOO
-      // (docs/SPEC-TABLES.md §3.3, §4): reuse the named read's own check.
-      return tableTextValid(r.bits.buffer, start, n);
+      return r.bits.skip(n * 8);
     case 31:
       if (!r.bits.align()) return false;
       final n = r.bits.get(32);
       if (r.bits.failed) return false;
       return r.bits.skip(n * 8);
-    case 10:
-      // A FLOAT IS FINITE ON THE SKIP PATH TOO (docs/SPEC-TABLES.md §3.3):
-      // a raw NaN or infinity is refused on its bits, and a quantized index
-      // above its count is damage, never reconstructed.
-      if (s.packing == 2) {
-        final index = r.bits.get(s.bits);
-        if (r.bits.failed) return false;
-        if (index > s.qCount) return false;
-        // The announced triple's own float32 arithmetic, the read path's
-        // order (ir.TableMessageDequantize): two roundings on each side.
-        final cell = Float32List(1);
-        cell[0] = index.toDouble();
-        final fi = cell[0];
-        cell[0] = s.qCount.toDouble();
-        final fc = cell[0];
-        cell[0] = fi / fc;
-        final normalized = cell[0];
-        cell[0] = normalized * s.qDelta;
-        final scaled = cell[0];
-        cell[0] = scaled + s.qMin;
-        return cell[0].isFinite;
-      }
-      final b32 = r.bits.get(32);
-      if (r.bits.failed) return false;
-      return (b32 & 0x7f800000) != 0x7f800000;
-    case 11:
-      final b64 = r.bits.get(64);
-      if (r.bits.failed) return false;
-      // The exponent field alone, so no NaN payload is ever assembled: an
-      // all-ones exponent is a NaN or an infinity (§3.3).
-      return ((b64 >> 52) & 0x7ff) != 0x7ff;
     case 14:
     case 16:
       var n = s.min;
@@ -3218,128 +3054,40 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
           n += s.min;
         }
       }
-      // THE COUNT'S BITS CAN SPELL MORE THAN max - min, so a count above the
-      // announced maximum is damage here as it is at a named field
-      // (docs/SPEC-TABLES.md §3.3, §4).
-      if (n > s.max) return false;
       if (kind == 14 && s.elem == 6 && !r.bits.align()) return false;
       final inner = s.inner ?? TableMessageShape();
-      // elementRunBits + skipRun (internal/tablewire/messagedecode.go): a
-      // fixed-width element of an ARRAY is stepped arithmetically; a float,
-      // a compressed or ranged element, a keyed entry and a structural
-      // element are walked so their own conditions are held.
+      // elementRunBits + skipRun (internal/codegen/gotable/message.go): a
+      // fixed-width element of an array or keyed entry is stepped
+      // arithmetically; only a walked element recurses at depth + 1.
       final elem = s.elem;
-      if (kind == 14 &&
-          elem != 13 &&
-          elem != 15 &&
-          elem != 17 &&
-          elem != 30 &&
-          elem != 10 &&
-          elem != 11 &&
-          inner.packing == 0) {
+      if (elem != 13 && elem != 15 && elem != 17 && elem != 30) {
         var run = (elem == 0 || elem == 32) ? 0 : TableMessageShape.valueBits(elem, inner);
         if (run >= 0) {
+          if (kind == 16) {
+            run += r.vocabulary.refBits;
+          }
           if (run == 0) return true;
           if (n > 0x7fffffffffffffff ~/ run) return false;
           return r.bits.skip(n * run);
         }
       }
-      // A STRUCTURAL ELEMENT is one level deeper; a scalar element adds no
-      // level (docs/SPEC-TABLES.md §4), so an array or keyed array of
-      // scalars at the depth boundary still reads.
-      final elemDepth = tableMessageStructural(elem) ? depth + 1 : depth;
-      if (kind == 16) {
-        // AN ENUM-KEYED ARRAY'S KEY references a declared no-payload entry,
-        // none repeated (docs/SPEC-TABLES.md §3.2, §3.3): the skip path runs
-        // the same checks a named keyed read does, with the keyed body's own
-        // seen set (internal/tablewire/messagedecode.go, keyedReference).
-        final seen = <int>{};
-        for (var i = 0; i < n; i++) {
-          // The key's own bits are progress (internal/tablewire/messagedecode.go,
-          // skip: the offset is read before keyedReference), so a payload-free
-          // element is still a walked element that advanced.
-          final before = r.bits.offset;
-          final keyRef = r.bits.get(r.vocabulary.refBits);
-          if (r.bits.failed ||
-              keyRef == 0 ||
-              keyRef > r.vocabulary.count) {
-            return false;
-          }
-          final key = r.vocabulary.entries[keyRef - 1];
-          if (tableMessageReservedId(key.id) || key.kind != 0) {
-            return false;
-          }
-          if (!seen.add(key.id)) return false;
-          if (!tableMessageSkip(r, elem, inner, elemDepth)) return false;
-          if (r.bits.offset == before) return false;
-        }
-        return true;
-      }
       for (var i = 0; i < n; i++) {
+        if (kind == 16) {
+          r.bits.get(r.vocabulary.refBits);
+          if (r.bits.failed) return false;
+        }
         // A WALKED ELEMENT THAT CONSUMES NO BITS is damage and ends the
-        // walk (internal/tablewire/messagedecode.go, skip): otherwise the
-        // announced count alone buys the iterations.
+        // walk (internal/codegen/gotable/message.go, tableMessageSkip):
+        // otherwise the announced count alone buys the iterations.
         final before = r.bits.offset;
-        if (!tableMessageSkip(r, elem, inner, elemDepth)) return false;
+        if (!tableMessageSkip(r, s.elem, inner, depth + 1)) return false;
         if (r.bits.offset == before) return false;
       }
       return true;
   }
   final width = TableMessageShape.valueBits(kind, s);
   if (width < 0) return false;
-  if (s.packing == 1) return tableMessageSkipRanged(r, kind, s, width);
   return r.bits.skip(width);
-}
-
-/// A STRUCTURAL kind is one nesting level (docs/SPEC-TABLES.md §4): a table
-/// body, an array, a union, and an enum-keyed body. A scalar, an enum name or
-/// a payload-free entry adds no level.
-bool tableMessageStructural(int kind) =>
-    kind == 13 || kind == 14 || kind == 15 || kind == 16;
-
-/// A RANGED INTEGER ON THE SKIP PATH is read as its offset, rebuilt from the
-/// sender's base, and held to the range its own kind can carry: the offset's
-/// bits can spell a value past the sender's maximum, and no conforming writer
-/// emits one (docs/SPEC-TABLES.md §3.3; the reference's skipRanged and
-/// kindHolds, internal/tablewire/messagedecode.go). The offset rides low 64
-/// bits first, as a named 128-bit read takes it.
-bool tableMessageSkipRanged(
-    TableMessageReader r, int kind, TableMessageShape s, int width) {
-  final lowBits = width < 64 ? width : 64;
-  final lo = r.bits.get(lowBits);
-  if (r.bits.failed) return false;
-  final hi = width > 64 ? r.bits.get(width - 64) : 0;
-  if (r.bits.failed) return false;
-  final offset = (BigInt.from(hi).toUnsigned(64) << 64) |
-      BigInt.from(lo).toUnsigned(64);
-  // The base as ir.DecodeShape holds it: a 16-byte two's complement for the
-  // 128-bit and fixed-point kinds, a zigzag for a signed integer, and an
-  // unsigned 64-bit value otherwise.
-  BigInt base;
-  if (kind >= 18) {
-    base = (BigInt.from(s.baseHi) << 64) | BigInt.from(s.baseLo).toUnsigned(64);
-  } else if (kind >= 2 && kind <= 5) {
-    base = BigInt.from(s.base);
-  } else {
-    base = BigInt.from(s.base).toUnsigned(64);
-  }
-  final value = offset + base;
-  final bits = tableMessageKindWidth(kind) * 8;
-  if (bits == 0) return true;
-  final signed = (kind >= 2 && kind <= 5) || kind == 18 || (kind >= 20 && kind <= 24);
-  if (signed) {
-    final top = BigInt.one << (bits - 1);
-    if (value < -top || value >= top) {
-      r.report.Refuse('out_of_range');
-      return false;
-    }
-    return true;
-  }
-  if (value.isNegative || value >= (BigInt.one << bits)) {
-    r.report.Refuse('out_of_range');
-    return false;
-  }
-  return true;
 }
 
 /// A string(N) payload must be well-formed UTF-8 with no zero byte among its

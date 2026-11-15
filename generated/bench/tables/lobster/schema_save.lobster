@@ -92,12 +92,6 @@ def sid_rollback(t:SaveIds, mark:int):
 // inside them. A field the writer does not write is not an edge. A record is
 // one node however many slots name it; a blob is owned by one slot and each
 // blob occurrence on a savable wire is its own node (§2.5).
-//
-// A CHAIN IS NOT A DEPTH (§3.1; docs/SECURITY.md): the walk keeps its own
-// stack, so a pointer chain of any length costs no call stack, and each
-// record's and blob cell's number rides on it (Record.at, Value.at) while the
-// save runs, so a lookup never scans the nodes collected so far. sg_clear
-// takes every mark back before the save returns.
 class SaveNode:
     kind:int = 0
     rec:Record? = nil
@@ -109,33 +103,39 @@ class SaveNode:
 class SaveGraph:
     nodes:[SaveNode] = []
     recs:[Record] = []
+    rec_index:[int] = []
     cells:[Value] = []
+    cell_index:[int] = []
     cycle:bool = false
     // blob_nodes are the loaded blob nodes the walk has met; a second slot
     // naming one of them sets blob_shared (§2.5)
     blob_nodes:[Node] = []
     blob_shared:bool = false
 
-// SaveEdge is one edge a record's by-value closure holds, in the order the
-// walk meets it: a pointer's referent, or a blob cell of kind 2 or 3.
-class SaveEdge:
-    rec:Record? = nil
-    cell:Value? = nil
-    kind:int = 0
-
 def sg_rec_index(g:SaveGraph, rec:Record) -> int:
-    return rec.at
+    for(g.recs) r, i:
+        if r == rec:
+            return g.rec_index[i]
+    return 0
 
 def sg_blob_index(g:SaveGraph, cell:Value) -> int:
-    return cell.at
+    for(g.cells) c, i:
+        if c == cell:
+            return g.cell_index[i]
+    return 0
 
-// sg_add_rec numbers one record the walk has not met, open until the walk
-// has numbered everything it reaches.
 def sg_add_rec(g:SaveGraph, rec:Record) -> int:
+    let at = sg_rec_index(g, rec)
+    if at != 0:
+        if g.nodes[at - 1].open:
+            g.cycle = true
+        return at
     push(g.nodes, SaveNode { kind: 1, rec: rec, tid: rec.d.id, open: true })
     let idx = length(g.nodes)
     push(g.recs, rec)
-    rec.at = idx
+    push(g.rec_index, idx)
+    sg_visit_edges(g, rec)
+    g.nodes[idx - 1].open = false
     return idx
 
 def sg_add_blob(g:SaveGraph, cell:Value, kind:int) -> int:
@@ -144,62 +144,15 @@ def sg_add_blob(g:SaveGraph, cell:Value, kind:int) -> int:
         return at
     let bn = cell.blob_node
     if bn:
-        if bn.at != 0:
-            g.blob_shared = true
-        else:
-            bn.at = 1
-            push(g.blob_nodes, bn)
+        for(g.blob_nodes) x:
+            if x == bn:
+                g.blob_shared = true
+        push(g.blob_nodes, bn)
     let idx = length(g.nodes) + 1
     push(g.nodes, SaveNode { kind: kind, blob: cell.blob, cell: cell, tid: if kind == 2: string_blob_id else: bytes_blob_id })
     push(g.cells, cell)
-    cell.at = idx
+    push(g.cell_index, idx)
     return idx
-
-// sg_walk numbers what root reaches in the depth-first pre-order the
-// recursive definition above states, with an explicit stack: one frame per
-// open record, holding its edges and the next one to follow. A pointer to an
-// open record is a cycle.
-def sg_walk(g:SaveGraph, root:Record) -> void:
-    let first:[SaveEdge] = []
-    sg_visit_edges(first, root)
-    let frames:[[SaveEdge]] = [first]
-    let next:[int] = [0]
-    let owner:[int] = [root.at]
-    while length(frames) > 0:
-        let top = length(frames) - 1
-        let es = frames[top]
-        if next[top] >= length(es):
-            g.nodes[owner[top] - 1].open = false
-            pop(frames)
-            pop(next)
-            pop(owner)
-        else:
-            let e = es[next[top]]
-            next[top] = next[top] + 1
-            let n = e.rec
-            if n:
-                if n.at != 0:
-                    if g.nodes[n.at - 1].open:
-                        g.cycle = true
-                else:
-                    let idx = sg_add_rec(g, n)
-                    let out:[SaveEdge] = []
-                    sg_visit_edges(out, n)
-                    push(frames, out)
-                    push(next, 0)
-                    push(owner, idx)
-            else:
-                let c = e.cell
-                if c:
-                    sg_add_blob(g, c, e.kind)
-
-def sg_clear(g:SaveGraph) -> void:
-    for(g.recs) r:
-        r.at = 0
-    for(g.cells) c:
-        c.at = 0
-    for(g.blob_nodes) n:
-        n.at = 0
 
 // save_live_count is the extent a walk descends and a writer writes: a
 // counted or unbounded array's live count, every slot otherwise (§2.9).
@@ -208,24 +161,24 @@ def save_live_count(d:FieldDescriptor, sl:Slot) -> int:
         return sl.count
     return length(sl.elems)
 
-def sg_visit_value(out:[SaveEdge], v:Value, d:FieldDescriptor) -> void:
+def sg_visit_value(g:SaveGraph, v:Value, d:FieldDescriptor) -> void:
     let s = d.s
     if s == "tab":
         let t = v.tab
         if t:
-            sg_visit_edges(out, t)
+            sg_visit_edges(g, t)
     elif s == "ptr":
         let n = v.node
         if n:
-            push(out, SaveEdge { rec: n })
+            sg_add_rec(g, n)
     elif s == "sblob":
         if v.blob:
-            push(out, SaveEdge { cell: v, kind: 2 })
+            sg_add_blob(g, v, 2)
     elif s == "bblob":
         if v.blob:
-            push(out, SaveEdge { cell: v, kind: 3 })
+            sg_add_blob(g, v, 3)
     elif s == "union":
-        sg_visit_union(out, v, d)
+        sg_visit_union(g, v, d)
 
 // sg_map_order is one map field's entries in ASCENDING KEY ORDER
 // (docs/SPEC-TABLES.md §2.8), the order the wire carries.
@@ -256,7 +209,7 @@ def sg_map_order(f:FieldDescriptor, sl:Slot) -> [int]:
         i++
     return order
 
-def sg_visit_union(out:[SaveEdge], v:Value, d:FieldDescriptor) -> void:
+def sg_visit_union(g:SaveGraph, v:Value, d:FieldDescriptor) -> void:
     if v.i == 0:
         return
     let un = lookup_union(d.t)
@@ -267,7 +220,7 @@ def sg_visit_union(out:[SaveEdge], v:Value, d:FieldDescriptor) -> void:
     if arm.s == "tab":
         let t = v.tab
         if t:
-            sg_visit_edges(out, t)
+            sg_visit_edges(g, t)
     elif arm.s == "arr":
         let sl = v.arm
         if sl:
@@ -275,7 +228,7 @@ def sg_visit_union(out:[SaveEdge], v:Value, d:FieldDescriptor) -> void:
             let n = save_live_count(arm, sl)
             var i = 0
             while i < n:
-                sg_visit_value(out, sl.elems[i], e)
+                sg_visit_value(g, sl.elems[i], e)
                 i++
     elif arm.s == "map":
         let sl = v.arm
@@ -283,15 +236,15 @@ def sg_visit_union(out:[SaveEdge], v:Value, d:FieldDescriptor) -> void:
             for(sg_map_order(arm, sl)) at:
                 let er = sl.entries[at].tab
                 if er:
-                    sg_visit_edges(out, er)
+                    sg_visit_edges(g, er)
     elif arm.s == "union":
         let sl = v.arm
         if sl:
-            sg_visit_union(out, sl.cell, arm)
+            sg_visit_union(g, sl.cell, arm)
     else:
         let sl = v.arm
         if sl:
-            sg_visit_value(out, sl.cell, arm)
+            sg_visit_value(g, sl.cell, arm)
 
 // guard_holds is whether a guarded field rides (Go's Instance.GuardHolds):
 // every term of its guard names a bool field of this record holding the
@@ -314,7 +267,7 @@ def guard_holds(rec:Record, f:FieldDescriptor) -> bool:
             return false
     return true
 
-def sg_visit_edges(out:[SaveEdge], rec:Record) -> void:
+def sg_visit_edges(g:SaveGraph, rec:Record) -> void:
     for(rec.fields) sl:
         let f = sl.fd
         if f.present != "" and not sl.present:
@@ -325,17 +278,17 @@ def sg_visit_edges(out:[SaveEdge], rec:Record) -> void:
             for(sg_map_order(f, sl)) at:
                 let er = sl.entries[at].tab
                 if er:
-                    sg_visit_edges(out, er)
+                    sg_visit_edges(g, er)
             continue
         if f.s == "arr":
             let e = elem_of(f)
             let n = save_live_count(f, sl)
             var i = 0
             while i < n:
-                sg_visit_value(out, sl.elems[i], e)
+                sg_visit_value(g, sl.elems[i], e)
                 i++
             continue
-        sg_visit_value(out, sl.cell, f)
+        sg_visit_value(g, sl.cell, f)
 
 // THE WRITER. SaveEncoder is one save's shared state: the file's one id
 // table and the numbering every pointer slot resolves through.
@@ -912,19 +865,17 @@ def save(rec:Record) -> string:
 
 // save_reasoned is save with the refusal's name beside the bytes: "cycle",
 // "blob_shared", "invalid_value" (the write contract, wc_body),
-// "non_finite_float", or "" when it wrote.
+// "non_finite_float" (Go's TableRefuseReason spellings), or ""
+// when it wrote.
 def save_reasoned(rec:Record) -> string, string:
     if rec.d.fixed:
         return fixed_record_codec(rec.d.name).write_fixed(rec)
     let g = SaveGraph {}
-    sg_add_rec(g, rec)
-    sg_walk(g, rec)
-    let out, why = save_walked(g, rec)
-    sg_clear(g)
-    return out, why
-
-// save_walked is the save of a walked graph, while its numbers ride on it.
-def save_walked(g:SaveGraph, rec:Record) -> string, string:
+    push(g.nodes, SaveNode { kind: 1, rec: rec, tid: rec.d.id, open: true })
+    push(g.recs, rec)
+    push(g.rec_index, 1)
+    sg_visit_edges(g, rec)
+    g.nodes[0].open = false
     if g.cycle:
         return "", "cycle"
     if g.blob_shared:

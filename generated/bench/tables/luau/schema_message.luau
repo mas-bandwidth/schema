@@ -56,7 +56,6 @@ local function integrityOpen(data: buffer): buffer?
 end
 
 local function bitsReq(lo: number, hi: number): number
-	if hi <= lo then return 0 end
 	local n = hi - lo
 	local bits = 0
 	while n ~= 0 do
@@ -219,7 +218,6 @@ local function shapeRead(r: any, k: number): any
 			return s
 		elseif packing == 1 and k ~= 10 then
 			local n = rLeb(r)
-			if r.bad or n > kindBits(k) then r.bad = true; return s end
 			s.bits = n
 			if k >= 18 then
 				if r.at + 16 > r.e then r.bad = true; return s end
@@ -239,15 +237,11 @@ local function shapeRead(r: any, k: number): any
 	end
 	if k == 12 then
 		s.max = rLeb(r)
-		if r.bad or s.max > 0x7FFFFFFF then r.bad = true end
 	elseif k == 14 then
 		s.min = rLeb(r)
 		s.max = rLeb(r)
-		if r.bad or s.max > 0xFFFFFFFF then r.bad = true end
-		if s.max < s.min then r.bad = true; return s end
 	elseif k == 16 then
 		s.max = rLeb(r)
-		if r.bad or s.max > 0xFFFFFFFF then r.bad = true end
 	end
 	return s
 end
@@ -257,7 +251,6 @@ local function entryRead(r: any): any
 	if r.at + 9 > r.e then r.bad = true; return e end
 	e.id = buffer.readinteger(r.b, r.at)
 	r.at = r.at + 8
-	if e.id == VERSION_ID or e.id == VOCAB_ID then r.bad = true; return e end
 	local kind = rU8(r)
 	if kind > 32 then r.bad = true; return e end
 	e.shape = shapeRead(r, kind)
@@ -328,21 +321,15 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 	if form == 2 then return refuse(report, "message_form_as_file") end
 	if form ~= 1 then return refuse(report, "newer_form") end
 	if len < 9 then report.malformed = true; return false end
-	-- the count is the unsigned u64 of docs/SPEC-TABLES.md §3, not a signed
-	-- integer: a high-bit count is huge, never negative, and refuses here
 	local count = integer.tonumber(buffer.readinteger(data, len - 8))
-	if count < 0 or count > math.floor((len - 9) / 8) then report.malformed = true; return false end
+	if count > math.floor((len - 9) / 8) then report.malformed = true; return false end
 	-- the id table holds at most 4096 entries (docs/SPEC-TABLES.md §3,
 	-- ir.TableWireIdTableBound), whatever the buffer would hold
 	if count > 4096 then report.malformed = true; return false end
 	local start = len - 8 - count * 8
 	local ids = {}
-	local seen = {}
 	for i = 0, count - 1 do
-		local id = buffer.readinteger(data, start + i * 8)
-		if seen[id] then report.malformed = true; return false end
-		seen[id] = true
-		ids[i + 1] = id
+		ids[i + 1] = buffer.readinteger(data, start + i * 8)
 	end
 	local r = { b = data, at = 1, e = start, bad = false }
 	local versions = 0
@@ -378,7 +365,6 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 			if not skipStep(r, kind) then report.malformed = true; return false end
 		end
 	end
-	if r.at ~= start then report.malformed = true; return false end
 	if versions ~= 1 or vocabs ~= 1 then report.malformed = true; return false end
 	local w = { b = words :: buffer, at = 0, e = buffer.len(words :: buffer), bad = false }
 	local entries = {}
@@ -541,18 +527,6 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 			if fd.e ~= nil then ef = named(fd.e, fd.name)
 			elseif fd.s == "map" then ef = { s = "tab", t = fd.t, name = fd.name } end
 		end
-		-- tableMessageEntryRead reads an inner kind and keeps no inner shape.
-		-- A missing element is that zero shape (kind 0, width 0), not a raised index.
-		local element = if e.element ~= nil then e.element else newShape()
-		local ik = element.kind
-		local variable = ik == 12 or ik == 13 or ik == 14 or ik == 15 or ik == 16 or ik == 17 or ik == 30 or ik == 31
-		-- A walked element that consumes no bits refuses the read
-		-- (docs/SPEC-TABLES.md §3.3; tableMessageSkip, r.Offset==before).
-		local function walkOne(): boolean
-			local before = r.off
-			if not skipShape(r, st, { shape = element }, ef, dep) then return false end
-			return r.off ~= before
-		end
 		if k == 16 then
 			for _ = 1, n do
 				local key, kok = get(r, st.refBits)
@@ -562,26 +536,23 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 				-- A KEYED ARRAY's key is a slot, not a caller value: the key
 				-- may name a retired variant and the element is what is read
 				-- and written (Go's variantWireId key=true, §2.15).
-				if variable then
-					if not walkOne() then return false end
-				elseif not skipShape(r, st, { shape = element }, ef, dep) then
-					return false
-				end
+				if not skipShape(r, st, { shape = e.element }, ef, dep) then return false end
 			end
 			return true
 		end
 		if e.shape.elem == 6 and not align(r) then return false end
-		if plainFloat(element, ef) then
+		local ik = e.element.kind
+		if plainFloat(e.element, ef) then
 			for _ = 1, n do
 				if not floatStep(r, st, ik, ef) then return false end
 			end
 			return true
 		end
-		if not variable then
-			return skip(r, n * element.bits)
+		if ik ~= 12 and ik ~= 13 and ik ~= 14 and ik ~= 15 and ik ~= 16 and ik ~= 17 and ik ~= 30 and ik ~= 31 then
+			return skip(r, n * e.element.bits)
 		end
 		for _ = 1, n do
-			if not walkOne() then return false end
+			if not skipShape(r, st, { shape = e.element }, ef, dep) then return false end
 		end
 		return true
 	elseif k == 31 then

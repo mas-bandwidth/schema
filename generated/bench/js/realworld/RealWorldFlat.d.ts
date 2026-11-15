@@ -12,5 +12,4 @@ export declare const FlatReadSlack: 8;
 
 export declare function WriteRealPacketFlat(view: DataView, value: RealPacket): number;
 export declare function ReadRealPacketFlat(view: DataView, numBits: number, value: RealPacket): boolean;
-export declare function ReadRealPacketFlatBits(view: DataView, numBits: number, value: RealPacket): number | false;
 

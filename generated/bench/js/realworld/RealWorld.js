@@ -452,12 +452,6 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
-  {
-    const x = Math.fround(value.f004Cf32);
-    if (!Number.isFinite(x) || x < 0.0 || x > 2000.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
-  }
   NUMBER_SCRATCH.value = value.f004Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 2000.0, 0.1)) {
     return false;
@@ -572,12 +566,6 @@ export function WriteRealPacket(stream, value) {
   NUMBER_SCRATCH.value = value.f026Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
-  }
-  {
-    const x = Math.fround(value.f027Cf32);
-    if (!Number.isFinite(x) || x < -2.0 || x > 2.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
   }
   NUMBER_SCRATCH.value = value.f027Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -2.0, 2.0, 0.25)) {
@@ -752,12 +740,6 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  {
-    const x = Math.fround(value.f061Cf32);
-    if (!Number.isFinite(x) || x < -90.0 || x > 90.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
-  }
   NUMBER_SCRATCH.value = value.f061Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -90.0, 90.0, 0.5)) {
     return false;
@@ -780,12 +762,6 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  {
-    const x = Math.fround(value.f065Cf32);
-    if (!Number.isFinite(x) || x < 0.0 || x > 30.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
-  }
   NUMBER_SCRATCH.value = value.f065Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 30.0, 0.5)) {
     return false;
@@ -794,21 +770,9 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 14, 0, 2)) {
     return false;
   }
-  {
-    const x = Math.fround(value.f067Cf32);
-    if (!Number.isFinite(x) || x < -100.0 || x > 100.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
-  }
   NUMBER_SCRATCH.value = value.f067Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -100.0, 100.0, 0.25)) {
     return false;
-  }
-  {
-    const x = Math.fround(value.f068Cf32);
-    if (!Number.isFinite(x) || x < 0.0 || x > 2000.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
   }
   NUMBER_SCRATCH.value = value.f068Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 2000.0, 1.0)) {
@@ -825,21 +789,9 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  {
-    const x = Math.fround(value.f071Cf32);
-    if (!Number.isFinite(x) || x < 0.0 || x > 10.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
-  }
   NUMBER_SCRATCH.value = value.f071Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.02)) {
     return false;
-  }
-  {
-    const x = Math.fround(value.f072Cf32);
-    if (!Number.isFinite(x) || x < 0.0 || x > 100.0) {
-      return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
-    }
   }
   NUMBER_SCRATCH.value = value.f072Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 100.0, 0.01)) {
@@ -980,7 +932,7 @@ export function WriteRealPacket(stream, value) {
   return true;
 }
 
-export function ReadRealPacket(stream, value, nested) {
+export function ReadRealPacket(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -805495, 805495)) {
     return false;
   }
@@ -1399,6 +1351,6 @@ export function ReadRealPacket(stream, value, nested) {
     return false;
   }
   value.f097Bits = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 

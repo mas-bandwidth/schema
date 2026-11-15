@@ -49,13 +49,6 @@ pub fn write_render_sprite(stream: &mut WriteStream<'_>, value: &RenderSprite) -
 
 #[inline]
 pub fn read_render_sprite(stream: &mut ReadStream<'_>, value: &mut RenderSprite) -> Result {
-    read_render_sprite_body(stream, value)?;
-    stream.serialize_end()?;
-    Ok(())
-}
-
-#[inline]
-pub(crate) fn read_render_sprite_body(stream: &mut ReadStream<'_>, value: &mut RenderSprite) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: sort_key[0..32]
     stream.serialize_bits(&mut c, 32)?;
@@ -136,13 +129,6 @@ pub fn write_render_block(stream: &mut WriteStream<'_>, value: &RenderBlock) -> 
 
 #[inline]
 pub fn read_render_block(stream: &mut ReadStream<'_>, value: &mut RenderBlock) -> Result {
-    read_render_block_body(stream, value)?;
-    stream.serialize_end()?;
-    Ok(())
-}
-
-#[inline]
-pub(crate) fn read_render_block_body(stream: &mut ReadStream<'_>, value: &mut RenderBlock) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: worker_index[0..32]
     stream.serialize_bits(&mut c, 32)?;
@@ -156,7 +142,7 @@ pub(crate) fn read_render_block_body(stream: &mut ReadStream<'_>, value: &mut Re
     value.sprite_count_hint = v1 as u32;
     stream.serialize_int(&mut value.sprites_count, 0, RENDER_BLOCK_MAX_SPRITES as i32)?; // the count guards the loop (§6.3)
     for i in 0..value.sprites_count as usize {
-        read_render_sprite_body(stream, &mut value.sprites[i])?;
+        read_render_sprite(stream, &mut value.sprites[i])?;
     }
     Ok(())
 }

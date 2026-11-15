@@ -19,10 +19,6 @@
 // tags — and NEVER throw on hostile bytes. No slack past the payload is
 // required: the reader prices its 64-bit windows inside the buffer.
 //
-// read<Name>Bits(value, view, numBits, bitOffset) -> the bits consumed, or
-// -1 on the same refusals: the framing entry, read from a bit offset with
-// no end-of-packet check, so several objects read in turn from one buffer.
-//
 // zero<Name>(value) -> the §5 zero form. There is no measure function
 // (SPEC §6.1): write returns the size, <name>MaxBytes sizes buffers.
 
@@ -170,42 +166,11 @@ int writeFixedProbe(FixedProbe value, ByteData view) {
 }
 
 // readFixedProbe decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
-// and a whole byte or unused final-byte bits left after the object);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readFixedProbe(FixedProbe value, ByteData view, int numBits) {
-  final bitsRead = readFixedProbeBits(value, view, numBits, 0);
-  if (bitsRead < 0) return false;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
-}
-
-// readFixedProbeBits decodes value starting at bit bitOffset of view, reading no
-// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
-// when it refuses the wire, exactly as readFixedProbe does. It is the framing
-// entry: it runs no end-of-packet check, so several objects read in turn
-// from one buffer, each at the previous offset plus its bits consumed.
-int readFixedProbeBits(
-  FixedProbe value,
-  ByteData view,
-  int numBits,
-  int bitOffset,
-) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
-  }
-  if (bitOffset < 0 || bitOffset > numBits) {
-    return -1; // the start lies inside the bits the caller vouches for
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -219,12 +184,12 @@ int readFixedProbeBits(
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = bitOffset;
+  var bitsRead = 0;
   var window = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 156 > numBits) {
-    return -1;
+    return false;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -234,13 +199,13 @@ int readFixedProbeBits(
   v = window & 0x1ffffff;
   bitsRead += 25;
   if (v > 23592960) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.angle = -11796480 + v;
   v = (window >>> 25) & 0xffffffff;
   bitsRead += 32;
   if (v > 3932160000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.position = -1966080000 + v;
   if (bitsRead >>> 3 < tailBase) {
@@ -251,7 +216,7 @@ int readFixedProbeBits(
   lo = window & 0x1fffffffff;
   bitsRead += 37;
   if (lo > 131072000000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   {
     const min = UInt128(0xffffffffffffffff, 0xfffffff0bdc00000);
@@ -260,7 +225,7 @@ int readFixedProbeBits(
   v = (window >>> 37) & 0xfffff;
   bitsRead += 20;
   if (v > 1000000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.ticks = v;
   for (var i0 = 0; i0 < 2; i0++) {
@@ -272,11 +237,11 @@ int readFixedProbeBits(
     v = window & 0x1fffff;
     bitsRead += 21;
     if (v > 1048576) {
-      return -1; // a smuggled offset is refused
+      return false; // a smuggled offset is refused
     }
     value.samples[i0] = -524288 + v;
   }
-  return bitsRead - bitOffset;
+  return true;
 }
 
 // type UnsignedProbe
@@ -403,42 +368,11 @@ int writeUnsignedProbe(UnsignedProbe value, ByteData view) {
 }
 
 // readUnsignedProbe decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
-// and a whole byte or unused final-byte bits left after the object);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readUnsignedProbe(UnsignedProbe value, ByteData view, int numBits) {
-  final bitsRead = readUnsignedProbeBits(value, view, numBits, 0);
-  if (bitsRead < 0) return false;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
-}
-
-// readUnsignedProbeBits decodes value starting at bit bitOffset of view, reading no
-// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
-// when it refuses the wire, exactly as readUnsignedProbe does. It is the framing
-// entry: it runs no end-of-packet check, so several objects read in turn
-// from one buffer, each at the previous offset plus its bits consumed.
-int readUnsignedProbeBits(
-  UnsignedProbe value,
-  ByteData view,
-  int numBits,
-  int bitOffset,
-) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
-  }
-  if (bitOffset < 0 || bitOffset > numBits) {
-    return -1; // the start lies inside the bits the caller vouches for
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -452,12 +386,12 @@ int readUnsignedProbeBits(
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = bitOffset;
+  var bitsRead = 0;
   var window = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 196 > numBits) {
-    return -1;
+    return false;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -467,7 +401,7 @@ int readUnsignedProbeBits(
   v = window & 0x1ffffff;
   bitsRead += 25;
   if (v > 23592960) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.angle = v;
   v = (window >>> 25) & 0xffffffff;
@@ -482,7 +416,7 @@ int readUnsignedProbeBits(
   bitsRead += 32;
   lo |= v << 32;
   if (Schema.unsignedLessThan(0xffffffffffff0000, lo)) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.span = lo;
   if (bitsRead >>> 3 < tailBase) {
@@ -493,13 +427,13 @@ int readUnsignedProbeBits(
   lo = window & 0x1fffffffff;
   bitsRead += 37;
   if (lo > 131072000000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.reach = UInt128(0, lo);
   v = (window >>> 37) & 0xfffff;
   bitsRead += 20;
   if (v > 1000000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.ticks = v;
   for (var i0 = 0; i0 < 2; i0++) {
@@ -511,7 +445,7 @@ int readUnsignedProbeBits(
     v = window & 0x1fffff;
     bitsRead += 21;
     if (v > 1048576) {
-      return -1; // a smuggled offset is refused
+      return false; // a smuggled offset is refused
     }
     value.samples[i0] = v;
   }
@@ -524,7 +458,7 @@ int readUnsignedProbeBits(
   v = window & 0xff;
   bitsRead += 8;
   value.tail = v;
-  return bitsRead - bitOffset;
+  return true;
 }
 
 // type WideProbe
@@ -674,42 +608,11 @@ int writeWideProbe(WideProbe value, ByteData view) {
 }
 
 // readWideProbe decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
-// and a whole byte or unused final-byte bits left after the object);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readWideProbe(WideProbe value, ByteData view, int numBits) {
-  final bitsRead = readWideProbeBits(value, view, numBits, 0);
-  if (bitsRead < 0) return false;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
-}
-
-// readWideProbeBits decodes value starting at bit bitOffset of view, reading no
-// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
-// when it refuses the wire, exactly as readWideProbe does. It is the framing
-// entry: it runs no end-of-packet check, so several objects read in turn
-// from one buffer, each at the previous offset plus its bits consumed.
-int readWideProbeBits(
-  WideProbe value,
-  ByteData view,
-  int numBits,
-  int bitOffset,
-) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
-  }
-  if (bitOffset < 0 || bitOffset > numBits) {
-    return -1; // the start lies inside the bits the caller vouches for
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -723,13 +626,13 @@ int readWideProbeBits(
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = bitOffset;
+  var bitsRead = 0;
   var window = 0;
   var v = 0;
   var lo = 0;
   var hi = 0;
   if (bitsRead + 403 > numBits) {
-    return -1;
+    return false;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -772,7 +675,7 @@ int readWideProbeBits(
   lo = window & 0x3ffffffff;
   bitsRead += 34;
   if (lo > 10000000000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   {
     const min = UInt128(0xffffffffffffffff, 0xfffffffed5fa0e00);
@@ -808,7 +711,7 @@ int readWideProbeBits(
   {
     const diff = UInt128(137438953472, 0);
     if (diff < UInt128(hi, lo)) {
-      return -1; // a smuggled offset is refused
+      return false; // a smuggled offset is refused
     }
   }
   {
@@ -818,7 +721,7 @@ int readWideProbeBits(
   v = (window >>> 38) & 0x7ff;
   bitsRead += 11;
   if (v > 2000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   {
     const min = UInt128(0xffffffffffffffff, 0xfffffffffffffc18);
@@ -857,7 +760,7 @@ int readWideProbeBits(
   bitsRead += 32;
   hi |= v << 32;
   value.seed = UInt128(hi, lo);
-  return bitsRead - bitOffset;
+  return true;
 }
 
 // type LudicrousState
@@ -1124,42 +1027,11 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
 }
 
 // readLudicrousState decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
-// and a whole byte or unused final-byte bits left after the object);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
-  final bitsRead = readLudicrousStateBits(value, view, numBits, 0);
-  if (bitsRead < 0) return false;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
-}
-
-// readLudicrousStateBits decodes value starting at bit bitOffset of view, reading no
-// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
-// when it refuses the wire, exactly as readLudicrousState does. It is the framing
-// entry: it runs no end-of-packet check, so several objects read in turn
-// from one buffer, each at the previous offset plus its bits consumed.
-int readLudicrousStateBits(
-  LudicrousState value,
-  ByteData view,
-  int numBits,
-  int bitOffset,
-) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
-  }
-  if (bitOffset < 0 || bitOffset > numBits) {
-    return -1; // the start lies inside the bits the caller vouches for
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1173,13 +1045,13 @@ int readLudicrousStateBits(
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = bitOffset;
+  var bitsRead = 0;
   var window = 0;
   var v = 0;
   var lo = 0;
   var hi = 0;
   if (bitsRead + 561 > numBits) {
-    return -1;
+    return false;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1192,7 +1064,7 @@ int readLudicrousStateBits(
   v = (window >>> 2) & 0x1ffffff;
   bitsRead += 25;
   if (v > 23592960) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.probe.angle = -11796480 + v;
   if (bitsRead >>> 3 < tailBase) {
@@ -1203,7 +1075,7 @@ int readLudicrousStateBits(
   v = window & 0xffffffff;
   bitsRead += 32;
   if (v > 3932160000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.probe.position = -1966080000 + v;
   if (bitsRead >>> 3 < tailBase) {
@@ -1214,7 +1086,7 @@ int readLudicrousStateBits(
   lo = window & 0x1fffffffff;
   bitsRead += 37;
   if (lo > 131072000000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   {
     const min = UInt128(0xffffffffffffffff, 0xfffffff0bdc00000);
@@ -1223,7 +1095,7 @@ int readLudicrousStateBits(
   v = (window >>> 37) & 0xfffff;
   bitsRead += 20;
   if (v > 1000000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.probe.ticks = v;
   for (var i0 = 0; i0 < 2; i0++) {
@@ -1235,7 +1107,7 @@ int readLudicrousStateBits(
     v = window & 0x1fffff;
     bitsRead += 21;
     if (v > 1048576) {
-      return -1; // a smuggled offset is refused
+      return false; // a smuggled offset is refused
     }
     value.probe.samples[i0] = -524288 + v;
   }
@@ -1280,7 +1152,7 @@ int readLudicrousStateBits(
   lo = window & 0x3ffffffff;
   bitsRead += 34;
   if (lo > 10000000000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   {
     const min = UInt128(0xffffffffffffffff, 0xfffffffed5fa0e00);
@@ -1316,7 +1188,7 @@ int readLudicrousStateBits(
   {
     const diff = UInt128(137438953472, 0);
     if (diff < UInt128(hi, lo)) {
-      return -1; // a smuggled offset is refused
+      return false; // a smuggled offset is refused
     }
   }
   {
@@ -1326,7 +1198,7 @@ int readLudicrousStateBits(
   v = (window >>> 38) & 0x7ff;
   bitsRead += 11;
   if (v > 2000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   {
     const min = UInt128(0xffffffffffffffff, 0xfffffffffffffc18);
@@ -1366,16 +1238,16 @@ int readLudicrousStateBits(
   hi |= v << 32;
   value.wide.seed = UInt128(hi, lo);
   if (bitsRead + 3 > numBits) {
-    return -1;
+    return false;
   }
   v = (window >>> 32) & 0x7;
   bitsRead += 3;
   if (v > 4) {
-    return -1; // the count guards the loop — reject, never clamp
+    return false; // the count guards the loop — reject, never clamp
   }
   value.keysCount = v;
   if (bitsRead + value.keysCount * 128 > numBits) {
-    return -1;
+    return false;
   }
   for (var i0 = 0; i0 < value.keysCount; i0++) {
     if (bitsRead >>> 3 < tailBase) {
@@ -1413,7 +1285,7 @@ int readLudicrousStateBits(
     value.keys[i0] = UInt128(hi, lo);
   }
   if (bitsRead + 1 > numBits) {
-    return -1;
+    return false;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1425,7 +1297,7 @@ int readLudicrousStateBits(
   value.hasTarget = v != 0;
   if (value.hasTarget) {
     if (bitsRead + 128 > numBits) {
-      return -1;
+      return false;
     }
     if (bitsRead >>> 3 < tailBase) {
       window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1463,7 +1335,7 @@ int readLudicrousStateBits(
   } else {
     value.targetId = UInt128.zero;
   }
-  return bitsRead - bitOffset;
+  return true;
 }
 
 // type DegenerateProbe
@@ -1525,42 +1397,11 @@ int writeDegenerateProbe(DegenerateProbe value, ByteData view) {
 }
 
 // readDegenerateProbe decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
-// and a whole byte or unused final-byte bits left after the object);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDegenerateProbe(DegenerateProbe value, ByteData view, int numBits) {
-  final bitsRead = readDegenerateProbeBits(value, view, numBits, 0);
-  if (bitsRead < 0) return false;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
-}
-
-// readDegenerateProbeBits decodes value starting at bit bitOffset of view, reading no
-// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
-// when it refuses the wire, exactly as readDegenerateProbe does. It is the framing
-// entry: it runs no end-of-packet check, so several objects read in turn
-// from one buffer, each at the previous offset plus its bits consumed.
-int readDegenerateProbeBits(
-  DegenerateProbe value,
-  ByteData view,
-  int numBits,
-  int bitOffset,
-) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
-  }
-  if (bitOffset < 0 || bitOffset > numBits) {
-    return -1; // the start lies inside the bits the caller vouches for
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1574,11 +1415,11 @@ int readDegenerateProbeBits(
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = bitOffset;
+  var bitsRead = 0;
   var window = 0;
   var v = 0;
   if (bitsRead + 8 > numBits) {
-    return -1;
+    return false;
   }
   value.lockedFixed = -196608;
   value.lockedInt = 7;
@@ -1594,7 +1435,7 @@ int readDegenerateProbeBits(
   v = window & 0xff;
   bitsRead += 8;
   value.tail = v;
-  return bitsRead - bitOffset;
+  return true;
 }
 
 // type FixedVec
@@ -1671,42 +1512,11 @@ int writeFixedVec(FixedVec value, ByteData view) {
 }
 
 // readFixedVec decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
-// and a whole byte or unused final-byte bits left after the object);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readFixedVec(FixedVec value, ByteData view, int numBits) {
-  final bitsRead = readFixedVecBits(value, view, numBits, 0);
-  if (bitsRead < 0) return false;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
-}
-
-// readFixedVecBits decodes value starting at bit bitOffset of view, reading no
-// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
-// when it refuses the wire, exactly as readFixedVec does. It is the framing
-// entry: it runs no end-of-packet check, so several objects read in turn
-// from one buffer, each at the previous offset plus its bits consumed.
-int readFixedVecBits(
-  FixedVec value,
-  ByteData view,
-  int numBits,
-  int bitOffset,
-) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
-  }
-  if (bitOffset < 0 || bitOffset > numBits) {
-    return -1; // the start lies inside the bits the caller vouches for
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1720,11 +1530,11 @@ int readFixedVecBits(
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = bitOffset;
+  var bitsRead = 0;
   var window = 0;
   var lo = 0;
   if (bitsRead + 102 > numBits) {
-    return -1;
+    return false;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1734,7 +1544,7 @@ int readFixedVecBits(
   lo = window & 0x3ffffffff;
   bitsRead += 34;
   if (lo > 13107200000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.x = -6553600000 + lo;
   if (bitsRead >>> 3 < tailBase) {
@@ -1745,7 +1555,7 @@ int readFixedVecBits(
   lo = window & 0x3ffffffff;
   bitsRead += 34;
   if (lo > 13107200000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.y = -6553600000 + lo;
   if (bitsRead >>> 3 < tailBase) {
@@ -1756,10 +1566,10 @@ int readFixedVecBits(
   lo = window & 0x3ffffffff;
   bitsRead += 34;
   if (lo > 13107200000) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.z = -6553600000 + lo;
-  return bitsRead - bitOffset;
+  return true;
 }
 
 // type FixedQuat
@@ -1843,42 +1653,11 @@ int writeFixedQuat(FixedQuat value, ByteData view) {
 }
 
 // readFixedQuat decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
-// and a whole byte or unused final-byte bits left after the object);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readFixedQuat(FixedQuat value, ByteData view, int numBits) {
-  final bitsRead = readFixedQuatBits(value, view, numBits, 0);
-  if (bitsRead < 0) return false;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
-}
-
-// readFixedQuatBits decodes value starting at bit bitOffset of view, reading no
-// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
-// when it refuses the wire, exactly as readFixedQuat does. It is the framing
-// entry: it runs no end-of-packet check, so several objects read in turn
-// from one buffer, each at the previous offset plus its bits consumed.
-int readFixedQuatBits(
-  FixedQuat value,
-  ByteData view,
-  int numBits,
-  int bitOffset,
-) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
-  }
-  if (bitOffset < 0 || bitOffset > numBits) {
-    return -1; // the start lies inside the bits the caller vouches for
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1892,11 +1671,11 @@ int readFixedQuatBits(
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = bitOffset;
+  var bitsRead = 0;
   var window = 0;
   var v = 0;
   if (bitsRead + 128 > numBits) {
-    return -1;
+    return false;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1906,7 +1685,7 @@ int readFixedQuatBits(
   v = window & 0xffffffff;
   bitsRead += 32;
   if (v > 2147483648) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.x = -1073741824 + v;
   if (bitsRead >>> 3 < tailBase) {
@@ -1917,7 +1696,7 @@ int readFixedQuatBits(
   v = window & 0xffffffff;
   bitsRead += 32;
   if (v > 2147483648) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.y = -1073741824 + v;
   if (bitsRead >>> 3 < tailBase) {
@@ -1928,7 +1707,7 @@ int readFixedQuatBits(
   v = window & 0xffffffff;
   bitsRead += 32;
   if (v > 2147483648) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.z = -1073741824 + v;
   if (bitsRead >>> 3 < tailBase) {
@@ -1939,8 +1718,8 @@ int readFixedQuatBits(
   v = window & 0xffffffff;
   bitsRead += 32;
   if (v > 2147483648) {
-    return -1; // a smuggled offset is refused
+    return false; // a smuggled offset is refused
   }
   value.w = -1073741824 + v;
-  return bitsRead - bitOffset;
+  return true;
 }

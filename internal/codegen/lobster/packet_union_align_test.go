@@ -70,8 +70,8 @@ func runUnionAlignBytes(t *testing.T, forceBulk bool) string {
 	}
 	if forceBulk {
 		text := string(files["UnionAlign.lobster"])
-		const writeLoop = "    for(4) _i·:\n        s·.serialize_bits(read_uint8_le(v·.Data, _i·), 8) // the storage width (SPEC §4.3)"
-		const writeBulk = "    s·.serialize_bytes(v·.Data, 4)"
+		const writeLoop = "    for(4) _i:\n        s.serialize_bits(read_uint8_le(v.Data, _i), 8) // the storage width (SPEC §4.3)"
+		const writeBulk = "    s.serialize_bytes(v.Data, 4)"
 		if strings.Count(text, writeLoop) != 1 {
 			t.Fatalf("expected 1 per-byte write loop in UnionAlign.lobster, got %d:\n%s", strings.Count(text, writeLoop), text)
 		}

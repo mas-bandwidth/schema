@@ -1236,15 +1236,10 @@ def cook_read(data:string, build:int, desc:TableDescriptor, t:CookTable) -> Reco
     // slots are deltas from their own addresses IN THE FILE. Storing each
     // entry as its absolute file offset makes `slot address + delta` and the
     // directory compare in one space (uncook.go's regionReader.entryAt).
-    // Every entry lies inside the region and the entries ascend (check.go's
-    // checkDirectory), so each node's [base, next base) is inside the region.
     var i = 0
     while i < count:
         let e = data_offset + data_length + i * cook_directory_entry
-        let off = cr_word(c, e)
-        if off < 0 or off >= data_length or (i > 0 and data_offset + off < c.dir[i - 1]):
-            return nil
-        push(c.dir, data_offset + off)
+        push(c.dir, data_offset + cr_word(c, e))
         push(c.tids, cr_word(c, e + 8))
         push(c.nodes, nil)
         push(c.blobs, "")
@@ -1253,14 +1248,13 @@ def cook_read(data:string, build:int, desc:TableDescriptor, t:CookTable) -> Reco
     i = 0
     while i < count:
         if c.tids[i] == string_blob_id or c.tids[i] == bytes_blob_id:
-            // The buffer's header and its bytes stay inside its node.
             let length_at = c.dir[i]
-            let start = length_at + 8
-            let end = if i + 1 < count: c.dir[i + 1] else: c.end
-            if start > end:
-                return nil
             let n = cr_word32(c, length_at)
-            if n > end - start:
+            let start = length_at + 8
+            var end = start + n
+            if i + 1 < count:
+                end = c.dir[i + 1]
+            if start + n > end:
                 return nil
             c.blobs[i] = substring(data, start, n)
             c.blob_nodes[i] = Node { kind: if c.tids[i] == string_blob_id: 2 else: 3, rec: nil, blob: c.blobs[i] }
@@ -1279,9 +1273,6 @@ def cook_read(data:string, build:int, desc:TableDescriptor, t:CookTable) -> Reco
                 return nil
             c.node_base = c.dir[i]
             c.node_end = if i + 1 < count: c.dir[i + 1] else: c.end
-            // The record's whole row stays inside its node.
-            if ct.size > c.node_end - c.node_base:
-                return nil
             c.ranges = []
             cr_record(c, c.dir[i], rec, ct)
         i++

@@ -802,10 +802,7 @@ public final class MixedHitEventVariable {
         in.byteOrderMark();
         Value v = new Value();
         jsonReadFields(in, v, 0);
-        // THE ROOT OBJECT IS THE WHOLE TEXT (§16.1): skip whitespace and
-        // comments, then refuse unless the cursor is at the end of the text.
-        in.space();
-        if (in.bad || in.p != text.length) {
+        if (in.bad) {
             report.damaged = true;
         }
         if (report.refused) {
@@ -918,7 +915,7 @@ public final class MixedHitEventVariable {
             jsonReadFields(in, v, depth + 1);
             return v;
         }
-        String key = in.scanName();
+        String key = in.scanString();
         if (in.bad || key == null) return null;
         if (!"&node".equals(key)) {
             in.p = start;
@@ -998,7 +995,7 @@ public final class MixedHitEventVariable {
                 in.p++;
                 break;
             }
-            String key = in.scanName();
+            String key = in.scanString();
             if (in.bad) {
                 return;
             }
@@ -1101,7 +1098,7 @@ public final class MixedHitEventVariable {
                     }
                 }
             } else {
-                in.skipValue(depth + 1);
+                in.skipValue();
                 in.rep.unknown++;
             }
             c = in.peek();

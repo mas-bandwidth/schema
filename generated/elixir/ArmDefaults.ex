@@ -244,17 +244,8 @@ defmodule Example.ArmDefaults do
   @spec read_default_arm(binary(), non_neg_integer()) :: {:ok, Example.DefaultArm.t()} | :error
   def read_default_arm(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_arm_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -479,17 +470,8 @@ defmodule Example.ArmDefaults do
           {:ok, Example.DefaultChoice.t()} | :error
   def read_default_choice(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_choice_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -724,17 +706,8 @@ defmodule Example.ArmDefaults do
           {:ok, Example.DefaultChoicePacket.t()} | :error
   def read_default_choice_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_choice_packet_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -890,17 +863,8 @@ defmodule Example.ArmDefaults do
           {:ok, Example.DefaultBulkArm.t()} | :error
   def read_default_bulk_arm(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_bulk_arm_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1231,17 +1195,8 @@ defmodule Example.ArmDefaults do
           {:ok, Example.DefaultBulkChoice.t()} | :error
   def read_default_bulk_choice(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_bulk_choice_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 

@@ -39,22 +39,16 @@ _M.DefaultArm <- class {
 _M.DefaultArmMaxBits <- 77;
 _M.DefaultArmMaxBytes <- 16;
 
-// ReadDefaultArmBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadDefaultArmBody <- function(stream, value) {
+// ReadDefaultArm reads into value's storage in place; false on a refused read.
+_M.ReadDefaultArm <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 2)) return false;
   value.EntriesCount = _h.value;
   for (local i = 0; i < value.EntriesCount; i++) {
-    if (!_Wire_.ReadProbeConfigBody(stream, value.Entries[i])) return false;
+    if (!_Wire_.ReadProbeConfig(stream, value.Entries[i])) return false;
   }
   if (!stream.serializeInt(_h, 0, 7)) return false;
   value.Marker = _h.value;
   return true;
-};
-
-// ReadDefaultArm reads one packet into value's storage in place; false on a refused read.
-_M.ReadDefaultArm <- function(stream, value) {
-  if (!_M.ReadDefaultArmBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteDefaultArm writes value in declared order; false on a refused value.
@@ -106,27 +100,21 @@ _M.DefaultChoice <- class {
 _M.DefaultChoiceMaxBits <- 79;
 _M.DefaultChoiceMaxBytes <- 16;
 
-// ReadDefaultChoiceBody reads the tag, then the selected arm in place without the packet end check; false on a refused read.
-_M.ReadDefaultChoiceBody <- function(stream, value) {
+// ReadDefaultChoice reads the tag, then the selected arm in place; false on a refused read.
+_M.ReadDefaultChoice <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 2)) return false;
   value.Type = _h.value;
   switch (value.Type) {
     case 1: // First
       value.First = _M.DefaultArm();
-      if (!_M.ReadDefaultArmBody(stream, value.First)) return false;
+      if (!_M.ReadDefaultArm(stream, value.First)) return false;
       break;
     case 2: // Second
       value.Second = _M.DefaultArm();
-      if (!_M.ReadDefaultArmBody(stream, value.Second)) return false;
+      if (!_M.ReadDefaultArm(stream, value.Second)) return false;
       break;
   }
   return true;
-};
-
-// ReadDefaultChoice reads one packet into value's storage in place; false on a refused read.
-_M.ReadDefaultChoice <- function(stream, value) {
-  if (!_M.ReadDefaultChoiceBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteDefaultChoice writes the tag, then the selected arm; false on a refused value.
@@ -158,16 +146,10 @@ _M.DefaultChoicePacket <- class {
 _M.DefaultChoicePacketMaxBits <- 79;
 _M.DefaultChoicePacketMaxBytes <- 16;
 
-// ReadDefaultChoicePacketBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadDefaultChoicePacketBody <- function(stream, value) {
-  if (!_M.ReadDefaultChoiceBody(stream, value.Choice)) return false;
-  return true;
-};
-
-// ReadDefaultChoicePacket reads one packet into value's storage in place; false on a refused read.
+// ReadDefaultChoicePacket reads into value's storage in place; false on a refused read.
 _M.ReadDefaultChoicePacket <- function(stream, value) {
-  if (!_M.ReadDefaultChoicePacketBody(stream, value)) return false;
-  return stream.serializeEnd();
+  if (!_M.ReadDefaultChoice(stream, value.Choice)) return false;
+  return true;
 };
 
 // WriteDefaultChoicePacket writes value in declared order; false on a refused value.
@@ -193,9 +175,9 @@ _M.DefaultBulkArm <- class {
 _M.DefaultBulkArmMaxBits <- 102;
 _M.DefaultBulkArmMaxBytes <- 16;
 
-// ReadDefaultBulkArmBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadDefaultBulkArmBody <- function(stream, value) {
-  if (!_M.ReadDefaultArmBody(stream, value.Payload)) return false;
+// ReadDefaultBulkArm reads into value's storage in place; false on a refused read.
+_M.ReadDefaultBulkArm <- function(stream, value) {
+  if (!_M.ReadDefaultArm(stream, value.Payload)) return false;
   if (!stream.serializeInt(_h, 0, 2)) return false;
   value.DataLength = _h.value;
   {
@@ -205,12 +187,6 @@ _M.ReadDefaultBulkArmBody <- function(stream, value) {
     value.Data.writeblob(_tmp);
   }
   return true;
-};
-
-// ReadDefaultBulkArm reads one packet into value's storage in place; false on a refused read.
-_M.ReadDefaultBulkArm <- function(stream, value) {
-  if (!_M.ReadDefaultBulkArmBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteDefaultBulkArm writes value in declared order; false on a refused value.
@@ -259,27 +235,21 @@ _M.DefaultBulkChoice <- class {
 _M.DefaultBulkChoiceMaxBits <- 104;
 _M.DefaultBulkChoiceMaxBytes <- 16;
 
-// ReadDefaultBulkChoiceBody reads the tag, then the selected arm in place without the packet end check; false on a refused read.
-_M.ReadDefaultBulkChoiceBody <- function(stream, value) {
+// ReadDefaultBulkChoice reads the tag, then the selected arm in place; false on a refused read.
+_M.ReadDefaultBulkChoice <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 2)) return false;
   value.Type = _h.value;
   switch (value.Type) {
     case 1: // First
       value.First = _M.DefaultBulkArm();
-      if (!_M.ReadDefaultBulkArmBody(stream, value.First)) return false;
+      if (!_M.ReadDefaultBulkArm(stream, value.First)) return false;
       break;
     case 2: // Second
       value.Second = _M.DefaultBulkArm();
-      if (!_M.ReadDefaultBulkArmBody(stream, value.Second)) return false;
+      if (!_M.ReadDefaultBulkArm(stream, value.Second)) return false;
       break;
   }
   return true;
-};
-
-// ReadDefaultBulkChoice reads one packet into value's storage in place; false on a refused read.
-_M.ReadDefaultBulkChoice <- function(stream, value) {
-  if (!_M.ReadDefaultBulkChoiceBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteDefaultBulkChoice writes the tag, then the selected arm; false on a refused value.

@@ -906,16 +906,25 @@ def message_array(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
         rep.malformed = true
         return false
     let ed = elem_of(f)
+    let keep = n
     if ult(f.bound, n):
         return message_refuse(rep, "count_over_bound")
+    var walk = n
+    if e.element.bits >= 0:
+        walk = keep
     var i = 0
-    while i < n:
-        let cell = sl.elems[i]
+    while i < walk:
+        var cell = Value {}
+        if i < keep:
+            cell = sl.elems[i]
         if not message_cell(m, cell, ed, f.ek, e.element, true):
             return false
         i++
+    if walk < n and not mb_skip(m.bits, (n - walk) * e.element.bits):
+        rep.malformed = true
+        return false
     if f.array == "counted":
-        sl.count = n
+        sl.count = keep
     return true
 
 // message_keyed reads an enum-keyed array (§3.2): the present-slot count, then

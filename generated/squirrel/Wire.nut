@@ -125,8 +125,8 @@ _M.ProbeHeader <- class {
 _M.ProbeHeaderMaxBits <- 87;
 _M.ProbeHeaderMaxBytes <- 16;
 
-// ReadProbeHeaderBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadProbeHeaderBody <- function(stream, value) {
+// ReadProbeHeader reads into value's storage in place; false on a refused read.
+_M.ReadProbeHeader <- function(stream, value) {
   if (!stream.serializeBits(_h, 8) || _h.value != 171) return false; // const(171, 8)
   if (!stream.serializeBits(_h, 3)) return false;
   value.Version = _h.value;
@@ -135,12 +135,6 @@ _M.ReadProbeHeaderBody <- function(stream, value) {
   if (!stream.serializeBits64(_h, 64)) return false;
   value.ProbeId = _h.value;
   return true;
-};
-
-// ReadProbeHeader reads one packet into value's storage in place; false on a refused read.
-_M.ReadProbeHeader <- function(stream, value) {
-  if (!_M.ReadProbeHeaderBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteProbeHeader writes value in declared order; false on a refused value.
@@ -180,8 +174,8 @@ _M.ProbeBits <- class {
 _M.ProbeBitsMaxBits <- 202;
 _M.ProbeBitsMaxBytes <- 32;
 
-// ReadProbeBitsBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadProbeBitsBody <- function(stream, value) {
+// ReadProbeBits reads into value's storage in place; false on a refused read.
+_M.ReadProbeBits <- function(stream, value) {
   if (!stream.serializeBits(_h, 9)) return false;
   value.Small = _h.value;
   if (!stream.serializeBits64(_h, 33)) return false;
@@ -193,12 +187,6 @@ _M.ReadProbeBitsBody <- function(stream, value) {
   if (!stream.serializeBits64(_h, 64)) return false;
   value.Nonce = _h.value;
   return true;
-};
-
-// ReadProbeBits reads one packet into value's storage in place; false on a refused read.
-_M.ReadProbeBits <- function(stream, value) {
-  if (!_M.ReadProbeBitsBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteProbeBits writes value in declared order; false on a refused value.
@@ -257,8 +245,8 @@ _M.ProbeSample <- class {
 _M.ProbeSampleMaxBits <- 276;
 _M.ProbeSampleMaxBytes <- 40;
 
-// ReadProbeSampleBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadProbeSampleBody <- function(stream, value) {
+// ReadProbeSample reads into value's storage in place; false on a refused read.
+_M.ReadProbeSample <- function(stream, value) {
   if (!stream.serializeBool(_h)) return false;
   value.Active = _h.value;
   if (!stream.serializeCompressedFloat(_h, -180.0, 180.0, 0.01)) return false;
@@ -293,12 +281,6 @@ _M.ReadProbeSampleBody <- function(stream, value) {
     value.Samples[i] = _h.value;
   }
   return true;
-};
-
-// ReadProbeSample reads one packet into value's storage in place; false on a refused read.
-_M.ReadProbeSample <- function(stream, value) {
-  if (!_M.ReadProbeSampleBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteProbeSample writes value in declared order; false on a refused value.
@@ -353,17 +335,11 @@ _M.ProbeRing <- class {
 _M.ProbeRingMaxBits <- 16;
 _M.ProbeRingMaxBytes <- 8;
 
-// ReadProbeRingBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadProbeRingBody <- function(stream, value) {
+// ReadProbeRing reads into value's storage in place; false on a refused read.
+_M.ReadProbeRing <- function(stream, value) {
   if (!stream.serializeBits(_h, 16)) return false;
   value.Radius = _h.value;
   return true;
-};
-
-// ReadProbeRing reads one packet into value's storage in place; false on a refused read.
-_M.ReadProbeRing <- function(stream, value) {
-  if (!_M.ReadProbeRingBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteProbeRing writes value in declared order; false on a refused value.
@@ -389,19 +365,13 @@ _M.ProbeSlab <- class {
 _M.ProbeSlabMaxBits <- 15;
 _M.ProbeSlabMaxBytes <- 8;
 
-// ReadProbeSlabBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadProbeSlabBody <- function(stream, value) {
+// ReadProbeSlab reads into value's storage in place; false on a refused read.
+_M.ReadProbeSlab <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 100)) return false;
   value.Width = _h.value;
   if (!stream.serializeBits(_h, 8)) return false;
   value.Height = _h.value;
   return true;
-};
-
-// ReadProbeSlab reads one packet into value's storage in place; false on a refused read.
-_M.ReadProbeSlab <- function(stream, value) {
-  if (!_M.ReadProbeSlabBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteProbeSlab writes value in declared order; false on a refused value.
@@ -450,27 +420,21 @@ _M.ProbeShape <- class {
 _M.ProbeShapeMaxBits <- 18;
 _M.ProbeShapeMaxBytes <- 8;
 
-// ReadProbeShapeBody reads the tag, then the selected arm in place without the packet end check; false on a refused read.
-_M.ReadProbeShapeBody <- function(stream, value) {
+// ReadProbeShape reads the tag, then the selected arm in place; false on a refused read.
+_M.ReadProbeShape <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 2)) return false;
   value.Type = _h.value;
   switch (value.Type) {
     case 1: // Ring
       value.Ring = _M.ProbeRing();
-      if (!_M.ReadProbeRingBody(stream, value.Ring)) return false;
+      if (!_M.ReadProbeRing(stream, value.Ring)) return false;
       break;
     case 2: // Slab
       value.Slab = _M.ProbeSlab();
-      if (!_M.ReadProbeSlabBody(stream, value.Slab)) return false;
+      if (!_M.ReadProbeSlab(stream, value.Slab)) return false;
       break;
   }
   return true;
-};
-
-// ReadProbeShape reads one packet into value's storage in place; false on a refused read.
-_M.ReadProbeShape <- function(stream, value) {
-  if (!_M.ReadProbeShapeBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteProbeShape writes the tag, then the selected arm; false on a refused value.
@@ -511,24 +475,18 @@ _M.ProbeCollider <- class {
 _M.ProbeColliderMaxBits <- 82;
 _M.ProbeColliderMaxBytes <- 16;
 
-// ReadProbeColliderBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadProbeColliderBody <- function(stream, value) {
+// ReadProbeCollider reads into value's storage in place; false on a refused read.
+_M.ReadProbeCollider <- function(stream, value) {
   if (!stream.serializeBits(_h, 8)) return false;
   value.Armor = _h.value;
-  if (!_M.ReadProbeShapeBody(stream, value.Shape)) return false;
-  if (!_M.ReadProbeShapeBody(stream, value.Backup)) return false;
+  if (!_M.ReadProbeShape(stream, value.Shape)) return false;
+  if (!_M.ReadProbeShape(stream, value.Backup)) return false;
   if (!stream.serializeInt(_h, 0, 2)) return false;
   value.ExtrasCount = _h.value;
   for (local i = 0; i < value.ExtrasCount; i++) {
-    if (!_M.ReadProbeShapeBody(stream, value.Extras[i])) return false;
+    if (!_M.ReadProbeShape(stream, value.Extras[i])) return false;
   }
   return true;
-};
-
-// ReadProbeCollider reads one packet into value's storage in place; false on a refused read.
-_M.ReadProbeCollider <- function(stream, value) {
-  if (!_M.ReadProbeColliderBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteProbeCollider writes value in declared order; false on a refused value.
@@ -562,19 +520,13 @@ _M.ProbeConfig <- class {
 _M.ProbeConfigMaxBits <- 36;
 _M.ProbeConfigMaxBytes <- 8;
 
-// ReadProbeConfigBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadProbeConfigBody <- function(stream, value) {
+// ReadProbeConfig reads into value's storage in place; false on a refused read.
+_M.ReadProbeConfig <- function(stream, value) {
   if (!stream.serializeBits(_h, 32)) return false;
   value.Retries = ((_h.value << 32) >> 32);
   if (!stream.serializeInt(_h, 0, 15)) return false;
   value.Preferred = _h.value;
   return true;
-};
-
-// ReadProbeConfig reads one packet into value's storage in place; false on a refused read.
-_M.ReadProbeConfig <- function(stream, value) {
-  if (!_M.ReadProbeConfigBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteProbeConfig writes value in declared order; false on a refused value.
@@ -604,19 +556,13 @@ _M.ProbeArray <- class {
 _M.ProbeArrayMaxBits <- 588;
 _M.ProbeArrayMaxBytes <- 80;
 
-// ReadProbeArrayBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadProbeArrayBody <- function(stream, value) {
-  for (local i = 0; i < 2; i++) {
-    if (!_M.ReadProbeSampleBody(stream, value.Samples[i])) return false;
-  }
-  if (!_M.ReadProbeConfigBody(stream, value.Config)) return false;
-  return true;
-};
-
-// ReadProbeArray reads one packet into value's storage in place; false on a refused read.
+// ReadProbeArray reads into value's storage in place; false on a refused read.
 _M.ReadProbeArray <- function(stream, value) {
-  if (!_M.ReadProbeArrayBody(stream, value)) return false;
-  return stream.serializeEnd();
+  for (local i = 0; i < 2; i++) {
+    if (!_M.ReadProbeSample(stream, value.Samples[i])) return false;
+  }
+  if (!_M.ReadProbeConfig(stream, value.Config)) return false;
+  return true;
 };
 
 // WriteProbeArray writes value in declared order; false on a refused value.
@@ -640,15 +586,9 @@ _M.Heartbeat <- class {
 _M.HeartbeatMaxBits <- 0;
 _M.HeartbeatMaxBytes <- 0;
 
-// ReadHeartbeatBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadHeartbeatBody <- function(stream, value) {
-  return true;
-};
-
-// ReadHeartbeat reads one packet into value's storage in place; false on a refused read.
+// ReadHeartbeat reads into value's storage in place; false on a refused read.
 _M.ReadHeartbeat <- function(stream, value) {
-  if (!_M.ReadHeartbeatBody(stream, value)) return false;
-  return stream.serializeEnd();
+  return true;
 };
 
 // WriteHeartbeat writes value in declared order; false on a refused value.
@@ -675,8 +615,8 @@ _M.Test <- class {
 _M.TestMaxBits <- 46;
 _M.TestMaxBytes <- 8;
 
-// ReadTestBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadTestBody <- function(stream, value) {
+// ReadTest reads into value's storage in place; false on a refused read.
+_M.ReadTest <- function(stream, value) {
   if (!stream.serializeBits(_h, 16)) return false;
   value.TestA = _h.value;
   if (!stream.serializeInt(_h, 0, 1000)) return false;
@@ -686,12 +626,6 @@ _M.ReadTestBody <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 1000)) return false;
   value.TestD = _h.value;
   return true;
-};
-
-// ReadTest reads one packet into value's storage in place; false on a refused read.
-_M.ReadTest <- function(stream, value) {
-  if (!_M.ReadTestBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteTest writes value in declared order; false on a refused value.
@@ -723,8 +657,8 @@ _M.Block <- class {
 _M.BlockMaxBits <- 16018;
 _M.BlockMaxBytes <- 2008;
 
-// ReadBlockBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadBlockBody <- function(stream, value) {
+// ReadBlock reads into value's storage in place; false on a refused read.
+_M.ReadBlock <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 2000)) return false;
   value.DataLength = _h.value;
   {
@@ -734,12 +668,6 @@ _M.ReadBlockBody <- function(stream, value) {
     value.Data.writeblob(_tmp);
   }
   return true;
-};
-
-// ReadBlock reads one packet into value's storage in place; false on a refused read.
-_M.ReadBlock <- function(stream, value) {
-  if (!_M.ReadBlockBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteBlock writes value in declared order; false on a refused value.
@@ -766,8 +694,8 @@ _M.Chat <- class {
 _M.ChatMaxBits <- 2064;
 _M.ChatMaxBytes <- 264;
 
-// ReadChatBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadChatBody <- function(stream, value) {
+// ReadChat reads into value's storage in place; false on a refused read.
+_M.ReadChat <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 256)) return false;
   value.TextLength = _h.value;
   {
@@ -778,12 +706,6 @@ _M.ReadChatBody <- function(stream, value) {
     value.Text.writeblob(_tmp);
   }
   return true;
-};
-
-// ReadChat reads one packet into value's storage in place; false on a refused read.
-_M.ReadChat <- function(stream, value) {
-  if (!_M.ReadChatBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteChat writes value in declared order; false on a refused value.
@@ -812,19 +734,13 @@ _M.ProbeReport <- class {
 _M.ProbeReportMaxBits <- 141;
 _M.ProbeReportMaxBytes <- 24;
 
-// ReadProbeReportBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadProbeReportBody <- function(stream, value) {
-  if (!_M.ReadProbeHeaderBody(stream, value.Header)) return false;
+// ReadProbeReport reads into value's storage in place; false on a refused read.
+_M.ReadProbeReport <- function(stream, value) {
+  if (!_M.ReadProbeHeader(stream, value.Header)) return false;
   if (!stream.serializeBits(_h, 8)) return false;
   value.Flags = _h.value;
-  if (!_M.ReadTestBody(stream, value.Echo)) return false;
+  if (!_M.ReadTest(stream, value.Echo)) return false;
   return true;
-};
-
-// ReadProbeReport reads one packet into value's storage in place; false on a refused read.
-_M.ReadProbeReport <- function(stream, value) {
-  if (!_M.ReadProbeReportBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteProbeReport writes value in declared order; false on a refused value.
@@ -894,8 +810,8 @@ _M.TestData <- class {
 _M.TestDataMaxBits <- 2735;
 _M.TestDataMaxBytes <- 344;
 
-// ReadTestDataBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadTestDataBody <- function(stream, value) {
+// ReadTestData reads into value's storage in place; false on a refused read.
+_M.ReadTestData <- function(stream, value) {
   if (!stream.serializeInt(_h, -100, 100)) return false;
   value.A = _h.value;
   if (!stream.serializeInt(_h, -100, 100)) return false;
@@ -953,12 +869,6 @@ _M.ReadTestDataBody <- function(stream, value) {
     value.Text.writeblob(_tmp);
   }
   return true;
-};
-
-// ReadTestData reads one packet into value's storage in place; false on a refused read.
-_M.ReadTestData <- function(stream, value) {
-  if (!_M.ReadTestDataBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteTestData writes value in declared order; false on a refused value.
@@ -1044,19 +954,13 @@ _M.CompressedProbe <- class {
 _M.CompressedProbeMaxBits <- 24;
 _M.CompressedProbeMaxBytes <- 8;
 
-// ReadCompressedProbeBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadCompressedProbeBody <- function(stream, value) {
+// ReadCompressedProbe reads into value's storage in place; false on a refused read.
+_M.ReadCompressedProbe <- function(stream, value) {
   if (!stream.serializeCompressedFloat(_h, 0.0, 10.0, 0.01)) return false;
   value.Boundary = _h.value;
   if (!stream.serializeCompressedFloat(_h, -5.0, 5.0, 0.001)) return false;
   value.Offset = _h.value;
   return true;
-};
-
-// ReadCompressedProbe reads one packet into value's storage in place; false on a refused read.
-_M.ReadCompressedProbe <- function(stream, value) {
-  if (!_M.ReadCompressedProbeBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteCompressedProbe writes value in declared order; false on a refused value.

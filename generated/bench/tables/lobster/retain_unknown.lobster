@@ -118,9 +118,7 @@ def res_framed(rs:Resolver, c:Cursor, kind:int, depth:int) -> void:
     let sub = Cursor { b: substring(c.b, c.off, n), off: 0 }
     c.off += n
     let at = res_mark(rs)
-    // a framed table, array or keyed body is one level deeper; a union's
-    // frame adds none of its own (docs/SPEC-TABLES.md §4)
-    let nested = kind == 13 or kind == 14 or kind == 16
+    let nested = kind >= 13 and kind <= 16
     res_content(rs, sub, kind, depth + (if nested: 1 else: 0))
     res_patch(rs, at)
 
@@ -232,9 +230,7 @@ def res_payload(rs:Resolver, c:Cursor, kind:int, depth:int) -> void:
             return
         let arm_kind = cur_u8(c)
         res_u8(rs, arm_kind)
-        // a union is a level when its arm is structural (docs/SPEC-TABLES.md §4)
-        let level = arm_kind >= 13 and arm_kind <= 16
-        res_framed(rs, c, arm_kind, depth + (if level: 1 else: 0))
+        res_framed(rs, c, arm_kind, depth)
     elif kind == 13 or kind == 14 or kind == 16:
         res_framed(rs, c, kind, depth)
     else:

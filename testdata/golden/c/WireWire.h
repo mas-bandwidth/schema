@@ -51,7 +51,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_header( seria
 }
 
 /* Reads ProbeHeader. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_header_body_( serialize_read_stream_t * stream, example_probe_header_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_header( serialize_read_stream_t * stream, example_probe_header_t * value )
 {
     {
         serialize_uint32_t const_value = 0;
@@ -96,16 +96,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_header_b
         value->probe_id = (uint64_t) raw;
     }
     return 1;
-}
-
-/* Reads ProbeHeader as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_header( serialize_read_stream_t * stream, example_probe_header_t * value )
-{
-    if ( !schema_example_read_probe_header_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes ProbeBits. */
@@ -156,7 +146,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_bits( seriali
 }
 
 /* Reads ProbeBits. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_bits_body_( serialize_read_stream_t * stream, example_probe_bits_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_bits( serialize_read_stream_t * stream, example_probe_bits_t * value )
 {
     /* fixed 202-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 202 )
@@ -226,16 +216,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_bits_bod
     return 1;
 }
 
-/* Reads ProbeBits as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_bits( serialize_read_stream_t * stream, example_probe_bits_t * value )
-{
-    if ( !schema_example_read_probe_bits_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
-}
-
 /* Writes ProbeSample. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_sample( serialize_write_stream_t * stream, const example_probe_sample_t * value )
 {
@@ -243,7 +223,6 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_sample( seria
     {
         return 0;
     }
-    serialize_assert( value->orientation >= -180.0f && value->orientation <= 180.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->orientation, 36000u, 16, 360.0f, -180.0f ) )
     {
         return 0;
@@ -301,7 +280,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_sample( seria
 }
 
 /* Reads ProbeSample. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_sample_body_( serialize_read_stream_t * stream, example_probe_sample_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_sample( serialize_read_stream_t * stream, example_probe_sample_t * value )
 {
     {
         int bool_value = 0;
@@ -401,16 +380,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_sample_b
     return 1;
 }
 
-/* Reads ProbeSample as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_sample( serialize_read_stream_t * stream, example_probe_sample_t * value )
-{
-    if ( !schema_example_read_probe_sample_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
-}
-
 /* Writes ProbeRing. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_ring( serialize_write_stream_t * stream, const example_probe_ring_t * value )
 {
@@ -422,7 +391,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_ring( seriali
 }
 
 /* Reads ProbeRing. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_ring_body_( serialize_read_stream_t * stream, example_probe_ring_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_ring( serialize_read_stream_t * stream, example_probe_ring_t * value )
 {
     /* fixed 16-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 16 )
@@ -441,16 +410,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_ring_bod
     return 1;
 }
 
-/* Reads ProbeRing as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_ring( serialize_read_stream_t * stream, example_probe_ring_t * value )
-{
-    if ( !schema_example_read_probe_ring_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
-}
-
 /* Writes ProbeSlab. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_slab( serialize_write_stream_t * stream, const example_probe_slab_t * value )
 {
@@ -467,7 +426,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_slab( seriali
 }
 
 /* Reads ProbeSlab. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_slab_body_( serialize_read_stream_t * stream, example_probe_slab_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_slab( serialize_read_stream_t * stream, example_probe_slab_t * value )
 {
     /* fixed 15-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 15 )
@@ -500,16 +459,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_slab_bod
     return 1;
 }
 
-/* Reads ProbeSlab as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_slab( serialize_read_stream_t * stream, example_probe_slab_t * value )
-{
-    if ( !schema_example_read_probe_slab_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
-}
-
 /* Writes ProbeShape. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_shape( serialize_write_stream_t * stream, const example_probe_shape_t * value )
 {
@@ -530,7 +479,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_shape( serial
 }
 
 /* Reads ProbeShape. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_shape_body_( serialize_read_stream_t * stream, example_probe_shape_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_shape( serialize_read_stream_t * stream, example_probe_shape_t * value )
 {
     {
         serialize_uint32_t tag_value = 0;
@@ -548,23 +497,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_shape_bo
     {
         case 1:
             memset( &value->as.ring, 0, sizeof( value->as.ring ) );
-            return schema_example_read_probe_ring_body_( stream, &value->as.ring );
+            return example_read_probe_ring( stream, &value->as.ring );
         case 2:
             memset( &value->as.slab, 0, sizeof( value->as.slab ) );
-            return schema_example_read_probe_slab_body_( stream, &value->as.slab );
+            return example_read_probe_slab( stream, &value->as.slab );
         default:
             return 1; /* None */
     }
-}
-
-/* Reads ProbeShape as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_shape( serialize_read_stream_t * stream, example_probe_shape_t * value )
-{
-    if ( !schema_example_read_probe_shape_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes ProbeCollider. */
@@ -601,7 +540,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_collider( ser
 }
 
 /* Reads ProbeCollider. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_collider_body_( serialize_read_stream_t * stream, example_probe_collider_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_collider( serialize_read_stream_t * stream, example_probe_collider_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -611,11 +550,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_collider
         }
         value->armor = (uint8_t) raw;
     }
-    if ( !schema_example_read_probe_shape_body_( stream, &value->shape ) )
+    if ( !example_read_probe_shape( stream, &value->shape ) )
     {
         return 0;
     }
-    if ( !schema_example_read_probe_shape_body_( stream, &value->backup ) )
+    if ( !example_read_probe_shape( stream, &value->backup ) )
     {
         return 0;
     }
@@ -627,23 +566,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_collider
         int32_t i;
         for ( i = 0; i < value->extras_count; i++ )
         {
-            if ( !schema_example_read_probe_shape_body_( stream, &value->extras[i] ) )
+            if ( !example_read_probe_shape( stream, &value->extras[i] ) )
             {
                 return 0;
             }
         }
     }
     return 1;
-}
-
-/* Reads ProbeCollider as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_collider( serialize_read_stream_t * stream, example_probe_collider_t * value )
-{
-    if ( !schema_example_read_probe_collider_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes ProbeConfig. */
@@ -662,7 +591,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_config( seria
 }
 
 /* Reads ProbeConfig. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_config_body_( serialize_read_stream_t * stream, example_probe_config_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_config( serialize_read_stream_t * stream, example_probe_config_t * value )
 {
     /* fixed 36-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 36 )
@@ -689,16 +618,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_config_b
     return 1;
 }
 
-/* Reads ProbeConfig as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_config( serialize_read_stream_t * stream, example_probe_config_t * value )
-{
-    if ( !schema_example_read_probe_config_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
-}
-
 /* Writes ProbeArray. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_array( serialize_write_stream_t * stream, const example_probe_array_t * value )
 {
@@ -720,33 +639,23 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_array( serial
 }
 
 /* Reads ProbeArray. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_array_body_( serialize_read_stream_t * stream, example_probe_array_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_array( serialize_read_stream_t * stream, example_probe_array_t * value )
 {
     {
         int32_t i;
         for ( i = 0; i < 2; i++ )
         {
-            if ( !schema_example_read_probe_sample_body_( stream, &value->samples[i] ) )
+            if ( !example_read_probe_sample( stream, &value->samples[i] ) )
             {
                 return 0;
             }
         }
     }
-    if ( !schema_example_read_probe_config_body_( stream, &value->config ) )
+    if ( !example_read_probe_config( stream, &value->config ) )
     {
         return 0;
     }
     return 1;
-}
-
-/* Reads ProbeArray as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_array( serialize_read_stream_t * stream, example_probe_array_t * value )
-{
-    if ( !schema_example_read_probe_array_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes Heartbeat. */
@@ -758,21 +667,11 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_heartbeat( serializ
 }
 
 /* Reads Heartbeat. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_heartbeat_body_( serialize_read_stream_t * stream, example_heartbeat_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_heartbeat( serialize_read_stream_t * stream, example_heartbeat_t * value )
 {
     (void) stream;
     (void) value;
     return 1;
-}
-
-/* Reads Heartbeat as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_heartbeat( serialize_read_stream_t * stream, example_heartbeat_t * value )
-{
-    if ( !schema_example_read_heartbeat_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes Test. */
@@ -801,7 +700,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_test( serialize_wri
 }
 
 /* Reads Test. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_test_body_( serialize_read_stream_t * stream, example_test_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_test( serialize_read_stream_t * stream, example_test_t * value )
 {
     /* fixed 46-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 46 )
@@ -862,16 +761,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_test_body_( se
     return 1;
 }
 
-/* Reads Test as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_test( serialize_read_stream_t * stream, example_test_t * value )
-{
-    if ( !schema_example_read_test_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
-}
-
 /* Writes Block. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_block( serialize_write_stream_t * stream, const example_block_t * value )
 {
@@ -887,7 +776,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_block( serialize_wr
 }
 
 /* Reads Block. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_block_body_( serialize_read_stream_t * stream, example_block_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_block( serialize_read_stream_t * stream, example_block_t * value )
 {
     if ( !serialize_read_int( stream, &value->data_length, 0, EXAMPLE_MAX_BLOCK_SIZE ) )
     {
@@ -898,16 +787,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_block_body_( s
         return 0;
     }
     return 1;
-}
-
-/* Reads Block as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_block( serialize_read_stream_t * stream, example_block_t * value )
-{
-    if ( !schema_example_read_block_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes Chat. */
@@ -932,7 +811,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_chat( serialize_wri
 }
 
 /* Reads Chat. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_chat_body_( serialize_read_stream_t * stream, example_chat_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_chat( serialize_read_stream_t * stream, example_chat_t * value )
 {
     if ( !serialize_read_int( stream, &value->text_length, 0, EXAMPLE_MAX_CHAT_LENGTH ) )
     {
@@ -952,16 +831,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_chat_body_( se
     }
     value->text[value->text_length] = 0;
     return 1;
-}
-
-/* Reads Chat as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_chat( serialize_read_stream_t * stream, example_chat_t * value )
-{
-    if ( !schema_example_read_chat_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes ProbeReport. */
@@ -984,9 +853,9 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_report( seria
 }
 
 /* Reads ProbeReport. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_report_body_( serialize_read_stream_t * stream, example_probe_report_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_report( serialize_read_stream_t * stream, example_probe_report_t * value )
 {
-    if ( !schema_example_read_probe_header_body_( stream, &value->header ) )
+    if ( !example_read_probe_header( stream, &value->header ) )
     {
         return 0;
     }
@@ -998,21 +867,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_probe_report_b
         }
         value->flags = (example_probe_flags_t) flags_value;
     }
-    if ( !schema_example_read_test_body_( stream, &value->echo ) )
+    if ( !example_read_test( stream, &value->echo ) )
     {
         return 0;
     }
     return 1;
-}
-
-/* Reads ProbeReport as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_report( serialize_read_stream_t * stream, example_probe_report_t * value )
-{
-    if ( !schema_example_read_probe_report_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes TestData. */
@@ -1069,7 +928,6 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_test_data( serializ
     {
         return 0;
     }
-    serialize_assert( value->compressed_float_value >= 0.0f && value->compressed_float_value <= 10.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->compressed_float_value, 1000u, 10, 10.0f, 0.0f ) )
     {
         return 0;
@@ -1145,7 +1003,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_test_data( serializ
 }
 
 /* Reads TestData. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_test_data_body_( serialize_read_stream_t * stream, example_test_data_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_test_data( serialize_read_stream_t * stream, example_test_data_t * value )
 {
     {
         serialize_uint64_t offset_value = 0;
@@ -1356,25 +1214,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_test_data_body
     return 1;
 }
 
-/* Reads TestData as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_test_data( serialize_read_stream_t * stream, example_test_data_t * value )
-{
-    if ( !schema_example_read_test_data_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
-}
-
 /* Writes CompressedProbe. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_compressed_probe( serialize_write_stream_t * stream, const example_compressed_probe_t * value )
 {
-    serialize_assert( value->boundary >= 0.0f && value->boundary <= 10.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->boundary, 1000u, 10, 10.0f, 0.0f ) )
     {
         return 0;
     }
-    serialize_assert( value->offset >= -5.0f && value->offset <= 5.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->offset, 10000u, 14, 10.0f, -5.0f ) )
     {
         return 0;
@@ -1383,7 +1229,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_compressed_probe( s
 }
 
 /* Reads CompressedProbe. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_compressed_probe_body_( serialize_read_stream_t * stream, example_compressed_probe_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_compressed_probe( serialize_read_stream_t * stream, example_compressed_probe_t * value )
 {
     /* fixed 24-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 24 )
@@ -1400,16 +1246,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_compressed_pro
         return 0;
     }
     return 1;
-}
-
-/* Reads CompressedProbe as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_compressed_probe( serialize_read_stream_t * stream, example_compressed_probe_t * value )
-{
-    if ( !schema_example_read_compressed_probe_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 #ifdef __cplusplus

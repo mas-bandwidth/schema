@@ -2149,7 +2149,6 @@ namespace Blockdemo
                 info.RootElemSlots = 256;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2195,7 +2194,6 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2237,7 +2235,6 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2284,7 +2281,6 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2329,7 +2325,6 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2372,7 +2367,6 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2415,7 +2409,6 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2458,7 +2451,6 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2502,7 +2494,6 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2544,7 +2535,6 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2587,7 +2577,6 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2626,7 +2615,6 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -3699,7 +3687,6 @@ namespace Blockdemo
 
         public static long RenderCameraFixedSave(ReadOnlySpan<RenderCamera> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderCameraFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderCameraFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -3831,7 +3818,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -4387,7 +4374,6 @@ namespace Blockdemo
 
         public static long RenderShipFixedSave(ReadOnlySpan<RenderShip> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderShipFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderShipFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -4523,7 +4509,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -5036,7 +5022,6 @@ namespace Blockdemo
 
         public static long RenderTurretFixedSave(ReadOnlySpan<RenderTurret> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderTurretFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderTurretFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -5172,7 +5157,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -5697,7 +5682,6 @@ namespace Blockdemo
 
         public static long RenderMissileFixedSave(ReadOnlySpan<RenderMissile> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderMissileFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderMissileFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -5833,7 +5817,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -6361,7 +6345,6 @@ namespace Blockdemo
 
         public static long RenderDynamicPropFixedSave(ReadOnlySpan<RenderDynamicProp> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderDynamicPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderDynamicPropFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -6497,7 +6480,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -7026,7 +7009,6 @@ namespace Blockdemo
 
         public static long RenderStaticPropFixedSave(ReadOnlySpan<RenderStaticProp> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderStaticPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderStaticPropFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -7162,7 +7144,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -7698,7 +7680,6 @@ namespace Blockdemo
 
         public static long RenderCosmeticPropFixedSave(ReadOnlySpan<RenderCosmeticProp> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderCosmeticPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderCosmeticPropFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -7834,7 +7815,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -8345,7 +8326,6 @@ namespace Blockdemo
 
         public static long RenderLaserFixedSave(ReadOnlySpan<RenderLaser> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderLaserFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderLaserFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -8481,7 +8461,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -9007,7 +8987,6 @@ namespace Blockdemo
 
         public static long RenderExplosionFixedSave(ReadOnlySpan<RenderExplosion> values, Span<byte> buffer)
         {
-            System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderExplosionFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderExplosionFixedFiniteBody(values[k]) != null) { return -1; } }
@@ -9143,7 +9122,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;

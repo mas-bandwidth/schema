@@ -1147,116 +1147,13 @@ def fixed_text_ill_formed(meta:int, used:int, p:string, base:int) -> bool:
         return not fixed_utf8_valid_no_nul(p, base, used)
     return false
 
-// Dead payload bytes are storage slack: the check pass does not validate them
-// as values, and it REFUSES the whole load when any of them is not zero
-// (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3; docs/SPEC-TABLES.md §3.4,
-// §13.10; docs/rulings.json fixed-dead-bytes-are-zero).
+// Dead payload bytes are storage slack: do not validate absent optionals or
+// elements past a counted array's live extent (SPEC-TABLES §6.5).
 def fixed_dead_at(dead:[TableFixedHole], at:int) -> bool:
     for(dead) h:
         if at >= h.off and at < h.off + h.size:
             return true
     return false
-
-// fixed_dead_zero is whether every byte of a dead range is zero.
-def fixed_dead_zero(src:string, src_base:int, off:int, size:int) -> bool:
-    var i = 0
-    while i < size:
-        if read_uint8_le(src, src_base + off + i) != 0:
-            return false
-        i += 1
-    return true
-
-def fixed_entry_has_guard(p:TableFixedEntry, g:int) -> bool:
-    if p.grd == g:
-        return true
-    if p.arg_w2 != 0 and p.grd2 == g:
-        return true
-    for(p.chain) l:
-        if l.grd == g:
-            return true
-    return false
-
-def fixed_guard_width(p:TableFixedEntry, g:int) -> int:
-    if p.grd == g:
-        return fixed_arg_width(p.arg_w)
-    if p.arg_w2 != 0 and p.grd2 == g:
-        return fixed_arg_width(p.arg_w2)
-    for(p.chain) l:
-        if l.grd == g:
-            return fixed_arg_width(l.arg_w)
-    return 1
-
-def fixed_guard_arg(p:TableFixedEntry, g:int) -> int:
-    if p.grd == g:
-        return p.arg
-    if p.arg_w2 != 0 and p.grd2 == g:
-        return p.arg2
-    for(p.chain) l:
-        if l.grd == g:
-            return l.arg
-    return -1
-
-def fixed_guard_first(plan:[TableFixedEntry], count:int, at:int, g:int) -> bool:
-    for(at) j:
-        if fixed_entry_has_guard(plan[j], g):
-            return false
-    return true
-
-// fixed_guard_live is whether every guard OUTSIDE g on the entry's chain
-// holds, so a union inside an inactive arm is not walked as a union of its own.
-def fixed_guard_live(p:TableFixedEntry, g:int, src:string, src_base:int) -> bool:
-    for(p.chain) l:
-        if l.grd == g:
-            return true
-        if fixed_tag_at(src, src_base + l.grd, l.arg_w) != l.arg:
-            return false
-    return true
-
-// fixed_union_dead_refusal holds an inactive union arm to zero: the bytes
-// under tag 0, and the bytes past a narrower taken arm inside the widest
-// arm's span (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3 step 11).
-def fixed_union_dead_refusal(plan:[TableFixedEntry], count:int, src:string, src_base:int) -> string:
-    for(count) i:
-        let p = plan[i]
-        let guards:[int] = []
-        if p.grd != tableFixedNoGuard:
-            push(guards, p.grd)
-        if p.arg_w2 != 0:
-            push(guards, p.grd2)
-        for(p.chain) l:
-            push(guards, l.grd)
-        for(guards) g:
-            if not fixed_guard_first(plan, count, i, g):
-                continue
-            if not fixed_guard_live(p, g, src, src_base):
-                continue
-            let w = fixed_guard_width(p, g)
-            var span = g + w
-            var arms = 0
-            for(count) j:
-                let q = plan[j]
-                if fixed_entry_has_guard(q, g):
-                    let end = fixed_src_end(q)
-                    if end > span:
-                        span = end
-                    let a = fixed_guard_arg(q, g)
-                    if a > arms:
-                        arms = a
-            let tag = fixed_tag_at(src, src_base + g, w)
-            // A tag past the writer's arms is the bounds pass's out_of_range,
-            // never a dead-arm refusal.
-            if tag > 0 and tag > arms:
-                continue
-            var live = g + w
-            for(count) j:
-                let q = plan[j]
-                if fixed_entry_has_guard(q, g) and fixed_guard_arg(q, g) == tag:
-                    let end = fixed_src_end(q)
-                    if end > live:
-                        live = end
-            if live < span and not fixed_dead_zero(src, src_base, live, span - live):
-                return "wire_damaged"
-    return ""
 
 def fixed_value_refusal(plan:[TableFixedEntry], count:int, src:string, src_base:int) -> string:
     let dead:[TableFixedHole] = []
@@ -1279,8 +1176,6 @@ def fixed_value_refusal(plan:[TableFixedEntry], count:int, src:string, src_base:
                         if v > 1:
                             return "wire_damaged"
                         if p.meta == tableFixedPresent and v == 0:
-                            if not fixed_dead_zero(src, src_base, p.src + 1, p.aux):
-                                return "wire_damaged"
                             push(dead, TableFixedHole { off: p.src + 1, size: p.aux })
             elif p.op == tableFixedTag:
                 if ult(p.aux, fixed_tag_at(src, src_base + p.src, p.size)):
@@ -1297,19 +1192,15 @@ def fixed_value_refusal(plan:[TableFixedEntry], count:int, src:string, src_base:
                 if v < 0 or v > p.size:
                     return TableRefuseCountOverBound
                 if p.aux > 0 and v < p.size:
-                    if not fixed_dead_zero(src, src_base, p.src + 4 + v * p.aux, (p.size - v) * p.aux):
-                        return "wire_damaged"
                     push(dead, TableFixedHole { off: p.src + 4 + v * p.aux, size: (p.size - v) * p.aux })
             elif p.op == tableFixedText:
                 let capn = p.size
                 let v = read_int32_le(src, src_base + p.src)
                 if v < 0 or v > capn:
                     return TableRefuseLengthOverBound
-                if v < capn and not fixed_dead_zero(src, src_base, p.src + 4 + v, capn - v):
-                    return "wire_damaged"
                 if fixed_text_ill_formed(p.meta, v, src, src_base + p.src + 4):
                     return TableRefuseTextIllFormed
-    return fixed_union_dead_refusal(plan, count, src, src_base)
+    return ""
 
 def fixed_copy_run(dst:string, dst_off:int, src:string, src_off:int, n:int) -> string:
     var b = dst

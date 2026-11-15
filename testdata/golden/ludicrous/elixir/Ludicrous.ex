@@ -453,17 +453,8 @@ defmodule Ludicrous.Ludicrous do
   @spec read_fixed_probe(binary(), non_neg_integer()) :: {:ok, Ludicrous.FixedProbe.t()} | :error
   def read_fixed_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_fixed_probe_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -684,17 +675,8 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.UnsignedProbe.t()} | :error
   def read_unsigned_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_unsigned_probe_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -927,17 +909,8 @@ defmodule Ludicrous.Ludicrous do
   @spec read_wide_probe(binary(), non_neg_integer()) :: {:ok, Ludicrous.WideProbe.t()} | :error
   def read_wide_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_wide_probe_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1448,17 +1421,8 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.LudicrousState.t()} | :error
   def read_ludicrous_state(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_ludicrous_state_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1572,17 +1536,8 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.DegenerateProbe.t()} | :error
   def read_degenerate_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_degenerate_probe_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1736,17 +1691,8 @@ defmodule Ludicrous.Ludicrous do
   @spec read_fixed_vec(binary(), non_neg_integer()) :: {:ok, Ludicrous.FixedVec.t()} | :error
   def read_fixed_vec(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_fixed_vec_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -1892,17 +1838,8 @@ defmodule Ludicrous.Ludicrous do
   @spec read_fixed_quat(binary(), non_neg_integer()) :: {:ok, Ludicrous.FixedQuat.t()} | :error
   def read_fixed_quat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_fixed_quat_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 

@@ -42,10 +42,9 @@ pub fn mixed_event_fixed_write_body(b: &mut [u8], value: &MixedEventRow) {
         1 => {
             // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,
             // and the same one the C reference's storage struct carries. The
-            // tag was just matched against `hit`, and the overlay's zero form
-            // is a value of every arm — zero is valid for every scalar and
-            // every bool, and a zero self-relative delta is the null
-            // reference — so a Row whose tag was set without its arm reads a
+            // tag was just matched against `hit`, every arm is plain data
+            // with no niche in it, and the overlay's zero form is a value of
+            // every arm — so a Row whose tag was set without its arm reads a
             // zero payload rather than an invalid one.
             let arm = unsafe { value.arms.hit };
             let at = 1;
@@ -54,10 +53,9 @@ pub fn mixed_event_fixed_write_body(b: &mut [u8], value: &MixedEventRow) {
         2 => {
             // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,
             // and the same one the C reference's storage struct carries. The
-            // tag was just matched against `chat`, and the overlay's zero form
-            // is a value of every arm — zero is valid for every scalar and
-            // every bool, and a zero self-relative delta is the null
-            // reference — so a Row whose tag was set without its arm reads a
+            // tag was just matched against `chat`, every arm is plain data
+            // with no niche in it, and the overlay's zero form is a value of
+            // every arm — so a Row whose tag was set without its arm reads a
             // zero payload rather than an invalid one.
             let arm = unsafe { value.arms.chat };
             let at = 1;
@@ -66,10 +64,9 @@ pub fn mixed_event_fixed_write_body(b: &mut [u8], value: &MixedEventRow) {
         3 => {
             // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,
             // and the same one the C reference's storage struct carries. The
-            // tag was just matched against `pickup`, and the overlay's zero form
-            // is a value of every arm — zero is valid for every scalar and
-            // every bool, and a zero self-relative delta is the null
-            // reference — so a Row whose tag was set without its arm reads a
+            // tag was just matched against `pickup`, every arm is plain data
+            // with no niche in it, and the overlay's zero form is a value of
+            // every arm — so a Row whose tag was set without its arm reads a
             // zero payload rather than an invalid one.
             let arm = unsafe { value.arms.pickup };
             let at = 1;

@@ -63,14 +63,10 @@ function validText(bytes, length) {
 
 // ---- type ProbeHeader: the flat codec ----
 
-// WriteProbeHeaderFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract, in every build (SPEC §5.1). The buffer behind view
-// must hold ProbeHeaderMaxBytes.
+// WriteProbeHeaderFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract. The buffer behind view must hold ProbeHeaderMaxBytes.
 export function WriteProbeHeaderFlat(view, value) {
   let v = 0, lo = 0;
-  if (!Number.isInteger(value.version) || value.version < 0 || value.version > 7) {
-    return -1;
-  }
   lo = (171 | ((value.version & 0x7) << 8) | (0 << 11));
   SC.setBigUint64(0, value.probeId, true);
   v = SC.getUint32(0, true);
@@ -113,45 +109,7 @@ export function ReadProbeHeaderFlat(view, numBits, value) {
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.probeId = bg;
-  if (((80 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
   return true;
-}
-
-// ReadProbeHeaderFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadProbeHeaderFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadProbeHeaderFlatBits(view, numBits, value) {
-  let v = 0, out = 0;
-  let bg = 0n;
-  if (16 > numBits) {
-    return false;
-  }
-  out = view.getUint32(0, true);
-  v = (out & 0xff) >>> 0;
-  if (v !== 171) { // a read rejects any other value
-    return false;
-  }
-  v = (out >>> 8) & 0x7;
-  value.version = v;
-  v = (out >>> 11) & 0x1f;
-  if (v !== 0) { // reserved bits must read zero
-    return false;
-  }
-  if (80 > numBits) {
-    return false;
-  }
-  out = view.getUint32(2, true);
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  out = view.getUint32(6, true);
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  bg = SC.getBigUint64(0, true);
-  value.probeId = bg;
-  return 80;
 }
 
 // ---- type ProbeBits: the flat codec ----
@@ -161,12 +119,6 @@ export function ReadProbeHeaderFlatBits(view, numBits, value) {
 // must hold ProbeBitsMaxBytes.
 export function WriteProbeBitsFlat(view, value) {
   let v = 0, lo = 0;
-  if (!Number.isInteger(value.small) || value.small < 0 || value.small > 511) {
-    return -1;
-  }
-  if (value.boundary < 0n || value.boundary > 8589934591n) {
-    return -1;
-  }
   lo = ((value.small & 0x1ff));
   SC.setBigUint64(0, value.boundary, true);
   v = SC.getUint32(0, true);
@@ -174,9 +126,6 @@ export function WriteProbeBitsFlat(view, value) {
   lo = v >>> 23;
   v = SC.getUint32(4, true) & 0x1;
   lo = (lo | (v << 9)) >>> 0;
-  if (value.wide < 0n || value.wide > 18446744073709551615n) {
-    return -1;
-  }
   SC.setBigUint64(0, value.wide, true);
   v = SC.getUint32(0, true);
   view.setUint32(4, (lo | (v << 10)) >>> 0, true);
@@ -185,9 +134,6 @@ export function WriteProbeBitsFlat(view, value) {
   view.setUint32(8, (lo | (v << 10)) >>> 0, true);
   lo = v >>> 22;
   if (!Number.isInteger(value.sensor) || value.sensor < 0 || value.sensor > 4294967295) {
-    return -1;
-  }
-  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
     return -1;
   }
   v = (((value.sensor) >>> 0)) >>> 0;
@@ -242,56 +188,7 @@ export function ReadProbeBitsFlat(view, numBits, value) {
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.nonce = bg;
-  if (((202 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
-  if ((view.getUint8(25) & 0xfc) !== 0) { // nonzero unused bits in the final byte
-    return false;
-  }
   return true;
-}
-
-// ReadProbeBitsFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadProbeBitsFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadProbeBitsFlatBits(view, numBits, value) {
-  let v = 0, out = 0;
-  let bg = 0n;
-  if (202 > numBits) {
-    return false;
-  }
-  out = view.getUint32(0, true);
-  v = (out & 0x1ff) >>> 0;
-  value.small = v;
-  out = (view.getUint32(1, true) >>> 1) | (view.getUint32(5, true) << 31);
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  out = (view.getUint32(5, true) >>> 1) | (view.getUint32(9, true) << 31);
-  v = (out & 0x1) >>> 0;
-  SC.setUint32(4, v, true);
-  bg = SC.getBigUint64(0, true);
-  value.boundary = bg;
-  out = (view.getUint32(5, true) >>> 2) | (view.getUint32(9, true) << 30);
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  out = (view.getUint32(9, true) >>> 2) | (view.getUint32(13, true) << 30);
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  bg = SC.getBigUint64(0, true);
-  value.wide = bg;
-  out = (view.getUint32(13, true) >>> 2) | (view.getUint32(17, true) << 30);
-  v = out >>> 0;
-  value.sensor = v;
-  out = (view.getUint32(17, true) >>> 2) | (view.getUint32(21, true) << 30);
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  out = (view.getUint32(21, true) >>> 2) | (view.getUint32(25, true) << 30);
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  bg = SC.getBigUint64(0, true);
-  value.nonce = bg;
-  return 202;
 }
 
 // ---- type ProbeSample: the flat codec ----
@@ -304,9 +201,6 @@ export function WriteProbeSampleFlat(view, value) {
   lo = ((value.active ? 1 : 0));
   x = Math.fround(value.orientation);
   if (!Number.isFinite(x)) {
-    return -1;
-  }
-  if (x < -180.0 || x > 180.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - -180.0) / 360.0);
@@ -488,117 +382,7 @@ export function ReadProbeSampleFlat(view, numBits, value) {
     value.samples[i0] = v;
     br += 16;
   }
-  s2 = (br + 7) >> 3;
-  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
-  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
-    return false;
-  }
   return true;
-}
-
-// ReadProbeSampleFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadProbeSampleFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadProbeSampleFlatBits(view, numBits, value) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
-  let bg = 0n;
-  if (113 > numBits) {
-    return false;
-  }
-  out = view.getUint32(0, true);
-  v = (out & 0x1) >>> 0;
-  value.active = v !== 0;
-  v = (out >>> 1) & 0xffff;
-  if (v > 36000) { // headroom above the quantum count is refused
-    return false;
-  }
-  value.orientation = Math.fround(Math.fround(Math.fround(Math.fround(v) / 36000.0) * 360.0) + -180.0);
-  out = (view.getUint32(2, true) >>> 1) | (view.getUint32(6, true) << 31);
-  v = out >>> 0;
-  value.rawDelta = v | 0;
-  out = (view.getUint32(6, true) >>> 1) | (view.getUint32(10, true) << 31);
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  out = (view.getUint32(10, true) >>> 1) | (view.getUint32(14, true) << 31);
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  bg = SC.getBigUint64(0, true);
-  value.bigDelta = BigInt.asIntN(64, bg);
-  br = 113;
-  if (value.active) {
-    if (br + 5 > numBits) {
-      return false;
-    }
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    v = (out & 0xf) >>> 0;
-    value.weapon = v;
-    v = (out >>> 4) & 0x1;
-    value.hasTarget = v !== 0;
-    br += 5;
-    if (value.hasTarget) {
-      if (br + 16 > numBits) {
-        return false;
-      }
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      v = (out & 0xffff) >>> 0;
-      value.targetId = v;
-      br += 16;
-    } else {
-      value.targetId = 0;
-    }
-    value.idleTicks = 0;
-  } else {
-    if (br + 32 > numBits) {
-      return false;
-    }
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    v = out >>> 0;
-    value.idleTicks = v;
-    value.weapon = 0;
-    value.hasTarget = false;
-    value.targetId = 0;
-    br += 32;
-  }
-  if (br + 3 > numBits) {
-    return false;
-  }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = (out & 0x7) >>> 0;
-  value.samplesCount = v + 1;
-  br += 3;
-  if (br + value.samplesCount * 16 > numBits) {
-    return false;
-  }
-  for (let i0 = 0; i0 < value.samplesCount; i0++) {
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    v = (out & 0xffff) >>> 0;
-    value.samples[i0] = v;
-    br += 16;
-  }
-  return br;
 }
 
 // ---- type ProbeRing: the flat codec ----
@@ -622,25 +406,7 @@ export function ReadProbeRingFlat(view, numBits, value) {
   out = view.getUint32(0, true);
   v = (out & 0xffff) >>> 0;
   value.radius = v;
-  if (((16 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
   return true;
-}
-
-// ReadProbeRingFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadProbeRingFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadProbeRingFlatBits(view, numBits, value) {
-  let v = 0, out = 0;
-  if (16 > numBits) {
-    return false;
-  }
-  out = view.getUint32(0, true);
-  v = (out & 0xffff) >>> 0;
-  value.radius = v;
-  return 16;
 }
 
 // ---- type ProbeSlab: the flat codec ----
@@ -673,33 +439,7 @@ export function ReadProbeSlabFlat(view, numBits, value) {
   value.width = v | 0;
   v = (out >>> 7) & 0xff;
   value.height = v;
-  if (((15 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
-  if ((view.getUint8(1) & 0x80) !== 0) { // nonzero unused bits in the final byte
-    return false;
-  }
   return true;
-}
-
-// ReadProbeSlabFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadProbeSlabFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadProbeSlabFlatBits(view, numBits, value) {
-  let v = 0, out = 0;
-  if (15 > numBits) {
-    return false;
-  }
-  out = view.getUint32(0, true);
-  v = (out & 0x7f) >>> 0;
-  if (v > 100) { // a smuggled offset is refused
-    return false;
-  }
-  value.width = v | 0;
-  v = (out >>> 7) & 0xff;
-  value.height = v;
-  return 15;
 }
 
 // ---- union ProbeShape: the flat codec ----
@@ -801,71 +541,7 @@ export function ReadProbeShapeFlat(view, numBits, value) {
       break;
     }
   }
-  s2 = (br + 7) >> 3;
-  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
-  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
-    return false;
-  }
   return true;
-}
-
-// ReadProbeShapeFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadProbeShapeFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadProbeShapeFlatBits(view, numBits, value) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
-  if (2 > numBits) {
-    return false;
-  }
-  out = view.getUint32(0, true);
-  v = (out & 0x3) >>> 0;
-  if (v > 2) { // not a wire-legal tag (SPEC §4.8)
-    return false;
-  }
-  value.type = v;
-  br = 2;
-  switch (value.type) {
-    case 1: {
-      value.ring.radius = 0;
-      if (br + 16 > numBits) {
-        return false;
-      }
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      v = (out & 0xffff) >>> 0;
-      value.ring.radius = v;
-      br += 16;
-      break;
-    }
-    case 2: {
-      value.slab.width = 0;
-      value.slab.height = 0;
-      if (br + 15 > numBits) {
-        return false;
-      }
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      v = (out & 0x7f) >>> 0;
-      if (v > 100) { // a smuggled offset is refused
-        return false;
-      }
-      value.slab.width = v | 0;
-      v = (out >>> 7) & 0xff;
-      value.slab.height = v;
-      br += 15;
-      break;
-    }
-  }
-  return br;
 }
 
 // ---- type ProbeCollider: the flat codec ----
@@ -1191,198 +867,7 @@ export function ReadProbeColliderFlat(view, numBits, value) {
       }
     }
   }
-  s2 = (br + 7) >> 3;
-  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
-  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
-    return false;
-  }
   return true;
-}
-
-// ReadProbeColliderFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadProbeColliderFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadProbeColliderFlatBits(view, numBits, value) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
-  if (8 > numBits) {
-    return false;
-  }
-  out = view.getUint32(0, true);
-  v = (out & 0xff) >>> 0;
-  value.armor = v;
-  if (10 > numBits) {
-    return false;
-  }
-  out = view.getUint32(1, true);
-  v = (out & 0x3) >>> 0;
-  if (v > 2) { // not a wire-legal tag (SPEC §4.8)
-    return false;
-  }
-  value.shape.type = v;
-  br = 10;
-  switch (value.shape.type) {
-    case 1: {
-      value.shape.ring.radius = 0;
-      if (br + 16 > numBits) {
-        return false;
-      }
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      v = (out & 0xffff) >>> 0;
-      value.shape.ring.radius = v;
-      br += 16;
-      break;
-    }
-    case 2: {
-      value.shape.slab.width = 0;
-      value.shape.slab.height = 0;
-      if (br + 15 > numBits) {
-        return false;
-      }
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      v = (out & 0x7f) >>> 0;
-      if (v > 100) { // a smuggled offset is refused
-        return false;
-      }
-      value.shape.slab.width = v | 0;
-      v = (out >>> 7) & 0xff;
-      value.shape.slab.height = v;
-      br += 15;
-      break;
-    }
-  }
-  if (br + 2 > numBits) {
-    return false;
-  }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = (out & 0x3) >>> 0;
-  if (v > 2) { // not a wire-legal tag (SPEC §4.8)
-    return false;
-  }
-  value.backup.type = v;
-  br += 2;
-  switch (value.backup.type) {
-    case 1: {
-      value.backup.ring.radius = 0;
-      if (br + 16 > numBits) {
-        return false;
-      }
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      v = (out & 0xffff) >>> 0;
-      value.backup.ring.radius = v;
-      br += 16;
-      break;
-    }
-    case 2: {
-      value.backup.slab.width = 0;
-      value.backup.slab.height = 0;
-      if (br + 15 > numBits) {
-        return false;
-      }
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      v = (out & 0x7f) >>> 0;
-      if (v > 100) { // a smuggled offset is refused
-        return false;
-      }
-      value.backup.slab.width = v | 0;
-      v = (out >>> 7) & 0xff;
-      value.backup.slab.height = v;
-      br += 15;
-      break;
-    }
-  }
-  if (br + 2 > numBits) {
-    return false;
-  }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = (out & 0x3) >>> 0;
-  if (v > 2) { // the count guards the loop — reject, never clamp
-    return false;
-  }
-  value.extrasCount = v;
-  br += 2;
-  for (let i0 = 0; i0 < value.extrasCount; i0++) {
-    const e0 = value.extras[i0];
-    if (br + 2 > numBits) {
-      return false;
-    }
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    v = (out & 0x3) >>> 0;
-    if (v > 2) { // not a wire-legal tag (SPEC §4.8)
-      return false;
-    }
-    e0.type = v;
-    br += 2;
-    switch (e0.type) {
-      case 1: {
-        e0.ring.radius = 0;
-        if (br + 16 > numBits) {
-          return false;
-        }
-        bi = br >>> 3;
-        wlo = view.getUint32(bi, true);
-        whi = view.getUint32(bi + 4, true);
-        s2 = br & 7;
-        out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-        v = (out & 0xffff) >>> 0;
-        e0.ring.radius = v;
-        br += 16;
-        break;
-      }
-      case 2: {
-        e0.slab.width = 0;
-        e0.slab.height = 0;
-        if (br + 15 > numBits) {
-          return false;
-        }
-        bi = br >>> 3;
-        wlo = view.getUint32(bi, true);
-        whi = view.getUint32(bi + 4, true);
-        s2 = br & 7;
-        out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-        v = (out & 0x7f) >>> 0;
-        if (v > 100) { // a smuggled offset is refused
-          return false;
-        }
-        e0.slab.width = v | 0;
-        v = (out >>> 7) & 0xff;
-        e0.slab.height = v;
-        br += 15;
-        break;
-      }
-    }
-  }
-  return br;
 }
 
 // ---- type ProbeConfig: the flat codec ----
@@ -1414,31 +899,7 @@ export function ReadProbeConfigFlat(view, numBits, value) {
   out = view.getUint32(4, true);
   v = (out & 0xf) >>> 0;
   value.preferred = v;
-  if (((36 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
-  if ((view.getUint8(4) & 0xf0) !== 0) { // nonzero unused bits in the final byte
-    return false;
-  }
   return true;
-}
-
-// ReadProbeConfigFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadProbeConfigFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadProbeConfigFlatBits(view, numBits, value) {
-  let v = 0, out = 0;
-  if (36 > numBits) {
-    return false;
-  }
-  out = view.getUint32(0, true);
-  v = out >>> 0;
-  value.retries = v | 0;
-  out = view.getUint32(4, true);
-  v = (out & 0xf) >>> 0;
-  value.preferred = v;
-  return 36;
 }
 
 // ---- type ProbeArray: the flat codec ----
@@ -1461,9 +922,6 @@ export function WriteProbeArrayFlat(view, value) {
     }
     x = Math.fround(e0.orientation);
     if (!Number.isFinite(x)) {
-      return -1;
-    }
-    if (x < -180.0 || x > 180.0) {
       return -1;
     }
     n = Math.fround(Math.fround(x - -180.0) / 360.0);
@@ -1730,159 +1188,7 @@ export function ReadProbeArrayFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0xf) >>> 0;
   value.config.preferred = v;
-  br += 4;
-  s2 = (br + 7) >> 3;
-  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
-  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
-    return false;
-  }
   return true;
-}
-
-// ReadProbeArrayFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadProbeArrayFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadProbeArrayFlatBits(view, numBits, value) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
-  let bg = 0n;
-  for (let i0 = 0; i0 < 2; i0++) {
-    const e0 = value.samples[i0];
-    if (br + 113 > numBits) {
-      return false;
-    }
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    v = (out & 0x1) >>> 0;
-    e0.active = v !== 0;
-    v = (out >>> 1) & 0xffff;
-    if (v > 36000) { // headroom above the quantum count is refused
-      return false;
-    }
-    e0.orientation = Math.fround(Math.fround(Math.fround(Math.fround(v) / 36000.0) * 360.0) + -180.0);
-    br += 17;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    v = out >>> 0;
-    e0.rawDelta = v | 0;
-    br += 32;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    v = out >>> 0;
-    SC.setUint32(0, v, true);
-    br += 32;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    v = out >>> 0;
-    SC.setUint32(4, v, true);
-    bg = SC.getBigUint64(0, true);
-    e0.bigDelta = BigInt.asIntN(64, bg);
-    br += 32;
-    if (e0.active) {
-      if (br + 5 > numBits) {
-        return false;
-      }
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      v = (out & 0xf) >>> 0;
-      e0.weapon = v;
-      v = (out >>> 4) & 0x1;
-      e0.hasTarget = v !== 0;
-      br += 5;
-      if (e0.hasTarget) {
-        if (br + 16 > numBits) {
-          return false;
-        }
-        bi = br >>> 3;
-        wlo = view.getUint32(bi, true);
-        whi = view.getUint32(bi + 4, true);
-        s2 = br & 7;
-        out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-        v = (out & 0xffff) >>> 0;
-        e0.targetId = v;
-        br += 16;
-      } else {
-        e0.targetId = 0;
-      }
-      e0.idleTicks = 0;
-    } else {
-      if (br + 32 > numBits) {
-        return false;
-      }
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      v = out >>> 0;
-      e0.idleTicks = v;
-      e0.weapon = 0;
-      e0.hasTarget = false;
-      e0.targetId = 0;
-      br += 32;
-    }
-    if (br + 3 > numBits) {
-      return false;
-    }
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    v = (out & 0x7) >>> 0;
-    e0.samplesCount = v + 1;
-    br += 3;
-    if (br + e0.samplesCount * 16 > numBits) {
-      return false;
-    }
-    for (let i1 = 0; i1 < e0.samplesCount; i1++) {
-      bi = br >>> 3;
-      wlo = view.getUint32(bi, true);
-      whi = view.getUint32(bi + 4, true);
-      s2 = br & 7;
-      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-      v = (out & 0xffff) >>> 0;
-      e0.samples[i1] = v;
-      br += 16;
-    }
-  }
-  if (br + 36 > numBits) {
-    return false;
-  }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  value.config.retries = v | 0;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = (out & 0xf) >>> 0;
-  value.config.preferred = v;
-  br += 4;
-  return br;
 }
 
 // ---- type Heartbeat: the flat codec ----
@@ -1895,19 +1201,8 @@ export function WriteHeartbeatFlat() {
 
 // ReadHeartbeatFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
-export function ReadHeartbeatFlat(view, numBits) {
-  if (((0 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
+export function ReadHeartbeatFlat() {
   return true;
-}
-
-// ReadHeartbeatFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadHeartbeatFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadHeartbeatFlatBits() {
-  return 0;
 }
 
 // ---- type Test: the flat codec ----
@@ -1960,44 +1255,7 @@ export function ReadTestFlat(view, numBits, value) {
     return false;
   }
   value.testD = v | 0;
-  if (((46 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
-  if ((view.getUint8(5) & 0xc0) !== 0) { // nonzero unused bits in the final byte
-    return false;
-  }
   return true;
-}
-
-// ReadTestFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadTestFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadTestFlatBits(view, numBits, value) {
-  let v = 0, out = 0;
-  if (46 > numBits) {
-    return false;
-  }
-  out = view.getUint32(0, true);
-  v = (out & 0xffff) >>> 0;
-  value.testA = v;
-  v = (out >>> 16) & 0x3ff;
-  if (v > 1000) { // a smuggled offset is refused
-    return false;
-  }
-  value.testB = v | 0;
-  out = (view.getUint32(3, true) >>> 2) | (view.getUint32(7, true) << 30);
-  v = (out & 0x3ff) >>> 0;
-  if (v > 1000) { // a smuggled offset is refused
-    return false;
-  }
-  value.testC = v | 0;
-  v = (out >>> 10) & 0x3ff;
-  if (v > 1000) { // a smuggled offset is refused
-    return false;
-  }
-  value.testD = v | 0;
-  return 46;
 }
 
 // ---- type Block: the flat codec ----
@@ -2079,55 +1337,7 @@ export function ReadBlockFlat(view, numBits, value) {
     value.data[i0] = view.getUint8(bi + i0);
   }
   br += value.dataLength * 8;
-  s2 = (br + 7) >> 3;
-  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
-  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
-    return false;
-  }
   return true;
-}
-
-// ReadBlockFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadBlockFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadBlockFlatBits(view, numBits, value) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
-  if (br + 11 > numBits) {
-    return false;
-  }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = (out & 0x7ff) >>> 0;
-  if (v > 2000) { // the length guards the slice — reject, never clamp
-    return false;
-  }
-  value.dataLength = v;
-  br += 11;
-  s2 = br & 7;
-  if (s2 !== 0) {
-    if (br + (8 - s2) > numBits) {
-      return false;
-    }
-    if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
-      return false;
-    }
-    br += 8 - s2;
-  }
-  if (br + value.dataLength * 8 > numBits) {
-    return false;
-  }
-  bi = br >>> 3;
-  for (let i0 = 0; i0 < value.dataLength; i0++) {
-    value.data[i0] = view.getUint8(bi + i0);
-  }
-  br += value.dataLength * 8;
-  return br;
 }
 
 // ---- type Chat: the flat codec ----
@@ -2212,58 +1422,7 @@ export function ReadChatFlat(view, numBits, value) {
   if (!validText(value.text, value.textLength)) {
     return false;
   }
-  s2 = (br + 7) >> 3;
-  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
-  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
-    return false;
-  }
   return true;
-}
-
-// ReadChatFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadChatFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadChatFlatBits(view, numBits, value) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
-  if (br + 9 > numBits) {
-    return false;
-  }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = (out & 0x1ff) >>> 0;
-  if (v > 256) { // the length guards the slice — reject, never clamp
-    return false;
-  }
-  value.textLength = v;
-  br += 9;
-  s2 = br & 7;
-  if (s2 !== 0) {
-    if (br + (8 - s2) > numBits) {
-      return false;
-    }
-    if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
-      return false;
-    }
-    br += 8 - s2;
-  }
-  if (br + value.textLength * 8 > numBits) {
-    return false;
-  }
-  bi = br >>> 3;
-  for (let i0 = 0; i0 < value.textLength; i0++) {
-    value.text[i0] = view.getUint8(bi + i0);
-  }
-  br += value.textLength * 8;
-  if (!validText(value.text, value.textLength)) {
-    return false;
-  }
-  return br;
 }
 
 // ---- type ProbeReport: the flat codec ----
@@ -2273,9 +1432,6 @@ export function ReadChatFlatBits(view, numBits, value) {
 // must hold ProbeReportMaxBytes.
 export function WriteProbeReportFlat(view, value) {
   let v = 0, lo = 0;
-  if (!Number.isInteger(value.header.version) || value.header.version < 0 || value.header.version > 7) {
-    return -1;
-  }
   lo = (171 | ((value.header.version & 0x7) << 8) | (0 << 11));
   SC.setBigUint64(0, value.header.probeId, true);
   v = SC.getUint32(0, true);
@@ -2363,72 +1519,7 @@ export function ReadProbeReportFlat(view, numBits, value) {
     return false;
   }
   value.echo.testD = v | 0;
-  if (((134 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
-  if ((view.getUint8(16) & 0xc0) !== 0) { // nonzero unused bits in the final byte
-    return false;
-  }
   return true;
-}
-
-// ReadProbeReportFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadProbeReportFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadProbeReportFlatBits(view, numBits, value) {
-  let v = 0, out = 0;
-  let bg = 0n;
-  if (16 > numBits) {
-    return false;
-  }
-  out = view.getUint32(0, true);
-  v = (out & 0xff) >>> 0;
-  if (v !== 171) { // a read rejects any other value
-    return false;
-  }
-  v = (out >>> 8) & 0x7;
-  value.header.version = v;
-  v = (out >>> 11) & 0x1f;
-  if (v !== 0) { // reserved bits must read zero
-    return false;
-  }
-  if (80 > numBits) {
-    return false;
-  }
-  out = view.getUint32(2, true);
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  out = view.getUint32(6, true);
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  bg = SC.getBigUint64(0, true);
-  value.header.probeId = bg;
-  if (134 > numBits) {
-    return false;
-  }
-  out = view.getUint32(10, true);
-  v = (out & 0xff) >>> 0;
-  value.flags = BigInt(v);
-  v = (out >>> 8) & 0xffff;
-  value.echo.testA = v;
-  out = view.getUint32(13, true);
-  v = (out & 0x3ff) >>> 0;
-  if (v > 1000) { // a smuggled offset is refused
-    return false;
-  }
-  value.echo.testB = v | 0;
-  v = (out >>> 10) & 0x3ff;
-  if (v > 1000) { // a smuggled offset is refused
-    return false;
-  }
-  value.echo.testC = v | 0;
-  v = (out >>> 20) & 0x3ff;
-  if (v > 1000) { // a smuggled offset is refused
-    return false;
-  }
-  value.echo.testD = v | 0;
-  return 134;
 }
 
 // ---- type TestData: the flat codec ----
@@ -2437,7 +1528,8 @@ export function ReadProbeReportFlatBits(view, numBits, value) {
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold TestDataMaxBytes.
 export function WriteTestDataFlat(view, value) {
-  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
+  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
+  let bg = 0n;
   if (!Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return -1;
   }
@@ -2447,16 +1539,7 @@ export function WriteTestDataFlat(view, value) {
   if (!Number.isInteger(value.c) || value.c < -100 || value.c > 150) {
     return -1;
   }
-  if (!Number.isInteger(value.d) || value.d < 0 || value.d > 255) {
-    return -1;
-  }
-  if (!Number.isInteger(value.e) || value.e < 0 || value.e > 255) {
-    return -1;
-  }
   view.setUint32(0, (((((value.a >>> 0) - 4294967196) >>> 0) & 0xff) | (((((value.b >>> 0) - 4294967196) >>> 0) & 0xff) << 8) | (((((value.c >>> 0) - 4294967196) >>> 0) & 0xff) << 16) | ((value.d & 0xff) << 24)), true);
-  if (!Number.isInteger(value.f) || value.f < 0 || value.f > 255) {
-    return -1;
-  }
   if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 16) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
@@ -2478,11 +1561,17 @@ export function WriteTestDataFlat(view, value) {
     }
   }
   x = value.floatValue;
-  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
-    return -1;
+  if (x === x) {
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
+  } else {
+    SC.setFloat64(0, x, true);
+    bg = SC.getBigUint64(0, true);
+    t0 = Number(bg >> 63n) << 31;
+    t1 = Number((bg >> 29n) & 0x7fffffn);
+    if (t1 === 0) { t1 = 0x400000; }
+    v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  SC.setFloat32(0, x, true);
-  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2493,9 +1582,6 @@ export function WriteTestDataFlat(view, value) {
   }
   x = Math.fround(value.compressedFloatValue);
   if (!Number.isFinite(x)) {
-    return -1;
-  }
-  if (x < 0.0 || x > 10.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
@@ -2509,9 +1595,6 @@ export function WriteTestDataFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (10 - sb);
-  }
-  if (!Number.isFinite(value.doubleValue)) { // a bare float must be finite
-    return -1;
   }
   SC.setFloat64(0, value.doubleValue, true);
   v = SC.getUint32(0, true);
@@ -2934,266 +2017,7 @@ export function ReadTestDataFlat(view, numBits, value) {
   if (!validText(value.text, value.textLength)) {
     return false;
   }
-  s2 = (br + 7) >> 3;
-  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
-  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
-    return false;
-  }
   return true;
-}
-
-// ReadTestDataFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadTestDataFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadTestDataFlatBits(view, numBits, value) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
-  let bg = 0n;
-  if (49 > numBits) {
-    return false;
-  }
-  out = view.getUint32(0, true);
-  v = (out & 0xff) >>> 0;
-  if (v > 200) { // a smuggled offset is refused
-    return false;
-  }
-  value.a = (v + 4294967196) | 0;
-  v = (out >>> 8) & 0xff;
-  if (v > 200) { // a smuggled offset is refused
-    return false;
-  }
-  value.b = (v + 4294967196) | 0;
-  v = (out >>> 16) & 0xff;
-  if (v > 250) { // a smuggled offset is refused
-    return false;
-  }
-  value.c = (v + 4294967196) | 0;
-  v = (out >>> 24) & 0xff;
-  value.d = v;
-  out = view.getUint32(4, true);
-  v = (out & 0xff) >>> 0;
-  value.e = v;
-  v = (out >>> 8) & 0xff;
-  value.f = v;
-  v = (out >>> 16) & 0x1;
-  value.g = v !== 0;
-  if (54 > numBits) {
-    return false;
-  }
-  out = (view.getUint32(6, true) >>> 1) | (view.getUint32(10, true) << 31);
-  v = (out & 0x1f) >>> 0;
-  if (v > 16) { // the count guards the loop — reject, never clamp
-    return false;
-  }
-  value.itemsCount = v;
-  br = 54;
-  if (br + value.itemsCount * 8 > numBits) {
-    return false;
-  }
-  for (let i0 = 0; i0 < value.itemsCount; i0++) {
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    v = (out & 0xff) >>> 0;
-    value.items[i0] = v | 0;
-    br += 8;
-  }
-  if (br + 355 > numBits) {
-    return false;
-  }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
-    return false;
-  }
-  br += 32;
-  if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
-    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-    value.floatValue = SC.getFloat64(0, true);
-  } else {
-    SC.setUint32(0, v, true);
-    value.floatValue = SC.getFloat32(0, true);
-  }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = (out & 0x3ff) >>> 0;
-  if (v > 1000) { // headroom above the quantum count is refused
-    return false;
-  }
-  value.compressedFloatValue = Math.fround(Math.fround(Math.fround(Math.fround(v) / 1000.0) * 10.0) + 0.0);
-  br += 10;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
-    return false;
-  }
-  value.doubleValue = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = (out & 0xff) >>> 0;
-  value.int8Value = (v << 24) >> 24;
-  v = (out >>> 8) & 0xffff;
-  value.int16Value = (v << 16) >> 16;
-  v = (out >>> 24) & 0xff;
-  value.uint8Value = v;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = (out & 0xffff) >>> 0;
-  value.uint16Value = v;
-  br += 16;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  value.uint32Value = v;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  bg = SC.getBigUint64(0, true);
-  value.uint64Value = bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  bg = SC.getBigUint64(0, true);
-  value.int64Full = BigInt.asIntN(64, bg);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = (out & 0x1ff) >>> 0;
-  SC.setUint32(4, v, true);
-  bg = SC.getBigUint64(0, true);
-  if (bg > 2000000000000n) { // a smuggled offset is refused
-    return false;
-  }
-  value.int64Range = -1000000000000n + bg;
-  br += 9;
-  s2 = br & 7;
-  if (s2 !== 0) {
-    if (br + (8 - s2) > numBits) {
-      return false;
-    }
-    if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
-      return false;
-    }
-    br += 8 - s2;
-  }
-  if (br + 136 > numBits) {
-    return false;
-  }
-  for (let i0 = 0; i0 < 17; i0++) {
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    v = (out & 0xff) >>> 0;
-    value.fixedBytes[i0] = v;
-    br += 8;
-  }
-  if (br + 8 > numBits) {
-    return false;
-  }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = (out & 0xff) >>> 0;
-  value.textLength = v;
-  br += 8;
-  s2 = br & 7;
-  if (s2 !== 0) {
-    if (br + (8 - s2) > numBits) {
-      return false;
-    }
-    if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
-      return false;
-    }
-    br += 8 - s2;
-  }
-  if (br + value.textLength * 8 > numBits) {
-    return false;
-  }
-  bi = br >>> 3;
-  for (let i0 = 0; i0 < value.textLength; i0++) {
-    value.text[i0] = view.getUint8(bi + i0);
-  }
-  br += value.textLength * 8;
-  if (!validText(value.text, value.textLength)) {
-    return false;
-  }
-  return br;
 }
 
 // ---- type CompressedProbe: the flat codec ----
@@ -3207,9 +2031,6 @@ export function WriteCompressedProbeFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
-  if (x < 0.0 || x > 10.0) {
-    return -1;
-  }
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
@@ -3217,9 +2038,6 @@ export function WriteCompressedProbeFlat(view, value) {
   lo = v;
   x = Math.fround(value.offset);
   if (!Number.isFinite(x)) {
-    return -1;
-  }
-  if (x < -5.0 || x > 5.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - -5.0) / 10.0);
@@ -3249,32 +2067,6 @@ export function ReadCompressedProbeFlat(view, numBits, value) {
     return false;
   }
   value.offset = Math.fround(Math.fround(Math.fround(Math.fround(v) / 10000.0) * 10.0) + -5.0);
-  if (((24 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
-    return false;
-  }
   return true;
-}
-
-// ReadCompressedProbeFlatBits(view, numBits, value) -> bits consumed, or false
-// (SPEC §5, §6.3). The same refusals as ReadCompressedProbeFlat, without the
-// end-of-packet check, so a later object may follow in the buffer.
-// The buffer behind view must extend FlatReadSlack bytes past the payload.
-export function ReadCompressedProbeFlatBits(view, numBits, value) {
-  let v = 0, out = 0;
-  if (24 > numBits) {
-    return false;
-  }
-  out = view.getUint32(0, true);
-  v = (out & 0x3ff) >>> 0;
-  if (v > 1000) { // headroom above the quantum count is refused
-    return false;
-  }
-  value.boundary = Math.fround(Math.fround(Math.fround(Math.fround(v) / 1000.0) * 10.0) + 0.0);
-  v = (out >>> 10) & 0x3fff;
-  if (v > 10000) { // headroom above the quantum count is refused
-    return false;
-  }
-  value.offset = Math.fround(Math.fround(Math.fround(Math.fround(v) / 10000.0) * 10.0) + -5.0);
-  return 24;
 }
 

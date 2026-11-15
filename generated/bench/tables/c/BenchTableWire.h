@@ -48,7 +48,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int benchtable_write_table_hit_event(
 }
 
 /* Reads TableHitEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_benchtable_read_table_hit_event_body_( serialize_read_stream_t * stream, benchtable_table_hit_event_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_hit_event( serialize_read_stream_t * stream, benchtable_table_hit_event_t * value )
 {
     /* fixed 28-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 28 )
@@ -95,16 +95,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_benchtable_read_table_hit_e
     return 1;
 }
 
-/* Reads TableHitEvent as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_hit_event( serialize_read_stream_t * stream, benchtable_table_hit_event_t * value )
-{
-    if ( !schema_benchtable_read_table_hit_event_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
-}
-
 /* Writes TableChatEvent. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int benchtable_write_table_chat_event( serialize_write_stream_t * stream, const benchtable_table_chat_event_t * value )
 {
@@ -121,7 +111,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int benchtable_write_table_chat_event
 }
 
 /* Reads TableChatEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_benchtable_read_table_chat_event_body_( serialize_read_stream_t * stream, benchtable_table_chat_event_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_chat_event( serialize_read_stream_t * stream, benchtable_table_chat_event_t * value )
 {
     /* fixed 14-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 14 )
@@ -150,16 +140,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_benchtable_read_table_chat_
     return 1;
 }
 
-/* Reads TableChatEvent as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_chat_event( serialize_read_stream_t * stream, benchtable_table_chat_event_t * value )
-{
-    if ( !schema_benchtable_read_table_chat_event_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
-}
-
 /* Writes TablePickupEvent. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int benchtable_write_table_pickup_event( serialize_write_stream_t * stream, const benchtable_table_pickup_event_t * value )
 {
@@ -176,7 +156,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int benchtable_write_table_pickup_eve
 }
 
 /* Reads TablePickupEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_benchtable_read_table_pickup_event_body_( serialize_read_stream_t * stream, benchtable_table_pickup_event_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_pickup_event( serialize_read_stream_t * stream, benchtable_table_pickup_event_t * value )
 {
     /* fixed 18-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 18 )
@@ -205,16 +185,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_benchtable_read_table_picku
     return 1;
 }
 
-/* Reads TablePickupEvent as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_pickup_event( serialize_read_stream_t * stream, benchtable_table_pickup_event_t * value )
-{
-    if ( !schema_benchtable_read_table_pickup_event_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
-}
-
 /* Writes TableEvent. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int benchtable_write_table_event( serialize_write_stream_t * stream, const benchtable_table_event_t * value )
 {
@@ -237,7 +207,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int benchtable_write_table_event( ser
 }
 
 /* Reads TableEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_benchtable_read_table_event_body_( serialize_read_stream_t * stream, benchtable_table_event_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_event( serialize_read_stream_t * stream, benchtable_table_event_t * value )
 {
     {
         serialize_uint32_t tag_value = 0;
@@ -255,26 +225,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_benchtable_read_table_event
     {
         case 1:
             memset( &value->as.hit, 0, sizeof( value->as.hit ) );
-            return schema_benchtable_read_table_hit_event_body_( stream, &value->as.hit );
+            return benchtable_read_table_hit_event( stream, &value->as.hit );
         case 2:
             memset( &value->as.chat, 0, sizeof( value->as.chat ) );
-            return schema_benchtable_read_table_chat_event_body_( stream, &value->as.chat );
+            return benchtable_read_table_chat_event( stream, &value->as.chat );
         case 3:
             memset( &value->as.pickup, 0, sizeof( value->as.pickup ) );
-            return schema_benchtable_read_table_pickup_event_body_( stream, &value->as.pickup );
+            return benchtable_read_table_pickup_event( stream, &value->as.pickup );
         default:
             return 1; /* None */
     }
-}
-
-/* Reads TableEvent as one packet. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_event( serialize_read_stream_t * stream, benchtable_table_event_t * value )
-{
-    if ( !schema_benchtable_read_table_event_body_( stream, value ) )
-    {
-        return 0;
-    }
-    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 #ifdef __cplusplus

@@ -205,21 +205,9 @@ public final class Clauses {
     }
 
     // readW13 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readW13(W13 value, byte[] data, int numBits) {
-        final int end = readW13Bits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readW13Bits(value, data, 0, numBits) >= 0;
     }
 
     // type W17
@@ -327,21 +315,9 @@ public final class Clauses {
     }
 
     // readW17 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readW17(W17 value, byte[] data, int numBits) {
-        final int end = readW17Bits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readW17Bits(value, data, 0, numBits) >= 0;
     }
 
     // type W26
@@ -449,21 +425,9 @@ public final class Clauses {
     }
 
     // readW26 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readW26(W26 value, byte[] data, int numBits) {
-        final int end = readW26Bits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readW26Bits(value, data, 0, numBits) >= 0;
     }
 
     // type W1
@@ -571,21 +535,9 @@ public final class Clauses {
     }
 
     // readW1 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readW1(W1 value, byte[] data, int numBits) {
-        final int end = readW1Bits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readW1Bits(value, data, 0, numBits) >= 0;
     }
 
     // type W52
@@ -697,21 +649,9 @@ public final class Clauses {
     }
 
     // readW52 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readW52(W52 value, byte[] data, int numBits) {
-        final int end = readW52Bits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readW52Bits(value, data, 0, numBits) >= 0;
     }
 
     // type W50
@@ -823,21 +763,9 @@ public final class Clauses {
     }
 
     // readW50 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readW50(W50 value, byte[] data, int numBits) {
-        final int end = readW50Bits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readW50Bits(value, data, 0, numBits) >= 0;
     }
 
     // type F13
@@ -929,21 +857,9 @@ public final class Clauses {
     }
 
     // readF13 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readF13(F13 value, byte[] data, int numBits) {
-        final int end = readF13Bits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readF13Bits(value, data, 0, numBits) >= 0;
     }
 
     // type Tri3
@@ -978,10 +894,6 @@ public final class Clauses {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + TRI3_MAX_BITS;
-        assert value.a >= 0;
-        assert value.a <= 1;
-        assert value.b >= 0;
-        assert value.b <= 3;
         return true;
     }
 
@@ -1038,21 +950,9 @@ public final class Clauses {
     }
 
     // readTri3 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readTri3(Tri3 value, byte[] data, int numBits) {
-        final int end = readTri3Bits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readTri3Bits(value, data, 0, numBits) >= 0;
     }
 
     // type ArrTri3
@@ -1167,21 +1067,9 @@ public final class Clauses {
     }
 
     // readArrTri3 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readArrTri3(ArrTri3 value, byte[] data, int numBits) {
-        final int end = readArrTri3Bits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readArrTri3Bits(value, data, 0, numBits) >= 0;
     }
 
     // type Eleven
@@ -1216,10 +1104,6 @@ public final class Clauses {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ELEVEN_MAX_BITS;
-        assert value.a >= 0;
-        assert value.a <= 7;
-        assert value.b >= 0;
-        assert value.b <= 255;
         return true;
     }
 
@@ -1276,21 +1160,9 @@ public final class Clauses {
     }
 
     // readEleven decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readEleven(Eleven value, byte[] data, int numBits) {
-        final int end = readElevenBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readElevenBits(value, data, 0, numBits) >= 0;
     }
 
     // type ArrEleven
@@ -1381,21 +1253,9 @@ public final class Clauses {
     }
 
     // readArrEleven decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readArrEleven(ArrEleven value, byte[] data, int numBits) {
-        final int end = readArrElevenBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readArrElevenBits(value, data, 0, numBits) >= 0;
     }
 
     // type EmptyA
@@ -1461,21 +1321,9 @@ public final class Clauses {
     }
 
     // readEmptyA decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readEmptyA(EmptyA value, byte[] data, int numBits) {
-        final int end = readEmptyABits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readEmptyABits(value, data, 0, numBits) >= 0;
     }
 
     // type EmptyB
@@ -1541,21 +1389,9 @@ public final class Clauses {
     }
 
     // readEmptyB decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readEmptyB(EmptyB value, byte[] data, int numBits) {
-        final int end = readEmptyBBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readEmptyBBits(value, data, 0, numBits) >= 0;
     }
 
     // EmptyUnionType: union EmptyUnion's tag — None = 0, then each variant in declared order (SPEC
@@ -1684,21 +1520,9 @@ public final class Clauses {
     }
 
     // readEmptyUnion decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readEmptyUnion(EmptyUnion value, byte[] data, int numBits) {
-        final int end = readEmptyUnionBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readEmptyUnionBits(value, data, 0, numBits) >= 0;
     }
 
     // type HoldsEmptyUnion
@@ -1737,10 +1561,6 @@ public final class Clauses {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + HOLDS_EMPTY_UNION_MAX_BITS;
-        assert value.lead >= 0;
-        assert value.lead <= 31;
-        assert value.tail >= 0;
-        assert value.tail <= 127;
         return true;
     }
 
@@ -1808,21 +1628,9 @@ public final class Clauses {
     }
 
     // readHoldsEmptyUnion decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readHoldsEmptyUnion(HoldsEmptyUnion value, byte[] data, int numBits) {
-        final int end = readHoldsEmptyUnionBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readHoldsEmptyUnionBits(value, data, 0, numBits) >= 0;
     }
 
     // type Strs
@@ -1871,14 +1679,10 @@ public final class Clauses {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + STRS_MAX_BITS;
-        assert value.lead >= 0;
-        assert value.lead <= 31;
         assert value.sLength >= 0;
         assert value.sLength <= 8;
         assert value.bLength >= 0;
         assert value.bLength <= 8;
-        assert value.tail >= 0;
-        assert value.tail <= 7;
         return true;
     }
 
@@ -2025,21 +1829,9 @@ public final class Clauses {
     }
 
     // readStrs decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readStrs(Strs value, byte[] data, int numBits) {
-        final int end = readStrsBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readStrsBits(value, data, 0, numBits) >= 0;
     }
 
     // type ArrNested
@@ -2092,12 +1884,8 @@ public final class Clauses {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARR_NESTED_MAX_BITS;
-        assert value.lead >= 0;
-        assert value.lead <= 31;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 4;
-        assert value.tail >= 0;
-        assert value.tail <= 7;
         return true;
     }
 
@@ -2182,21 +1970,9 @@ public final class Clauses {
     }
 
     // readArrNested decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readArrNested(ArrNested value, byte[] data, int numBits) {
-        final int end = readArrNestedBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readArrNestedBits(value, data, 0, numBits) >= 0;
     }
 
     // type Sole
@@ -2228,8 +2004,6 @@ public final class Clauses {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + SOLE_MAX_BITS;
-        assert value.only >= 0;
-        assert value.only <= 8191;
         return true;
     }
 
@@ -2281,20 +2055,8 @@ public final class Clauses {
     }
 
     // readSole decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire. After the top-level object the packet's
-    // end is checked once: a whole byte left over, or nonzero unused bits in
-    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
+    // verdict: false refuses the wire.
     public static boolean readSole(Sole value, byte[] data, int numBits) {
-        final int end = readSoleBits(value, data, 0, numBits);
-        if (end < 0) {
-            return false;
-        }
-        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
-            return false;
-        }
-        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
-            return false;
-        }
-        return true;
+        return readSoleBits(value, data, 0, numBits) >= 0;
     }
 }

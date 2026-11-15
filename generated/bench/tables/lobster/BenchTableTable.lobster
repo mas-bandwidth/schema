@@ -43,7 +43,7 @@ class TableEntity:
     Moving:bool
     Firing:bool
 def NewTableEntity() -> TableEntity:
-    let value· = TableEntity {
+    let value = TableEntity {
         EntityId: 0,
         PosX: 0,
         PosY: 0,
@@ -59,18 +59,18 @@ def NewTableEntity() -> TableEntity:
         Moving: false,
         Firing: false
     }
-    return value·
+    return value
 
 // table TableStat
 class TableStat:
     StatId:int
     Delta:int
 def NewTableStat() -> TableStat:
-    let value· = TableStat {
+    let value = TableStat {
         StatId: 0,
         Delta: 0
     }
-    return value·
+    return value
 
 // table TableMixed
 class TableMixed:
@@ -107,7 +107,7 @@ class TableMixed:
     Extra:int
     IdleTicks:int
 def NewTableMixed() -> TableMixed:
-    let value· = TableMixed {
+    let value = TableMixed {
         ProtocolMagic: 0,
         Sequence: 0,
         AckSequence: 0,
@@ -141,9 +141,9 @@ def NewTableMixed() -> TableMixed:
         Extra: 0,
         IdleTicks: 0
     }
-    for(8): push(value·.Entities, NewTableEntity())
-    for(80): push(value·.Stats, NewTableStat())
-    return value·
+    for(8): push(value.Entities, NewTableEntity())
+    for(80): push(value.Stats, NewTableStat())
+    return value
 
 // TableEntityDescriptor — TableEntity as data: node type id, class, and one entry per field
 // (docs/SPEC-TABLES.md §3, §8.1)
@@ -410,32 +410,32 @@ let TableEntityCookTable = schema_rt.cook_table(schema_rt.CookTable {
 
 // TableEntityCookMeasure is the whole file's length: the header, the region and
 // the directory, in int64 (docs/SPEC-TABLES.md §7.6).
-def TableEntityCookMeasure(rec·:schema_rt.Record) -> int:
-    return schema_rt.cook_measure(rec·, 0xd15cf2df295a7569)
+def TableEntityCookMeasure(rec:schema_rt.Record) -> int:
+    return schema_rt.cook_measure(rec, 0xd15cf2df295a7569)
 
 // TableEntityCook writes the cook of one loaded record in the order the caller
 // names, byte for byte with the tool's writer (docs/SPEC-TABLES.md §7.6).
-def TableEntityCook(rec·:schema_rt.Record, big·:bool) -> string:
-    return schema_rt.cook_write(rec·, 0xd15cf2df295a7569, big·)
+def TableEntityCook(rec:schema_rt.Record, big:bool) -> string:
+    return schema_rt.cook_write(rec, 0xd15cf2df295a7569, big)
 
 // TableEntityReadCook reads a cooked file back into the record model, which the
 // wire's save then writes: the proof no fact was lost (§7.5, Uncook).
-def TableEntityReadCook(data·:string) -> schema_rt.Record?:
-    return schema_rt.cook_read(data·, 0xd15cf2df295a7569, TableEntityDescriptor, TableEntityCookTable)
+def TableEntityReadCook(data:string) -> schema_rt.Record?:
+    return schema_rt.cook_read(data, 0xd15cf2df295a7569, TableEntityDescriptor, TableEntityCookTable)
 
 // TableEntityOpen matches the cooked header for TableEntity (docs/SPEC-TABLES.md §7.1):
 // the magic and the order it establishes, the build version, the reserved
 // words, the alignment and both part lengths. It points at the region and
 // allocates nothing; the check lives once in the runtime.
-def TableEntityOpen(data·:string) -> bool:
-    return TableEntityOpenReason(data·, 0, false) == "ok"
+def TableEntityOpen(data:string) -> bool:
+    return TableEntityOpenReason(data, 0, false) == "ok"
 
 // TableEntityOpenReason is Open with the reason beside the refusal (docs/SPEC-TABLES.md
 // §7): the first failing clause as the refusal enum's value name, or "ok".
 // data is exactly the extent the caller claims; lead is how far past an
 // aligned base the buffer sits, and nobuf is a NULL buffer.
-def TableEntityOpenReason(data·:string, lead·:int, nobuf·:bool) -> string:
-    return schema_rt.cook_open_reason(data·, 0xd15cf2df295a7569, 8, 64, lead·, nobuf·)
+def TableEntityOpenReason(data:string, lead:int, nobuf:bool) -> string:
+    return schema_rt.cook_open_reason(data, 0xd15cf2df295a7569, 8, 64, lead, nobuf)
 
 // TableStatCookTable — TableStat's cooked storage as data (docs/SPEC-TABLES.md §7.2):
 // each field's pieces and where a reference points, the same numbers
@@ -456,32 +456,32 @@ let TableStatCookTable = schema_rt.cook_table(schema_rt.CookTable {
 
 // TableStatCookMeasure is the whole file's length: the header, the region and
 // the directory, in int64 (docs/SPEC-TABLES.md §7.6).
-def TableStatCookMeasure(rec·:schema_rt.Record) -> int:
-    return schema_rt.cook_measure(rec·, 0xd15cf2df295a7569)
+def TableStatCookMeasure(rec:schema_rt.Record) -> int:
+    return schema_rt.cook_measure(rec, 0xd15cf2df295a7569)
 
 // TableStatCook writes the cook of one loaded record in the order the caller
 // names, byte for byte with the tool's writer (docs/SPEC-TABLES.md §7.6).
-def TableStatCook(rec·:schema_rt.Record, big·:bool) -> string:
-    return schema_rt.cook_write(rec·, 0xd15cf2df295a7569, big·)
+def TableStatCook(rec:schema_rt.Record, big:bool) -> string:
+    return schema_rt.cook_write(rec, 0xd15cf2df295a7569, big)
 
 // TableStatReadCook reads a cooked file back into the record model, which the
 // wire's save then writes: the proof no fact was lost (§7.5, Uncook).
-def TableStatReadCook(data·:string) -> schema_rt.Record?:
-    return schema_rt.cook_read(data·, 0xd15cf2df295a7569, TableStatDescriptor, TableStatCookTable)
+def TableStatReadCook(data:string) -> schema_rt.Record?:
+    return schema_rt.cook_read(data, 0xd15cf2df295a7569, TableStatDescriptor, TableStatCookTable)
 
 // TableStatOpen matches the cooked header for TableStat (docs/SPEC-TABLES.md §7.1):
 // the magic and the order it establishes, the build version, the reserved
 // words, the alignment and both part lengths. It points at the region and
 // allocates nothing; the check lives once in the runtime.
-def TableStatOpen(data·:string) -> bool:
-    return TableStatOpenReason(data·, 0, false) == "ok"
+def TableStatOpen(data:string) -> bool:
+    return TableStatOpenReason(data, 0, false) == "ok"
 
 // TableStatOpenReason is Open with the reason beside the refusal (docs/SPEC-TABLES.md
 // §7): the first failing clause as the refusal enum's value name, or "ok".
 // data is exactly the extent the caller claims; lead is how far past an
 // aligned base the buffer sits, and nobuf is a NULL buffer.
-def TableStatOpenReason(data·:string, lead·:int, nobuf·:bool) -> string:
-    return schema_rt.cook_open_reason(data·, 0xd15cf2df295a7569, 4, 8, lead·, nobuf·)
+def TableStatOpenReason(data:string, lead:int, nobuf:bool) -> string:
+    return schema_rt.cook_open_reason(data, 0xd15cf2df295a7569, 4, 8, lead, nobuf)
 
 // TableMixedCookTable — TableMixed's cooked storage as data (docs/SPEC-TABLES.md §7.2):
 // each field's pieces and where a reference points, the same numbers
@@ -528,32 +528,32 @@ let TableMixedCookTable = schema_rt.cook_table(schema_rt.CookTable {
 
 // TableMixedCookMeasure is the whole file's length: the header, the region and
 // the directory, in int64 (docs/SPEC-TABLES.md §7.6).
-def TableMixedCookMeasure(rec·:schema_rt.Record) -> int:
-    return schema_rt.cook_measure(rec·, 0xd15cf2df295a7569)
+def TableMixedCookMeasure(rec:schema_rt.Record) -> int:
+    return schema_rt.cook_measure(rec, 0xd15cf2df295a7569)
 
 // TableMixedCook writes the cook of one loaded record in the order the caller
 // names, byte for byte with the tool's writer (docs/SPEC-TABLES.md §7.6).
-def TableMixedCook(rec·:schema_rt.Record, big·:bool) -> string:
-    return schema_rt.cook_write(rec·, 0xd15cf2df295a7569, big·)
+def TableMixedCook(rec:schema_rt.Record, big:bool) -> string:
+    return schema_rt.cook_write(rec, 0xd15cf2df295a7569, big)
 
 // TableMixedReadCook reads a cooked file back into the record model, which the
 // wire's save then writes: the proof no fact was lost (§7.5, Uncook).
-def TableMixedReadCook(data·:string) -> schema_rt.Record?:
-    return schema_rt.cook_read(data·, 0xd15cf2df295a7569, TableMixedDescriptor, TableMixedCookTable)
+def TableMixedReadCook(data:string) -> schema_rt.Record?:
+    return schema_rt.cook_read(data, 0xd15cf2df295a7569, TableMixedDescriptor, TableMixedCookTable)
 
 // TableMixedOpen matches the cooked header for TableMixed (docs/SPEC-TABLES.md §7.1):
 // the magic and the order it establishes, the build version, the reserved
 // words, the alignment and both part lengths. It points at the region and
 // allocates nothing; the check lives once in the runtime.
-def TableMixedOpen(data·:string) -> bool:
-    return TableMixedOpenReason(data·, 0, false) == "ok"
+def TableMixedOpen(data:string) -> bool:
+    return TableMixedOpenReason(data, 0, false) == "ok"
 
 // TableMixedOpenReason is Open with the reason beside the refusal (docs/SPEC-TABLES.md
 // §7): the first failing clause as the refusal enum's value name, or "ok".
 // data is exactly the extent the caller claims; lead is how far past an
 // aligned base the buffer sits, and nobuf is a NULL buffer.
-def TableMixedOpenReason(data·:string, lead·:int, nobuf·:bool) -> string:
-    return schema_rt.cook_open_reason(data·, 0xd15cf2df295a7569, 8, 1352, lead·, nobuf·)
+def TableMixedOpenReason(data:string, lead:int, nobuf:bool) -> string:
+    return schema_rt.cook_open_reason(data, 0xd15cf2df295a7569, 8, 1352, lead, nobuf)
 
 // TableHitEventCookTable — TableHitEvent's cooked storage as data (docs/SPEC-TABLES.md §7.2):
 // each field's pieces and where a reference points, the same numbers
@@ -576,32 +576,32 @@ let TableHitEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
 
 // TableHitEventCookMeasure is the whole file's length: the header, the region and
 // the directory, in int64 (docs/SPEC-TABLES.md §7.6).
-def TableHitEventCookMeasure(rec·:schema_rt.Record) -> int:
-    return schema_rt.cook_measure(rec·, 0xd15cf2df295a7569)
+def TableHitEventCookMeasure(rec:schema_rt.Record) -> int:
+    return schema_rt.cook_measure(rec, 0xd15cf2df295a7569)
 
 // TableHitEventCook writes the cook of one loaded record in the order the caller
 // names, byte for byte with the tool's writer (docs/SPEC-TABLES.md §7.6).
-def TableHitEventCook(rec·:schema_rt.Record, big·:bool) -> string:
-    return schema_rt.cook_write(rec·, 0xd15cf2df295a7569, big·)
+def TableHitEventCook(rec:schema_rt.Record, big:bool) -> string:
+    return schema_rt.cook_write(rec, 0xd15cf2df295a7569, big)
 
 // TableHitEventReadCook reads a cooked file back into the record model, which the
 // wire's save then writes: the proof no fact was lost (§7.5, Uncook).
-def TableHitEventReadCook(data·:string) -> schema_rt.Record?:
-    return schema_rt.cook_read(data·, 0xd15cf2df295a7569, TableHitEventDescriptor, TableHitEventCookTable)
+def TableHitEventReadCook(data:string) -> schema_rt.Record?:
+    return schema_rt.cook_read(data, 0xd15cf2df295a7569, TableHitEventDescriptor, TableHitEventCookTable)
 
 // TableHitEventOpen matches the cooked header for TableHitEvent (docs/SPEC-TABLES.md §7.1):
 // the magic and the order it establishes, the build version, the reserved
 // words, the alignment and both part lengths. It points at the region and
 // allocates nothing; the check lives once in the runtime.
-def TableHitEventOpen(data·:string) -> bool:
-    return TableHitEventOpenReason(data·, 0, false) == "ok"
+def TableHitEventOpen(data:string) -> bool:
+    return TableHitEventOpenReason(data, 0, false) == "ok"
 
 // TableHitEventOpenReason is Open with the reason beside the refusal (docs/SPEC-TABLES.md
 // §7): the first failing clause as the refusal enum's value name, or "ok".
 // data is exactly the extent the caller claims; lead is how far past an
 // aligned base the buffer sits, and nobuf is a NULL buffer.
-def TableHitEventOpenReason(data·:string, lead·:int, nobuf·:bool) -> string:
-    return schema_rt.cook_open_reason(data·, 0xd15cf2df295a7569, 4, 16, lead·, nobuf·)
+def TableHitEventOpenReason(data:string, lead:int, nobuf:bool) -> string:
+    return schema_rt.cook_open_reason(data, 0xd15cf2df295a7569, 4, 16, lead, nobuf)
 
 // TableChatEventCookTable — TableChatEvent's cooked storage as data (docs/SPEC-TABLES.md §7.2):
 // each field's pieces and where a reference points, the same numbers
@@ -622,32 +622,32 @@ let TableChatEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
 
 // TableChatEventCookMeasure is the whole file's length: the header, the region and
 // the directory, in int64 (docs/SPEC-TABLES.md §7.6).
-def TableChatEventCookMeasure(rec·:schema_rt.Record) -> int:
-    return schema_rt.cook_measure(rec·, 0xd15cf2df295a7569)
+def TableChatEventCookMeasure(rec:schema_rt.Record) -> int:
+    return schema_rt.cook_measure(rec, 0xd15cf2df295a7569)
 
 // TableChatEventCook writes the cook of one loaded record in the order the caller
 // names, byte for byte with the tool's writer (docs/SPEC-TABLES.md §7.6).
-def TableChatEventCook(rec·:schema_rt.Record, big·:bool) -> string:
-    return schema_rt.cook_write(rec·, 0xd15cf2df295a7569, big·)
+def TableChatEventCook(rec:schema_rt.Record, big:bool) -> string:
+    return schema_rt.cook_write(rec, 0xd15cf2df295a7569, big)
 
 // TableChatEventReadCook reads a cooked file back into the record model, which the
 // wire's save then writes: the proof no fact was lost (§7.5, Uncook).
-def TableChatEventReadCook(data·:string) -> schema_rt.Record?:
-    return schema_rt.cook_read(data·, 0xd15cf2df295a7569, TableChatEventDescriptor, TableChatEventCookTable)
+def TableChatEventReadCook(data:string) -> schema_rt.Record?:
+    return schema_rt.cook_read(data, 0xd15cf2df295a7569, TableChatEventDescriptor, TableChatEventCookTable)
 
 // TableChatEventOpen matches the cooked header for TableChatEvent (docs/SPEC-TABLES.md §7.1):
 // the magic and the order it establishes, the build version, the reserved
 // words, the alignment and both part lengths. It points at the region and
 // allocates nothing; the check lives once in the runtime.
-def TableChatEventOpen(data·:string) -> bool:
-    return TableChatEventOpenReason(data·, 0, false) == "ok"
+def TableChatEventOpen(data:string) -> bool:
+    return TableChatEventOpenReason(data, 0, false) == "ok"
 
 // TableChatEventOpenReason is Open with the reason beside the refusal (docs/SPEC-TABLES.md
 // §7): the first failing clause as the refusal enum's value name, or "ok".
 // data is exactly the extent the caller claims; lead is how far past an
 // aligned base the buffer sits, and nobuf is a NULL buffer.
-def TableChatEventOpenReason(data·:string, lead·:int, nobuf·:bool) -> string:
-    return schema_rt.cook_open_reason(data·, 0xd15cf2df295a7569, 4, 8, lead·, nobuf·)
+def TableChatEventOpenReason(data:string, lead:int, nobuf:bool) -> string:
+    return schema_rt.cook_open_reason(data, 0xd15cf2df295a7569, 4, 8, lead, nobuf)
 
 // TablePickupEventCookTable — TablePickupEvent's cooked storage as data (docs/SPEC-TABLES.md §7.2):
 // each field's pieces and where a reference points, the same numbers
@@ -668,32 +668,32 @@ let TablePickupEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
 
 // TablePickupEventCookMeasure is the whole file's length: the header, the region and
 // the directory, in int64 (docs/SPEC-TABLES.md §7.6).
-def TablePickupEventCookMeasure(rec·:schema_rt.Record) -> int:
-    return schema_rt.cook_measure(rec·, 0xd15cf2df295a7569)
+def TablePickupEventCookMeasure(rec:schema_rt.Record) -> int:
+    return schema_rt.cook_measure(rec, 0xd15cf2df295a7569)
 
 // TablePickupEventCook writes the cook of one loaded record in the order the caller
 // names, byte for byte with the tool's writer (docs/SPEC-TABLES.md §7.6).
-def TablePickupEventCook(rec·:schema_rt.Record, big·:bool) -> string:
-    return schema_rt.cook_write(rec·, 0xd15cf2df295a7569, big·)
+def TablePickupEventCook(rec:schema_rt.Record, big:bool) -> string:
+    return schema_rt.cook_write(rec, 0xd15cf2df295a7569, big)
 
 // TablePickupEventReadCook reads a cooked file back into the record model, which the
 // wire's save then writes: the proof no fact was lost (§7.5, Uncook).
-def TablePickupEventReadCook(data·:string) -> schema_rt.Record?:
-    return schema_rt.cook_read(data·, 0xd15cf2df295a7569, TablePickupEventDescriptor, TablePickupEventCookTable)
+def TablePickupEventReadCook(data:string) -> schema_rt.Record?:
+    return schema_rt.cook_read(data, 0xd15cf2df295a7569, TablePickupEventDescriptor, TablePickupEventCookTable)
 
 // TablePickupEventOpen matches the cooked header for TablePickupEvent (docs/SPEC-TABLES.md §7.1):
 // the magic and the order it establishes, the build version, the reserved
 // words, the alignment and both part lengths. It points at the region and
 // allocates nothing; the check lives once in the runtime.
-def TablePickupEventOpen(data·:string) -> bool:
-    return TablePickupEventOpenReason(data·, 0, false) == "ok"
+def TablePickupEventOpen(data:string) -> bool:
+    return TablePickupEventOpenReason(data, 0, false) == "ok"
 
 // TablePickupEventOpenReason is Open with the reason beside the refusal (docs/SPEC-TABLES.md
 // §7): the first failing clause as the refusal enum's value name, or "ok".
 // data is exactly the extent the caller claims; lead is how far past an
 // aligned base the buffer sits, and nobuf is a NULL buffer.
-def TablePickupEventOpenReason(data·:string, lead·:int, nobuf·:bool) -> string:
-    return schema_rt.cook_open_reason(data·, 0xd15cf2df295a7569, 4, 8, lead·, nobuf·)
+def TablePickupEventOpenReason(data:string, lead:int, nobuf:bool) -> string:
+    return schema_rt.cook_open_reason(data, 0xd15cf2df295a7569, 4, 8, lead, nobuf)
 
 // TableEventCookUnion — union TableEvent's cooked overlay (docs/SPEC-TABLES.md §7.2):
 // the tag at zero, the set arm at the arms' shared offset; the rest zero.
@@ -730,522 +730,522 @@ schema_rt.view_union_arm("TableEvent", 3, "TablePickupEvent", schema_rt.lookup_t
 // TableEntityFixedLayoutBytes is the writer's layout, exactly as it rides (TableEntity,
 // docs/FIXED-FORM-ALGORITHM.md §1): a u32 entry count then 17-byte entries.
 def TableEntityFixedLayoutBytes() -> string:
-    var b· = schema_rt.zeros(514)
-    b· = write_int8_le(b·, 0, 30)
-    b· = write_int8_le(b·, 1, 0)
-    b· = write_int8_le(b·, 2, 0)
-    b· = write_int8_le(b·, 3, 0)
-    b· = write_int8_le(b·, 4, 168)
-    b· = write_int8_le(b·, 5, 203)
-    b· = write_int8_le(b·, 6, 198)
-    b· = write_int8_le(b·, 7, 150)
-    b· = write_int8_le(b·, 8, 53)
-    b· = write_int8_le(b·, 9, 114)
-    b· = write_int8_le(b·, 10, 97)
-    b· = write_int8_le(b·, 11, 49)
-    b· = write_int8_le(b·, 12, 13)
-    b· = write_int8_le(b·, 13, 51)
-    b· = write_int8_le(b·, 14, 0)
-    b· = write_int8_le(b·, 15, 0)
-    b· = write_int8_le(b·, 16, 0)
-    b· = write_int8_le(b·, 17, 14)
-    b· = write_int8_le(b·, 18, 0)
-    b· = write_int8_le(b·, 19, 0)
-    b· = write_int8_le(b·, 20, 0)
-    b· = write_int8_le(b·, 21, 18)
-    b· = write_int8_le(b·, 22, 103)
-    b· = write_int8_le(b·, 23, 227)
-    b· = write_int8_le(b·, 24, 120)
-    b· = write_int8_le(b·, 25, 102)
-    b· = write_int8_le(b·, 26, 253)
-    b· = write_int8_le(b·, 27, 252)
-    b· = write_int8_le(b·, 28, 35)
-    b· = write_int8_le(b·, 29, 7)
-    b· = write_int8_le(b·, 30, 4)
-    b· = write_int8_le(b·, 31, 0)
-    b· = write_int8_le(b·, 32, 0)
-    b· = write_int8_le(b·, 33, 0)
-    b· = write_int8_le(b·, 34, 0)
-    b· = write_int8_le(b·, 35, 0)
-    b· = write_int8_le(b·, 36, 0)
-    b· = write_int8_le(b·, 37, 0)
-    b· = write_int8_le(b·, 38, 14)
-    b· = write_int8_le(b·, 39, 49)
-    b· = write_int8_le(b·, 40, 103)
-    b· = write_int8_le(b·, 41, 118)
-    b· = write_int8_le(b·, 42, 53)
-    b· = write_int8_le(b·, 43, 55)
-    b· = write_int8_le(b·, 44, 75)
-    b· = write_int8_le(b·, 45, 203)
-    b· = write_int8_le(b·, 46, 4)
-    b· = write_int8_le(b·, 47, 4)
-    b· = write_int8_le(b·, 48, 0)
-    b· = write_int8_le(b·, 49, 0)
-    b· = write_int8_le(b·, 50, 0)
-    b· = write_int8_le(b·, 51, 0)
-    b· = write_int8_le(b·, 52, 0)
-    b· = write_int8_le(b·, 53, 0)
-    b· = write_int8_le(b·, 54, 0)
-    b· = write_int8_le(b·, 55, 193)
-    b· = write_int8_le(b·, 56, 50)
-    b· = write_int8_le(b·, 57, 103)
-    b· = write_int8_le(b·, 58, 118)
-    b· = write_int8_le(b·, 59, 53)
-    b· = write_int8_le(b·, 60, 56)
-    b· = write_int8_le(b·, 61, 75)
-    b· = write_int8_le(b·, 62, 203)
-    b· = write_int8_le(b·, 63, 4)
-    b· = write_int8_le(b·, 64, 4)
-    b· = write_int8_le(b·, 65, 0)
-    b· = write_int8_le(b·, 66, 0)
-    b· = write_int8_le(b·, 67, 0)
-    b· = write_int8_le(b·, 68, 0)
-    b· = write_int8_le(b·, 69, 0)
-    b· = write_int8_le(b·, 70, 0)
-    b· = write_int8_le(b·, 71, 0)
-    b· = write_int8_le(b·, 72, 168)
-    b· = write_int8_le(b·, 73, 45)
-    b· = write_int8_le(b·, 74, 103)
-    b· = write_int8_le(b·, 75, 118)
-    b· = write_int8_le(b·, 76, 53)
-    b· = write_int8_le(b·, 77, 53)
-    b· = write_int8_le(b·, 78, 75)
-    b· = write_int8_le(b·, 79, 203)
-    b· = write_int8_le(b·, 80, 4)
-    b· = write_int8_le(b·, 81, 4)
-    b· = write_int8_le(b·, 82, 0)
-    b· = write_int8_le(b·, 83, 0)
-    b· = write_int8_le(b·, 84, 0)
-    b· = write_int8_le(b·, 85, 0)
-    b· = write_int8_le(b·, 86, 0)
-    b· = write_int8_le(b·, 87, 0)
-    b· = write_int8_le(b·, 88, 0)
-    b· = write_int8_le(b·, 89, 232)
-    b· = write_int8_le(b·, 90, 22)
-    b· = write_int8_le(b·, 91, 142)
-    b· = write_int8_le(b·, 92, 121)
-    b· = write_int8_le(b·, 93, 25)
-    b· = write_int8_le(b·, 94, 142)
-    b· = write_int8_le(b·, 95, 77)
-    b· = write_int8_le(b·, 96, 181)
-    b· = write_int8_le(b·, 97, 7)
-    b· = write_int8_le(b·, 98, 4)
-    b· = write_int8_le(b·, 99, 0)
-    b· = write_int8_le(b·, 100, 0)
-    b· = write_int8_le(b·, 101, 0)
-    b· = write_int8_le(b·, 102, 0)
-    b· = write_int8_le(b·, 103, 0)
-    b· = write_int8_le(b·, 104, 0)
-    b· = write_int8_le(b·, 105, 0)
-    b· = write_int8_le(b·, 106, 177)
-    b· = write_int8_le(b·, 107, 193)
-    b· = write_int8_le(b·, 108, 12)
-    b· = write_int8_le(b·, 109, 169)
-    b· = write_int8_le(b·, 110, 101)
-    b· = write_int8_le(b·, 111, 246)
-    b· = write_int8_le(b·, 112, 169)
-    b· = write_int8_le(b·, 113, 83)
-    b· = write_int8_le(b·, 114, 7)
-    b· = write_int8_le(b·, 115, 4)
-    b· = write_int8_le(b·, 116, 0)
-    b· = write_int8_le(b·, 117, 0)
-    b· = write_int8_le(b·, 118, 0)
-    b· = write_int8_le(b·, 119, 0)
-    b· = write_int8_le(b·, 120, 0)
-    b· = write_int8_le(b·, 121, 0)
-    b· = write_int8_le(b·, 122, 0)
-    b· = write_int8_le(b·, 123, 103)
-    b· = write_int8_le(b·, 124, 238)
-    b· = write_int8_le(b·, 125, 96)
-    b· = write_int8_le(b·, 126, 235)
-    b· = write_int8_le(b·, 127, 182)
-    b· = write_int8_le(b·, 128, 230)
-    b· = write_int8_le(b·, 129, 237)
-    b· = write_int8_le(b·, 130, 108)
-    b· = write_int8_le(b·, 131, 4)
-    b· = write_int8_le(b·, 132, 4)
-    b· = write_int8_le(b·, 133, 0)
-    b· = write_int8_le(b·, 134, 0)
-    b· = write_int8_le(b·, 135, 0)
-    b· = write_int8_le(b·, 136, 0)
-    b· = write_int8_le(b·, 137, 0)
-    b· = write_int8_le(b·, 138, 0)
-    b· = write_int8_le(b·, 139, 0)
-    b· = write_int8_le(b·, 140, 180)
-    b· = write_int8_le(b·, 141, 236)
-    b· = write_int8_le(b·, 142, 96)
-    b· = write_int8_le(b·, 143, 235)
-    b· = write_int8_le(b·, 144, 182)
-    b· = write_int8_le(b·, 145, 229)
-    b· = write_int8_le(b·, 146, 237)
-    b· = write_int8_le(b·, 147, 108)
-    b· = write_int8_le(b·, 148, 4)
-    b· = write_int8_le(b·, 149, 4)
-    b· = write_int8_le(b·, 150, 0)
-    b· = write_int8_le(b·, 151, 0)
-    b· = write_int8_le(b·, 152, 0)
-    b· = write_int8_le(b·, 153, 0)
-    b· = write_int8_le(b·, 154, 0)
-    b· = write_int8_le(b·, 155, 0)
-    b· = write_int8_le(b·, 156, 0)
-    b· = write_int8_le(b·, 157, 205)
-    b· = write_int8_le(b·, 158, 241)
-    b· = write_int8_le(b·, 159, 96)
-    b· = write_int8_le(b·, 160, 235)
-    b· = write_int8_le(b·, 161, 182)
-    b· = write_int8_le(b·, 162, 232)
-    b· = write_int8_le(b·, 163, 237)
-    b· = write_int8_le(b·, 164, 108)
-    b· = write_int8_le(b·, 165, 4)
-    b· = write_int8_le(b·, 166, 4)
-    b· = write_int8_le(b·, 167, 0)
-    b· = write_int8_le(b·, 168, 0)
-    b· = write_int8_le(b·, 169, 0)
-    b· = write_int8_le(b·, 170, 0)
-    b· = write_int8_le(b·, 171, 0)
-    b· = write_int8_le(b·, 172, 0)
-    b· = write_int8_le(b·, 173, 0)
-    b· = write_int8_le(b·, 174, 207)
-    b· = write_int8_le(b·, 175, 169)
-    b· = write_int8_le(b·, 176, 139)
-    b· = write_int8_le(b·, 177, 40)
-    b· = write_int8_le(b·, 178, 181)
-    b· = write_int8_le(b·, 179, 212)
-    b· = write_int8_le(b·, 180, 105)
-    b· = write_int8_le(b·, 181, 127)
-    b· = write_int8_le(b·, 182, 4)
-    b· = write_int8_le(b·, 183, 4)
-    b· = write_int8_le(b·, 184, 0)
-    b· = write_int8_le(b·, 185, 0)
-    b· = write_int8_le(b·, 186, 0)
-    b· = write_int8_le(b·, 187, 0)
-    b· = write_int8_le(b·, 188, 0)
-    b· = write_int8_le(b·, 189, 0)
-    b· = write_int8_le(b·, 190, 0)
-    b· = write_int8_le(b·, 191, 1)
-    b· = write_int8_le(b·, 192, 110)
-    b· = write_int8_le(b·, 193, 44)
-    b· = write_int8_le(b·, 194, 95)
-    b· = write_int8_le(b·, 195, 32)
-    b· = write_int8_le(b·, 196, 16)
-    b· = write_int8_le(b·, 197, 182)
-    b· = write_int8_le(b·, 198, 160)
-    b· = write_int8_le(b·, 199, 30)
-    b· = write_int8_le(b·, 200, 1)
-    b· = write_int8_le(b·, 201, 0)
-    b· = write_int8_le(b·, 202, 0)
-    b· = write_int8_le(b·, 203, 0)
-    b· = write_int8_le(b·, 204, 15)
-    b· = write_int8_le(b·, 205, 0)
-    b· = write_int8_le(b·, 206, 0)
-    b· = write_int8_le(b·, 207, 0)
-    b· = write_int8_le(b·, 208, 12)
-    b· = write_int8_le(b·, 209, 207)
-    b· = write_int8_le(b·, 210, 102)
-    b· = write_int8_le(b·, 211, 39)
-    b· = write_int8_le(b·, 212, 225)
-    b· = write_int8_le(b·, 213, 238)
-    b· = write_int8_le(b·, 214, 144)
-    b· = write_int8_le(b·, 215, 167)
-    b· = write_int8_le(b·, 216, 32)
-    b· = write_int8_le(b·, 217, 0)
-    b· = write_int8_le(b·, 218, 0)
-    b· = write_int8_le(b·, 219, 0)
-    b· = write_int8_le(b·, 220, 0)
-    b· = write_int8_le(b·, 221, 0)
-    b· = write_int8_le(b·, 222, 0)
-    b· = write_int8_le(b·, 223, 0)
-    b· = write_int8_le(b·, 224, 0)
-    b· = write_int8_le(b·, 225, 118)
-    b· = write_int8_le(b·, 226, 132)
-    b· = write_int8_le(b·, 227, 218)
-    b· = write_int8_le(b·, 228, 53)
-    b· = write_int8_le(b·, 229, 168)
-    b· = write_int8_le(b·, 230, 239)
-    b· = write_int8_le(b·, 231, 191)
-    b· = write_int8_le(b·, 232, 159)
-    b· = write_int8_le(b·, 233, 32)
-    b· = write_int8_le(b·, 234, 0)
-    b· = write_int8_le(b·, 235, 0)
-    b· = write_int8_le(b·, 236, 0)
-    b· = write_int8_le(b·, 237, 0)
-    b· = write_int8_le(b·, 238, 0)
-    b· = write_int8_le(b·, 239, 0)
-    b· = write_int8_le(b·, 240, 0)
-    b· = write_int8_le(b·, 241, 0)
-    b· = write_int8_le(b·, 242, 149)
-    b· = write_int8_le(b·, 243, 138)
-    b· = write_int8_le(b·, 244, 146)
-    b· = write_int8_le(b·, 245, 131)
-    b· = write_int8_le(b·, 246, 23)
-    b· = write_int8_le(b·, 247, 187)
-    b· = write_int8_le(b·, 248, 139)
-    b· = write_int8_le(b·, 249, 24)
-    b· = write_int8_le(b·, 250, 32)
-    b· = write_int8_le(b·, 251, 0)
-    b· = write_int8_le(b·, 252, 0)
-    b· = write_int8_le(b·, 253, 0)
-    b· = write_int8_le(b·, 254, 0)
-    b· = write_int8_le(b·, 255, 0)
-    b· = write_int8_le(b·, 256, 0)
-    b· = write_int8_le(b·, 257, 0)
-    b· = write_int8_le(b·, 258, 0)
-    b· = write_int8_le(b·, 259, 241)
-    b· = write_int8_le(b·, 260, 114)
-    b· = write_int8_le(b·, 261, 242)
-    b· = write_int8_le(b·, 262, 194)
-    b· = write_int8_le(b·, 263, 185)
-    b· = write_int8_le(b·, 264, 103)
-    b· = write_int8_le(b·, 265, 54)
-    b· = write_int8_le(b·, 266, 44)
-    b· = write_int8_le(b·, 267, 32)
-    b· = write_int8_le(b·, 268, 0)
-    b· = write_int8_le(b·, 269, 0)
-    b· = write_int8_le(b·, 270, 0)
-    b· = write_int8_le(b·, 271, 0)
-    b· = write_int8_le(b·, 272, 0)
-    b· = write_int8_le(b·, 273, 0)
-    b· = write_int8_le(b·, 274, 0)
-    b· = write_int8_le(b·, 275, 0)
-    b· = write_int8_le(b·, 276, 246)
-    b· = write_int8_le(b·, 277, 85)
-    b· = write_int8_le(b·, 278, 215)
-    b· = write_int8_le(b·, 279, 0)
-    b· = write_int8_le(b·, 280, 27)
-    b· = write_int8_le(b·, 281, 180)
-    b· = write_int8_le(b·, 282, 168)
-    b· = write_int8_le(b·, 283, 12)
-    b· = write_int8_le(b·, 284, 32)
-    b· = write_int8_le(b·, 285, 0)
-    b· = write_int8_le(b·, 286, 0)
-    b· = write_int8_le(b·, 287, 0)
-    b· = write_int8_le(b·, 288, 0)
-    b· = write_int8_le(b·, 289, 0)
-    b· = write_int8_le(b·, 290, 0)
-    b· = write_int8_le(b·, 291, 0)
-    b· = write_int8_le(b·, 292, 0)
-    b· = write_int8_le(b·, 293, 78)
-    b· = write_int8_le(b·, 294, 26)
-    b· = write_int8_le(b·, 295, 178)
-    b· = write_int8_le(b·, 296, 250)
-    b· = write_int8_le(b·, 297, 25)
-    b· = write_int8_le(b·, 298, 200)
-    b· = write_int8_le(b·, 299, 95)
-    b· = write_int8_le(b·, 300, 152)
-    b· = write_int8_le(b·, 301, 32)
-    b· = write_int8_le(b·, 302, 0)
-    b· = write_int8_le(b·, 303, 0)
-    b· = write_int8_le(b·, 304, 0)
-    b· = write_int8_le(b·, 305, 0)
-    b· = write_int8_le(b·, 306, 0)
-    b· = write_int8_le(b·, 307, 0)
-    b· = write_int8_le(b·, 308, 0)
-    b· = write_int8_le(b·, 309, 0)
-    b· = write_int8_le(b·, 310, 85)
-    b· = write_int8_le(b·, 311, 106)
-    b· = write_int8_le(b·, 312, 8)
-    b· = write_int8_le(b·, 313, 195)
-    b· = write_int8_le(b·, 314, 71)
-    b· = write_int8_le(b·, 315, 4)
-    b· = write_int8_le(b·, 316, 157)
-    b· = write_int8_le(b·, 317, 34)
-    b· = write_int8_le(b·, 318, 32)
-    b· = write_int8_le(b·, 319, 0)
-    b· = write_int8_le(b·, 320, 0)
-    b· = write_int8_le(b·, 321, 0)
-    b· = write_int8_le(b·, 322, 0)
-    b· = write_int8_le(b·, 323, 0)
-    b· = write_int8_le(b·, 324, 0)
-    b· = write_int8_le(b·, 325, 0)
-    b· = write_int8_le(b·, 326, 0)
-    b· = write_int8_le(b·, 327, 157)
-    b· = write_int8_le(b·, 328, 143)
-    b· = write_int8_le(b·, 329, 34)
-    b· = write_int8_le(b·, 330, 167)
-    b· = write_int8_le(b·, 331, 73)
-    b· = write_int8_le(b·, 332, 123)
-    b· = write_int8_le(b·, 333, 28)
-    b· = write_int8_le(b·, 334, 1)
-    b· = write_int8_le(b·, 335, 32)
-    b· = write_int8_le(b·, 336, 0)
-    b· = write_int8_le(b·, 337, 0)
-    b· = write_int8_le(b·, 338, 0)
-    b· = write_int8_le(b·, 339, 0)
-    b· = write_int8_le(b·, 340, 0)
-    b· = write_int8_le(b·, 341, 0)
-    b· = write_int8_le(b·, 342, 0)
-    b· = write_int8_le(b·, 343, 0)
-    b· = write_int8_le(b·, 344, 95)
-    b· = write_int8_le(b·, 345, 225)
-    b· = write_int8_le(b·, 346, 35)
-    b· = write_int8_le(b·, 347, 17)
-    b· = write_int8_le(b·, 348, 110)
-    b· = write_int8_le(b·, 349, 86)
-    b· = write_int8_le(b·, 350, 247)
-    b· = write_int8_le(b·, 351, 137)
-    b· = write_int8_le(b·, 352, 32)
-    b· = write_int8_le(b·, 353, 0)
-    b· = write_int8_le(b·, 354, 0)
-    b· = write_int8_le(b·, 355, 0)
-    b· = write_int8_le(b·, 356, 0)
-    b· = write_int8_le(b·, 357, 0)
-    b· = write_int8_le(b·, 358, 0)
-    b· = write_int8_le(b·, 359, 0)
-    b· = write_int8_le(b·, 360, 0)
-    b· = write_int8_le(b·, 361, 105)
-    b· = write_int8_le(b·, 362, 68)
-    b· = write_int8_le(b·, 363, 59)
-    b· = write_int8_le(b·, 364, 139)
-    b· = write_int8_le(b·, 365, 49)
-    b· = write_int8_le(b·, 366, 37)
-    b· = write_int8_le(b·, 367, 127)
-    b· = write_int8_le(b·, 368, 141)
-    b· = write_int8_le(b·, 369, 32)
-    b· = write_int8_le(b·, 370, 0)
-    b· = write_int8_le(b·, 371, 0)
-    b· = write_int8_le(b·, 372, 0)
-    b· = write_int8_le(b·, 373, 0)
-    b· = write_int8_le(b·, 374, 0)
-    b· = write_int8_le(b·, 375, 0)
-    b· = write_int8_le(b·, 376, 0)
-    b· = write_int8_le(b·, 377, 0)
-    b· = write_int8_le(b·, 378, 22)
-    b· = write_int8_le(b·, 379, 120)
-    b· = write_int8_le(b·, 380, 91)
-    b· = write_int8_le(b·, 381, 40)
-    b· = write_int8_le(b·, 382, 204)
-    b· = write_int8_le(b·, 383, 13)
-    b· = write_int8_le(b·, 384, 205)
-    b· = write_int8_le(b·, 385, 217)
-    b· = write_int8_le(b·, 386, 32)
-    b· = write_int8_le(b·, 387, 0)
-    b· = write_int8_le(b·, 388, 0)
-    b· = write_int8_le(b·, 389, 0)
-    b· = write_int8_le(b·, 390, 0)
-    b· = write_int8_le(b·, 391, 0)
-    b· = write_int8_le(b·, 392, 0)
-    b· = write_int8_le(b·, 393, 0)
-    b· = write_int8_le(b·, 394, 0)
-    b· = write_int8_le(b·, 395, 118)
-    b· = write_int8_le(b·, 396, 82)
-    b· = write_int8_le(b·, 397, 255)
-    b· = write_int8_le(b·, 398, 168)
-    b· = write_int8_le(b·, 399, 174)
-    b· = write_int8_le(b·, 400, 22)
-    b· = write_int8_le(b·, 401, 220)
-    b· = write_int8_le(b·, 402, 4)
-    b· = write_int8_le(b·, 403, 32)
-    b· = write_int8_le(b·, 404, 0)
-    b· = write_int8_le(b·, 405, 0)
-    b· = write_int8_le(b·, 406, 0)
-    b· = write_int8_le(b·, 407, 0)
-    b· = write_int8_le(b·, 408, 0)
-    b· = write_int8_le(b·, 409, 0)
-    b· = write_int8_le(b·, 410, 0)
-    b· = write_int8_le(b·, 411, 0)
-    b· = write_int8_le(b·, 412, 23)
-    b· = write_int8_le(b·, 413, 146)
-    b· = write_int8_le(b·, 414, 18)
-    b· = write_int8_le(b·, 415, 65)
-    b· = write_int8_le(b·, 416, 195)
-    b· = write_int8_le(b·, 417, 59)
-    b· = write_int8_le(b·, 418, 229)
-    b· = write_int8_le(b·, 419, 53)
-    b· = write_int8_le(b·, 420, 32)
-    b· = write_int8_le(b·, 421, 0)
-    b· = write_int8_le(b·, 422, 0)
-    b· = write_int8_le(b·, 423, 0)
-    b· = write_int8_le(b·, 424, 0)
-    b· = write_int8_le(b·, 425, 0)
-    b· = write_int8_le(b·, 426, 0)
-    b· = write_int8_le(b·, 427, 0)
-    b· = write_int8_le(b·, 428, 0)
-    b· = write_int8_le(b·, 429, 49)
-    b· = write_int8_le(b·, 430, 136)
-    b· = write_int8_le(b·, 431, 222)
-    b· = write_int8_le(b·, 432, 176)
-    b· = write_int8_le(b·, 433, 47)
-    b· = write_int8_le(b·, 434, 40)
-    b· = write_int8_le(b·, 435, 200)
-    b· = write_int8_le(b·, 436, 44)
-    b· = write_int8_le(b·, 437, 32)
-    b· = write_int8_le(b·, 438, 0)
-    b· = write_int8_le(b·, 439, 0)
-    b· = write_int8_le(b·, 440, 0)
-    b· = write_int8_le(b·, 441, 0)
-    b· = write_int8_le(b·, 442, 0)
-    b· = write_int8_le(b·, 443, 0)
-    b· = write_int8_le(b·, 444, 0)
-    b· = write_int8_le(b·, 445, 0)
-    b· = write_int8_le(b·, 446, 52)
-    b· = write_int8_le(b·, 447, 179)
-    b· = write_int8_le(b·, 448, 140)
-    b· = write_int8_le(b·, 449, 188)
-    b· = write_int8_le(b·, 450, 33)
-    b· = write_int8_le(b·, 451, 218)
-    b· = write_int8_le(b·, 452, 186)
-    b· = write_int8_le(b·, 453, 32)
-    b· = write_int8_le(b·, 454, 32)
-    b· = write_int8_le(b·, 455, 0)
-    b· = write_int8_le(b·, 456, 0)
-    b· = write_int8_le(b·, 457, 0)
-    b· = write_int8_le(b·, 458, 0)
-    b· = write_int8_le(b·, 459, 0)
-    b· = write_int8_le(b·, 460, 0)
-    b· = write_int8_le(b·, 461, 0)
-    b· = write_int8_le(b·, 462, 0)
-    b· = write_int8_le(b·, 463, 192)
-    b· = write_int8_le(b·, 464, 127)
-    b· = write_int8_le(b·, 465, 179)
-    b· = write_int8_le(b·, 466, 138)
-    b· = write_int8_le(b·, 467, 190)
-    b· = write_int8_le(b·, 468, 8)
-    b· = write_int8_le(b·, 469, 99)
-    b· = write_int8_le(b·, 470, 127)
-    b· = write_int8_le(b·, 471, 9)
-    b· = write_int8_le(b·, 472, 8)
-    b· = write_int8_le(b·, 473, 0)
-    b· = write_int8_le(b·, 474, 0)
-    b· = write_int8_le(b·, 475, 0)
-    b· = write_int8_le(b·, 476, 0)
-    b· = write_int8_le(b·, 477, 0)
-    b· = write_int8_le(b·, 478, 0)
-    b· = write_int8_le(b·, 479, 0)
-    b· = write_int8_le(b·, 480, 167)
-    b· = write_int8_le(b·, 481, 61)
-    b· = write_int8_le(b·, 482, 36)
-    b· = write_int8_le(b·, 483, 209)
-    b· = write_int8_le(b·, 484, 193)
-    b· = write_int8_le(b·, 485, 79)
-    b· = write_int8_le(b·, 486, 164)
-    b· = write_int8_le(b·, 487, 17)
-    b· = write_int8_le(b·, 488, 1)
-    b· = write_int8_le(b·, 489, 1)
-    b· = write_int8_le(b·, 490, 0)
-    b· = write_int8_le(b·, 491, 0)
-    b· = write_int8_le(b·, 492, 0)
-    b· = write_int8_le(b·, 493, 0)
-    b· = write_int8_le(b·, 494, 0)
-    b· = write_int8_le(b·, 495, 0)
-    b· = write_int8_le(b·, 496, 0)
-    b· = write_int8_le(b·, 497, 202)
-    b· = write_int8_le(b·, 498, 49)
-    b· = write_int8_le(b·, 499, 144)
-    b· = write_int8_le(b·, 500, 155)
-    b· = write_int8_le(b·, 501, 209)
-    b· = write_int8_le(b·, 502, 207)
-    b· = write_int8_le(b·, 503, 116)
-    b· = write_int8_le(b·, 504, 118)
-    b· = write_int8_le(b·, 505, 1)
-    b· = write_int8_le(b·, 506, 1)
-    b· = write_int8_le(b·, 507, 0)
-    b· = write_int8_le(b·, 508, 0)
-    b· = write_int8_le(b·, 509, 0)
-    b· = write_int8_le(b·, 510, 0)
-    b· = write_int8_le(b·, 511, 0)
-    b· = write_int8_le(b·, 512, 0)
-    b· = write_int8_le(b·, 513, 0)
-    return b·
+    var b = schema_rt.zeros(514)
+    b = write_int8_le(b, 0, 30)
+    b = write_int8_le(b, 1, 0)
+    b = write_int8_le(b, 2, 0)
+    b = write_int8_le(b, 3, 0)
+    b = write_int8_le(b, 4, 168)
+    b = write_int8_le(b, 5, 203)
+    b = write_int8_le(b, 6, 198)
+    b = write_int8_le(b, 7, 150)
+    b = write_int8_le(b, 8, 53)
+    b = write_int8_le(b, 9, 114)
+    b = write_int8_le(b, 10, 97)
+    b = write_int8_le(b, 11, 49)
+    b = write_int8_le(b, 12, 13)
+    b = write_int8_le(b, 13, 51)
+    b = write_int8_le(b, 14, 0)
+    b = write_int8_le(b, 15, 0)
+    b = write_int8_le(b, 16, 0)
+    b = write_int8_le(b, 17, 14)
+    b = write_int8_le(b, 18, 0)
+    b = write_int8_le(b, 19, 0)
+    b = write_int8_le(b, 20, 0)
+    b = write_int8_le(b, 21, 18)
+    b = write_int8_le(b, 22, 103)
+    b = write_int8_le(b, 23, 227)
+    b = write_int8_le(b, 24, 120)
+    b = write_int8_le(b, 25, 102)
+    b = write_int8_le(b, 26, 253)
+    b = write_int8_le(b, 27, 252)
+    b = write_int8_le(b, 28, 35)
+    b = write_int8_le(b, 29, 7)
+    b = write_int8_le(b, 30, 4)
+    b = write_int8_le(b, 31, 0)
+    b = write_int8_le(b, 32, 0)
+    b = write_int8_le(b, 33, 0)
+    b = write_int8_le(b, 34, 0)
+    b = write_int8_le(b, 35, 0)
+    b = write_int8_le(b, 36, 0)
+    b = write_int8_le(b, 37, 0)
+    b = write_int8_le(b, 38, 14)
+    b = write_int8_le(b, 39, 49)
+    b = write_int8_le(b, 40, 103)
+    b = write_int8_le(b, 41, 118)
+    b = write_int8_le(b, 42, 53)
+    b = write_int8_le(b, 43, 55)
+    b = write_int8_le(b, 44, 75)
+    b = write_int8_le(b, 45, 203)
+    b = write_int8_le(b, 46, 4)
+    b = write_int8_le(b, 47, 4)
+    b = write_int8_le(b, 48, 0)
+    b = write_int8_le(b, 49, 0)
+    b = write_int8_le(b, 50, 0)
+    b = write_int8_le(b, 51, 0)
+    b = write_int8_le(b, 52, 0)
+    b = write_int8_le(b, 53, 0)
+    b = write_int8_le(b, 54, 0)
+    b = write_int8_le(b, 55, 193)
+    b = write_int8_le(b, 56, 50)
+    b = write_int8_le(b, 57, 103)
+    b = write_int8_le(b, 58, 118)
+    b = write_int8_le(b, 59, 53)
+    b = write_int8_le(b, 60, 56)
+    b = write_int8_le(b, 61, 75)
+    b = write_int8_le(b, 62, 203)
+    b = write_int8_le(b, 63, 4)
+    b = write_int8_le(b, 64, 4)
+    b = write_int8_le(b, 65, 0)
+    b = write_int8_le(b, 66, 0)
+    b = write_int8_le(b, 67, 0)
+    b = write_int8_le(b, 68, 0)
+    b = write_int8_le(b, 69, 0)
+    b = write_int8_le(b, 70, 0)
+    b = write_int8_le(b, 71, 0)
+    b = write_int8_le(b, 72, 168)
+    b = write_int8_le(b, 73, 45)
+    b = write_int8_le(b, 74, 103)
+    b = write_int8_le(b, 75, 118)
+    b = write_int8_le(b, 76, 53)
+    b = write_int8_le(b, 77, 53)
+    b = write_int8_le(b, 78, 75)
+    b = write_int8_le(b, 79, 203)
+    b = write_int8_le(b, 80, 4)
+    b = write_int8_le(b, 81, 4)
+    b = write_int8_le(b, 82, 0)
+    b = write_int8_le(b, 83, 0)
+    b = write_int8_le(b, 84, 0)
+    b = write_int8_le(b, 85, 0)
+    b = write_int8_le(b, 86, 0)
+    b = write_int8_le(b, 87, 0)
+    b = write_int8_le(b, 88, 0)
+    b = write_int8_le(b, 89, 232)
+    b = write_int8_le(b, 90, 22)
+    b = write_int8_le(b, 91, 142)
+    b = write_int8_le(b, 92, 121)
+    b = write_int8_le(b, 93, 25)
+    b = write_int8_le(b, 94, 142)
+    b = write_int8_le(b, 95, 77)
+    b = write_int8_le(b, 96, 181)
+    b = write_int8_le(b, 97, 7)
+    b = write_int8_le(b, 98, 4)
+    b = write_int8_le(b, 99, 0)
+    b = write_int8_le(b, 100, 0)
+    b = write_int8_le(b, 101, 0)
+    b = write_int8_le(b, 102, 0)
+    b = write_int8_le(b, 103, 0)
+    b = write_int8_le(b, 104, 0)
+    b = write_int8_le(b, 105, 0)
+    b = write_int8_le(b, 106, 177)
+    b = write_int8_le(b, 107, 193)
+    b = write_int8_le(b, 108, 12)
+    b = write_int8_le(b, 109, 169)
+    b = write_int8_le(b, 110, 101)
+    b = write_int8_le(b, 111, 246)
+    b = write_int8_le(b, 112, 169)
+    b = write_int8_le(b, 113, 83)
+    b = write_int8_le(b, 114, 7)
+    b = write_int8_le(b, 115, 4)
+    b = write_int8_le(b, 116, 0)
+    b = write_int8_le(b, 117, 0)
+    b = write_int8_le(b, 118, 0)
+    b = write_int8_le(b, 119, 0)
+    b = write_int8_le(b, 120, 0)
+    b = write_int8_le(b, 121, 0)
+    b = write_int8_le(b, 122, 0)
+    b = write_int8_le(b, 123, 103)
+    b = write_int8_le(b, 124, 238)
+    b = write_int8_le(b, 125, 96)
+    b = write_int8_le(b, 126, 235)
+    b = write_int8_le(b, 127, 182)
+    b = write_int8_le(b, 128, 230)
+    b = write_int8_le(b, 129, 237)
+    b = write_int8_le(b, 130, 108)
+    b = write_int8_le(b, 131, 4)
+    b = write_int8_le(b, 132, 4)
+    b = write_int8_le(b, 133, 0)
+    b = write_int8_le(b, 134, 0)
+    b = write_int8_le(b, 135, 0)
+    b = write_int8_le(b, 136, 0)
+    b = write_int8_le(b, 137, 0)
+    b = write_int8_le(b, 138, 0)
+    b = write_int8_le(b, 139, 0)
+    b = write_int8_le(b, 140, 180)
+    b = write_int8_le(b, 141, 236)
+    b = write_int8_le(b, 142, 96)
+    b = write_int8_le(b, 143, 235)
+    b = write_int8_le(b, 144, 182)
+    b = write_int8_le(b, 145, 229)
+    b = write_int8_le(b, 146, 237)
+    b = write_int8_le(b, 147, 108)
+    b = write_int8_le(b, 148, 4)
+    b = write_int8_le(b, 149, 4)
+    b = write_int8_le(b, 150, 0)
+    b = write_int8_le(b, 151, 0)
+    b = write_int8_le(b, 152, 0)
+    b = write_int8_le(b, 153, 0)
+    b = write_int8_le(b, 154, 0)
+    b = write_int8_le(b, 155, 0)
+    b = write_int8_le(b, 156, 0)
+    b = write_int8_le(b, 157, 205)
+    b = write_int8_le(b, 158, 241)
+    b = write_int8_le(b, 159, 96)
+    b = write_int8_le(b, 160, 235)
+    b = write_int8_le(b, 161, 182)
+    b = write_int8_le(b, 162, 232)
+    b = write_int8_le(b, 163, 237)
+    b = write_int8_le(b, 164, 108)
+    b = write_int8_le(b, 165, 4)
+    b = write_int8_le(b, 166, 4)
+    b = write_int8_le(b, 167, 0)
+    b = write_int8_le(b, 168, 0)
+    b = write_int8_le(b, 169, 0)
+    b = write_int8_le(b, 170, 0)
+    b = write_int8_le(b, 171, 0)
+    b = write_int8_le(b, 172, 0)
+    b = write_int8_le(b, 173, 0)
+    b = write_int8_le(b, 174, 207)
+    b = write_int8_le(b, 175, 169)
+    b = write_int8_le(b, 176, 139)
+    b = write_int8_le(b, 177, 40)
+    b = write_int8_le(b, 178, 181)
+    b = write_int8_le(b, 179, 212)
+    b = write_int8_le(b, 180, 105)
+    b = write_int8_le(b, 181, 127)
+    b = write_int8_le(b, 182, 4)
+    b = write_int8_le(b, 183, 4)
+    b = write_int8_le(b, 184, 0)
+    b = write_int8_le(b, 185, 0)
+    b = write_int8_le(b, 186, 0)
+    b = write_int8_le(b, 187, 0)
+    b = write_int8_le(b, 188, 0)
+    b = write_int8_le(b, 189, 0)
+    b = write_int8_le(b, 190, 0)
+    b = write_int8_le(b, 191, 1)
+    b = write_int8_le(b, 192, 110)
+    b = write_int8_le(b, 193, 44)
+    b = write_int8_le(b, 194, 95)
+    b = write_int8_le(b, 195, 32)
+    b = write_int8_le(b, 196, 16)
+    b = write_int8_le(b, 197, 182)
+    b = write_int8_le(b, 198, 160)
+    b = write_int8_le(b, 199, 30)
+    b = write_int8_le(b, 200, 1)
+    b = write_int8_le(b, 201, 0)
+    b = write_int8_le(b, 202, 0)
+    b = write_int8_le(b, 203, 0)
+    b = write_int8_le(b, 204, 15)
+    b = write_int8_le(b, 205, 0)
+    b = write_int8_le(b, 206, 0)
+    b = write_int8_le(b, 207, 0)
+    b = write_int8_le(b, 208, 12)
+    b = write_int8_le(b, 209, 207)
+    b = write_int8_le(b, 210, 102)
+    b = write_int8_le(b, 211, 39)
+    b = write_int8_le(b, 212, 225)
+    b = write_int8_le(b, 213, 238)
+    b = write_int8_le(b, 214, 144)
+    b = write_int8_le(b, 215, 167)
+    b = write_int8_le(b, 216, 32)
+    b = write_int8_le(b, 217, 0)
+    b = write_int8_le(b, 218, 0)
+    b = write_int8_le(b, 219, 0)
+    b = write_int8_le(b, 220, 0)
+    b = write_int8_le(b, 221, 0)
+    b = write_int8_le(b, 222, 0)
+    b = write_int8_le(b, 223, 0)
+    b = write_int8_le(b, 224, 0)
+    b = write_int8_le(b, 225, 118)
+    b = write_int8_le(b, 226, 132)
+    b = write_int8_le(b, 227, 218)
+    b = write_int8_le(b, 228, 53)
+    b = write_int8_le(b, 229, 168)
+    b = write_int8_le(b, 230, 239)
+    b = write_int8_le(b, 231, 191)
+    b = write_int8_le(b, 232, 159)
+    b = write_int8_le(b, 233, 32)
+    b = write_int8_le(b, 234, 0)
+    b = write_int8_le(b, 235, 0)
+    b = write_int8_le(b, 236, 0)
+    b = write_int8_le(b, 237, 0)
+    b = write_int8_le(b, 238, 0)
+    b = write_int8_le(b, 239, 0)
+    b = write_int8_le(b, 240, 0)
+    b = write_int8_le(b, 241, 0)
+    b = write_int8_le(b, 242, 149)
+    b = write_int8_le(b, 243, 138)
+    b = write_int8_le(b, 244, 146)
+    b = write_int8_le(b, 245, 131)
+    b = write_int8_le(b, 246, 23)
+    b = write_int8_le(b, 247, 187)
+    b = write_int8_le(b, 248, 139)
+    b = write_int8_le(b, 249, 24)
+    b = write_int8_le(b, 250, 32)
+    b = write_int8_le(b, 251, 0)
+    b = write_int8_le(b, 252, 0)
+    b = write_int8_le(b, 253, 0)
+    b = write_int8_le(b, 254, 0)
+    b = write_int8_le(b, 255, 0)
+    b = write_int8_le(b, 256, 0)
+    b = write_int8_le(b, 257, 0)
+    b = write_int8_le(b, 258, 0)
+    b = write_int8_le(b, 259, 241)
+    b = write_int8_le(b, 260, 114)
+    b = write_int8_le(b, 261, 242)
+    b = write_int8_le(b, 262, 194)
+    b = write_int8_le(b, 263, 185)
+    b = write_int8_le(b, 264, 103)
+    b = write_int8_le(b, 265, 54)
+    b = write_int8_le(b, 266, 44)
+    b = write_int8_le(b, 267, 32)
+    b = write_int8_le(b, 268, 0)
+    b = write_int8_le(b, 269, 0)
+    b = write_int8_le(b, 270, 0)
+    b = write_int8_le(b, 271, 0)
+    b = write_int8_le(b, 272, 0)
+    b = write_int8_le(b, 273, 0)
+    b = write_int8_le(b, 274, 0)
+    b = write_int8_le(b, 275, 0)
+    b = write_int8_le(b, 276, 246)
+    b = write_int8_le(b, 277, 85)
+    b = write_int8_le(b, 278, 215)
+    b = write_int8_le(b, 279, 0)
+    b = write_int8_le(b, 280, 27)
+    b = write_int8_le(b, 281, 180)
+    b = write_int8_le(b, 282, 168)
+    b = write_int8_le(b, 283, 12)
+    b = write_int8_le(b, 284, 32)
+    b = write_int8_le(b, 285, 0)
+    b = write_int8_le(b, 286, 0)
+    b = write_int8_le(b, 287, 0)
+    b = write_int8_le(b, 288, 0)
+    b = write_int8_le(b, 289, 0)
+    b = write_int8_le(b, 290, 0)
+    b = write_int8_le(b, 291, 0)
+    b = write_int8_le(b, 292, 0)
+    b = write_int8_le(b, 293, 78)
+    b = write_int8_le(b, 294, 26)
+    b = write_int8_le(b, 295, 178)
+    b = write_int8_le(b, 296, 250)
+    b = write_int8_le(b, 297, 25)
+    b = write_int8_le(b, 298, 200)
+    b = write_int8_le(b, 299, 95)
+    b = write_int8_le(b, 300, 152)
+    b = write_int8_le(b, 301, 32)
+    b = write_int8_le(b, 302, 0)
+    b = write_int8_le(b, 303, 0)
+    b = write_int8_le(b, 304, 0)
+    b = write_int8_le(b, 305, 0)
+    b = write_int8_le(b, 306, 0)
+    b = write_int8_le(b, 307, 0)
+    b = write_int8_le(b, 308, 0)
+    b = write_int8_le(b, 309, 0)
+    b = write_int8_le(b, 310, 85)
+    b = write_int8_le(b, 311, 106)
+    b = write_int8_le(b, 312, 8)
+    b = write_int8_le(b, 313, 195)
+    b = write_int8_le(b, 314, 71)
+    b = write_int8_le(b, 315, 4)
+    b = write_int8_le(b, 316, 157)
+    b = write_int8_le(b, 317, 34)
+    b = write_int8_le(b, 318, 32)
+    b = write_int8_le(b, 319, 0)
+    b = write_int8_le(b, 320, 0)
+    b = write_int8_le(b, 321, 0)
+    b = write_int8_le(b, 322, 0)
+    b = write_int8_le(b, 323, 0)
+    b = write_int8_le(b, 324, 0)
+    b = write_int8_le(b, 325, 0)
+    b = write_int8_le(b, 326, 0)
+    b = write_int8_le(b, 327, 157)
+    b = write_int8_le(b, 328, 143)
+    b = write_int8_le(b, 329, 34)
+    b = write_int8_le(b, 330, 167)
+    b = write_int8_le(b, 331, 73)
+    b = write_int8_le(b, 332, 123)
+    b = write_int8_le(b, 333, 28)
+    b = write_int8_le(b, 334, 1)
+    b = write_int8_le(b, 335, 32)
+    b = write_int8_le(b, 336, 0)
+    b = write_int8_le(b, 337, 0)
+    b = write_int8_le(b, 338, 0)
+    b = write_int8_le(b, 339, 0)
+    b = write_int8_le(b, 340, 0)
+    b = write_int8_le(b, 341, 0)
+    b = write_int8_le(b, 342, 0)
+    b = write_int8_le(b, 343, 0)
+    b = write_int8_le(b, 344, 95)
+    b = write_int8_le(b, 345, 225)
+    b = write_int8_le(b, 346, 35)
+    b = write_int8_le(b, 347, 17)
+    b = write_int8_le(b, 348, 110)
+    b = write_int8_le(b, 349, 86)
+    b = write_int8_le(b, 350, 247)
+    b = write_int8_le(b, 351, 137)
+    b = write_int8_le(b, 352, 32)
+    b = write_int8_le(b, 353, 0)
+    b = write_int8_le(b, 354, 0)
+    b = write_int8_le(b, 355, 0)
+    b = write_int8_le(b, 356, 0)
+    b = write_int8_le(b, 357, 0)
+    b = write_int8_le(b, 358, 0)
+    b = write_int8_le(b, 359, 0)
+    b = write_int8_le(b, 360, 0)
+    b = write_int8_le(b, 361, 105)
+    b = write_int8_le(b, 362, 68)
+    b = write_int8_le(b, 363, 59)
+    b = write_int8_le(b, 364, 139)
+    b = write_int8_le(b, 365, 49)
+    b = write_int8_le(b, 366, 37)
+    b = write_int8_le(b, 367, 127)
+    b = write_int8_le(b, 368, 141)
+    b = write_int8_le(b, 369, 32)
+    b = write_int8_le(b, 370, 0)
+    b = write_int8_le(b, 371, 0)
+    b = write_int8_le(b, 372, 0)
+    b = write_int8_le(b, 373, 0)
+    b = write_int8_le(b, 374, 0)
+    b = write_int8_le(b, 375, 0)
+    b = write_int8_le(b, 376, 0)
+    b = write_int8_le(b, 377, 0)
+    b = write_int8_le(b, 378, 22)
+    b = write_int8_le(b, 379, 120)
+    b = write_int8_le(b, 380, 91)
+    b = write_int8_le(b, 381, 40)
+    b = write_int8_le(b, 382, 204)
+    b = write_int8_le(b, 383, 13)
+    b = write_int8_le(b, 384, 205)
+    b = write_int8_le(b, 385, 217)
+    b = write_int8_le(b, 386, 32)
+    b = write_int8_le(b, 387, 0)
+    b = write_int8_le(b, 388, 0)
+    b = write_int8_le(b, 389, 0)
+    b = write_int8_le(b, 390, 0)
+    b = write_int8_le(b, 391, 0)
+    b = write_int8_le(b, 392, 0)
+    b = write_int8_le(b, 393, 0)
+    b = write_int8_le(b, 394, 0)
+    b = write_int8_le(b, 395, 118)
+    b = write_int8_le(b, 396, 82)
+    b = write_int8_le(b, 397, 255)
+    b = write_int8_le(b, 398, 168)
+    b = write_int8_le(b, 399, 174)
+    b = write_int8_le(b, 400, 22)
+    b = write_int8_le(b, 401, 220)
+    b = write_int8_le(b, 402, 4)
+    b = write_int8_le(b, 403, 32)
+    b = write_int8_le(b, 404, 0)
+    b = write_int8_le(b, 405, 0)
+    b = write_int8_le(b, 406, 0)
+    b = write_int8_le(b, 407, 0)
+    b = write_int8_le(b, 408, 0)
+    b = write_int8_le(b, 409, 0)
+    b = write_int8_le(b, 410, 0)
+    b = write_int8_le(b, 411, 0)
+    b = write_int8_le(b, 412, 23)
+    b = write_int8_le(b, 413, 146)
+    b = write_int8_le(b, 414, 18)
+    b = write_int8_le(b, 415, 65)
+    b = write_int8_le(b, 416, 195)
+    b = write_int8_le(b, 417, 59)
+    b = write_int8_le(b, 418, 229)
+    b = write_int8_le(b, 419, 53)
+    b = write_int8_le(b, 420, 32)
+    b = write_int8_le(b, 421, 0)
+    b = write_int8_le(b, 422, 0)
+    b = write_int8_le(b, 423, 0)
+    b = write_int8_le(b, 424, 0)
+    b = write_int8_le(b, 425, 0)
+    b = write_int8_le(b, 426, 0)
+    b = write_int8_le(b, 427, 0)
+    b = write_int8_le(b, 428, 0)
+    b = write_int8_le(b, 429, 49)
+    b = write_int8_le(b, 430, 136)
+    b = write_int8_le(b, 431, 222)
+    b = write_int8_le(b, 432, 176)
+    b = write_int8_le(b, 433, 47)
+    b = write_int8_le(b, 434, 40)
+    b = write_int8_le(b, 435, 200)
+    b = write_int8_le(b, 436, 44)
+    b = write_int8_le(b, 437, 32)
+    b = write_int8_le(b, 438, 0)
+    b = write_int8_le(b, 439, 0)
+    b = write_int8_le(b, 440, 0)
+    b = write_int8_le(b, 441, 0)
+    b = write_int8_le(b, 442, 0)
+    b = write_int8_le(b, 443, 0)
+    b = write_int8_le(b, 444, 0)
+    b = write_int8_le(b, 445, 0)
+    b = write_int8_le(b, 446, 52)
+    b = write_int8_le(b, 447, 179)
+    b = write_int8_le(b, 448, 140)
+    b = write_int8_le(b, 449, 188)
+    b = write_int8_le(b, 450, 33)
+    b = write_int8_le(b, 451, 218)
+    b = write_int8_le(b, 452, 186)
+    b = write_int8_le(b, 453, 32)
+    b = write_int8_le(b, 454, 32)
+    b = write_int8_le(b, 455, 0)
+    b = write_int8_le(b, 456, 0)
+    b = write_int8_le(b, 457, 0)
+    b = write_int8_le(b, 458, 0)
+    b = write_int8_le(b, 459, 0)
+    b = write_int8_le(b, 460, 0)
+    b = write_int8_le(b, 461, 0)
+    b = write_int8_le(b, 462, 0)
+    b = write_int8_le(b, 463, 192)
+    b = write_int8_le(b, 464, 127)
+    b = write_int8_le(b, 465, 179)
+    b = write_int8_le(b, 466, 138)
+    b = write_int8_le(b, 467, 190)
+    b = write_int8_le(b, 468, 8)
+    b = write_int8_le(b, 469, 99)
+    b = write_int8_le(b, 470, 127)
+    b = write_int8_le(b, 471, 9)
+    b = write_int8_le(b, 472, 8)
+    b = write_int8_le(b, 473, 0)
+    b = write_int8_le(b, 474, 0)
+    b = write_int8_le(b, 475, 0)
+    b = write_int8_le(b, 476, 0)
+    b = write_int8_le(b, 477, 0)
+    b = write_int8_le(b, 478, 0)
+    b = write_int8_le(b, 479, 0)
+    b = write_int8_le(b, 480, 167)
+    b = write_int8_le(b, 481, 61)
+    b = write_int8_le(b, 482, 36)
+    b = write_int8_le(b, 483, 209)
+    b = write_int8_le(b, 484, 193)
+    b = write_int8_le(b, 485, 79)
+    b = write_int8_le(b, 486, 164)
+    b = write_int8_le(b, 487, 17)
+    b = write_int8_le(b, 488, 1)
+    b = write_int8_le(b, 489, 1)
+    b = write_int8_le(b, 490, 0)
+    b = write_int8_le(b, 491, 0)
+    b = write_int8_le(b, 492, 0)
+    b = write_int8_le(b, 493, 0)
+    b = write_int8_le(b, 494, 0)
+    b = write_int8_le(b, 495, 0)
+    b = write_int8_le(b, 496, 0)
+    b = write_int8_le(b, 497, 202)
+    b = write_int8_le(b, 498, 49)
+    b = write_int8_le(b, 499, 144)
+    b = write_int8_le(b, 500, 155)
+    b = write_int8_le(b, 501, 209)
+    b = write_int8_le(b, 502, 207)
+    b = write_int8_le(b, 503, 116)
+    b = write_int8_le(b, 504, 118)
+    b = write_int8_le(b, 505, 1)
+    b = write_int8_le(b, 506, 1)
+    b = write_int8_le(b, 507, 0)
+    b = write_int8_le(b, 508, 0)
+    b = write_int8_le(b, 509, 0)
+    b = write_int8_le(b, 510, 0)
+    b = write_int8_le(b, 511, 0)
+    b = write_int8_le(b, 512, 0)
+    b = write_int8_le(b, 513, 0)
+    return b
 
 // TableEntityFixedHash is fnv1a64 over the layout above (docs/FIXED-FORM-ALGORITHM.md §1).
 let TableEntityFixedHash = 5032295074439343135
@@ -1253,135 +1253,129 @@ let TableEntityFixedRecordBytes = 51
 
 // TableEntityFixedPut writes one record body at at, in declared order and at each
 // field's declared storage width (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableEntityFixedPut(b·:string, at·:int, v·:TableEntity) -> string:
-    b· = write_int32_le(b·, at· + 0, v·.EntityId)
-    b· = write_int32_le(b·, at· + 4, v·.PosX)
-    b· = write_int32_le(b·, at· + 8, v·.PosY)
-    b· = write_int32_le(b·, at· + 12, v·.PosZ)
-    b· = write_int32_le(b·, at· + 16, v·.Yaw)
-    b· = write_int32_le(b·, at· + 20, v·.Pitch)
-    b· = write_int32_le(b·, at· + 24, v·.VelX)
-    b· = write_int32_le(b·, at· + 28, v·.VelY)
-    b· = write_int32_le(b·, at· + 32, v·.VelZ)
-    b· = write_int32_le(b·, at· + 36, v·.Health)
-    b· = write_int8_le(b·, at· + 40, int(v·.Weapon))
-    b· = write_int64_le(b·, at· + 41, v·.Damage)
-    b· = write_int8_le(b·, at· + 49, if v·.Moving: 1 else: 0)
-    b· = write_int8_le(b·, at· + 50, if v·.Firing: 1 else: 0)
-    return b·
+def TableEntityFixedPut(b:string, at:int, v:TableEntity) -> string:
+    b = write_int32_le(b, at + 0, v.EntityId)
+    b = write_int32_le(b, at + 4, v.PosX)
+    b = write_int32_le(b, at + 8, v.PosY)
+    b = write_int32_le(b, at + 12, v.PosZ)
+    b = write_int32_le(b, at + 16, v.Yaw)
+    b = write_int32_le(b, at + 20, v.Pitch)
+    b = write_int32_le(b, at + 24, v.VelX)
+    b = write_int32_le(b, at + 28, v.VelY)
+    b = write_int32_le(b, at + 32, v.VelZ)
+    b = write_int32_le(b, at + 36, v.Health)
+    b = write_int8_le(b, at + 40, int(v.Weapon))
+    b = write_int64_le(b, at + 41, v.Damage)
+    b = write_int8_le(b, at + 49, if v.Moving: 1 else: 0)
+    b = write_int8_le(b, at + 50, if v.Firing: 1 else: 0)
+    return b
 
 // TableEntityFixedGet reads one record body at at (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableEntityFixedGet(data·:string, at·:int) -> TableEntity:
-    let v· = NewTableEntity()
-    v·.EntityId = read_uint32_le(data·, at· + 0)
-    v·.PosX = read_int32_le(data·, at· + 4)
-    v·.PosY = read_int32_le(data·, at· + 8)
-    v·.PosZ = read_int32_le(data·, at· + 12)
-    v·.Yaw = read_uint32_le(data·, at· + 16)
-    v·.Pitch = read_uint32_le(data·, at· + 20)
-    v·.VelX = read_int32_le(data·, at· + 24)
-    v·.VelY = read_int32_le(data·, at· + 28)
-    v·.VelZ = read_int32_le(data·, at· + 32)
-    v·.Health = read_int32_le(data·, at· + 36)
-    v·.Weapon = TableWeapon(read_uint8_le(data·, at· + 40))
-    v·.Damage = read_uint64_le(data·, at· + 41)
-    v·.Moving = read_uint8_le(data·, at· + 49) != 0
-    v·.Firing = read_uint8_le(data·, at· + 50) != 0
-    return v·
+def TableEntityFixedGet(data:string, at:int) -> TableEntity:
+    let v = NewTableEntity()
+    v.EntityId = read_uint32_le(data, at + 0)
+    v.PosX = read_int32_le(data, at + 4)
+    v.PosY = read_int32_le(data, at + 8)
+    v.PosZ = read_int32_le(data, at + 12)
+    v.Yaw = read_uint32_le(data, at + 16)
+    v.Pitch = read_uint32_le(data, at + 20)
+    v.VelX = read_int32_le(data, at + 24)
+    v.VelY = read_int32_le(data, at + 28)
+    v.VelZ = read_int32_le(data, at + 32)
+    v.Health = read_int32_le(data, at + 36)
+    v.Weapon = TableWeapon(read_uint8_le(data, at + 40))
+    v.Damage = read_uint64_le(data, at + 41)
+    v.Moving = read_uint8_le(data, at + 49) != 0
+    v.Firing = read_uint8_le(data, at + 50) != 0
+    return v
 
 // TableEntityFixedSave writes values as a form-3 file: the header (TableEntity, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
-// A fixed-form file holds at least one record, so an empty batch is
-// refused the same way (docs/SPEC-TABLES.md §22.6).
-def TableEntityFixedSave(values·:[TableEntity]) -> string:
-    if length(values·) == 0:
-        return ""
-    var body· = ""
-    for(values·) v·: body· += schema_rt.fixed_record(TableEntityFixedHash, TableEntityFixedPut(schema_rt.zeros(51), 0, v·))
-    return schema_rt.fixed_file(TableEntityFixedLayoutBytes(), TableEntityFixedHash, body·, length(values·))
+def TableEntityFixedSave(values:[TableEntity]) -> string:
+    var body = ""
+    for(values) v: body += schema_rt.fixed_record(TableEntityFixedHash, TableEntityFixedPut(schema_rt.zeros(51), 0, v))
+    return schema_rt.fixed_file(TableEntityFixedLayoutBytes(), TableEntityFixedHash, body, length(values))
 
 // TableEntityFixedDecode reads a TRUSTED form-3 file of TableEntity records written by this
 // build's own layout (TableEntity, §2), asserting the header and every record
-// hash, and that at least one record follows the layout (§22.6). It is
-// not a read of untrusted data: TableEntityFixedLoad is the strict read
-// (docs/SPEC-TABLES.md §6.5).
-def TableEntityFixedDecode(data·:string) -> [TableEntity]:
-    let layout· = TableEntityFixedLayoutBytes()
-    assert read_uint8_le(data·, 0) == 3
-    assert read_uint64_le(data·, 8) == TableEntityFixedHash
-    assert read_uint32_le(data·, 16) == length(layout·)
-    let start· = 20 + length(layout·)
-    assert length(data·) > start·
-    let stride· = 8 + 51
-    let out·:[TableEntity] = []
-    var at· = start·
-    while at· < length(data·):
-        assert read_uint64_le(data·, at·) == TableEntityFixedHash
-        push(out·, TableEntityFixedGet(data·, at· + 8))
-        at· += stride·
-    return out·
+// hash. It is not a read of untrusted data: TableEntityFixedLoad is the strict
+// read (docs/SPEC-TABLES.md §6.5).
+def TableEntityFixedDecode(data:string) -> [TableEntity]:
+    let layout = TableEntityFixedLayoutBytes()
+    assert read_uint8_le(data, 0) == 3
+    assert read_uint64_le(data, 8) == TableEntityFixedHash
+    assert read_uint32_le(data, 16) == length(layout)
+    let start = 20 + length(layout)
+    let stride = 8 + 51
+    let out:[TableEntity] = []
+    var at = start
+    while at < length(data):
+        assert read_uint64_le(data, at) == TableEntityFixedHash
+        push(out, TableEntityFixedGet(data, at + 8))
+        at += stride
+    return out
 
 // TableStatFixedLayoutBytes is the writer's layout, exactly as it rides (TableStat,
 // docs/FIXED-FORM-ALGORITHM.md §1): a u32 entry count then 17-byte entries.
 def TableStatFixedLayoutBytes() -> string:
-    var b· = schema_rt.zeros(55)
-    b· = write_int8_le(b·, 0, 3)
-    b· = write_int8_le(b·, 1, 0)
-    b· = write_int8_le(b·, 2, 0)
-    b· = write_int8_le(b·, 3, 0)
-    b· = write_int8_le(b·, 4, 149)
-    b· = write_int8_le(b·, 5, 156)
-    b· = write_int8_le(b·, 6, 185)
-    b· = write_int8_le(b·, 7, 105)
-    b· = write_int8_le(b·, 8, 230)
-    b· = write_int8_le(b·, 9, 168)
-    b· = write_int8_le(b·, 10, 106)
-    b· = write_int8_le(b·, 11, 41)
-    b· = write_int8_le(b·, 12, 13)
-    b· = write_int8_le(b·, 13, 8)
-    b· = write_int8_le(b·, 14, 0)
-    b· = write_int8_le(b·, 15, 0)
-    b· = write_int8_le(b·, 16, 0)
-    b· = write_int8_le(b·, 17, 2)
-    b· = write_int8_le(b·, 18, 0)
-    b· = write_int8_le(b·, 19, 0)
-    b· = write_int8_le(b·, 20, 0)
-    b· = write_int8_le(b·, 21, 101)
-    b· = write_int8_le(b·, 22, 191)
-    b· = write_int8_le(b·, 23, 109)
-    b· = write_int8_le(b·, 24, 134)
-    b· = write_int8_le(b·, 25, 240)
-    b· = write_int8_le(b·, 26, 117)
-    b· = write_int8_le(b·, 27, 171)
-    b· = write_int8_le(b·, 28, 128)
-    b· = write_int8_le(b·, 29, 6)
-    b· = write_int8_le(b·, 30, 4)
-    b· = write_int8_le(b·, 31, 0)
-    b· = write_int8_le(b·, 32, 0)
-    b· = write_int8_le(b·, 33, 0)
-    b· = write_int8_le(b·, 34, 0)
-    b· = write_int8_le(b·, 35, 0)
-    b· = write_int8_le(b·, 36, 0)
-    b· = write_int8_le(b·, 37, 0)
-    b· = write_int8_le(b·, 38, 193)
-    b· = write_int8_le(b·, 39, 160)
-    b· = write_int8_le(b·, 40, 19)
-    b· = write_int8_le(b·, 41, 236)
-    b· = write_int8_le(b·, 42, 117)
-    b· = write_int8_le(b·, 43, 102)
-    b· = write_int8_le(b·, 44, 7)
-    b· = write_int8_le(b·, 45, 82)
-    b· = write_int8_le(b·, 46, 4)
-    b· = write_int8_le(b·, 47, 4)
-    b· = write_int8_le(b·, 48, 0)
-    b· = write_int8_le(b·, 49, 0)
-    b· = write_int8_le(b·, 50, 0)
-    b· = write_int8_le(b·, 51, 0)
-    b· = write_int8_le(b·, 52, 0)
-    b· = write_int8_le(b·, 53, 0)
-    b· = write_int8_le(b·, 54, 0)
-    return b·
+    var b = schema_rt.zeros(55)
+    b = write_int8_le(b, 0, 3)
+    b = write_int8_le(b, 1, 0)
+    b = write_int8_le(b, 2, 0)
+    b = write_int8_le(b, 3, 0)
+    b = write_int8_le(b, 4, 149)
+    b = write_int8_le(b, 5, 156)
+    b = write_int8_le(b, 6, 185)
+    b = write_int8_le(b, 7, 105)
+    b = write_int8_le(b, 8, 230)
+    b = write_int8_le(b, 9, 168)
+    b = write_int8_le(b, 10, 106)
+    b = write_int8_le(b, 11, 41)
+    b = write_int8_le(b, 12, 13)
+    b = write_int8_le(b, 13, 8)
+    b = write_int8_le(b, 14, 0)
+    b = write_int8_le(b, 15, 0)
+    b = write_int8_le(b, 16, 0)
+    b = write_int8_le(b, 17, 2)
+    b = write_int8_le(b, 18, 0)
+    b = write_int8_le(b, 19, 0)
+    b = write_int8_le(b, 20, 0)
+    b = write_int8_le(b, 21, 101)
+    b = write_int8_le(b, 22, 191)
+    b = write_int8_le(b, 23, 109)
+    b = write_int8_le(b, 24, 134)
+    b = write_int8_le(b, 25, 240)
+    b = write_int8_le(b, 26, 117)
+    b = write_int8_le(b, 27, 171)
+    b = write_int8_le(b, 28, 128)
+    b = write_int8_le(b, 29, 6)
+    b = write_int8_le(b, 30, 4)
+    b = write_int8_le(b, 31, 0)
+    b = write_int8_le(b, 32, 0)
+    b = write_int8_le(b, 33, 0)
+    b = write_int8_le(b, 34, 0)
+    b = write_int8_le(b, 35, 0)
+    b = write_int8_le(b, 36, 0)
+    b = write_int8_le(b, 37, 0)
+    b = write_int8_le(b, 38, 193)
+    b = write_int8_le(b, 39, 160)
+    b = write_int8_le(b, 40, 19)
+    b = write_int8_le(b, 41, 236)
+    b = write_int8_le(b, 42, 117)
+    b = write_int8_le(b, 43, 102)
+    b = write_int8_le(b, 44, 7)
+    b = write_int8_le(b, 45, 82)
+    b = write_int8_le(b, 46, 4)
+    b = write_int8_le(b, 47, 4)
+    b = write_int8_le(b, 48, 0)
+    b = write_int8_le(b, 49, 0)
+    b = write_int8_le(b, 50, 0)
+    b = write_int8_le(b, 51, 0)
+    b = write_int8_le(b, 52, 0)
+    b = write_int8_le(b, 53, 0)
+    b = write_int8_le(b, 54, 0)
+    return b
 
 // TableStatFixedHash is fnv1a64 over the layout above (docs/FIXED-FORM-ALGORITHM.md §1).
 let TableStatFixedHash = 2079583748321448994
@@ -1389,1335 +1383,1329 @@ let TableStatFixedRecordBytes = 8
 
 // TableStatFixedPut writes one record body at at, in declared order and at each
 // field's declared storage width (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableStatFixedPut(b·:string, at·:int, v·:TableStat) -> string:
-    b· = write_int32_le(b·, at· + 0, v·.StatId)
-    b· = write_int32_le(b·, at· + 4, v·.Delta)
-    return b·
+def TableStatFixedPut(b:string, at:int, v:TableStat) -> string:
+    b = write_int32_le(b, at + 0, v.StatId)
+    b = write_int32_le(b, at + 4, v.Delta)
+    return b
 
 // TableStatFixedGet reads one record body at at (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableStatFixedGet(data·:string, at·:int) -> TableStat:
-    let v· = NewTableStat()
-    v·.StatId = read_uint32_le(data·, at· + 0)
-    v·.Delta = read_int32_le(data·, at· + 4)
-    return v·
+def TableStatFixedGet(data:string, at:int) -> TableStat:
+    let v = NewTableStat()
+    v.StatId = read_uint32_le(data, at + 0)
+    v.Delta = read_int32_le(data, at + 4)
+    return v
 
 // TableStatFixedSave writes values as a form-3 file: the header (TableStat, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
-// A fixed-form file holds at least one record, so an empty batch is
-// refused the same way (docs/SPEC-TABLES.md §22.6).
-def TableStatFixedSave(values·:[TableStat]) -> string:
-    if length(values·) == 0:
-        return ""
-    var body· = ""
-    for(values·) v·: body· += schema_rt.fixed_record(TableStatFixedHash, TableStatFixedPut(schema_rt.zeros(8), 0, v·))
-    return schema_rt.fixed_file(TableStatFixedLayoutBytes(), TableStatFixedHash, body·, length(values·))
+def TableStatFixedSave(values:[TableStat]) -> string:
+    var body = ""
+    for(values) v: body += schema_rt.fixed_record(TableStatFixedHash, TableStatFixedPut(schema_rt.zeros(8), 0, v))
+    return schema_rt.fixed_file(TableStatFixedLayoutBytes(), TableStatFixedHash, body, length(values))
 
 // TableStatFixedDecode reads a TRUSTED form-3 file of TableStat records written by this
 // build's own layout (TableStat, §2), asserting the header and every record
-// hash, and that at least one record follows the layout (§22.6). It is
-// not a read of untrusted data: TableStatFixedLoad is the strict read
-// (docs/SPEC-TABLES.md §6.5).
-def TableStatFixedDecode(data·:string) -> [TableStat]:
-    let layout· = TableStatFixedLayoutBytes()
-    assert read_uint8_le(data·, 0) == 3
-    assert read_uint64_le(data·, 8) == TableStatFixedHash
-    assert read_uint32_le(data·, 16) == length(layout·)
-    let start· = 20 + length(layout·)
-    assert length(data·) > start·
-    let stride· = 8 + 8
-    let out·:[TableStat] = []
-    var at· = start·
-    while at· < length(data·):
-        assert read_uint64_le(data·, at·) == TableStatFixedHash
-        push(out·, TableStatFixedGet(data·, at· + 8))
-        at· += stride·
-    return out·
+// hash. It is not a read of untrusted data: TableStatFixedLoad is the strict
+// read (docs/SPEC-TABLES.md §6.5).
+def TableStatFixedDecode(data:string) -> [TableStat]:
+    let layout = TableStatFixedLayoutBytes()
+    assert read_uint8_le(data, 0) == 3
+    assert read_uint64_le(data, 8) == TableStatFixedHash
+    assert read_uint32_le(data, 16) == length(layout)
+    let start = 20 + length(layout)
+    let stride = 8 + 8
+    let out:[TableStat] = []
+    var at = start
+    while at < length(data):
+        assert read_uint64_le(data, at) == TableStatFixedHash
+        push(out, TableStatFixedGet(data, at + 8))
+        at += stride
+    return out
 
 // TableMixedFixedLayoutBytes is the writer's layout, exactly as it rides (TableMixed,
 // docs/FIXED-FORM-ALGORITHM.md §1): a u32 entry count then 17-byte entries.
 def TableMixedFixedLayoutBytes() -> string:
-    var b· = schema_rt.zeros(1279)
-    b· = write_int8_le(b·, 0, 75)
-    b· = write_int8_le(b·, 1, 0)
-    b· = write_int8_le(b·, 2, 0)
-    b· = write_int8_le(b·, 3, 0)
-    b· = write_int8_le(b·, 4, 142)
-    b· = write_int8_le(b·, 5, 138)
-    b· = write_int8_le(b·, 6, 248)
-    b· = write_int8_le(b·, 7, 214)
-    b· = write_int8_le(b·, 8, 89)
-    b· = write_int8_le(b·, 9, 228)
-    b· = write_int8_le(b·, 10, 154)
-    b· = write_int8_le(b·, 11, 67)
-    b· = write_int8_le(b·, 12, 13)
-    b· = write_int8_le(b·, 13, 200)
-    b· = write_int8_le(b·, 14, 4)
-    b· = write_int8_le(b·, 15, 0)
-    b· = write_int8_le(b·, 16, 0)
-    b· = write_int8_le(b·, 17, 28)
-    b· = write_int8_le(b·, 18, 0)
-    b· = write_int8_le(b·, 19, 0)
-    b· = write_int8_le(b·, 20, 0)
-    b· = write_int8_le(b·, 21, 253)
-    b· = write_int8_le(b·, 22, 21)
-    b· = write_int8_le(b·, 23, 161)
-    b· = write_int8_le(b·, 24, 26)
-    b· = write_int8_le(b·, 25, 217)
-    b· = write_int8_le(b·, 26, 112)
-    b· = write_int8_le(b·, 27, 90)
-    b· = write_int8_le(b·, 28, 106)
-    b· = write_int8_le(b·, 29, 7)
-    b· = write_int8_le(b·, 30, 2)
-    b· = write_int8_le(b·, 31, 0)
-    b· = write_int8_le(b·, 32, 0)
-    b· = write_int8_le(b·, 33, 0)
-    b· = write_int8_le(b·, 34, 0)
-    b· = write_int8_le(b·, 35, 0)
-    b· = write_int8_le(b·, 36, 0)
-    b· = write_int8_le(b·, 37, 0)
-    b· = write_int8_le(b·, 38, 168)
-    b· = write_int8_le(b·, 39, 40)
-    b· = write_int8_le(b·, 40, 245)
-    b· = write_int8_le(b·, 41, 129)
-    b· = write_int8_le(b·, 42, 164)
-    b· = write_int8_le(b·, 43, 172)
-    b· = write_int8_le(b·, 44, 56)
-    b· = write_int8_le(b·, 45, 170)
-    b· = write_int8_le(b·, 46, 7)
-    b· = write_int8_le(b·, 47, 4)
-    b· = write_int8_le(b·, 48, 0)
-    b· = write_int8_le(b·, 49, 0)
-    b· = write_int8_le(b·, 50, 0)
-    b· = write_int8_le(b·, 51, 0)
-    b· = write_int8_le(b·, 52, 0)
-    b· = write_int8_le(b·, 53, 0)
-    b· = write_int8_le(b·, 54, 0)
-    b· = write_int8_le(b·, 55, 62)
-    b· = write_int8_le(b·, 56, 124)
-    b· = write_int8_le(b·, 57, 105)
-    b· = write_int8_le(b·, 58, 86)
-    b· = write_int8_le(b·, 59, 92)
-    b· = write_int8_le(b·, 60, 0)
-    b· = write_int8_le(b·, 61, 190)
-    b· = write_int8_le(b·, 62, 13)
-    b· = write_int8_le(b·, 63, 4)
-    b· = write_int8_le(b·, 64, 4)
-    b· = write_int8_le(b·, 65, 0)
-    b· = write_int8_le(b·, 66, 0)
-    b· = write_int8_le(b·, 67, 0)
-    b· = write_int8_le(b·, 68, 0)
-    b· = write_int8_le(b·, 69, 0)
-    b· = write_int8_le(b·, 70, 0)
-    b· = write_int8_le(b·, 71, 0)
-    b· = write_int8_le(b·, 72, 3)
-    b· = write_int8_le(b·, 73, 238)
-    b· = write_int8_le(b·, 74, 41)
-    b· = write_int8_le(b·, 75, 184)
-    b· = write_int8_le(b·, 76, 168)
-    b· = write_int8_le(b·, 77, 13)
-    b· = write_int8_le(b·, 78, 174)
-    b· = write_int8_le(b·, 79, 155)
-    b· = write_int8_le(b·, 80, 8)
-    b· = write_int8_le(b·, 81, 4)
-    b· = write_int8_le(b·, 82, 0)
-    b· = write_int8_le(b·, 83, 0)
-    b· = write_int8_le(b·, 84, 0)
-    b· = write_int8_le(b·, 85, 0)
-    b· = write_int8_le(b·, 86, 0)
-    b· = write_int8_le(b·, 87, 0)
-    b· = write_int8_le(b·, 88, 0)
-    b· = write_int8_le(b·, 89, 5)
-    b· = write_int8_le(b·, 90, 11)
-    b· = write_int8_le(b·, 91, 89)
-    b· = write_int8_le(b·, 92, 10)
-    b· = write_int8_le(b·, 93, 101)
-    b· = write_int8_le(b·, 94, 181)
-    b· = write_int8_le(b·, 95, 215)
-    b· = write_int8_le(b·, 96, 183)
-    b· = write_int8_le(b·, 97, 9)
-    b· = write_int8_le(b·, 98, 8)
-    b· = write_int8_le(b·, 99, 0)
-    b· = write_int8_le(b·, 100, 0)
-    b· = write_int8_le(b·, 101, 0)
-    b· = write_int8_le(b·, 102, 0)
-    b· = write_int8_le(b·, 103, 0)
-    b· = write_int8_le(b·, 104, 0)
-    b· = write_int8_le(b·, 105, 0)
-    b· = write_int8_le(b·, 106, 126)
-    b· = write_int8_le(b·, 107, 150)
-    b· = write_int8_le(b·, 108, 149)
-    b· = write_int8_le(b·, 109, 208)
-    b· = write_int8_le(b·, 110, 226)
-    b· = write_int8_le(b·, 111, 152)
-    b· = write_int8_le(b·, 112, 123)
-    b· = write_int8_le(b·, 113, 109)
-    b· = write_int8_le(b·, 114, 8)
-    b· = write_int8_le(b·, 115, 4)
-    b· = write_int8_le(b·, 116, 0)
-    b· = write_int8_le(b·, 117, 0)
-    b· = write_int8_le(b·, 118, 0)
-    b· = write_int8_le(b·, 119, 0)
-    b· = write_int8_le(b·, 120, 0)
-    b· = write_int8_le(b·, 121, 0)
-    b· = write_int8_le(b·, 122, 0)
-    b· = write_int8_le(b·, 123, 216)
-    b· = write_int8_le(b·, 124, 192)
-    b· = write_int8_le(b·, 125, 13)
-    b· = write_int8_le(b·, 126, 214)
-    b· = write_int8_le(b·, 127, 113)
-    b· = write_int8_le(b·, 128, 76)
-    b· = write_int8_le(b·, 129, 169)
-    b· = write_int8_le(b·, 130, 115)
-    b· = write_int8_le(b·, 131, 9)
-    b· = write_int8_le(b·, 132, 8)
-    b· = write_int8_le(b·, 133, 0)
-    b· = write_int8_le(b·, 134, 0)
-    b· = write_int8_le(b·, 135, 0)
-    b· = write_int8_le(b·, 136, 0)
-    b· = write_int8_le(b·, 137, 0)
-    b· = write_int8_le(b·, 138, 0)
-    b· = write_int8_le(b·, 139, 0)
-    b· = write_int8_le(b·, 140, 133)
-    b· = write_int8_le(b·, 141, 252)
-    b· = write_int8_le(b·, 142, 84)
-    b· = write_int8_le(b·, 143, 190)
-    b· = write_int8_le(b·, 144, 81)
-    b· = write_int8_le(b·, 145, 107)
-    b· = write_int8_le(b·, 146, 238)
-    b· = write_int8_le(b·, 147, 62)
-    b· = write_int8_le(b·, 148, 5)
-    b· = write_int8_le(b·, 149, 8)
-    b· = write_int8_le(b·, 150, 0)
-    b· = write_int8_le(b·, 151, 0)
-    b· = write_int8_le(b·, 152, 0)
-    b· = write_int8_le(b·, 153, 0)
-    b· = write_int8_le(b·, 154, 0)
-    b· = write_int8_le(b·, 155, 0)
-    b· = write_int8_le(b·, 156, 0)
-    b· = write_int8_le(b·, 157, 18)
-    b· = write_int8_le(b·, 158, 1)
-    b· = write_int8_le(b·, 159, 109)
-    b· = write_int8_le(b·, 160, 123)
-    b· = write_int8_le(b·, 161, 95)
-    b· = write_int8_le(b·, 162, 3)
-    b· = write_int8_le(b·, 163, 188)
-    b· = write_int8_le(b·, 164, 123)
-    b· = write_int8_le(b·, 165, 9)
-    b· = write_int8_le(b·, 166, 8)
-    b· = write_int8_le(b·, 167, 0)
-    b· = write_int8_le(b·, 168, 0)
-    b· = write_int8_le(b·, 169, 0)
-    b· = write_int8_le(b·, 170, 0)
-    b· = write_int8_le(b·, 171, 0)
-    b· = write_int8_le(b·, 172, 0)
-    b· = write_int8_le(b·, 173, 0)
-    b· = write_int8_le(b·, 174, 198)
-    b· = write_int8_le(b·, 175, 105)
-    b· = write_int8_le(b·, 176, 190)
-    b· = write_int8_le(b·, 177, 249)
-    b· = write_int8_le(b·, 178, 117)
-    b· = write_int8_le(b·, 179, 4)
-    b· = write_int8_le(b·, 180, 70)
-    b· = write_int8_le(b·, 181, 60)
-    b· = write_int8_le(b·, 182, 10)
-    b· = write_int8_le(b·, 183, 4)
-    b· = write_int8_le(b·, 184, 0)
-    b· = write_int8_le(b·, 185, 0)
-    b· = write_int8_le(b·, 186, 0)
-    b· = write_int8_le(b·, 187, 0)
-    b· = write_int8_le(b·, 188, 0)
-    b· = write_int8_le(b·, 189, 0)
-    b· = write_int8_le(b·, 190, 0)
-    b· = write_int8_le(b·, 191, 42)
-    b· = write_int8_le(b·, 192, 130)
-    b· = write_int8_le(b·, 193, 179)
-    b· = write_int8_le(b·, 194, 123)
-    b· = write_int8_le(b·, 195, 176)
-    b· = write_int8_le(b·, 196, 15)
-    b· = write_int8_le(b·, 197, 93)
-    b· = write_int8_le(b·, 198, 147)
-    b· = write_int8_le(b·, 199, 14)
-    b· = write_int8_le(b·, 200, 156)
-    b· = write_int8_le(b·, 201, 1)
-    b· = write_int8_le(b·, 202, 0)
-    b· = write_int8_le(b·, 203, 0)
-    b· = write_int8_le(b·, 204, 1)
-    b· = write_int8_le(b·, 205, 0)
-    b· = write_int8_le(b·, 206, 0)
-    b· = write_int8_le(b·, 207, 0)
-    b· = write_int8_le(b·, 208, 0)
-    b· = write_int8_le(b·, 209, 0)
-    b· = write_int8_le(b·, 210, 0)
-    b· = write_int8_le(b·, 211, 0)
-    b· = write_int8_le(b·, 212, 0)
-    b· = write_int8_le(b·, 213, 0)
-    b· = write_int8_le(b·, 214, 0)
-    b· = write_int8_le(b·, 215, 0)
-    b· = write_int8_le(b·, 216, 13)
-    b· = write_int8_le(b·, 217, 51)
-    b· = write_int8_le(b·, 218, 0)
-    b· = write_int8_le(b·, 219, 0)
-    b· = write_int8_le(b·, 220, 0)
-    b· = write_int8_le(b·, 221, 14)
-    b· = write_int8_le(b·, 222, 0)
-    b· = write_int8_le(b·, 223, 0)
-    b· = write_int8_le(b·, 224, 0)
-    b· = write_int8_le(b·, 225, 18)
-    b· = write_int8_le(b·, 226, 103)
-    b· = write_int8_le(b·, 227, 227)
-    b· = write_int8_le(b·, 228, 120)
-    b· = write_int8_le(b·, 229, 102)
-    b· = write_int8_le(b·, 230, 253)
-    b· = write_int8_le(b·, 231, 252)
-    b· = write_int8_le(b·, 232, 35)
-    b· = write_int8_le(b·, 233, 7)
-    b· = write_int8_le(b·, 234, 4)
-    b· = write_int8_le(b·, 235, 0)
-    b· = write_int8_le(b·, 236, 0)
-    b· = write_int8_le(b·, 237, 0)
-    b· = write_int8_le(b·, 238, 0)
-    b· = write_int8_le(b·, 239, 0)
-    b· = write_int8_le(b·, 240, 0)
-    b· = write_int8_le(b·, 241, 0)
-    b· = write_int8_le(b·, 242, 14)
-    b· = write_int8_le(b·, 243, 49)
-    b· = write_int8_le(b·, 244, 103)
-    b· = write_int8_le(b·, 245, 118)
-    b· = write_int8_le(b·, 246, 53)
-    b· = write_int8_le(b·, 247, 55)
-    b· = write_int8_le(b·, 248, 75)
-    b· = write_int8_le(b·, 249, 203)
-    b· = write_int8_le(b·, 250, 4)
-    b· = write_int8_le(b·, 251, 4)
-    b· = write_int8_le(b·, 252, 0)
-    b· = write_int8_le(b·, 253, 0)
-    b· = write_int8_le(b·, 254, 0)
-    b· = write_int8_le(b·, 255, 0)
-    b· = write_int8_le(b·, 256, 0)
-    b· = write_int8_le(b·, 257, 0)
-    b· = write_int8_le(b·, 258, 0)
-    b· = write_int8_le(b·, 259, 193)
-    b· = write_int8_le(b·, 260, 50)
-    b· = write_int8_le(b·, 261, 103)
-    b· = write_int8_le(b·, 262, 118)
-    b· = write_int8_le(b·, 263, 53)
-    b· = write_int8_le(b·, 264, 56)
-    b· = write_int8_le(b·, 265, 75)
-    b· = write_int8_le(b·, 266, 203)
-    b· = write_int8_le(b·, 267, 4)
-    b· = write_int8_le(b·, 268, 4)
-    b· = write_int8_le(b·, 269, 0)
-    b· = write_int8_le(b·, 270, 0)
-    b· = write_int8_le(b·, 271, 0)
-    b· = write_int8_le(b·, 272, 0)
-    b· = write_int8_le(b·, 273, 0)
-    b· = write_int8_le(b·, 274, 0)
-    b· = write_int8_le(b·, 275, 0)
-    b· = write_int8_le(b·, 276, 168)
-    b· = write_int8_le(b·, 277, 45)
-    b· = write_int8_le(b·, 278, 103)
-    b· = write_int8_le(b·, 279, 118)
-    b· = write_int8_le(b·, 280, 53)
-    b· = write_int8_le(b·, 281, 53)
-    b· = write_int8_le(b·, 282, 75)
-    b· = write_int8_le(b·, 283, 203)
-    b· = write_int8_le(b·, 284, 4)
-    b· = write_int8_le(b·, 285, 4)
-    b· = write_int8_le(b·, 286, 0)
-    b· = write_int8_le(b·, 287, 0)
-    b· = write_int8_le(b·, 288, 0)
-    b· = write_int8_le(b·, 289, 0)
-    b· = write_int8_le(b·, 290, 0)
-    b· = write_int8_le(b·, 291, 0)
-    b· = write_int8_le(b·, 292, 0)
-    b· = write_int8_le(b·, 293, 232)
-    b· = write_int8_le(b·, 294, 22)
-    b· = write_int8_le(b·, 295, 142)
-    b· = write_int8_le(b·, 296, 121)
-    b· = write_int8_le(b·, 297, 25)
-    b· = write_int8_le(b·, 298, 142)
-    b· = write_int8_le(b·, 299, 77)
-    b· = write_int8_le(b·, 300, 181)
-    b· = write_int8_le(b·, 301, 7)
-    b· = write_int8_le(b·, 302, 4)
-    b· = write_int8_le(b·, 303, 0)
-    b· = write_int8_le(b·, 304, 0)
-    b· = write_int8_le(b·, 305, 0)
-    b· = write_int8_le(b·, 306, 0)
-    b· = write_int8_le(b·, 307, 0)
-    b· = write_int8_le(b·, 308, 0)
-    b· = write_int8_le(b·, 309, 0)
-    b· = write_int8_le(b·, 310, 177)
-    b· = write_int8_le(b·, 311, 193)
-    b· = write_int8_le(b·, 312, 12)
-    b· = write_int8_le(b·, 313, 169)
-    b· = write_int8_le(b·, 314, 101)
-    b· = write_int8_le(b·, 315, 246)
-    b· = write_int8_le(b·, 316, 169)
-    b· = write_int8_le(b·, 317, 83)
-    b· = write_int8_le(b·, 318, 7)
-    b· = write_int8_le(b·, 319, 4)
-    b· = write_int8_le(b·, 320, 0)
-    b· = write_int8_le(b·, 321, 0)
-    b· = write_int8_le(b·, 322, 0)
-    b· = write_int8_le(b·, 323, 0)
-    b· = write_int8_le(b·, 324, 0)
-    b· = write_int8_le(b·, 325, 0)
-    b· = write_int8_le(b·, 326, 0)
-    b· = write_int8_le(b·, 327, 103)
-    b· = write_int8_le(b·, 328, 238)
-    b· = write_int8_le(b·, 329, 96)
-    b· = write_int8_le(b·, 330, 235)
-    b· = write_int8_le(b·, 331, 182)
-    b· = write_int8_le(b·, 332, 230)
-    b· = write_int8_le(b·, 333, 237)
-    b· = write_int8_le(b·, 334, 108)
-    b· = write_int8_le(b·, 335, 4)
-    b· = write_int8_le(b·, 336, 4)
-    b· = write_int8_le(b·, 337, 0)
-    b· = write_int8_le(b·, 338, 0)
-    b· = write_int8_le(b·, 339, 0)
-    b· = write_int8_le(b·, 340, 0)
-    b· = write_int8_le(b·, 341, 0)
-    b· = write_int8_le(b·, 342, 0)
-    b· = write_int8_le(b·, 343, 0)
-    b· = write_int8_le(b·, 344, 180)
-    b· = write_int8_le(b·, 345, 236)
-    b· = write_int8_le(b·, 346, 96)
-    b· = write_int8_le(b·, 347, 235)
-    b· = write_int8_le(b·, 348, 182)
-    b· = write_int8_le(b·, 349, 229)
-    b· = write_int8_le(b·, 350, 237)
-    b· = write_int8_le(b·, 351, 108)
-    b· = write_int8_le(b·, 352, 4)
-    b· = write_int8_le(b·, 353, 4)
-    b· = write_int8_le(b·, 354, 0)
-    b· = write_int8_le(b·, 355, 0)
-    b· = write_int8_le(b·, 356, 0)
-    b· = write_int8_le(b·, 357, 0)
-    b· = write_int8_le(b·, 358, 0)
-    b· = write_int8_le(b·, 359, 0)
-    b· = write_int8_le(b·, 360, 0)
-    b· = write_int8_le(b·, 361, 205)
-    b· = write_int8_le(b·, 362, 241)
-    b· = write_int8_le(b·, 363, 96)
-    b· = write_int8_le(b·, 364, 235)
-    b· = write_int8_le(b·, 365, 182)
-    b· = write_int8_le(b·, 366, 232)
-    b· = write_int8_le(b·, 367, 237)
-    b· = write_int8_le(b·, 368, 108)
-    b· = write_int8_le(b·, 369, 4)
-    b· = write_int8_le(b·, 370, 4)
-    b· = write_int8_le(b·, 371, 0)
-    b· = write_int8_le(b·, 372, 0)
-    b· = write_int8_le(b·, 373, 0)
-    b· = write_int8_le(b·, 374, 0)
-    b· = write_int8_le(b·, 375, 0)
-    b· = write_int8_le(b·, 376, 0)
-    b· = write_int8_le(b·, 377, 0)
-    b· = write_int8_le(b·, 378, 207)
-    b· = write_int8_le(b·, 379, 169)
-    b· = write_int8_le(b·, 380, 139)
-    b· = write_int8_le(b·, 381, 40)
-    b· = write_int8_le(b·, 382, 181)
-    b· = write_int8_le(b·, 383, 212)
-    b· = write_int8_le(b·, 384, 105)
-    b· = write_int8_le(b·, 385, 127)
-    b· = write_int8_le(b·, 386, 4)
-    b· = write_int8_le(b·, 387, 4)
-    b· = write_int8_le(b·, 388, 0)
-    b· = write_int8_le(b·, 389, 0)
-    b· = write_int8_le(b·, 390, 0)
-    b· = write_int8_le(b·, 391, 0)
-    b· = write_int8_le(b·, 392, 0)
-    b· = write_int8_le(b·, 393, 0)
-    b· = write_int8_le(b·, 394, 0)
-    b· = write_int8_le(b·, 395, 1)
-    b· = write_int8_le(b·, 396, 110)
-    b· = write_int8_le(b·, 397, 44)
-    b· = write_int8_le(b·, 398, 95)
-    b· = write_int8_le(b·, 399, 32)
-    b· = write_int8_le(b·, 400, 16)
-    b· = write_int8_le(b·, 401, 182)
-    b· = write_int8_le(b·, 402, 160)
-    b· = write_int8_le(b·, 403, 30)
-    b· = write_int8_le(b·, 404, 1)
-    b· = write_int8_le(b·, 405, 0)
-    b· = write_int8_le(b·, 406, 0)
-    b· = write_int8_le(b·, 407, 0)
-    b· = write_int8_le(b·, 408, 15)
-    b· = write_int8_le(b·, 409, 0)
-    b· = write_int8_le(b·, 410, 0)
-    b· = write_int8_le(b·, 411, 0)
-    b· = write_int8_le(b·, 412, 12)
-    b· = write_int8_le(b·, 413, 207)
-    b· = write_int8_le(b·, 414, 102)
-    b· = write_int8_le(b·, 415, 39)
-    b· = write_int8_le(b·, 416, 225)
-    b· = write_int8_le(b·, 417, 238)
-    b· = write_int8_le(b·, 418, 144)
-    b· = write_int8_le(b·, 419, 167)
-    b· = write_int8_le(b·, 420, 32)
-    b· = write_int8_le(b·, 421, 0)
-    b· = write_int8_le(b·, 422, 0)
-    b· = write_int8_le(b·, 423, 0)
-    b· = write_int8_le(b·, 424, 0)
-    b· = write_int8_le(b·, 425, 0)
-    b· = write_int8_le(b·, 426, 0)
-    b· = write_int8_le(b·, 427, 0)
-    b· = write_int8_le(b·, 428, 0)
-    b· = write_int8_le(b·, 429, 118)
-    b· = write_int8_le(b·, 430, 132)
-    b· = write_int8_le(b·, 431, 218)
-    b· = write_int8_le(b·, 432, 53)
-    b· = write_int8_le(b·, 433, 168)
-    b· = write_int8_le(b·, 434, 239)
-    b· = write_int8_le(b·, 435, 191)
-    b· = write_int8_le(b·, 436, 159)
-    b· = write_int8_le(b·, 437, 32)
-    b· = write_int8_le(b·, 438, 0)
-    b· = write_int8_le(b·, 439, 0)
-    b· = write_int8_le(b·, 440, 0)
-    b· = write_int8_le(b·, 441, 0)
-    b· = write_int8_le(b·, 442, 0)
-    b· = write_int8_le(b·, 443, 0)
-    b· = write_int8_le(b·, 444, 0)
-    b· = write_int8_le(b·, 445, 0)
-    b· = write_int8_le(b·, 446, 149)
-    b· = write_int8_le(b·, 447, 138)
-    b· = write_int8_le(b·, 448, 146)
-    b· = write_int8_le(b·, 449, 131)
-    b· = write_int8_le(b·, 450, 23)
-    b· = write_int8_le(b·, 451, 187)
-    b· = write_int8_le(b·, 452, 139)
-    b· = write_int8_le(b·, 453, 24)
-    b· = write_int8_le(b·, 454, 32)
-    b· = write_int8_le(b·, 455, 0)
-    b· = write_int8_le(b·, 456, 0)
-    b· = write_int8_le(b·, 457, 0)
-    b· = write_int8_le(b·, 458, 0)
-    b· = write_int8_le(b·, 459, 0)
-    b· = write_int8_le(b·, 460, 0)
-    b· = write_int8_le(b·, 461, 0)
-    b· = write_int8_le(b·, 462, 0)
-    b· = write_int8_le(b·, 463, 241)
-    b· = write_int8_le(b·, 464, 114)
-    b· = write_int8_le(b·, 465, 242)
-    b· = write_int8_le(b·, 466, 194)
-    b· = write_int8_le(b·, 467, 185)
-    b· = write_int8_le(b·, 468, 103)
-    b· = write_int8_le(b·, 469, 54)
-    b· = write_int8_le(b·, 470, 44)
-    b· = write_int8_le(b·, 471, 32)
-    b· = write_int8_le(b·, 472, 0)
-    b· = write_int8_le(b·, 473, 0)
-    b· = write_int8_le(b·, 474, 0)
-    b· = write_int8_le(b·, 475, 0)
-    b· = write_int8_le(b·, 476, 0)
-    b· = write_int8_le(b·, 477, 0)
-    b· = write_int8_le(b·, 478, 0)
-    b· = write_int8_le(b·, 479, 0)
-    b· = write_int8_le(b·, 480, 246)
-    b· = write_int8_le(b·, 481, 85)
-    b· = write_int8_le(b·, 482, 215)
-    b· = write_int8_le(b·, 483, 0)
-    b· = write_int8_le(b·, 484, 27)
-    b· = write_int8_le(b·, 485, 180)
-    b· = write_int8_le(b·, 486, 168)
-    b· = write_int8_le(b·, 487, 12)
-    b· = write_int8_le(b·, 488, 32)
-    b· = write_int8_le(b·, 489, 0)
-    b· = write_int8_le(b·, 490, 0)
-    b· = write_int8_le(b·, 491, 0)
-    b· = write_int8_le(b·, 492, 0)
-    b· = write_int8_le(b·, 493, 0)
-    b· = write_int8_le(b·, 494, 0)
-    b· = write_int8_le(b·, 495, 0)
-    b· = write_int8_le(b·, 496, 0)
-    b· = write_int8_le(b·, 497, 78)
-    b· = write_int8_le(b·, 498, 26)
-    b· = write_int8_le(b·, 499, 178)
-    b· = write_int8_le(b·, 500, 250)
-    b· = write_int8_le(b·, 501, 25)
-    b· = write_int8_le(b·, 502, 200)
-    b· = write_int8_le(b·, 503, 95)
-    b· = write_int8_le(b·, 504, 152)
-    b· = write_int8_le(b·, 505, 32)
-    b· = write_int8_le(b·, 506, 0)
-    b· = write_int8_le(b·, 507, 0)
-    b· = write_int8_le(b·, 508, 0)
-    b· = write_int8_le(b·, 509, 0)
-    b· = write_int8_le(b·, 510, 0)
-    b· = write_int8_le(b·, 511, 0)
-    b· = write_int8_le(b·, 512, 0)
-    b· = write_int8_le(b·, 513, 0)
-    b· = write_int8_le(b·, 514, 85)
-    b· = write_int8_le(b·, 515, 106)
-    b· = write_int8_le(b·, 516, 8)
-    b· = write_int8_le(b·, 517, 195)
-    b· = write_int8_le(b·, 518, 71)
-    b· = write_int8_le(b·, 519, 4)
-    b· = write_int8_le(b·, 520, 157)
-    b· = write_int8_le(b·, 521, 34)
-    b· = write_int8_le(b·, 522, 32)
-    b· = write_int8_le(b·, 523, 0)
-    b· = write_int8_le(b·, 524, 0)
-    b· = write_int8_le(b·, 525, 0)
-    b· = write_int8_le(b·, 526, 0)
-    b· = write_int8_le(b·, 527, 0)
-    b· = write_int8_le(b·, 528, 0)
-    b· = write_int8_le(b·, 529, 0)
-    b· = write_int8_le(b·, 530, 0)
-    b· = write_int8_le(b·, 531, 157)
-    b· = write_int8_le(b·, 532, 143)
-    b· = write_int8_le(b·, 533, 34)
-    b· = write_int8_le(b·, 534, 167)
-    b· = write_int8_le(b·, 535, 73)
-    b· = write_int8_le(b·, 536, 123)
-    b· = write_int8_le(b·, 537, 28)
-    b· = write_int8_le(b·, 538, 1)
-    b· = write_int8_le(b·, 539, 32)
-    b· = write_int8_le(b·, 540, 0)
-    b· = write_int8_le(b·, 541, 0)
-    b· = write_int8_le(b·, 542, 0)
-    b· = write_int8_le(b·, 543, 0)
-    b· = write_int8_le(b·, 544, 0)
-    b· = write_int8_le(b·, 545, 0)
-    b· = write_int8_le(b·, 546, 0)
-    b· = write_int8_le(b·, 547, 0)
-    b· = write_int8_le(b·, 548, 95)
-    b· = write_int8_le(b·, 549, 225)
-    b· = write_int8_le(b·, 550, 35)
-    b· = write_int8_le(b·, 551, 17)
-    b· = write_int8_le(b·, 552, 110)
-    b· = write_int8_le(b·, 553, 86)
-    b· = write_int8_le(b·, 554, 247)
-    b· = write_int8_le(b·, 555, 137)
-    b· = write_int8_le(b·, 556, 32)
-    b· = write_int8_le(b·, 557, 0)
-    b· = write_int8_le(b·, 558, 0)
-    b· = write_int8_le(b·, 559, 0)
-    b· = write_int8_le(b·, 560, 0)
-    b· = write_int8_le(b·, 561, 0)
-    b· = write_int8_le(b·, 562, 0)
-    b· = write_int8_le(b·, 563, 0)
-    b· = write_int8_le(b·, 564, 0)
-    b· = write_int8_le(b·, 565, 105)
-    b· = write_int8_le(b·, 566, 68)
-    b· = write_int8_le(b·, 567, 59)
-    b· = write_int8_le(b·, 568, 139)
-    b· = write_int8_le(b·, 569, 49)
-    b· = write_int8_le(b·, 570, 37)
-    b· = write_int8_le(b·, 571, 127)
-    b· = write_int8_le(b·, 572, 141)
-    b· = write_int8_le(b·, 573, 32)
-    b· = write_int8_le(b·, 574, 0)
-    b· = write_int8_le(b·, 575, 0)
-    b· = write_int8_le(b·, 576, 0)
-    b· = write_int8_le(b·, 577, 0)
-    b· = write_int8_le(b·, 578, 0)
-    b· = write_int8_le(b·, 579, 0)
-    b· = write_int8_le(b·, 580, 0)
-    b· = write_int8_le(b·, 581, 0)
-    b· = write_int8_le(b·, 582, 22)
-    b· = write_int8_le(b·, 583, 120)
-    b· = write_int8_le(b·, 584, 91)
-    b· = write_int8_le(b·, 585, 40)
-    b· = write_int8_le(b·, 586, 204)
-    b· = write_int8_le(b·, 587, 13)
-    b· = write_int8_le(b·, 588, 205)
-    b· = write_int8_le(b·, 589, 217)
-    b· = write_int8_le(b·, 590, 32)
-    b· = write_int8_le(b·, 591, 0)
-    b· = write_int8_le(b·, 592, 0)
-    b· = write_int8_le(b·, 593, 0)
-    b· = write_int8_le(b·, 594, 0)
-    b· = write_int8_le(b·, 595, 0)
-    b· = write_int8_le(b·, 596, 0)
-    b· = write_int8_le(b·, 597, 0)
-    b· = write_int8_le(b·, 598, 0)
-    b· = write_int8_le(b·, 599, 118)
-    b· = write_int8_le(b·, 600, 82)
-    b· = write_int8_le(b·, 601, 255)
-    b· = write_int8_le(b·, 602, 168)
-    b· = write_int8_le(b·, 603, 174)
-    b· = write_int8_le(b·, 604, 22)
-    b· = write_int8_le(b·, 605, 220)
-    b· = write_int8_le(b·, 606, 4)
-    b· = write_int8_le(b·, 607, 32)
-    b· = write_int8_le(b·, 608, 0)
-    b· = write_int8_le(b·, 609, 0)
-    b· = write_int8_le(b·, 610, 0)
-    b· = write_int8_le(b·, 611, 0)
-    b· = write_int8_le(b·, 612, 0)
-    b· = write_int8_le(b·, 613, 0)
-    b· = write_int8_le(b·, 614, 0)
-    b· = write_int8_le(b·, 615, 0)
-    b· = write_int8_le(b·, 616, 23)
-    b· = write_int8_le(b·, 617, 146)
-    b· = write_int8_le(b·, 618, 18)
-    b· = write_int8_le(b·, 619, 65)
-    b· = write_int8_le(b·, 620, 195)
-    b· = write_int8_le(b·, 621, 59)
-    b· = write_int8_le(b·, 622, 229)
-    b· = write_int8_le(b·, 623, 53)
-    b· = write_int8_le(b·, 624, 32)
-    b· = write_int8_le(b·, 625, 0)
-    b· = write_int8_le(b·, 626, 0)
-    b· = write_int8_le(b·, 627, 0)
-    b· = write_int8_le(b·, 628, 0)
-    b· = write_int8_le(b·, 629, 0)
-    b· = write_int8_le(b·, 630, 0)
-    b· = write_int8_le(b·, 631, 0)
-    b· = write_int8_le(b·, 632, 0)
-    b· = write_int8_le(b·, 633, 49)
-    b· = write_int8_le(b·, 634, 136)
-    b· = write_int8_le(b·, 635, 222)
-    b· = write_int8_le(b·, 636, 176)
-    b· = write_int8_le(b·, 637, 47)
-    b· = write_int8_le(b·, 638, 40)
-    b· = write_int8_le(b·, 639, 200)
-    b· = write_int8_le(b·, 640, 44)
-    b· = write_int8_le(b·, 641, 32)
-    b· = write_int8_le(b·, 642, 0)
-    b· = write_int8_le(b·, 643, 0)
-    b· = write_int8_le(b·, 644, 0)
-    b· = write_int8_le(b·, 645, 0)
-    b· = write_int8_le(b·, 646, 0)
-    b· = write_int8_le(b·, 647, 0)
-    b· = write_int8_le(b·, 648, 0)
-    b· = write_int8_le(b·, 649, 0)
-    b· = write_int8_le(b·, 650, 52)
-    b· = write_int8_le(b·, 651, 179)
-    b· = write_int8_le(b·, 652, 140)
-    b· = write_int8_le(b·, 653, 188)
-    b· = write_int8_le(b·, 654, 33)
-    b· = write_int8_le(b·, 655, 218)
-    b· = write_int8_le(b·, 656, 186)
-    b· = write_int8_le(b·, 657, 32)
-    b· = write_int8_le(b·, 658, 32)
-    b· = write_int8_le(b·, 659, 0)
-    b· = write_int8_le(b·, 660, 0)
-    b· = write_int8_le(b·, 661, 0)
-    b· = write_int8_le(b·, 662, 0)
-    b· = write_int8_le(b·, 663, 0)
-    b· = write_int8_le(b·, 664, 0)
-    b· = write_int8_le(b·, 665, 0)
-    b· = write_int8_le(b·, 666, 0)
-    b· = write_int8_le(b·, 667, 192)
-    b· = write_int8_le(b·, 668, 127)
-    b· = write_int8_le(b·, 669, 179)
-    b· = write_int8_le(b·, 670, 138)
-    b· = write_int8_le(b·, 671, 190)
-    b· = write_int8_le(b·, 672, 8)
-    b· = write_int8_le(b·, 673, 99)
-    b· = write_int8_le(b·, 674, 127)
-    b· = write_int8_le(b·, 675, 9)
-    b· = write_int8_le(b·, 676, 8)
-    b· = write_int8_le(b·, 677, 0)
-    b· = write_int8_le(b·, 678, 0)
-    b· = write_int8_le(b·, 679, 0)
-    b· = write_int8_le(b·, 680, 0)
-    b· = write_int8_le(b·, 681, 0)
-    b· = write_int8_le(b·, 682, 0)
-    b· = write_int8_le(b·, 683, 0)
-    b· = write_int8_le(b·, 684, 167)
-    b· = write_int8_le(b·, 685, 61)
-    b· = write_int8_le(b·, 686, 36)
-    b· = write_int8_le(b·, 687, 209)
-    b· = write_int8_le(b·, 688, 193)
-    b· = write_int8_le(b·, 689, 79)
-    b· = write_int8_le(b·, 690, 164)
-    b· = write_int8_le(b·, 691, 17)
-    b· = write_int8_le(b·, 692, 1)
-    b· = write_int8_le(b·, 693, 1)
-    b· = write_int8_le(b·, 694, 0)
-    b· = write_int8_le(b·, 695, 0)
-    b· = write_int8_le(b·, 696, 0)
-    b· = write_int8_le(b·, 697, 0)
-    b· = write_int8_le(b·, 698, 0)
-    b· = write_int8_le(b·, 699, 0)
-    b· = write_int8_le(b·, 700, 0)
-    b· = write_int8_le(b·, 701, 202)
-    b· = write_int8_le(b·, 702, 49)
-    b· = write_int8_le(b·, 703, 144)
-    b· = write_int8_le(b·, 704, 155)
-    b· = write_int8_le(b·, 705, 209)
-    b· = write_int8_le(b·, 706, 207)
-    b· = write_int8_le(b·, 707, 116)
-    b· = write_int8_le(b·, 708, 118)
-    b· = write_int8_le(b·, 709, 1)
-    b· = write_int8_le(b·, 710, 1)
-    b· = write_int8_le(b·, 711, 0)
-    b· = write_int8_le(b·, 712, 0)
-    b· = write_int8_le(b·, 713, 0)
-    b· = write_int8_le(b·, 714, 0)
-    b· = write_int8_le(b·, 715, 0)
-    b· = write_int8_le(b·, 716, 0)
-    b· = write_int8_le(b·, 717, 0)
-    b· = write_int8_le(b·, 718, 76)
-    b· = write_int8_le(b·, 719, 153)
-    b· = write_int8_le(b·, 720, 177)
-    b· = write_int8_le(b·, 721, 69)
-    b· = write_int8_le(b·, 722, 173)
-    b· = write_int8_le(b·, 723, 156)
-    b· = write_int8_le(b·, 724, 99)
-    b· = write_int8_le(b·, 725, 238)
-    b· = write_int8_le(b·, 726, 14)
-    b· = write_int8_le(b·, 727, 132)
-    b· = write_int8_le(b·, 728, 2)
-    b· = write_int8_le(b·, 729, 0)
-    b· = write_int8_le(b·, 730, 0)
-    b· = write_int8_le(b·, 731, 1)
-    b· = write_int8_le(b·, 732, 0)
-    b· = write_int8_le(b·, 733, 0)
-    b· = write_int8_le(b·, 734, 0)
-    b· = write_int8_le(b·, 735, 0)
-    b· = write_int8_le(b·, 736, 0)
-    b· = write_int8_le(b·, 737, 0)
-    b· = write_int8_le(b·, 738, 0)
-    b· = write_int8_le(b·, 739, 0)
-    b· = write_int8_le(b·, 740, 0)
-    b· = write_int8_le(b·, 741, 0)
-    b· = write_int8_le(b·, 742, 0)
-    b· = write_int8_le(b·, 743, 13)
-    b· = write_int8_le(b·, 744, 8)
-    b· = write_int8_le(b·, 745, 0)
-    b· = write_int8_le(b·, 746, 0)
-    b· = write_int8_le(b·, 747, 0)
-    b· = write_int8_le(b·, 748, 2)
-    b· = write_int8_le(b·, 749, 0)
-    b· = write_int8_le(b·, 750, 0)
-    b· = write_int8_le(b·, 751, 0)
-    b· = write_int8_le(b·, 752, 101)
-    b· = write_int8_le(b·, 753, 191)
-    b· = write_int8_le(b·, 754, 109)
-    b· = write_int8_le(b·, 755, 134)
-    b· = write_int8_le(b·, 756, 240)
-    b· = write_int8_le(b·, 757, 117)
-    b· = write_int8_le(b·, 758, 171)
-    b· = write_int8_le(b·, 759, 128)
-    b· = write_int8_le(b·, 760, 6)
-    b· = write_int8_le(b·, 761, 4)
-    b· = write_int8_le(b·, 762, 0)
-    b· = write_int8_le(b·, 763, 0)
-    b· = write_int8_le(b·, 764, 0)
-    b· = write_int8_le(b·, 765, 0)
-    b· = write_int8_le(b·, 766, 0)
-    b· = write_int8_le(b·, 767, 0)
-    b· = write_int8_le(b·, 768, 0)
-    b· = write_int8_le(b·, 769, 193)
-    b· = write_int8_le(b·, 770, 160)
-    b· = write_int8_le(b·, 771, 19)
-    b· = write_int8_le(b·, 772, 236)
-    b· = write_int8_le(b·, 773, 117)
-    b· = write_int8_le(b·, 774, 102)
-    b· = write_int8_le(b·, 775, 7)
-    b· = write_int8_le(b·, 776, 82)
-    b· = write_int8_le(b·, 777, 4)
-    b· = write_int8_le(b·, 778, 4)
-    b· = write_int8_le(b·, 779, 0)
-    b· = write_int8_le(b·, 780, 0)
-    b· = write_int8_le(b·, 781, 0)
-    b· = write_int8_le(b·, 782, 0)
-    b· = write_int8_le(b·, 783, 0)
-    b· = write_int8_le(b·, 784, 0)
-    b· = write_int8_le(b·, 785, 0)
-    b· = write_int8_le(b·, 786, 144)
-    b· = write_int8_le(b·, 787, 87)
-    b· = write_int8_le(b·, 788, 170)
-    b· = write_int8_le(b·, 789, 33)
-    b· = write_int8_le(b·, 790, 83)
-    b· = write_int8_le(b·, 791, 220)
-    b· = write_int8_le(b·, 792, 53)
-    b· = write_int8_le(b·, 793, 46)
-    b· = write_int8_le(b·, 794, 15)
-    b· = write_int8_le(b·, 795, 14)
-    b· = write_int8_le(b·, 796, 0)
-    b· = write_int8_le(b·, 797, 0)
-    b· = write_int8_le(b·, 798, 0)
-    b· = write_int8_le(b·, 799, 3)
-    b· = write_int8_le(b·, 800, 0)
-    b· = write_int8_le(b·, 801, 0)
-    b· = write_int8_le(b·, 802, 0)
-    b· = write_int8_le(b·, 803, 170)
-    b· = write_int8_le(b·, 804, 128)
-    b· = write_int8_le(b·, 805, 6)
-    b· = write_int8_le(b·, 806, 48)
-    b· = write_int8_le(b·, 807, 25)
-    b· = write_int8_le(b·, 808, 40)
-    b· = write_int8_le(b·, 809, 115)
-    b· = write_int8_le(b·, 810, 51)
-    b· = write_int8_le(b·, 811, 13)
-    b· = write_int8_le(b·, 812, 13)
-    b· = write_int8_le(b·, 813, 0)
-    b· = write_int8_le(b·, 814, 0)
-    b· = write_int8_le(b·, 815, 0)
-    b· = write_int8_le(b·, 816, 4)
-    b· = write_int8_le(b·, 817, 0)
-    b· = write_int8_le(b·, 818, 0)
-    b· = write_int8_le(b·, 819, 0)
-    b· = write_int8_le(b·, 820, 80)
-    b· = write_int8_le(b·, 821, 80)
-    b· = write_int8_le(b·, 822, 162)
-    b· = write_int8_le(b·, 823, 21)
-    b· = write_int8_le(b·, 824, 192)
-    b· = write_int8_le(b·, 825, 154)
-    b· = write_int8_le(b·, 826, 188)
-    b· = write_int8_le(b·, 827, 183)
-    b· = write_int8_le(b·, 828, 7)
-    b· = write_int8_le(b·, 829, 4)
-    b· = write_int8_le(b·, 830, 0)
-    b· = write_int8_le(b·, 831, 0)
-    b· = write_int8_le(b·, 832, 0)
-    b· = write_int8_le(b·, 833, 0)
-    b· = write_int8_le(b·, 834, 0)
-    b· = write_int8_le(b·, 835, 0)
-    b· = write_int8_le(b·, 836, 0)
-    b· = write_int8_le(b·, 837, 192)
-    b· = write_int8_le(b·, 838, 127)
-    b· = write_int8_le(b·, 839, 179)
-    b· = write_int8_le(b·, 840, 138)
-    b· = write_int8_le(b·, 841, 190)
-    b· = write_int8_le(b·, 842, 8)
-    b· = write_int8_le(b·, 843, 99)
-    b· = write_int8_le(b·, 844, 127)
-    b· = write_int8_le(b·, 845, 4)
-    b· = write_int8_le(b·, 846, 4)
-    b· = write_int8_le(b·, 847, 0)
-    b· = write_int8_le(b·, 848, 0)
-    b· = write_int8_le(b·, 849, 0)
-    b· = write_int8_le(b·, 850, 0)
-    b· = write_int8_le(b·, 851, 0)
-    b· = write_int8_le(b·, 852, 0)
-    b· = write_int8_le(b·, 853, 0)
-    b· = write_int8_le(b·, 854, 37)
-    b· = write_int8_le(b·, 855, 185)
-    b· = write_int8_le(b·, 856, 89)
-    b· = write_int8_le(b·, 857, 176)
-    b· = write_int8_le(b·, 858, 101)
-    b· = write_int8_le(b·, 859, 195)
-    b· = write_int8_le(b·, 860, 251)
-    b· = write_int8_le(b·, 861, 1)
-    b· = write_int8_le(b·, 862, 4)
-    b· = write_int8_le(b·, 863, 4)
-    b· = write_int8_le(b·, 864, 0)
-    b· = write_int8_le(b·, 865, 0)
-    b· = write_int8_le(b·, 866, 0)
-    b· = write_int8_le(b·, 867, 0)
-    b· = write_int8_le(b·, 868, 0)
-    b· = write_int8_le(b·, 869, 0)
-    b· = write_int8_le(b·, 870, 0)
-    b· = write_int8_le(b·, 871, 45)
-    b· = write_int8_le(b·, 872, 165)
-    b· = write_int8_le(b·, 873, 154)
-    b· = write_int8_le(b·, 874, 140)
-    b· = write_int8_le(b·, 875, 144)
-    b· = write_int8_le(b·, 876, 103)
-    b· = write_int8_le(b·, 877, 97)
-    b· = write_int8_le(b·, 878, 18)
-    b· = write_int8_le(b·, 879, 1)
-    b· = write_int8_le(b·, 880, 1)
-    b· = write_int8_le(b·, 881, 0)
-    b· = write_int8_le(b·, 882, 0)
-    b· = write_int8_le(b·, 883, 0)
-    b· = write_int8_le(b·, 884, 0)
-    b· = write_int8_le(b·, 885, 0)
-    b· = write_int8_le(b·, 886, 0)
-    b· = write_int8_le(b·, 887, 0)
-    b· = write_int8_le(b·, 888, 139)
-    b· = write_int8_le(b·, 889, 52)
-    b· = write_int8_le(b·, 890, 91)
-    b· = write_int8_le(b·, 891, 11)
-    b· = write_int8_le(b·, 892, 145)
-    b· = write_int8_le(b·, 893, 141)
-    b· = write_int8_le(b·, 894, 163)
-    b· = write_int8_le(b·, 895, 242)
-    b· = write_int8_le(b·, 896, 13)
-    b· = write_int8_le(b·, 897, 8)
-    b· = write_int8_le(b·, 898, 0)
-    b· = write_int8_le(b·, 899, 0)
-    b· = write_int8_le(b·, 900, 0)
-    b· = write_int8_le(b·, 901, 2)
-    b· = write_int8_le(b·, 902, 0)
-    b· = write_int8_le(b·, 903, 0)
-    b· = write_int8_le(b·, 904, 0)
-    b· = write_int8_le(b·, 905, 164)
-    b· = write_int8_le(b·, 906, 237)
-    b· = write_int8_le(b·, 907, 202)
-    b· = write_int8_le(b·, 908, 213)
-    b· = write_int8_le(b·, 909, 154)
-    b· = write_int8_le(b·, 910, 62)
-    b· = write_int8_le(b·, 911, 1)
-    b· = write_int8_le(b·, 912, 165)
-    b· = write_int8_le(b·, 913, 4)
-    b· = write_int8_le(b·, 914, 4)
-    b· = write_int8_le(b·, 915, 0)
-    b· = write_int8_le(b·, 916, 0)
-    b· = write_int8_le(b·, 917, 0)
-    b· = write_int8_le(b·, 918, 0)
-    b· = write_int8_le(b·, 919, 0)
-    b· = write_int8_le(b·, 920, 0)
-    b· = write_int8_le(b·, 921, 0)
-    b· = write_int8_le(b·, 922, 34)
-    b· = write_int8_le(b·, 923, 208)
-    b· = write_int8_le(b·, 924, 235)
-    b· = write_int8_le(b·, 925, 150)
-    b· = write_int8_le(b·, 926, 77)
-    b· = write_int8_le(b·, 927, 172)
-    b· = write_int8_le(b·, 928, 241)
-    b· = write_int8_le(b·, 929, 251)
-    b· = write_int8_le(b·, 930, 7)
-    b· = write_int8_le(b·, 931, 4)
-    b· = write_int8_le(b·, 932, 0)
-    b· = write_int8_le(b·, 933, 0)
-    b· = write_int8_le(b·, 934, 0)
-    b· = write_int8_le(b·, 935, 0)
-    b· = write_int8_le(b·, 936, 0)
-    b· = write_int8_le(b·, 937, 0)
-    b· = write_int8_le(b·, 938, 0)
-    b· = write_int8_le(b·, 939, 101)
-    b· = write_int8_le(b·, 940, 183)
-    b· = write_int8_le(b·, 941, 236)
-    b· = write_int8_le(b·, 942, 134)
-    b· = write_int8_le(b·, 943, 28)
-    b· = write_int8_le(b·, 944, 164)
-    b· = write_int8_le(b·, 945, 163)
-    b· = write_int8_le(b·, 946, 159)
-    b· = write_int8_le(b·, 947, 13)
-    b· = write_int8_le(b·, 948, 8)
-    b· = write_int8_le(b·, 949, 0)
-    b· = write_int8_le(b·, 950, 0)
-    b· = write_int8_le(b·, 951, 0)
-    b· = write_int8_le(b·, 952, 2)
-    b· = write_int8_le(b·, 953, 0)
-    b· = write_int8_le(b·, 954, 0)
-    b· = write_int8_le(b·, 955, 0)
-    b· = write_int8_le(b·, 956, 86)
-    b· = write_int8_le(b·, 957, 189)
-    b· = write_int8_le(b·, 958, 79)
-    b· = write_int8_le(b·, 959, 134)
-    b· = write_int8_le(b·, 960, 109)
-    b· = write_int8_le(b·, 961, 208)
-    b· = write_int8_le(b·, 962, 127)
-    b· = write_int8_le(b·, 963, 158)
-    b· = write_int8_le(b·, 964, 7)
-    b· = write_int8_le(b·, 965, 4)
-    b· = write_int8_le(b·, 966, 0)
-    b· = write_int8_le(b·, 967, 0)
-    b· = write_int8_le(b·, 968, 0)
-    b· = write_int8_le(b·, 969, 0)
-    b· = write_int8_le(b·, 970, 0)
-    b· = write_int8_le(b·, 971, 0)
-    b· = write_int8_le(b·, 972, 0)
-    b· = write_int8_le(b·, 973, 105)
-    b· = write_int8_le(b·, 974, 105)
-    b· = write_int8_le(b·, 975, 177)
-    b· = write_int8_le(b·, 976, 162)
-    b· = write_int8_le(b·, 977, 126)
-    b· = write_int8_le(b·, 978, 254)
-    b· = write_int8_le(b·, 979, 19)
-    b· = write_int8_le(b·, 980, 129)
-    b· = write_int8_le(b·, 981, 4)
-    b· = write_int8_le(b·, 982, 4)
-    b· = write_int8_le(b·, 983, 0)
-    b· = write_int8_le(b·, 984, 0)
-    b· = write_int8_le(b·, 985, 0)
-    b· = write_int8_le(b·, 986, 0)
-    b· = write_int8_le(b·, 987, 0)
-    b· = write_int8_le(b·, 988, 0)
-    b· = write_int8_le(b·, 989, 0)
-    b· = write_int8_le(b·, 990, 163)
-    b· = write_int8_le(b·, 991, 181)
-    b· = write_int8_le(b·, 992, 187)
-    b· = write_int8_le(b·, 993, 134)
-    b· = write_int8_le(b·, 994, 117)
-    b· = write_int8_le(b·, 995, 206)
-    b· = write_int8_le(b·, 996, 89)
-    b· = write_int8_le(b·, 997, 87)
-    b· = write_int8_le(b·, 998, 14)
-    b· = write_int8_le(b·, 999, 4)
-    b· = write_int8_le(b·, 1000, 0)
-    b· = write_int8_le(b·, 1001, 0)
-    b· = write_int8_le(b·, 1002, 0)
-    b· = write_int8_le(b·, 1003, 1)
-    b· = write_int8_le(b·, 1004, 0)
-    b· = write_int8_le(b·, 1005, 0)
-    b· = write_int8_le(b·, 1006, 0)
-    b· = write_int8_le(b·, 1007, 0)
-    b· = write_int8_le(b·, 1008, 0)
-    b· = write_int8_le(b·, 1009, 0)
-    b· = write_int8_le(b·, 1010, 0)
-    b· = write_int8_le(b·, 1011, 0)
-    b· = write_int8_le(b·, 1012, 0)
-    b· = write_int8_le(b·, 1013, 0)
-    b· = write_int8_le(b·, 1014, 0)
-    b· = write_int8_le(b·, 1015, 6)
-    b· = write_int8_le(b·, 1016, 1)
-    b· = write_int8_le(b·, 1017, 0)
-    b· = write_int8_le(b·, 1018, 0)
-    b· = write_int8_le(b·, 1019, 0)
-    b· = write_int8_le(b·, 1020, 0)
-    b· = write_int8_le(b·, 1021, 0)
-    b· = write_int8_le(b·, 1022, 0)
-    b· = write_int8_le(b·, 1023, 0)
-    b· = write_int8_le(b·, 1024, 110)
-    b· = write_int8_le(b·, 1025, 232)
-    b· = write_int8_le(b·, 1026, 248)
-    b· = write_int8_le(b·, 1027, 44)
-    b· = write_int8_le(b·, 1028, 84)
-    b· = write_int8_le(b·, 1029, 47)
-    b· = write_int8_le(b·, 1030, 166)
-    b· = write_int8_le(b·, 1031, 19)
-    b· = write_int8_le(b·, 1032, 12)
-    b· = write_int8_le(b·, 1033, 19)
-    b· = write_int8_le(b·, 1034, 0)
-    b· = write_int8_le(b·, 1035, 0)
-    b· = write_int8_le(b·, 1036, 0)
-    b· = write_int8_le(b·, 1037, 0)
-    b· = write_int8_le(b·, 1038, 0)
-    b· = write_int8_le(b·, 1039, 0)
-    b· = write_int8_le(b·, 1040, 0)
-    b· = write_int8_le(b·, 1041, 229)
-    b· = write_int8_le(b·, 1042, 233)
-    b· = write_int8_le(b·, 1043, 181)
-    b· = write_int8_le(b·, 1044, 99)
-    b· = write_int8_le(b·, 1045, 208)
-    b· = write_int8_le(b·, 1046, 169)
-    b· = write_int8_le(b·, 1047, 184)
-    b· = write_int8_le(b·, 1048, 207)
-    b· = write_int8_le(b·, 1049, 14)
-    b· = write_int8_le(b·, 1050, 20)
-    b· = write_int8_le(b·, 1051, 0)
-    b· = write_int8_le(b·, 1052, 0)
-    b· = write_int8_le(b·, 1053, 0)
-    b· = write_int8_le(b·, 1054, 1)
-    b· = write_int8_le(b·, 1055, 0)
-    b· = write_int8_le(b·, 1056, 0)
-    b· = write_int8_le(b·, 1057, 0)
-    b· = write_int8_le(b·, 1058, 0)
-    b· = write_int8_le(b·, 1059, 0)
-    b· = write_int8_le(b·, 1060, 0)
-    b· = write_int8_le(b·, 1061, 0)
-    b· = write_int8_le(b·, 1062, 0)
-    b· = write_int8_le(b·, 1063, 0)
-    b· = write_int8_le(b·, 1064, 0)
-    b· = write_int8_le(b·, 1065, 0)
-    b· = write_int8_le(b·, 1066, 6)
-    b· = write_int8_le(b·, 1067, 1)
-    b· = write_int8_le(b·, 1068, 0)
-    b· = write_int8_le(b·, 1069, 0)
-    b· = write_int8_le(b·, 1070, 0)
-    b· = write_int8_le(b·, 1071, 0)
-    b· = write_int8_le(b·, 1072, 0)
-    b· = write_int8_le(b·, 1073, 0)
-    b· = write_int8_le(b·, 1074, 0)
-    b· = write_int8_le(b·, 1075, 201)
-    b· = write_int8_le(b·, 1076, 150)
-    b· = write_int8_le(b·, 1077, 66)
-    b· = write_int8_le(b·, 1078, 226)
-    b· = write_int8_le(b·, 1079, 229)
-    b· = write_int8_le(b·, 1080, 123)
-    b· = write_int8_le(b·, 1081, 175)
-    b· = write_int8_le(b·, 1082, 219)
-    b· = write_int8_le(b·, 1083, 10)
-    b· = write_int8_le(b·, 1084, 4)
-    b· = write_int8_le(b·, 1085, 0)
-    b· = write_int8_le(b·, 1086, 0)
-    b· = write_int8_le(b·, 1087, 0)
-    b· = write_int8_le(b·, 1088, 0)
-    b· = write_int8_le(b·, 1089, 0)
-    b· = write_int8_le(b·, 1090, 0)
-    b· = write_int8_le(b·, 1091, 0)
-    b· = write_int8_le(b·, 1092, 22)
-    b· = write_int8_le(b·, 1093, 149)
-    b· = write_int8_le(b·, 1094, 66)
-    b· = write_int8_le(b·, 1095, 226)
-    b· = write_int8_le(b·, 1096, 229)
-    b· = write_int8_le(b·, 1097, 122)
-    b· = write_int8_le(b·, 1098, 175)
-    b· = write_int8_le(b·, 1099, 219)
-    b· = write_int8_le(b·, 1100, 10)
-    b· = write_int8_le(b·, 1101, 4)
-    b· = write_int8_le(b·, 1102, 0)
-    b· = write_int8_le(b·, 1103, 0)
-    b· = write_int8_le(b·, 1104, 0)
-    b· = write_int8_le(b·, 1105, 0)
-    b· = write_int8_le(b·, 1106, 0)
-    b· = write_int8_le(b·, 1107, 0)
-    b· = write_int8_le(b·, 1108, 0)
-    b· = write_int8_le(b·, 1109, 99)
-    b· = write_int8_le(b·, 1110, 147)
-    b· = write_int8_le(b·, 1111, 66)
-    b· = write_int8_le(b·, 1112, 226)
-    b· = write_int8_le(b·, 1113, 229)
-    b· = write_int8_le(b·, 1114, 121)
-    b· = write_int8_le(b·, 1115, 175)
-    b· = write_int8_le(b·, 1116, 219)
-    b· = write_int8_le(b·, 1117, 10)
-    b· = write_int8_le(b·, 1118, 4)
-    b· = write_int8_le(b·, 1119, 0)
-    b· = write_int8_le(b·, 1120, 0)
-    b· = write_int8_le(b·, 1121, 0)
-    b· = write_int8_le(b·, 1122, 0)
-    b· = write_int8_le(b·, 1123, 0)
-    b· = write_int8_le(b·, 1124, 0)
-    b· = write_int8_le(b·, 1125, 0)
-    b· = write_int8_le(b·, 1126, 87)
-    b· = write_int8_le(b·, 1127, 228)
-    b· = write_int8_le(b·, 1128, 226)
-    b· = write_int8_le(b·, 1129, 247)
-    b· = write_int8_le(b·, 1130, 255)
-    b· = write_int8_le(b·, 1131, 49)
-    b· = write_int8_le(b·, 1132, 239)
-    b· = write_int8_le(b·, 1133, 156)
-    b· = write_int8_le(b·, 1134, 10)
-    b· = write_int8_le(b·, 1135, 4)
-    b· = write_int8_le(b·, 1136, 0)
-    b· = write_int8_le(b·, 1137, 0)
-    b· = write_int8_le(b·, 1138, 0)
-    b· = write_int8_le(b·, 1139, 0)
-    b· = write_int8_le(b·, 1140, 0)
-    b· = write_int8_le(b·, 1141, 0)
-    b· = write_int8_le(b·, 1142, 0)
-    b· = write_int8_le(b·, 1143, 4)
-    b· = write_int8_le(b·, 1144, 108)
-    b· = write_int8_le(b·, 1145, 31)
-    b· = write_int8_le(b·, 1146, 52)
-    b· = write_int8_le(b·, 1147, 201)
-    b· = write_int8_le(b·, 1148, 249)
-    b· = write_int8_le(b·, 1149, 179)
-    b· = write_int8_le(b·, 1150, 90)
-    b· = write_int8_le(b·, 1151, 11)
-    b· = write_int8_le(b·, 1152, 8)
-    b· = write_int8_le(b·, 1153, 0)
-    b· = write_int8_le(b·, 1154, 0)
-    b· = write_int8_le(b·, 1155, 0)
-    b· = write_int8_le(b·, 1156, 0)
-    b· = write_int8_le(b·, 1157, 0)
-    b· = write_int8_le(b·, 1158, 0)
-    b· = write_int8_le(b·, 1159, 0)
-    b· = write_int8_le(b·, 1160, 22)
-    b· = write_int8_le(b·, 1161, 175)
-    b· = write_int8_le(b·, 1162, 31)
-    b· = write_int8_le(b·, 1163, 70)
-    b· = write_int8_le(b·, 1164, 128)
-    b· = write_int8_le(b·, 1165, 133)
-    b· = write_int8_le(b·, 1166, 52)
-    b· = write_int8_le(b·, 1167, 163)
-    b· = write_int8_le(b·, 1168, 9)
-    b· = write_int8_le(b·, 1169, 8)
-    b· = write_int8_le(b·, 1170, 0)
-    b· = write_int8_le(b·, 1171, 0)
-    b· = write_int8_le(b·, 1172, 0)
-    b· = write_int8_le(b·, 1173, 0)
-    b· = write_int8_le(b·, 1174, 0)
-    b· = write_int8_le(b·, 1175, 0)
-    b· = write_int8_le(b·, 1176, 0)
-    b· = write_int8_le(b·, 1177, 66)
-    b· = write_int8_le(b·, 1178, 38)
-    b· = write_int8_le(b·, 1179, 175)
-    b· = write_int8_le(b·, 1180, 8)
-    b· = write_int8_le(b·, 1181, 121)
-    b· = write_int8_le(b·, 1182, 221)
-    b· = write_int8_le(b·, 1183, 27)
-    b· = write_int8_le(b·, 1184, 214)
-    b· = write_int8_le(b·, 1185, 5)
-    b· = write_int8_le(b·, 1186, 8)
-    b· = write_int8_le(b·, 1187, 0)
-    b· = write_int8_le(b·, 1188, 0)
-    b· = write_int8_le(b·, 1189, 0)
-    b· = write_int8_le(b·, 1190, 0)
-    b· = write_int8_le(b·, 1191, 0)
-    b· = write_int8_le(b·, 1192, 0)
-    b· = write_int8_le(b·, 1193, 0)
-    b· = write_int8_le(b·, 1194, 169)
-    b· = write_int8_le(b·, 1195, 7)
-    b· = write_int8_le(b·, 1196, 51)
-    b· = write_int8_le(b·, 1197, 197)
-    b· = write_int8_le(b·, 1198, 13)
-    b· = write_int8_le(b·, 1199, 224)
-    b· = write_int8_le(b·, 1200, 48)
-    b· = write_int8_le(b·, 1201, 191)
-    b· = write_int8_le(b·, 1202, 10)
-    b· = write_int8_le(b·, 1203, 4)
-    b· = write_int8_le(b·, 1204, 0)
-    b· = write_int8_le(b·, 1205, 0)
-    b· = write_int8_le(b·, 1206, 0)
-    b· = write_int8_le(b·, 1207, 0)
-    b· = write_int8_le(b·, 1208, 0)
-    b· = write_int8_le(b·, 1209, 0)
-    b· = write_int8_le(b·, 1210, 0)
-    b· = write_int8_le(b·, 1211, 95)
-    b· = write_int8_le(b·, 1212, 81)
-    b· = write_int8_le(b·, 1213, 216)
-    b· = write_int8_le(b·, 1214, 204)
-    b· = write_int8_le(b·, 1215, 39)
-    b· = write_int8_le(b·, 1216, 101)
-    b· = write_int8_le(b·, 1217, 13)
-    b· = write_int8_le(b·, 1218, 86)
-    b· = write_int8_le(b·, 1219, 8)
-    b· = write_int8_le(b·, 1220, 4)
-    b· = write_int8_le(b·, 1221, 0)
-    b· = write_int8_le(b·, 1222, 0)
-    b· = write_int8_le(b·, 1223, 0)
-    b· = write_int8_le(b·, 1224, 0)
-    b· = write_int8_le(b·, 1225, 0)
-    b· = write_int8_le(b·, 1226, 0)
-    b· = write_int8_le(b·, 1227, 0)
-    b· = write_int8_le(b·, 1228, 114)
-    b· = write_int8_le(b·, 1229, 134)
-    b· = write_int8_le(b·, 1230, 253)
-    b· = write_int8_le(b·, 1231, 108)
-    b· = write_int8_le(b·, 1232, 23)
-    b· = write_int8_le(b·, 1233, 146)
-    b· = write_int8_le(b·, 1234, 130)
-    b· = write_int8_le(b·, 1235, 192)
-    b· = write_int8_le(b·, 1236, 1)
-    b· = write_int8_le(b·, 1237, 1)
-    b· = write_int8_le(b·, 1238, 0)
-    b· = write_int8_le(b·, 1239, 0)
-    b· = write_int8_le(b·, 1240, 0)
-    b· = write_int8_le(b·, 1241, 0)
-    b· = write_int8_le(b·, 1242, 0)
-    b· = write_int8_le(b·, 1243, 0)
-    b· = write_int8_le(b·, 1244, 0)
-    b· = write_int8_le(b·, 1245, 105)
-    b· = write_int8_le(b·, 1246, 203)
-    b· = write_int8_le(b·, 1247, 121)
-    b· = write_int8_le(b·, 1248, 169)
-    b· = write_int8_le(b·, 1249, 18)
-    b· = write_int8_le(b·, 1250, 238)
-    b· = write_int8_le(b·, 1251, 41)
-    b· = write_int8_le(b·, 1252, 253)
-    b· = write_int8_le(b·, 1253, 4)
-    b· = write_int8_le(b·, 1254, 4)
-    b· = write_int8_le(b·, 1255, 0)
-    b· = write_int8_le(b·, 1256, 0)
-    b· = write_int8_le(b·, 1257, 0)
-    b· = write_int8_le(b·, 1258, 0)
-    b· = write_int8_le(b·, 1259, 0)
-    b· = write_int8_le(b·, 1260, 0)
-    b· = write_int8_le(b·, 1261, 0)
-    b· = write_int8_le(b·, 1262, 254)
-    b· = write_int8_le(b·, 1263, 188)
-    b· = write_int8_le(b·, 1264, 140)
-    b· = write_int8_le(b·, 1265, 170)
-    b· = write_int8_le(b·, 1266, 192)
-    b· = write_int8_le(b·, 1267, 26)
-    b· = write_int8_le(b·, 1268, 16)
-    b· = write_int8_le(b·, 1269, 120)
-    b· = write_int8_le(b·, 1270, 4)
-    b· = write_int8_le(b·, 1271, 4)
-    b· = write_int8_le(b·, 1272, 0)
-    b· = write_int8_le(b·, 1273, 0)
-    b· = write_int8_le(b·, 1274, 0)
-    b· = write_int8_le(b·, 1275, 0)
-    b· = write_int8_le(b·, 1276, 0)
-    b· = write_int8_le(b·, 1277, 0)
-    b· = write_int8_le(b·, 1278, 0)
-    return b·
+    var b = schema_rt.zeros(1279)
+    b = write_int8_le(b, 0, 75)
+    b = write_int8_le(b, 1, 0)
+    b = write_int8_le(b, 2, 0)
+    b = write_int8_le(b, 3, 0)
+    b = write_int8_le(b, 4, 142)
+    b = write_int8_le(b, 5, 138)
+    b = write_int8_le(b, 6, 248)
+    b = write_int8_le(b, 7, 214)
+    b = write_int8_le(b, 8, 89)
+    b = write_int8_le(b, 9, 228)
+    b = write_int8_le(b, 10, 154)
+    b = write_int8_le(b, 11, 67)
+    b = write_int8_le(b, 12, 13)
+    b = write_int8_le(b, 13, 200)
+    b = write_int8_le(b, 14, 4)
+    b = write_int8_le(b, 15, 0)
+    b = write_int8_le(b, 16, 0)
+    b = write_int8_le(b, 17, 28)
+    b = write_int8_le(b, 18, 0)
+    b = write_int8_le(b, 19, 0)
+    b = write_int8_le(b, 20, 0)
+    b = write_int8_le(b, 21, 253)
+    b = write_int8_le(b, 22, 21)
+    b = write_int8_le(b, 23, 161)
+    b = write_int8_le(b, 24, 26)
+    b = write_int8_le(b, 25, 217)
+    b = write_int8_le(b, 26, 112)
+    b = write_int8_le(b, 27, 90)
+    b = write_int8_le(b, 28, 106)
+    b = write_int8_le(b, 29, 7)
+    b = write_int8_le(b, 30, 2)
+    b = write_int8_le(b, 31, 0)
+    b = write_int8_le(b, 32, 0)
+    b = write_int8_le(b, 33, 0)
+    b = write_int8_le(b, 34, 0)
+    b = write_int8_le(b, 35, 0)
+    b = write_int8_le(b, 36, 0)
+    b = write_int8_le(b, 37, 0)
+    b = write_int8_le(b, 38, 168)
+    b = write_int8_le(b, 39, 40)
+    b = write_int8_le(b, 40, 245)
+    b = write_int8_le(b, 41, 129)
+    b = write_int8_le(b, 42, 164)
+    b = write_int8_le(b, 43, 172)
+    b = write_int8_le(b, 44, 56)
+    b = write_int8_le(b, 45, 170)
+    b = write_int8_le(b, 46, 7)
+    b = write_int8_le(b, 47, 4)
+    b = write_int8_le(b, 48, 0)
+    b = write_int8_le(b, 49, 0)
+    b = write_int8_le(b, 50, 0)
+    b = write_int8_le(b, 51, 0)
+    b = write_int8_le(b, 52, 0)
+    b = write_int8_le(b, 53, 0)
+    b = write_int8_le(b, 54, 0)
+    b = write_int8_le(b, 55, 62)
+    b = write_int8_le(b, 56, 124)
+    b = write_int8_le(b, 57, 105)
+    b = write_int8_le(b, 58, 86)
+    b = write_int8_le(b, 59, 92)
+    b = write_int8_le(b, 60, 0)
+    b = write_int8_le(b, 61, 190)
+    b = write_int8_le(b, 62, 13)
+    b = write_int8_le(b, 63, 4)
+    b = write_int8_le(b, 64, 4)
+    b = write_int8_le(b, 65, 0)
+    b = write_int8_le(b, 66, 0)
+    b = write_int8_le(b, 67, 0)
+    b = write_int8_le(b, 68, 0)
+    b = write_int8_le(b, 69, 0)
+    b = write_int8_le(b, 70, 0)
+    b = write_int8_le(b, 71, 0)
+    b = write_int8_le(b, 72, 3)
+    b = write_int8_le(b, 73, 238)
+    b = write_int8_le(b, 74, 41)
+    b = write_int8_le(b, 75, 184)
+    b = write_int8_le(b, 76, 168)
+    b = write_int8_le(b, 77, 13)
+    b = write_int8_le(b, 78, 174)
+    b = write_int8_le(b, 79, 155)
+    b = write_int8_le(b, 80, 8)
+    b = write_int8_le(b, 81, 4)
+    b = write_int8_le(b, 82, 0)
+    b = write_int8_le(b, 83, 0)
+    b = write_int8_le(b, 84, 0)
+    b = write_int8_le(b, 85, 0)
+    b = write_int8_le(b, 86, 0)
+    b = write_int8_le(b, 87, 0)
+    b = write_int8_le(b, 88, 0)
+    b = write_int8_le(b, 89, 5)
+    b = write_int8_le(b, 90, 11)
+    b = write_int8_le(b, 91, 89)
+    b = write_int8_le(b, 92, 10)
+    b = write_int8_le(b, 93, 101)
+    b = write_int8_le(b, 94, 181)
+    b = write_int8_le(b, 95, 215)
+    b = write_int8_le(b, 96, 183)
+    b = write_int8_le(b, 97, 9)
+    b = write_int8_le(b, 98, 8)
+    b = write_int8_le(b, 99, 0)
+    b = write_int8_le(b, 100, 0)
+    b = write_int8_le(b, 101, 0)
+    b = write_int8_le(b, 102, 0)
+    b = write_int8_le(b, 103, 0)
+    b = write_int8_le(b, 104, 0)
+    b = write_int8_le(b, 105, 0)
+    b = write_int8_le(b, 106, 126)
+    b = write_int8_le(b, 107, 150)
+    b = write_int8_le(b, 108, 149)
+    b = write_int8_le(b, 109, 208)
+    b = write_int8_le(b, 110, 226)
+    b = write_int8_le(b, 111, 152)
+    b = write_int8_le(b, 112, 123)
+    b = write_int8_le(b, 113, 109)
+    b = write_int8_le(b, 114, 8)
+    b = write_int8_le(b, 115, 4)
+    b = write_int8_le(b, 116, 0)
+    b = write_int8_le(b, 117, 0)
+    b = write_int8_le(b, 118, 0)
+    b = write_int8_le(b, 119, 0)
+    b = write_int8_le(b, 120, 0)
+    b = write_int8_le(b, 121, 0)
+    b = write_int8_le(b, 122, 0)
+    b = write_int8_le(b, 123, 216)
+    b = write_int8_le(b, 124, 192)
+    b = write_int8_le(b, 125, 13)
+    b = write_int8_le(b, 126, 214)
+    b = write_int8_le(b, 127, 113)
+    b = write_int8_le(b, 128, 76)
+    b = write_int8_le(b, 129, 169)
+    b = write_int8_le(b, 130, 115)
+    b = write_int8_le(b, 131, 9)
+    b = write_int8_le(b, 132, 8)
+    b = write_int8_le(b, 133, 0)
+    b = write_int8_le(b, 134, 0)
+    b = write_int8_le(b, 135, 0)
+    b = write_int8_le(b, 136, 0)
+    b = write_int8_le(b, 137, 0)
+    b = write_int8_le(b, 138, 0)
+    b = write_int8_le(b, 139, 0)
+    b = write_int8_le(b, 140, 133)
+    b = write_int8_le(b, 141, 252)
+    b = write_int8_le(b, 142, 84)
+    b = write_int8_le(b, 143, 190)
+    b = write_int8_le(b, 144, 81)
+    b = write_int8_le(b, 145, 107)
+    b = write_int8_le(b, 146, 238)
+    b = write_int8_le(b, 147, 62)
+    b = write_int8_le(b, 148, 5)
+    b = write_int8_le(b, 149, 8)
+    b = write_int8_le(b, 150, 0)
+    b = write_int8_le(b, 151, 0)
+    b = write_int8_le(b, 152, 0)
+    b = write_int8_le(b, 153, 0)
+    b = write_int8_le(b, 154, 0)
+    b = write_int8_le(b, 155, 0)
+    b = write_int8_le(b, 156, 0)
+    b = write_int8_le(b, 157, 18)
+    b = write_int8_le(b, 158, 1)
+    b = write_int8_le(b, 159, 109)
+    b = write_int8_le(b, 160, 123)
+    b = write_int8_le(b, 161, 95)
+    b = write_int8_le(b, 162, 3)
+    b = write_int8_le(b, 163, 188)
+    b = write_int8_le(b, 164, 123)
+    b = write_int8_le(b, 165, 9)
+    b = write_int8_le(b, 166, 8)
+    b = write_int8_le(b, 167, 0)
+    b = write_int8_le(b, 168, 0)
+    b = write_int8_le(b, 169, 0)
+    b = write_int8_le(b, 170, 0)
+    b = write_int8_le(b, 171, 0)
+    b = write_int8_le(b, 172, 0)
+    b = write_int8_le(b, 173, 0)
+    b = write_int8_le(b, 174, 198)
+    b = write_int8_le(b, 175, 105)
+    b = write_int8_le(b, 176, 190)
+    b = write_int8_le(b, 177, 249)
+    b = write_int8_le(b, 178, 117)
+    b = write_int8_le(b, 179, 4)
+    b = write_int8_le(b, 180, 70)
+    b = write_int8_le(b, 181, 60)
+    b = write_int8_le(b, 182, 10)
+    b = write_int8_le(b, 183, 4)
+    b = write_int8_le(b, 184, 0)
+    b = write_int8_le(b, 185, 0)
+    b = write_int8_le(b, 186, 0)
+    b = write_int8_le(b, 187, 0)
+    b = write_int8_le(b, 188, 0)
+    b = write_int8_le(b, 189, 0)
+    b = write_int8_le(b, 190, 0)
+    b = write_int8_le(b, 191, 42)
+    b = write_int8_le(b, 192, 130)
+    b = write_int8_le(b, 193, 179)
+    b = write_int8_le(b, 194, 123)
+    b = write_int8_le(b, 195, 176)
+    b = write_int8_le(b, 196, 15)
+    b = write_int8_le(b, 197, 93)
+    b = write_int8_le(b, 198, 147)
+    b = write_int8_le(b, 199, 14)
+    b = write_int8_le(b, 200, 156)
+    b = write_int8_le(b, 201, 1)
+    b = write_int8_le(b, 202, 0)
+    b = write_int8_le(b, 203, 0)
+    b = write_int8_le(b, 204, 1)
+    b = write_int8_le(b, 205, 0)
+    b = write_int8_le(b, 206, 0)
+    b = write_int8_le(b, 207, 0)
+    b = write_int8_le(b, 208, 0)
+    b = write_int8_le(b, 209, 0)
+    b = write_int8_le(b, 210, 0)
+    b = write_int8_le(b, 211, 0)
+    b = write_int8_le(b, 212, 0)
+    b = write_int8_le(b, 213, 0)
+    b = write_int8_le(b, 214, 0)
+    b = write_int8_le(b, 215, 0)
+    b = write_int8_le(b, 216, 13)
+    b = write_int8_le(b, 217, 51)
+    b = write_int8_le(b, 218, 0)
+    b = write_int8_le(b, 219, 0)
+    b = write_int8_le(b, 220, 0)
+    b = write_int8_le(b, 221, 14)
+    b = write_int8_le(b, 222, 0)
+    b = write_int8_le(b, 223, 0)
+    b = write_int8_le(b, 224, 0)
+    b = write_int8_le(b, 225, 18)
+    b = write_int8_le(b, 226, 103)
+    b = write_int8_le(b, 227, 227)
+    b = write_int8_le(b, 228, 120)
+    b = write_int8_le(b, 229, 102)
+    b = write_int8_le(b, 230, 253)
+    b = write_int8_le(b, 231, 252)
+    b = write_int8_le(b, 232, 35)
+    b = write_int8_le(b, 233, 7)
+    b = write_int8_le(b, 234, 4)
+    b = write_int8_le(b, 235, 0)
+    b = write_int8_le(b, 236, 0)
+    b = write_int8_le(b, 237, 0)
+    b = write_int8_le(b, 238, 0)
+    b = write_int8_le(b, 239, 0)
+    b = write_int8_le(b, 240, 0)
+    b = write_int8_le(b, 241, 0)
+    b = write_int8_le(b, 242, 14)
+    b = write_int8_le(b, 243, 49)
+    b = write_int8_le(b, 244, 103)
+    b = write_int8_le(b, 245, 118)
+    b = write_int8_le(b, 246, 53)
+    b = write_int8_le(b, 247, 55)
+    b = write_int8_le(b, 248, 75)
+    b = write_int8_le(b, 249, 203)
+    b = write_int8_le(b, 250, 4)
+    b = write_int8_le(b, 251, 4)
+    b = write_int8_le(b, 252, 0)
+    b = write_int8_le(b, 253, 0)
+    b = write_int8_le(b, 254, 0)
+    b = write_int8_le(b, 255, 0)
+    b = write_int8_le(b, 256, 0)
+    b = write_int8_le(b, 257, 0)
+    b = write_int8_le(b, 258, 0)
+    b = write_int8_le(b, 259, 193)
+    b = write_int8_le(b, 260, 50)
+    b = write_int8_le(b, 261, 103)
+    b = write_int8_le(b, 262, 118)
+    b = write_int8_le(b, 263, 53)
+    b = write_int8_le(b, 264, 56)
+    b = write_int8_le(b, 265, 75)
+    b = write_int8_le(b, 266, 203)
+    b = write_int8_le(b, 267, 4)
+    b = write_int8_le(b, 268, 4)
+    b = write_int8_le(b, 269, 0)
+    b = write_int8_le(b, 270, 0)
+    b = write_int8_le(b, 271, 0)
+    b = write_int8_le(b, 272, 0)
+    b = write_int8_le(b, 273, 0)
+    b = write_int8_le(b, 274, 0)
+    b = write_int8_le(b, 275, 0)
+    b = write_int8_le(b, 276, 168)
+    b = write_int8_le(b, 277, 45)
+    b = write_int8_le(b, 278, 103)
+    b = write_int8_le(b, 279, 118)
+    b = write_int8_le(b, 280, 53)
+    b = write_int8_le(b, 281, 53)
+    b = write_int8_le(b, 282, 75)
+    b = write_int8_le(b, 283, 203)
+    b = write_int8_le(b, 284, 4)
+    b = write_int8_le(b, 285, 4)
+    b = write_int8_le(b, 286, 0)
+    b = write_int8_le(b, 287, 0)
+    b = write_int8_le(b, 288, 0)
+    b = write_int8_le(b, 289, 0)
+    b = write_int8_le(b, 290, 0)
+    b = write_int8_le(b, 291, 0)
+    b = write_int8_le(b, 292, 0)
+    b = write_int8_le(b, 293, 232)
+    b = write_int8_le(b, 294, 22)
+    b = write_int8_le(b, 295, 142)
+    b = write_int8_le(b, 296, 121)
+    b = write_int8_le(b, 297, 25)
+    b = write_int8_le(b, 298, 142)
+    b = write_int8_le(b, 299, 77)
+    b = write_int8_le(b, 300, 181)
+    b = write_int8_le(b, 301, 7)
+    b = write_int8_le(b, 302, 4)
+    b = write_int8_le(b, 303, 0)
+    b = write_int8_le(b, 304, 0)
+    b = write_int8_le(b, 305, 0)
+    b = write_int8_le(b, 306, 0)
+    b = write_int8_le(b, 307, 0)
+    b = write_int8_le(b, 308, 0)
+    b = write_int8_le(b, 309, 0)
+    b = write_int8_le(b, 310, 177)
+    b = write_int8_le(b, 311, 193)
+    b = write_int8_le(b, 312, 12)
+    b = write_int8_le(b, 313, 169)
+    b = write_int8_le(b, 314, 101)
+    b = write_int8_le(b, 315, 246)
+    b = write_int8_le(b, 316, 169)
+    b = write_int8_le(b, 317, 83)
+    b = write_int8_le(b, 318, 7)
+    b = write_int8_le(b, 319, 4)
+    b = write_int8_le(b, 320, 0)
+    b = write_int8_le(b, 321, 0)
+    b = write_int8_le(b, 322, 0)
+    b = write_int8_le(b, 323, 0)
+    b = write_int8_le(b, 324, 0)
+    b = write_int8_le(b, 325, 0)
+    b = write_int8_le(b, 326, 0)
+    b = write_int8_le(b, 327, 103)
+    b = write_int8_le(b, 328, 238)
+    b = write_int8_le(b, 329, 96)
+    b = write_int8_le(b, 330, 235)
+    b = write_int8_le(b, 331, 182)
+    b = write_int8_le(b, 332, 230)
+    b = write_int8_le(b, 333, 237)
+    b = write_int8_le(b, 334, 108)
+    b = write_int8_le(b, 335, 4)
+    b = write_int8_le(b, 336, 4)
+    b = write_int8_le(b, 337, 0)
+    b = write_int8_le(b, 338, 0)
+    b = write_int8_le(b, 339, 0)
+    b = write_int8_le(b, 340, 0)
+    b = write_int8_le(b, 341, 0)
+    b = write_int8_le(b, 342, 0)
+    b = write_int8_le(b, 343, 0)
+    b = write_int8_le(b, 344, 180)
+    b = write_int8_le(b, 345, 236)
+    b = write_int8_le(b, 346, 96)
+    b = write_int8_le(b, 347, 235)
+    b = write_int8_le(b, 348, 182)
+    b = write_int8_le(b, 349, 229)
+    b = write_int8_le(b, 350, 237)
+    b = write_int8_le(b, 351, 108)
+    b = write_int8_le(b, 352, 4)
+    b = write_int8_le(b, 353, 4)
+    b = write_int8_le(b, 354, 0)
+    b = write_int8_le(b, 355, 0)
+    b = write_int8_le(b, 356, 0)
+    b = write_int8_le(b, 357, 0)
+    b = write_int8_le(b, 358, 0)
+    b = write_int8_le(b, 359, 0)
+    b = write_int8_le(b, 360, 0)
+    b = write_int8_le(b, 361, 205)
+    b = write_int8_le(b, 362, 241)
+    b = write_int8_le(b, 363, 96)
+    b = write_int8_le(b, 364, 235)
+    b = write_int8_le(b, 365, 182)
+    b = write_int8_le(b, 366, 232)
+    b = write_int8_le(b, 367, 237)
+    b = write_int8_le(b, 368, 108)
+    b = write_int8_le(b, 369, 4)
+    b = write_int8_le(b, 370, 4)
+    b = write_int8_le(b, 371, 0)
+    b = write_int8_le(b, 372, 0)
+    b = write_int8_le(b, 373, 0)
+    b = write_int8_le(b, 374, 0)
+    b = write_int8_le(b, 375, 0)
+    b = write_int8_le(b, 376, 0)
+    b = write_int8_le(b, 377, 0)
+    b = write_int8_le(b, 378, 207)
+    b = write_int8_le(b, 379, 169)
+    b = write_int8_le(b, 380, 139)
+    b = write_int8_le(b, 381, 40)
+    b = write_int8_le(b, 382, 181)
+    b = write_int8_le(b, 383, 212)
+    b = write_int8_le(b, 384, 105)
+    b = write_int8_le(b, 385, 127)
+    b = write_int8_le(b, 386, 4)
+    b = write_int8_le(b, 387, 4)
+    b = write_int8_le(b, 388, 0)
+    b = write_int8_le(b, 389, 0)
+    b = write_int8_le(b, 390, 0)
+    b = write_int8_le(b, 391, 0)
+    b = write_int8_le(b, 392, 0)
+    b = write_int8_le(b, 393, 0)
+    b = write_int8_le(b, 394, 0)
+    b = write_int8_le(b, 395, 1)
+    b = write_int8_le(b, 396, 110)
+    b = write_int8_le(b, 397, 44)
+    b = write_int8_le(b, 398, 95)
+    b = write_int8_le(b, 399, 32)
+    b = write_int8_le(b, 400, 16)
+    b = write_int8_le(b, 401, 182)
+    b = write_int8_le(b, 402, 160)
+    b = write_int8_le(b, 403, 30)
+    b = write_int8_le(b, 404, 1)
+    b = write_int8_le(b, 405, 0)
+    b = write_int8_le(b, 406, 0)
+    b = write_int8_le(b, 407, 0)
+    b = write_int8_le(b, 408, 15)
+    b = write_int8_le(b, 409, 0)
+    b = write_int8_le(b, 410, 0)
+    b = write_int8_le(b, 411, 0)
+    b = write_int8_le(b, 412, 12)
+    b = write_int8_le(b, 413, 207)
+    b = write_int8_le(b, 414, 102)
+    b = write_int8_le(b, 415, 39)
+    b = write_int8_le(b, 416, 225)
+    b = write_int8_le(b, 417, 238)
+    b = write_int8_le(b, 418, 144)
+    b = write_int8_le(b, 419, 167)
+    b = write_int8_le(b, 420, 32)
+    b = write_int8_le(b, 421, 0)
+    b = write_int8_le(b, 422, 0)
+    b = write_int8_le(b, 423, 0)
+    b = write_int8_le(b, 424, 0)
+    b = write_int8_le(b, 425, 0)
+    b = write_int8_le(b, 426, 0)
+    b = write_int8_le(b, 427, 0)
+    b = write_int8_le(b, 428, 0)
+    b = write_int8_le(b, 429, 118)
+    b = write_int8_le(b, 430, 132)
+    b = write_int8_le(b, 431, 218)
+    b = write_int8_le(b, 432, 53)
+    b = write_int8_le(b, 433, 168)
+    b = write_int8_le(b, 434, 239)
+    b = write_int8_le(b, 435, 191)
+    b = write_int8_le(b, 436, 159)
+    b = write_int8_le(b, 437, 32)
+    b = write_int8_le(b, 438, 0)
+    b = write_int8_le(b, 439, 0)
+    b = write_int8_le(b, 440, 0)
+    b = write_int8_le(b, 441, 0)
+    b = write_int8_le(b, 442, 0)
+    b = write_int8_le(b, 443, 0)
+    b = write_int8_le(b, 444, 0)
+    b = write_int8_le(b, 445, 0)
+    b = write_int8_le(b, 446, 149)
+    b = write_int8_le(b, 447, 138)
+    b = write_int8_le(b, 448, 146)
+    b = write_int8_le(b, 449, 131)
+    b = write_int8_le(b, 450, 23)
+    b = write_int8_le(b, 451, 187)
+    b = write_int8_le(b, 452, 139)
+    b = write_int8_le(b, 453, 24)
+    b = write_int8_le(b, 454, 32)
+    b = write_int8_le(b, 455, 0)
+    b = write_int8_le(b, 456, 0)
+    b = write_int8_le(b, 457, 0)
+    b = write_int8_le(b, 458, 0)
+    b = write_int8_le(b, 459, 0)
+    b = write_int8_le(b, 460, 0)
+    b = write_int8_le(b, 461, 0)
+    b = write_int8_le(b, 462, 0)
+    b = write_int8_le(b, 463, 241)
+    b = write_int8_le(b, 464, 114)
+    b = write_int8_le(b, 465, 242)
+    b = write_int8_le(b, 466, 194)
+    b = write_int8_le(b, 467, 185)
+    b = write_int8_le(b, 468, 103)
+    b = write_int8_le(b, 469, 54)
+    b = write_int8_le(b, 470, 44)
+    b = write_int8_le(b, 471, 32)
+    b = write_int8_le(b, 472, 0)
+    b = write_int8_le(b, 473, 0)
+    b = write_int8_le(b, 474, 0)
+    b = write_int8_le(b, 475, 0)
+    b = write_int8_le(b, 476, 0)
+    b = write_int8_le(b, 477, 0)
+    b = write_int8_le(b, 478, 0)
+    b = write_int8_le(b, 479, 0)
+    b = write_int8_le(b, 480, 246)
+    b = write_int8_le(b, 481, 85)
+    b = write_int8_le(b, 482, 215)
+    b = write_int8_le(b, 483, 0)
+    b = write_int8_le(b, 484, 27)
+    b = write_int8_le(b, 485, 180)
+    b = write_int8_le(b, 486, 168)
+    b = write_int8_le(b, 487, 12)
+    b = write_int8_le(b, 488, 32)
+    b = write_int8_le(b, 489, 0)
+    b = write_int8_le(b, 490, 0)
+    b = write_int8_le(b, 491, 0)
+    b = write_int8_le(b, 492, 0)
+    b = write_int8_le(b, 493, 0)
+    b = write_int8_le(b, 494, 0)
+    b = write_int8_le(b, 495, 0)
+    b = write_int8_le(b, 496, 0)
+    b = write_int8_le(b, 497, 78)
+    b = write_int8_le(b, 498, 26)
+    b = write_int8_le(b, 499, 178)
+    b = write_int8_le(b, 500, 250)
+    b = write_int8_le(b, 501, 25)
+    b = write_int8_le(b, 502, 200)
+    b = write_int8_le(b, 503, 95)
+    b = write_int8_le(b, 504, 152)
+    b = write_int8_le(b, 505, 32)
+    b = write_int8_le(b, 506, 0)
+    b = write_int8_le(b, 507, 0)
+    b = write_int8_le(b, 508, 0)
+    b = write_int8_le(b, 509, 0)
+    b = write_int8_le(b, 510, 0)
+    b = write_int8_le(b, 511, 0)
+    b = write_int8_le(b, 512, 0)
+    b = write_int8_le(b, 513, 0)
+    b = write_int8_le(b, 514, 85)
+    b = write_int8_le(b, 515, 106)
+    b = write_int8_le(b, 516, 8)
+    b = write_int8_le(b, 517, 195)
+    b = write_int8_le(b, 518, 71)
+    b = write_int8_le(b, 519, 4)
+    b = write_int8_le(b, 520, 157)
+    b = write_int8_le(b, 521, 34)
+    b = write_int8_le(b, 522, 32)
+    b = write_int8_le(b, 523, 0)
+    b = write_int8_le(b, 524, 0)
+    b = write_int8_le(b, 525, 0)
+    b = write_int8_le(b, 526, 0)
+    b = write_int8_le(b, 527, 0)
+    b = write_int8_le(b, 528, 0)
+    b = write_int8_le(b, 529, 0)
+    b = write_int8_le(b, 530, 0)
+    b = write_int8_le(b, 531, 157)
+    b = write_int8_le(b, 532, 143)
+    b = write_int8_le(b, 533, 34)
+    b = write_int8_le(b, 534, 167)
+    b = write_int8_le(b, 535, 73)
+    b = write_int8_le(b, 536, 123)
+    b = write_int8_le(b, 537, 28)
+    b = write_int8_le(b, 538, 1)
+    b = write_int8_le(b, 539, 32)
+    b = write_int8_le(b, 540, 0)
+    b = write_int8_le(b, 541, 0)
+    b = write_int8_le(b, 542, 0)
+    b = write_int8_le(b, 543, 0)
+    b = write_int8_le(b, 544, 0)
+    b = write_int8_le(b, 545, 0)
+    b = write_int8_le(b, 546, 0)
+    b = write_int8_le(b, 547, 0)
+    b = write_int8_le(b, 548, 95)
+    b = write_int8_le(b, 549, 225)
+    b = write_int8_le(b, 550, 35)
+    b = write_int8_le(b, 551, 17)
+    b = write_int8_le(b, 552, 110)
+    b = write_int8_le(b, 553, 86)
+    b = write_int8_le(b, 554, 247)
+    b = write_int8_le(b, 555, 137)
+    b = write_int8_le(b, 556, 32)
+    b = write_int8_le(b, 557, 0)
+    b = write_int8_le(b, 558, 0)
+    b = write_int8_le(b, 559, 0)
+    b = write_int8_le(b, 560, 0)
+    b = write_int8_le(b, 561, 0)
+    b = write_int8_le(b, 562, 0)
+    b = write_int8_le(b, 563, 0)
+    b = write_int8_le(b, 564, 0)
+    b = write_int8_le(b, 565, 105)
+    b = write_int8_le(b, 566, 68)
+    b = write_int8_le(b, 567, 59)
+    b = write_int8_le(b, 568, 139)
+    b = write_int8_le(b, 569, 49)
+    b = write_int8_le(b, 570, 37)
+    b = write_int8_le(b, 571, 127)
+    b = write_int8_le(b, 572, 141)
+    b = write_int8_le(b, 573, 32)
+    b = write_int8_le(b, 574, 0)
+    b = write_int8_le(b, 575, 0)
+    b = write_int8_le(b, 576, 0)
+    b = write_int8_le(b, 577, 0)
+    b = write_int8_le(b, 578, 0)
+    b = write_int8_le(b, 579, 0)
+    b = write_int8_le(b, 580, 0)
+    b = write_int8_le(b, 581, 0)
+    b = write_int8_le(b, 582, 22)
+    b = write_int8_le(b, 583, 120)
+    b = write_int8_le(b, 584, 91)
+    b = write_int8_le(b, 585, 40)
+    b = write_int8_le(b, 586, 204)
+    b = write_int8_le(b, 587, 13)
+    b = write_int8_le(b, 588, 205)
+    b = write_int8_le(b, 589, 217)
+    b = write_int8_le(b, 590, 32)
+    b = write_int8_le(b, 591, 0)
+    b = write_int8_le(b, 592, 0)
+    b = write_int8_le(b, 593, 0)
+    b = write_int8_le(b, 594, 0)
+    b = write_int8_le(b, 595, 0)
+    b = write_int8_le(b, 596, 0)
+    b = write_int8_le(b, 597, 0)
+    b = write_int8_le(b, 598, 0)
+    b = write_int8_le(b, 599, 118)
+    b = write_int8_le(b, 600, 82)
+    b = write_int8_le(b, 601, 255)
+    b = write_int8_le(b, 602, 168)
+    b = write_int8_le(b, 603, 174)
+    b = write_int8_le(b, 604, 22)
+    b = write_int8_le(b, 605, 220)
+    b = write_int8_le(b, 606, 4)
+    b = write_int8_le(b, 607, 32)
+    b = write_int8_le(b, 608, 0)
+    b = write_int8_le(b, 609, 0)
+    b = write_int8_le(b, 610, 0)
+    b = write_int8_le(b, 611, 0)
+    b = write_int8_le(b, 612, 0)
+    b = write_int8_le(b, 613, 0)
+    b = write_int8_le(b, 614, 0)
+    b = write_int8_le(b, 615, 0)
+    b = write_int8_le(b, 616, 23)
+    b = write_int8_le(b, 617, 146)
+    b = write_int8_le(b, 618, 18)
+    b = write_int8_le(b, 619, 65)
+    b = write_int8_le(b, 620, 195)
+    b = write_int8_le(b, 621, 59)
+    b = write_int8_le(b, 622, 229)
+    b = write_int8_le(b, 623, 53)
+    b = write_int8_le(b, 624, 32)
+    b = write_int8_le(b, 625, 0)
+    b = write_int8_le(b, 626, 0)
+    b = write_int8_le(b, 627, 0)
+    b = write_int8_le(b, 628, 0)
+    b = write_int8_le(b, 629, 0)
+    b = write_int8_le(b, 630, 0)
+    b = write_int8_le(b, 631, 0)
+    b = write_int8_le(b, 632, 0)
+    b = write_int8_le(b, 633, 49)
+    b = write_int8_le(b, 634, 136)
+    b = write_int8_le(b, 635, 222)
+    b = write_int8_le(b, 636, 176)
+    b = write_int8_le(b, 637, 47)
+    b = write_int8_le(b, 638, 40)
+    b = write_int8_le(b, 639, 200)
+    b = write_int8_le(b, 640, 44)
+    b = write_int8_le(b, 641, 32)
+    b = write_int8_le(b, 642, 0)
+    b = write_int8_le(b, 643, 0)
+    b = write_int8_le(b, 644, 0)
+    b = write_int8_le(b, 645, 0)
+    b = write_int8_le(b, 646, 0)
+    b = write_int8_le(b, 647, 0)
+    b = write_int8_le(b, 648, 0)
+    b = write_int8_le(b, 649, 0)
+    b = write_int8_le(b, 650, 52)
+    b = write_int8_le(b, 651, 179)
+    b = write_int8_le(b, 652, 140)
+    b = write_int8_le(b, 653, 188)
+    b = write_int8_le(b, 654, 33)
+    b = write_int8_le(b, 655, 218)
+    b = write_int8_le(b, 656, 186)
+    b = write_int8_le(b, 657, 32)
+    b = write_int8_le(b, 658, 32)
+    b = write_int8_le(b, 659, 0)
+    b = write_int8_le(b, 660, 0)
+    b = write_int8_le(b, 661, 0)
+    b = write_int8_le(b, 662, 0)
+    b = write_int8_le(b, 663, 0)
+    b = write_int8_le(b, 664, 0)
+    b = write_int8_le(b, 665, 0)
+    b = write_int8_le(b, 666, 0)
+    b = write_int8_le(b, 667, 192)
+    b = write_int8_le(b, 668, 127)
+    b = write_int8_le(b, 669, 179)
+    b = write_int8_le(b, 670, 138)
+    b = write_int8_le(b, 671, 190)
+    b = write_int8_le(b, 672, 8)
+    b = write_int8_le(b, 673, 99)
+    b = write_int8_le(b, 674, 127)
+    b = write_int8_le(b, 675, 9)
+    b = write_int8_le(b, 676, 8)
+    b = write_int8_le(b, 677, 0)
+    b = write_int8_le(b, 678, 0)
+    b = write_int8_le(b, 679, 0)
+    b = write_int8_le(b, 680, 0)
+    b = write_int8_le(b, 681, 0)
+    b = write_int8_le(b, 682, 0)
+    b = write_int8_le(b, 683, 0)
+    b = write_int8_le(b, 684, 167)
+    b = write_int8_le(b, 685, 61)
+    b = write_int8_le(b, 686, 36)
+    b = write_int8_le(b, 687, 209)
+    b = write_int8_le(b, 688, 193)
+    b = write_int8_le(b, 689, 79)
+    b = write_int8_le(b, 690, 164)
+    b = write_int8_le(b, 691, 17)
+    b = write_int8_le(b, 692, 1)
+    b = write_int8_le(b, 693, 1)
+    b = write_int8_le(b, 694, 0)
+    b = write_int8_le(b, 695, 0)
+    b = write_int8_le(b, 696, 0)
+    b = write_int8_le(b, 697, 0)
+    b = write_int8_le(b, 698, 0)
+    b = write_int8_le(b, 699, 0)
+    b = write_int8_le(b, 700, 0)
+    b = write_int8_le(b, 701, 202)
+    b = write_int8_le(b, 702, 49)
+    b = write_int8_le(b, 703, 144)
+    b = write_int8_le(b, 704, 155)
+    b = write_int8_le(b, 705, 209)
+    b = write_int8_le(b, 706, 207)
+    b = write_int8_le(b, 707, 116)
+    b = write_int8_le(b, 708, 118)
+    b = write_int8_le(b, 709, 1)
+    b = write_int8_le(b, 710, 1)
+    b = write_int8_le(b, 711, 0)
+    b = write_int8_le(b, 712, 0)
+    b = write_int8_le(b, 713, 0)
+    b = write_int8_le(b, 714, 0)
+    b = write_int8_le(b, 715, 0)
+    b = write_int8_le(b, 716, 0)
+    b = write_int8_le(b, 717, 0)
+    b = write_int8_le(b, 718, 76)
+    b = write_int8_le(b, 719, 153)
+    b = write_int8_le(b, 720, 177)
+    b = write_int8_le(b, 721, 69)
+    b = write_int8_le(b, 722, 173)
+    b = write_int8_le(b, 723, 156)
+    b = write_int8_le(b, 724, 99)
+    b = write_int8_le(b, 725, 238)
+    b = write_int8_le(b, 726, 14)
+    b = write_int8_le(b, 727, 132)
+    b = write_int8_le(b, 728, 2)
+    b = write_int8_le(b, 729, 0)
+    b = write_int8_le(b, 730, 0)
+    b = write_int8_le(b, 731, 1)
+    b = write_int8_le(b, 732, 0)
+    b = write_int8_le(b, 733, 0)
+    b = write_int8_le(b, 734, 0)
+    b = write_int8_le(b, 735, 0)
+    b = write_int8_le(b, 736, 0)
+    b = write_int8_le(b, 737, 0)
+    b = write_int8_le(b, 738, 0)
+    b = write_int8_le(b, 739, 0)
+    b = write_int8_le(b, 740, 0)
+    b = write_int8_le(b, 741, 0)
+    b = write_int8_le(b, 742, 0)
+    b = write_int8_le(b, 743, 13)
+    b = write_int8_le(b, 744, 8)
+    b = write_int8_le(b, 745, 0)
+    b = write_int8_le(b, 746, 0)
+    b = write_int8_le(b, 747, 0)
+    b = write_int8_le(b, 748, 2)
+    b = write_int8_le(b, 749, 0)
+    b = write_int8_le(b, 750, 0)
+    b = write_int8_le(b, 751, 0)
+    b = write_int8_le(b, 752, 101)
+    b = write_int8_le(b, 753, 191)
+    b = write_int8_le(b, 754, 109)
+    b = write_int8_le(b, 755, 134)
+    b = write_int8_le(b, 756, 240)
+    b = write_int8_le(b, 757, 117)
+    b = write_int8_le(b, 758, 171)
+    b = write_int8_le(b, 759, 128)
+    b = write_int8_le(b, 760, 6)
+    b = write_int8_le(b, 761, 4)
+    b = write_int8_le(b, 762, 0)
+    b = write_int8_le(b, 763, 0)
+    b = write_int8_le(b, 764, 0)
+    b = write_int8_le(b, 765, 0)
+    b = write_int8_le(b, 766, 0)
+    b = write_int8_le(b, 767, 0)
+    b = write_int8_le(b, 768, 0)
+    b = write_int8_le(b, 769, 193)
+    b = write_int8_le(b, 770, 160)
+    b = write_int8_le(b, 771, 19)
+    b = write_int8_le(b, 772, 236)
+    b = write_int8_le(b, 773, 117)
+    b = write_int8_le(b, 774, 102)
+    b = write_int8_le(b, 775, 7)
+    b = write_int8_le(b, 776, 82)
+    b = write_int8_le(b, 777, 4)
+    b = write_int8_le(b, 778, 4)
+    b = write_int8_le(b, 779, 0)
+    b = write_int8_le(b, 780, 0)
+    b = write_int8_le(b, 781, 0)
+    b = write_int8_le(b, 782, 0)
+    b = write_int8_le(b, 783, 0)
+    b = write_int8_le(b, 784, 0)
+    b = write_int8_le(b, 785, 0)
+    b = write_int8_le(b, 786, 144)
+    b = write_int8_le(b, 787, 87)
+    b = write_int8_le(b, 788, 170)
+    b = write_int8_le(b, 789, 33)
+    b = write_int8_le(b, 790, 83)
+    b = write_int8_le(b, 791, 220)
+    b = write_int8_le(b, 792, 53)
+    b = write_int8_le(b, 793, 46)
+    b = write_int8_le(b, 794, 15)
+    b = write_int8_le(b, 795, 14)
+    b = write_int8_le(b, 796, 0)
+    b = write_int8_le(b, 797, 0)
+    b = write_int8_le(b, 798, 0)
+    b = write_int8_le(b, 799, 3)
+    b = write_int8_le(b, 800, 0)
+    b = write_int8_le(b, 801, 0)
+    b = write_int8_le(b, 802, 0)
+    b = write_int8_le(b, 803, 170)
+    b = write_int8_le(b, 804, 128)
+    b = write_int8_le(b, 805, 6)
+    b = write_int8_le(b, 806, 48)
+    b = write_int8_le(b, 807, 25)
+    b = write_int8_le(b, 808, 40)
+    b = write_int8_le(b, 809, 115)
+    b = write_int8_le(b, 810, 51)
+    b = write_int8_le(b, 811, 13)
+    b = write_int8_le(b, 812, 13)
+    b = write_int8_le(b, 813, 0)
+    b = write_int8_le(b, 814, 0)
+    b = write_int8_le(b, 815, 0)
+    b = write_int8_le(b, 816, 4)
+    b = write_int8_le(b, 817, 0)
+    b = write_int8_le(b, 818, 0)
+    b = write_int8_le(b, 819, 0)
+    b = write_int8_le(b, 820, 80)
+    b = write_int8_le(b, 821, 80)
+    b = write_int8_le(b, 822, 162)
+    b = write_int8_le(b, 823, 21)
+    b = write_int8_le(b, 824, 192)
+    b = write_int8_le(b, 825, 154)
+    b = write_int8_le(b, 826, 188)
+    b = write_int8_le(b, 827, 183)
+    b = write_int8_le(b, 828, 7)
+    b = write_int8_le(b, 829, 4)
+    b = write_int8_le(b, 830, 0)
+    b = write_int8_le(b, 831, 0)
+    b = write_int8_le(b, 832, 0)
+    b = write_int8_le(b, 833, 0)
+    b = write_int8_le(b, 834, 0)
+    b = write_int8_le(b, 835, 0)
+    b = write_int8_le(b, 836, 0)
+    b = write_int8_le(b, 837, 192)
+    b = write_int8_le(b, 838, 127)
+    b = write_int8_le(b, 839, 179)
+    b = write_int8_le(b, 840, 138)
+    b = write_int8_le(b, 841, 190)
+    b = write_int8_le(b, 842, 8)
+    b = write_int8_le(b, 843, 99)
+    b = write_int8_le(b, 844, 127)
+    b = write_int8_le(b, 845, 4)
+    b = write_int8_le(b, 846, 4)
+    b = write_int8_le(b, 847, 0)
+    b = write_int8_le(b, 848, 0)
+    b = write_int8_le(b, 849, 0)
+    b = write_int8_le(b, 850, 0)
+    b = write_int8_le(b, 851, 0)
+    b = write_int8_le(b, 852, 0)
+    b = write_int8_le(b, 853, 0)
+    b = write_int8_le(b, 854, 37)
+    b = write_int8_le(b, 855, 185)
+    b = write_int8_le(b, 856, 89)
+    b = write_int8_le(b, 857, 176)
+    b = write_int8_le(b, 858, 101)
+    b = write_int8_le(b, 859, 195)
+    b = write_int8_le(b, 860, 251)
+    b = write_int8_le(b, 861, 1)
+    b = write_int8_le(b, 862, 4)
+    b = write_int8_le(b, 863, 4)
+    b = write_int8_le(b, 864, 0)
+    b = write_int8_le(b, 865, 0)
+    b = write_int8_le(b, 866, 0)
+    b = write_int8_le(b, 867, 0)
+    b = write_int8_le(b, 868, 0)
+    b = write_int8_le(b, 869, 0)
+    b = write_int8_le(b, 870, 0)
+    b = write_int8_le(b, 871, 45)
+    b = write_int8_le(b, 872, 165)
+    b = write_int8_le(b, 873, 154)
+    b = write_int8_le(b, 874, 140)
+    b = write_int8_le(b, 875, 144)
+    b = write_int8_le(b, 876, 103)
+    b = write_int8_le(b, 877, 97)
+    b = write_int8_le(b, 878, 18)
+    b = write_int8_le(b, 879, 1)
+    b = write_int8_le(b, 880, 1)
+    b = write_int8_le(b, 881, 0)
+    b = write_int8_le(b, 882, 0)
+    b = write_int8_le(b, 883, 0)
+    b = write_int8_le(b, 884, 0)
+    b = write_int8_le(b, 885, 0)
+    b = write_int8_le(b, 886, 0)
+    b = write_int8_le(b, 887, 0)
+    b = write_int8_le(b, 888, 139)
+    b = write_int8_le(b, 889, 52)
+    b = write_int8_le(b, 890, 91)
+    b = write_int8_le(b, 891, 11)
+    b = write_int8_le(b, 892, 145)
+    b = write_int8_le(b, 893, 141)
+    b = write_int8_le(b, 894, 163)
+    b = write_int8_le(b, 895, 242)
+    b = write_int8_le(b, 896, 13)
+    b = write_int8_le(b, 897, 8)
+    b = write_int8_le(b, 898, 0)
+    b = write_int8_le(b, 899, 0)
+    b = write_int8_le(b, 900, 0)
+    b = write_int8_le(b, 901, 2)
+    b = write_int8_le(b, 902, 0)
+    b = write_int8_le(b, 903, 0)
+    b = write_int8_le(b, 904, 0)
+    b = write_int8_le(b, 905, 164)
+    b = write_int8_le(b, 906, 237)
+    b = write_int8_le(b, 907, 202)
+    b = write_int8_le(b, 908, 213)
+    b = write_int8_le(b, 909, 154)
+    b = write_int8_le(b, 910, 62)
+    b = write_int8_le(b, 911, 1)
+    b = write_int8_le(b, 912, 165)
+    b = write_int8_le(b, 913, 4)
+    b = write_int8_le(b, 914, 4)
+    b = write_int8_le(b, 915, 0)
+    b = write_int8_le(b, 916, 0)
+    b = write_int8_le(b, 917, 0)
+    b = write_int8_le(b, 918, 0)
+    b = write_int8_le(b, 919, 0)
+    b = write_int8_le(b, 920, 0)
+    b = write_int8_le(b, 921, 0)
+    b = write_int8_le(b, 922, 34)
+    b = write_int8_le(b, 923, 208)
+    b = write_int8_le(b, 924, 235)
+    b = write_int8_le(b, 925, 150)
+    b = write_int8_le(b, 926, 77)
+    b = write_int8_le(b, 927, 172)
+    b = write_int8_le(b, 928, 241)
+    b = write_int8_le(b, 929, 251)
+    b = write_int8_le(b, 930, 7)
+    b = write_int8_le(b, 931, 4)
+    b = write_int8_le(b, 932, 0)
+    b = write_int8_le(b, 933, 0)
+    b = write_int8_le(b, 934, 0)
+    b = write_int8_le(b, 935, 0)
+    b = write_int8_le(b, 936, 0)
+    b = write_int8_le(b, 937, 0)
+    b = write_int8_le(b, 938, 0)
+    b = write_int8_le(b, 939, 101)
+    b = write_int8_le(b, 940, 183)
+    b = write_int8_le(b, 941, 236)
+    b = write_int8_le(b, 942, 134)
+    b = write_int8_le(b, 943, 28)
+    b = write_int8_le(b, 944, 164)
+    b = write_int8_le(b, 945, 163)
+    b = write_int8_le(b, 946, 159)
+    b = write_int8_le(b, 947, 13)
+    b = write_int8_le(b, 948, 8)
+    b = write_int8_le(b, 949, 0)
+    b = write_int8_le(b, 950, 0)
+    b = write_int8_le(b, 951, 0)
+    b = write_int8_le(b, 952, 2)
+    b = write_int8_le(b, 953, 0)
+    b = write_int8_le(b, 954, 0)
+    b = write_int8_le(b, 955, 0)
+    b = write_int8_le(b, 956, 86)
+    b = write_int8_le(b, 957, 189)
+    b = write_int8_le(b, 958, 79)
+    b = write_int8_le(b, 959, 134)
+    b = write_int8_le(b, 960, 109)
+    b = write_int8_le(b, 961, 208)
+    b = write_int8_le(b, 962, 127)
+    b = write_int8_le(b, 963, 158)
+    b = write_int8_le(b, 964, 7)
+    b = write_int8_le(b, 965, 4)
+    b = write_int8_le(b, 966, 0)
+    b = write_int8_le(b, 967, 0)
+    b = write_int8_le(b, 968, 0)
+    b = write_int8_le(b, 969, 0)
+    b = write_int8_le(b, 970, 0)
+    b = write_int8_le(b, 971, 0)
+    b = write_int8_le(b, 972, 0)
+    b = write_int8_le(b, 973, 105)
+    b = write_int8_le(b, 974, 105)
+    b = write_int8_le(b, 975, 177)
+    b = write_int8_le(b, 976, 162)
+    b = write_int8_le(b, 977, 126)
+    b = write_int8_le(b, 978, 254)
+    b = write_int8_le(b, 979, 19)
+    b = write_int8_le(b, 980, 129)
+    b = write_int8_le(b, 981, 4)
+    b = write_int8_le(b, 982, 4)
+    b = write_int8_le(b, 983, 0)
+    b = write_int8_le(b, 984, 0)
+    b = write_int8_le(b, 985, 0)
+    b = write_int8_le(b, 986, 0)
+    b = write_int8_le(b, 987, 0)
+    b = write_int8_le(b, 988, 0)
+    b = write_int8_le(b, 989, 0)
+    b = write_int8_le(b, 990, 163)
+    b = write_int8_le(b, 991, 181)
+    b = write_int8_le(b, 992, 187)
+    b = write_int8_le(b, 993, 134)
+    b = write_int8_le(b, 994, 117)
+    b = write_int8_le(b, 995, 206)
+    b = write_int8_le(b, 996, 89)
+    b = write_int8_le(b, 997, 87)
+    b = write_int8_le(b, 998, 14)
+    b = write_int8_le(b, 999, 4)
+    b = write_int8_le(b, 1000, 0)
+    b = write_int8_le(b, 1001, 0)
+    b = write_int8_le(b, 1002, 0)
+    b = write_int8_le(b, 1003, 1)
+    b = write_int8_le(b, 1004, 0)
+    b = write_int8_le(b, 1005, 0)
+    b = write_int8_le(b, 1006, 0)
+    b = write_int8_le(b, 1007, 0)
+    b = write_int8_le(b, 1008, 0)
+    b = write_int8_le(b, 1009, 0)
+    b = write_int8_le(b, 1010, 0)
+    b = write_int8_le(b, 1011, 0)
+    b = write_int8_le(b, 1012, 0)
+    b = write_int8_le(b, 1013, 0)
+    b = write_int8_le(b, 1014, 0)
+    b = write_int8_le(b, 1015, 6)
+    b = write_int8_le(b, 1016, 1)
+    b = write_int8_le(b, 1017, 0)
+    b = write_int8_le(b, 1018, 0)
+    b = write_int8_le(b, 1019, 0)
+    b = write_int8_le(b, 1020, 0)
+    b = write_int8_le(b, 1021, 0)
+    b = write_int8_le(b, 1022, 0)
+    b = write_int8_le(b, 1023, 0)
+    b = write_int8_le(b, 1024, 110)
+    b = write_int8_le(b, 1025, 232)
+    b = write_int8_le(b, 1026, 248)
+    b = write_int8_le(b, 1027, 44)
+    b = write_int8_le(b, 1028, 84)
+    b = write_int8_le(b, 1029, 47)
+    b = write_int8_le(b, 1030, 166)
+    b = write_int8_le(b, 1031, 19)
+    b = write_int8_le(b, 1032, 12)
+    b = write_int8_le(b, 1033, 19)
+    b = write_int8_le(b, 1034, 0)
+    b = write_int8_le(b, 1035, 0)
+    b = write_int8_le(b, 1036, 0)
+    b = write_int8_le(b, 1037, 0)
+    b = write_int8_le(b, 1038, 0)
+    b = write_int8_le(b, 1039, 0)
+    b = write_int8_le(b, 1040, 0)
+    b = write_int8_le(b, 1041, 229)
+    b = write_int8_le(b, 1042, 233)
+    b = write_int8_le(b, 1043, 181)
+    b = write_int8_le(b, 1044, 99)
+    b = write_int8_le(b, 1045, 208)
+    b = write_int8_le(b, 1046, 169)
+    b = write_int8_le(b, 1047, 184)
+    b = write_int8_le(b, 1048, 207)
+    b = write_int8_le(b, 1049, 14)
+    b = write_int8_le(b, 1050, 20)
+    b = write_int8_le(b, 1051, 0)
+    b = write_int8_le(b, 1052, 0)
+    b = write_int8_le(b, 1053, 0)
+    b = write_int8_le(b, 1054, 1)
+    b = write_int8_le(b, 1055, 0)
+    b = write_int8_le(b, 1056, 0)
+    b = write_int8_le(b, 1057, 0)
+    b = write_int8_le(b, 1058, 0)
+    b = write_int8_le(b, 1059, 0)
+    b = write_int8_le(b, 1060, 0)
+    b = write_int8_le(b, 1061, 0)
+    b = write_int8_le(b, 1062, 0)
+    b = write_int8_le(b, 1063, 0)
+    b = write_int8_le(b, 1064, 0)
+    b = write_int8_le(b, 1065, 0)
+    b = write_int8_le(b, 1066, 6)
+    b = write_int8_le(b, 1067, 1)
+    b = write_int8_le(b, 1068, 0)
+    b = write_int8_le(b, 1069, 0)
+    b = write_int8_le(b, 1070, 0)
+    b = write_int8_le(b, 1071, 0)
+    b = write_int8_le(b, 1072, 0)
+    b = write_int8_le(b, 1073, 0)
+    b = write_int8_le(b, 1074, 0)
+    b = write_int8_le(b, 1075, 201)
+    b = write_int8_le(b, 1076, 150)
+    b = write_int8_le(b, 1077, 66)
+    b = write_int8_le(b, 1078, 226)
+    b = write_int8_le(b, 1079, 229)
+    b = write_int8_le(b, 1080, 123)
+    b = write_int8_le(b, 1081, 175)
+    b = write_int8_le(b, 1082, 219)
+    b = write_int8_le(b, 1083, 10)
+    b = write_int8_le(b, 1084, 4)
+    b = write_int8_le(b, 1085, 0)
+    b = write_int8_le(b, 1086, 0)
+    b = write_int8_le(b, 1087, 0)
+    b = write_int8_le(b, 1088, 0)
+    b = write_int8_le(b, 1089, 0)
+    b = write_int8_le(b, 1090, 0)
+    b = write_int8_le(b, 1091, 0)
+    b = write_int8_le(b, 1092, 22)
+    b = write_int8_le(b, 1093, 149)
+    b = write_int8_le(b, 1094, 66)
+    b = write_int8_le(b, 1095, 226)
+    b = write_int8_le(b, 1096, 229)
+    b = write_int8_le(b, 1097, 122)
+    b = write_int8_le(b, 1098, 175)
+    b = write_int8_le(b, 1099, 219)
+    b = write_int8_le(b, 1100, 10)
+    b = write_int8_le(b, 1101, 4)
+    b = write_int8_le(b, 1102, 0)
+    b = write_int8_le(b, 1103, 0)
+    b = write_int8_le(b, 1104, 0)
+    b = write_int8_le(b, 1105, 0)
+    b = write_int8_le(b, 1106, 0)
+    b = write_int8_le(b, 1107, 0)
+    b = write_int8_le(b, 1108, 0)
+    b = write_int8_le(b, 1109, 99)
+    b = write_int8_le(b, 1110, 147)
+    b = write_int8_le(b, 1111, 66)
+    b = write_int8_le(b, 1112, 226)
+    b = write_int8_le(b, 1113, 229)
+    b = write_int8_le(b, 1114, 121)
+    b = write_int8_le(b, 1115, 175)
+    b = write_int8_le(b, 1116, 219)
+    b = write_int8_le(b, 1117, 10)
+    b = write_int8_le(b, 1118, 4)
+    b = write_int8_le(b, 1119, 0)
+    b = write_int8_le(b, 1120, 0)
+    b = write_int8_le(b, 1121, 0)
+    b = write_int8_le(b, 1122, 0)
+    b = write_int8_le(b, 1123, 0)
+    b = write_int8_le(b, 1124, 0)
+    b = write_int8_le(b, 1125, 0)
+    b = write_int8_le(b, 1126, 87)
+    b = write_int8_le(b, 1127, 228)
+    b = write_int8_le(b, 1128, 226)
+    b = write_int8_le(b, 1129, 247)
+    b = write_int8_le(b, 1130, 255)
+    b = write_int8_le(b, 1131, 49)
+    b = write_int8_le(b, 1132, 239)
+    b = write_int8_le(b, 1133, 156)
+    b = write_int8_le(b, 1134, 10)
+    b = write_int8_le(b, 1135, 4)
+    b = write_int8_le(b, 1136, 0)
+    b = write_int8_le(b, 1137, 0)
+    b = write_int8_le(b, 1138, 0)
+    b = write_int8_le(b, 1139, 0)
+    b = write_int8_le(b, 1140, 0)
+    b = write_int8_le(b, 1141, 0)
+    b = write_int8_le(b, 1142, 0)
+    b = write_int8_le(b, 1143, 4)
+    b = write_int8_le(b, 1144, 108)
+    b = write_int8_le(b, 1145, 31)
+    b = write_int8_le(b, 1146, 52)
+    b = write_int8_le(b, 1147, 201)
+    b = write_int8_le(b, 1148, 249)
+    b = write_int8_le(b, 1149, 179)
+    b = write_int8_le(b, 1150, 90)
+    b = write_int8_le(b, 1151, 11)
+    b = write_int8_le(b, 1152, 8)
+    b = write_int8_le(b, 1153, 0)
+    b = write_int8_le(b, 1154, 0)
+    b = write_int8_le(b, 1155, 0)
+    b = write_int8_le(b, 1156, 0)
+    b = write_int8_le(b, 1157, 0)
+    b = write_int8_le(b, 1158, 0)
+    b = write_int8_le(b, 1159, 0)
+    b = write_int8_le(b, 1160, 22)
+    b = write_int8_le(b, 1161, 175)
+    b = write_int8_le(b, 1162, 31)
+    b = write_int8_le(b, 1163, 70)
+    b = write_int8_le(b, 1164, 128)
+    b = write_int8_le(b, 1165, 133)
+    b = write_int8_le(b, 1166, 52)
+    b = write_int8_le(b, 1167, 163)
+    b = write_int8_le(b, 1168, 9)
+    b = write_int8_le(b, 1169, 8)
+    b = write_int8_le(b, 1170, 0)
+    b = write_int8_le(b, 1171, 0)
+    b = write_int8_le(b, 1172, 0)
+    b = write_int8_le(b, 1173, 0)
+    b = write_int8_le(b, 1174, 0)
+    b = write_int8_le(b, 1175, 0)
+    b = write_int8_le(b, 1176, 0)
+    b = write_int8_le(b, 1177, 66)
+    b = write_int8_le(b, 1178, 38)
+    b = write_int8_le(b, 1179, 175)
+    b = write_int8_le(b, 1180, 8)
+    b = write_int8_le(b, 1181, 121)
+    b = write_int8_le(b, 1182, 221)
+    b = write_int8_le(b, 1183, 27)
+    b = write_int8_le(b, 1184, 214)
+    b = write_int8_le(b, 1185, 5)
+    b = write_int8_le(b, 1186, 8)
+    b = write_int8_le(b, 1187, 0)
+    b = write_int8_le(b, 1188, 0)
+    b = write_int8_le(b, 1189, 0)
+    b = write_int8_le(b, 1190, 0)
+    b = write_int8_le(b, 1191, 0)
+    b = write_int8_le(b, 1192, 0)
+    b = write_int8_le(b, 1193, 0)
+    b = write_int8_le(b, 1194, 169)
+    b = write_int8_le(b, 1195, 7)
+    b = write_int8_le(b, 1196, 51)
+    b = write_int8_le(b, 1197, 197)
+    b = write_int8_le(b, 1198, 13)
+    b = write_int8_le(b, 1199, 224)
+    b = write_int8_le(b, 1200, 48)
+    b = write_int8_le(b, 1201, 191)
+    b = write_int8_le(b, 1202, 10)
+    b = write_int8_le(b, 1203, 4)
+    b = write_int8_le(b, 1204, 0)
+    b = write_int8_le(b, 1205, 0)
+    b = write_int8_le(b, 1206, 0)
+    b = write_int8_le(b, 1207, 0)
+    b = write_int8_le(b, 1208, 0)
+    b = write_int8_le(b, 1209, 0)
+    b = write_int8_le(b, 1210, 0)
+    b = write_int8_le(b, 1211, 95)
+    b = write_int8_le(b, 1212, 81)
+    b = write_int8_le(b, 1213, 216)
+    b = write_int8_le(b, 1214, 204)
+    b = write_int8_le(b, 1215, 39)
+    b = write_int8_le(b, 1216, 101)
+    b = write_int8_le(b, 1217, 13)
+    b = write_int8_le(b, 1218, 86)
+    b = write_int8_le(b, 1219, 8)
+    b = write_int8_le(b, 1220, 4)
+    b = write_int8_le(b, 1221, 0)
+    b = write_int8_le(b, 1222, 0)
+    b = write_int8_le(b, 1223, 0)
+    b = write_int8_le(b, 1224, 0)
+    b = write_int8_le(b, 1225, 0)
+    b = write_int8_le(b, 1226, 0)
+    b = write_int8_le(b, 1227, 0)
+    b = write_int8_le(b, 1228, 114)
+    b = write_int8_le(b, 1229, 134)
+    b = write_int8_le(b, 1230, 253)
+    b = write_int8_le(b, 1231, 108)
+    b = write_int8_le(b, 1232, 23)
+    b = write_int8_le(b, 1233, 146)
+    b = write_int8_le(b, 1234, 130)
+    b = write_int8_le(b, 1235, 192)
+    b = write_int8_le(b, 1236, 1)
+    b = write_int8_le(b, 1237, 1)
+    b = write_int8_le(b, 1238, 0)
+    b = write_int8_le(b, 1239, 0)
+    b = write_int8_le(b, 1240, 0)
+    b = write_int8_le(b, 1241, 0)
+    b = write_int8_le(b, 1242, 0)
+    b = write_int8_le(b, 1243, 0)
+    b = write_int8_le(b, 1244, 0)
+    b = write_int8_le(b, 1245, 105)
+    b = write_int8_le(b, 1246, 203)
+    b = write_int8_le(b, 1247, 121)
+    b = write_int8_le(b, 1248, 169)
+    b = write_int8_le(b, 1249, 18)
+    b = write_int8_le(b, 1250, 238)
+    b = write_int8_le(b, 1251, 41)
+    b = write_int8_le(b, 1252, 253)
+    b = write_int8_le(b, 1253, 4)
+    b = write_int8_le(b, 1254, 4)
+    b = write_int8_le(b, 1255, 0)
+    b = write_int8_le(b, 1256, 0)
+    b = write_int8_le(b, 1257, 0)
+    b = write_int8_le(b, 1258, 0)
+    b = write_int8_le(b, 1259, 0)
+    b = write_int8_le(b, 1260, 0)
+    b = write_int8_le(b, 1261, 0)
+    b = write_int8_le(b, 1262, 254)
+    b = write_int8_le(b, 1263, 188)
+    b = write_int8_le(b, 1264, 140)
+    b = write_int8_le(b, 1265, 170)
+    b = write_int8_le(b, 1266, 192)
+    b = write_int8_le(b, 1267, 26)
+    b = write_int8_le(b, 1268, 16)
+    b = write_int8_le(b, 1269, 120)
+    b = write_int8_le(b, 1270, 4)
+    b = write_int8_le(b, 1271, 4)
+    b = write_int8_le(b, 1272, 0)
+    b = write_int8_le(b, 1273, 0)
+    b = write_int8_le(b, 1274, 0)
+    b = write_int8_le(b, 1275, 0)
+    b = write_int8_le(b, 1276, 0)
+    b = write_int8_le(b, 1277, 0)
+    b = write_int8_le(b, 1278, 0)
+    return b
 
 // TableMixedFixedHash is fnv1a64 over the layout above (docs/FIXED-FORM-ALGORITHM.md §1).
 let TableMixedFixedHash = 3466458645177565954
@@ -2725,229 +2713,223 @@ let TableMixedFixedRecordBytes = 1224
 
 // TableMixedFixedPut writes one record body at at, in declared order and at each
 // field's declared storage width (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableMixedFixedPut(b·:string, at·:int, v·:TableMixed) -> string:
-    b· = write_int16_le(b·, at· + 0, v·.ProtocolMagic)
-    b· = write_int32_le(b·, at· + 2, v·.Sequence)
-    b· = write_int32_le(b·, at· + 6, v·.AckSequence)
-    b· = write_int32_le(b·, at· + 10, v·.AckBits)
-    b· = write_int64_le(b·, at· + 14, v·.SessionId)
-    b· = write_int32_le(b·, at· + 22, v·.ClientId)
-    b· = write_int64_le(b·, at· + 26, v·.Nonce)
-    b· = write_int64_le(b·, at· + 34, v·.WorldTime)
-    b· = write_int64_le(b·, at· + 42, v·.FrameTick)
-    b· = write_float32_le(b·, at· + 50, v·.ServerTime)
-    b· = write_int32_le(b·, at· + 54, v·.EntitiesCount)
-    for(v·.EntitiesCount) i_Entities_54·:
-        b· = TableEntityFixedPut(b·, at· + 58 + i_Entities_54· * 51, v·.Entities[i_Entities_54·])
-    b· = write_int32_le(b·, at· + 466, v·.StatsCount)
-    for(v·.StatsCount) i_Stats_466·:
-        b· = TableStatFixedPut(b·, at· + 470 + i_Stats_466· * 8, v·.Stats[i_Stats_466·])
-    b· = write_int8_le(b·, at· + 1110, int(v·.GameEvent.Type))
-    if int(v·.GameEvent.Type) == 1:
-        b· = TableHitEventFixedPut(b·, at· + 1110 + 1 + 0, v·.GameEvent.Hit)
-    if int(v·.GameEvent.Type) == 2:
-        b· = TableChatEventFixedPut(b·, at· + 1110 + 1 + 0, v·.GameEvent.Chat)
-    if int(v·.GameEvent.Type) == 3:
-        b· = TablePickupEventFixedPut(b·, at· + 1110 + 1 + 0, v·.GameEvent.Pickup)
-    for(4) i_Loadout_1124·:
-        b· = write_int8_le(b·, at· + 1124 + i_Loadout_1124· * 1, v·.Loadout[i_Loadout_1124·])
-    b· = write_int32_le(b·, at· + 1128, v·.PlayerNameLength)
-    for(v·.PlayerNameLength * 1) j_PlayerName_1128·: b· = write_int8_le(b·, at· + 1128 + 4 + j_PlayerName_1128·, read_uint8_le(v·.PlayerName, j_PlayerName_1128·))
-    b· = write_int32_le(b·, at· + 1147, v·.PayloadLength)
-    for(v·.PayloadLength * 1) j_Payload_1147·: b· = write_int8_le(b·, at· + 1147 + 4 + j_Payload_1147·, read_uint8_le(v·.Payload, j_Payload_1147·))
-    b· = write_float32_le(b·, at· + 1167, v·.AimX)
-    b· = write_float32_le(b·, at· + 1171, v·.AimY)
-    b· = write_float32_le(b·, at· + 1175, v·.AimZ)
-    b· = write_float32_le(b·, at· + 1179, v·.Recoil)
-    b· = write_float64_le(b·, at· + 1183, v·.Drift)
-    b· = write_int64_le(b·, at· + 1191, v·.WideKey)
-    b· = write_int64_le(b·, at· + 1199, v·.Flux)
-    b· = write_float32_le(b·, at· + 1207, v·.Ping)
-    b· = write_int32_le(b·, at· + 1211, v·.CrcHint)
-    b· = write_int8_le(b·, at· + 1215, if v·.HasExtra: 1 else: 0)
-    b· = write_int32_le(b·, at· + 1216, v·.Extra)
-    b· = write_int32_le(b·, at· + 1220, v·.IdleTicks)
-    return b·
+def TableMixedFixedPut(b:string, at:int, v:TableMixed) -> string:
+    b = write_int16_le(b, at + 0, v.ProtocolMagic)
+    b = write_int32_le(b, at + 2, v.Sequence)
+    b = write_int32_le(b, at + 6, v.AckSequence)
+    b = write_int32_le(b, at + 10, v.AckBits)
+    b = write_int64_le(b, at + 14, v.SessionId)
+    b = write_int32_le(b, at + 22, v.ClientId)
+    b = write_int64_le(b, at + 26, v.Nonce)
+    b = write_int64_le(b, at + 34, v.WorldTime)
+    b = write_int64_le(b, at + 42, v.FrameTick)
+    b = write_float32_le(b, at + 50, v.ServerTime)
+    b = write_int32_le(b, at + 54, v.EntitiesCount)
+    for(v.EntitiesCount) i_Entities_54:
+        b = TableEntityFixedPut(b, at + 58 + i_Entities_54 * 51, v.Entities[i_Entities_54])
+    b = write_int32_le(b, at + 466, v.StatsCount)
+    for(v.StatsCount) i_Stats_466:
+        b = TableStatFixedPut(b, at + 470 + i_Stats_466 * 8, v.Stats[i_Stats_466])
+    b = write_int8_le(b, at + 1110, int(v.GameEvent.Type))
+    if int(v.GameEvent.Type) == 1:
+        b = TableHitEventFixedPut(b, at + 1110 + 1 + 0, v.GameEvent.Hit)
+    if int(v.GameEvent.Type) == 2:
+        b = TableChatEventFixedPut(b, at + 1110 + 1 + 0, v.GameEvent.Chat)
+    if int(v.GameEvent.Type) == 3:
+        b = TablePickupEventFixedPut(b, at + 1110 + 1 + 0, v.GameEvent.Pickup)
+    for(4) i_Loadout_1124:
+        b = write_int8_le(b, at + 1124 + i_Loadout_1124 * 1, v.Loadout[i_Loadout_1124])
+    b = write_int32_le(b, at + 1128, v.PlayerNameLength)
+    for(v.PlayerNameLength * 1) j_PlayerName_1128: b = write_int8_le(b, at + 1128 + 4 + j_PlayerName_1128, read_uint8_le(v.PlayerName, j_PlayerName_1128))
+    b = write_int32_le(b, at + 1147, v.PayloadLength)
+    for(v.PayloadLength * 1) j_Payload_1147: b = write_int8_le(b, at + 1147 + 4 + j_Payload_1147, read_uint8_le(v.Payload, j_Payload_1147))
+    b = write_float32_le(b, at + 1167, v.AimX)
+    b = write_float32_le(b, at + 1171, v.AimY)
+    b = write_float32_le(b, at + 1175, v.AimZ)
+    b = write_float32_le(b, at + 1179, v.Recoil)
+    b = write_float64_le(b, at + 1183, v.Drift)
+    b = write_int64_le(b, at + 1191, v.WideKey)
+    b = write_int64_le(b, at + 1199, v.Flux)
+    b = write_float32_le(b, at + 1207, v.Ping)
+    b = write_int32_le(b, at + 1211, v.CrcHint)
+    b = write_int8_le(b, at + 1215, if v.HasExtra: 1 else: 0)
+    b = write_int32_le(b, at + 1216, v.Extra)
+    b = write_int32_le(b, at + 1220, v.IdleTicks)
+    return b
 
 // TableMixedFixedGet reads one record body at at (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableMixedFixedGet(data·:string, at·:int) -> TableMixed:
-    let v· = NewTableMixed()
-    v·.ProtocolMagic = read_uint16_le(data·, at· + 0)
-    v·.Sequence = read_uint32_le(data·, at· + 2)
-    v·.AckSequence = read_int32_le(data·, at· + 6)
-    v·.AckBits = read_uint32_le(data·, at· + 10)
-    v·.SessionId = read_uint64_le(data·, at· + 14)
-    v·.ClientId = read_uint32_le(data·, at· + 22)
-    v·.Nonce = read_uint64_le(data·, at· + 26)
-    v·.WorldTime = read_int64_le(data·, at· + 34)
-    v·.FrameTick = read_uint64_le(data·, at· + 42)
-    v·.ServerTime = read_float32_le(data·, at· + 50)
-    v·.EntitiesCount = read_int32_le(data·, at· + 54)
-    for(v·.EntitiesCount) i_Entities_54·:
-        v·.Entities[i_Entities_54·] = TableEntityFixedGet(data·, at· + 58 + i_Entities_54· * 51)
-    v·.StatsCount = read_int32_le(data·, at· + 466)
-    for(v·.StatsCount) i_Stats_466·:
-        v·.Stats[i_Stats_466·] = TableStatFixedGet(data·, at· + 470 + i_Stats_466· * 8)
-    v·.GameEvent.Type = TableEventType(read_uint8_le(data·, at· + 1110))
-    if int(v·.GameEvent.Type) == 1:
-        v·.GameEvent.Hit = TableHitEventFixedGet(data·, at· + 1110 + 1)
-    if int(v·.GameEvent.Type) == 2:
-        v·.GameEvent.Chat = TableChatEventFixedGet(data·, at· + 1110 + 1)
-    if int(v·.GameEvent.Type) == 3:
-        v·.GameEvent.Pickup = TablePickupEventFixedGet(data·, at· + 1110 + 1)
-    v·.Loadout = substring(data·, at· + 1124, 4)
-    v·.PlayerNameLength = read_int32_le(data·, at· + 1128)
-    var fbuf_PlayerName_1128· = schema_rt.zeros(15)
-    for(v·.PlayerNameLength * 1) j_PlayerName_1128·: fbuf_PlayerName_1128· = write_int8_le(fbuf_PlayerName_1128·, j_PlayerName_1128·, read_uint8_le(data·, at· + 1128 + 4 + j_PlayerName_1128·))
-    v·.PlayerName = fbuf_PlayerName_1128·
-    v·.PayloadLength = read_int32_le(data·, at· + 1147)
-    var fbuf_Payload_1147· = schema_rt.zeros(16)
-    for(v·.PayloadLength * 1) j_Payload_1147·: fbuf_Payload_1147· = write_int8_le(fbuf_Payload_1147·, j_Payload_1147·, read_uint8_le(data·, at· + 1147 + 4 + j_Payload_1147·))
-    v·.Payload = fbuf_Payload_1147·
-    v·.AimX = read_float32_le(data·, at· + 1167)
-    v·.AimY = read_float32_le(data·, at· + 1171)
-    v·.AimZ = read_float32_le(data·, at· + 1175)
-    v·.Recoil = read_float32_le(data·, at· + 1179)
-    v·.Drift = read_float64_le(data·, at· + 1183)
-    v·.WideKey = read_uint64_le(data·, at· + 1191)
-    v·.Flux = read_int64_le(data·, at· + 1199)
-    v·.Ping = read_float32_le(data·, at· + 1207)
-    v·.CrcHint = read_uint32_le(data·, at· + 1211)
-    v·.HasExtra = read_uint8_le(data·, at· + 1215) != 0
-    v·.Extra = read_int32_le(data·, at· + 1216)
-    v·.IdleTicks = read_int32_le(data·, at· + 1220)
-    return v·
+def TableMixedFixedGet(data:string, at:int) -> TableMixed:
+    let v = NewTableMixed()
+    v.ProtocolMagic = read_uint16_le(data, at + 0)
+    v.Sequence = read_uint32_le(data, at + 2)
+    v.AckSequence = read_int32_le(data, at + 6)
+    v.AckBits = read_uint32_le(data, at + 10)
+    v.SessionId = read_uint64_le(data, at + 14)
+    v.ClientId = read_uint32_le(data, at + 22)
+    v.Nonce = read_uint64_le(data, at + 26)
+    v.WorldTime = read_int64_le(data, at + 34)
+    v.FrameTick = read_uint64_le(data, at + 42)
+    v.ServerTime = read_float32_le(data, at + 50)
+    v.EntitiesCount = read_int32_le(data, at + 54)
+    for(v.EntitiesCount) i_Entities_54:
+        v.Entities[i_Entities_54] = TableEntityFixedGet(data, at + 58 + i_Entities_54 * 51)
+    v.StatsCount = read_int32_le(data, at + 466)
+    for(v.StatsCount) i_Stats_466:
+        v.Stats[i_Stats_466] = TableStatFixedGet(data, at + 470 + i_Stats_466 * 8)
+    v.GameEvent.Type = TableEventType(read_uint8_le(data, at + 1110))
+    if int(v.GameEvent.Type) == 1:
+        v.GameEvent.Hit = TableHitEventFixedGet(data, at + 1110 + 1)
+    if int(v.GameEvent.Type) == 2:
+        v.GameEvent.Chat = TableChatEventFixedGet(data, at + 1110 + 1)
+    if int(v.GameEvent.Type) == 3:
+        v.GameEvent.Pickup = TablePickupEventFixedGet(data, at + 1110 + 1)
+    v.Loadout = substring(data, at + 1124, 4)
+    v.PlayerNameLength = read_int32_le(data, at + 1128)
+    var fbuf_PlayerName_1128 = schema_rt.zeros(15)
+    for(v.PlayerNameLength * 1) j_PlayerName_1128: fbuf_PlayerName_1128 = write_int8_le(fbuf_PlayerName_1128, j_PlayerName_1128, read_uint8_le(data, at + 1128 + 4 + j_PlayerName_1128))
+    v.PlayerName = fbuf_PlayerName_1128
+    v.PayloadLength = read_int32_le(data, at + 1147)
+    var fbuf_Payload_1147 = schema_rt.zeros(16)
+    for(v.PayloadLength * 1) j_Payload_1147: fbuf_Payload_1147 = write_int8_le(fbuf_Payload_1147, j_Payload_1147, read_uint8_le(data, at + 1147 + 4 + j_Payload_1147))
+    v.Payload = fbuf_Payload_1147
+    v.AimX = read_float32_le(data, at + 1167)
+    v.AimY = read_float32_le(data, at + 1171)
+    v.AimZ = read_float32_le(data, at + 1175)
+    v.Recoil = read_float32_le(data, at + 1179)
+    v.Drift = read_float64_le(data, at + 1183)
+    v.WideKey = read_uint64_le(data, at + 1191)
+    v.Flux = read_int64_le(data, at + 1199)
+    v.Ping = read_float32_le(data, at + 1207)
+    v.CrcHint = read_uint32_le(data, at + 1211)
+    v.HasExtra = read_uint8_le(data, at + 1215) != 0
+    v.Extra = read_int32_le(data, at + 1216)
+    v.IdleTicks = read_int32_le(data, at + 1220)
+    return v
 
 // TableMixedFixedSave writes values as a form-3 file: the header (TableMixed, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
-// A fixed-form file holds at least one record, so an empty batch is
-// refused the same way (docs/SPEC-TABLES.md §22.6).
-def TableMixedFixedSave(values·:[TableMixed]) -> string:
-    if length(values·) == 0:
-        return ""
-    for(values·) v·:
-        if TableMixedFixedFiniteBody(v·) != "":
+def TableMixedFixedSave(values:[TableMixed]) -> string:
+    for(values) v:
+        if TableMixedFixedFiniteBody(v) != "":
             return ""
-    var body· = ""
-    for(values·) v·: body· += schema_rt.fixed_record(TableMixedFixedHash, TableMixedFixedPut(schema_rt.zeros(1224), 0, v·))
-    return schema_rt.fixed_file(TableMixedFixedLayoutBytes(), TableMixedFixedHash, body·, length(values·))
+    var body = ""
+    for(values) v: body += schema_rt.fixed_record(TableMixedFixedHash, TableMixedFixedPut(schema_rt.zeros(1224), 0, v))
+    return schema_rt.fixed_file(TableMixedFixedLayoutBytes(), TableMixedFixedHash, body, length(values))
 
 // TableMixedFixedDecode reads a TRUSTED form-3 file of TableMixed records written by this
 // build's own layout (TableMixed, §2), asserting the header and every record
-// hash, and that at least one record follows the layout (§22.6). It is
-// not a read of untrusted data: TableMixedFixedLoad is the strict read
-// (docs/SPEC-TABLES.md §6.5).
-def TableMixedFixedDecode(data·:string) -> [TableMixed]:
-    let layout· = TableMixedFixedLayoutBytes()
-    assert read_uint8_le(data·, 0) == 3
-    assert read_uint64_le(data·, 8) == TableMixedFixedHash
-    assert read_uint32_le(data·, 16) == length(layout·)
-    let start· = 20 + length(layout·)
-    assert length(data·) > start·
-    let stride· = 8 + 1224
-    let out·:[TableMixed] = []
-    var at· = start·
-    while at· < length(data·):
-        assert read_uint64_le(data·, at·) == TableMixedFixedHash
-        push(out·, TableMixedFixedGet(data·, at· + 8))
-        at· += stride·
-    return out·
+// hash. It is not a read of untrusted data: TableMixedFixedLoad is the strict
+// read (docs/SPEC-TABLES.md §6.5).
+def TableMixedFixedDecode(data:string) -> [TableMixed]:
+    let layout = TableMixedFixedLayoutBytes()
+    assert read_uint8_le(data, 0) == 3
+    assert read_uint64_le(data, 8) == TableMixedFixedHash
+    assert read_uint32_le(data, 16) == length(layout)
+    let start = 20 + length(layout)
+    let stride = 8 + 1224
+    let out:[TableMixed] = []
+    var at = start
+    while at < length(data):
+        assert read_uint64_le(data, at) == TableMixedFixedHash
+        push(out, TableMixedFixedGet(data, at + 8))
+        at += stride
+    return out
 
 // TableHitEventFixedLayoutBytes is the writer's layout, exactly as it rides (TableHitEvent,
 // docs/FIXED-FORM-ALGORITHM.md §1): a u32 entry count then 17-byte entries.
 def TableHitEventFixedLayoutBytes() -> string:
-    var b· = schema_rt.zeros(89)
-    b· = write_int8_le(b·, 0, 5)
-    b· = write_int8_le(b·, 1, 0)
-    b· = write_int8_le(b·, 2, 0)
-    b· = write_int8_le(b·, 3, 0)
-    b· = write_int8_le(b·, 4, 168)
-    b· = write_int8_le(b·, 5, 171)
-    b· = write_int8_le(b·, 6, 248)
-    b· = write_int8_le(b·, 7, 203)
-    b· = write_int8_le(b·, 8, 41)
-    b· = write_int8_le(b·, 9, 100)
-    b· = write_int8_le(b·, 10, 108)
-    b· = write_int8_le(b·, 11, 116)
-    b· = write_int8_le(b·, 12, 13)
-    b· = write_int8_le(b·, 13, 13)
-    b· = write_int8_le(b·, 14, 0)
-    b· = write_int8_le(b·, 15, 0)
-    b· = write_int8_le(b·, 16, 0)
-    b· = write_int8_le(b·, 17, 4)
-    b· = write_int8_le(b·, 18, 0)
-    b· = write_int8_le(b·, 19, 0)
-    b· = write_int8_le(b·, 20, 0)
-    b· = write_int8_le(b·, 21, 80)
-    b· = write_int8_le(b·, 22, 80)
-    b· = write_int8_le(b·, 23, 162)
-    b· = write_int8_le(b·, 24, 21)
-    b· = write_int8_le(b·, 25, 192)
-    b· = write_int8_le(b·, 26, 154)
-    b· = write_int8_le(b·, 27, 188)
-    b· = write_int8_le(b·, 28, 183)
-    b· = write_int8_le(b·, 29, 7)
-    b· = write_int8_le(b·, 30, 4)
-    b· = write_int8_le(b·, 31, 0)
-    b· = write_int8_le(b·, 32, 0)
-    b· = write_int8_le(b·, 33, 0)
-    b· = write_int8_le(b·, 34, 0)
-    b· = write_int8_le(b·, 35, 0)
-    b· = write_int8_le(b·, 36, 0)
-    b· = write_int8_le(b·, 37, 0)
-    b· = write_int8_le(b·, 38, 192)
-    b· = write_int8_le(b·, 39, 127)
-    b· = write_int8_le(b·, 40, 179)
-    b· = write_int8_le(b·, 41, 138)
-    b· = write_int8_le(b·, 42, 190)
-    b· = write_int8_le(b·, 43, 8)
-    b· = write_int8_le(b·, 44, 99)
-    b· = write_int8_le(b·, 45, 127)
-    b· = write_int8_le(b·, 46, 4)
-    b· = write_int8_le(b·, 47, 4)
-    b· = write_int8_le(b·, 48, 0)
-    b· = write_int8_le(b·, 49, 0)
-    b· = write_int8_le(b·, 50, 0)
-    b· = write_int8_le(b·, 51, 0)
-    b· = write_int8_le(b·, 52, 0)
-    b· = write_int8_le(b·, 53, 0)
-    b· = write_int8_le(b·, 54, 0)
-    b· = write_int8_le(b·, 55, 37)
-    b· = write_int8_le(b·, 56, 185)
-    b· = write_int8_le(b·, 57, 89)
-    b· = write_int8_le(b·, 58, 176)
-    b· = write_int8_le(b·, 59, 101)
-    b· = write_int8_le(b·, 60, 195)
-    b· = write_int8_le(b·, 61, 251)
-    b· = write_int8_le(b·, 62, 1)
-    b· = write_int8_le(b·, 63, 4)
-    b· = write_int8_le(b·, 64, 4)
-    b· = write_int8_le(b·, 65, 0)
-    b· = write_int8_le(b·, 66, 0)
-    b· = write_int8_le(b·, 67, 0)
-    b· = write_int8_le(b·, 68, 0)
-    b· = write_int8_le(b·, 69, 0)
-    b· = write_int8_le(b·, 70, 0)
-    b· = write_int8_le(b·, 71, 0)
-    b· = write_int8_le(b·, 72, 45)
-    b· = write_int8_le(b·, 73, 165)
-    b· = write_int8_le(b·, 74, 154)
-    b· = write_int8_le(b·, 75, 140)
-    b· = write_int8_le(b·, 76, 144)
-    b· = write_int8_le(b·, 77, 103)
-    b· = write_int8_le(b·, 78, 97)
-    b· = write_int8_le(b·, 79, 18)
-    b· = write_int8_le(b·, 80, 1)
-    b· = write_int8_le(b·, 81, 1)
-    b· = write_int8_le(b·, 82, 0)
-    b· = write_int8_le(b·, 83, 0)
-    b· = write_int8_le(b·, 84, 0)
-    b· = write_int8_le(b·, 85, 0)
-    b· = write_int8_le(b·, 86, 0)
-    b· = write_int8_le(b·, 87, 0)
-    b· = write_int8_le(b·, 88, 0)
-    return b·
+    var b = schema_rt.zeros(89)
+    b = write_int8_le(b, 0, 5)
+    b = write_int8_le(b, 1, 0)
+    b = write_int8_le(b, 2, 0)
+    b = write_int8_le(b, 3, 0)
+    b = write_int8_le(b, 4, 168)
+    b = write_int8_le(b, 5, 171)
+    b = write_int8_le(b, 6, 248)
+    b = write_int8_le(b, 7, 203)
+    b = write_int8_le(b, 8, 41)
+    b = write_int8_le(b, 9, 100)
+    b = write_int8_le(b, 10, 108)
+    b = write_int8_le(b, 11, 116)
+    b = write_int8_le(b, 12, 13)
+    b = write_int8_le(b, 13, 13)
+    b = write_int8_le(b, 14, 0)
+    b = write_int8_le(b, 15, 0)
+    b = write_int8_le(b, 16, 0)
+    b = write_int8_le(b, 17, 4)
+    b = write_int8_le(b, 18, 0)
+    b = write_int8_le(b, 19, 0)
+    b = write_int8_le(b, 20, 0)
+    b = write_int8_le(b, 21, 80)
+    b = write_int8_le(b, 22, 80)
+    b = write_int8_le(b, 23, 162)
+    b = write_int8_le(b, 24, 21)
+    b = write_int8_le(b, 25, 192)
+    b = write_int8_le(b, 26, 154)
+    b = write_int8_le(b, 27, 188)
+    b = write_int8_le(b, 28, 183)
+    b = write_int8_le(b, 29, 7)
+    b = write_int8_le(b, 30, 4)
+    b = write_int8_le(b, 31, 0)
+    b = write_int8_le(b, 32, 0)
+    b = write_int8_le(b, 33, 0)
+    b = write_int8_le(b, 34, 0)
+    b = write_int8_le(b, 35, 0)
+    b = write_int8_le(b, 36, 0)
+    b = write_int8_le(b, 37, 0)
+    b = write_int8_le(b, 38, 192)
+    b = write_int8_le(b, 39, 127)
+    b = write_int8_le(b, 40, 179)
+    b = write_int8_le(b, 41, 138)
+    b = write_int8_le(b, 42, 190)
+    b = write_int8_le(b, 43, 8)
+    b = write_int8_le(b, 44, 99)
+    b = write_int8_le(b, 45, 127)
+    b = write_int8_le(b, 46, 4)
+    b = write_int8_le(b, 47, 4)
+    b = write_int8_le(b, 48, 0)
+    b = write_int8_le(b, 49, 0)
+    b = write_int8_le(b, 50, 0)
+    b = write_int8_le(b, 51, 0)
+    b = write_int8_le(b, 52, 0)
+    b = write_int8_le(b, 53, 0)
+    b = write_int8_le(b, 54, 0)
+    b = write_int8_le(b, 55, 37)
+    b = write_int8_le(b, 56, 185)
+    b = write_int8_le(b, 57, 89)
+    b = write_int8_le(b, 58, 176)
+    b = write_int8_le(b, 59, 101)
+    b = write_int8_le(b, 60, 195)
+    b = write_int8_le(b, 61, 251)
+    b = write_int8_le(b, 62, 1)
+    b = write_int8_le(b, 63, 4)
+    b = write_int8_le(b, 64, 4)
+    b = write_int8_le(b, 65, 0)
+    b = write_int8_le(b, 66, 0)
+    b = write_int8_le(b, 67, 0)
+    b = write_int8_le(b, 68, 0)
+    b = write_int8_le(b, 69, 0)
+    b = write_int8_le(b, 70, 0)
+    b = write_int8_le(b, 71, 0)
+    b = write_int8_le(b, 72, 45)
+    b = write_int8_le(b, 73, 165)
+    b = write_int8_le(b, 74, 154)
+    b = write_int8_le(b, 75, 140)
+    b = write_int8_le(b, 76, 144)
+    b = write_int8_le(b, 77, 103)
+    b = write_int8_le(b, 78, 97)
+    b = write_int8_le(b, 79, 18)
+    b = write_int8_le(b, 80, 1)
+    b = write_int8_le(b, 81, 1)
+    b = write_int8_le(b, 82, 0)
+    b = write_int8_le(b, 83, 0)
+    b = write_int8_le(b, 84, 0)
+    b = write_int8_le(b, 85, 0)
+    b = write_int8_le(b, 86, 0)
+    b = write_int8_le(b, 87, 0)
+    b = write_int8_le(b, 88, 0)
+    return b
 
 // TableHitEventFixedHash is fnv1a64 over the layout above (docs/FIXED-FORM-ALGORITHM.md §1).
 let TableHitEventFixedHash = 272235143901016202
@@ -2955,115 +2937,109 @@ let TableHitEventFixedRecordBytes = 13
 
 // TableHitEventFixedPut writes one record body at at, in declared order and at each
 // field's declared storage width (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableHitEventFixedPut(b·:string, at·:int, v·:TableHitEvent) -> string:
-    b· = write_int32_le(b·, at· + 0, v·.TargetId)
-    b· = write_int32_le(b·, at· + 4, v·.Damage)
-    b· = write_int32_le(b·, at· + 8, v·.HitKind)
-    b· = write_int8_le(b·, at· + 12, if v·.Crit: 1 else: 0)
-    return b·
+def TableHitEventFixedPut(b:string, at:int, v:TableHitEvent) -> string:
+    b = write_int32_le(b, at + 0, v.TargetId)
+    b = write_int32_le(b, at + 4, v.Damage)
+    b = write_int32_le(b, at + 8, v.HitKind)
+    b = write_int8_le(b, at + 12, if v.Crit: 1 else: 0)
+    return b
 
 // TableHitEventFixedGet reads one record body at at (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableHitEventFixedGet(data·:string, at·:int) -> TableHitEvent:
-    let v· = NewTableHitEvent()
-    v·.TargetId = read_uint32_le(data·, at· + 0)
-    v·.Damage = read_int32_le(data·, at· + 4)
-    v·.HitKind = read_int32_le(data·, at· + 8)
-    v·.Crit = read_uint8_le(data·, at· + 12) != 0
-    return v·
+def TableHitEventFixedGet(data:string, at:int) -> TableHitEvent:
+    let v = NewTableHitEvent()
+    v.TargetId = read_uint32_le(data, at + 0)
+    v.Damage = read_int32_le(data, at + 4)
+    v.HitKind = read_int32_le(data, at + 8)
+    v.Crit = read_uint8_le(data, at + 12) != 0
+    return v
 
 // TableHitEventFixedSave writes values as a form-3 file: the header (TableHitEvent, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
-// A fixed-form file holds at least one record, so an empty batch is
-// refused the same way (docs/SPEC-TABLES.md §22.6).
-def TableHitEventFixedSave(values·:[TableHitEvent]) -> string:
-    if length(values·) == 0:
-        return ""
-    var body· = ""
-    for(values·) v·: body· += schema_rt.fixed_record(TableHitEventFixedHash, TableHitEventFixedPut(schema_rt.zeros(13), 0, v·))
-    return schema_rt.fixed_file(TableHitEventFixedLayoutBytes(), TableHitEventFixedHash, body·, length(values·))
+def TableHitEventFixedSave(values:[TableHitEvent]) -> string:
+    var body = ""
+    for(values) v: body += schema_rt.fixed_record(TableHitEventFixedHash, TableHitEventFixedPut(schema_rt.zeros(13), 0, v))
+    return schema_rt.fixed_file(TableHitEventFixedLayoutBytes(), TableHitEventFixedHash, body, length(values))
 
 // TableHitEventFixedDecode reads a TRUSTED form-3 file of TableHitEvent records written by this
 // build's own layout (TableHitEvent, §2), asserting the header and every record
-// hash, and that at least one record follows the layout (§22.6). It is
-// not a read of untrusted data: TableHitEventFixedLoad is the strict read
-// (docs/SPEC-TABLES.md §6.5).
-def TableHitEventFixedDecode(data·:string) -> [TableHitEvent]:
-    let layout· = TableHitEventFixedLayoutBytes()
-    assert read_uint8_le(data·, 0) == 3
-    assert read_uint64_le(data·, 8) == TableHitEventFixedHash
-    assert read_uint32_le(data·, 16) == length(layout·)
-    let start· = 20 + length(layout·)
-    assert length(data·) > start·
-    let stride· = 8 + 13
-    let out·:[TableHitEvent] = []
-    var at· = start·
-    while at· < length(data·):
-        assert read_uint64_le(data·, at·) == TableHitEventFixedHash
-        push(out·, TableHitEventFixedGet(data·, at· + 8))
-        at· += stride·
-    return out·
+// hash. It is not a read of untrusted data: TableHitEventFixedLoad is the strict
+// read (docs/SPEC-TABLES.md §6.5).
+def TableHitEventFixedDecode(data:string) -> [TableHitEvent]:
+    let layout = TableHitEventFixedLayoutBytes()
+    assert read_uint8_le(data, 0) == 3
+    assert read_uint64_le(data, 8) == TableHitEventFixedHash
+    assert read_uint32_le(data, 16) == length(layout)
+    let start = 20 + length(layout)
+    let stride = 8 + 13
+    let out:[TableHitEvent] = []
+    var at = start
+    while at < length(data):
+        assert read_uint64_le(data, at) == TableHitEventFixedHash
+        push(out, TableHitEventFixedGet(data, at + 8))
+        at += stride
+    return out
 
 // TableChatEventFixedLayoutBytes is the writer's layout, exactly as it rides (TableChatEvent,
 // docs/FIXED-FORM-ALGORITHM.md §1): a u32 entry count then 17-byte entries.
 def TableChatEventFixedLayoutBytes() -> string:
-    var b· = schema_rt.zeros(55)
-    b· = write_int8_le(b·, 0, 3)
-    b· = write_int8_le(b·, 1, 0)
-    b· = write_int8_le(b·, 2, 0)
-    b· = write_int8_le(b·, 3, 0)
-    b· = write_int8_le(b·, 4, 59)
-    b· = write_int8_le(b·, 5, 173)
-    b· = write_int8_le(b·, 6, 250)
-    b· = write_int8_le(b·, 7, 119)
-    b· = write_int8_le(b·, 8, 213)
-    b· = write_int8_le(b·, 9, 1)
-    b· = write_int8_le(b·, 10, 153)
-    b· = write_int8_le(b·, 11, 150)
-    b· = write_int8_le(b·, 12, 13)
-    b· = write_int8_le(b·, 13, 8)
-    b· = write_int8_le(b·, 14, 0)
-    b· = write_int8_le(b·, 15, 0)
-    b· = write_int8_le(b·, 16, 0)
-    b· = write_int8_le(b·, 17, 2)
-    b· = write_int8_le(b·, 18, 0)
-    b· = write_int8_le(b·, 19, 0)
-    b· = write_int8_le(b·, 20, 0)
-    b· = write_int8_le(b·, 21, 164)
-    b· = write_int8_le(b·, 22, 237)
-    b· = write_int8_le(b·, 23, 202)
-    b· = write_int8_le(b·, 24, 213)
-    b· = write_int8_le(b·, 25, 154)
-    b· = write_int8_le(b·, 26, 62)
-    b· = write_int8_le(b·, 27, 1)
-    b· = write_int8_le(b·, 28, 165)
-    b· = write_int8_le(b·, 29, 4)
-    b· = write_int8_le(b·, 30, 4)
-    b· = write_int8_le(b·, 31, 0)
-    b· = write_int8_le(b·, 32, 0)
-    b· = write_int8_le(b·, 33, 0)
-    b· = write_int8_le(b·, 34, 0)
-    b· = write_int8_le(b·, 35, 0)
-    b· = write_int8_le(b·, 36, 0)
-    b· = write_int8_le(b·, 37, 0)
-    b· = write_int8_le(b·, 38, 34)
-    b· = write_int8_le(b·, 39, 208)
-    b· = write_int8_le(b·, 40, 235)
-    b· = write_int8_le(b·, 41, 150)
-    b· = write_int8_le(b·, 42, 77)
-    b· = write_int8_le(b·, 43, 172)
-    b· = write_int8_le(b·, 44, 241)
-    b· = write_int8_le(b·, 45, 251)
-    b· = write_int8_le(b·, 46, 7)
-    b· = write_int8_le(b·, 47, 4)
-    b· = write_int8_le(b·, 48, 0)
-    b· = write_int8_le(b·, 49, 0)
-    b· = write_int8_le(b·, 50, 0)
-    b· = write_int8_le(b·, 51, 0)
-    b· = write_int8_le(b·, 52, 0)
-    b· = write_int8_le(b·, 53, 0)
-    b· = write_int8_le(b·, 54, 0)
-    return b·
+    var b = schema_rt.zeros(55)
+    b = write_int8_le(b, 0, 3)
+    b = write_int8_le(b, 1, 0)
+    b = write_int8_le(b, 2, 0)
+    b = write_int8_le(b, 3, 0)
+    b = write_int8_le(b, 4, 59)
+    b = write_int8_le(b, 5, 173)
+    b = write_int8_le(b, 6, 250)
+    b = write_int8_le(b, 7, 119)
+    b = write_int8_le(b, 8, 213)
+    b = write_int8_le(b, 9, 1)
+    b = write_int8_le(b, 10, 153)
+    b = write_int8_le(b, 11, 150)
+    b = write_int8_le(b, 12, 13)
+    b = write_int8_le(b, 13, 8)
+    b = write_int8_le(b, 14, 0)
+    b = write_int8_le(b, 15, 0)
+    b = write_int8_le(b, 16, 0)
+    b = write_int8_le(b, 17, 2)
+    b = write_int8_le(b, 18, 0)
+    b = write_int8_le(b, 19, 0)
+    b = write_int8_le(b, 20, 0)
+    b = write_int8_le(b, 21, 164)
+    b = write_int8_le(b, 22, 237)
+    b = write_int8_le(b, 23, 202)
+    b = write_int8_le(b, 24, 213)
+    b = write_int8_le(b, 25, 154)
+    b = write_int8_le(b, 26, 62)
+    b = write_int8_le(b, 27, 1)
+    b = write_int8_le(b, 28, 165)
+    b = write_int8_le(b, 29, 4)
+    b = write_int8_le(b, 30, 4)
+    b = write_int8_le(b, 31, 0)
+    b = write_int8_le(b, 32, 0)
+    b = write_int8_le(b, 33, 0)
+    b = write_int8_le(b, 34, 0)
+    b = write_int8_le(b, 35, 0)
+    b = write_int8_le(b, 36, 0)
+    b = write_int8_le(b, 37, 0)
+    b = write_int8_le(b, 38, 34)
+    b = write_int8_le(b, 39, 208)
+    b = write_int8_le(b, 40, 235)
+    b = write_int8_le(b, 41, 150)
+    b = write_int8_le(b, 42, 77)
+    b = write_int8_le(b, 43, 172)
+    b = write_int8_le(b, 44, 241)
+    b = write_int8_le(b, 45, 251)
+    b = write_int8_le(b, 46, 7)
+    b = write_int8_le(b, 47, 4)
+    b = write_int8_le(b, 48, 0)
+    b = write_int8_le(b, 49, 0)
+    b = write_int8_le(b, 50, 0)
+    b = write_int8_le(b, 51, 0)
+    b = write_int8_le(b, 52, 0)
+    b = write_int8_le(b, 53, 0)
+    b = write_int8_le(b, 54, 0)
+    return b
 
 // TableChatEventFixedHash is fnv1a64 over the layout above (docs/FIXED-FORM-ALGORITHM.md §1).
 let TableChatEventFixedHash = 934555266658336991
@@ -3071,111 +3047,105 @@ let TableChatEventFixedRecordBytes = 8
 
 // TableChatEventFixedPut writes one record body at at, in declared order and at each
 // field's declared storage width (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableChatEventFixedPut(b·:string, at·:int, v·:TableChatEvent) -> string:
-    b· = write_int32_le(b·, at· + 0, v·.Channel)
-    b· = write_int32_le(b·, at· + 4, v·.Speaker)
-    return b·
+def TableChatEventFixedPut(b:string, at:int, v:TableChatEvent) -> string:
+    b = write_int32_le(b, at + 0, v.Channel)
+    b = write_int32_le(b, at + 4, v.Speaker)
+    return b
 
 // TableChatEventFixedGet reads one record body at at (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableChatEventFixedGet(data·:string, at·:int) -> TableChatEvent:
-    let v· = NewTableChatEvent()
-    v·.Channel = read_int32_le(data·, at· + 0)
-    v·.Speaker = read_uint32_le(data·, at· + 4)
-    return v·
+def TableChatEventFixedGet(data:string, at:int) -> TableChatEvent:
+    let v = NewTableChatEvent()
+    v.Channel = read_int32_le(data, at + 0)
+    v.Speaker = read_uint32_le(data, at + 4)
+    return v
 
 // TableChatEventFixedSave writes values as a form-3 file: the header (TableChatEvent, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
-// A fixed-form file holds at least one record, so an empty batch is
-// refused the same way (docs/SPEC-TABLES.md §22.6).
-def TableChatEventFixedSave(values·:[TableChatEvent]) -> string:
-    if length(values·) == 0:
-        return ""
-    var body· = ""
-    for(values·) v·: body· += schema_rt.fixed_record(TableChatEventFixedHash, TableChatEventFixedPut(schema_rt.zeros(8), 0, v·))
-    return schema_rt.fixed_file(TableChatEventFixedLayoutBytes(), TableChatEventFixedHash, body·, length(values·))
+def TableChatEventFixedSave(values:[TableChatEvent]) -> string:
+    var body = ""
+    for(values) v: body += schema_rt.fixed_record(TableChatEventFixedHash, TableChatEventFixedPut(schema_rt.zeros(8), 0, v))
+    return schema_rt.fixed_file(TableChatEventFixedLayoutBytes(), TableChatEventFixedHash, body, length(values))
 
 // TableChatEventFixedDecode reads a TRUSTED form-3 file of TableChatEvent records written by this
 // build's own layout (TableChatEvent, §2), asserting the header and every record
-// hash, and that at least one record follows the layout (§22.6). It is
-// not a read of untrusted data: TableChatEventFixedLoad is the strict read
-// (docs/SPEC-TABLES.md §6.5).
-def TableChatEventFixedDecode(data·:string) -> [TableChatEvent]:
-    let layout· = TableChatEventFixedLayoutBytes()
-    assert read_uint8_le(data·, 0) == 3
-    assert read_uint64_le(data·, 8) == TableChatEventFixedHash
-    assert read_uint32_le(data·, 16) == length(layout·)
-    let start· = 20 + length(layout·)
-    assert length(data·) > start·
-    let stride· = 8 + 8
-    let out·:[TableChatEvent] = []
-    var at· = start·
-    while at· < length(data·):
-        assert read_uint64_le(data·, at·) == TableChatEventFixedHash
-        push(out·, TableChatEventFixedGet(data·, at· + 8))
-        at· += stride·
-    return out·
+// hash. It is not a read of untrusted data: TableChatEventFixedLoad is the strict
+// read (docs/SPEC-TABLES.md §6.5).
+def TableChatEventFixedDecode(data:string) -> [TableChatEvent]:
+    let layout = TableChatEventFixedLayoutBytes()
+    assert read_uint8_le(data, 0) == 3
+    assert read_uint64_le(data, 8) == TableChatEventFixedHash
+    assert read_uint32_le(data, 16) == length(layout)
+    let start = 20 + length(layout)
+    let stride = 8 + 8
+    let out:[TableChatEvent] = []
+    var at = start
+    while at < length(data):
+        assert read_uint64_le(data, at) == TableChatEventFixedHash
+        push(out, TableChatEventFixedGet(data, at + 8))
+        at += stride
+    return out
 
 // TablePickupEventFixedLayoutBytes is the writer's layout, exactly as it rides (TablePickupEvent,
 // docs/FIXED-FORM-ALGORITHM.md §1): a u32 entry count then 17-byte entries.
 def TablePickupEventFixedLayoutBytes() -> string:
-    var b· = schema_rt.zeros(55)
-    b· = write_int8_le(b·, 0, 3)
-    b· = write_int8_le(b·, 1, 0)
-    b· = write_int8_le(b·, 2, 0)
-    b· = write_int8_le(b·, 3, 0)
-    b· = write_int8_le(b·, 4, 237)
-    b· = write_int8_le(b·, 5, 125)
-    b· = write_int8_le(b·, 6, 148)
-    b· = write_int8_le(b·, 7, 116)
-    b· = write_int8_le(b·, 8, 141)
-    b· = write_int8_le(b·, 9, 24)
-    b· = write_int8_le(b·, 10, 168)
-    b· = write_int8_le(b·, 11, 120)
-    b· = write_int8_le(b·, 12, 13)
-    b· = write_int8_le(b·, 13, 8)
-    b· = write_int8_le(b·, 14, 0)
-    b· = write_int8_le(b·, 15, 0)
-    b· = write_int8_le(b·, 16, 0)
-    b· = write_int8_le(b·, 17, 2)
-    b· = write_int8_le(b·, 18, 0)
-    b· = write_int8_le(b·, 19, 0)
-    b· = write_int8_le(b·, 20, 0)
-    b· = write_int8_le(b·, 21, 86)
-    b· = write_int8_le(b·, 22, 189)
-    b· = write_int8_le(b·, 23, 79)
-    b· = write_int8_le(b·, 24, 134)
-    b· = write_int8_le(b·, 25, 109)
-    b· = write_int8_le(b·, 26, 208)
-    b· = write_int8_le(b·, 27, 127)
-    b· = write_int8_le(b·, 28, 158)
-    b· = write_int8_le(b·, 29, 7)
-    b· = write_int8_le(b·, 30, 4)
-    b· = write_int8_le(b·, 31, 0)
-    b· = write_int8_le(b·, 32, 0)
-    b· = write_int8_le(b·, 33, 0)
-    b· = write_int8_le(b·, 34, 0)
-    b· = write_int8_le(b·, 35, 0)
-    b· = write_int8_le(b·, 36, 0)
-    b· = write_int8_le(b·, 37, 0)
-    b· = write_int8_le(b·, 38, 105)
-    b· = write_int8_le(b·, 39, 105)
-    b· = write_int8_le(b·, 40, 177)
-    b· = write_int8_le(b·, 41, 162)
-    b· = write_int8_le(b·, 42, 126)
-    b· = write_int8_le(b·, 43, 254)
-    b· = write_int8_le(b·, 44, 19)
-    b· = write_int8_le(b·, 45, 129)
-    b· = write_int8_le(b·, 46, 4)
-    b· = write_int8_le(b·, 47, 4)
-    b· = write_int8_le(b·, 48, 0)
-    b· = write_int8_le(b·, 49, 0)
-    b· = write_int8_le(b·, 50, 0)
-    b· = write_int8_le(b·, 51, 0)
-    b· = write_int8_le(b·, 52, 0)
-    b· = write_int8_le(b·, 53, 0)
-    b· = write_int8_le(b·, 54, 0)
-    return b·
+    var b = schema_rt.zeros(55)
+    b = write_int8_le(b, 0, 3)
+    b = write_int8_le(b, 1, 0)
+    b = write_int8_le(b, 2, 0)
+    b = write_int8_le(b, 3, 0)
+    b = write_int8_le(b, 4, 237)
+    b = write_int8_le(b, 5, 125)
+    b = write_int8_le(b, 6, 148)
+    b = write_int8_le(b, 7, 116)
+    b = write_int8_le(b, 8, 141)
+    b = write_int8_le(b, 9, 24)
+    b = write_int8_le(b, 10, 168)
+    b = write_int8_le(b, 11, 120)
+    b = write_int8_le(b, 12, 13)
+    b = write_int8_le(b, 13, 8)
+    b = write_int8_le(b, 14, 0)
+    b = write_int8_le(b, 15, 0)
+    b = write_int8_le(b, 16, 0)
+    b = write_int8_le(b, 17, 2)
+    b = write_int8_le(b, 18, 0)
+    b = write_int8_le(b, 19, 0)
+    b = write_int8_le(b, 20, 0)
+    b = write_int8_le(b, 21, 86)
+    b = write_int8_le(b, 22, 189)
+    b = write_int8_le(b, 23, 79)
+    b = write_int8_le(b, 24, 134)
+    b = write_int8_le(b, 25, 109)
+    b = write_int8_le(b, 26, 208)
+    b = write_int8_le(b, 27, 127)
+    b = write_int8_le(b, 28, 158)
+    b = write_int8_le(b, 29, 7)
+    b = write_int8_le(b, 30, 4)
+    b = write_int8_le(b, 31, 0)
+    b = write_int8_le(b, 32, 0)
+    b = write_int8_le(b, 33, 0)
+    b = write_int8_le(b, 34, 0)
+    b = write_int8_le(b, 35, 0)
+    b = write_int8_le(b, 36, 0)
+    b = write_int8_le(b, 37, 0)
+    b = write_int8_le(b, 38, 105)
+    b = write_int8_le(b, 39, 105)
+    b = write_int8_le(b, 40, 177)
+    b = write_int8_le(b, 41, 162)
+    b = write_int8_le(b, 42, 126)
+    b = write_int8_le(b, 43, 254)
+    b = write_int8_le(b, 44, 19)
+    b = write_int8_le(b, 45, 129)
+    b = write_int8_le(b, 46, 4)
+    b = write_int8_le(b, 47, 4)
+    b = write_int8_le(b, 48, 0)
+    b = write_int8_le(b, 49, 0)
+    b = write_int8_le(b, 50, 0)
+    b = write_int8_le(b, 51, 0)
+    b = write_int8_le(b, 52, 0)
+    b = write_int8_le(b, 53, 0)
+    b = write_int8_le(b, 54, 0)
+    return b
 
 // TablePickupEventFixedHash is fnv1a64 over the layout above (docs/FIXED-FORM-ALGORITHM.md §1).
 let TablePickupEventFixedHash = 0xc9b8e4e38a8831cb
@@ -3183,177 +3153,171 @@ let TablePickupEventFixedRecordBytes = 8
 
 // TablePickupEventFixedPut writes one record body at at, in declared order and at each
 // field's declared storage width (docs/FIXED-FORM-ALGORITHM.md §3).
-def TablePickupEventFixedPut(b·:string, at·:int, v·:TablePickupEvent) -> string:
-    b· = write_int32_le(b·, at· + 0, v·.ItemId)
-    b· = write_int32_le(b·, at· + 4, v·.Amount)
-    return b·
+def TablePickupEventFixedPut(b:string, at:int, v:TablePickupEvent) -> string:
+    b = write_int32_le(b, at + 0, v.ItemId)
+    b = write_int32_le(b, at + 4, v.Amount)
+    return b
 
 // TablePickupEventFixedGet reads one record body at at (docs/FIXED-FORM-ALGORITHM.md §3).
-def TablePickupEventFixedGet(data·:string, at·:int) -> TablePickupEvent:
-    let v· = NewTablePickupEvent()
-    v·.ItemId = read_uint32_le(data·, at· + 0)
-    v·.Amount = read_int32_le(data·, at· + 4)
-    return v·
+def TablePickupEventFixedGet(data:string, at:int) -> TablePickupEvent:
+    let v = NewTablePickupEvent()
+    v.ItemId = read_uint32_le(data, at + 0)
+    v.Amount = read_int32_le(data, at + 4)
+    return v
 
 // TablePickupEventFixedSave writes values as a form-3 file: the header (TablePickupEvent, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
-// A fixed-form file holds at least one record, so an empty batch is
-// refused the same way (docs/SPEC-TABLES.md §22.6).
-def TablePickupEventFixedSave(values·:[TablePickupEvent]) -> string:
-    if length(values·) == 0:
-        return ""
-    var body· = ""
-    for(values·) v·: body· += schema_rt.fixed_record(TablePickupEventFixedHash, TablePickupEventFixedPut(schema_rt.zeros(8), 0, v·))
-    return schema_rt.fixed_file(TablePickupEventFixedLayoutBytes(), TablePickupEventFixedHash, body·, length(values·))
+def TablePickupEventFixedSave(values:[TablePickupEvent]) -> string:
+    var body = ""
+    for(values) v: body += schema_rt.fixed_record(TablePickupEventFixedHash, TablePickupEventFixedPut(schema_rt.zeros(8), 0, v))
+    return schema_rt.fixed_file(TablePickupEventFixedLayoutBytes(), TablePickupEventFixedHash, body, length(values))
 
 // TablePickupEventFixedDecode reads a TRUSTED form-3 file of TablePickupEvent records written by this
 // build's own layout (TablePickupEvent, §2), asserting the header and every record
-// hash, and that at least one record follows the layout (§22.6). It is
-// not a read of untrusted data: TablePickupEventFixedLoad is the strict read
-// (docs/SPEC-TABLES.md §6.5).
-def TablePickupEventFixedDecode(data·:string) -> [TablePickupEvent]:
-    let layout· = TablePickupEventFixedLayoutBytes()
-    assert read_uint8_le(data·, 0) == 3
-    assert read_uint64_le(data·, 8) == TablePickupEventFixedHash
-    assert read_uint32_le(data·, 16) == length(layout·)
-    let start· = 20 + length(layout·)
-    assert length(data·) > start·
-    let stride· = 8 + 8
-    let out·:[TablePickupEvent] = []
-    var at· = start·
-    while at· < length(data·):
-        assert read_uint64_le(data·, at·) == TablePickupEventFixedHash
-        push(out·, TablePickupEventFixedGet(data·, at· + 8))
-        at· += stride·
-    return out·
+// hash. It is not a read of untrusted data: TablePickupEventFixedLoad is the strict
+// read (docs/SPEC-TABLES.md §6.5).
+def TablePickupEventFixedDecode(data:string) -> [TablePickupEvent]:
+    let layout = TablePickupEventFixedLayoutBytes()
+    assert read_uint8_le(data, 0) == 3
+    assert read_uint64_le(data, 8) == TablePickupEventFixedHash
+    assert read_uint32_le(data, 16) == length(layout)
+    let start = 20 + length(layout)
+    let stride = 8 + 8
+    let out:[TablePickupEvent] = []
+    var at = start
+    while at < length(data):
+        assert read_uint64_le(data, at) == TablePickupEventFixedHash
+        push(out, TablePickupEventFixedGet(data, at + 8))
+        at += stride
+    return out
 
 // TableEntityReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
-def TableEntityReset(v·:TableEntity):
-    v·.EntityId = 0
-    v·.PosX = 0
-    v·.PosY = 0
-    v·.PosZ = 0
-    v·.Yaw = 0
-    v·.Pitch = 0
-    v·.VelX = 0
-    v·.VelY = 0
-    v·.VelZ = 0
-    v·.Health = 0
-    v·.Weapon = TableWeaponNone
-    v·.Damage = 0
-    v·.Moving = false
-    v·.Firing = false
+def TableEntityReset(v:TableEntity):
+    v.EntityId = 0
+    v.PosX = 0
+    v.PosY = 0
+    v.PosZ = 0
+    v.Yaw = 0
+    v.Pitch = 0
+    v.VelX = 0
+    v.VelY = 0
+    v.VelZ = 0
+    v.Health = 0
+    v.Weapon = TableWeaponNone
+    v.Damage = 0
+    v.Moving = false
+    v.Firing = false
 
-def TableEntityFixedLeaves(out·:[schema_rt.TableFixedEntry], src·:int, dst·:int) -> int:
-    push(out·, schema_rt.TableFixedEntry { src: src· + 0, dst: dst· + 0, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 4, dst: dst· + 4, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 8, dst: dst· + 8, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 12, dst: dst· + 12, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 16, dst: dst· + 16, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 20, dst: dst· + 20, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 24, dst: dst· + 24, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 28, dst: dst· + 28, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 32, dst: dst· + 32, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 36, dst: dst· + 36, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 40, dst: dst· + 40, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 41, dst: dst· + 41, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 49, dst: dst· + 49, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedBool })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 50, dst: dst· + 50, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedBool })
-    return length(out·)
+def TableEntityFixedLeaves(out:[schema_rt.TableFixedEntry], src:int, dst:int) -> int:
+    push(out, schema_rt.TableFixedEntry { src: src + 0, dst: dst + 0, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 4, dst: dst + 4, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 8, dst: dst + 8, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 12, dst: dst + 12, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 16, dst: dst + 16, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 20, dst: dst + 20, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 24, dst: dst + 24, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 28, dst: dst + 28, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 32, dst: dst + 32, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 36, dst: dst + 36, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 40, dst: dst + 40, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 41, dst: dst + 41, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 49, dst: dst + 49, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedBool })
+    push(out, schema_rt.TableFixedEntry { src: src + 50, dst: dst + 50, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedBool })
+    return length(out)
 
 // TableEntityFixedScatter reads one canonical flat body image at at into v in place.
-def TableEntityFixedScatter(data·:string, at·:int, v·:TableEntity):
-    v·.EntityId = read_uint32_le(data·, at· + 0)
-    v·.PosX = read_int32_le(data·, at· + 4)
-    v·.PosY = read_int32_le(data·, at· + 8)
-    v·.PosZ = read_int32_le(data·, at· + 12)
-    v·.Yaw = read_uint32_le(data·, at· + 16)
-    v·.Pitch = read_uint32_le(data·, at· + 20)
-    v·.VelX = read_int32_le(data·, at· + 24)
-    v·.VelY = read_int32_le(data·, at· + 28)
-    v·.VelZ = read_int32_le(data·, at· + 32)
-    v·.Health = read_int32_le(data·, at· + 36)
-    v·.Weapon = TableWeapon(read_uint8_le(data·, at· + 40))
-    v·.Damage = read_uint64_le(data·, at· + 41)
-    v·.Moving = read_uint8_le(data·, at· + 49) != 0
-    v·.Firing = read_uint8_le(data·, at· + 50) != 0
+def TableEntityFixedScatter(data:string, at:int, v:TableEntity):
+    v.EntityId = read_uint32_le(data, at + 0)
+    v.PosX = read_int32_le(data, at + 4)
+    v.PosY = read_int32_le(data, at + 8)
+    v.PosZ = read_int32_le(data, at + 12)
+    v.Yaw = read_uint32_le(data, at + 16)
+    v.Pitch = read_uint32_le(data, at + 20)
+    v.VelX = read_int32_le(data, at + 24)
+    v.VelY = read_int32_le(data, at + 28)
+    v.VelZ = read_int32_le(data, at + 32)
+    v.Health = read_int32_le(data, at + 36)
+    v.Weapon = TableWeapon(read_uint8_le(data, at + 40))
+    v.Damage = read_uint64_le(data, at + 41)
+    v.Moving = read_uint8_le(data, at + 49) != 0
+    v.Firing = read_uint8_le(data, at + 50) != 0
 
-def TableEntityFixedBoundsBody(v·:TableEntity) -> bool:
-    if (schema_rt.ult(4095, v·.EntityId)):
+def TableEntityFixedBoundsBody(v:TableEntity) -> bool:
+    if (schema_rt.ult(4095, v.EntityId)):
         return false
-    if (v·.PosX < -2147483648) or (v·.PosX > 2147483647):
+    if (v.PosX < -2147483648) or (v.PosX > 2147483647):
         return false
-    if (v·.PosX < -16383) or (v·.PosX > 16383):
+    if (v.PosX < -16383) or (v.PosX > 16383):
         return false
-    if (v·.PosY < -2147483648) or (v·.PosY > 2147483647):
+    if (v.PosY < -2147483648) or (v.PosY > 2147483647):
         return false
-    if (v·.PosY < -16383) or (v·.PosY > 16383):
+    if (v.PosY < -16383) or (v.PosY > 16383):
         return false
-    if (v·.PosZ < -2147483648) or (v·.PosZ > 2147483647):
+    if (v.PosZ < -2147483648) or (v.PosZ > 2147483647):
         return false
-    if (v·.PosZ < -16383) or (v·.PosZ > 16383):
+    if (v.PosZ < -16383) or (v.PosZ > 16383):
         return false
-    if (schema_rt.ult(511, v·.Yaw)):
+    if (schema_rt.ult(511, v.Yaw)):
         return false
-    if (schema_rt.ult(511, v·.Pitch)):
+    if (schema_rt.ult(511, v.Pitch)):
         return false
-    if (v·.VelX < -2147483648) or (v·.VelX > 2147483647):
+    if (v.VelX < -2147483648) or (v.VelX > 2147483647):
         return false
-    if (v·.VelX < -2048) or (v·.VelX > 2047):
+    if (v.VelX < -2048) or (v.VelX > 2047):
         return false
-    if (v·.VelY < -2147483648) or (v·.VelY > 2147483647):
+    if (v.VelY < -2147483648) or (v.VelY > 2147483647):
         return false
-    if (v·.VelY < -2048) or (v·.VelY > 2047):
+    if (v.VelY < -2048) or (v.VelY > 2047):
         return false
-    if (v·.VelZ < -2147483648) or (v·.VelZ > 2147483647):
+    if (v.VelZ < -2147483648) or (v.VelZ > 2147483647):
         return false
-    if (v·.VelZ < -2048) or (v·.VelZ > 2047):
+    if (v.VelZ < -2048) or (v.VelZ > 2047):
         return false
-    if (v·.Health < -2147483648) or (v·.Health > 2147483647):
+    if (v.Health < -2147483648) or (v.Health > 2147483647):
         return false
-    if (v·.Health < 0) or (v·.Health > 1000):
+    if (v.Health < 0) or (v.Health > 1000):
         return false
-    if schema_rt.ult(15, int(v·.Weapon)):
+    if schema_rt.ult(15, int(v.Weapon)):
         return false
     return true
 
-def TableEntityFixedCheckBody(v·:TableEntity) -> bool:
-    if (schema_rt.ult(4095, v·.EntityId)):
+def TableEntityFixedCheckBody(v:TableEntity) -> bool:
+    if (schema_rt.ult(4095, v.EntityId)):
         return false
-    if (v·.PosX < -2147483648) or (v·.PosX > 2147483647):
+    if (v.PosX < -2147483648) or (v.PosX > 2147483647):
         return false
-    if (v·.PosX < -16383) or (v·.PosX > 16383):
+    if (v.PosX < -16383) or (v.PosX > 16383):
         return false
-    if (v·.PosY < -2147483648) or (v·.PosY > 2147483647):
+    if (v.PosY < -2147483648) or (v.PosY > 2147483647):
         return false
-    if (v·.PosY < -16383) or (v·.PosY > 16383):
+    if (v.PosY < -16383) or (v.PosY > 16383):
         return false
-    if (v·.PosZ < -2147483648) or (v·.PosZ > 2147483647):
+    if (v.PosZ < -2147483648) or (v.PosZ > 2147483647):
         return false
-    if (v·.PosZ < -16383) or (v·.PosZ > 16383):
+    if (v.PosZ < -16383) or (v.PosZ > 16383):
         return false
-    if (schema_rt.ult(511, v·.Yaw)):
+    if (schema_rt.ult(511, v.Yaw)):
         return false
-    if (schema_rt.ult(511, v·.Pitch)):
+    if (schema_rt.ult(511, v.Pitch)):
         return false
-    if (v·.VelX < -2147483648) or (v·.VelX > 2147483647):
+    if (v.VelX < -2147483648) or (v.VelX > 2147483647):
         return false
-    if (v·.VelX < -2048) or (v·.VelX > 2047):
+    if (v.VelX < -2048) or (v.VelX > 2047):
         return false
-    if (v·.VelY < -2147483648) or (v·.VelY > 2147483647):
+    if (v.VelY < -2147483648) or (v.VelY > 2147483647):
         return false
-    if (v·.VelY < -2048) or (v·.VelY > 2047):
+    if (v.VelY < -2048) or (v.VelY > 2047):
         return false
-    if (v·.VelZ < -2147483648) or (v·.VelZ > 2147483647):
+    if (v.VelZ < -2147483648) or (v.VelZ > 2147483647):
         return false
-    if (v·.VelZ < -2048) or (v·.VelZ > 2047):
+    if (v.VelZ < -2048) or (v.VelZ > 2047):
         return false
-    if (v·.Health < -2147483648) or (v·.Health > 2147483647):
+    if (v.Health < -2147483648) or (v.Health > 2147483647):
         return false
-    if (v·.Health < 0) or (v·.Health > 1000):
+    if (v.Health < 0) or (v.Health > 1000):
         return false
-    if schema_rt.ult(15, int(v·.Weapon)):
+    if schema_rt.ult(15, int(v.Weapon)):
         return false
     return true
 
@@ -3392,9 +3356,9 @@ let TableEntityFixedDst:[schema_rt.TableFixedDst] = [
 ]
 
 def TableEntityFixedBuildPlan() -> schema_rt.TableFixedPlan:
-    let scratch·:[schema_rt.TableFixedEntry] = []
-    TableEntityFixedLeaves(scratch·, 0, 0)
-    return schema_rt.fixed_build_plan(scratch·)
+    let scratch:[schema_rt.TableFixedEntry] = []
+    TableEntityFixedLeaves(scratch, 0, 0)
+    return schema_rt.fixed_build_plan(scratch)
 
 let TableEntityFixedPlan = TableEntityFixedBuildPlan()
 
@@ -3414,162 +3378,160 @@ let TableEntityFixedHoles = schema_rt.fixed_holes(TableEntityFixedPlan.entries, 
 let TableEntityFixedLineageHoles = schema_rt.fixed_lineage_holes(TableEntityFixedLineagePlans, 51)
 let TableEntityFixedPlanMax = schema_rt.fixed_plan_max(TableEntityFixedPlan, TableEntityFixedLineagePlans)
 
-def TableEntityFixedMeasure(count·:int) -> int:
-    return schema_rt.TableFixedHeaderBytes + 4 + 514 + count· * (8 + 51)
+def TableEntityFixedMeasure(count:int) -> int:
+    return schema_rt.TableFixedHeaderBytes + 4 + 514 + count * (8 + 51)
 
-def TableEntityFixedSaveChecked(values·:[TableEntity], buffer·:string) -> int, string, string:
-    if length(values·) == 0:
-        return -1, buffer·, schema_rt.TableRefuseInvalidValue
-    let need· = TableEntityFixedMeasure(length(values·))
-    if length(buffer·) < need·:
-        return -1, buffer·, schema_rt.TableRefuseTruncated
-    for(values·) v·:
-        if not TableEntityFixedCheckBody(v·):
-            return -1, buffer·, schema_rt.TableRefuseInvalidValue
-    let wire· = TableEntityFixedSave(values·)
-    let out· = write_substring(buffer·, 0, wire·, false)
-    return need·, out·, ""
+def TableEntityFixedSaveChecked(values:[TableEntity], buffer:string) -> int, string, string:
+    let need = TableEntityFixedMeasure(length(values))
+    if length(buffer) < need:
+        return -1, buffer, schema_rt.TableRefuseTruncated
+    for(values) v:
+        if not TableEntityFixedCheckBody(v):
+            return -1, buffer, schema_rt.TableRefuseInvalidValue
+    let wire = TableEntityFixedSave(values)
+    let out = write_substring(buffer, 0, wire, false)
+    return need, out, ""
 
-def TableEntityFixedLoad(values·:[TableEntity], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
-    let report· = if report_in·: report_in· else: schema_rt.TableReport {}
-    schema_rt.fixed_reset_report(report·)
-    let data· = data_in·
-    if length(data·) < 1:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableEntityReset(failed·)
+def TableEntityFixedLoad(values:[TableEntity], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
+    let report = if report_in: report_in else: schema_rt.TableReport {}
+    schema_rt.fixed_reset_report(report)
+    let data = data_in
+    if length(data) < 1:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableEntityReset(failed)
         return -1
-    let form· = read_uint8_le(data·, 0)
-    if form· != schema_rt.TableFixedForm:
-        if form· == 1:
-            for(values·) failed·: TableEntityReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePreviousForm)
-        if form· == 2:
-            for(values·) failed·: TableEntityReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseMessageFormAsFile)
-        for(values·) failed·: TableEntityReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseNewerForm)
-    if length(data·) < schema_rt.TableFixedHeaderBytes + 4:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableEntityReset(failed·)
+    let form = read_uint8_le(data, 0)
+    if form != schema_rt.TableFixedForm:
+        if form == 1:
+            for(values) failed: TableEntityReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefusePreviousForm)
+        if form == 2:
+            for(values) failed: TableEntityReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseMessageFormAsFile)
+        for(values) failed: TableEntityReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNewerForm)
+    if length(data) < schema_rt.TableFixedHeaderBytes + 4:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableEntityReset(failed)
         return -1
-    var r_idx· = 1
-    while r_idx· < schema_rt.TableFixedHashAt:
-        if read_uint8_le(data·, r_idx·) != 0:
-            report·.malformed = true
-            report·.reason = schema_rt.TableRefuseReservedNotZero
-            for(values·) failed·: TableEntityReset(failed·)
+    var r_idx = 1
+    while r_idx < schema_rt.TableFixedHashAt:
+        if read_uint8_le(data, r_idx) != 0:
+            report.malformed = true
+            report.reason = schema_rt.TableRefuseReservedNotZero
+            for(values) failed: TableEntityReset(failed)
             return -1
-        r_idx· += 1
-    let layout_bytes· = read_uint32_le(data·, schema_rt.TableFixedHeaderBytes)
-    if layout_bytes· < 0 or layout_bytes· + schema_rt.TableFixedHeaderBytes + 4 > length(data·):
-        for(values·) failed·: TableEntityReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    let hash· = read_uint64_le(data·, schema_rt.TableFixedHashAt)
-    let pick· = schema_rt.fixed_select(TableEntityFixedKnown, hash·)
-    if pick· < 0:
-        for(values·) failed·: TableEntityReset(failed·)
-        return schema_rt.fixed_refuse_hash(report·, schema_rt.TableRefuseLayoutUnknown, hash·)
-    if pick· < TableEntityFixedFloor:
-        for(values·) failed·: TableEntityReset(failed·)
-        return schema_rt.fixed_refuse_hash(report·, schema_rt.TableRefuseLayoutUnsupported, hash·)
-    let known· = TableEntityFixedKnown[pick·]
-    if layout_bytes· != known·.layout_bytes:
-        for(values·) failed·: TableEntityReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    for(layout_bytes·) l_i·:
-        if read_uint8_le(data·, schema_rt.TableFixedHeaderBytes + 4 + l_i·) != read_uint8_le(known·.layout, l_i·):
-            for(values·) failed·: TableEntityReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    var entries· = TableEntityFixedPlan.entries
-    var entry_count· = TableEntityFixedPlan.count
-    var holes· = TableEntityFixedHoles
-    let record_bytes· = known·.record
-    var census_unknown· = 0
-    var census_kind· = 0
-    if hash· != TableEntityFixedHash:
-        let lane· = TableEntityFixedLineagePlans[pick·]
-        if lane·.why != "":
-            for(values·) failed·: TableEntityReset(failed·)
-            return schema_rt.fixed_refuse(report·, lane·.why)
-        entries· = lane·.entries
-        entry_count· = lane·.count
-        holes· = TableEntityFixedLineageHoles[pick·]
-        census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        for(values·) failed·: TableEntityReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
-    if entry_count· > length(plan·):
-        for(values·) failed·: TableEntityReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
-    let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
-    let rest· = length(data·) - records_start·
-    if rest· == 0 or record_bytes· <= 8 or (rest· % record_bytes·) != 0:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableEntityReset(failed·)
+        r_idx += 1
+    let layout_bytes = read_uint32_le(data, schema_rt.TableFixedHeaderBytes)
+    if layout_bytes < 0 or layout_bytes + schema_rt.TableFixedHeaderBytes + 4 > length(data):
+        for(values) failed: TableEntityReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    let hash = read_uint64_le(data, schema_rt.TableFixedHashAt)
+    let pick = schema_rt.fixed_select(TableEntityFixedKnown, hash)
+    if pick < 0:
+        for(values) failed: TableEntityReset(failed)
+        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnknown, hash)
+    if pick < TableEntityFixedFloor:
+        for(values) failed: TableEntityReset(failed)
+        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnsupported, hash)
+    let known = TableEntityFixedKnown[pick]
+    if layout_bytes != known.layout_bytes:
+        for(values) failed: TableEntityReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    for(layout_bytes) l_i:
+        if read_uint8_le(data, schema_rt.TableFixedHeaderBytes + 4 + l_i) != read_uint8_le(known.layout, l_i):
+            for(values) failed: TableEntityReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    var entries = TableEntityFixedPlan.entries
+    var entry_count = TableEntityFixedPlan.count
+    var holes = TableEntityFixedHoles
+    let record_bytes = known.record
+    var census_unknown = 0
+    var census_kind = 0
+    if hash != TableEntityFixedHash:
+        let lane = TableEntityFixedLineagePlans[pick]
+        if lane.why != "":
+            for(values) failed: TableEntityReset(failed)
+            return schema_rt.fixed_refuse(report, lane.why)
+        entries = lane.entries
+        entry_count = lane.count
+        holes = TableEntityFixedLineageHoles[pick]
+        census_unknown = lane.unknown
+        census_kind = lane.kind_mismatch
+    if census_kind != 0:
+        for(values) failed: TableEntityReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)
+    if entry_count > length(plan):
+        for(values) failed: TableEntityReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
+    let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
+    let rest = length(data) - records_start
+    if record_bytes <= 8 or (rest % record_bytes) != 0:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableEntityReset(failed)
         return -1
-    let n· = rest· / record_bytes·
-    if n· > length(values·):
-        for(values·) failed·: TableEntityReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseBatchTooLarge)
-    for(n·) k·:
-        let rec_at· = records_start· + k· * record_bytes·
-        if read_uint64_le(data·, rec_at·) != hash·:
-            for(values·) failed·: TableEntityReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseNoLayout)
-        let why· = schema_rt.fixed_value_refusal(entries·, entry_count·, data·, rec_at· + 8)
-        if why· != "":
-            for(values·) failed·: TableEntityReset(failed·)
-            return schema_rt.fixed_refuse(report·, why·)
-    for(n·) k·:
-        let rec_at· = records_start· + k· * record_bytes·
-        var img· = schema_rt.fixed_prefill_holes(schema_rt.zeros(51), TableEntityFixedResetImage, holes·)
-        let img2·, why· = schema_rt.fixed_run(entries·, entry_count·, data·, rec_at· + 8, img·, report·)
-        if why· != "":
-            for(values·) failed·: TableEntityReset(failed·)
-            return schema_rt.fixed_refuse(report·, why·)
-        img· = img2·
-        TableEntityFixedScatter(img·, 0, values·[k·])
-        if not TableEntityFixedBoundsBody(values·[k·]):
-            for(values·) failed·: TableEntityReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
-    report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
-    return n·
+    let n = rest / record_bytes
+    if n > length(values):
+        for(values) failed: TableEntityReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseBatchTooLarge)
+    for(n) k:
+        let rec_at = records_start + k * record_bytes
+        if read_uint64_le(data, rec_at) != hash:
+            for(values) failed: TableEntityReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNoLayout)
+        let why = schema_rt.fixed_value_refusal(entries, entry_count, data, rec_at + 8)
+        if why != "":
+            for(values) failed: TableEntityReset(failed)
+            return schema_rt.fixed_refuse(report, why)
+    for(n) k:
+        let rec_at = records_start + k * record_bytes
+        var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(51), TableEntityFixedResetImage, holes)
+        let img2, why = schema_rt.fixed_run(entries, entry_count, data, rec_at + 8, img, report)
+        if why != "":
+            for(values) failed: TableEntityReset(failed)
+            return schema_rt.fixed_refuse(report, why)
+        img = img2
+        TableEntityFixedScatter(img, 0, values[k])
+        if not TableEntityFixedBoundsBody(values[k]):
+            for(values) failed: TableEntityReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseOutOfRange)
+    report.unknown += census_unknown
+    report.kind_mismatch += census_kind
+    return n
 
 // TableStatReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
-def TableStatReset(v·:TableStat):
-    v·.StatId = 0
-    v·.Delta = 0
+def TableStatReset(v:TableStat):
+    v.StatId = 0
+    v.Delta = 0
 
-def TableStatFixedLeaves(out·:[schema_rt.TableFixedEntry], src·:int, dst·:int) -> int:
-    push(out·, schema_rt.TableFixedEntry { src: src· + 0, dst: dst· + 0, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 4, dst: dst· + 4, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    return length(out·)
+def TableStatFixedLeaves(out:[schema_rt.TableFixedEntry], src:int, dst:int) -> int:
+    push(out, schema_rt.TableFixedEntry { src: src + 0, dst: dst + 0, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 4, dst: dst + 4, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    return length(out)
 
 // TableStatFixedScatter reads one canonical flat body image at at into v in place.
-def TableStatFixedScatter(data·:string, at·:int, v·:TableStat):
-    v·.StatId = read_uint32_le(data·, at· + 0)
-    v·.Delta = read_int32_le(data·, at· + 4)
+def TableStatFixedScatter(data:string, at:int, v:TableStat):
+    v.StatId = read_uint32_le(data, at + 0)
+    v.Delta = read_int32_le(data, at + 4)
 
-def TableStatFixedBoundsBody(v·:TableStat) -> bool:
-    if (schema_rt.ult(255, v·.StatId)):
+def TableStatFixedBoundsBody(v:TableStat) -> bool:
+    if (schema_rt.ult(255, v.StatId)):
         return false
-    if (v·.Delta < -2147483648) or (v·.Delta > 2147483647):
+    if (v.Delta < -2147483648) or (v.Delta > 2147483647):
         return false
-    if (v·.Delta < -512) or (v·.Delta > 511):
+    if (v.Delta < -512) or (v.Delta > 511):
         return false
     return true
 
-def TableStatFixedCheckBody(v·:TableStat) -> bool:
-    if (schema_rt.ult(255, v·.StatId)):
+def TableStatFixedCheckBody(v:TableStat) -> bool:
+    if (schema_rt.ult(255, v.StatId)):
         return false
-    if (v·.Delta < -2147483648) or (v·.Delta > 2147483647):
+    if (v.Delta < -2147483648) or (v.Delta > 2147483647):
         return false
-    if (v·.Delta < -512) or (v·.Delta > 511):
+    if (v.Delta < -512) or (v.Delta > 511):
         return false
     return true
 
@@ -3581,9 +3543,9 @@ let TableStatFixedDst:[schema_rt.TableFixedDst] = [
 ]
 
 def TableStatFixedBuildPlan() -> schema_rt.TableFixedPlan:
-    let scratch·:[schema_rt.TableFixedEntry] = []
-    TableStatFixedLeaves(scratch·, 0, 0)
-    return schema_rt.fixed_build_plan(scratch·)
+    let scratch:[schema_rt.TableFixedEntry] = []
+    TableStatFixedLeaves(scratch, 0, 0)
+    return schema_rt.fixed_build_plan(scratch)
 
 let TableStatFixedPlan = TableStatFixedBuildPlan()
 
@@ -3603,176 +3565,174 @@ let TableStatFixedHoles = schema_rt.fixed_holes(TableStatFixedPlan.entries, Tabl
 let TableStatFixedLineageHoles = schema_rt.fixed_lineage_holes(TableStatFixedLineagePlans, 8)
 let TableStatFixedPlanMax = schema_rt.fixed_plan_max(TableStatFixedPlan, TableStatFixedLineagePlans)
 
-def TableStatFixedMeasure(count·:int) -> int:
-    return schema_rt.TableFixedHeaderBytes + 4 + 55 + count· * (8 + 8)
+def TableStatFixedMeasure(count:int) -> int:
+    return schema_rt.TableFixedHeaderBytes + 4 + 55 + count * (8 + 8)
 
-def TableStatFixedSaveChecked(values·:[TableStat], buffer·:string) -> int, string, string:
-    if length(values·) == 0:
-        return -1, buffer·, schema_rt.TableRefuseInvalidValue
-    let need· = TableStatFixedMeasure(length(values·))
-    if length(buffer·) < need·:
-        return -1, buffer·, schema_rt.TableRefuseTruncated
-    for(values·) v·:
-        if not TableStatFixedCheckBody(v·):
-            return -1, buffer·, schema_rt.TableRefuseInvalidValue
-    let wire· = TableStatFixedSave(values·)
-    let out· = write_substring(buffer·, 0, wire·, false)
-    return need·, out·, ""
+def TableStatFixedSaveChecked(values:[TableStat], buffer:string) -> int, string, string:
+    let need = TableStatFixedMeasure(length(values))
+    if length(buffer) < need:
+        return -1, buffer, schema_rt.TableRefuseTruncated
+    for(values) v:
+        if not TableStatFixedCheckBody(v):
+            return -1, buffer, schema_rt.TableRefuseInvalidValue
+    let wire = TableStatFixedSave(values)
+    let out = write_substring(buffer, 0, wire, false)
+    return need, out, ""
 
-def TableStatFixedLoad(values·:[TableStat], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
-    let report· = if report_in·: report_in· else: schema_rt.TableReport {}
-    schema_rt.fixed_reset_report(report·)
-    let data· = data_in·
-    if length(data·) < 1:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableStatReset(failed·)
+def TableStatFixedLoad(values:[TableStat], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
+    let report = if report_in: report_in else: schema_rt.TableReport {}
+    schema_rt.fixed_reset_report(report)
+    let data = data_in
+    if length(data) < 1:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableStatReset(failed)
         return -1
-    let form· = read_uint8_le(data·, 0)
-    if form· != schema_rt.TableFixedForm:
-        if form· == 1:
-            for(values·) failed·: TableStatReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePreviousForm)
-        if form· == 2:
-            for(values·) failed·: TableStatReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseMessageFormAsFile)
-        for(values·) failed·: TableStatReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseNewerForm)
-    if length(data·) < schema_rt.TableFixedHeaderBytes + 4:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableStatReset(failed·)
+    let form = read_uint8_le(data, 0)
+    if form != schema_rt.TableFixedForm:
+        if form == 1:
+            for(values) failed: TableStatReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefusePreviousForm)
+        if form == 2:
+            for(values) failed: TableStatReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseMessageFormAsFile)
+        for(values) failed: TableStatReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNewerForm)
+    if length(data) < schema_rt.TableFixedHeaderBytes + 4:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableStatReset(failed)
         return -1
-    var r_idx· = 1
-    while r_idx· < schema_rt.TableFixedHashAt:
-        if read_uint8_le(data·, r_idx·) != 0:
-            report·.malformed = true
-            report·.reason = schema_rt.TableRefuseReservedNotZero
-            for(values·) failed·: TableStatReset(failed·)
+    var r_idx = 1
+    while r_idx < schema_rt.TableFixedHashAt:
+        if read_uint8_le(data, r_idx) != 0:
+            report.malformed = true
+            report.reason = schema_rt.TableRefuseReservedNotZero
+            for(values) failed: TableStatReset(failed)
             return -1
-        r_idx· += 1
-    let layout_bytes· = read_uint32_le(data·, schema_rt.TableFixedHeaderBytes)
-    if layout_bytes· < 0 or layout_bytes· + schema_rt.TableFixedHeaderBytes + 4 > length(data·):
-        for(values·) failed·: TableStatReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    let hash· = read_uint64_le(data·, schema_rt.TableFixedHashAt)
-    let pick· = schema_rt.fixed_select(TableStatFixedKnown, hash·)
-    if pick· < 0:
-        for(values·) failed·: TableStatReset(failed·)
-        return schema_rt.fixed_refuse_hash(report·, schema_rt.TableRefuseLayoutUnknown, hash·)
-    if pick· < TableStatFixedFloor:
-        for(values·) failed·: TableStatReset(failed·)
-        return schema_rt.fixed_refuse_hash(report·, schema_rt.TableRefuseLayoutUnsupported, hash·)
-    let known· = TableStatFixedKnown[pick·]
-    if layout_bytes· != known·.layout_bytes:
-        for(values·) failed·: TableStatReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    for(layout_bytes·) l_i·:
-        if read_uint8_le(data·, schema_rt.TableFixedHeaderBytes + 4 + l_i·) != read_uint8_le(known·.layout, l_i·):
-            for(values·) failed·: TableStatReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    var entries· = TableStatFixedPlan.entries
-    var entry_count· = TableStatFixedPlan.count
-    var holes· = TableStatFixedHoles
-    let record_bytes· = known·.record
-    var census_unknown· = 0
-    var census_kind· = 0
-    if hash· != TableStatFixedHash:
-        let lane· = TableStatFixedLineagePlans[pick·]
-        if lane·.why != "":
-            for(values·) failed·: TableStatReset(failed·)
-            return schema_rt.fixed_refuse(report·, lane·.why)
-        entries· = lane·.entries
-        entry_count· = lane·.count
-        holes· = TableStatFixedLineageHoles[pick·]
-        census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        for(values·) failed·: TableStatReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
-    if entry_count· > length(plan·):
-        for(values·) failed·: TableStatReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
-    let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
-    let rest· = length(data·) - records_start·
-    if rest· == 0 or record_bytes· <= 8 or (rest· % record_bytes·) != 0:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableStatReset(failed·)
+        r_idx += 1
+    let layout_bytes = read_uint32_le(data, schema_rt.TableFixedHeaderBytes)
+    if layout_bytes < 0 or layout_bytes + schema_rt.TableFixedHeaderBytes + 4 > length(data):
+        for(values) failed: TableStatReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    let hash = read_uint64_le(data, schema_rt.TableFixedHashAt)
+    let pick = schema_rt.fixed_select(TableStatFixedKnown, hash)
+    if pick < 0:
+        for(values) failed: TableStatReset(failed)
+        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnknown, hash)
+    if pick < TableStatFixedFloor:
+        for(values) failed: TableStatReset(failed)
+        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnsupported, hash)
+    let known = TableStatFixedKnown[pick]
+    if layout_bytes != known.layout_bytes:
+        for(values) failed: TableStatReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    for(layout_bytes) l_i:
+        if read_uint8_le(data, schema_rt.TableFixedHeaderBytes + 4 + l_i) != read_uint8_le(known.layout, l_i):
+            for(values) failed: TableStatReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    var entries = TableStatFixedPlan.entries
+    var entry_count = TableStatFixedPlan.count
+    var holes = TableStatFixedHoles
+    let record_bytes = known.record
+    var census_unknown = 0
+    var census_kind = 0
+    if hash != TableStatFixedHash:
+        let lane = TableStatFixedLineagePlans[pick]
+        if lane.why != "":
+            for(values) failed: TableStatReset(failed)
+            return schema_rt.fixed_refuse(report, lane.why)
+        entries = lane.entries
+        entry_count = lane.count
+        holes = TableStatFixedLineageHoles[pick]
+        census_unknown = lane.unknown
+        census_kind = lane.kind_mismatch
+    if census_kind != 0:
+        for(values) failed: TableStatReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)
+    if entry_count > length(plan):
+        for(values) failed: TableStatReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
+    let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
+    let rest = length(data) - records_start
+    if record_bytes <= 8 or (rest % record_bytes) != 0:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableStatReset(failed)
         return -1
-    let n· = rest· / record_bytes·
-    if n· > length(values·):
-        for(values·) failed·: TableStatReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseBatchTooLarge)
-    for(n·) k·:
-        let rec_at· = records_start· + k· * record_bytes·
-        if read_uint64_le(data·, rec_at·) != hash·:
-            for(values·) failed·: TableStatReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseNoLayout)
-        let why· = schema_rt.fixed_value_refusal(entries·, entry_count·, data·, rec_at· + 8)
-        if why· != "":
-            for(values·) failed·: TableStatReset(failed·)
-            return schema_rt.fixed_refuse(report·, why·)
-    for(n·) k·:
-        let rec_at· = records_start· + k· * record_bytes·
-        var img· = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TableStatFixedResetImage, holes·)
-        let img2·, why· = schema_rt.fixed_run(entries·, entry_count·, data·, rec_at· + 8, img·, report·)
-        if why· != "":
-            for(values·) failed·: TableStatReset(failed·)
-            return schema_rt.fixed_refuse(report·, why·)
-        img· = img2·
-        TableStatFixedScatter(img·, 0, values·[k·])
-        if not TableStatFixedBoundsBody(values·[k·]):
-            for(values·) failed·: TableStatReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
-    report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
-    return n·
+    let n = rest / record_bytes
+    if n > length(values):
+        for(values) failed: TableStatReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseBatchTooLarge)
+    for(n) k:
+        let rec_at = records_start + k * record_bytes
+        if read_uint64_le(data, rec_at) != hash:
+            for(values) failed: TableStatReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNoLayout)
+        let why = schema_rt.fixed_value_refusal(entries, entry_count, data, rec_at + 8)
+        if why != "":
+            for(values) failed: TableStatReset(failed)
+            return schema_rt.fixed_refuse(report, why)
+    for(n) k:
+        let rec_at = records_start + k * record_bytes
+        var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TableStatFixedResetImage, holes)
+        let img2, why = schema_rt.fixed_run(entries, entry_count, data, rec_at + 8, img, report)
+        if why != "":
+            for(values) failed: TableStatReset(failed)
+            return schema_rt.fixed_refuse(report, why)
+        img = img2
+        TableStatFixedScatter(img, 0, values[k])
+        if not TableStatFixedBoundsBody(values[k]):
+            for(values) failed: TableStatReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseOutOfRange)
+    report.unknown += census_unknown
+    report.kind_mismatch += census_kind
+    return n
 
 // TableHitEventReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
-def TableHitEventReset(v·:TableHitEvent):
-    v·.TargetId = 0
-    v·.Damage = 0
-    v·.HitKind = 0
-    v·.Crit = false
+def TableHitEventReset(v:TableHitEvent):
+    v.TargetId = 0
+    v.Damage = 0
+    v.HitKind = 0
+    v.Crit = false
 
-def TableHitEventFixedLeaves(out·:[schema_rt.TableFixedEntry], src·:int, dst·:int) -> int:
-    push(out·, schema_rt.TableFixedEntry { src: src· + 0, dst: dst· + 0, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 4, dst: dst· + 4, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 8, dst: dst· + 8, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 12, dst: dst· + 12, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedBool })
-    return length(out·)
+def TableHitEventFixedLeaves(out:[schema_rt.TableFixedEntry], src:int, dst:int) -> int:
+    push(out, schema_rt.TableFixedEntry { src: src + 0, dst: dst + 0, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 4, dst: dst + 4, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 8, dst: dst + 8, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 12, dst: dst + 12, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedBool })
+    return length(out)
 
 // TableHitEventFixedScatter reads one canonical flat body image at at into v in place.
-def TableHitEventFixedScatter(data·:string, at·:int, v·:TableHitEvent):
-    v·.TargetId = read_uint32_le(data·, at· + 0)
-    v·.Damage = read_int32_le(data·, at· + 4)
-    v·.HitKind = read_int32_le(data·, at· + 8)
-    v·.Crit = read_uint8_le(data·, at· + 12) != 0
+def TableHitEventFixedScatter(data:string, at:int, v:TableHitEvent):
+    v.TargetId = read_uint32_le(data, at + 0)
+    v.Damage = read_int32_le(data, at + 4)
+    v.HitKind = read_int32_le(data, at + 8)
+    v.Crit = read_uint8_le(data, at + 12) != 0
 
-def TableHitEventFixedBoundsBody(v·:TableHitEvent) -> bool:
-    if (schema_rt.ult(4095, v·.TargetId)):
+def TableHitEventFixedBoundsBody(v:TableHitEvent) -> bool:
+    if (schema_rt.ult(4095, v.TargetId)):
         return false
-    if (v·.Damage < -2147483648) or (v·.Damage > 2147483647):
+    if (v.Damage < -2147483648) or (v.Damage > 2147483647):
         return false
-    if (v·.Damage < 0) or (v·.Damage > 4095):
+    if (v.Damage < 0) or (v.Damage > 4095):
         return false
-    if (v·.HitKind < -2147483648) or (v·.HitKind > 2147483647):
+    if (v.HitKind < -2147483648) or (v.HitKind > 2147483647):
         return false
-    if (v·.HitKind < 0) or (v·.HitKind > 7):
+    if (v.HitKind < 0) or (v.HitKind > 7):
         return false
     return true
 
-def TableHitEventFixedCheckBody(v·:TableHitEvent) -> bool:
-    if (schema_rt.ult(4095, v·.TargetId)):
+def TableHitEventFixedCheckBody(v:TableHitEvent) -> bool:
+    if (schema_rt.ult(4095, v.TargetId)):
         return false
-    if (v·.Damage < -2147483648) or (v·.Damage > 2147483647):
+    if (v.Damage < -2147483648) or (v.Damage > 2147483647):
         return false
-    if (v·.Damage < 0) or (v·.Damage > 4095):
+    if (v.Damage < 0) or (v.Damage > 4095):
         return false
-    if (v·.HitKind < -2147483648) or (v·.HitKind > 2147483647):
+    if (v.HitKind < -2147483648) or (v.HitKind > 2147483647):
         return false
-    if (v·.HitKind < 0) or (v·.HitKind > 7):
+    if (v.HitKind < 0) or (v.HitKind > 7):
         return false
     return true
 
@@ -3786,9 +3746,9 @@ let TableHitEventFixedDst:[schema_rt.TableFixedDst] = [
 ]
 
 def TableHitEventFixedBuildPlan() -> schema_rt.TableFixedPlan:
-    let scratch·:[schema_rt.TableFixedEntry] = []
-    TableHitEventFixedLeaves(scratch·, 0, 0)
-    return schema_rt.fixed_build_plan(scratch·)
+    let scratch:[schema_rt.TableFixedEntry] = []
+    TableHitEventFixedLeaves(scratch, 0, 0)
+    return schema_rt.fixed_build_plan(scratch)
 
 let TableHitEventFixedPlan = TableHitEventFixedBuildPlan()
 
@@ -3808,162 +3768,160 @@ let TableHitEventFixedHoles = schema_rt.fixed_holes(TableHitEventFixedPlan.entri
 let TableHitEventFixedLineageHoles = schema_rt.fixed_lineage_holes(TableHitEventFixedLineagePlans, 13)
 let TableHitEventFixedPlanMax = schema_rt.fixed_plan_max(TableHitEventFixedPlan, TableHitEventFixedLineagePlans)
 
-def TableHitEventFixedMeasure(count·:int) -> int:
-    return schema_rt.TableFixedHeaderBytes + 4 + 89 + count· * (8 + 13)
+def TableHitEventFixedMeasure(count:int) -> int:
+    return schema_rt.TableFixedHeaderBytes + 4 + 89 + count * (8 + 13)
 
-def TableHitEventFixedSaveChecked(values·:[TableHitEvent], buffer·:string) -> int, string, string:
-    if length(values·) == 0:
-        return -1, buffer·, schema_rt.TableRefuseInvalidValue
-    let need· = TableHitEventFixedMeasure(length(values·))
-    if length(buffer·) < need·:
-        return -1, buffer·, schema_rt.TableRefuseTruncated
-    for(values·) v·:
-        if not TableHitEventFixedCheckBody(v·):
-            return -1, buffer·, schema_rt.TableRefuseInvalidValue
-    let wire· = TableHitEventFixedSave(values·)
-    let out· = write_substring(buffer·, 0, wire·, false)
-    return need·, out·, ""
+def TableHitEventFixedSaveChecked(values:[TableHitEvent], buffer:string) -> int, string, string:
+    let need = TableHitEventFixedMeasure(length(values))
+    if length(buffer) < need:
+        return -1, buffer, schema_rt.TableRefuseTruncated
+    for(values) v:
+        if not TableHitEventFixedCheckBody(v):
+            return -1, buffer, schema_rt.TableRefuseInvalidValue
+    let wire = TableHitEventFixedSave(values)
+    let out = write_substring(buffer, 0, wire, false)
+    return need, out, ""
 
-def TableHitEventFixedLoad(values·:[TableHitEvent], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
-    let report· = if report_in·: report_in· else: schema_rt.TableReport {}
-    schema_rt.fixed_reset_report(report·)
-    let data· = data_in·
-    if length(data·) < 1:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableHitEventReset(failed·)
+def TableHitEventFixedLoad(values:[TableHitEvent], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
+    let report = if report_in: report_in else: schema_rt.TableReport {}
+    schema_rt.fixed_reset_report(report)
+    let data = data_in
+    if length(data) < 1:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableHitEventReset(failed)
         return -1
-    let form· = read_uint8_le(data·, 0)
-    if form· != schema_rt.TableFixedForm:
-        if form· == 1:
-            for(values·) failed·: TableHitEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePreviousForm)
-        if form· == 2:
-            for(values·) failed·: TableHitEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseMessageFormAsFile)
-        for(values·) failed·: TableHitEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseNewerForm)
-    if length(data·) < schema_rt.TableFixedHeaderBytes + 4:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableHitEventReset(failed·)
+    let form = read_uint8_le(data, 0)
+    if form != schema_rt.TableFixedForm:
+        if form == 1:
+            for(values) failed: TableHitEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefusePreviousForm)
+        if form == 2:
+            for(values) failed: TableHitEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseMessageFormAsFile)
+        for(values) failed: TableHitEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNewerForm)
+    if length(data) < schema_rt.TableFixedHeaderBytes + 4:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableHitEventReset(failed)
         return -1
-    var r_idx· = 1
-    while r_idx· < schema_rt.TableFixedHashAt:
-        if read_uint8_le(data·, r_idx·) != 0:
-            report·.malformed = true
-            report·.reason = schema_rt.TableRefuseReservedNotZero
-            for(values·) failed·: TableHitEventReset(failed·)
+    var r_idx = 1
+    while r_idx < schema_rt.TableFixedHashAt:
+        if read_uint8_le(data, r_idx) != 0:
+            report.malformed = true
+            report.reason = schema_rt.TableRefuseReservedNotZero
+            for(values) failed: TableHitEventReset(failed)
             return -1
-        r_idx· += 1
-    let layout_bytes· = read_uint32_le(data·, schema_rt.TableFixedHeaderBytes)
-    if layout_bytes· < 0 or layout_bytes· + schema_rt.TableFixedHeaderBytes + 4 > length(data·):
-        for(values·) failed·: TableHitEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    let hash· = read_uint64_le(data·, schema_rt.TableFixedHashAt)
-    let pick· = schema_rt.fixed_select(TableHitEventFixedKnown, hash·)
-    if pick· < 0:
-        for(values·) failed·: TableHitEventReset(failed·)
-        return schema_rt.fixed_refuse_hash(report·, schema_rt.TableRefuseLayoutUnknown, hash·)
-    if pick· < TableHitEventFixedFloor:
-        for(values·) failed·: TableHitEventReset(failed·)
-        return schema_rt.fixed_refuse_hash(report·, schema_rt.TableRefuseLayoutUnsupported, hash·)
-    let known· = TableHitEventFixedKnown[pick·]
-    if layout_bytes· != known·.layout_bytes:
-        for(values·) failed·: TableHitEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    for(layout_bytes·) l_i·:
-        if read_uint8_le(data·, schema_rt.TableFixedHeaderBytes + 4 + l_i·) != read_uint8_le(known·.layout, l_i·):
-            for(values·) failed·: TableHitEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    var entries· = TableHitEventFixedPlan.entries
-    var entry_count· = TableHitEventFixedPlan.count
-    var holes· = TableHitEventFixedHoles
-    let record_bytes· = known·.record
-    var census_unknown· = 0
-    var census_kind· = 0
-    if hash· != TableHitEventFixedHash:
-        let lane· = TableHitEventFixedLineagePlans[pick·]
-        if lane·.why != "":
-            for(values·) failed·: TableHitEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, lane·.why)
-        entries· = lane·.entries
-        entry_count· = lane·.count
-        holes· = TableHitEventFixedLineageHoles[pick·]
-        census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        for(values·) failed·: TableHitEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
-    if entry_count· > length(plan·):
-        for(values·) failed·: TableHitEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
-    let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
-    let rest· = length(data·) - records_start·
-    if rest· == 0 or record_bytes· <= 8 or (rest· % record_bytes·) != 0:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableHitEventReset(failed·)
+        r_idx += 1
+    let layout_bytes = read_uint32_le(data, schema_rt.TableFixedHeaderBytes)
+    if layout_bytes < 0 or layout_bytes + schema_rt.TableFixedHeaderBytes + 4 > length(data):
+        for(values) failed: TableHitEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    let hash = read_uint64_le(data, schema_rt.TableFixedHashAt)
+    let pick = schema_rt.fixed_select(TableHitEventFixedKnown, hash)
+    if pick < 0:
+        for(values) failed: TableHitEventReset(failed)
+        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnknown, hash)
+    if pick < TableHitEventFixedFloor:
+        for(values) failed: TableHitEventReset(failed)
+        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnsupported, hash)
+    let known = TableHitEventFixedKnown[pick]
+    if layout_bytes != known.layout_bytes:
+        for(values) failed: TableHitEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    for(layout_bytes) l_i:
+        if read_uint8_le(data, schema_rt.TableFixedHeaderBytes + 4 + l_i) != read_uint8_le(known.layout, l_i):
+            for(values) failed: TableHitEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    var entries = TableHitEventFixedPlan.entries
+    var entry_count = TableHitEventFixedPlan.count
+    var holes = TableHitEventFixedHoles
+    let record_bytes = known.record
+    var census_unknown = 0
+    var census_kind = 0
+    if hash != TableHitEventFixedHash:
+        let lane = TableHitEventFixedLineagePlans[pick]
+        if lane.why != "":
+            for(values) failed: TableHitEventReset(failed)
+            return schema_rt.fixed_refuse(report, lane.why)
+        entries = lane.entries
+        entry_count = lane.count
+        holes = TableHitEventFixedLineageHoles[pick]
+        census_unknown = lane.unknown
+        census_kind = lane.kind_mismatch
+    if census_kind != 0:
+        for(values) failed: TableHitEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)
+    if entry_count > length(plan):
+        for(values) failed: TableHitEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
+    let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
+    let rest = length(data) - records_start
+    if record_bytes <= 8 or (rest % record_bytes) != 0:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableHitEventReset(failed)
         return -1
-    let n· = rest· / record_bytes·
-    if n· > length(values·):
-        for(values·) failed·: TableHitEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseBatchTooLarge)
-    for(n·) k·:
-        let rec_at· = records_start· + k· * record_bytes·
-        if read_uint64_le(data·, rec_at·) != hash·:
-            for(values·) failed·: TableHitEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseNoLayout)
-        let why· = schema_rt.fixed_value_refusal(entries·, entry_count·, data·, rec_at· + 8)
-        if why· != "":
-            for(values·) failed·: TableHitEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, why·)
-    for(n·) k·:
-        let rec_at· = records_start· + k· * record_bytes·
-        var img· = schema_rt.fixed_prefill_holes(schema_rt.zeros(13), TableHitEventFixedResetImage, holes·)
-        let img2·, why· = schema_rt.fixed_run(entries·, entry_count·, data·, rec_at· + 8, img·, report·)
-        if why· != "":
-            for(values·) failed·: TableHitEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, why·)
-        img· = img2·
-        TableHitEventFixedScatter(img·, 0, values·[k·])
-        if not TableHitEventFixedBoundsBody(values·[k·]):
-            for(values·) failed·: TableHitEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
-    report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
-    return n·
+    let n = rest / record_bytes
+    if n > length(values):
+        for(values) failed: TableHitEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseBatchTooLarge)
+    for(n) k:
+        let rec_at = records_start + k * record_bytes
+        if read_uint64_le(data, rec_at) != hash:
+            for(values) failed: TableHitEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNoLayout)
+        let why = schema_rt.fixed_value_refusal(entries, entry_count, data, rec_at + 8)
+        if why != "":
+            for(values) failed: TableHitEventReset(failed)
+            return schema_rt.fixed_refuse(report, why)
+    for(n) k:
+        let rec_at = records_start + k * record_bytes
+        var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(13), TableHitEventFixedResetImage, holes)
+        let img2, why = schema_rt.fixed_run(entries, entry_count, data, rec_at + 8, img, report)
+        if why != "":
+            for(values) failed: TableHitEventReset(failed)
+            return schema_rt.fixed_refuse(report, why)
+        img = img2
+        TableHitEventFixedScatter(img, 0, values[k])
+        if not TableHitEventFixedBoundsBody(values[k]):
+            for(values) failed: TableHitEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseOutOfRange)
+    report.unknown += census_unknown
+    report.kind_mismatch += census_kind
+    return n
 
 // TableChatEventReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
-def TableChatEventReset(v·:TableChatEvent):
-    v·.Channel = 0
-    v·.Speaker = 0
+def TableChatEventReset(v:TableChatEvent):
+    v.Channel = 0
+    v.Speaker = 0
 
-def TableChatEventFixedLeaves(out·:[schema_rt.TableFixedEntry], src·:int, dst·:int) -> int:
-    push(out·, schema_rt.TableFixedEntry { src: src· + 0, dst: dst· + 0, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 4, dst: dst· + 4, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    return length(out·)
+def TableChatEventFixedLeaves(out:[schema_rt.TableFixedEntry], src:int, dst:int) -> int:
+    push(out, schema_rt.TableFixedEntry { src: src + 0, dst: dst + 0, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 4, dst: dst + 4, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    return length(out)
 
 // TableChatEventFixedScatter reads one canonical flat body image at at into v in place.
-def TableChatEventFixedScatter(data·:string, at·:int, v·:TableChatEvent):
-    v·.Channel = read_int32_le(data·, at· + 0)
-    v·.Speaker = read_uint32_le(data·, at· + 4)
+def TableChatEventFixedScatter(data:string, at:int, v:TableChatEvent):
+    v.Channel = read_int32_le(data, at + 0)
+    v.Speaker = read_uint32_le(data, at + 4)
 
-def TableChatEventFixedBoundsBody(v·:TableChatEvent) -> bool:
-    if (v·.Channel < -2147483648) or (v·.Channel > 2147483647):
+def TableChatEventFixedBoundsBody(v:TableChatEvent) -> bool:
+    if (v.Channel < -2147483648) or (v.Channel > 2147483647):
         return false
-    if (v·.Channel < 0) or (v·.Channel > 3):
+    if (v.Channel < 0) or (v.Channel > 3):
         return false
-    if (schema_rt.ult(4095, v·.Speaker)):
+    if (schema_rt.ult(4095, v.Speaker)):
         return false
     return true
 
-def TableChatEventFixedCheckBody(v·:TableChatEvent) -> bool:
-    if (v·.Channel < -2147483648) or (v·.Channel > 2147483647):
+def TableChatEventFixedCheckBody(v:TableChatEvent) -> bool:
+    if (v.Channel < -2147483648) or (v.Channel > 2147483647):
         return false
-    if (v·.Channel < 0) or (v·.Channel > 3):
+    if (v.Channel < 0) or (v.Channel > 3):
         return false
-    if (schema_rt.ult(4095, v·.Speaker)):
+    if (schema_rt.ult(4095, v.Speaker)):
         return false
     return true
 
@@ -3975,9 +3933,9 @@ let TableChatEventFixedDst:[schema_rt.TableFixedDst] = [
 ]
 
 def TableChatEventFixedBuildPlan() -> schema_rt.TableFixedPlan:
-    let scratch·:[schema_rt.TableFixedEntry] = []
-    TableChatEventFixedLeaves(scratch·, 0, 0)
-    return schema_rt.fixed_build_plan(scratch·)
+    let scratch:[schema_rt.TableFixedEntry] = []
+    TableChatEventFixedLeaves(scratch, 0, 0)
+    return schema_rt.fixed_build_plan(scratch)
 
 let TableChatEventFixedPlan = TableChatEventFixedBuildPlan()
 
@@ -3997,162 +3955,160 @@ let TableChatEventFixedHoles = schema_rt.fixed_holes(TableChatEventFixedPlan.ent
 let TableChatEventFixedLineageHoles = schema_rt.fixed_lineage_holes(TableChatEventFixedLineagePlans, 8)
 let TableChatEventFixedPlanMax = schema_rt.fixed_plan_max(TableChatEventFixedPlan, TableChatEventFixedLineagePlans)
 
-def TableChatEventFixedMeasure(count·:int) -> int:
-    return schema_rt.TableFixedHeaderBytes + 4 + 55 + count· * (8 + 8)
+def TableChatEventFixedMeasure(count:int) -> int:
+    return schema_rt.TableFixedHeaderBytes + 4 + 55 + count * (8 + 8)
 
-def TableChatEventFixedSaveChecked(values·:[TableChatEvent], buffer·:string) -> int, string, string:
-    if length(values·) == 0:
-        return -1, buffer·, schema_rt.TableRefuseInvalidValue
-    let need· = TableChatEventFixedMeasure(length(values·))
-    if length(buffer·) < need·:
-        return -1, buffer·, schema_rt.TableRefuseTruncated
-    for(values·) v·:
-        if not TableChatEventFixedCheckBody(v·):
-            return -1, buffer·, schema_rt.TableRefuseInvalidValue
-    let wire· = TableChatEventFixedSave(values·)
-    let out· = write_substring(buffer·, 0, wire·, false)
-    return need·, out·, ""
+def TableChatEventFixedSaveChecked(values:[TableChatEvent], buffer:string) -> int, string, string:
+    let need = TableChatEventFixedMeasure(length(values))
+    if length(buffer) < need:
+        return -1, buffer, schema_rt.TableRefuseTruncated
+    for(values) v:
+        if not TableChatEventFixedCheckBody(v):
+            return -1, buffer, schema_rt.TableRefuseInvalidValue
+    let wire = TableChatEventFixedSave(values)
+    let out = write_substring(buffer, 0, wire, false)
+    return need, out, ""
 
-def TableChatEventFixedLoad(values·:[TableChatEvent], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
-    let report· = if report_in·: report_in· else: schema_rt.TableReport {}
-    schema_rt.fixed_reset_report(report·)
-    let data· = data_in·
-    if length(data·) < 1:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableChatEventReset(failed·)
+def TableChatEventFixedLoad(values:[TableChatEvent], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
+    let report = if report_in: report_in else: schema_rt.TableReport {}
+    schema_rt.fixed_reset_report(report)
+    let data = data_in
+    if length(data) < 1:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableChatEventReset(failed)
         return -1
-    let form· = read_uint8_le(data·, 0)
-    if form· != schema_rt.TableFixedForm:
-        if form· == 1:
-            for(values·) failed·: TableChatEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePreviousForm)
-        if form· == 2:
-            for(values·) failed·: TableChatEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseMessageFormAsFile)
-        for(values·) failed·: TableChatEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseNewerForm)
-    if length(data·) < schema_rt.TableFixedHeaderBytes + 4:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableChatEventReset(failed·)
+    let form = read_uint8_le(data, 0)
+    if form != schema_rt.TableFixedForm:
+        if form == 1:
+            for(values) failed: TableChatEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefusePreviousForm)
+        if form == 2:
+            for(values) failed: TableChatEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseMessageFormAsFile)
+        for(values) failed: TableChatEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNewerForm)
+    if length(data) < schema_rt.TableFixedHeaderBytes + 4:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableChatEventReset(failed)
         return -1
-    var r_idx· = 1
-    while r_idx· < schema_rt.TableFixedHashAt:
-        if read_uint8_le(data·, r_idx·) != 0:
-            report·.malformed = true
-            report·.reason = schema_rt.TableRefuseReservedNotZero
-            for(values·) failed·: TableChatEventReset(failed·)
+    var r_idx = 1
+    while r_idx < schema_rt.TableFixedHashAt:
+        if read_uint8_le(data, r_idx) != 0:
+            report.malformed = true
+            report.reason = schema_rt.TableRefuseReservedNotZero
+            for(values) failed: TableChatEventReset(failed)
             return -1
-        r_idx· += 1
-    let layout_bytes· = read_uint32_le(data·, schema_rt.TableFixedHeaderBytes)
-    if layout_bytes· < 0 or layout_bytes· + schema_rt.TableFixedHeaderBytes + 4 > length(data·):
-        for(values·) failed·: TableChatEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    let hash· = read_uint64_le(data·, schema_rt.TableFixedHashAt)
-    let pick· = schema_rt.fixed_select(TableChatEventFixedKnown, hash·)
-    if pick· < 0:
-        for(values·) failed·: TableChatEventReset(failed·)
-        return schema_rt.fixed_refuse_hash(report·, schema_rt.TableRefuseLayoutUnknown, hash·)
-    if pick· < TableChatEventFixedFloor:
-        for(values·) failed·: TableChatEventReset(failed·)
-        return schema_rt.fixed_refuse_hash(report·, schema_rt.TableRefuseLayoutUnsupported, hash·)
-    let known· = TableChatEventFixedKnown[pick·]
-    if layout_bytes· != known·.layout_bytes:
-        for(values·) failed·: TableChatEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    for(layout_bytes·) l_i·:
-        if read_uint8_le(data·, schema_rt.TableFixedHeaderBytes + 4 + l_i·) != read_uint8_le(known·.layout, l_i·):
-            for(values·) failed·: TableChatEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    var entries· = TableChatEventFixedPlan.entries
-    var entry_count· = TableChatEventFixedPlan.count
-    var holes· = TableChatEventFixedHoles
-    let record_bytes· = known·.record
-    var census_unknown· = 0
-    var census_kind· = 0
-    if hash· != TableChatEventFixedHash:
-        let lane· = TableChatEventFixedLineagePlans[pick·]
-        if lane·.why != "":
-            for(values·) failed·: TableChatEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, lane·.why)
-        entries· = lane·.entries
-        entry_count· = lane·.count
-        holes· = TableChatEventFixedLineageHoles[pick·]
-        census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        for(values·) failed·: TableChatEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
-    if entry_count· > length(plan·):
-        for(values·) failed·: TableChatEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
-    let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
-    let rest· = length(data·) - records_start·
-    if rest· == 0 or record_bytes· <= 8 or (rest· % record_bytes·) != 0:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableChatEventReset(failed·)
+        r_idx += 1
+    let layout_bytes = read_uint32_le(data, schema_rt.TableFixedHeaderBytes)
+    if layout_bytes < 0 or layout_bytes + schema_rt.TableFixedHeaderBytes + 4 > length(data):
+        for(values) failed: TableChatEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    let hash = read_uint64_le(data, schema_rt.TableFixedHashAt)
+    let pick = schema_rt.fixed_select(TableChatEventFixedKnown, hash)
+    if pick < 0:
+        for(values) failed: TableChatEventReset(failed)
+        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnknown, hash)
+    if pick < TableChatEventFixedFloor:
+        for(values) failed: TableChatEventReset(failed)
+        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnsupported, hash)
+    let known = TableChatEventFixedKnown[pick]
+    if layout_bytes != known.layout_bytes:
+        for(values) failed: TableChatEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    for(layout_bytes) l_i:
+        if read_uint8_le(data, schema_rt.TableFixedHeaderBytes + 4 + l_i) != read_uint8_le(known.layout, l_i):
+            for(values) failed: TableChatEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    var entries = TableChatEventFixedPlan.entries
+    var entry_count = TableChatEventFixedPlan.count
+    var holes = TableChatEventFixedHoles
+    let record_bytes = known.record
+    var census_unknown = 0
+    var census_kind = 0
+    if hash != TableChatEventFixedHash:
+        let lane = TableChatEventFixedLineagePlans[pick]
+        if lane.why != "":
+            for(values) failed: TableChatEventReset(failed)
+            return schema_rt.fixed_refuse(report, lane.why)
+        entries = lane.entries
+        entry_count = lane.count
+        holes = TableChatEventFixedLineageHoles[pick]
+        census_unknown = lane.unknown
+        census_kind = lane.kind_mismatch
+    if census_kind != 0:
+        for(values) failed: TableChatEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)
+    if entry_count > length(plan):
+        for(values) failed: TableChatEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
+    let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
+    let rest = length(data) - records_start
+    if record_bytes <= 8 or (rest % record_bytes) != 0:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableChatEventReset(failed)
         return -1
-    let n· = rest· / record_bytes·
-    if n· > length(values·):
-        for(values·) failed·: TableChatEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseBatchTooLarge)
-    for(n·) k·:
-        let rec_at· = records_start· + k· * record_bytes·
-        if read_uint64_le(data·, rec_at·) != hash·:
-            for(values·) failed·: TableChatEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseNoLayout)
-        let why· = schema_rt.fixed_value_refusal(entries·, entry_count·, data·, rec_at· + 8)
-        if why· != "":
-            for(values·) failed·: TableChatEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, why·)
-    for(n·) k·:
-        let rec_at· = records_start· + k· * record_bytes·
-        var img· = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TableChatEventFixedResetImage, holes·)
-        let img2·, why· = schema_rt.fixed_run(entries·, entry_count·, data·, rec_at· + 8, img·, report·)
-        if why· != "":
-            for(values·) failed·: TableChatEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, why·)
-        img· = img2·
-        TableChatEventFixedScatter(img·, 0, values·[k·])
-        if not TableChatEventFixedBoundsBody(values·[k·]):
-            for(values·) failed·: TableChatEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
-    report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
-    return n·
+    let n = rest / record_bytes
+    if n > length(values):
+        for(values) failed: TableChatEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseBatchTooLarge)
+    for(n) k:
+        let rec_at = records_start + k * record_bytes
+        if read_uint64_le(data, rec_at) != hash:
+            for(values) failed: TableChatEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNoLayout)
+        let why = schema_rt.fixed_value_refusal(entries, entry_count, data, rec_at + 8)
+        if why != "":
+            for(values) failed: TableChatEventReset(failed)
+            return schema_rt.fixed_refuse(report, why)
+    for(n) k:
+        let rec_at = records_start + k * record_bytes
+        var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TableChatEventFixedResetImage, holes)
+        let img2, why = schema_rt.fixed_run(entries, entry_count, data, rec_at + 8, img, report)
+        if why != "":
+            for(values) failed: TableChatEventReset(failed)
+            return schema_rt.fixed_refuse(report, why)
+        img = img2
+        TableChatEventFixedScatter(img, 0, values[k])
+        if not TableChatEventFixedBoundsBody(values[k]):
+            for(values) failed: TableChatEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseOutOfRange)
+    report.unknown += census_unknown
+    report.kind_mismatch += census_kind
+    return n
 
 // TablePickupEventReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
-def TablePickupEventReset(v·:TablePickupEvent):
-    v·.ItemId = 0
-    v·.Amount = 0
+def TablePickupEventReset(v:TablePickupEvent):
+    v.ItemId = 0
+    v.Amount = 0
 
-def TablePickupEventFixedLeaves(out·:[schema_rt.TableFixedEntry], src·:int, dst·:int) -> int:
-    push(out·, schema_rt.TableFixedEntry { src: src· + 0, dst: dst· + 0, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 4, dst: dst· + 4, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    return length(out·)
+def TablePickupEventFixedLeaves(out:[schema_rt.TableFixedEntry], src:int, dst:int) -> int:
+    push(out, schema_rt.TableFixedEntry { src: src + 0, dst: dst + 0, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 4, dst: dst + 4, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    return length(out)
 
 // TablePickupEventFixedScatter reads one canonical flat body image at at into v in place.
-def TablePickupEventFixedScatter(data·:string, at·:int, v·:TablePickupEvent):
-    v·.ItemId = read_uint32_le(data·, at· + 0)
-    v·.Amount = read_int32_le(data·, at· + 4)
+def TablePickupEventFixedScatter(data:string, at:int, v:TablePickupEvent):
+    v.ItemId = read_uint32_le(data, at + 0)
+    v.Amount = read_int32_le(data, at + 4)
 
-def TablePickupEventFixedBoundsBody(v·:TablePickupEvent) -> bool:
-    if (schema_rt.ult(1023, v·.ItemId)):
+def TablePickupEventFixedBoundsBody(v:TablePickupEvent) -> bool:
+    if (schema_rt.ult(1023, v.ItemId)):
         return false
-    if (v·.Amount < -2147483648) or (v·.Amount > 2147483647):
+    if (v.Amount < -2147483648) or (v.Amount > 2147483647):
         return false
-    if (v·.Amount < 0) or (v·.Amount > 255):
+    if (v.Amount < 0) or (v.Amount > 255):
         return false
     return true
 
-def TablePickupEventFixedCheckBody(v·:TablePickupEvent) -> bool:
-    if (schema_rt.ult(1023, v·.ItemId)):
+def TablePickupEventFixedCheckBody(v:TablePickupEvent) -> bool:
+    if (schema_rt.ult(1023, v.ItemId)):
         return false
-    if (v·.Amount < -2147483648) or (v·.Amount > 2147483647):
+    if (v.Amount < -2147483648) or (v.Amount > 2147483647):
         return false
-    if (v·.Amount < 0) or (v·.Amount > 255):
+    if (v.Amount < 0) or (v.Amount > 255):
         return false
     return true
 
@@ -4164,9 +4120,9 @@ let TablePickupEventFixedDst:[schema_rt.TableFixedDst] = [
 ]
 
 def TablePickupEventFixedBuildPlan() -> schema_rt.TableFixedPlan:
-    let scratch·:[schema_rt.TableFixedEntry] = []
-    TablePickupEventFixedLeaves(scratch·, 0, 0)
-    return schema_rt.fixed_build_plan(scratch·)
+    let scratch:[schema_rt.TableFixedEntry] = []
+    TablePickupEventFixedLeaves(scratch, 0, 0)
+    return schema_rt.fixed_build_plan(scratch)
 
 let TablePickupEventFixedPlan = TablePickupEventFixedBuildPlan()
 
@@ -4186,471 +4142,469 @@ let TablePickupEventFixedHoles = schema_rt.fixed_holes(TablePickupEventFixedPlan
 let TablePickupEventFixedLineageHoles = schema_rt.fixed_lineage_holes(TablePickupEventFixedLineagePlans, 8)
 let TablePickupEventFixedPlanMax = schema_rt.fixed_plan_max(TablePickupEventFixedPlan, TablePickupEventFixedLineagePlans)
 
-def TablePickupEventFixedMeasure(count·:int) -> int:
-    return schema_rt.TableFixedHeaderBytes + 4 + 55 + count· * (8 + 8)
+def TablePickupEventFixedMeasure(count:int) -> int:
+    return schema_rt.TableFixedHeaderBytes + 4 + 55 + count * (8 + 8)
 
-def TablePickupEventFixedSaveChecked(values·:[TablePickupEvent], buffer·:string) -> int, string, string:
-    if length(values·) == 0:
-        return -1, buffer·, schema_rt.TableRefuseInvalidValue
-    let need· = TablePickupEventFixedMeasure(length(values·))
-    if length(buffer·) < need·:
-        return -1, buffer·, schema_rt.TableRefuseTruncated
-    for(values·) v·:
-        if not TablePickupEventFixedCheckBody(v·):
-            return -1, buffer·, schema_rt.TableRefuseInvalidValue
-    let wire· = TablePickupEventFixedSave(values·)
-    let out· = write_substring(buffer·, 0, wire·, false)
-    return need·, out·, ""
+def TablePickupEventFixedSaveChecked(values:[TablePickupEvent], buffer:string) -> int, string, string:
+    let need = TablePickupEventFixedMeasure(length(values))
+    if length(buffer) < need:
+        return -1, buffer, schema_rt.TableRefuseTruncated
+    for(values) v:
+        if not TablePickupEventFixedCheckBody(v):
+            return -1, buffer, schema_rt.TableRefuseInvalidValue
+    let wire = TablePickupEventFixedSave(values)
+    let out = write_substring(buffer, 0, wire, false)
+    return need, out, ""
 
-def TablePickupEventFixedLoad(values·:[TablePickupEvent], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
-    let report· = if report_in·: report_in· else: schema_rt.TableReport {}
-    schema_rt.fixed_reset_report(report·)
-    let data· = data_in·
-    if length(data·) < 1:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TablePickupEventReset(failed·)
+def TablePickupEventFixedLoad(values:[TablePickupEvent], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
+    let report = if report_in: report_in else: schema_rt.TableReport {}
+    schema_rt.fixed_reset_report(report)
+    let data = data_in
+    if length(data) < 1:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TablePickupEventReset(failed)
         return -1
-    let form· = read_uint8_le(data·, 0)
-    if form· != schema_rt.TableFixedForm:
-        if form· == 1:
-            for(values·) failed·: TablePickupEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePreviousForm)
-        if form· == 2:
-            for(values·) failed·: TablePickupEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseMessageFormAsFile)
-        for(values·) failed·: TablePickupEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseNewerForm)
-    if length(data·) < schema_rt.TableFixedHeaderBytes + 4:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TablePickupEventReset(failed·)
+    let form = read_uint8_le(data, 0)
+    if form != schema_rt.TableFixedForm:
+        if form == 1:
+            for(values) failed: TablePickupEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefusePreviousForm)
+        if form == 2:
+            for(values) failed: TablePickupEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseMessageFormAsFile)
+        for(values) failed: TablePickupEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNewerForm)
+    if length(data) < schema_rt.TableFixedHeaderBytes + 4:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TablePickupEventReset(failed)
         return -1
-    var r_idx· = 1
-    while r_idx· < schema_rt.TableFixedHashAt:
-        if read_uint8_le(data·, r_idx·) != 0:
-            report·.malformed = true
-            report·.reason = schema_rt.TableRefuseReservedNotZero
-            for(values·) failed·: TablePickupEventReset(failed·)
+    var r_idx = 1
+    while r_idx < schema_rt.TableFixedHashAt:
+        if read_uint8_le(data, r_idx) != 0:
+            report.malformed = true
+            report.reason = schema_rt.TableRefuseReservedNotZero
+            for(values) failed: TablePickupEventReset(failed)
             return -1
-        r_idx· += 1
-    let layout_bytes· = read_uint32_le(data·, schema_rt.TableFixedHeaderBytes)
-    if layout_bytes· < 0 or layout_bytes· + schema_rt.TableFixedHeaderBytes + 4 > length(data·):
-        for(values·) failed·: TablePickupEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    let hash· = read_uint64_le(data·, schema_rt.TableFixedHashAt)
-    let pick· = schema_rt.fixed_select(TablePickupEventFixedKnown, hash·)
-    if pick· < 0:
-        for(values·) failed·: TablePickupEventReset(failed·)
-        return schema_rt.fixed_refuse_hash(report·, schema_rt.TableRefuseLayoutUnknown, hash·)
-    if pick· < TablePickupEventFixedFloor:
-        for(values·) failed·: TablePickupEventReset(failed·)
-        return schema_rt.fixed_refuse_hash(report·, schema_rt.TableRefuseLayoutUnsupported, hash·)
-    let known· = TablePickupEventFixedKnown[pick·]
-    if layout_bytes· != known·.layout_bytes:
-        for(values·) failed·: TablePickupEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    for(layout_bytes·) l_i·:
-        if read_uint8_le(data·, schema_rt.TableFixedHeaderBytes + 4 + l_i·) != read_uint8_le(known·.layout, l_i·):
-            for(values·) failed·: TablePickupEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    var entries· = TablePickupEventFixedPlan.entries
-    var entry_count· = TablePickupEventFixedPlan.count
-    var holes· = TablePickupEventFixedHoles
-    let record_bytes· = known·.record
-    var census_unknown· = 0
-    var census_kind· = 0
-    if hash· != TablePickupEventFixedHash:
-        let lane· = TablePickupEventFixedLineagePlans[pick·]
-        if lane·.why != "":
-            for(values·) failed·: TablePickupEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, lane·.why)
-        entries· = lane·.entries
-        entry_count· = lane·.count
-        holes· = TablePickupEventFixedLineageHoles[pick·]
-        census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        for(values·) failed·: TablePickupEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
-    if entry_count· > length(plan·):
-        for(values·) failed·: TablePickupEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
-    let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
-    let rest· = length(data·) - records_start·
-    if rest· == 0 or record_bytes· <= 8 or (rest· % record_bytes·) != 0:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TablePickupEventReset(failed·)
+        r_idx += 1
+    let layout_bytes = read_uint32_le(data, schema_rt.TableFixedHeaderBytes)
+    if layout_bytes < 0 or layout_bytes + schema_rt.TableFixedHeaderBytes + 4 > length(data):
+        for(values) failed: TablePickupEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    let hash = read_uint64_le(data, schema_rt.TableFixedHashAt)
+    let pick = schema_rt.fixed_select(TablePickupEventFixedKnown, hash)
+    if pick < 0:
+        for(values) failed: TablePickupEventReset(failed)
+        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnknown, hash)
+    if pick < TablePickupEventFixedFloor:
+        for(values) failed: TablePickupEventReset(failed)
+        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnsupported, hash)
+    let known = TablePickupEventFixedKnown[pick]
+    if layout_bytes != known.layout_bytes:
+        for(values) failed: TablePickupEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    for(layout_bytes) l_i:
+        if read_uint8_le(data, schema_rt.TableFixedHeaderBytes + 4 + l_i) != read_uint8_le(known.layout, l_i):
+            for(values) failed: TablePickupEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    var entries = TablePickupEventFixedPlan.entries
+    var entry_count = TablePickupEventFixedPlan.count
+    var holes = TablePickupEventFixedHoles
+    let record_bytes = known.record
+    var census_unknown = 0
+    var census_kind = 0
+    if hash != TablePickupEventFixedHash:
+        let lane = TablePickupEventFixedLineagePlans[pick]
+        if lane.why != "":
+            for(values) failed: TablePickupEventReset(failed)
+            return schema_rt.fixed_refuse(report, lane.why)
+        entries = lane.entries
+        entry_count = lane.count
+        holes = TablePickupEventFixedLineageHoles[pick]
+        census_unknown = lane.unknown
+        census_kind = lane.kind_mismatch
+    if census_kind != 0:
+        for(values) failed: TablePickupEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)
+    if entry_count > length(plan):
+        for(values) failed: TablePickupEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
+    let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
+    let rest = length(data) - records_start
+    if record_bytes <= 8 or (rest % record_bytes) != 0:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TablePickupEventReset(failed)
         return -1
-    let n· = rest· / record_bytes·
-    if n· > length(values·):
-        for(values·) failed·: TablePickupEventReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseBatchTooLarge)
-    for(n·) k·:
-        let rec_at· = records_start· + k· * record_bytes·
-        if read_uint64_le(data·, rec_at·) != hash·:
-            for(values·) failed·: TablePickupEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseNoLayout)
-        let why· = schema_rt.fixed_value_refusal(entries·, entry_count·, data·, rec_at· + 8)
-        if why· != "":
-            for(values·) failed·: TablePickupEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, why·)
-    for(n·) k·:
-        let rec_at· = records_start· + k· * record_bytes·
-        var img· = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TablePickupEventFixedResetImage, holes·)
-        let img2·, why· = schema_rt.fixed_run(entries·, entry_count·, data·, rec_at· + 8, img·, report·)
-        if why· != "":
-            for(values·) failed·: TablePickupEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, why·)
-        img· = img2·
-        TablePickupEventFixedScatter(img·, 0, values·[k·])
-        if not TablePickupEventFixedBoundsBody(values·[k·]):
-            for(values·) failed·: TablePickupEventReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
-    report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
-    return n·
+    let n = rest / record_bytes
+    if n > length(values):
+        for(values) failed: TablePickupEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseBatchTooLarge)
+    for(n) k:
+        let rec_at = records_start + k * record_bytes
+        if read_uint64_le(data, rec_at) != hash:
+            for(values) failed: TablePickupEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNoLayout)
+        let why = schema_rt.fixed_value_refusal(entries, entry_count, data, rec_at + 8)
+        if why != "":
+            for(values) failed: TablePickupEventReset(failed)
+            return schema_rt.fixed_refuse(report, why)
+    for(n) k:
+        let rec_at = records_start + k * record_bytes
+        var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TablePickupEventFixedResetImage, holes)
+        let img2, why = schema_rt.fixed_run(entries, entry_count, data, rec_at + 8, img, report)
+        if why != "":
+            for(values) failed: TablePickupEventReset(failed)
+            return schema_rt.fixed_refuse(report, why)
+        img = img2
+        TablePickupEventFixedScatter(img, 0, values[k])
+        if not TablePickupEventFixedBoundsBody(values[k]):
+            for(values) failed: TablePickupEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseOutOfRange)
+    report.unknown += census_unknown
+    report.kind_mismatch += census_kind
+    return n
 
 // TableMixedReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
-def TableMixedReset(v·:TableMixed):
-    v·.ProtocolMagic = 0
-    v·.Sequence = 0
-    v·.AckSequence = 0
-    v·.AckBits = 0
-    v·.SessionId = 0
-    v·.ClientId = 0
-    v·.Nonce = 1
-    v·.WorldTime = 0
-    v·.FrameTick = 0
-    v·.ServerTime = 0.0
-    v·.EntitiesCount = 1
-    for(8) i_rst_Entities·:
-        TableEntityReset(v·.Entities[i_rst_Entities·])
-    v·.StatsCount = 0
-    for(80) i_rst_Stats·:
-        TableStatReset(v·.Stats[i_rst_Stats·])
-    v·.GameEvent.Type = TableEventTypeNone
-    TableHitEventReset(v·.GameEvent.Hit)
-    TableChatEventReset(v·.GameEvent.Chat)
-    TablePickupEventReset(v·.GameEvent.Pickup)
-    v·.Loadout = schema_rt.zeros(4)
-    v·.PlayerName = schema_rt.zeros(15)
-    v·.PlayerNameLength = 0
-    v·.Payload = schema_rt.zeros(16)
-    v·.PayloadLength = 0
-    v·.AimX = 0.0
-    v·.AimY = 0.0
-    v·.AimZ = 0.0
-    v·.Recoil = 0.0
-    v·.Drift = 0.0
-    v·.WideKey = 0
-    v·.Flux = 0
-    v·.Ping = 0.0
-    v·.CrcHint = 0
-    v·.HasExtra = false
-    v·.Extra = 0
-    v·.IdleTicks = 0
+def TableMixedReset(v:TableMixed):
+    v.ProtocolMagic = 0
+    v.Sequence = 0
+    v.AckSequence = 0
+    v.AckBits = 0
+    v.SessionId = 0
+    v.ClientId = 0
+    v.Nonce = 1
+    v.WorldTime = 0
+    v.FrameTick = 0
+    v.ServerTime = 0.0
+    v.EntitiesCount = 1
+    for(8) i_rst_Entities:
+        TableEntityReset(v.Entities[i_rst_Entities])
+    v.StatsCount = 0
+    for(80) i_rst_Stats:
+        TableStatReset(v.Stats[i_rst_Stats])
+    v.GameEvent.Type = TableEventTypeNone
+    TableHitEventReset(v.GameEvent.Hit)
+    TableChatEventReset(v.GameEvent.Chat)
+    TablePickupEventReset(v.GameEvent.Pickup)
+    v.Loadout = schema_rt.zeros(4)
+    v.PlayerName = schema_rt.zeros(15)
+    v.PlayerNameLength = 0
+    v.Payload = schema_rt.zeros(16)
+    v.PayloadLength = 0
+    v.AimX = 0.0
+    v.AimY = 0.0
+    v.AimZ = 0.0
+    v.Recoil = 0.0
+    v.Drift = 0.0
+    v.WideKey = 0
+    v.Flux = 0
+    v.Ping = 0.0
+    v.CrcHint = 0
+    v.HasExtra = false
+    v.Extra = 0
+    v.IdleTicks = 0
 
-def TableMixedFixedLeaves(out·:[schema_rt.TableFixedEntry], src·:int, dst·:int) -> int:
-    push(out·, schema_rt.TableFixedEntry { src: src· + 0, dst: dst· + 0, size: 2, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 2, dst: dst· + 2, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 6, dst: dst· + 6, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 10, dst: dst· + 10, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 14, dst: dst· + 14, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 22, dst: dst· + 22, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 26, dst: dst· + 26, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 34, dst: dst· + 34, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 42, dst: dst· + 42, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 50, dst: dst· + 50, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 54, dst: dst· + 54, size: 8, aux: 51, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCount })
-    for(8) i_lf_Entities_0·:
-        TableEntityFixedLeaves(out·, src· + 58 + i_lf_Entities_0· * 51, dst· + 58 + i_lf_Entities_0· * 51)
-    push(out·, schema_rt.TableFixedEntry { src: src· + 466, dst: dst· + 466, size: 80, aux: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCount })
-    for(80) i_lf_Stats_1·:
-        TableStatFixedLeaves(out·, src· + 470 + i_lf_Stats_1· * 8, dst· + 470 + i_lf_Stats_1· * 8)
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1110, dst: dst· + 1110, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    let grd_at_Hit_2_0· = length(out·)
-    TableHitEventFixedLeaves(out·, src· + 1110 + 1, dst· + 1110 + 1)
-    var q_Hit_2_0· = grd_at_Hit_2_0·
-    while q_Hit_2_0· < length(out·):
-        push(out·[q_Hit_2_0·].chain, schema_rt.TableFixedGuardLink { grd: src· + 1110, arg: 1, arg_w: 1 })
-        q_Hit_2_0· += 1
-    let grd_at_Chat_2_1· = length(out·)
-    TableChatEventFixedLeaves(out·, src· + 1110 + 1, dst· + 1110 + 1)
-    var q_Chat_2_1· = grd_at_Chat_2_1·
-    while q_Chat_2_1· < length(out·):
-        push(out·[q_Chat_2_1·].chain, schema_rt.TableFixedGuardLink { grd: src· + 1110, arg: 2, arg_w: 1 })
-        q_Chat_2_1· += 1
-    let grd_at_Pickup_2_2· = length(out·)
-    TablePickupEventFixedLeaves(out·, src· + 1110 + 1, dst· + 1110 + 1)
-    var q_Pickup_2_2· = grd_at_Pickup_2_2·
-    while q_Pickup_2_2· < length(out·):
-        push(out·[q_Pickup_2_2·].chain, schema_rt.TableFixedGuardLink { grd: src· + 1110, arg: 3, arg_w: 1 })
-        q_Pickup_2_2· += 1
-    for(4) i_lf_Loadout_3·:
-        push(out·, schema_rt.TableFixedEntry { src: src· + 1124 + i_lf_Loadout_3· * 1, dst: dst· + 1124 + i_lf_Loadout_3· * 1, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1128, dst: dst· + 1128, size: 15, aux: dst· + 1132, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedText, meta: 1 })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1147, dst: dst· + 1147, size: 16, aux: dst· + 1151, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedText, meta: 3 })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1167, dst: dst· + 1167, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1171, dst: dst· + 1171, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1175, dst: dst· + 1175, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1179, dst: dst· + 1179, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1183, dst: dst· + 1183, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1191, dst: dst· + 1191, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1199, dst: dst· + 1199, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1207, dst: dst· + 1207, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1211, dst: dst· + 1211, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1215, dst: dst· + 1215, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedBool })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1216, dst: dst· + 1216, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    push(out·, schema_rt.TableFixedEntry { src: src· + 1220, dst: dst· + 1220, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
-    return length(out·)
+def TableMixedFixedLeaves(out:[schema_rt.TableFixedEntry], src:int, dst:int) -> int:
+    push(out, schema_rt.TableFixedEntry { src: src + 0, dst: dst + 0, size: 2, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 2, dst: dst + 2, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 6, dst: dst + 6, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 10, dst: dst + 10, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 14, dst: dst + 14, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 22, dst: dst + 22, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 26, dst: dst + 26, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 34, dst: dst + 34, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 42, dst: dst + 42, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 50, dst: dst + 50, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 54, dst: dst + 54, size: 8, aux: 51, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCount })
+    for(8) i_lf_Entities_0:
+        TableEntityFixedLeaves(out, src + 58 + i_lf_Entities_0 * 51, dst + 58 + i_lf_Entities_0 * 51)
+    push(out, schema_rt.TableFixedEntry { src: src + 466, dst: dst + 466, size: 80, aux: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCount })
+    for(80) i_lf_Stats_1:
+        TableStatFixedLeaves(out, src + 470 + i_lf_Stats_1 * 8, dst + 470 + i_lf_Stats_1 * 8)
+    push(out, schema_rt.TableFixedEntry { src: src + 1110, dst: dst + 1110, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    let grd_at_Hit_2_0 = length(out)
+    TableHitEventFixedLeaves(out, src + 1110 + 1, dst + 1110 + 1)
+    var q_Hit_2_0 = grd_at_Hit_2_0
+    while q_Hit_2_0 < length(out):
+        push(out[q_Hit_2_0].chain, schema_rt.TableFixedGuardLink { grd: src + 1110, arg: 1, arg_w: 1 })
+        q_Hit_2_0 += 1
+    let grd_at_Chat_2_1 = length(out)
+    TableChatEventFixedLeaves(out, src + 1110 + 1, dst + 1110 + 1)
+    var q_Chat_2_1 = grd_at_Chat_2_1
+    while q_Chat_2_1 < length(out):
+        push(out[q_Chat_2_1].chain, schema_rt.TableFixedGuardLink { grd: src + 1110, arg: 2, arg_w: 1 })
+        q_Chat_2_1 += 1
+    let grd_at_Pickup_2_2 = length(out)
+    TablePickupEventFixedLeaves(out, src + 1110 + 1, dst + 1110 + 1)
+    var q_Pickup_2_2 = grd_at_Pickup_2_2
+    while q_Pickup_2_2 < length(out):
+        push(out[q_Pickup_2_2].chain, schema_rt.TableFixedGuardLink { grd: src + 1110, arg: 3, arg_w: 1 })
+        q_Pickup_2_2 += 1
+    for(4) i_lf_Loadout_3:
+        push(out, schema_rt.TableFixedEntry { src: src + 1124 + i_lf_Loadout_3 * 1, dst: dst + 1124 + i_lf_Loadout_3 * 1, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 1128, dst: dst + 1128, size: 15, aux: dst + 1132, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedText, meta: 1 })
+    push(out, schema_rt.TableFixedEntry { src: src + 1147, dst: dst + 1147, size: 16, aux: dst + 1151, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedText, meta: 3 })
+    push(out, schema_rt.TableFixedEntry { src: src + 1167, dst: dst + 1167, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 1171, dst: dst + 1171, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 1175, dst: dst + 1175, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 1179, dst: dst + 1179, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 1183, dst: dst + 1183, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 1191, dst: dst + 1191, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 1199, dst: dst + 1199, size: 8, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 1207, dst: dst + 1207, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 1211, dst: dst + 1211, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 1215, dst: dst + 1215, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedBool })
+    push(out, schema_rt.TableFixedEntry { src: src + 1216, dst: dst + 1216, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    push(out, schema_rt.TableFixedEntry { src: src + 1220, dst: dst + 1220, size: 4, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
+    return length(out)
 
 // TableMixedFixedScatter reads one canonical flat body image at at into v in place.
-def TableMixedFixedScatter(data·:string, at·:int, v·:TableMixed):
-    v·.ProtocolMagic = read_uint16_le(data·, at· + 0)
-    v·.Sequence = read_uint32_le(data·, at· + 2)
-    v·.AckSequence = read_int32_le(data·, at· + 6)
-    v·.AckBits = read_uint32_le(data·, at· + 10)
-    v·.SessionId = read_uint64_le(data·, at· + 14)
-    v·.ClientId = read_uint32_le(data·, at· + 22)
-    v·.Nonce = read_uint64_le(data·, at· + 26)
-    v·.WorldTime = read_int64_le(data·, at· + 34)
-    v·.FrameTick = read_uint64_le(data·, at· + 42)
-    v·.ServerTime = read_float32_le(data·, at· + 50)
-    v·.EntitiesCount = read_int32_le(data·, at· + 54)
-    for(v·.EntitiesCount) i_Entities_54·:
-        TableEntityFixedScatter(data·, at· + 58 + i_Entities_54· * 51, v·.Entities[i_Entities_54·])
-    var k_slk_Entities_54· = v·.EntitiesCount
-    while k_slk_Entities_54· < 8:
-        TableEntityReset(v·.Entities[k_slk_Entities_54·])
-        k_slk_Entities_54· += 1
-    v·.StatsCount = read_int32_le(data·, at· + 466)
-    for(v·.StatsCount) i_Stats_466·:
-        TableStatFixedScatter(data·, at· + 470 + i_Stats_466· * 8, v·.Stats[i_Stats_466·])
-    var k_slk_Stats_466· = v·.StatsCount
-    while k_slk_Stats_466· < 80:
-        TableStatReset(v·.Stats[k_slk_Stats_466·])
-        k_slk_Stats_466· += 1
-    v·.GameEvent.Type = TableEventType(read_uint8_le(data·, at· + 1110))
-    if int(v·.GameEvent.Type) == 1:
-        TableHitEventFixedScatter(data·, at· + 1110 + 1, v·.GameEvent.Hit)
-    if int(v·.GameEvent.Type) == 2:
-        TableChatEventFixedScatter(data·, at· + 1110 + 1, v·.GameEvent.Chat)
-    if int(v·.GameEvent.Type) == 3:
-        TablePickupEventFixedScatter(data·, at· + 1110 + 1, v·.GameEvent.Pickup)
-    v·.Loadout = substring(data·, at· + 1124, 4)
-    v·.PlayerNameLength = read_int32_le(data·, at· + 1128)
-    var sbuf_PlayerName_1128· = schema_rt.zeros(15)
-    for(v·.PlayerNameLength * 1) j_sc_PlayerName_1128·: sbuf_PlayerName_1128· = write_int8_le(sbuf_PlayerName_1128·, j_sc_PlayerName_1128·, read_uint8_le(data·, at· + 1128 + 4 + j_sc_PlayerName_1128·))
-    v·.PlayerName = sbuf_PlayerName_1128·
-    v·.PayloadLength = read_int32_le(data·, at· + 1147)
-    var sbuf_Payload_1147· = schema_rt.zeros(16)
-    for(v·.PayloadLength * 1) j_sc_Payload_1147·: sbuf_Payload_1147· = write_int8_le(sbuf_Payload_1147·, j_sc_Payload_1147·, read_uint8_le(data·, at· + 1147 + 4 + j_sc_Payload_1147·))
-    v·.Payload = sbuf_Payload_1147·
-    v·.AimX = read_float32_le(data·, at· + 1167)
-    v·.AimY = read_float32_le(data·, at· + 1171)
-    v·.AimZ = read_float32_le(data·, at· + 1175)
-    v·.Recoil = read_float32_le(data·, at· + 1179)
-    v·.Drift = read_float64_le(data·, at· + 1183)
-    v·.WideKey = read_uint64_le(data·, at· + 1191)
-    v·.Flux = read_int64_le(data·, at· + 1199)
-    v·.Ping = read_float32_le(data·, at· + 1207)
-    v·.CrcHint = read_uint32_le(data·, at· + 1211)
-    v·.HasExtra = read_uint8_le(data·, at· + 1215) != 0
-    v·.Extra = read_int32_le(data·, at· + 1216)
-    v·.IdleTicks = read_int32_le(data·, at· + 1220)
+def TableMixedFixedScatter(data:string, at:int, v:TableMixed):
+    v.ProtocolMagic = read_uint16_le(data, at + 0)
+    v.Sequence = read_uint32_le(data, at + 2)
+    v.AckSequence = read_int32_le(data, at + 6)
+    v.AckBits = read_uint32_le(data, at + 10)
+    v.SessionId = read_uint64_le(data, at + 14)
+    v.ClientId = read_uint32_le(data, at + 22)
+    v.Nonce = read_uint64_le(data, at + 26)
+    v.WorldTime = read_int64_le(data, at + 34)
+    v.FrameTick = read_uint64_le(data, at + 42)
+    v.ServerTime = read_float32_le(data, at + 50)
+    v.EntitiesCount = read_int32_le(data, at + 54)
+    for(v.EntitiesCount) i_Entities_54:
+        TableEntityFixedScatter(data, at + 58 + i_Entities_54 * 51, v.Entities[i_Entities_54])
+    var k_slk_Entities_54 = v.EntitiesCount
+    while k_slk_Entities_54 < 8:
+        TableEntityReset(v.Entities[k_slk_Entities_54])
+        k_slk_Entities_54 += 1
+    v.StatsCount = read_int32_le(data, at + 466)
+    for(v.StatsCount) i_Stats_466:
+        TableStatFixedScatter(data, at + 470 + i_Stats_466 * 8, v.Stats[i_Stats_466])
+    var k_slk_Stats_466 = v.StatsCount
+    while k_slk_Stats_466 < 80:
+        TableStatReset(v.Stats[k_slk_Stats_466])
+        k_slk_Stats_466 += 1
+    v.GameEvent.Type = TableEventType(read_uint8_le(data, at + 1110))
+    if int(v.GameEvent.Type) == 1:
+        TableHitEventFixedScatter(data, at + 1110 + 1, v.GameEvent.Hit)
+    if int(v.GameEvent.Type) == 2:
+        TableChatEventFixedScatter(data, at + 1110 + 1, v.GameEvent.Chat)
+    if int(v.GameEvent.Type) == 3:
+        TablePickupEventFixedScatter(data, at + 1110 + 1, v.GameEvent.Pickup)
+    v.Loadout = substring(data, at + 1124, 4)
+    v.PlayerNameLength = read_int32_le(data, at + 1128)
+    var sbuf_PlayerName_1128 = schema_rt.zeros(15)
+    for(v.PlayerNameLength * 1) j_sc_PlayerName_1128: sbuf_PlayerName_1128 = write_int8_le(sbuf_PlayerName_1128, j_sc_PlayerName_1128, read_uint8_le(data, at + 1128 + 4 + j_sc_PlayerName_1128))
+    v.PlayerName = sbuf_PlayerName_1128
+    v.PayloadLength = read_int32_le(data, at + 1147)
+    var sbuf_Payload_1147 = schema_rt.zeros(16)
+    for(v.PayloadLength * 1) j_sc_Payload_1147: sbuf_Payload_1147 = write_int8_le(sbuf_Payload_1147, j_sc_Payload_1147, read_uint8_le(data, at + 1147 + 4 + j_sc_Payload_1147))
+    v.Payload = sbuf_Payload_1147
+    v.AimX = read_float32_le(data, at + 1167)
+    v.AimY = read_float32_le(data, at + 1171)
+    v.AimZ = read_float32_le(data, at + 1175)
+    v.Recoil = read_float32_le(data, at + 1179)
+    v.Drift = read_float64_le(data, at + 1183)
+    v.WideKey = read_uint64_le(data, at + 1191)
+    v.Flux = read_int64_le(data, at + 1199)
+    v.Ping = read_float32_le(data, at + 1207)
+    v.CrcHint = read_uint32_le(data, at + 1211)
+    v.HasExtra = read_uint8_le(data, at + 1215) != 0
+    v.Extra = read_int32_le(data, at + 1216)
+    v.IdleTicks = read_int32_le(data, at + 1220)
 
-def TableMixedFixedBoundsBody(v·:TableMixed) -> bool:
-    if (schema_rt.ult(65535, v·.ProtocolMagic)):
+def TableMixedFixedBoundsBody(v:TableMixed) -> bool:
+    if (schema_rt.ult(65535, v.ProtocolMagic)):
         return false
-    if (schema_rt.ult(65535, v·.Sequence)):
+    if (schema_rt.ult(65535, v.Sequence)):
         return false
-    if (v·.AckSequence < -2147483648) or (v·.AckSequence > 2147483647):
+    if (v.AckSequence < -2147483648) or (v.AckSequence > 2147483647):
         return false
-    if (v·.AckSequence < 0) or (v·.AckSequence > 65535):
+    if (v.AckSequence < 0) or (v.AckSequence > 65535):
         return false
-    if (schema_rt.ult(4294967295, v·.AckBits)):
+    if (schema_rt.ult(4294967295, v.AckBits)):
         return false
-    if (schema_rt.ult(4294967295, v·.ClientId)):
+    if (schema_rt.ult(4294967295, v.ClientId)):
         return false
-    if (schema_rt.ult(v·.Nonce, 1)) or (schema_rt.ult(9223372036854775807, v·.Nonce)):
+    if (schema_rt.ult(v.Nonce, 1)) or (schema_rt.ult(9223372036854775807, v.Nonce)):
         return false
-    if (v·.WorldTime < -1000000000000) or (v·.WorldTime > 1000000000000):
+    if (v.WorldTime < -1000000000000) or (v.WorldTime > 1000000000000):
         return false
-    if (schema_rt.ult(281474976710655, v·.FrameTick)):
+    if (schema_rt.ult(281474976710655, v.FrameTick)):
         return false
-    if not schema_rt.finite_f32(v·.ServerTime):
+    if not schema_rt.finite_f32(v.ServerTime):
         return false
-    if v·.ServerTime < 0.0 or v·.ServerTime > 65535.0:
+    if v.ServerTime < 0.0 or v.ServerTime > 65535.0:
         return false
-    if v·.EntitiesCount < 1 or v·.EntitiesCount > 8:
+    if v.EntitiesCount < 1 or v.EntitiesCount > 8:
         return false
-    for(v·.EntitiesCount) i_bd_Entities·:
-        if not TableEntityFixedBoundsBody(v·.Entities[i_bd_Entities·]):
+    for(v.EntitiesCount) i_bd_Entities:
+        if not TableEntityFixedBoundsBody(v.Entities[i_bd_Entities]):
             return false
-    if v·.StatsCount < 0 or v·.StatsCount > 80:
+    if v.StatsCount < 0 or v.StatsCount > 80:
         return false
-    for(v·.StatsCount) i_bd_Stats·:
-        if not TableStatFixedBoundsBody(v·.Stats[i_bd_Stats·]):
+    for(v.StatsCount) i_bd_Stats:
+        if not TableStatFixedBoundsBody(v.Stats[i_bd_Stats]):
             return false
-    if schema_rt.ult(3, int(v·.GameEvent.Type)):
+    if schema_rt.ult(3, int(v.GameEvent.Type)):
         return false
-    if int(v·.GameEvent.Type) == 1:
-        if not TableHitEventFixedBoundsBody(v·.GameEvent.Hit):
+    if int(v.GameEvent.Type) == 1:
+        if not TableHitEventFixedBoundsBody(v.GameEvent.Hit):
             return false
-    if int(v·.GameEvent.Type) == 2:
-        if not TableChatEventFixedBoundsBody(v·.GameEvent.Chat):
+    if int(v.GameEvent.Type) == 2:
+        if not TableChatEventFixedBoundsBody(v.GameEvent.Chat):
             return false
-    if int(v·.GameEvent.Type) == 3:
-        if not TablePickupEventFixedBoundsBody(v·.GameEvent.Pickup):
+    if int(v.GameEvent.Type) == 3:
+        if not TablePickupEventFixedBoundsBody(v.GameEvent.Pickup):
             return false
-    if length(v·.Loadout) < 4:
+    if length(v.Loadout) < 4:
         return false
-    for(4) i_bd_Loadout·:
-        if (schema_rt.ult(255, v·.Loadout[i_bd_Loadout·])):
+    for(4) i_bd_Loadout:
+        if (schema_rt.ult(255, v.Loadout[i_bd_Loadout])):
             return false
-    if v·.PlayerNameLength < 0 or v·.PlayerNameLength > 15 or not schema_rt.fixed_utf8_valid_no_nul(v·.PlayerName, 0, v·.PlayerNameLength):
+    if v.PlayerNameLength < 0 or v.PlayerNameLength > 15 or not schema_rt.fixed_utf8_valid_no_nul(v.PlayerName, 0, v.PlayerNameLength):
         return false
-    if v·.PayloadLength < 0 or v·.PayloadLength > 16:
+    if v.PayloadLength < 0 or v.PayloadLength > 16:
         return false
-    if not schema_rt.finite_f32(v·.AimX):
+    if not schema_rt.finite_f32(v.AimX):
         return false
-    if v·.AimX < -1.0 or v·.AimX > 1.0:
+    if v.AimX < -1.0 or v.AimX > 1.0:
         return false
-    if not schema_rt.finite_f32(v·.AimY):
+    if not schema_rt.finite_f32(v.AimY):
         return false
-    if v·.AimY < -1.0 or v·.AimY > 1.0:
+    if v.AimY < -1.0 or v.AimY > 1.0:
         return false
-    if not schema_rt.finite_f32(v·.AimZ):
+    if not schema_rt.finite_f32(v.AimZ):
         return false
-    if v·.AimZ < -1.0 or v·.AimZ > 1.0:
+    if v.AimZ < -1.0 or v.AimZ > 1.0:
         return false
-    if not schema_rt.finite_f32(v·.Recoil):
+    if not schema_rt.finite_f32(v.Recoil):
         return false
-    if not schema_rt.finite_f64(v·.Drift):
+    if not schema_rt.finite_f64(v.Drift):
         return false
-    if (v·.Flux < -1000000000000000000) or (v·.Flux > 1000000000000000000):
+    if (v.Flux < -1000000000000000000) or (v.Flux > 1000000000000000000):
         return false
-    if not schema_rt.finite_f32(v·.Ping):
+    if not schema_rt.finite_f32(v.Ping):
         return false
-    if v·.Ping < 0.0 or v·.Ping > 250.0:
+    if v.Ping < 0.0 or v.Ping > 250.0:
         return false
-    if (schema_rt.ult(16777215, v·.CrcHint)):
+    if (schema_rt.ult(16777215, v.CrcHint)):
         return false
-    if (v·.Extra < -2147483648) or (v·.Extra > 2147483647):
+    if (v.Extra < -2147483648) or (v.Extra > 2147483647):
         return false
-    if (v·.Extra < 0) or (v·.Extra > 255):
+    if (v.Extra < 0) or (v.Extra > 255):
         return false
-    if (v·.IdleTicks < -2147483648) or (v·.IdleTicks > 2147483647):
+    if (v.IdleTicks < -2147483648) or (v.IdleTicks > 2147483647):
         return false
-    if (v·.IdleTicks < 0) or (v·.IdleTicks > 15):
+    if (v.IdleTicks < 0) or (v.IdleTicks > 15):
         return false
     return true
 
-def TableMixedFixedCheckBody(v·:TableMixed) -> bool:
-    if (schema_rt.ult(65535, v·.ProtocolMagic)):
+def TableMixedFixedCheckBody(v:TableMixed) -> bool:
+    if (schema_rt.ult(65535, v.ProtocolMagic)):
         return false
-    if (schema_rt.ult(65535, v·.Sequence)):
+    if (schema_rt.ult(65535, v.Sequence)):
         return false
-    if (v·.AckSequence < -2147483648) or (v·.AckSequence > 2147483647):
+    if (v.AckSequence < -2147483648) or (v.AckSequence > 2147483647):
         return false
-    if (v·.AckSequence < 0) or (v·.AckSequence > 65535):
+    if (v.AckSequence < 0) or (v.AckSequence > 65535):
         return false
-    if (schema_rt.ult(4294967295, v·.AckBits)):
+    if (schema_rt.ult(4294967295, v.AckBits)):
         return false
-    if (schema_rt.ult(4294967295, v·.ClientId)):
+    if (schema_rt.ult(4294967295, v.ClientId)):
         return false
-    if (schema_rt.ult(v·.Nonce, 1)) or (schema_rt.ult(9223372036854775807, v·.Nonce)):
+    if (schema_rt.ult(v.Nonce, 1)) or (schema_rt.ult(9223372036854775807, v.Nonce)):
         return false
-    if (v·.WorldTime < -1000000000000) or (v·.WorldTime > 1000000000000):
+    if (v.WorldTime < -1000000000000) or (v.WorldTime > 1000000000000):
         return false
-    if (schema_rt.ult(281474976710655, v·.FrameTick)):
+    if (schema_rt.ult(281474976710655, v.FrameTick)):
         return false
-    if not schema_rt.finite_f32(v·.ServerTime):
+    if not schema_rt.finite_f32(v.ServerTime):
         return false
-    if v·.ServerTime < 0.0 or v·.ServerTime > 65535.0:
+    if v.ServerTime < 0.0 or v.ServerTime > 65535.0:
         return false
-    if v·.EntitiesCount < 1 or v·.EntitiesCount > 8:
+    if v.EntitiesCount < 1 or v.EntitiesCount > 8:
         return false
-    for(v·.EntitiesCount) i_bd_Entities·:
-        if not TableEntityFixedCheckBody(v·.Entities[i_bd_Entities·]):
+    for(v.EntitiesCount) i_bd_Entities:
+        if not TableEntityFixedCheckBody(v.Entities[i_bd_Entities]):
             return false
-    if v·.StatsCount < 0 or v·.StatsCount > 80:
+    if v.StatsCount < 0 or v.StatsCount > 80:
         return false
-    for(v·.StatsCount) i_bd_Stats·:
-        if not TableStatFixedCheckBody(v·.Stats[i_bd_Stats·]):
+    for(v.StatsCount) i_bd_Stats:
+        if not TableStatFixedCheckBody(v.Stats[i_bd_Stats]):
             return false
-    if schema_rt.ult(3, int(v·.GameEvent.Type)):
+    if schema_rt.ult(3, int(v.GameEvent.Type)):
         return false
-    if int(v·.GameEvent.Type) == 1:
-        if not TableHitEventFixedCheckBody(v·.GameEvent.Hit):
+    if int(v.GameEvent.Type) == 1:
+        if not TableHitEventFixedCheckBody(v.GameEvent.Hit):
             return false
-    if int(v·.GameEvent.Type) == 2:
-        if not TableChatEventFixedCheckBody(v·.GameEvent.Chat):
+    if int(v.GameEvent.Type) == 2:
+        if not TableChatEventFixedCheckBody(v.GameEvent.Chat):
             return false
-    if int(v·.GameEvent.Type) == 3:
-        if not TablePickupEventFixedCheckBody(v·.GameEvent.Pickup):
+    if int(v.GameEvent.Type) == 3:
+        if not TablePickupEventFixedCheckBody(v.GameEvent.Pickup):
             return false
-    if length(v·.Loadout) < 4:
+    if length(v.Loadout) < 4:
         return false
-    for(4) i_bd_Loadout·:
-        if (schema_rt.ult(255, v·.Loadout[i_bd_Loadout·])):
+    for(4) i_bd_Loadout:
+        if (schema_rt.ult(255, v.Loadout[i_bd_Loadout])):
             return false
-    if v·.PlayerNameLength < 0 or v·.PlayerNameLength > 15 or not schema_rt.fixed_utf8_valid_no_nul(v·.PlayerName, 0, v·.PlayerNameLength):
+    if v.PlayerNameLength < 0 or v.PlayerNameLength > 15 or not schema_rt.fixed_utf8_valid_no_nul(v.PlayerName, 0, v.PlayerNameLength):
         return false
-    if v·.PayloadLength < 0 or v·.PayloadLength > 16:
+    if v.PayloadLength < 0 or v.PayloadLength > 16:
         return false
-    if not schema_rt.finite_f32(v·.AimX):
+    if not schema_rt.finite_f32(v.AimX):
         return false
-    if v·.AimX < -1.0 or v·.AimX > 1.0:
+    if v.AimX < -1.0 or v.AimX > 1.0:
         return false
-    if not schema_rt.finite_f32(v·.AimY):
+    if not schema_rt.finite_f32(v.AimY):
         return false
-    if v·.AimY < -1.0 or v·.AimY > 1.0:
+    if v.AimY < -1.0 or v.AimY > 1.0:
         return false
-    if not schema_rt.finite_f32(v·.AimZ):
+    if not schema_rt.finite_f32(v.AimZ):
         return false
-    if v·.AimZ < -1.0 or v·.AimZ > 1.0:
+    if v.AimZ < -1.0 or v.AimZ > 1.0:
         return false
-    if not schema_rt.finite_f32(v·.Recoil):
+    if not schema_rt.finite_f32(v.Recoil):
         return false
-    if not schema_rt.finite_f64(v·.Drift):
+    if not schema_rt.finite_f64(v.Drift):
         return false
-    if (v·.Flux < -1000000000000000000) or (v·.Flux > 1000000000000000000):
+    if (v.Flux < -1000000000000000000) or (v.Flux > 1000000000000000000):
         return false
-    if not schema_rt.finite_f32(v·.Ping):
+    if not schema_rt.finite_f32(v.Ping):
         return false
-    if v·.Ping < 0.0 or v·.Ping > 250.0:
+    if v.Ping < 0.0 or v.Ping > 250.0:
         return false
-    if (schema_rt.ult(16777215, v·.CrcHint)):
+    if (schema_rt.ult(16777215, v.CrcHint)):
         return false
-    if (v·.Extra < -2147483648) or (v·.Extra > 2147483647):
+    if (v.Extra < -2147483648) or (v.Extra > 2147483647):
         return false
-    if (v·.Extra < 0) or (v·.Extra > 255):
+    if (v.Extra < 0) or (v.Extra > 255):
         return false
-    if (v·.IdleTicks < -2147483648) or (v·.IdleTicks > 2147483647):
+    if (v.IdleTicks < -2147483648) or (v.IdleTicks > 2147483647):
         return false
-    if (v·.IdleTicks < 0) or (v·.IdleTicks > 15):
+    if (v.IdleTicks < 0) or (v.IdleTicks > 15):
         return false
     return true
 
 // TableMixedFixedFiniteBody is TableMixed's finite rule (docs/SPEC-TABLES.md §3.3): the
 // first NaN or infinity, named <Owner>.<field>, or "".
-def TableMixedFixedFiniteBody(v·:TableMixed) -> string:
-    if not schema_rt.finite_f32(v·.ServerTime):
+def TableMixedFixedFiniteBody(v:TableMixed) -> string:
+    if not schema_rt.finite_f32(v.ServerTime):
         return "TableMixed.server_time"
-    if not schema_rt.finite_f32(v·.AimX):
+    if not schema_rt.finite_f32(v.AimX):
         return "TableMixed.aim_x"
-    if not schema_rt.finite_f32(v·.AimY):
+    if not schema_rt.finite_f32(v.AimY):
         return "TableMixed.aim_y"
-    if not schema_rt.finite_f32(v·.AimZ):
+    if not schema_rt.finite_f32(v.AimZ):
         return "TableMixed.aim_z"
-    if not schema_rt.finite_f32(v·.Recoil):
+    if not schema_rt.finite_f32(v.Recoil):
         return "TableMixed.recoil"
-    if not schema_rt.finite_f64(v·.Drift):
+    if not schema_rt.finite_f64(v.Drift):
         return "TableMixed.drift"
-    if not schema_rt.finite_f32(v·.Ping):
+    if not schema_rt.finite_f32(v.Ping):
         return "TableMixed.ping"
     return ""
 
@@ -4734,9 +4688,9 @@ let TableMixedFixedDst:[schema_rt.TableFixedDst] = [
 ]
 
 def TableMixedFixedBuildPlan() -> schema_rt.TableFixedPlan:
-    let scratch·:[schema_rt.TableFixedEntry] = []
-    TableMixedFixedLeaves(scratch·, 0, 0)
-    return schema_rt.fixed_build_plan(scratch·)
+    let scratch:[schema_rt.TableFixedEntry] = []
+    TableMixedFixedLeaves(scratch, 0, 0)
+    return schema_rt.fixed_build_plan(scratch)
 
 let TableMixedFixedPlan = TableMixedFixedBuildPlan()
 
@@ -4756,584 +4710,582 @@ let TableMixedFixedHoles = schema_rt.fixed_holes(TableMixedFixedPlan.entries, Ta
 let TableMixedFixedLineageHoles = schema_rt.fixed_lineage_holes(TableMixedFixedLineagePlans, 1224)
 let TableMixedFixedPlanMax = schema_rt.fixed_plan_max(TableMixedFixedPlan, TableMixedFixedLineagePlans)
 
-def TableMixedFixedMeasure(count·:int) -> int:
-    return schema_rt.TableFixedHeaderBytes + 4 + 1279 + count· * (8 + 1224)
+def TableMixedFixedMeasure(count:int) -> int:
+    return schema_rt.TableFixedHeaderBytes + 4 + 1279 + count * (8 + 1224)
 
-def TableMixedFixedSaveChecked(values·:[TableMixed], buffer·:string) -> int, string, string:
-    if length(values·) == 0:
-        return -1, buffer·, schema_rt.TableRefuseInvalidValue
-    let need· = TableMixedFixedMeasure(length(values·))
-    if length(buffer·) < need·:
-        return -1, buffer·, schema_rt.TableRefuseTruncated
-    for(values·) v·:
-        if not TableMixedFixedCheckBody(v·):
-            return -1, buffer·, schema_rt.TableRefuseInvalidValue
-    let wire· = TableMixedFixedSave(values·)
-    let out· = write_substring(buffer·, 0, wire·, false)
-    return need·, out·, ""
+def TableMixedFixedSaveChecked(values:[TableMixed], buffer:string) -> int, string, string:
+    let need = TableMixedFixedMeasure(length(values))
+    if length(buffer) < need:
+        return -1, buffer, schema_rt.TableRefuseTruncated
+    for(values) v:
+        if not TableMixedFixedCheckBody(v):
+            return -1, buffer, schema_rt.TableRefuseInvalidValue
+    let wire = TableMixedFixedSave(values)
+    let out = write_substring(buffer, 0, wire, false)
+    return need, out, ""
 
-def TableMixedFixedLoad(values·:[TableMixed], data_in·:string, plan·:[schema_rt.TableFixedEntry], report_in·:schema_rt.TableReport?) -> int:
-    let report· = if report_in·: report_in· else: schema_rt.TableReport {}
-    schema_rt.fixed_reset_report(report·)
-    let data· = data_in·
-    if length(data·) < 1:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableMixedReset(failed·)
+def TableMixedFixedLoad(values:[TableMixed], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
+    let report = if report_in: report_in else: schema_rt.TableReport {}
+    schema_rt.fixed_reset_report(report)
+    let data = data_in
+    if length(data) < 1:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableMixedReset(failed)
         return -1
-    let form· = read_uint8_le(data·, 0)
-    if form· != schema_rt.TableFixedForm:
-        if form· == 1:
-            for(values·) failed·: TableMixedReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePreviousForm)
-        if form· == 2:
-            for(values·) failed·: TableMixedReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseMessageFormAsFile)
-        for(values·) failed·: TableMixedReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseNewerForm)
-    if length(data·) < schema_rt.TableFixedHeaderBytes + 4:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableMixedReset(failed·)
+    let form = read_uint8_le(data, 0)
+    if form != schema_rt.TableFixedForm:
+        if form == 1:
+            for(values) failed: TableMixedReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefusePreviousForm)
+        if form == 2:
+            for(values) failed: TableMixedReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseMessageFormAsFile)
+        for(values) failed: TableMixedReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNewerForm)
+    if length(data) < schema_rt.TableFixedHeaderBytes + 4:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableMixedReset(failed)
         return -1
-    var r_idx· = 1
-    while r_idx· < schema_rt.TableFixedHashAt:
-        if read_uint8_le(data·, r_idx·) != 0:
-            report·.malformed = true
-            report·.reason = schema_rt.TableRefuseReservedNotZero
-            for(values·) failed·: TableMixedReset(failed·)
+    var r_idx = 1
+    while r_idx < schema_rt.TableFixedHashAt:
+        if read_uint8_le(data, r_idx) != 0:
+            report.malformed = true
+            report.reason = schema_rt.TableRefuseReservedNotZero
+            for(values) failed: TableMixedReset(failed)
             return -1
-        r_idx· += 1
-    let layout_bytes· = read_uint32_le(data·, schema_rt.TableFixedHeaderBytes)
-    if layout_bytes· < 0 or layout_bytes· + schema_rt.TableFixedHeaderBytes + 4 > length(data·):
-        for(values·) failed·: TableMixedReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    let hash· = read_uint64_le(data·, schema_rt.TableFixedHashAt)
-    let pick· = schema_rt.fixed_select(TableMixedFixedKnown, hash·)
-    if pick· < 0:
-        for(values·) failed·: TableMixedReset(failed·)
-        return schema_rt.fixed_refuse_hash(report·, schema_rt.TableRefuseLayoutUnknown, hash·)
-    if pick· < TableMixedFixedFloor:
-        for(values·) failed·: TableMixedReset(failed·)
-        return schema_rt.fixed_refuse_hash(report·, schema_rt.TableRefuseLayoutUnsupported, hash·)
-    let known· = TableMixedFixedKnown[pick·]
-    if layout_bytes· != known·.layout_bytes:
-        for(values·) failed·: TableMixedReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    for(layout_bytes·) l_i·:
-        if read_uint8_le(data·, schema_rt.TableFixedHeaderBytes + 4 + l_i·) != read_uint8_le(known·.layout, l_i·):
-            for(values·) failed·: TableMixedReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseLayoutMalformed)
-    var entries· = TableMixedFixedPlan.entries
-    var entry_count· = TableMixedFixedPlan.count
-    var holes· = TableMixedFixedHoles
-    let record_bytes· = known·.record
-    var census_unknown· = 0
-    var census_kind· = 0
-    if hash· != TableMixedFixedHash:
-        let lane· = TableMixedFixedLineagePlans[pick·]
-        if lane·.why != "":
-            for(values·) failed·: TableMixedReset(failed·)
-            return schema_rt.fixed_refuse(report·, lane·.why)
-        entries· = lane·.entries
-        entry_count· = lane·.count
-        holes· = TableMixedFixedLineageHoles[pick·]
-        census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        for(values·) failed·: TableMixedReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
-    if entry_count· > length(plan·):
-        for(values·) failed·: TableMixedReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
-    let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
-    let rest· = length(data·) - records_start·
-    if rest· == 0 or record_bytes· <= 8 or (rest· % record_bytes·) != 0:
-        report·.malformed = true
-        report·.reason = schema_rt.TableRefuseTruncated
-        for(values·) failed·: TableMixedReset(failed·)
+        r_idx += 1
+    let layout_bytes = read_uint32_le(data, schema_rt.TableFixedHeaderBytes)
+    if layout_bytes < 0 or layout_bytes + schema_rt.TableFixedHeaderBytes + 4 > length(data):
+        for(values) failed: TableMixedReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    let hash = read_uint64_le(data, schema_rt.TableFixedHashAt)
+    let pick = schema_rt.fixed_select(TableMixedFixedKnown, hash)
+    if pick < 0:
+        for(values) failed: TableMixedReset(failed)
+        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnknown, hash)
+    if pick < TableMixedFixedFloor:
+        for(values) failed: TableMixedReset(failed)
+        return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnsupported, hash)
+    let known = TableMixedFixedKnown[pick]
+    if layout_bytes != known.layout_bytes:
+        for(values) failed: TableMixedReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    for(layout_bytes) l_i:
+        if read_uint8_le(data, schema_rt.TableFixedHeaderBytes + 4 + l_i) != read_uint8_le(known.layout, l_i):
+            for(values) failed: TableMixedReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
+    var entries = TableMixedFixedPlan.entries
+    var entry_count = TableMixedFixedPlan.count
+    var holes = TableMixedFixedHoles
+    let record_bytes = known.record
+    var census_unknown = 0
+    var census_kind = 0
+    if hash != TableMixedFixedHash:
+        let lane = TableMixedFixedLineagePlans[pick]
+        if lane.why != "":
+            for(values) failed: TableMixedReset(failed)
+            return schema_rt.fixed_refuse(report, lane.why)
+        entries = lane.entries
+        entry_count = lane.count
+        holes = TableMixedFixedLineageHoles[pick]
+        census_unknown = lane.unknown
+        census_kind = lane.kind_mismatch
+    if census_kind != 0:
+        for(values) failed: TableMixedReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)
+    if entry_count > length(plan):
+        for(values) failed: TableMixedReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
+    let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
+    let rest = length(data) - records_start
+    if record_bytes <= 8 or (rest % record_bytes) != 0:
+        report.malformed = true
+        report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableMixedReset(failed)
         return -1
-    let n· = rest· / record_bytes·
-    if n· > length(values·):
-        for(values·) failed·: TableMixedReset(failed·)
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseBatchTooLarge)
-    for(n·) k·:
-        let rec_at· = records_start· + k· * record_bytes·
-        if read_uint64_le(data·, rec_at·) != hash·:
-            for(values·) failed·: TableMixedReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseNoLayout)
-        let why· = schema_rt.fixed_value_refusal(entries·, entry_count·, data·, rec_at· + 8)
-        if why· != "":
-            for(values·) failed·: TableMixedReset(failed·)
-            return schema_rt.fixed_refuse(report·, why·)
-    for(n·) k·:
-        let rec_at· = records_start· + k· * record_bytes·
-        var img· = schema_rt.fixed_prefill_holes(schema_rt.zeros(1224), TableMixedFixedResetImage, holes·)
-        let img2·, why· = schema_rt.fixed_run(entries·, entry_count·, data·, rec_at· + 8, img·, report·)
-        if why· != "":
-            for(values·) failed·: TableMixedReset(failed·)
-            return schema_rt.fixed_refuse(report·, why·)
-        img· = img2·
-        TableMixedFixedScatter(img·, 0, values·[k·])
-        let nf· = TableMixedFixedFiniteBody(values·[k·])
-        if nf· != "":
-            for(values·) failed·: TableMixedReset(failed·)
-            return schema_rt.fixed_refuse_non_finite(report·, nf·)
-        if not TableMixedFixedBoundsBody(values·[k·]):
-            for(values·) failed·: TableMixedReset(failed·)
-            return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
-    report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
-    return n·
+    let n = rest / record_bytes
+    if n > length(values):
+        for(values) failed: TableMixedReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseBatchTooLarge)
+    for(n) k:
+        let rec_at = records_start + k * record_bytes
+        if read_uint64_le(data, rec_at) != hash:
+            for(values) failed: TableMixedReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNoLayout)
+        let why = schema_rt.fixed_value_refusal(entries, entry_count, data, rec_at + 8)
+        if why != "":
+            for(values) failed: TableMixedReset(failed)
+            return schema_rt.fixed_refuse(report, why)
+    for(n) k:
+        let rec_at = records_start + k * record_bytes
+        var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(1224), TableMixedFixedResetImage, holes)
+        let img2, why = schema_rt.fixed_run(entries, entry_count, data, rec_at + 8, img, report)
+        if why != "":
+            for(values) failed: TableMixedReset(failed)
+            return schema_rt.fixed_refuse(report, why)
+        img = img2
+        TableMixedFixedScatter(img, 0, values[k])
+        let nf = TableMixedFixedFiniteBody(values[k])
+        if nf != "":
+            for(values) failed: TableMixedReset(failed)
+            return schema_rt.fixed_refuse_non_finite(report, nf)
+        if not TableMixedFixedBoundsBody(values[k]):
+            for(values) failed: TableMixedReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseOutOfRange)
+    report.unknown += census_unknown
+    report.kind_mismatch += census_kind
+    return n
 
 class TableEntityFixedRecordCodec : schema_rt.FixedRecordCodec
-    def read_fixed(data·:string, report·:schema_rt.LoadReport) -> schema_rt.Record?:
-        let rows· = [NewTableEntity()]
-        let plan·:[schema_rt.TableFixedEntry] = []
-        for(TableEntityFixedPlanMax): push(plan·, schema_rt.TableFixedEntry {})
-        let native· = schema_rt.TableReport {}
-        let n· = TableEntityFixedLoad(rows·, data·, plan·, native·)
-        if n· != 1:
-            schema_rt.read_refuse(report·, if native·.reason != "": native·.reason else: "record_count")
+    def read_fixed(data:string, report:schema_rt.LoadReport) -> schema_rt.Record?:
+        let rows = [NewTableEntity()]
+        let plan:[schema_rt.TableFixedEntry] = []
+        for(TableEntityFixedPlanMax): push(plan, schema_rt.TableFixedEntry {})
+        let native = schema_rt.TableReport {}
+        let n = TableEntityFixedLoad(rows, data, plan, native)
+        if n != 1:
+            schema_rt.read_refuse(report, if native.reason != "": native.reason else: "record_count")
             return nil
-        let rec· = schema_rt.new_record(TableEntityDescriptor)
-        let bridge_1· = rec·.fields[0]
-        bridge_1·.cell.i = rows·[0].EntityId
-        let bridge_2· = rec·.fields[1]
-        bridge_2·.cell.i = rows·[0].PosX
-        let bridge_3· = rec·.fields[2]
-        bridge_3·.cell.i = rows·[0].PosY
-        let bridge_4· = rec·.fields[3]
-        bridge_4·.cell.i = rows·[0].PosZ
-        let bridge_5· = rec·.fields[4]
-        bridge_5·.cell.i = rows·[0].Yaw
-        let bridge_6· = rec·.fields[5]
-        bridge_6·.cell.i = rows·[0].Pitch
-        let bridge_7· = rec·.fields[6]
-        bridge_7·.cell.i = rows·[0].VelX
-        let bridge_8· = rec·.fields[7]
-        bridge_8·.cell.i = rows·[0].VelY
-        let bridge_9· = rec·.fields[8]
-        bridge_9·.cell.i = rows·[0].VelZ
-        let bridge_10· = rec·.fields[9]
-        bridge_10·.cell.i = rows·[0].Health
-        let bridge_11· = rec·.fields[10]
-        bridge_11·.cell.i = int(rows·[0].Weapon)
-        let bridge_12· = rec·.fields[11]
-        bridge_12·.cell.i = rows·[0].Damage
-        let bridge_13· = rec·.fields[12]
-        bridge_13·.cell.b = rows·[0].Moving
-        let bridge_14· = rec·.fields[13]
-        bridge_14·.cell.b = rows·[0].Firing
-        return rec·
-    def write_fixed(rec·:schema_rt.Record) -> string, string:
-        let row· = NewTableEntity()
-        if rec·.d.name != "TableEntity" or length(rec·.fields) != 14: return "", "invalid_value"
-        let bridge_1· = rec·.fields[0]
-        if bridge_1·.fd.id != 0x23fcfd6678e36712: return "", "invalid_value"
-        row·.EntityId = bridge_1·.cell.i
-        let bridge_2· = rec·.fields[1]
-        if bridge_2·.fd.id != 0xcb4b37357667310e: return "", "invalid_value"
-        row·.PosX = bridge_2·.cell.i
-        let bridge_3· = rec·.fields[2]
-        if bridge_3·.fd.id != 0xcb4b3835766732c1: return "", "invalid_value"
-        row·.PosY = bridge_3·.cell.i
-        let bridge_4· = rec·.fields[3]
-        if bridge_4·.fd.id != 0xcb4b353576672da8: return "", "invalid_value"
-        row·.PosZ = bridge_4·.cell.i
-        let bridge_5· = rec·.fields[4]
-        if bridge_5·.fd.id != 0xb54d8e19798e16e8: return "", "invalid_value"
-        row·.Yaw = bridge_5·.cell.i
-        let bridge_6· = rec·.fields[5]
-        if bridge_6·.fd.id != 0x53a9f665a90cc1b1: return "", "invalid_value"
-        row·.Pitch = bridge_6·.cell.i
-        let bridge_7· = rec·.fields[6]
-        if bridge_7·.fd.id != 0x6cede6b6eb60ee67: return "", "invalid_value"
-        row·.VelX = bridge_7·.cell.i
-        let bridge_8· = rec·.fields[7]
-        if bridge_8·.fd.id != 0x6cede5b6eb60ecb4: return "", "invalid_value"
-        row·.VelY = bridge_8·.cell.i
-        let bridge_9· = rec·.fields[8]
-        if bridge_9·.fd.id != 0x6cede8b6eb60f1cd: return "", "invalid_value"
-        row·.VelZ = bridge_9·.cell.i
-        let bridge_10· = rec·.fields[9]
-        if bridge_10·.fd.id != 0x7f69d4b5288ba9cf: return "", "invalid_value"
-        row·.Health = bridge_10·.cell.i
-        let bridge_11· = rec·.fields[10]
-        if bridge_11·.fd.id != 0xa0b610205f2c6e01: return "", "invalid_value"
-        row·.Weapon = TableWeapon(bridge_11·.cell.i)
-        let bridge_12· = rec·.fields[11]
-        if bridge_12·.fd.id != 0x7f6308be8ab37fc0: return "", "invalid_value"
-        row·.Damage = bridge_12·.cell.i
-        let bridge_13· = rec·.fields[12]
-        if bridge_13·.fd.id != 0x11a44fc1d1243da7: return "", "invalid_value"
-        row·.Moving = bridge_13·.cell.b
-        let bridge_14· = rec·.fields[13]
-        if bridge_14·.fd.id != 0x7674cfd19b9031ca: return "", "invalid_value"
-        row·.Firing = bridge_14·.cell.b
-        let n·, wire·, why· = TableEntityFixedSaveChecked([row·], schema_rt.zeros(TableEntityFixedMeasure(1)))
-        return (if n· < 0: "" else: wire·), why·
+        let rec = schema_rt.new_record(TableEntityDescriptor)
+        let bridge_1 = rec.fields[0]
+        bridge_1.cell.i = rows[0].EntityId
+        let bridge_2 = rec.fields[1]
+        bridge_2.cell.i = rows[0].PosX
+        let bridge_3 = rec.fields[2]
+        bridge_3.cell.i = rows[0].PosY
+        let bridge_4 = rec.fields[3]
+        bridge_4.cell.i = rows[0].PosZ
+        let bridge_5 = rec.fields[4]
+        bridge_5.cell.i = rows[0].Yaw
+        let bridge_6 = rec.fields[5]
+        bridge_6.cell.i = rows[0].Pitch
+        let bridge_7 = rec.fields[6]
+        bridge_7.cell.i = rows[0].VelX
+        let bridge_8 = rec.fields[7]
+        bridge_8.cell.i = rows[0].VelY
+        let bridge_9 = rec.fields[8]
+        bridge_9.cell.i = rows[0].VelZ
+        let bridge_10 = rec.fields[9]
+        bridge_10.cell.i = rows[0].Health
+        let bridge_11 = rec.fields[10]
+        bridge_11.cell.i = int(rows[0].Weapon)
+        let bridge_12 = rec.fields[11]
+        bridge_12.cell.i = rows[0].Damage
+        let bridge_13 = rec.fields[12]
+        bridge_13.cell.b = rows[0].Moving
+        let bridge_14 = rec.fields[13]
+        bridge_14.cell.b = rows[0].Firing
+        return rec
+    def write_fixed(rec:schema_rt.Record) -> string, string:
+        let row = NewTableEntity()
+        if rec.d.name != "TableEntity" or length(rec.fields) != 14: return "", "invalid_value"
+        let bridge_1 = rec.fields[0]
+        if bridge_1.fd.id != 0x23fcfd6678e36712: return "", "invalid_value"
+        row.EntityId = bridge_1.cell.i
+        let bridge_2 = rec.fields[1]
+        if bridge_2.fd.id != 0xcb4b37357667310e: return "", "invalid_value"
+        row.PosX = bridge_2.cell.i
+        let bridge_3 = rec.fields[2]
+        if bridge_3.fd.id != 0xcb4b3835766732c1: return "", "invalid_value"
+        row.PosY = bridge_3.cell.i
+        let bridge_4 = rec.fields[3]
+        if bridge_4.fd.id != 0xcb4b353576672da8: return "", "invalid_value"
+        row.PosZ = bridge_4.cell.i
+        let bridge_5 = rec.fields[4]
+        if bridge_5.fd.id != 0xb54d8e19798e16e8: return "", "invalid_value"
+        row.Yaw = bridge_5.cell.i
+        let bridge_6 = rec.fields[5]
+        if bridge_6.fd.id != 0x53a9f665a90cc1b1: return "", "invalid_value"
+        row.Pitch = bridge_6.cell.i
+        let bridge_7 = rec.fields[6]
+        if bridge_7.fd.id != 0x6cede6b6eb60ee67: return "", "invalid_value"
+        row.VelX = bridge_7.cell.i
+        let bridge_8 = rec.fields[7]
+        if bridge_8.fd.id != 0x6cede5b6eb60ecb4: return "", "invalid_value"
+        row.VelY = bridge_8.cell.i
+        let bridge_9 = rec.fields[8]
+        if bridge_9.fd.id != 0x6cede8b6eb60f1cd: return "", "invalid_value"
+        row.VelZ = bridge_9.cell.i
+        let bridge_10 = rec.fields[9]
+        if bridge_10.fd.id != 0x7f69d4b5288ba9cf: return "", "invalid_value"
+        row.Health = bridge_10.cell.i
+        let bridge_11 = rec.fields[10]
+        if bridge_11.fd.id != 0xa0b610205f2c6e01: return "", "invalid_value"
+        row.Weapon = TableWeapon(bridge_11.cell.i)
+        let bridge_12 = rec.fields[11]
+        if bridge_12.fd.id != 0x7f6308be8ab37fc0: return "", "invalid_value"
+        row.Damage = bridge_12.cell.i
+        let bridge_13 = rec.fields[12]
+        if bridge_13.fd.id != 0x11a44fc1d1243da7: return "", "invalid_value"
+        row.Moving = bridge_13.cell.b
+        let bridge_14 = rec.fields[13]
+        if bridge_14.fd.id != 0x7674cfd19b9031ca: return "", "invalid_value"
+        row.Firing = bridge_14.cell.b
+        let n, wire, why = TableEntityFixedSaveChecked([row], schema_rt.zeros(TableEntityFixedMeasure(1)))
+        return (if n < 0: "" else: wire), why
 
 schema_rt.register_fixed_record_codec(TableEntityFixedRecordCodec { name: "TableEntity" })
 
 class TableStatFixedRecordCodec : schema_rt.FixedRecordCodec
-    def read_fixed(data·:string, report·:schema_rt.LoadReport) -> schema_rt.Record?:
-        let rows· = [NewTableStat()]
-        let plan·:[schema_rt.TableFixedEntry] = []
-        for(TableStatFixedPlanMax): push(plan·, schema_rt.TableFixedEntry {})
-        let native· = schema_rt.TableReport {}
-        let n· = TableStatFixedLoad(rows·, data·, plan·, native·)
-        if n· != 1:
-            schema_rt.read_refuse(report·, if native·.reason != "": native·.reason else: "record_count")
+    def read_fixed(data:string, report:schema_rt.LoadReport) -> schema_rt.Record?:
+        let rows = [NewTableStat()]
+        let plan:[schema_rt.TableFixedEntry] = []
+        for(TableStatFixedPlanMax): push(plan, schema_rt.TableFixedEntry {})
+        let native = schema_rt.TableReport {}
+        let n = TableStatFixedLoad(rows, data, plan, native)
+        if n != 1:
+            schema_rt.read_refuse(report, if native.reason != "": native.reason else: "record_count")
             return nil
-        let rec· = schema_rt.new_record(TableStatDescriptor)
-        let bridge_1· = rec·.fields[0]
-        bridge_1·.cell.i = rows·[0].StatId
-        let bridge_2· = rec·.fields[1]
-        bridge_2·.cell.i = rows·[0].Delta
-        return rec·
-    def write_fixed(rec·:schema_rt.Record) -> string, string:
-        let row· = NewTableStat()
-        if rec·.d.name != "TableStat" or length(rec·.fields) != 2: return "", "invalid_value"
-        let bridge_1· = rec·.fields[0]
-        if bridge_1·.fd.id != 0x80ab75f0866dbf65: return "", "invalid_value"
-        row·.StatId = bridge_1·.cell.i
-        let bridge_2· = rec·.fields[1]
-        if bridge_2·.fd.id != 0x52076675ec13a0c1: return "", "invalid_value"
-        row·.Delta = bridge_2·.cell.i
-        let n·, wire·, why· = TableStatFixedSaveChecked([row·], schema_rt.zeros(TableStatFixedMeasure(1)))
-        return (if n· < 0: "" else: wire·), why·
+        let rec = schema_rt.new_record(TableStatDescriptor)
+        let bridge_1 = rec.fields[0]
+        bridge_1.cell.i = rows[0].StatId
+        let bridge_2 = rec.fields[1]
+        bridge_2.cell.i = rows[0].Delta
+        return rec
+    def write_fixed(rec:schema_rt.Record) -> string, string:
+        let row = NewTableStat()
+        if rec.d.name != "TableStat" or length(rec.fields) != 2: return "", "invalid_value"
+        let bridge_1 = rec.fields[0]
+        if bridge_1.fd.id != 0x80ab75f0866dbf65: return "", "invalid_value"
+        row.StatId = bridge_1.cell.i
+        let bridge_2 = rec.fields[1]
+        if bridge_2.fd.id != 0x52076675ec13a0c1: return "", "invalid_value"
+        row.Delta = bridge_2.cell.i
+        let n, wire, why = TableStatFixedSaveChecked([row], schema_rt.zeros(TableStatFixedMeasure(1)))
+        return (if n < 0: "" else: wire), why
 
 schema_rt.register_fixed_record_codec(TableStatFixedRecordCodec { name: "TableStat" })
 
 class TableMixedFixedRecordCodec : schema_rt.FixedRecordCodec
-    def read_fixed(data·:string, report·:schema_rt.LoadReport) -> schema_rt.Record?:
-        let rows· = [NewTableMixed()]
-        let plan·:[schema_rt.TableFixedEntry] = []
-        for(TableMixedFixedPlanMax): push(plan·, schema_rt.TableFixedEntry {})
-        let native· = schema_rt.TableReport {}
-        let n· = TableMixedFixedLoad(rows·, data·, plan·, native·)
-        if n· != 1:
-            schema_rt.read_refuse(report·, if native·.reason != "": native·.reason else: "record_count")
+    def read_fixed(data:string, report:schema_rt.LoadReport) -> schema_rt.Record?:
+        let rows = [NewTableMixed()]
+        let plan:[schema_rt.TableFixedEntry] = []
+        for(TableMixedFixedPlanMax): push(plan, schema_rt.TableFixedEntry {})
+        let native = schema_rt.TableReport {}
+        let n = TableMixedFixedLoad(rows, data, plan, native)
+        if n != 1:
+            schema_rt.read_refuse(report, if native.reason != "": native.reason else: "record_count")
             return nil
-        let rec· = schema_rt.new_record(TableMixedDescriptor)
-        let bridge_1· = rec·.fields[0]
-        bridge_1·.cell.i = rows·[0].ProtocolMagic
-        let bridge_2· = rec·.fields[1]
-        bridge_2·.cell.i = rows·[0].Sequence
-        let bridge_3· = rec·.fields[2]
-        bridge_3·.cell.i = rows·[0].AckSequence
-        let bridge_4· = rec·.fields[3]
-        bridge_4·.cell.i = rows·[0].AckBits
-        let bridge_5· = rec·.fields[4]
-        bridge_5·.cell.i = rows·[0].SessionId
-        let bridge_6· = rec·.fields[5]
-        bridge_6·.cell.i = rows·[0].ClientId
-        let bridge_7· = rec·.fields[6]
-        bridge_7·.cell.i = rows·[0].Nonce
-        let bridge_8· = rec·.fields[7]
-        bridge_8·.cell.i = rows·[0].WorldTime
-        let bridge_9· = rec·.fields[8]
-        bridge_9·.cell.i = rows·[0].FrameTick
-        let bridge_10· = rec·.fields[9]
-        bridge_10·.cell.f = rows·[0].ServerTime
-        let bridge_11· = rec·.fields[10]
-        bridge_11·.count = rows·[0].EntitiesCount
-        for(rows·[0].EntitiesCount) bridge_12·:
-            let bridge_13· = schema_rt.new_record(schema_rt.table_of("TableEntity"))
-            bridge_11·.elems[bridge_12·].tab = bridge_13·
-            let bridge_14· = bridge_13·.fields[0]
-            bridge_14·.cell.i = rows·[0].Entities[bridge_12·].EntityId
-            let bridge_15· = bridge_13·.fields[1]
-            bridge_15·.cell.i = rows·[0].Entities[bridge_12·].PosX
-            let bridge_16· = bridge_13·.fields[2]
-            bridge_16·.cell.i = rows·[0].Entities[bridge_12·].PosY
-            let bridge_17· = bridge_13·.fields[3]
-            bridge_17·.cell.i = rows·[0].Entities[bridge_12·].PosZ
-            let bridge_18· = bridge_13·.fields[4]
-            bridge_18·.cell.i = rows·[0].Entities[bridge_12·].Yaw
-            let bridge_19· = bridge_13·.fields[5]
-            bridge_19·.cell.i = rows·[0].Entities[bridge_12·].Pitch
-            let bridge_20· = bridge_13·.fields[6]
-            bridge_20·.cell.i = rows·[0].Entities[bridge_12·].VelX
-            let bridge_21· = bridge_13·.fields[7]
-            bridge_21·.cell.i = rows·[0].Entities[bridge_12·].VelY
-            let bridge_22· = bridge_13·.fields[8]
-            bridge_22·.cell.i = rows·[0].Entities[bridge_12·].VelZ
-            let bridge_23· = bridge_13·.fields[9]
-            bridge_23·.cell.i = rows·[0].Entities[bridge_12·].Health
-            let bridge_24· = bridge_13·.fields[10]
-            bridge_24·.cell.i = int(rows·[0].Entities[bridge_12·].Weapon)
-            let bridge_25· = bridge_13·.fields[11]
-            bridge_25·.cell.i = rows·[0].Entities[bridge_12·].Damage
-            let bridge_26· = bridge_13·.fields[12]
-            bridge_26·.cell.b = rows·[0].Entities[bridge_12·].Moving
-            let bridge_27· = bridge_13·.fields[13]
-            bridge_27·.cell.b = rows·[0].Entities[bridge_12·].Firing
-        let bridge_28· = rec·.fields[11]
-        bridge_28·.count = rows·[0].StatsCount
-        for(rows·[0].StatsCount) bridge_29·:
-            let bridge_30· = schema_rt.new_record(schema_rt.table_of("TableStat"))
-            bridge_28·.elems[bridge_29·].tab = bridge_30·
-            let bridge_31· = bridge_30·.fields[0]
-            bridge_31·.cell.i = rows·[0].Stats[bridge_29·].StatId
-            let bridge_32· = bridge_30·.fields[1]
-            bridge_32·.cell.i = rows·[0].Stats[bridge_29·].Delta
-        let bridge_33· = rec·.fields[12]
-        bridge_33·.cell.i = int(rows·[0].GameEvent.Type)
-        if bridge_33·.cell.i == 1:
-            let bridge_34· = schema_rt.new_record(schema_rt.table_of("TableHitEvent"))
-            bridge_33·.cell.tab = bridge_34·
-            let bridge_35· = bridge_34·.fields[0]
-            bridge_35·.cell.i = rows·[0].GameEvent.Hit.TargetId
-            let bridge_36· = bridge_34·.fields[1]
-            bridge_36·.cell.i = rows·[0].GameEvent.Hit.Damage
-            let bridge_37· = bridge_34·.fields[2]
-            bridge_37·.cell.i = rows·[0].GameEvent.Hit.HitKind
-            let bridge_38· = bridge_34·.fields[3]
-            bridge_38·.cell.b = rows·[0].GameEvent.Hit.Crit
-        if bridge_33·.cell.i == 2:
-            let bridge_39· = schema_rt.new_record(schema_rt.table_of("TableChatEvent"))
-            bridge_33·.cell.tab = bridge_39·
-            let bridge_40· = bridge_39·.fields[0]
-            bridge_40·.cell.i = rows·[0].GameEvent.Chat.Channel
-            let bridge_41· = bridge_39·.fields[1]
-            bridge_41·.cell.i = rows·[0].GameEvent.Chat.Speaker
-        if bridge_33·.cell.i == 3:
-            let bridge_42· = schema_rt.new_record(schema_rt.table_of("TablePickupEvent"))
-            bridge_33·.cell.tab = bridge_42·
-            let bridge_43· = bridge_42·.fields[0]
-            bridge_43·.cell.i = rows·[0].GameEvent.Pickup.ItemId
-            let bridge_44· = bridge_42·.fields[1]
-            bridge_44·.cell.i = rows·[0].GameEvent.Pickup.Amount
-        let bridge_45· = rec·.fields[13]
-        for(4) bridge_46·:
-            bridge_45·.elems[bridge_46·].i = rows·[0].Loadout[bridge_46·]
-        let bridge_47· = rec·.fields[14]
-        bridge_47·.cell.s = substring(rows·[0].PlayerName, 0, rows·[0].PlayerNameLength)
-        bridge_47·.count = rows·[0].PlayerNameLength
-        let bridge_48· = rec·.fields[15]
-        bridge_48·.cell.s = substring(rows·[0].Payload, 0, rows·[0].PayloadLength)
-        bridge_48·.count = rows·[0].PayloadLength
-        let bridge_49· = rec·.fields[16]
-        bridge_49·.cell.f = rows·[0].AimX
-        let bridge_50· = rec·.fields[17]
-        bridge_50·.cell.f = rows·[0].AimY
-        let bridge_51· = rec·.fields[18]
-        bridge_51·.cell.f = rows·[0].AimZ
-        let bridge_52· = rec·.fields[19]
-        bridge_52·.cell.f = rows·[0].Recoil
-        let bridge_53· = rec·.fields[20]
-        bridge_53·.cell.f = rows·[0].Drift
-        let bridge_54· = rec·.fields[21]
-        bridge_54·.cell.i = rows·[0].WideKey
-        let bridge_55· = rec·.fields[22]
-        bridge_55·.cell.i = rows·[0].Flux
-        let bridge_56· = rec·.fields[23]
-        bridge_56·.cell.f = rows·[0].Ping
-        let bridge_57· = rec·.fields[24]
-        bridge_57·.cell.i = rows·[0].CrcHint
-        let bridge_58· = rec·.fields[25]
-        bridge_58·.cell.b = rows·[0].HasExtra
-        let bridge_59· = rec·.fields[26]
-        bridge_59·.cell.i = rows·[0].Extra
-        let bridge_60· = rec·.fields[27]
-        bridge_60·.cell.i = rows·[0].IdleTicks
-        return rec·
-    def write_fixed(rec·:schema_rt.Record) -> string, string:
-        let row· = NewTableMixed()
-        if rec·.d.name != "TableMixed" or length(rec·.fields) != 28: return "", "invalid_value"
-        let bridge_1· = rec·.fields[0]
-        if bridge_1·.fd.id != 0x6a5a70d91aa115fd: return "", "invalid_value"
-        row·.ProtocolMagic = bridge_1·.cell.i
-        let bridge_2· = rec·.fields[1]
-        if bridge_2·.fd.id != 0xaa38aca481f528a8: return "", "invalid_value"
-        row·.Sequence = bridge_2·.cell.i
-        let bridge_3· = rec·.fields[2]
-        if bridge_3·.fd.id != 0x0dbe005c56697c3e: return "", "invalid_value"
-        row·.AckSequence = bridge_3·.cell.i
-        let bridge_4· = rec·.fields[3]
-        if bridge_4·.fd.id != 0x9bae0da8b829ee03: return "", "invalid_value"
-        row·.AckBits = bridge_4·.cell.i
-        let bridge_5· = rec·.fields[4]
-        if bridge_5·.fd.id != 0xb7d7b5650a590b05: return "", "invalid_value"
-        row·.SessionId = bridge_5·.cell.i
-        let bridge_6· = rec·.fields[5]
-        if bridge_6·.fd.id != 0x6d7b98e2d095967e: return "", "invalid_value"
-        row·.ClientId = bridge_6·.cell.i
-        let bridge_7· = rec·.fields[6]
-        if bridge_7·.fd.id != 0x73a94c71d60dc0d8: return "", "invalid_value"
-        row·.Nonce = bridge_7·.cell.i
-        let bridge_8· = rec·.fields[7]
-        if bridge_8·.fd.id != 0x3eee6b51be54fc85: return "", "invalid_value"
-        row·.WorldTime = bridge_8·.cell.i
-        let bridge_9· = rec·.fields[8]
-        if bridge_9·.fd.id != 0x7bbc035f7b6d0112: return "", "invalid_value"
-        row·.FrameTick = bridge_9·.cell.i
-        let bridge_10· = rec·.fields[9]
-        if bridge_10·.fd.id != 0x3c460475f9be69c6: return "", "invalid_value"
-        row·.ServerTime = bridge_10·.cell.f
-        let bridge_11· = rec·.fields[10]
-        if bridge_11·.fd.id != 0x935d0fb07bb3822a: return "", "invalid_value"
-        row·.EntitiesCount = bridge_11·.count
-        if row·.EntitiesCount < 1 or row·.EntitiesCount > 8: return "", "invalid_value"
-        if length(bridge_11·.elems) < row·.EntitiesCount: return "", "invalid_value"
-        for(row·.EntitiesCount) bridge_12·:
-            let bridge_13· = bridge_11·.elems[bridge_12·].tab
-            if not bridge_13·: return "", "invalid_value"
-            if bridge_13·.d.name != "TableEntity" or length(bridge_13·.fields) != 14: return "", "invalid_value"
-            let bridge_14· = bridge_13·.fields[0]
-            if bridge_14·.fd.id != 0x23fcfd6678e36712: return "", "invalid_value"
-            row·.Entities[bridge_12·].EntityId = bridge_14·.cell.i
-            let bridge_15· = bridge_13·.fields[1]
-            if bridge_15·.fd.id != 0xcb4b37357667310e: return "", "invalid_value"
-            row·.Entities[bridge_12·].PosX = bridge_15·.cell.i
-            let bridge_16· = bridge_13·.fields[2]
-            if bridge_16·.fd.id != 0xcb4b3835766732c1: return "", "invalid_value"
-            row·.Entities[bridge_12·].PosY = bridge_16·.cell.i
-            let bridge_17· = bridge_13·.fields[3]
-            if bridge_17·.fd.id != 0xcb4b353576672da8: return "", "invalid_value"
-            row·.Entities[bridge_12·].PosZ = bridge_17·.cell.i
-            let bridge_18· = bridge_13·.fields[4]
-            if bridge_18·.fd.id != 0xb54d8e19798e16e8: return "", "invalid_value"
-            row·.Entities[bridge_12·].Yaw = bridge_18·.cell.i
-            let bridge_19· = bridge_13·.fields[5]
-            if bridge_19·.fd.id != 0x53a9f665a90cc1b1: return "", "invalid_value"
-            row·.Entities[bridge_12·].Pitch = bridge_19·.cell.i
-            let bridge_20· = bridge_13·.fields[6]
-            if bridge_20·.fd.id != 0x6cede6b6eb60ee67: return "", "invalid_value"
-            row·.Entities[bridge_12·].VelX = bridge_20·.cell.i
-            let bridge_21· = bridge_13·.fields[7]
-            if bridge_21·.fd.id != 0x6cede5b6eb60ecb4: return "", "invalid_value"
-            row·.Entities[bridge_12·].VelY = bridge_21·.cell.i
-            let bridge_22· = bridge_13·.fields[8]
-            if bridge_22·.fd.id != 0x6cede8b6eb60f1cd: return "", "invalid_value"
-            row·.Entities[bridge_12·].VelZ = bridge_22·.cell.i
-            let bridge_23· = bridge_13·.fields[9]
-            if bridge_23·.fd.id != 0x7f69d4b5288ba9cf: return "", "invalid_value"
-            row·.Entities[bridge_12·].Health = bridge_23·.cell.i
-            let bridge_24· = bridge_13·.fields[10]
-            if bridge_24·.fd.id != 0xa0b610205f2c6e01: return "", "invalid_value"
-            row·.Entities[bridge_12·].Weapon = TableWeapon(bridge_24·.cell.i)
-            let bridge_25· = bridge_13·.fields[11]
-            if bridge_25·.fd.id != 0x7f6308be8ab37fc0: return "", "invalid_value"
-            row·.Entities[bridge_12·].Damage = bridge_25·.cell.i
-            let bridge_26· = bridge_13·.fields[12]
-            if bridge_26·.fd.id != 0x11a44fc1d1243da7: return "", "invalid_value"
-            row·.Entities[bridge_12·].Moving = bridge_26·.cell.b
-            let bridge_27· = bridge_13·.fields[13]
-            if bridge_27·.fd.id != 0x7674cfd19b9031ca: return "", "invalid_value"
-            row·.Entities[bridge_12·].Firing = bridge_27·.cell.b
-        let bridge_28· = rec·.fields[11]
-        if bridge_28·.fd.id != 0xee639cad45b1994c: return "", "invalid_value"
-        row·.StatsCount = bridge_28·.count
-        if row·.StatsCount < 0 or row·.StatsCount > 80: return "", "invalid_value"
-        if length(bridge_28·.elems) < row·.StatsCount: return "", "invalid_value"
-        for(row·.StatsCount) bridge_29·:
-            let bridge_30· = bridge_28·.elems[bridge_29·].tab
-            if not bridge_30·: return "", "invalid_value"
-            if bridge_30·.d.name != "TableStat" or length(bridge_30·.fields) != 2: return "", "invalid_value"
-            let bridge_31· = bridge_30·.fields[0]
-            if bridge_31·.fd.id != 0x80ab75f0866dbf65: return "", "invalid_value"
-            row·.Stats[bridge_29·].StatId = bridge_31·.cell.i
-            let bridge_32· = bridge_30·.fields[1]
-            if bridge_32·.fd.id != 0x52076675ec13a0c1: return "", "invalid_value"
-            row·.Stats[bridge_29·].Delta = bridge_32·.cell.i
-        let bridge_33· = rec·.fields[12]
-        if bridge_33·.fd.id != 0x2e35dc5321aa5790: return "", "invalid_value"
-        if bridge_33·.cell.i < 0 or bridge_33·.cell.i > 3: return "", "invalid_value"
-        row·.GameEvent.Type = TableEventType(bridge_33·.cell.i)
-        if bridge_33·.cell.i == 1:
-            let bridge_34· = bridge_33·.cell.tab
-            if not bridge_34·: return "", "invalid_value"
-            if bridge_34·.d.name != "TableHitEvent" or length(bridge_34·.fields) != 4: return "", "invalid_value"
-            let bridge_35· = bridge_34·.fields[0]
-            if bridge_35·.fd.id != 0xb7bc9ac015a25050: return "", "invalid_value"
-            row·.GameEvent.Hit.TargetId = bridge_35·.cell.i
-            let bridge_36· = bridge_34·.fields[1]
-            if bridge_36·.fd.id != 0x7f6308be8ab37fc0: return "", "invalid_value"
-            row·.GameEvent.Hit.Damage = bridge_36·.cell.i
-            let bridge_37· = bridge_34·.fields[2]
-            if bridge_37·.fd.id != 0x01fbc365b059b925: return "", "invalid_value"
-            row·.GameEvent.Hit.HitKind = bridge_37·.cell.i
-            let bridge_38· = bridge_34·.fields[3]
-            if bridge_38·.fd.id != 0x126167908c9aa52d: return "", "invalid_value"
-            row·.GameEvent.Hit.Crit = bridge_38·.cell.b
-        if bridge_33·.cell.i == 2:
-            let bridge_39· = bridge_33·.cell.tab
-            if not bridge_39·: return "", "invalid_value"
-            if bridge_39·.d.name != "TableChatEvent" or length(bridge_39·.fields) != 2: return "", "invalid_value"
-            let bridge_40· = bridge_39·.fields[0]
-            if bridge_40·.fd.id != 0xa5013e9ad5caeda4: return "", "invalid_value"
-            row·.GameEvent.Chat.Channel = bridge_40·.cell.i
-            let bridge_41· = bridge_39·.fields[1]
-            if bridge_41·.fd.id != 0xfbf1ac4d96ebd022: return "", "invalid_value"
-            row·.GameEvent.Chat.Speaker = bridge_41·.cell.i
-        if bridge_33·.cell.i == 3:
-            let bridge_42· = bridge_33·.cell.tab
-            if not bridge_42·: return "", "invalid_value"
-            if bridge_42·.d.name != "TablePickupEvent" or length(bridge_42·.fields) != 2: return "", "invalid_value"
-            let bridge_43· = bridge_42·.fields[0]
-            if bridge_43·.fd.id != 0x9e7fd06d864fbd56: return "", "invalid_value"
-            row·.GameEvent.Pickup.ItemId = bridge_43·.cell.i
-            let bridge_44· = bridge_42·.fields[1]
-            if bridge_44·.fd.id != 0x8113fe7ea2b16969: return "", "invalid_value"
-            row·.GameEvent.Pickup.Amount = bridge_44·.cell.i
-        let bridge_45· = rec·.fields[13]
-        if bridge_45·.fd.id != 0x5759ce7586bbb5a3: return "", "invalid_value"
-        if length(bridge_45·.elems) < 4: return "", "invalid_value"
-        row·.Loadout = schema_rt.zeros(4)
-        for(4) bridge_46·:
-            if bridge_45·.elems[bridge_46·].i < 0 or bridge_45·.elems[bridge_46·].i > 255: return "", "invalid_value"
-            row·.Loadout = write_int8_le(row·.Loadout, bridge_46·, bridge_45·.elems[bridge_46·].i)
-        let bridge_47· = rec·.fields[14]
-        if bridge_47·.fd.id != 0x13a62f542cf8e86e: return "", "invalid_value"
-        row·.PlayerNameLength = length(bridge_47·.cell.s)
-        if row·.PlayerNameLength > 15: return "", "invalid_value"
-        row·.PlayerName = write_substring(row·.PlayerName, 0, bridge_47·.cell.s, false)
-        let bridge_48· = rec·.fields[15]
-        if bridge_48·.fd.id != 0xcfb8a9d063b5e9e5: return "", "invalid_value"
-        row·.PayloadLength = length(bridge_48·.cell.s)
-        if row·.PayloadLength > 16: return "", "invalid_value"
-        row·.Payload = write_substring(row·.Payload, 0, bridge_48·.cell.s, false)
-        let bridge_49· = rec·.fields[16]
-        if bridge_49·.fd.id != 0xdbaf7be5e24296c9: return "", "invalid_value"
-        row·.AimX = bridge_49·.cell.f
-        let bridge_50· = rec·.fields[17]
-        if bridge_50·.fd.id != 0xdbaf7ae5e2429516: return "", "invalid_value"
-        row·.AimY = bridge_50·.cell.f
-        let bridge_51· = rec·.fields[18]
-        if bridge_51·.fd.id != 0xdbaf79e5e2429363: return "", "invalid_value"
-        row·.AimZ = bridge_51·.cell.f
-        let bridge_52· = rec·.fields[19]
-        if bridge_52·.fd.id != 0x9cef31fff7e2e457: return "", "invalid_value"
-        row·.Recoil = bridge_52·.cell.f
-        let bridge_53· = rec·.fields[20]
-        if bridge_53·.fd.id != 0x5ab3f9c9341f6c04: return "", "invalid_value"
-        row·.Drift = bridge_53·.cell.f
-        let bridge_54· = rec·.fields[21]
-        if bridge_54·.fd.id != 0xa3348580461faf16: return "", "invalid_value"
-        row·.WideKey = bridge_54·.cell.i
-        let bridge_55· = rec·.fields[22]
-        if bridge_55·.fd.id != 0xd61bdd7908af2642: return "", "invalid_value"
-        row·.Flux = bridge_55·.cell.i
-        let bridge_56· = rec·.fields[23]
-        if bridge_56·.fd.id != 0xbf30e00dc53307a9: return "", "invalid_value"
-        row·.Ping = bridge_56·.cell.f
-        let bridge_57· = rec·.fields[24]
-        if bridge_57·.fd.id != 0x560d6527ccd8515f: return "", "invalid_value"
-        row·.CrcHint = bridge_57·.cell.i
-        let bridge_58· = rec·.fields[25]
-        if bridge_58·.fd.id != 0xc08292176cfd8672: return "", "invalid_value"
-        row·.HasExtra = bridge_58·.cell.b
-        let bridge_59· = rec·.fields[26]
-        if bridge_59·.fd.id != 0xfd29ee12a979cb69: return "", "invalid_value"
-        row·.Extra = bridge_59·.cell.i
-        let bridge_60· = rec·.fields[27]
-        if bridge_60·.fd.id != 0x78101ac0aa8cbcfe: return "", "invalid_value"
-        row·.IdleTicks = bridge_60·.cell.i
-        let n·, wire·, why· = TableMixedFixedSaveChecked([row·], schema_rt.zeros(TableMixedFixedMeasure(1)))
-        return (if n· < 0: "" else: wire·), why·
+        let rec = schema_rt.new_record(TableMixedDescriptor)
+        let bridge_1 = rec.fields[0]
+        bridge_1.cell.i = rows[0].ProtocolMagic
+        let bridge_2 = rec.fields[1]
+        bridge_2.cell.i = rows[0].Sequence
+        let bridge_3 = rec.fields[2]
+        bridge_3.cell.i = rows[0].AckSequence
+        let bridge_4 = rec.fields[3]
+        bridge_4.cell.i = rows[0].AckBits
+        let bridge_5 = rec.fields[4]
+        bridge_5.cell.i = rows[0].SessionId
+        let bridge_6 = rec.fields[5]
+        bridge_6.cell.i = rows[0].ClientId
+        let bridge_7 = rec.fields[6]
+        bridge_7.cell.i = rows[0].Nonce
+        let bridge_8 = rec.fields[7]
+        bridge_8.cell.i = rows[0].WorldTime
+        let bridge_9 = rec.fields[8]
+        bridge_9.cell.i = rows[0].FrameTick
+        let bridge_10 = rec.fields[9]
+        bridge_10.cell.f = rows[0].ServerTime
+        let bridge_11 = rec.fields[10]
+        bridge_11.count = rows[0].EntitiesCount
+        for(rows[0].EntitiesCount) bridge_12:
+            let bridge_13 = schema_rt.new_record(schema_rt.table_of("TableEntity"))
+            bridge_11.elems[bridge_12].tab = bridge_13
+            let bridge_14 = bridge_13.fields[0]
+            bridge_14.cell.i = rows[0].Entities[bridge_12].EntityId
+            let bridge_15 = bridge_13.fields[1]
+            bridge_15.cell.i = rows[0].Entities[bridge_12].PosX
+            let bridge_16 = bridge_13.fields[2]
+            bridge_16.cell.i = rows[0].Entities[bridge_12].PosY
+            let bridge_17 = bridge_13.fields[3]
+            bridge_17.cell.i = rows[0].Entities[bridge_12].PosZ
+            let bridge_18 = bridge_13.fields[4]
+            bridge_18.cell.i = rows[0].Entities[bridge_12].Yaw
+            let bridge_19 = bridge_13.fields[5]
+            bridge_19.cell.i = rows[0].Entities[bridge_12].Pitch
+            let bridge_20 = bridge_13.fields[6]
+            bridge_20.cell.i = rows[0].Entities[bridge_12].VelX
+            let bridge_21 = bridge_13.fields[7]
+            bridge_21.cell.i = rows[0].Entities[bridge_12].VelY
+            let bridge_22 = bridge_13.fields[8]
+            bridge_22.cell.i = rows[0].Entities[bridge_12].VelZ
+            let bridge_23 = bridge_13.fields[9]
+            bridge_23.cell.i = rows[0].Entities[bridge_12].Health
+            let bridge_24 = bridge_13.fields[10]
+            bridge_24.cell.i = int(rows[0].Entities[bridge_12].Weapon)
+            let bridge_25 = bridge_13.fields[11]
+            bridge_25.cell.i = rows[0].Entities[bridge_12].Damage
+            let bridge_26 = bridge_13.fields[12]
+            bridge_26.cell.b = rows[0].Entities[bridge_12].Moving
+            let bridge_27 = bridge_13.fields[13]
+            bridge_27.cell.b = rows[0].Entities[bridge_12].Firing
+        let bridge_28 = rec.fields[11]
+        bridge_28.count = rows[0].StatsCount
+        for(rows[0].StatsCount) bridge_29:
+            let bridge_30 = schema_rt.new_record(schema_rt.table_of("TableStat"))
+            bridge_28.elems[bridge_29].tab = bridge_30
+            let bridge_31 = bridge_30.fields[0]
+            bridge_31.cell.i = rows[0].Stats[bridge_29].StatId
+            let bridge_32 = bridge_30.fields[1]
+            bridge_32.cell.i = rows[0].Stats[bridge_29].Delta
+        let bridge_33 = rec.fields[12]
+        bridge_33.cell.i = int(rows[0].GameEvent.Type)
+        if bridge_33.cell.i == 1:
+            let bridge_34 = schema_rt.new_record(schema_rt.table_of("TableHitEvent"))
+            bridge_33.cell.tab = bridge_34
+            let bridge_35 = bridge_34.fields[0]
+            bridge_35.cell.i = rows[0].GameEvent.Hit.TargetId
+            let bridge_36 = bridge_34.fields[1]
+            bridge_36.cell.i = rows[0].GameEvent.Hit.Damage
+            let bridge_37 = bridge_34.fields[2]
+            bridge_37.cell.i = rows[0].GameEvent.Hit.HitKind
+            let bridge_38 = bridge_34.fields[3]
+            bridge_38.cell.b = rows[0].GameEvent.Hit.Crit
+        if bridge_33.cell.i == 2:
+            let bridge_39 = schema_rt.new_record(schema_rt.table_of("TableChatEvent"))
+            bridge_33.cell.tab = bridge_39
+            let bridge_40 = bridge_39.fields[0]
+            bridge_40.cell.i = rows[0].GameEvent.Chat.Channel
+            let bridge_41 = bridge_39.fields[1]
+            bridge_41.cell.i = rows[0].GameEvent.Chat.Speaker
+        if bridge_33.cell.i == 3:
+            let bridge_42 = schema_rt.new_record(schema_rt.table_of("TablePickupEvent"))
+            bridge_33.cell.tab = bridge_42
+            let bridge_43 = bridge_42.fields[0]
+            bridge_43.cell.i = rows[0].GameEvent.Pickup.ItemId
+            let bridge_44 = bridge_42.fields[1]
+            bridge_44.cell.i = rows[0].GameEvent.Pickup.Amount
+        let bridge_45 = rec.fields[13]
+        for(4) bridge_46:
+            bridge_45.elems[bridge_46].i = rows[0].Loadout[bridge_46]
+        let bridge_47 = rec.fields[14]
+        bridge_47.cell.s = substring(rows[0].PlayerName, 0, rows[0].PlayerNameLength)
+        bridge_47.count = rows[0].PlayerNameLength
+        let bridge_48 = rec.fields[15]
+        bridge_48.cell.s = substring(rows[0].Payload, 0, rows[0].PayloadLength)
+        bridge_48.count = rows[0].PayloadLength
+        let bridge_49 = rec.fields[16]
+        bridge_49.cell.f = rows[0].AimX
+        let bridge_50 = rec.fields[17]
+        bridge_50.cell.f = rows[0].AimY
+        let bridge_51 = rec.fields[18]
+        bridge_51.cell.f = rows[0].AimZ
+        let bridge_52 = rec.fields[19]
+        bridge_52.cell.f = rows[0].Recoil
+        let bridge_53 = rec.fields[20]
+        bridge_53.cell.f = rows[0].Drift
+        let bridge_54 = rec.fields[21]
+        bridge_54.cell.i = rows[0].WideKey
+        let bridge_55 = rec.fields[22]
+        bridge_55.cell.i = rows[0].Flux
+        let bridge_56 = rec.fields[23]
+        bridge_56.cell.f = rows[0].Ping
+        let bridge_57 = rec.fields[24]
+        bridge_57.cell.i = rows[0].CrcHint
+        let bridge_58 = rec.fields[25]
+        bridge_58.cell.b = rows[0].HasExtra
+        let bridge_59 = rec.fields[26]
+        bridge_59.cell.i = rows[0].Extra
+        let bridge_60 = rec.fields[27]
+        bridge_60.cell.i = rows[0].IdleTicks
+        return rec
+    def write_fixed(rec:schema_rt.Record) -> string, string:
+        let row = NewTableMixed()
+        if rec.d.name != "TableMixed" or length(rec.fields) != 28: return "", "invalid_value"
+        let bridge_1 = rec.fields[0]
+        if bridge_1.fd.id != 0x6a5a70d91aa115fd: return "", "invalid_value"
+        row.ProtocolMagic = bridge_1.cell.i
+        let bridge_2 = rec.fields[1]
+        if bridge_2.fd.id != 0xaa38aca481f528a8: return "", "invalid_value"
+        row.Sequence = bridge_2.cell.i
+        let bridge_3 = rec.fields[2]
+        if bridge_3.fd.id != 0x0dbe005c56697c3e: return "", "invalid_value"
+        row.AckSequence = bridge_3.cell.i
+        let bridge_4 = rec.fields[3]
+        if bridge_4.fd.id != 0x9bae0da8b829ee03: return "", "invalid_value"
+        row.AckBits = bridge_4.cell.i
+        let bridge_5 = rec.fields[4]
+        if bridge_5.fd.id != 0xb7d7b5650a590b05: return "", "invalid_value"
+        row.SessionId = bridge_5.cell.i
+        let bridge_6 = rec.fields[5]
+        if bridge_6.fd.id != 0x6d7b98e2d095967e: return "", "invalid_value"
+        row.ClientId = bridge_6.cell.i
+        let bridge_7 = rec.fields[6]
+        if bridge_7.fd.id != 0x73a94c71d60dc0d8: return "", "invalid_value"
+        row.Nonce = bridge_7.cell.i
+        let bridge_8 = rec.fields[7]
+        if bridge_8.fd.id != 0x3eee6b51be54fc85: return "", "invalid_value"
+        row.WorldTime = bridge_8.cell.i
+        let bridge_9 = rec.fields[8]
+        if bridge_9.fd.id != 0x7bbc035f7b6d0112: return "", "invalid_value"
+        row.FrameTick = bridge_9.cell.i
+        let bridge_10 = rec.fields[9]
+        if bridge_10.fd.id != 0x3c460475f9be69c6: return "", "invalid_value"
+        row.ServerTime = bridge_10.cell.f
+        let bridge_11 = rec.fields[10]
+        if bridge_11.fd.id != 0x935d0fb07bb3822a: return "", "invalid_value"
+        row.EntitiesCount = bridge_11.count
+        if row.EntitiesCount < 1 or row.EntitiesCount > 8: return "", "invalid_value"
+        if length(bridge_11.elems) < row.EntitiesCount: return "", "invalid_value"
+        for(row.EntitiesCount) bridge_12:
+            let bridge_13 = bridge_11.elems[bridge_12].tab
+            if not bridge_13: return "", "invalid_value"
+            if bridge_13.d.name != "TableEntity" or length(bridge_13.fields) != 14: return "", "invalid_value"
+            let bridge_14 = bridge_13.fields[0]
+            if bridge_14.fd.id != 0x23fcfd6678e36712: return "", "invalid_value"
+            row.Entities[bridge_12].EntityId = bridge_14.cell.i
+            let bridge_15 = bridge_13.fields[1]
+            if bridge_15.fd.id != 0xcb4b37357667310e: return "", "invalid_value"
+            row.Entities[bridge_12].PosX = bridge_15.cell.i
+            let bridge_16 = bridge_13.fields[2]
+            if bridge_16.fd.id != 0xcb4b3835766732c1: return "", "invalid_value"
+            row.Entities[bridge_12].PosY = bridge_16.cell.i
+            let bridge_17 = bridge_13.fields[3]
+            if bridge_17.fd.id != 0xcb4b353576672da8: return "", "invalid_value"
+            row.Entities[bridge_12].PosZ = bridge_17.cell.i
+            let bridge_18 = bridge_13.fields[4]
+            if bridge_18.fd.id != 0xb54d8e19798e16e8: return "", "invalid_value"
+            row.Entities[bridge_12].Yaw = bridge_18.cell.i
+            let bridge_19 = bridge_13.fields[5]
+            if bridge_19.fd.id != 0x53a9f665a90cc1b1: return "", "invalid_value"
+            row.Entities[bridge_12].Pitch = bridge_19.cell.i
+            let bridge_20 = bridge_13.fields[6]
+            if bridge_20.fd.id != 0x6cede6b6eb60ee67: return "", "invalid_value"
+            row.Entities[bridge_12].VelX = bridge_20.cell.i
+            let bridge_21 = bridge_13.fields[7]
+            if bridge_21.fd.id != 0x6cede5b6eb60ecb4: return "", "invalid_value"
+            row.Entities[bridge_12].VelY = bridge_21.cell.i
+            let bridge_22 = bridge_13.fields[8]
+            if bridge_22.fd.id != 0x6cede8b6eb60f1cd: return "", "invalid_value"
+            row.Entities[bridge_12].VelZ = bridge_22.cell.i
+            let bridge_23 = bridge_13.fields[9]
+            if bridge_23.fd.id != 0x7f69d4b5288ba9cf: return "", "invalid_value"
+            row.Entities[bridge_12].Health = bridge_23.cell.i
+            let bridge_24 = bridge_13.fields[10]
+            if bridge_24.fd.id != 0xa0b610205f2c6e01: return "", "invalid_value"
+            row.Entities[bridge_12].Weapon = TableWeapon(bridge_24.cell.i)
+            let bridge_25 = bridge_13.fields[11]
+            if bridge_25.fd.id != 0x7f6308be8ab37fc0: return "", "invalid_value"
+            row.Entities[bridge_12].Damage = bridge_25.cell.i
+            let bridge_26 = bridge_13.fields[12]
+            if bridge_26.fd.id != 0x11a44fc1d1243da7: return "", "invalid_value"
+            row.Entities[bridge_12].Moving = bridge_26.cell.b
+            let bridge_27 = bridge_13.fields[13]
+            if bridge_27.fd.id != 0x7674cfd19b9031ca: return "", "invalid_value"
+            row.Entities[bridge_12].Firing = bridge_27.cell.b
+        let bridge_28 = rec.fields[11]
+        if bridge_28.fd.id != 0xee639cad45b1994c: return "", "invalid_value"
+        row.StatsCount = bridge_28.count
+        if row.StatsCount < 0 or row.StatsCount > 80: return "", "invalid_value"
+        if length(bridge_28.elems) < row.StatsCount: return "", "invalid_value"
+        for(row.StatsCount) bridge_29:
+            let bridge_30 = bridge_28.elems[bridge_29].tab
+            if not bridge_30: return "", "invalid_value"
+            if bridge_30.d.name != "TableStat" or length(bridge_30.fields) != 2: return "", "invalid_value"
+            let bridge_31 = bridge_30.fields[0]
+            if bridge_31.fd.id != 0x80ab75f0866dbf65: return "", "invalid_value"
+            row.Stats[bridge_29].StatId = bridge_31.cell.i
+            let bridge_32 = bridge_30.fields[1]
+            if bridge_32.fd.id != 0x52076675ec13a0c1: return "", "invalid_value"
+            row.Stats[bridge_29].Delta = bridge_32.cell.i
+        let bridge_33 = rec.fields[12]
+        if bridge_33.fd.id != 0x2e35dc5321aa5790: return "", "invalid_value"
+        if bridge_33.cell.i < 0 or bridge_33.cell.i > 3: return "", "invalid_value"
+        row.GameEvent.Type = TableEventType(bridge_33.cell.i)
+        if bridge_33.cell.i == 1:
+            let bridge_34 = bridge_33.cell.tab
+            if not bridge_34: return "", "invalid_value"
+            if bridge_34.d.name != "TableHitEvent" or length(bridge_34.fields) != 4: return "", "invalid_value"
+            let bridge_35 = bridge_34.fields[0]
+            if bridge_35.fd.id != 0xb7bc9ac015a25050: return "", "invalid_value"
+            row.GameEvent.Hit.TargetId = bridge_35.cell.i
+            let bridge_36 = bridge_34.fields[1]
+            if bridge_36.fd.id != 0x7f6308be8ab37fc0: return "", "invalid_value"
+            row.GameEvent.Hit.Damage = bridge_36.cell.i
+            let bridge_37 = bridge_34.fields[2]
+            if bridge_37.fd.id != 0x01fbc365b059b925: return "", "invalid_value"
+            row.GameEvent.Hit.HitKind = bridge_37.cell.i
+            let bridge_38 = bridge_34.fields[3]
+            if bridge_38.fd.id != 0x126167908c9aa52d: return "", "invalid_value"
+            row.GameEvent.Hit.Crit = bridge_38.cell.b
+        if bridge_33.cell.i == 2:
+            let bridge_39 = bridge_33.cell.tab
+            if not bridge_39: return "", "invalid_value"
+            if bridge_39.d.name != "TableChatEvent" or length(bridge_39.fields) != 2: return "", "invalid_value"
+            let bridge_40 = bridge_39.fields[0]
+            if bridge_40.fd.id != 0xa5013e9ad5caeda4: return "", "invalid_value"
+            row.GameEvent.Chat.Channel = bridge_40.cell.i
+            let bridge_41 = bridge_39.fields[1]
+            if bridge_41.fd.id != 0xfbf1ac4d96ebd022: return "", "invalid_value"
+            row.GameEvent.Chat.Speaker = bridge_41.cell.i
+        if bridge_33.cell.i == 3:
+            let bridge_42 = bridge_33.cell.tab
+            if not bridge_42: return "", "invalid_value"
+            if bridge_42.d.name != "TablePickupEvent" or length(bridge_42.fields) != 2: return "", "invalid_value"
+            let bridge_43 = bridge_42.fields[0]
+            if bridge_43.fd.id != 0x9e7fd06d864fbd56: return "", "invalid_value"
+            row.GameEvent.Pickup.ItemId = bridge_43.cell.i
+            let bridge_44 = bridge_42.fields[1]
+            if bridge_44.fd.id != 0x8113fe7ea2b16969: return "", "invalid_value"
+            row.GameEvent.Pickup.Amount = bridge_44.cell.i
+        let bridge_45 = rec.fields[13]
+        if bridge_45.fd.id != 0x5759ce7586bbb5a3: return "", "invalid_value"
+        if length(bridge_45.elems) < 4: return "", "invalid_value"
+        row.Loadout = schema_rt.zeros(4)
+        for(4) bridge_46:
+            if bridge_45.elems[bridge_46].i < 0 or bridge_45.elems[bridge_46].i > 255: return "", "invalid_value"
+            row.Loadout = write_int8_le(row.Loadout, bridge_46, bridge_45.elems[bridge_46].i)
+        let bridge_47 = rec.fields[14]
+        if bridge_47.fd.id != 0x13a62f542cf8e86e: return "", "invalid_value"
+        row.PlayerNameLength = length(bridge_47.cell.s)
+        if row.PlayerNameLength > 15: return "", "invalid_value"
+        row.PlayerName = write_substring(row.PlayerName, 0, bridge_47.cell.s, false)
+        let bridge_48 = rec.fields[15]
+        if bridge_48.fd.id != 0xcfb8a9d063b5e9e5: return "", "invalid_value"
+        row.PayloadLength = length(bridge_48.cell.s)
+        if row.PayloadLength > 16: return "", "invalid_value"
+        row.Payload = write_substring(row.Payload, 0, bridge_48.cell.s, false)
+        let bridge_49 = rec.fields[16]
+        if bridge_49.fd.id != 0xdbaf7be5e24296c9: return "", "invalid_value"
+        row.AimX = bridge_49.cell.f
+        let bridge_50 = rec.fields[17]
+        if bridge_50.fd.id != 0xdbaf7ae5e2429516: return "", "invalid_value"
+        row.AimY = bridge_50.cell.f
+        let bridge_51 = rec.fields[18]
+        if bridge_51.fd.id != 0xdbaf79e5e2429363: return "", "invalid_value"
+        row.AimZ = bridge_51.cell.f
+        let bridge_52 = rec.fields[19]
+        if bridge_52.fd.id != 0x9cef31fff7e2e457: return "", "invalid_value"
+        row.Recoil = bridge_52.cell.f
+        let bridge_53 = rec.fields[20]
+        if bridge_53.fd.id != 0x5ab3f9c9341f6c04: return "", "invalid_value"
+        row.Drift = bridge_53.cell.f
+        let bridge_54 = rec.fields[21]
+        if bridge_54.fd.id != 0xa3348580461faf16: return "", "invalid_value"
+        row.WideKey = bridge_54.cell.i
+        let bridge_55 = rec.fields[22]
+        if bridge_55.fd.id != 0xd61bdd7908af2642: return "", "invalid_value"
+        row.Flux = bridge_55.cell.i
+        let bridge_56 = rec.fields[23]
+        if bridge_56.fd.id != 0xbf30e00dc53307a9: return "", "invalid_value"
+        row.Ping = bridge_56.cell.f
+        let bridge_57 = rec.fields[24]
+        if bridge_57.fd.id != 0x560d6527ccd8515f: return "", "invalid_value"
+        row.CrcHint = bridge_57.cell.i
+        let bridge_58 = rec.fields[25]
+        if bridge_58.fd.id != 0xc08292176cfd8672: return "", "invalid_value"
+        row.HasExtra = bridge_58.cell.b
+        let bridge_59 = rec.fields[26]
+        if bridge_59.fd.id != 0xfd29ee12a979cb69: return "", "invalid_value"
+        row.Extra = bridge_59.cell.i
+        let bridge_60 = rec.fields[27]
+        if bridge_60.fd.id != 0x78101ac0aa8cbcfe: return "", "invalid_value"
+        row.IdleTicks = bridge_60.cell.i
+        let n, wire, why = TableMixedFixedSaveChecked([row], schema_rt.zeros(TableMixedFixedMeasure(1)))
+        return (if n < 0: "" else: wire), why
 
 schema_rt.register_fixed_record_codec(TableMixedFixedRecordCodec { name: "TableMixed" })
 

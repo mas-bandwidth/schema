@@ -35,8 +35,8 @@ _M.RenderSprite <- class {
 _M.RenderSpriteMaxBits <- 138;
 _M.RenderSpriteMaxBytes <- 24;
 
-// ReadRenderSpriteBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadRenderSpriteBody <- function(stream, value) {
+// ReadRenderSprite reads into value's storage in place; false on a refused read.
+_M.ReadRenderSprite <- function(stream, value) {
   if (!stream.serializeBits64(_h, 64)) return false;
   value.SortKey = _h.value;
   if (!stream.serializeBits(_h, 32)) return false;
@@ -48,12 +48,6 @@ _M.ReadRenderSpriteBody <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 2)) return false;
   value.Team = _h.value;
   return true;
-};
-
-// ReadRenderSprite reads one packet into value's storage in place; false on a refused read.
-_M.ReadRenderSprite <- function(stream, value) {
-  if (!_M.ReadRenderSpriteBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteRenderSprite writes value in declared order; false on a refused value.
@@ -96,8 +90,8 @@ _M.RenderBlock <- class {
 _M.RenderBlockMaxBits <- 8903;
 _M.RenderBlockMaxBytes <- 1120;
 
-// ReadRenderBlockBody reads into value's storage in place without the packet end check; false on a refused read.
-_M.ReadRenderBlockBody <- function(stream, value) {
+// ReadRenderBlock reads into value's storage in place; false on a refused read.
+_M.ReadRenderBlock <- function(stream, value) {
   if (!stream.serializeBits(_h, 32)) return false;
   value.WorkerIndex = _h.value;
   if (!stream.serializeBits(_h, 32)) return false;
@@ -105,15 +99,9 @@ _M.ReadRenderBlockBody <- function(stream, value) {
   if (!stream.serializeInt(_h, 0, 64)) return false;
   value.SpritesCount = _h.value;
   for (local i = 0; i < value.SpritesCount; i++) {
-    if (!_M.ReadRenderSpriteBody(stream, value.Sprites[i])) return false;
+    if (!_M.ReadRenderSprite(stream, value.Sprites[i])) return false;
   }
   return true;
-};
-
-// ReadRenderBlock reads one packet into value's storage in place; false on a refused read.
-_M.ReadRenderBlock <- function(stream, value) {
-  if (!_M.ReadRenderBlockBody(stream, value)) return false;
-  return stream.serializeEnd();
 };
 
 // WriteRenderBlock writes value in declared order; false on a refused value.

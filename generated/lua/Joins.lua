@@ -227,17 +227,9 @@ function _M.ZeroArmsAgree(value)
   value.Tail = 0
 end
 
--- ReadArmsAgree reads one packet: the type wire (SPEC §4.3, §6.1), then the
--- end check (SPEC §5). false refuses without a latch (a stream overflow
--- rides stream:error()).
+-- ReadArmsAgree reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- (a stream overflow rides stream:error()).
 function _M.ReadArmsAgree(stream, value)
-  if not _M.ReadArmsAgreeBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadArmsAgreeBody reads the type wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadArmsAgreeBody(stream, value)
   if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
   if not stream:serializeBool(BOOL) then return false end
@@ -265,17 +257,9 @@ function _M.ZeroArmsDisagree(value)
   value.Tail = 0
 end
 
--- ReadArmsDisagree reads one packet: the type wire (SPEC §4.3, §6.1), then the
--- end check (SPEC §5). false refuses without a latch (a stream overflow
--- rides stream:error()).
+-- ReadArmsDisagree reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- (a stream overflow rides stream:error()).
 function _M.ReadArmsDisagree(stream, value)
-  if not _M.ReadArmsDisagreeBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadArmsDisagreeBody reads the type wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadArmsDisagreeBody(stream, value)
   if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
   if not stream:serializeBool(BOOL) then return false end
@@ -302,17 +286,9 @@ function _M.ZeroArmEmpty(value)
   value.Tail = 0
 end
 
--- ReadArmEmpty reads one packet: the type wire (SPEC §4.3, §6.1), then the
--- end check (SPEC §5). false refuses without a latch (a stream overflow
--- rides stream:error()).
+-- ReadArmEmpty reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- (a stream overflow rides stream:error()).
 function _M.ReadArmEmpty(stream, value)
-  if not _M.ReadArmEmptyBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadArmEmptyBody reads the type wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadArmEmptyBody(stream, value)
   if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
   if not stream:serializeBool(BOOL) then return false end
@@ -339,17 +315,9 @@ function _M.ZeroArmsNested(value)
   value.Tail = 0
 end
 
--- ReadArmsNested reads one packet: the type wire (SPEC §4.3, §6.1), then the
--- end check (SPEC §5). false refuses without a latch (a stream overflow
--- rides stream:error()).
+-- ReadArmsNested reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- (a stream overflow rides stream:error()).
 function _M.ReadArmsNested(stream, value)
-  if not _M.ReadArmsNestedBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadArmsNestedBody reads the type wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadArmsNestedBody(stream, value)
   if not stream:serializeBits(BITS, 3) then return false end
   value.Lead = BITS.value
   if not stream:serializeBool(BOOL) then return false end
@@ -388,17 +356,9 @@ function _M.ZeroArmAlign(value)
   value.Tail = 0
 end
 
--- ReadArmAlign reads one packet: the type wire (SPEC §4.3, §6.1), then the
--- end check (SPEC §5). false refuses without a latch (a stream overflow
--- rides stream:error()).
+-- ReadArmAlign reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- (a stream overflow rides stream:error()).
 function _M.ReadArmAlign(stream, value)
-  if not _M.ReadArmAlignBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadArmAlignBody reads the type wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadArmAlignBody(stream, value)
   if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
   if not stream:serializeBool(BOOL) then return false end
@@ -437,17 +397,9 @@ function _M.ZeroArmArray(value)
   value.Tail = 0
 end
 
--- ReadArmArray reads one packet: the type wire (SPEC §4.3, §6.1), then the
--- end check (SPEC §5). false refuses without a latch (a stream overflow
--- rides stream:error()).
+-- ReadArmArray reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- (a stream overflow rides stream:error()).
 function _M.ReadArmArray(stream, value)
-  if not _M.ReadArmArrayBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadArmArrayBody reads the type wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadArmArrayBody(stream, value)
   if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
   if not stream:serializeBool(BOOL) then return false end
@@ -480,17 +432,9 @@ function _M.ZeroNarrow(value)
   value.N = 0
 end
 
--- ReadNarrow reads one packet: the type wire (SPEC §4.3, §6.1), then the
--- end check (SPEC §5). false refuses without a latch (a stream overflow
--- rides stream:error()).
+-- ReadNarrow reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- (a stream overflow rides stream:error()).
 function _M.ReadNarrow(stream, value)
-  if not _M.ReadNarrowBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadNarrowBody reads the type wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadNarrowBody(stream, value)
   if not stream:serializeBits(BITS, 3) then return false end
   value.N = BITS.value
   return true
@@ -501,17 +445,9 @@ function _M.ZeroWide(value)
   value.W = 0
 end
 
--- ReadWide reads one packet: the type wire (SPEC §4.3, §6.1), then the
--- end check (SPEC §5). false refuses without a latch (a stream overflow
--- rides stream:error()).
+-- ReadWide reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- (a stream overflow rides stream:error()).
 function _M.ReadWide(stream, value)
-  if not _M.ReadWideBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadWideBody reads the type wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadWideBody(stream, value)
   if not stream:serializeBits64(BIG, 37) then return false end
   value.W = BIG.value
   return true
@@ -522,27 +458,18 @@ function _M.ZeroUneven(value)
   value.Type = 0
 end
 
--- ReadUneven reads one packet: the union wire (SPEC §4.8), then the end check
--- (SPEC §5).
 function _M.ReadUneven(stream, value)
-  if not _M.ReadUnevenBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadUnevenBody reads the union wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadUnevenBody(stream, value)
   if not stream:serializeInt(BITS, 0, 2) then -- rejects a tag above the count (SPEC §4.8)
     return false
   end
   value.Type = BITS.value
   if value.Type == _M.UnevenType.Narrow then
     value.Narrow = _M.NewNarrow() -- fresh declared defaults on every selection
-    return _M.ReadNarrowBody(stream, value.Narrow)
+    return _M.ReadNarrow(stream, value.Narrow)
   end
   if value.Type == _M.UnevenType.Wide then
     value.Wide = _M.NewWide() -- fresh declared defaults on every selection
-    return _M.ReadWideBody(stream, value.Wide)
+    return _M.ReadWide(stream, value.Wide)
   end
   return true -- None
 end
@@ -554,20 +481,12 @@ function _M.ZeroHoldsUneven(value)
   value.Tail = 0
 end
 
--- ReadHoldsUneven reads one packet: the type wire (SPEC §4.3, §6.1), then the
--- end check (SPEC §5). false refuses without a latch (a stream overflow
--- rides stream:error()).
+-- ReadHoldsUneven reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- (a stream overflow rides stream:error()).
 function _M.ReadHoldsUneven(stream, value)
-  if not _M.ReadHoldsUnevenBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadHoldsUnevenBody reads the type wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadHoldsUnevenBody(stream, value)
   if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
-  if not _M.ReadUnevenBody(stream, value.U) then return false end
+  if not _M.ReadUneven(stream, value.U) then return false end
   if not stream:serializeBits(BITS, 11) then return false end
   value.Tail = BITS.value
   return true
@@ -583,17 +502,9 @@ function _M.ZeroArrUneven(value)
   value.Tail = 0
 end
 
--- ReadArrUneven reads one packet: the type wire (SPEC §4.3, §6.1), then the
--- end check (SPEC §5). false refuses without a latch (a stream overflow
--- rides stream:error()).
+-- ReadArrUneven reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- (a stream overflow rides stream:error()).
 function _M.ReadArrUneven(stream, value)
-  if not _M.ReadArrUnevenBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadArrUnevenBody reads the type wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadArrUnevenBody(stream, value)
   if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
   if not stream:serializeInt(BITS, 0, 3) then -- the count guards the loop (SPEC §6.3)
@@ -601,7 +512,7 @@ function _M.ReadArrUnevenBody(stream, value)
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not _M.ReadUnevenBody(stream, value.Items[i]) then return false end
+    if not _M.ReadUneven(stream, value.Items[i]) then return false end
   end
   if not stream:serializeBits(BITS, 3) then return false end
   value.Tail = BITS.value
@@ -622,17 +533,9 @@ function _M.ZeroRegainAfterAlign(value)
   value.Tail = 0
 end
 
--- ReadRegainAfterAlign reads one packet: the type wire (SPEC §4.3, §6.1), then the
--- end check (SPEC §5). false refuses without a latch (a stream overflow
--- rides stream:error()).
+-- ReadRegainAfterAlign reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- (a stream overflow rides stream:error()).
 function _M.ReadRegainAfterAlign(stream, value)
-  if not _M.ReadRegainAfterAlignBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
--- ReadRegainAfterAlignBody reads the type wire without the end check, for a nested read
--- (SPEC §5: the end check runs once, after the top-level object).
-function _M.ReadRegainAfterAlignBody(stream, value)
   if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
   if not stream:serializeInt(BITS, 0, 3) then -- the count guards the loop (SPEC §6.3)

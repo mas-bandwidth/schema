@@ -361,14 +361,6 @@ defmodule Benchtable.BenchTable do
       crit: value_crit
     } = value
 
-    if value_target_id < 0 do
-      raise ArgumentError, "value.target_id is below the wire minimum"
-    end
-
-    if value_target_id > 4095 do
-      raise ArgumentError, "value.target_id is above the wire maximum"
-    end
-
     v = value_target_id &&& 0xFFF
     scratch = v
 
@@ -461,17 +453,8 @@ defmodule Benchtable.BenchTable do
           {:ok, Benchtable.TableHitEvent.t()} | :error
   def read_table_hit_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_table_hit_event_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -514,15 +497,6 @@ defmodule Benchtable.BenchTable do
 
     v = value_channel
     scratch = v
-
-    if value_speaker < 0 do
-      raise ArgumentError, "value.speaker is below the wire minimum"
-    end
-
-    if value_speaker > 4095 do
-      raise ArgumentError, "value.speaker is above the wire maximum"
-    end
-
     v = value_speaker &&& 0xFFF
     scratch = scratch ||| v <<< 2
     data = <<scratch::little-size(1)-unit(8)>>
@@ -580,17 +554,8 @@ defmodule Benchtable.BenchTable do
           {:ok, Benchtable.TableChatEvent.t()} | :error
   def read_table_chat_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_table_chat_event_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -622,15 +587,6 @@ defmodule Benchtable.BenchTable do
   @spec write_table_pickup_event!(Benchtable.TablePickupEvent.t()) :: binary()
   def write_table_pickup_event!(value) do
     %{item_id: value_item_id, amount: value_amount} = value
-
-    if value_item_id < 0 do
-      raise ArgumentError, "value.item_id is below the wire minimum"
-    end
-
-    if value_item_id > 1023 do
-      raise ArgumentError, "value.item_id is above the wire maximum"
-    end
-
     v = value_item_id &&& 0x3FF
     scratch = v
 
@@ -700,17 +656,8 @@ defmodule Benchtable.BenchTable do
           {:ok, Benchtable.TablePickupEvent.t()} | :error
   def read_table_pickup_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_table_pickup_event_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 
@@ -786,14 +733,6 @@ defmodule Benchtable.BenchTable do
             crit: value_hit_crit
           } = value_hit
 
-          if value_hit_target_id < 0 do
-            raise ArgumentError, "value.hit.target_id is below the wire minimum"
-          end
-
-          if value_hit_target_id > 4095 do
-            raise ArgumentError, "value.hit.target_id is above the wire maximum"
-          end
-
           v = value_hit_target_id &&& 0xFFF
           scratch = scratch ||| v <<< 2
 
@@ -838,15 +777,6 @@ defmodule Benchtable.BenchTable do
 
           v = value_chat_channel
           scratch = scratch ||| v <<< 2
-
-          if value_chat_speaker < 0 do
-            raise ArgumentError, "value.chat.speaker is below the wire minimum"
-          end
-
-          if value_chat_speaker > 4095 do
-            raise ArgumentError, "value.chat.speaker is above the wire maximum"
-          end
-
           v = value_chat_speaker &&& 0xFFF
           scratch = scratch ||| v <<< 4
           data = <<data::binary, scratch::little-size(2)-unit(8)>>
@@ -856,15 +786,6 @@ defmodule Benchtable.BenchTable do
 
         {:pickup, value_pickup} ->
           %{item_id: value_pickup_item_id, amount: value_pickup_amount} = value_pickup
-
-          if value_pickup_item_id < 0 do
-            raise ArgumentError, "value.pickup.item_id is below the wire minimum"
-          end
-
-          if value_pickup_item_id > 1023 do
-            raise ArgumentError, "value.pickup.item_id is above the wire maximum"
-          end
-
           v = value_pickup_item_id &&& 0x3FF
           scratch = scratch ||| v <<< 2
 
@@ -993,17 +914,8 @@ defmodule Benchtable.BenchTable do
   @spec read_table_event(binary(), non_neg_integer()) :: {:ok, Benchtable.TableEvent.t()} | :error
   def read_table_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_table_event_bits(data, num_bits) do
-      {:ok, value, bits_read} ->
-        if byte_size(data) == div(bits_read + 7, 8) and
-             (rem(bits_read, 8) == 0 or
-                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
-          {:ok, value}
-        else
-          :error
-        end
-
-      :error ->
-        :error
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 end

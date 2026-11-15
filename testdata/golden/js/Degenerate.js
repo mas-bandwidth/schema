@@ -48,7 +48,7 @@ export function WriteVec2(stream, value) {
   return true;
 }
 
-export function ReadVec2(stream, value, nested) {
+export function ReadVec2(stream, value) {
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
@@ -57,7 +57,7 @@ export function ReadVec2(stream, value, nested) {
     return false;
   }
   value.y = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type SpanF64
@@ -92,14 +92,14 @@ export function WriteSpanF64(stream, value) {
   return true;
 }
 
-export function ReadSpanF64(stream, value, nested) {
+export function ReadSpanF64(stream, value) {
   for (let i = 0; i < 2; i++) {
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
     }
     value.values[i] = NUMBER_SCRATCH.value;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type SpanU64
@@ -134,14 +134,14 @@ export function WriteSpanU64(stream, value) {
   return true;
 }
 
-export function ReadSpanU64(stream, value, nested) {
+export function ReadSpanU64(stream, value) {
   for (let i = 0; i < 2; i++) {
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }
     value.values[i] = BIGINT_SCRATCH.value;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type SpanI64
@@ -176,14 +176,14 @@ export function WriteSpanI64(stream, value) {
   return true;
 }
 
-export function ReadSpanI64(stream, value, nested) {
+export function ReadSpanI64(stream, value) {
   for (let i = 0; i < 2; i++) {
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }
     value.values[i] = BigInt.asIntN(64, BIGINT_SCRATCH.value);
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type SpanOne
@@ -218,14 +218,14 @@ export function WriteSpanOne(stream, value) {
   return true;
 }
 
-export function ReadSpanOne(stream, value, nested) {
+export function ReadSpanOne(stream, value) {
   for (let i = 0; i < 1; i++) {
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }
     value.values[i] = BIGINT_SCRATCH.value;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type SpanChunk
@@ -260,14 +260,14 @@ export function WriteSpanChunk(stream, value) {
   return true;
 }
 
-export function ReadSpanChunk(stream, value, nested) {
+export function ReadSpanChunk(stream, value) {
   for (let i = 0; i < 4; i++) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
       return false;
     }
     value.values[i] = NUMBER_SCRATCH.value;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type SpanTail
@@ -309,7 +309,7 @@ export function WriteSpanTail(stream, value) {
   return true;
 }
 
-export function ReadSpanTail(stream, value, nested) {
+export function ReadSpanTail(stream, value) {
   for (let i = 0; i < 2; i++) {
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
@@ -320,7 +320,7 @@ export function ReadSpanTail(stream, value, nested) {
     return false;
   }
   value.tail = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type SpanTwice
@@ -364,7 +364,7 @@ export function WriteSpanTwice(stream, value) {
   return true;
 }
 
-export function ReadSpanTwice(stream, value, nested) {
+export function ReadSpanTwice(stream, value) {
   for (let i = 0; i < 2; i++) {
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
@@ -377,7 +377,7 @@ export function ReadSpanTwice(stream, value, nested) {
     }
     value.b[i] = NUMBER_SCRATCH.value;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type Trio
@@ -424,7 +424,7 @@ export function WriteTrio(stream, value) {
   return true;
 }
 
-export function ReadTrio(stream, value, nested) {
+export function ReadTrio(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 20)) {
     return false;
   }
@@ -437,7 +437,7 @@ export function ReadTrio(stream, value, nested) {
     return false;
   }
   value.c = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type TrioSole
@@ -469,11 +469,11 @@ export function WriteTrioSole(stream, value) {
   return true;
 }
 
-export function ReadTrioSole(stream, value, nested) {
-  if (!ReadTrio(stream, value.inner, true)) {
+export function ReadTrioSole(stream, value) {
+  if (!ReadTrio(stream, value.inner)) {
     return false;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type Vec3Sole
@@ -505,11 +505,11 @@ export function WriteVec3Sole(stream, value) {
   return true;
 }
 
-export function ReadVec3Sole(stream, value, nested) {
-  if (!ReadVec3(stream, value.v, true)) {
+export function ReadVec3Sole(stream, value) {
+  if (!ReadVec3(stream, value.v)) {
     return false;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type TrioFirst
@@ -548,15 +548,15 @@ export function WriteTrioFirst(stream, value) {
   return true;
 }
 
-export function ReadTrioFirst(stream, value, nested) {
-  if (!ReadTrio(stream, value.inner, true)) {
+export function ReadTrioFirst(stream, value) {
+  if (!ReadTrio(stream, value.inner)) {
     return false;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
   value.trailer = NUMBER_SCRATCH.value;
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 
 // type TrioStraddle
@@ -630,7 +630,7 @@ export function WriteTrioStraddle(stream, value) {
   return true;
 }
 
-export function ReadTrioStraddle(stream, value, nested) {
+export function ReadTrioStraddle(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
@@ -655,9 +655,9 @@ export function ReadTrioStraddle(stream, value, nested) {
     return false;
   }
   value.pad5 = NUMBER_SCRATCH.value;
-  if (!ReadTrio(stream, value.inner, true)) {
+  if (!ReadTrio(stream, value.inner)) {
     return false;
   }
-  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
+  return true;
 }
 

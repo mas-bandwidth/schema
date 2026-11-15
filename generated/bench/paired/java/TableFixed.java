@@ -34,11 +34,6 @@ package bench;
 public final class TableFixed {
     private TableFixed() {}
 
-    /**
-     * Scatter checks dead field bytes in the selected plan's image. Compiled plans check union
-     * slack directly on the writer record with opDead because remapping omits dead spans or carries
-     * reader-only defaults. Image scatter receives its mode per call.
-     */
     /** the form byte this class reads and writes, and no other. */
     public static final byte form = 3;
 
@@ -71,9 +66,6 @@ public final class TableFixed {
 
     /** f32 into f64, §4's float rung and the only one. */
     public static final byte opWidenF = 6;
-
-    /** check a writer-layout dead span selected by a tag or live count/length. */
-    public static final byte opDead = 7;
 
     /** a text entry's flavour: UTF-8 bytes. */
     public static final byte textUtf8 = 1;
@@ -252,16 +244,6 @@ public final class TableFixed {
     }
 
     /**
-     * THE LOAD PATH'S HEADER, reused per thread: a read allocates nothing on its success path
-     * (docs/FIXED-FORM-ALGORITHM.md §4.2). readHeader fills it.
-     */
-    private static final ThreadLocal<Header> loadHeader = ThreadLocal.withInitial(Header::new);
-
-    static Header header() {
-        return loadHeader.get();
-    }
-
-    /**
      * read a file's header. Answers false and a named refusal.
      *
      * <p>A FORM BYTE'S REFUSAL SAYS WHICH DIRECTION: the registry is ordered, so one word for both
@@ -418,15 +400,6 @@ public final class TableFixed {
         public int gcount;
         public long[] gpool;
 
-        /** an opDead's source tag offset, expected ordinal and width. */
-        public int deadTagAt;
-
-        public long deadTag;
-        public byte deadTagWidth;
-        public int deadCountAt;
-        public int deadUnits;
-        public int deadStride;
-
         /** an entry, reset to a plain copy that belongs to no arm. */
         public void reset() {
             src = 0;
@@ -446,12 +419,6 @@ public final class TableFixed {
             gindex = 0;
             gcount = 0;
             gpool = null;
-            deadTagAt = 0;
-            deadTag = 0;
-            deadTagWidth = 0;
-            deadCountAt = -1;
-            deadUnits = 0;
-            deadStride = 0;
         }
     }
 
@@ -624,16 +591,6 @@ public final class TableFixed {
             layoutHash = hash;
             refuse(why);
         }
-    }
-
-    /**
-     * THE LOAD PATH'S DISCARD REPORT for a rollback, reused per thread: a refusal reports on the
-     * caller's report and never makes a new one per record.
-     */
-    private static final ThreadLocal<Report> loadDiscard = ThreadLocal.withInitial(Report::new);
-
-    static Report discard() {
-        return loadDiscard.get();
     }
 
     // ---- THE ONE READ LOOP --------------------------------------------------
@@ -851,49 +808,6 @@ public final class TableFixed {
                         }
                         put32(image, p.dst, v);
                         System.arraycopy(src, srcAt + p.src + 4, image, p.aux, p.size);
-                        break;
-                    }
-                case opDead:
-                    {
-                        if (p.src < 0 || p.src + p.size > srcLength) {
-                            report.damaged = true;
-                            return;
-                        }
-                        int deadStart = p.src;
-                        int deadBytes = p.size;
-                        if (p.deadCountAt >= 0) {
-                            if (p.deadCountAt + 4 > srcLength) {
-                                report.damaged = true;
-                                return;
-                            }
-                            final int live = get32(src, srcAt + p.deadCountAt);
-                            if (live < 0 || live > p.deadUnits) {
-                                // The count/length op owns the named refusal. Never
-                                // derive a tail from an invalid source word.
-                                break;
-                            }
-                            deadStart += live * p.deadStride;
-                            deadBytes = (p.deadUnits - live) * p.deadStride;
-                        } else if (p.deadTagAt >= 0) {
-                            final int tagWidth = guardWidth(p.deadTagWidth);
-                            if (p.deadTagAt + tagWidth > srcLength) {
-                                report.damaged = true;
-                                return;
-                            }
-                            if (tagAt(src, srcAt + p.deadTagAt, tagWidth) != p.deadTag) {
-                                break;
-                            }
-                        }
-                        if (deadStart < 0 || deadBytes < 0 || deadStart + deadBytes > srcLength) {
-                            report.damaged = true;
-                            return;
-                        }
-                        for (int j = 0; j < deadBytes; j++) {
-                            if (src[srcAt + deadStart + j] != 0) {
-                                report.refuse(Reason.wireDamaged);
-                                return;
-                            }
-                        }
                         break;
                     }
                 case opOrdinal:
@@ -1639,40 +1553,6 @@ public final class TableFixed {
             count++;
         }
 
-        void pushDeadSpan(
-                int src, int size, int tagAt, long tag, byte tagWidth, int guard, long arg) {
-            final int width = guardWidth(tagWidth);
-            if (tagAt < 0 || tagAt + width > theirBytes) {
-                recordTooLarge = true;
-                return;
-            }
-            final int before = count;
-            push(src, 0, size, 0, guard, opDead, arg, (byte) 0, (byte) 0);
-            if (count == before + 1) {
-                final Entry e = plan[before];
-                e.deadTagAt = tagAt;
-                e.deadTag = tag;
-                e.deadTagWidth = tagWidth;
-            }
-        }
-
-        void pushDeadTail(int src, int units, int stride, int countAt, int guard, long arg) {
-            final long bytes = (long) units * stride;
-            if (src < 0 || units < 0 || stride < 0 || bytes > Integer.MAX_VALUE
-                    || countAt < 0 || countAt + 4 > theirBytes) {
-                recordTooLarge = true;
-                return;
-            }
-            final int before = count;
-            push(src, 0, (int) bytes, 0, guard, opDead, arg, (byte) 0, (byte) 0);
-            if (count == before + 1) {
-                final Entry e = plan[before];
-                e.deadCountAt = countAt;
-                e.deadUnits = units;
-                e.deadStride = stride;
-            }
-        }
-
         /**
          * HOW FAR INTO THE WRITER'S RECORD ONE OP REACHES, in bytes from src. The run loop's own
          * bound checks are the same arithmetic, record by record; this is that arithmetic ONCE, at
@@ -1846,10 +1726,8 @@ public final class TableFixed {
                 (c.dest != null && row + dstStride < c.dest.length) ? c.dest[row + dstStride] : 0;
         final boolean live =
                 c.dest != null && row + dstCounted < c.dest.length && c.dest[row + dstCounted] != 0;
-        final byte rawFlavour =
+        final byte flavour =
                 (c.dest != null && row + dstArg < c.dest.length) ? (byte) c.dest[row + dstArg] : 0;
-        final boolean deadAllowed = (rawFlavour & 0x80) == 0;
-        final byte flavour = (byte) (rawFlavour & 0x7f);
         // T INTO ?T (ALG 5.2's EMIT, bill 12.8): the reader wraps what the writer
         // sent bare. The PRESENT byte is a CONSTANT 1 -- constant in its VALUE and
         // still carrying the row's own guard and ordinal (5.9 #13), so a present
@@ -1882,10 +1760,6 @@ public final class TableFixed {
         switch (myKind) {
             case 35:
                 { // the OPTIONAL WRAPPER: the present byte, then the payload whole
-                    if (deadAllowed) {
-                        final int payload = (int) theirs.size(ti) - 1;
-                        c.pushDeadSpan(theirAt + 1, payload, theirAt, 0, (byte) 1, guard, arg);
-                    }
                     c.push(theirAt, auxAt, 1, 0, guard, opCopy, arg, (byte) 0, (byte) 0);
                     compileEntry(
                             c, theirs, ti + 1, theirAt + 1, mine, mi + 1, myAt, guard, arg, census);
@@ -1913,9 +1787,6 @@ public final class TableFixed {
                         // reader's storage, which is theirN itself on every legal
                         // widening.
                         c.push(theirAt, auxAt, n, 0, guard, opCount, arg, (byte) 0, (byte) 0);
-                        if (deadAllowed) {
-                            c.pushDeadTail(theirAt + 4, theirN, theirElem, theirAt, guard, arg);
-                        }
                     }
                     final int step = stride != 0 ? stride : myElem;
                     for (int i = 0; i < n; i++) {
@@ -1969,35 +1840,6 @@ public final class TableFixed {
                     final int myTag = mine.tagBytes(mi);
                     final long theirArms = theirs.children(ti);
                     final long myArms = mine.children(mi);
-                    final int widest = (int) theirs.widestArm(ti);
-                    // The compiled image omits inactive writer arm bytes and
-                    // fills them from this reader's defaults. Check the two
-                    // union dead regions against the writer record itself.
-                    if (deadAllowed) {
-                        c.pushDeadSpan(
-                                theirAt + theirTag,
-                                widest,
-                                theirAt,
-                                0,
-                                (byte) theirTag,
-                                guard,
-                                arg);
-                    }
-                    int deadArm = ti + 1;
-                    for (long k = 0; k < theirArms; k++) {
-                        final int armSize = (int) theirs.size(deadArm);
-                        if (deadAllowed && armSize < widest) {
-                            c.pushDeadSpan(
-                                    theirAt + theirTag + armSize,
-                                    widest - armSize,
-                                    theirAt,
-                                    k + 1,
-                                    (byte) theirTag,
-                                    guard,
-                                    arg);
-                        }
-                        deadArm += theirs.subtree(deadArm);
-                    }
                     // THE TAG'S "None" GOES DOWN FIRST AND UNGUARDED, and it is
                     // pushed HERE, before c.argw is retuned to this union's tag
                     // width, so it is stamped at the OUTER width: None answers to
@@ -2144,9 +1986,6 @@ public final class TableFixed {
             case 12:
                 { // text: the length, then min( their units, my units )
                     final int units = Math.min(mySize - 4, theirSize - 4);
-                    if (deadAllowed) {
-                        c.pushDeadTail(theirAt + 4, theirSize - 4, 1, theirAt, guard, arg);
-                    }
                     // THE FLAVOUR RIDES IN meta AND THE ARM ORDINAL STAYS IN arg.
                     // A text field inside a union's arm is guarded like every
                     // other field in it and the guard compares arg, so a flavour
@@ -2294,12 +2133,6 @@ public final class TableFixed {
                 dst.dstsize = e.dstsize;
                 dst.sign = e.sign;
                 dst.meta = e.meta;
-                dst.deadTagAt = e.deadTagAt;
-                dst.deadTag = e.deadTag;
-                dst.deadTagWidth = e.deadTagWidth;
-                dst.deadCountAt = e.deadCountAt;
-                dst.deadUnits = e.deadUnits;
-                dst.deadStride = e.deadStride;
             }
             out++;
         }
@@ -2324,8 +2157,6 @@ public final class TableFixed {
                 return p.dstsize & 0xff;
             case opWidenF:
                 return 8;
-            case opDead:
-                return 0;
             default:
                 return p.size;
         }
@@ -2381,32 +2212,6 @@ public final class TableFixed {
         return n;
     }
 
-    /**
-     * ONE PLAN'S PREFILL: the destination ranges the plan does NOT write, packed [dst, size, ...],
-     * computed ONCE beside the plan (§4.3) and copied from the defaults before every record. count
-     * is the hole count; holes is sized for the worst case so a plan never grows it.
-     */
-    public static final class Prefill {
-        public final int[] holes;
-        public final int count;
-
-        Prefill(int[] holes, int count) {
-            this.holes = holes;
-            this.count = count;
-        }
-    }
-
-    /**
-     * compute a plan's hole list ONCE (docs/FIXED-FORM-ALGORITHM.md §4.3): the cover and the packed
-     * list are this call's only allocations, made beside the plan at init, never on a load path.
-     */
-    public static Prefill prefill(Entry[] plan, int count, int bodyBytes) {
-        final byte[] cover = new byte[bodyBytes];
-        final int[] out = new int[Math.max(2, bodyBytes * 2)];
-        final int n = holes(plan, count, cover, out);
-        return new Prefill(out, n);
-    }
-
     // ---- THE LINEAGE (docs/FIXED-FORM-ALGORITHM.md 5.2, 5.3) ----
     //
     // A FILE IS MATCHED ON ITS HASH AGAINST DATA THE BUILD LAID DOWN, and
@@ -2440,56 +2245,6 @@ public final class TableFixed {
         }
     }
 
-    /** A structural upper bound for the writer-side dead checks added to a compiled plan. */
-    private static long deadRoom(Layout layout, int at) {
-        final int kind = layout.kind(at);
-        final int children = (int) layout.children(at);
-        if (kind == 35) { // optional payload plus its child
-            return satAdd(1, deadRoom(layout, at + 1));
-        }
-        if (kind == 12) { // string tail
-            return 1;
-        }
-        if (kind == 13) { // table
-            long total = 0;
-            int child = at + 1;
-            for (int i = 0; i < children; i++) {
-                total = satAdd(total, deadRoom(layout, child));
-                child += layout.subtree(child);
-            }
-            return total;
-        }
-        if (kind == 14) { // arrays unroll the element's plan for every writer slot
-            final int elem = at + 1;
-            final long elemSize = layout.size(elem);
-            final long slots = elemSize <= 0 ? 0 : layout.size(at) / elemSize + 1;
-            return satAdd(1, satMul(slots, deadRoom(layout, elem)));
-        }
-        if (kind == 16) { // keyed arrays unroll only the writer's declared keys
-            final int keys = at + 1;
-            final int elem = keys + layout.subtree(keys);
-            return satMul(layout.children(keys), deadRoom(layout, elem));
-        }
-        if (kind == 15) { // None plus every possibly narrow arm and its descendants
-            long total = satAdd(1, children);
-            int child = at + 1;
-            for (int i = 0; i < children; i++) {
-                total = satAdd(total, deadRoom(layout, child));
-                child += layout.subtree(child);
-            }
-            return total;
-        }
-        return 0;
-    }
-
-    private static long satAdd(long a, long b) {
-        return a > Long.MAX_VALUE - b ? Long.MAX_VALUE : a + b;
-    }
-
-    private static long satMul(long a, long b) {
-        return a != 0 && b > Long.MAX_VALUE / a ? Long.MAX_VALUE : a * b;
-    }
-
     /**
      * ONE LINEAGE ENTRY'S PLAN, built ONCE at class initialization from THE LOCK'S BYTES -- which
      * is build time for a language with no constexpr, and conforming (5.9 #3): the bytes came from
@@ -2507,19 +2262,15 @@ public final class TableFixed {
         public final short[] remap;
         public final int unknown;
 
-        /** The plan's hole list and cover, computed once beside the plan (§4.3). */
-        public final Prefill prefill;
-
         /** Reason.none, or the name a file selecting this entry is refused by. */
         public final Reason why;
 
-        Plan(Entry[] entries, int count, short[] remap, int unknown, Reason why, Prefill prefill) {
+        Plan(Entry[] entries, int count, short[] remap, int unknown, Reason why) {
             this.entries = entries;
             this.count = count;
             this.remap = remap;
             this.unknown = unknown;
             this.why = why;
-            this.prefill = prefill;
         }
     }
 
@@ -2546,8 +2297,7 @@ public final class TableFixed {
      * entry carries layoutMalformed and LOAD refuses by that name if a file ever matches its hash.
      * Nothing is decoded and no counter moves either way.
      */
-    public static Plan[] lineagePlans(
-            KnownLayout[] known, byte[] mine, int[] dest, long own, int bodyBytes) {
+    public static Plan[] lineagePlans(KnownLayout[] known, byte[] mine, int[] dest, long own) {
         final Plan[] out = new Plan[known.length];
         final Layout me = parse(mine, 0, mine.length, new Report());
         for (int i = 0; i < known.length; i++) {
@@ -2556,45 +2306,40 @@ public final class TableFixed {
             }
             final Layout theirs = parse(known[i].layout, 0, known[i].layoutBytes, new Report());
             if (theirs == null || me == null) {
-                out[i] = new Plan(null, 0, null, 0, Reason.layoutMalformed, null);
+                out[i] = new Plan(null, 0, null, 0, Reason.layoutMalformed);
                 continue;
             }
-            // THE FIRST TWO TERMS RETAIN THE EXISTING MAPPING ALLOWANCE; this
-            // change adds a separate structural upper budget for dead-span
-            // checks. deadRoom walks repeated array/keyed slots and union arms,
-            // so layout nodes that are emitted repeatedly do not undercount
-            // these added ops. This does not change the old mapping allowance.
+            // HOW THE BUILD SIZES THE PLAN is shape and not contract (5.9 #4,
+            // #21), and this leg STATES THE FORMULA rather than growing into a
+            // cap. Every entry a compile writes is either one of MY entries
+            // taking a value or one of THEIRS being stepped over, and coalescing
+            // only ever shortens the run, so
             //
-            //     room = me.count + theirs.count + deadRoom(theirs) + 1
+            //     room = me.count + theirs.count + 1
             //
-            // sizes the plan; the remap lane keeps two shorts per entry and the
-            // floor the old loop used. The layout counts and repeated extents
-            // come from the lock's bytes, so this is not a load-time search.
+            // bounds the plan for this pair, and the remap lane keeps the two
+            // shorts per entry and the floor the old loop used. BOTH COUNTS ARE
+            // THE LOCK'S OWN, read out of the layout bytes the lock recorded, so
+            // the size is a generate-time number and not a search.
             //
-            // Arithmetic and the doubled remap capacity are checked before
-            // allocation because this runs in a class initializer. An
-            // unrepresentable capacity is carried as planTooLarge by this
-            // lineage lane rather than escaping as an initializer exception.
-            final long room64 =
-                    satAdd(satAdd(me.count, theirs.count), satAdd(deadRoom(theirs, 0), 1));
-            if (room64 > Integer.MAX_VALUE / 2) {
-                out[i] = new Plan(null, 0, null, 0, Reason.planTooLarge, null);
-                continue;
-            }
-            final int room = (int) room64;
+            // IT IS SIZED THIS WAY BECAUSE THIS RUNS IN A CLASS INITIALIZER. The
+            // grow-and-retry loop reached room 1<<18 before it gave up, which is
+            // an Entry[262144] plus a short[524288] allocated while <clinit> is
+            // on the stack, and an OutOfMemoryError there is not a caught error:
+            // it leaves the JVM with an ExceptionInInitializerError and POISONS
+            // the class for the life of the loader, so every later read of a
+            // perfectly good file fails too. A stated bound cannot do that.
+            //
+            // A compile that still does not fit would be THE FORMULA being
+            // wrong, not a layout being large, and it is refused BY NAME exactly
+            // as the cap was: nothing is decoded and no counter moves.
+            final int room = me.count + theirs.count + 1;
             final Entry[] p = plan(room);
             final short[] table = new short[Math.max(1024, room * 2)];
             final Report census = new Report();
             final int made = compile(theirs, me, dest, p, table, census);
             if (made >= 0) {
-                out[i] =
-                        new Plan(
-                                p,
-                                made,
-                                table,
-                                census.unknown,
-                                Reason.none,
-                                prefill(p, made, bodyBytes));
+                out[i] = new Plan(p, made, table, census.unknown, Reason.none);
             } else {
                 // THE ENTRY'S OWN LANE CARRIES ITS OWN REASON (5.9 #36): an
                 // entry past the writer's record is layoutRecordTooLarge and a
@@ -2606,7 +2351,7 @@ public final class TableFixed {
                                                 || census.reason == Reason.layoutMalformed))
                                 ? census.reason
                                 : Reason.planTooLarge;
-                out[i] = new Plan(null, 0, null, 0, why, null);
+                out[i] = new Plan(null, 0, null, 0, why);
             }
         }
         return out;

@@ -152,22 +152,6 @@ function S.knownId(id: integer): boolean
 	return known[id] == true
 end
 
--- tableIds registers the unit's TABLE node type ids, the types a pointer slot
--- can declare (docs/SPEC-TABLES.md §3.1). Every table module registers the
--- same list, so a record of a type this reader declares is told apart from a
--- newer writer's type even when no pointer below the root places it.
-local tableTypeIds: { [integer]: boolean } = {}
-function S.tableIds(ids: { integer })
-	for _, id in ids do
-		tableTypeIds[id] = true
-	end
-end
-
--- tableId says whether this build DECLARES the table type id (§3.1).
-function S.tableId(id: integer): boolean
-	return tableTypeIds[id] == true
-end
-
 -- lookup is the descriptor a field's t names: every module a descriptor
 -- names requires the module that registers it, so a loaded root's closure is
 -- registered.

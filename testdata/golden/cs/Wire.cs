@@ -378,15 +378,6 @@ namespace Example
 
         public static bool ReadProbeHeader(ReadStream stream, ref ProbeHeader value)
         {
-            if (!ReadProbeHeaderBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadProbeHeaderBody(ReadStream stream, ref ProbeHeader value)
-        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeHeaderBatch(ref batch, ref value);
             batch.End();
@@ -464,8 +455,8 @@ namespace Example
                 ulong f0 = ((ulong)value.Small) & 0x1ffUL;
                 ulong f1 = ((ulong)value.Boundary) & 0x1ffffffffUL;
                 ulong f2 = (ulong)value.Wide;
-                ulong f3 = ((ulong)(unchecked((ulong)(value.Sensor)))) & 0xffffffffUL;
-                ulong f4 = (ulong)(unchecked((ulong)(value.Nonce)));
+                ulong f3 = ((ulong)((ulong)(value.Sensor))) & 0xffffffffUL;
+                ulong f4 = (ulong)((ulong)(value.Nonce));
                 ulong w0 = f0 | (f1 << 9) | (f2 << 42);
                 if (!batch.SerializeBits64(ref w0, 64))
                 {
@@ -491,15 +482,6 @@ namespace Example
         }
 
         public static bool ReadProbeBits(ReadStream stream, ref ProbeBits value)
-        {
-            if (!ReadProbeBitsBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadProbeBitsBody(ReadStream stream, ref ProbeBits value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeBitsBatch(ref batch, ref value);
@@ -533,7 +515,7 @@ namespace Example
                 ulong v2 = ((c0 >> 42) | (c1 << 22));
                 value.Wide = v2;
                 ulong v3 = ((c1 >> 42) | (c2 << 22)) & 0xffffffffUL;
-                value.Sensor = (uint)unchecked((long)v3);
+                value.Sensor = (uint)((long)v3);
                 ulong v4 = ((c2 >> 10) | (c3 << 54));
                 value.Nonce = v4;
             }
@@ -595,21 +577,20 @@ namespace Example
             }
             {
                 float compressedValue = value.Orientation;
-                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -180.0f && compressedValue <= 180.0f, "value.Orientation out of range [-180.0f, 180.0f]");
                 if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 36000u, 16, 360.0f, -180.0f))
                 {
                     return false;
                 }
             }
             {
-                uint rawValue = unchecked((uint)value.RawDelta);
+                uint rawValue = (uint)value.RawDelta;
                 if (!batch.SerializeBits(ref rawValue, 32))
                 {
                     return false;
                 }
             }
             {
-                ulong rawValue = unchecked((ulong)value.BigDelta);
+                ulong rawValue = (ulong)value.BigDelta;
                 if (!batch.SerializeBits64(ref rawValue, 64))
                 {
                     return false;
@@ -648,7 +629,7 @@ namespace Example
             }
             Debug.Assert(value.SamplesCount >= 1 && value.SamplesCount <= 8, "value.SamplesCount out of range [1, 8]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = unchecked((uint)(value.SamplesCount) - (uint)(1));
+                uint offsetValue = (uint)(value.SamplesCount) - (uint)(1);
                 if (!batch.SerializeBits(ref offsetValue, 3))
                 {
                     return false;
@@ -668,15 +649,6 @@ namespace Example
         }
 
         public static bool ReadProbeSample(ReadStream stream, ref ProbeSample value)
-        {
-            if (!ReadProbeSampleBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadProbeSampleBody(ReadStream stream, ref ProbeSample value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeSampleBatch(ref batch, ref value);
@@ -702,7 +674,7 @@ namespace Example
                 {
                     return false;
                 }
-                value.RawDelta = unchecked((int)rawValue);
+                value.RawDelta = (int)rawValue;
             }
             {
                 ulong rawValue = 0;
@@ -710,7 +682,7 @@ namespace Example
                 {
                     return false;
                 }
-                value.BigDelta = unchecked((long)rawValue);
+                value.BigDelta = (long)rawValue;
             }
             if (value.Active)
             {
@@ -736,7 +708,7 @@ namespace Example
                         {
                             return false;
                         }
-                        value.TargetId = unchecked((ushort)rawValue);
+                        value.TargetId = (ushort)rawValue;
                     }
                 }
                 else
@@ -767,7 +739,7 @@ namespace Example
                     {
                         return false;
                     }
-                    value.Samples[i] = unchecked((ushort)rawValue);
+                    value.Samples[i] = (ushort)rawValue;
                 }
             }
             return true;
@@ -812,22 +784,13 @@ namespace Example
 
         public static bool ReadProbeRing(ReadStream stream, ref ProbeRing value)
         {
-            if (!ReadProbeRingBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadProbeRingBody(ReadStream stream, ref ProbeRing value)
-        {
             {
                 uint rawValue = 0;
                 if (!stream.SerializeBits(ref rawValue, 16))
                 {
                     return false;
                 }
-                value.Radius = unchecked((ushort)rawValue);
+                value.Radius = (ushort)rawValue;
             }
             return true;
         }
@@ -842,7 +805,7 @@ namespace Example
                 {
                     return false;
                 }
-                value.Radius = unchecked((ushort)rawValue);
+                value.Radius = (ushort)rawValue;
             }
             return true;
         }
@@ -876,7 +839,7 @@ namespace Example
             {
                 // flat run: 15 bits in 1 chunk(s) — the field placement is folded
                 Debug.Assert(value.Width <= 100, "value.Width out of range [0, 100]");
-                ulong f0 = ((ulong)(unchecked((uint)(value.Width)))) & 0x7fUL;
+                ulong f0 = ((ulong)((uint)(value.Width))) & 0x7fUL;
                 ulong f1 = ((ulong)(value.Height)) & 0xffUL;
                 uint w0 = (uint)(f0 | (f1 << 7));
                 if (!batch.SerializeBits(ref w0, 15))
@@ -888,15 +851,6 @@ namespace Example
         }
 
         public static bool ReadProbeSlab(ReadStream stream, ref ProbeSlab value)
-        {
-            if (!ReadProbeSlabBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadProbeSlabBody(ReadStream stream, ref ProbeSlab value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeSlabBatch(ref batch, ref value);
@@ -922,7 +876,7 @@ namespace Example
                 {
                     return false;
                 }
-                value.Height = unchecked((byte)rawValue);
+                value.Height = (byte)rawValue;
             }
             return true;
         }
@@ -990,15 +944,6 @@ namespace Example
         }
 
         public static bool ReadProbeShape(ReadStream stream, ref ProbeShape value)
-        {
-            if (!ReadProbeShapeBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadProbeShapeBody(ReadStream stream, ref ProbeShape value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeShapeBatch(ref batch, ref value);
@@ -1077,7 +1022,7 @@ namespace Example
             }
             Debug.Assert(value.ExtrasCount >= 0 && value.ExtrasCount <= 2, "value.ExtrasCount out of range [0, 2]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = unchecked((uint)(value.ExtrasCount));
+                uint offsetValue = (uint)(value.ExtrasCount);
                 if (!batch.SerializeBits(ref offsetValue, 2))
                 {
                     return false;
@@ -1095,15 +1040,6 @@ namespace Example
 
         public static bool ReadProbeCollider(ReadStream stream, ref ProbeCollider value)
         {
-            if (!ReadProbeColliderBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadProbeColliderBody(ReadStream stream, ref ProbeCollider value)
-        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeColliderBatch(ref batch, ref value);
             batch.End();
@@ -1120,7 +1056,7 @@ namespace Example
                 {
                     return false;
                 }
-                value.Armor = unchecked((byte)rawValue);
+                value.Armor = (byte)rawValue;
             }
             if (!ReadProbeShapeBatch(ref batch, ref value.Shape))
             {
@@ -1180,7 +1116,7 @@ namespace Example
             {
                 // flat run: 36 bits in 1 chunk(s) — the field placement is folded
                 Debug.Assert((uint)value.Preferred <= 15, "value.Preferred above the enum wire range [0, 15]"); // headroom above the wire range cannot ride
-                ulong f0 = ((ulong)(unchecked((uint)value.Retries))) & 0xffffffffUL;
+                ulong f0 = ((ulong)((uint)value.Retries)) & 0xffffffffUL;
                 ulong f1 = ((ulong)(uint)value.Preferred) & 0xfUL;
                 ulong w0 = f0 | (f1 << 32);
                 if (!batch.SerializeBits64(ref w0, 36))
@@ -1192,15 +1128,6 @@ namespace Example
         }
 
         public static bool ReadProbeConfig(ReadStream stream, ref ProbeConfig value)
-        {
-            if (!ReadProbeConfigBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadProbeConfigBody(ReadStream stream, ref ProbeConfig value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeConfigBatch(ref batch, ref value);
@@ -1222,7 +1149,7 @@ namespace Example
                     return false;
                 }
                 ulong v0 = c0 & 0xffffffffUL;
-                value.Retries = unchecked((int)(uint)v0);
+                value.Retries = (int)(uint)v0;
                 ulong v1 = (c0 >> 32) & 0xfUL;
                 value.Preferred = (Weapon)(int)v1;
             }
@@ -1284,15 +1211,6 @@ namespace Example
 
         public static bool ReadProbeArray(ReadStream stream, ref ProbeArray value)
         {
-            if (!ReadProbeArrayBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadProbeArrayBody(ReadStream stream, ref ProbeArray value)
-        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeArrayBatch(ref batch, ref value);
             batch.End();
@@ -1336,15 +1254,6 @@ namespace Example
 
         public static bool ReadHeartbeat(ReadStream stream, ref Heartbeat value)
         {
-            if (!ReadHeartbeatBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadHeartbeatBody(ReadStream stream, ref Heartbeat value)
-        {
             return true;
         }
 
@@ -1382,9 +1291,9 @@ namespace Example
                 Debug.Assert(value.TestC >= 0 && value.TestC <= 1000, "value.TestC out of range [0, 1000]");
                 Debug.Assert(value.TestD >= 0 && value.TestD <= 1000, "value.TestD out of range [0, 1000]");
                 ulong f0 = ((ulong)(value.TestA)) & 0xffffUL;
-                ulong f1 = ((ulong)(unchecked((uint)(value.TestB)))) & 0x3ffUL;
-                ulong f2 = ((ulong)(unchecked((uint)(value.TestC)))) & 0x3ffUL;
-                ulong f3 = ((ulong)(unchecked((uint)(value.TestD)))) & 0x3ffUL;
+                ulong f1 = ((ulong)((uint)(value.TestB))) & 0x3ffUL;
+                ulong f2 = ((ulong)((uint)(value.TestC))) & 0x3ffUL;
+                ulong f3 = ((ulong)((uint)(value.TestD))) & 0x3ffUL;
                 ulong w0 = f0 | (f1 << 16) | (f2 << 26) | (f3 << 36);
                 if (!batch.SerializeBits64(ref w0, 46))
                 {
@@ -1395,15 +1304,6 @@ namespace Example
         }
 
         public static bool ReadTest(ReadStream stream, ref Test value)
-        {
-            if (!ReadTestBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadTestBody(ReadStream stream, ref Test value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadTestBatch(ref batch, ref value);
@@ -1421,7 +1321,7 @@ namespace Example
                 {
                     return false;
                 }
-                value.TestA = unchecked((ushort)rawValue);
+                value.TestA = (ushort)rawValue;
             }
             {
                 int rangeValue = 0;
@@ -1466,7 +1366,7 @@ namespace Example
         {
             Debug.Assert(value.DataLength >= 0 && value.DataLength <= (int)MaxBlockSize, "value.DataLength out of range [0, (int)MaxBlockSize]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = unchecked((uint)(value.DataLength));
+                uint offsetValue = (uint)(value.DataLength);
                 if (!stream.SerializeBits(ref offsetValue, 11))
                 {
                     return false;
@@ -1480,15 +1380,6 @@ namespace Example
         }
 
         public static bool ReadBlock(ReadStream stream, ref Block value)
-        {
-            if (!ReadBlockBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadBlockBody(ReadStream stream, ref Block value)
         {
             if (!stream.SerializeInt(ref value.DataLength, 0, (int)MaxBlockSize)) // the length guards the slice (§6.3)
             {
@@ -1517,7 +1408,7 @@ namespace Example
         {
             Debug.Assert(value.TextLength >= 0 && value.TextLength <= (int)MaxChatLength, "value.TextLength out of range [0, (int)MaxChatLength]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = unchecked((uint)(value.TextLength));
+                uint offsetValue = (uint)(value.TextLength);
                 if (!stream.SerializeBits(ref offsetValue, 9))
                 {
                     return false;
@@ -1531,15 +1422,6 @@ namespace Example
         }
 
         public static bool ReadChat(ReadStream stream, ref Chat value)
-        {
-            if (!ReadChatBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadChatBody(ReadStream stream, ref Chat value)
         {
             if (!stream.SerializeInt(ref value.TextLength, 0, (int)MaxChatLength)) // the length guards the slice (§6.3)
             {
@@ -1627,15 +1509,6 @@ namespace Example
 
         public static bool ReadProbeReport(ReadStream stream, ref ProbeReport value)
         {
-            if (!ReadProbeReportBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadProbeReportBody(ReadStream stream, ref ProbeReport value)
-        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeReportBatch(ref batch, ref value);
             batch.End();
@@ -1705,9 +1578,9 @@ namespace Example
                 Debug.Assert(value.A >= -100 && value.A <= 100, "value.A out of range [-100, 100]");
                 Debug.Assert(value.B >= -100 && value.B <= 100, "value.B out of range [-100, 100]");
                 Debug.Assert(value.C >= -100 && value.C <= 150, "value.C out of range [-100, 150]");
-                ulong f0 = ((ulong)(unchecked((uint)(value.A) - unchecked((uint)(-100))))) & 0xffUL;
-                ulong f1 = ((ulong)(unchecked((uint)(value.B) - unchecked((uint)(-100))))) & 0xffUL;
-                ulong f2 = ((ulong)(unchecked((uint)(value.C) - unchecked((uint)(-100))))) & 0xffUL;
+                ulong f0 = ((ulong)((uint)(value.A) - unchecked((uint)(-100)))) & 0xffUL;
+                ulong f1 = ((ulong)((uint)(value.B) - unchecked((uint)(-100)))) & 0xffUL;
+                ulong f2 = ((ulong)((uint)(value.C) - unchecked((uint)(-100)))) & 0xffUL;
                 ulong f3 = ((ulong)value.D) & 0xffUL;
                 ulong f4 = ((ulong)value.E) & 0xffUL;
                 ulong f5 = ((ulong)value.F) & 0xffUL;
@@ -1720,7 +1593,7 @@ namespace Example
             }
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 16, "value.ItemsCount out of range [0, 16]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = unchecked((uint)(value.ItemsCount));
+                uint offsetValue = (uint)(value.ItemsCount);
                 if (!stream.SerializeBits(ref offsetValue, 5))
                 {
                     return false;
@@ -1730,7 +1603,7 @@ namespace Example
             {
                 Debug.Assert(value.Items[i] >= 0 && value.Items[i] <= 255, "value.Items[i] out of range [0, 255]");
                 {
-                    uint offsetValue = unchecked((uint)(value.Items[i]));
+                    uint offsetValue = (uint)(value.Items[i]);
                     if (!stream.SerializeBits(ref offsetValue, 8))
                     {
                         return false;
@@ -1743,7 +1616,6 @@ namespace Example
             }
             {
                 float compressedValue = value.CompressedFloatValue;
-                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= 0.0f && compressedValue <= 10.0f, "value.CompressedFloatValue out of range [0.0f, 10.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 1000u, 10, 10.0f, 0.0f))
                 {
                     return false;
@@ -1756,14 +1628,14 @@ namespace Example
             {
                 // flat run: 249 bits in 4 chunk(s) — the field placement is folded
                 Debug.Assert(value.Int64Range >= -1000000000000 && value.Int64Range <= 1000000000000, "value.Int64Range out of range [-1000000000000, 1000000000000]");
-                ulong f0 = ((ulong)(unchecked((byte)value.Int8Value))) & 0xffUL;
-                ulong f1 = ((ulong)(unchecked((ushort)value.Int16Value))) & 0xffffUL;
+                ulong f0 = ((ulong)((byte)value.Int8Value)) & 0xffUL;
+                ulong f1 = ((ulong)((ushort)value.Int16Value)) & 0xffffUL;
                 ulong f2 = ((ulong)(value.Uint8Value)) & 0xffUL;
                 ulong f3 = ((ulong)(value.Uint16Value)) & 0xffffUL;
                 ulong f4 = ((ulong)(value.Uint32Value)) & 0xffffffffUL;
-                ulong f5 = unchecked((ulong)value.Uint64Value);
-                ulong f6 = unchecked((ulong)value.Int64Full);
-                ulong f7 = ((ulong)(unchecked((ulong)(value.Int64Range) - unchecked((ulong)(-1000000000000))))) & 0x1ffffffffffUL;
+                ulong f5 = (ulong)value.Uint64Value;
+                ulong f6 = (ulong)value.Int64Full;
+                ulong f7 = ((ulong)((ulong)(value.Int64Range) - unchecked((ulong)(-1000000000000)))) & 0x1ffffffffffUL;
                 ulong w0 = f0 | (f1 << 8) | (f2 << 24) | (f3 << 32) | (f4 << 48);
                 if (!stream.SerializeBits64(ref w0, 64))
                 {
@@ -1795,7 +1667,7 @@ namespace Example
             }
             Debug.Assert(value.TextLength >= 0 && value.TextLength <= 255, "value.TextLength out of range [0, 255]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = unchecked((uint)(value.TextLength));
+                uint offsetValue = (uint)(value.TextLength);
                 if (!stream.SerializeBits(ref offsetValue, 8))
                 {
                     return false;
@@ -1809,15 +1681,6 @@ namespace Example
         }
 
         public static bool ReadTestData(ReadStream stream, ref TestData value)
-        {
-            if (!ReadTestDataBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadTestDataBody(ReadStream stream, ref TestData value)
         {
             if (!stream.SerializeInt(ref value.A, -100, 100))
             {
@@ -1888,19 +1751,19 @@ namespace Example
                     return false;
                 }
                 ulong v0 = c0 & 0xffUL;
-                value.Int8Value = unchecked((sbyte)(byte)(uint)v0);
+                value.Int8Value = (sbyte)(byte)(uint)v0;
                 ulong v1 = (c0 >> 8) & 0xffffUL;
-                value.Int16Value = unchecked((short)(ushort)(uint)v1);
+                value.Int16Value = (short)(ushort)(uint)v1;
                 ulong v2 = (c0 >> 24) & 0xffUL;
-                value.Uint8Value = unchecked((byte)(uint)v2);
+                value.Uint8Value = (byte)(uint)v2;
                 ulong v3 = (c0 >> 32) & 0xffffUL;
-                value.Uint16Value = unchecked((ushort)(uint)v3);
+                value.Uint16Value = (ushort)(uint)v3;
                 ulong v4 = ((c0 >> 48) | (c1 << 16)) & 0xffffffffUL;
-                value.Uint32Value = unchecked((uint)(uint)v4);
+                value.Uint32Value = (uint)(uint)v4;
                 ulong v5 = ((c1 >> 16) | (c2 << 48));
                 value.Uint64Value = v5;
                 ulong v6 = ((c2 >> 16) | (c3 << 48));
-                value.Int64Full = unchecked((long)v6);
+                value.Int64Full = (long)v6;
             }
             if (!stream.SerializeInt64(ref value.Int64Range, -1000000000000, 1000000000000))
             {
@@ -1980,7 +1843,6 @@ namespace Example
         {
             {
                 float compressedValue = value.Boundary;
-                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= 0.0f && compressedValue <= 10.0f, "value.Boundary out of range [0.0f, 10.0f]");
                 if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 1000u, 10, 10.0f, 0.0f))
                 {
                     return false;
@@ -1988,7 +1850,6 @@ namespace Example
             }
             {
                 float compressedValue = value.Offset;
-                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -5.0f && compressedValue <= 5.0f, "value.Offset out of range [-5.0f, 5.0f]");
                 if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 10000u, 14, 10.0f, -5.0f))
                 {
                     return false;
@@ -1998,15 +1859,6 @@ namespace Example
         }
 
         public static bool ReadCompressedProbe(ReadStream stream, ref CompressedProbe value)
-        {
-            if (!ReadCompressedProbeBody(stream, ref value))
-            {
-                return false;
-            }
-            return stream.SerializeEnd();
-        }
-
-        private static bool ReadCompressedProbeBody(ReadStream stream, ref CompressedProbe value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadCompressedProbeBatch(ref batch, ref value);

@@ -22,6 +22,7 @@
 // same way; a unit whose cooked records name nothing outside this file needs
 // none of it, and reading the same header everywhere is worth the allow.
 #![allow(unused_imports)]
+#![allow(clippy::missing_safety_doc)]
 #![allow(clippy::manual_range_contains)]
 
 use crate::*;
@@ -428,12 +429,7 @@ impl MixedEntityCook {
     /// Open checks the header and POINTS, and that is the WHOLE check.
     ///
     /// # Safety
-    /// `bytes` must point at `length` readable bytes, and those bytes must be a
-    /// genuine cook of this build: every bool byte 0 or 1, every self-relative
-    /// offset a slot inside the region, and every count within its declared
-    /// bound. The region must stay put and must not be written for as long as
-    /// this handle or anything borrowed from it lives; a bool byte that is not
-    /// 0 or 1 is undefined behaviour the moment a row reference is formed.
+    /// `bytes` must point at `length` readable bytes that outlive the handle.
     pub unsafe fn open(bytes: *const u8, length: u64) -> Option<MixedEntityCook> {
         unsafe {
             let (region, region_length) =
@@ -462,9 +458,7 @@ impl MixedEntityCook {
 // (docs/SPEC-TABLES.md §6.3), and every other delta is one add.
 ///
 /// # Safety
-/// `slot` must point at a reference slot inside a genuine cook of this build,
-/// and a non-zero delta must name a row the region holds. The region must not
-/// be written while the returned pointer or anything read through it lives.
+/// `slot` must point at a reference slot inside a region this build opened.
 pub unsafe fn mixed_entity_at(slot: *const i64) -> *const MixedEntityRow {
     unsafe {
         let delta = core::ptr::read_unaligned(slot);
@@ -498,12 +492,7 @@ impl MixedStatCook {
     /// Open checks the header and POINTS, and that is the WHOLE check.
     ///
     /// # Safety
-    /// `bytes` must point at `length` readable bytes, and those bytes must be a
-    /// genuine cook of this build: every bool byte 0 or 1, every self-relative
-    /// offset a slot inside the region, and every count within its declared
-    /// bound. The region must stay put and must not be written for as long as
-    /// this handle or anything borrowed from it lives; a bool byte that is not
-    /// 0 or 1 is undefined behaviour the moment a row reference is formed.
+    /// `bytes` must point at `length` readable bytes that outlive the handle.
     pub unsafe fn open(bytes: *const u8, length: u64) -> Option<MixedStatCook> {
         unsafe {
             let (region, region_length) =
@@ -532,9 +521,7 @@ impl MixedStatCook {
 // (docs/SPEC-TABLES.md §6.3), and every other delta is one add.
 ///
 /// # Safety
-/// `slot` must point at a reference slot inside a genuine cook of this build,
-/// and a non-zero delta must name a row the region holds. The region must not
-/// be written while the returned pointer or anything read through it lives.
+/// `slot` must point at a reference slot inside a region this build opened.
 pub unsafe fn mixed_stat_at(slot: *const i64) -> *const MixedStatRow {
     unsafe {
         let delta = core::ptr::read_unaligned(slot);
@@ -568,12 +555,7 @@ impl MixedHitEventCook {
     /// Open checks the header and POINTS, and that is the WHOLE check.
     ///
     /// # Safety
-    /// `bytes` must point at `length` readable bytes, and those bytes must be a
-    /// genuine cook of this build: every bool byte 0 or 1, every self-relative
-    /// offset a slot inside the region, and every count within its declared
-    /// bound. The region must stay put and must not be written for as long as
-    /// this handle or anything borrowed from it lives; a bool byte that is not
-    /// 0 or 1 is undefined behaviour the moment a row reference is formed.
+    /// `bytes` must point at `length` readable bytes that outlive the handle.
     pub unsafe fn open(bytes: *const u8, length: u64) -> Option<MixedHitEventCook> {
         unsafe {
             let (region, region_length) =
@@ -602,9 +584,7 @@ impl MixedHitEventCook {
 // (docs/SPEC-TABLES.md §6.3), and every other delta is one add.
 ///
 /// # Safety
-/// `slot` must point at a reference slot inside a genuine cook of this build,
-/// and a non-zero delta must name a row the region holds. The region must not
-/// be written while the returned pointer or anything read through it lives.
+/// `slot` must point at a reference slot inside a region this build opened.
 pub unsafe fn mixed_hit_event_at(slot: *const i64) -> *const MixedHitEventRow {
     unsafe {
         let delta = core::ptr::read_unaligned(slot);
@@ -638,12 +618,7 @@ impl MixedChatEventCook {
     /// Open checks the header and POINTS, and that is the WHOLE check.
     ///
     /// # Safety
-    /// `bytes` must point at `length` readable bytes, and those bytes must be a
-    /// genuine cook of this build: every bool byte 0 or 1, every self-relative
-    /// offset a slot inside the region, and every count within its declared
-    /// bound. The region must stay put and must not be written for as long as
-    /// this handle or anything borrowed from it lives; a bool byte that is not
-    /// 0 or 1 is undefined behaviour the moment a row reference is formed.
+    /// `bytes` must point at `length` readable bytes that outlive the handle.
     pub unsafe fn open(bytes: *const u8, length: u64) -> Option<MixedChatEventCook> {
         unsafe {
             let (region, region_length) =
@@ -672,9 +647,7 @@ impl MixedChatEventCook {
 // (docs/SPEC-TABLES.md §6.3), and every other delta is one add.
 ///
 /// # Safety
-/// `slot` must point at a reference slot inside a genuine cook of this build,
-/// and a non-zero delta must name a row the region holds. The region must not
-/// be written while the returned pointer or anything read through it lives.
+/// `slot` must point at a reference slot inside a region this build opened.
 pub unsafe fn mixed_chat_event_at(slot: *const i64) -> *const MixedChatEventRow {
     unsafe {
         let delta = core::ptr::read_unaligned(slot);
@@ -708,12 +681,7 @@ impl MixedPickupEventCook {
     /// Open checks the header and POINTS, and that is the WHOLE check.
     ///
     /// # Safety
-    /// `bytes` must point at `length` readable bytes, and those bytes must be a
-    /// genuine cook of this build: every bool byte 0 or 1, every self-relative
-    /// offset a slot inside the region, and every count within its declared
-    /// bound. The region must stay put and must not be written for as long as
-    /// this handle or anything borrowed from it lives; a bool byte that is not
-    /// 0 or 1 is undefined behaviour the moment a row reference is formed.
+    /// `bytes` must point at `length` readable bytes that outlive the handle.
     pub unsafe fn open(bytes: *const u8, length: u64) -> Option<MixedPickupEventCook> {
         unsafe {
             let (region, region_length) =
@@ -742,9 +710,7 @@ impl MixedPickupEventCook {
 // (docs/SPEC-TABLES.md §6.3), and every other delta is one add.
 ///
 /// # Safety
-/// `slot` must point at a reference slot inside a genuine cook of this build,
-/// and a non-zero delta must name a row the region holds. The region must not
-/// be written while the returned pointer or anything read through it lives.
+/// `slot` must point at a reference slot inside a region this build opened.
 pub unsafe fn mixed_pickup_event_at(slot: *const i64) -> *const MixedPickupEventRow {
     unsafe {
         let delta = core::ptr::read_unaligned(slot);

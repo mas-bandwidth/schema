@@ -192,10 +192,9 @@ function _M.ZeroFixedProbe(value: any)
   for i = 1, 2 do value.Samples[i] = 0 end
 end
 
--- ReadFixedProbeBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadFixedProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
--- It does not end the packet: the public ReadFixedProbe is the one-packet read (SPEC §5).
-function _M.ReadFixedProbeBody(stream: any, value: any): boolean
+function _M.ReadFixedProbe(stream: any, value: any): boolean
   if not stream:serializeFixed64(BIG, 16, 16, -180i, 180i) then
     return false
   end
@@ -219,13 +218,6 @@ function _M.ReadFixedProbeBody(stream: any, value: any): boolean
     value.Samples[i] = integer.tonumber(BIG.value)
   end
   return true
-end
-
--- ReadFixedProbe reads one packet: the type wire and the runtime's end check, once,
--- after the top-level object (SPEC §5).
-function _M.ReadFixedProbe(stream: any, value: any): boolean
-  if not _M.ReadFixedProbeBody(stream, value) then return false end
-  return stream:serializeEnd()
 end
 
 -- InitUnsignedProbe resets a value to what NewUnsignedProbe builds, in place: its declared defaults
@@ -252,10 +244,9 @@ function _M.ZeroUnsignedProbe(value: any)
   value.Tail = 0
 end
 
--- ReadUnsignedProbeBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadUnsignedProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
--- It does not end the packet: the public ReadUnsignedProbe is the one-packet read (SPEC §5).
-function _M.ReadUnsignedProbeBody(stream: any, value: any): boolean
+function _M.ReadUnsignedProbe(stream: any, value: any): boolean
   if not stream:serializeFixed64(BIG, 16, 16, 0i, 360i) then
     return false
   end
@@ -286,13 +277,6 @@ function _M.ReadUnsignedProbeBody(stream: any, value: any): boolean
   return true
 end
 
--- ReadUnsignedProbe reads one packet: the type wire and the runtime's end check, once,
--- after the top-level object (SPEC §5).
-function _M.ReadUnsignedProbe(stream: any, value: any): boolean
-  if not _M.ReadUnsignedProbeBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
 -- InitWideProbe resets a value to what NewWideProbe builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -313,10 +297,9 @@ function _M.ZeroWideProbe(value: any)
   value.Seed = _Rt.int128(0i, 0i)
 end
 
--- ReadWideProbeBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadWideProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
--- It does not end the packet: the public ReadWideProbe is the one-packet read (SPEC §5).
-function _M.ReadWideProbeBody(stream: any, value: any): boolean
+function _M.ReadWideProbe(stream: any, value: any): boolean
   if not stream:serializeUint128(WIDE) then
     return false
   end
@@ -338,13 +321,6 @@ function _M.ReadWideProbeBody(stream: any, value: any): boolean
   end
   value.Seed = WIDE.value
   return true
-end
-
--- ReadWideProbe reads one packet: the type wire and the runtime's end check, once,
--- after the top-level object (SPEC §5).
-function _M.ReadWideProbe(stream: any, value: any): boolean
-  if not _M.ReadWideProbeBody(stream, value) then return false end
-  return stream:serializeEnd()
 end
 
 -- InitLudicrousState resets a value to what NewLudicrousState builds, in place: its declared defaults
@@ -371,18 +347,17 @@ function _M.ZeroLudicrousState(value: any)
   value.TargetId = _Rt.int128(0i, 0i)
 end
 
--- ReadLudicrousStateBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadLudicrousState reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
--- It does not end the packet: the public ReadLudicrousState is the one-packet read (SPEC §5).
-function _M.ReadLudicrousStateBody(stream: any, value: any): boolean
+function _M.ReadLudicrousState(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, 0, 3) then
     return false
   end
   value.Mode = BITS.value
-  if not _M.ReadFixedProbeBody(stream, value.Probe) then
+  if not _M.ReadFixedProbe(stream, value.Probe) then
     return false
   end
-  if not _M.ReadWideProbeBody(stream, value.Wide) then
+  if not _M.ReadWideProbe(stream, value.Wide) then
     return false
   end
   if not stream:serializeInt(BITS, 0, 4) then -- the count guards the loop (SPEC §6.3)
@@ -410,13 +385,6 @@ function _M.ReadLudicrousStateBody(stream: any, value: any): boolean
   return true
 end
 
--- ReadLudicrousState reads one packet: the type wire and the runtime's end check, once,
--- after the top-level object (SPEC §5).
-function _M.ReadLudicrousState(stream: any, value: any): boolean
-  if not _M.ReadLudicrousStateBody(stream, value) then return false end
-  return stream:serializeEnd()
-end
-
 -- InitDegenerateProbe resets a value to what NewDegenerateProbe builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -435,10 +403,9 @@ function _M.ZeroDegenerateProbe(value: any)
   value.Tail = 0
 end
 
--- ReadDegenerateProbeBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadDegenerateProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
--- It does not end the packet: the public ReadDegenerateProbe is the one-packet read (SPEC §5).
-function _M.ReadDegenerateProbeBody(stream: any, value: any): boolean
+function _M.ReadDegenerateProbe(stream: any, value: any): boolean
   value.LockedFixed = -196608 -- degenerate range: zero bits (SPEC §4.6)
   value.LockedInt = 7 -- degenerate range: zero bits (SPEC §4.6)
   value.LockedWide = _Rt.int128(0xfffff4c58c31d00ei, 0xffffffffffffffffi) -- degenerate range: zero bits (SPEC §4.6)
@@ -447,13 +414,6 @@ function _M.ReadDegenerateProbeBody(stream: any, value: any): boolean
   end
   value.Tail = BITS.value
   return true
-end
-
--- ReadDegenerateProbe reads one packet: the type wire and the runtime's end check, once,
--- after the top-level object (SPEC §5).
-function _M.ReadDegenerateProbe(stream: any, value: any): boolean
-  if not _M.ReadDegenerateProbeBody(stream, value) then return false end
-  return stream:serializeEnd()
 end
 
 -- InitFixedVec resets a value to what NewFixedVec builds, in place: its declared defaults
@@ -472,10 +432,9 @@ function _M.ZeroFixedVec(value: any)
   value.Z = 0i
 end
 
--- ReadFixedVecBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadFixedVec reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
--- It does not end the packet: the public ReadFixedVec is the one-packet read (SPEC §5).
-function _M.ReadFixedVecBody(stream: any, value: any): boolean
+function _M.ReadFixedVec(stream: any, value: any): boolean
   if not stream:serializeFixed64(BIG, 48, 16, -100000i, 100000i) then
     return false
   end
@@ -489,13 +448,6 @@ function _M.ReadFixedVecBody(stream: any, value: any): boolean
   end
   value.Z = BIG.value
   return true
-end
-
--- ReadFixedVec reads one packet: the type wire and the runtime's end check, once,
--- after the top-level object (SPEC §5).
-function _M.ReadFixedVec(stream: any, value: any): boolean
-  if not _M.ReadFixedVecBody(stream, value) then return false end
-  return stream:serializeEnd()
 end
 
 -- InitFixedQuat resets a value to what NewFixedQuat builds, in place: its declared defaults
@@ -516,10 +468,9 @@ function _M.ZeroFixedQuat(value: any)
   value.W = 0
 end
 
--- ReadFixedQuatBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadFixedQuat reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
--- It does not end the packet: the public ReadFixedQuat is the one-packet read (SPEC §5).
-function _M.ReadFixedQuatBody(stream: any, value: any): boolean
+function _M.ReadFixedQuat(stream: any, value: any): boolean
   if not stream:serializeFixed64(BIG, 2, 30, -1i, 1i) then
     return false
   end
@@ -537,13 +488,6 @@ function _M.ReadFixedQuatBody(stream: any, value: any): boolean
   end
   value.W = integer.tonumber(BIG.value)
   return true
-end
-
--- ReadFixedQuat reads one packet: the type wire and the runtime's end check, once,
--- after the top-level object (SPEC §5).
-function _M.ReadFixedQuat(stream: any, value: any): boolean
-  if not _M.ReadFixedQuatBody(stream, value) then return false end
-  return stream:serializeEnd()
 end
 
 -- FixedProbeMaxBits is the longest wire path, align padding at its worst case;

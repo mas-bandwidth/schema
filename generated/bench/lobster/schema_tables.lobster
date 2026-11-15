@@ -95,10 +95,6 @@ class TableDescriptor:
     place_tables:[string]
     place_str:bool
     place_bytes:bool
-    // the type id of every table the unit DECLARES, on a variable table: a
-    // node record of one of these types that a pointer slot of another type
-    // names is damage, not evolution (§3.1)
-    declared:[int] = []
     // the C ABI record size and the unit's region alignment (§6.5), which
     // load_measure reads
     rsize:int = 0

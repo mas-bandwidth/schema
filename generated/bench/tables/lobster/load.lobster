@@ -115,10 +115,6 @@ class Value:
     // second naming and refuses the graph by name, never writing a copy
     // per slot. nil for a blob the caller set.
     blob_node:Node? = nil
-    // at is a writer's number for this blob cell while one save walks the
-    // graph (schema_save.lobster), 0 outside it: the index from cell to node
-    // number, so no lookup scans the nodes collected so far
-    at:int = 0
 
 // A Slot is one field's storage (Go's tabletext.Field): the value, the
 // counted extent and the presence companion beside it.
@@ -150,11 +146,6 @@ class Record:
     held:bool = false
     // walk is the cycle check's mark: 0 unvisited, 1 open, 2 closed
     walk:int = 0
-    // at is a writer's number for this record while one save or one JSON
-    // write walks the graph, 0 outside it: the index from node to number,
-    // so no lookup scans the nodes collected so far. Each writer clears
-    // every mark it set before it returns.
-    at:int = 0
 
 // Fixed roots share their generated native codec with the generic Record
 // surface. The adapter projects storage only; it owns no wire decoder.
@@ -180,16 +171,11 @@ def fixed_record_codec(name:string) -> FixedRecordCodec:
 // A Node is one entry of THE FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1):
 // index i + 2 on the wire names nodes[i]. kind 0 is a record this reader
 // cannot name — it keeps its index and every pointer naming it reads null —
-// 1 a table record, 2 a *string blob, 3 a *bytes blob, 4 a record of a type
-// this reader declares but this root cannot place, which no pointer slot
-// may name (§3.1).
+// 1 a table record, 2 a *string blob, 3 a *bytes blob.
 class Node:
     kind:int
     rec:Record?
     blob:string?
-    // at is a writer's mark on a loaded blob node while one save or one JSON
-    // write walks the graph, 0 outside it (Record.at)
-    at:int = 0
 
 // THE RESERVED IDS (docs/SPEC-TABLES.md §3.1, §3.3, §2.5, §2.8), as the bit
 // patterns the id table carries.
@@ -351,28 +337,6 @@ def widens(kind:int, declared:int) -> bool:
         return kind == 10
     return false
 
-// The element kind an array body (kind 14) may carry is the closed list of
-// §3: 1-13, 15, 17 and 18-30. Any other kind is damage under any count.
-def array_element_kind_allowed(kind:int) -> bool:
-    if kind >= 1 and kind <= 13:
-        return true
-    if kind == 15 or kind == 17:
-        return true
-    if kind >= 18 and kind <= 30:
-        return true
-    return false
-
-// The element kind an enum-keyed body (kind 16) may carry is its own closed
-// list (§3): 1-11, 13 and 18-30. Any other kind is damage under any count.
-def keyed_element_kind_allowed(kind:int) -> bool:
-    if kind >= 1 and kind <= 11:
-        return true
-    if kind == 13:
-        return true
-    if kind >= 18 and kind <= 30:
-        return true
-    return false
-
 // skip steps past a field this reader cannot name (§3): the kind byte is
 // all it needs. Kind 34 (float16) is reserved and, like every kind the set
 // does not hold, is not skippable.
@@ -447,6 +411,14 @@ def text_valid(b:string, at:int, n:int) -> bool:
             return false
         i += 1 + need
     return true
+
+def text_boundary(b:string, at:int, n:int, bound:int) -> int:
+    if n <= bound:
+        return n
+    var cut = bound
+    while cut > 0 and (b[at + cut] & 0xC0) == 0x80:
+        cut--
+    return cut
 
 // THE INT128 ORDER (docs/PORT-LOBSTER.md, THE NUMBER MODEL): the high lane
 // first, signed or unsigned, then the low lane unsigned.
@@ -627,10 +599,6 @@ def scalar_at(r:Reader, cell:Value, fd:FieldDescriptor, declared:int, kind:int) 
             return read_refuse(rep, "non_finite_float")
         if declared != 11 and fd.franged and (v < fd.flo or v > fd.fhi):
             return read_refuse(rep, "out_of_range")
-        if declared != 11 and fd.franged and v == 0.0:
-            // a compressed float's -0 lands as +0 (§3.3, the special values)
-            cell.f = 0.0
-            return true
         cell.f = if declared == 11: v else: fround(v)
         return true
     if kind == 11:
@@ -1070,8 +1038,8 @@ class PointerShape : Shape
 
 let pointer_shape = register_shape(PointerShape { key: "ptr" })
 
-// THE STRING (§3): ill-formed text or a missing extent is damage; a length
-// past the declared bound refuses as length_over_bound. Nothing is clamped.
+// THE STRING (§3): ill-formed text is damage and reads the declared
+// default; a clamp cuts at a code point boundary and counts.
 class StringShape : Shape
     def field(r:Reader, sl:Slot) -> bool:
         let rep = r.st.report
@@ -1182,10 +1150,6 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
     let count, good = leb(sr)
     if not good:
         return read_refuse(rep, "wire_damaged"), false
-    // THE ELEMENT KIND IS CLOSED, judged under any count before any comparison
-    // with the reader's declaration (§3, §4).
-    if not array_element_kind_allowed(ek):
-        return read_refuse(rep, "wire_damaged"), false
     if ek != f.ek and not widens(ek, f.ek):
         return read_refuse(rep, "kind_mismatch"), false
     if count < 0 or count > 0x7FFFFFFF:
@@ -1202,15 +1166,11 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
     else:
         if f.array == "list":
             sl.elems = []
-        let element_shape = elem_key(f)
-        let es = shape(element_shape)
+        let es = shape(elem_key(f))
         var i = 0
         while i < count:
             if f.array == "list":
-                if element_shape == "tab":
-                    push(sl.elems, Value {})
-                else:
-                    push(sl.elems, element_zero(f))
+                push(sl.elems, element_zero(f))
             if not es.element(sr, sl, i, ek):
                 return false, false
             i++
@@ -1248,10 +1208,6 @@ class KeyedShape : Shape
         let ek = u8(sr)
         let count, good = leb(sr)
         if not good or count < 0 or count > 0x7FFFFFFF:
-            return read_refuse(rep, "wire_damaged")
-        // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under
-        // any count before the reader's declaration (§3, §4).
-        if not keyed_element_kind_allowed(ek):
             return read_refuse(rep, "wire_damaged")
         if ek != f.ek:
             if not widens(ek, f.ek):
@@ -1473,10 +1429,6 @@ class MapShape : Shape
         let ek = u8(sr)
         let count, good = leb(sr)
         if not good:
-            return read_refuse(rep, "wire_damaged")
-        // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind is
-        // held to the array list first, under any count (§3, §4).
-        if not array_element_kind_allowed(ek):
             return read_refuse(rep, "wire_damaged")
         if ek != 13:
             return read_refuse(rep, "kind_mismatch")
@@ -1721,9 +1673,7 @@ class NodeRecord:
 
 // scan_node_records is THE AUTHORITATIVE RECORD SCAN (§3.1; Go's
 // scanNodeRecords): records until the payload is consumed, and a node_count
-// that disagrees with the scan is malformed. A RESERVED ID IN ANY BODY BUT
-// THE ONE WHOSE TRANSPORT IT IS, IS MALFORMED: a record typed by the
-// node-table, build-version or vocabulary id refuses the load.
+// that disagrees with the scan is malformed.
 def scan_node_records(st:LoadState, plo:int, phi:int) -> [NodeRecord], bool:
     let data = st.data
     let declared, first, ok = read_leb(data, plo, phi)
@@ -1735,31 +1685,20 @@ def scan_node_records(st:LoadState, plo:int, phi:int) -> [NodeRecord], bool:
         let ref, next, good = read_leb(data, off, phi)
         if not good or ref == 0 or ult(length(st.ids), ref):
             return [], false
-        let tid = st.ids[ref - 1]
-        if tid == node_table_id or tid == build_version_id or tid == message_vocabulary_id:
-            return [], false
         let size, after, lgood = read_leb(data, next, phi)
         if not lgood:
             return [], false
         if size < 0 or size > phi - after:
             return [], false
-        push(records, NodeRecord { tid: tid, lo: after, hi: after + size })
+        push(records, NodeRecord { tid: st.ids[ref - 1], lo: after, hi: after + size })
         off = after + size
     if off != phi or declared != length(records):
         return [], false
     return records, true
 
-// declares is whether the unit of root descriptor d declares the table type tid.
-def declares(d:TableDescriptor, tid:int) -> bool:
-    for(d.declared) id:
-        if id == tid:
-            return true
-    return false
-
 // decode_variable reads a pointered root (§3.1; Go's decodeVariable): the
 // node table first, then pass one fills THE FLAT NODE TABLE from the framing
-// (a record of a type the unit does not declare is unknown and keeps its
-// index; one it declares but this root cannot place no slot may name), pass two
+// (a record this root cannot place is unknown and keeps its index), pass two
 // decodes each record's body, then the root body.
 def decode_variable(st:LoadState, root:Record, hi:int):
     let rep = st.report
@@ -1792,10 +1731,6 @@ def decode_variable(st:LoadState, root:Record, hi:int):
                     d = p
             if d:
                 node = Node { kind: 1, rec: new_record(d), blob: nil }
-            elif rec.tid == string_blob_id or rec.tid == bytes_blob_id or declares(root.d, rec.tid):
-                // a type this reader declares is never evolution: every
-                // pointer slot naming it refuses in resolve_cell (§3.1)
-                node = Node { kind: 4, rec: nil, blob: nil }
             else:
                 rep.unknown++
                 let retain = active_retain_capture()
@@ -2031,17 +1966,7 @@ def wire_payload(c:WireCheck, r:Reader, kind:int) -> bool:
         let n, framed = leb(r)
         if not framed or not has(r, n):
             return read_refuse(c.st.report, "wire_damaged")
-        // a union is a level when its arm is structural; the arm's own
-        // payload is the next level (docs/SPEC-TABLES.md §4)
-        let level = ak >= 13 and ak <= 16
-        if level:
-            if c.depth >= binary_max_depth:
-                return read_refuse(c.st.report, "depth_over_bound")
-            c.depth++
-        let good = wire_content(c, sub(r, n), ak)
-        if level:
-            c.depth--
-        if not good:
+        if not wire_content(c, sub(r, n), ak):
             return false
         r.off += n
         return true
@@ -2056,7 +1981,7 @@ def wire_payload(c:WireCheck, r:Reader, kind:int) -> bool:
     return read_refuse(c.st.report, "wire_damaged")
 
 def wire_content(c:WireCheck, r:Reader, kind:int) -> bool:
-    let nested = kind == 13 or kind == 14 or kind == 16
+    let nested = kind >= 13 and kind <= 16
     if nested:
         if c.depth >= binary_max_depth:
             return read_refuse(c.st.report, "depth_over_bound")
@@ -2066,9 +1991,8 @@ def wire_content(c:WireCheck, r:Reader, kind:int) -> bool:
         c.depth--
     return ok
 
-// Framed kinds 13, 14 and 16 add a level; a union adds one in wire_payload
-// when its arm is structural, and its frame adds none of its own. A scalar
-// arm's length adds none. Pointer records start at depth zero.
+// Structured kinds 13 through 16 add a level, including a nested union.
+// A scalar arm's length adds none. Pointer records start at depth zero.
 def wire_content_at(c:WireCheck, r:Reader, kind:int) -> bool:
     if kind == 12:
         if not text_valid(r.b, r.off, r.hi - r.off):
@@ -2084,13 +2008,6 @@ def wire_content_at(c:WireCheck, r:Reader, kind:int) -> bool:
         if not has(r, 2):
             return read_refuse(c.st.report, "wire_damaged")
         let ek = u8(r)
-        // THE ELEMENT KIND IS CLOSED, judged under ANY count, a count of 0
-        // included (§3, §4).
-        if kind == 16:
-            if not keyed_element_kind_allowed(ek):
-                return read_refuse(c.st.report, "wire_damaged")
-        elif not array_element_kind_allowed(ek):
-            return read_refuse(c.st.report, "wire_damaged")
         let count, ok = leb(r)
         if not ok:
             return read_refuse(c.st.report, "wire_damaged")
