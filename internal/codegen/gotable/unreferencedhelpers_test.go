@@ -1,6 +1,7 @@
 package gotable
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -35,10 +36,23 @@ table Holder {
 		{name: "lowercase-table-api", unit: unitFrom(t, "package probe\ntable lowercase { value int32 }\n")},
 	}
 
+	// each unit both ways a unit's runtime can live: emitted into it, and
+	// imported from the shared package with the unit naming it through shims
+	type runtimeCase struct {
+		name    string
+		unit    *ir.Unit
+		runtime Runtime
+	}
+	var cases []runtimeCase
 	for _, test := range units {
+		cases = append(cases,
+			runtimeCase{name: test.name + "/standalone", unit: test.unit, runtime: RuntimeStandalone},
+			runtimeCase{name: test.name + "/shared", unit: test.unit, runtime: RuntimeShared})
+	}
+	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			files, err := Generate(test.unit)
+			files, err := GenerateRuntime(test.unit, nil, test.runtime)
 			if err != nil {
 				t.Fatalf("generate: %v", err)
 			}
@@ -57,6 +71,7 @@ table Holder {
 			fset := token.NewFileSet()
 			parsed := make([]*ast.File, 0, len(names))
 			declarations := map[string]*ast.Ident{}
+			var blankShims []string
 			for _, name := range names {
 				file, err := parser.ParseFile(fset, name, files[name], 0)
 				if err != nil {
@@ -64,6 +79,9 @@ table Holder {
 				}
 				parsed = append(parsed, file)
 				for _, decl := range file.Decls {
+					if shim := blankRuntimeShim(decl); shim != "" {
+						blankShims = append(blankShims, fmt.Sprintf("%s (%s)", shim, fset.Position(decl.Pos())))
+					}
 					switch decl := decl.(type) {
 					case *ast.FuncDecl:
 						if decl.Recv == nil && decl.Name.Name != "init" {
@@ -131,8 +149,34 @@ table Holder {
 			if len(unused) != 0 {
 				t.Errorf("%s has unreferenced unexported top-level declarations: %s", test.name, strings.Join(unused, ", "))
 			}
+			if len(blankShims) != 0 {
+				t.Errorf("%s carries shims it does not use, as blank constants: %s", test.name, strings.Join(blankShims, ", "))
+			}
 		})
 	}
+}
+
+// blankRuntimeShim names a const declaration that binds only the blank name
+// to a bare runtime name: a shim the unit does not use, left in as a blank
+// rather than left out. A blank constant over any other expression is a
+// compile-time check and is not a shim.
+func blankRuntimeShim(decl ast.Decl) string {
+	gen, ok := decl.(*ast.GenDecl)
+	if !ok || gen.Tok != token.CONST {
+		return ""
+	}
+	for _, spec := range gen.Specs {
+		value, ok := spec.(*ast.ValueSpec)
+		if !ok || len(value.Names) != 1 || value.Names[0].Name != "_" || len(value.Values) != 1 {
+			continue
+		}
+		if sel, ok := value.Values[0].(*ast.SelectorExpr); ok {
+			if pkg, ok := sel.X.(*ast.Ident); ok {
+				return pkg.Name + "." + sel.Sel.Name
+			}
+		}
+	}
+	return ""
 }
 
 func addUnexportedDeclaration(dst map[string]*ast.Ident, name *ast.Ident) {

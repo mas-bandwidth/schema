@@ -3545,11 +3545,6 @@ func (e TableTimestampError) Error() string {
 		" is outside the years 1678 through 2262, which a count of nanoseconds since the Unix epoch can hold"
 }
 
-// tableTimestampNanos is the count of a time.Time, and false for a time whose
-// count UnixNano cannot represent. Go's zero Time{} is the zero time.
-
-// tableTimestampTime is the UTC time of a count; every count is legal.
-
 // ---- json walk: end ----
 
 // MixedEntityFromJSON fills one MixedEntity from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole

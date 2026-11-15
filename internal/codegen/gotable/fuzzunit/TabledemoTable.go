@@ -102,10 +102,6 @@ type TableOutOfRange = goruntime.TableOutOfRange
 
 type TableMalformedField = goruntime.TableMalformedField
 
-const tableWireBytesID = goruntime.TableWireBytesID
-
-const tableWireStringID = goruntime.TableWireStringID
-
 func tableLebBytes(a0 uint64) int64 { return goruntime.TableLebBytes(a0) }
 
 type TableOpenVerdict = goruntime.TableOpenVerdict
@@ -157,10 +153,6 @@ const tableFixedWiden = goruntime.TableFixedWiden
 const tableFixedConst = goruntime.TableFixedConst
 const tableFixedWidenF = goruntime.TableFixedWidenF
 const tableFixedBool = goruntime.TableFixedBool
-const _ = goruntime.TableFixedTag
-
-const _ = goruntime.TableFixedTextUTF8
-const _ = goruntime.TableFixedTextBytes
 
 const tableFixedPresent = goruntime.TableFixedPresent
 
@@ -1359,17 +1351,13 @@ func (r *TableReader) Signed(kind uint8) int64 {
 }
 
 type tableWireCheck struct {
-	depth   int32
-	ids     int
-	nodes   uint64
-	records TableReader
-	graph   []uint64
-	release bool
-	head    uint64
-	gen     uint32
-	reason  TableRefuseReason
-	mark    func(uint64)
-	stamp   [4097]uint32
+	depth  int32
+	ids    int
+	nodes  uint64
+	gen    uint32
+	reason TableRefuseReason
+	mark   func(uint64)
+	stamp  [4097]uint32
 }
 
 func (c *tableWireCheck) fail(reason TableRefuseReason) bool {
@@ -1396,25 +1384,6 @@ func (c *tableWireCheck) edge(index uint64) bool {
 	}
 	if index == 1 || index > c.nodes+1 {
 		return c.fail(TableRefuseWireDamaged)
-	}
-	if c.graph == nil {
-		return true
-	}
-	at := &c.graph[2*(index-1)]
-	if !c.release {
-		if uint32(*at) == ^uint32(0) {
-			return c.fail(TableRefuseWireDamaged)
-		}
-		*at++
-		return true
-	}
-	if uint32(*at) == 0 {
-		return c.fail(TableRefuseWireDamaged)
-	}
-	*at--
-	if uint32(*at) == 0 {
-		*at |= c.head << 32
-		c.head = index + 1
 	}
 	return true
 }
@@ -1659,38 +1628,6 @@ func (c *tableWireCheck) union(r TableReader) (int64, bool) {
 	}
 	return r.Offset, true
 }
-
-// record walks the node record at offset in the node table: a blob's bytes, or
-// a table body of any type, named or not.
-func (c *tableWireCheck) record(at int64) bool {
-	r := c.records
-	r.Offset = at
-	ref, _ := r.Leb()
-	id, _ := r.Resolve(ref)
-	body, _ := r.Body()
-	switch id {
-	case tableWireBytesID:
-		return true
-	case tableWireStringID:
-		return tableUTF8Valid(body.Buffer) || c.fail(TableRefuseWireDamaged)
-	}
-	return c.framed(body, 13)
-}
-
-// tableWireVerify holds every wire-alone condition over an opened file
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): the root body, the node table and every
-// record in it, and the pointer graph. scratch holds two words per node,
-// at the node index less one (record i of the table is node i+1); a nil or
-// short scratch is allocated here, which only a file with a node table needs.
-
-// the node table, found by the root's headers: a declared count, then that
-// many records, each a type reference and an L-framed body, filling the field
-
-// the first pass: every check, and each record's in-degree
-
-// a blob named twice is shared, and a record no pointer names is unreachable
-
-// Kahn's algorithm from the root: a record a cycle holds is never released
 
 // tableWireSkipValue walks one unknown payload with the wire-alone rules while
 // the body read skips it, so a field this reader cannot name is still held to

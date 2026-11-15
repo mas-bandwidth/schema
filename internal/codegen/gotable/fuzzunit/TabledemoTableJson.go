@@ -3545,11 +3545,6 @@ func (e TableTimestampError) Error() string {
 		" is outside the years 1678 through 2262, which a count of nanoseconds since the Unix epoch can hold"
 }
 
-// tableTimestampNanos is the count of a time.Time, and false for a time whose
-// count UnixNano cannot represent. Go's zero Time{} is the zero time.
-
-// tableTimestampTime is the UTC time of a count; every count is legal.
-
 // ---- json walk: end ----
 
 func tableRegionFromJSON(value unsafe.Pointer, info *TableTypeInfo, worker *TableWorker, text []byte, report *TableReport, options TableJSONOptions) bool {

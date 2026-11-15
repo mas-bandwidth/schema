@@ -55,6 +55,9 @@ func pruneUnreferencedDeclarations(files map[string][]byte, schemaAPI map[string
 		}
 	}
 
+	// removed holds, per file, the source ranges of the declarations dropped,
+	// so their doc and interior comments leave with them.
+	removed := map[string][]sourceRange{}
 	for {
 		referenced, usedIdentifiers := referencesInFiles(names, parsed, declarations)
 		for name := range schemaAPI {
@@ -68,19 +71,24 @@ func pruneUnreferencedDeclarations(files map[string][]byte, schemaAPI map[string
 				switch decl := decl.(type) {
 				case *ast.FuncDecl:
 					if decl.Recv == nil && decl.Name.Name != "init" && isPrivate(decl.Name.Name) && !referenced[decl.Name.Name] {
+						removed[name] = append(removed[name], nodeRange(decl.Doc, decl, nil))
 						changed = true
 						continue
 					}
 					kept = append(kept, decl)
 				case *ast.GenDecl:
 					old := len(decl.Specs)
-					var specsChanged bool
-					decl.Specs, specsChanged = pruneSpecs(decl, referenced, usedIdentifiers[name])
+					whole := nodeRange(decl.Doc, decl, nil) // End needs the specs
+					specs, specsChanged, dropped := pruneSpecs(decl, referenced, usedIdentifiers[name])
+					decl.Specs = specs
+					removed[name] = append(removed[name], dropped...)
 					if specsChanged || len(decl.Specs) < old {
 						changed = true
 					}
 					if len(decl.Specs) != 0 {
 						kept = append(kept, decl)
+					} else {
+						removed[name] = append(removed[name], whole)
 					}
 				default:
 					kept = append(kept, decl)
@@ -98,6 +106,7 @@ func pruneUnreferencedDeclarations(files map[string][]byte, schemaAPI map[string
 
 	for _, name := range names {
 		file := parsed[name]
+		file.Comments = commentsOutside(file.Comments, removed[name])
 		var buf bytes.Buffer
 		if err := format.Node(&buf, fset, file); err != nil {
 			return nil, fmt.Errorf("format generated Go file %s: %w", name, err)
@@ -167,14 +176,18 @@ func isDeclarationIdentifier(ids []*ast.Ident, id *ast.Ident) bool {
 	return false
 }
 
-func pruneSpecs(decl *ast.GenDecl, referenced, usedIdentifiers map[string]bool) ([]ast.Spec, bool) {
+func pruneSpecs(decl *ast.GenDecl, referenced, usedIdentifiers map[string]bool) ([]ast.Spec, bool, []sourceRange) {
 	kept := make([]ast.Spec, 0, len(decl.Specs))
+	var dropped []sourceRange
 	changed := false
+	constsDroppable := decl.Tok == token.CONST && constSpecsIndependent(decl.Specs)
 	for _, spec := range decl.Specs {
 		switch spec := spec.(type) {
 		case *ast.TypeSpec:
 			if !isPrivate(spec.Name.Name) || referenced[spec.Name.Name] {
 				kept = append(kept, spec)
+			} else {
+				dropped = append(dropped, nodeRange(spec.Doc, spec, spec.Comment))
 			}
 		case *ast.ValueSpec:
 			if len(spec.Names) == 0 {
@@ -191,6 +204,7 @@ func pruneSpecs(decl *ast.GenDecl, referenced, usedIdentifiers map[string]bool) 
 					}
 				}
 				if liveCount == 0 {
+					dropped = append(dropped, nodeRange(spec.Doc, spec, spec.Comment))
 					changed = true
 					continue
 				}
@@ -216,6 +230,13 @@ func pruneSpecs(decl *ast.GenDecl, referenced, usedIdentifiers map[string]bool) 
 				kept = append(kept, spec)
 				continue
 			}
+			if constsDroppable && allUnreferenced(spec.Names, referenced) {
+				// A constant that only names another value or a literal has
+				// no check to keep, so an unused one is left out entirely.
+				dropped = append(dropped, nodeRange(spec.Doc, spec, spec.Comment))
+				changed = true
+				continue
+			}
 			for _, id := range spec.Names {
 				if isPrivate(id.Name) && !referenced[id.Name] {
 					// A blank binding preserves initializer evaluation and the
@@ -231,9 +252,88 @@ func pruneSpecs(decl *ast.GenDecl, referenced, usedIdentifiers map[string]bool) 
 	}
 	if decl.Tok == token.IMPORT {
 		imports := pruneImports(kept, usedIdentifiers)
-		return imports, len(imports) != len(kept) || changed
+		return imports, len(imports) != len(kept) || changed, dropped
 	}
-	return kept, changed
+	return kept, changed, dropped
+}
+
+// constSpecsIndependent reports whether every spec of a const group stands on
+// its own: each has its own values, none names iota, and each value is a
+// literal or a bare name, so leaving one out moves no other constant and drops
+// no compile-time check.
+func constSpecsIndependent(specs []ast.Spec) bool {
+	for _, spec := range specs {
+		value, ok := spec.(*ast.ValueSpec)
+		if !ok || len(value.Values) == 0 {
+			return false
+		}
+		for _, expr := range value.Values {
+			switch expr := expr.(type) {
+			case *ast.BasicLit:
+			case *ast.Ident:
+				if expr.Name == "iota" {
+					return false
+				}
+			case *ast.SelectorExpr:
+				if _, ok := expr.X.(*ast.Ident); !ok {
+					return false
+				}
+			default:
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// allUnreferenced reports whether every name is private and named nowhere;
+// a blank name is kept, since the source wrote it as a check.
+func allUnreferenced(names []*ast.Ident, referenced map[string]bool) bool {
+	for _, id := range names {
+		if !isPrivate(id.Name) || referenced[id.Name] {
+			return false
+		}
+	}
+	return true
+}
+
+// sourceRange is the extent of a dropped declaration, its doc comment and its
+// trailing line comment included.
+type sourceRange struct {
+	pos, end token.Pos
+}
+
+func nodeRange(doc *ast.CommentGroup, node ast.Node, line *ast.CommentGroup) sourceRange {
+	r := sourceRange{pos: node.Pos(), end: node.End()}
+	if doc != nil && doc.Pos() < r.pos {
+		r.pos = doc.Pos()
+	}
+	if line != nil && line.End() > r.end {
+		r.end = line.End()
+	}
+	return r
+}
+
+// commentsOutside keeps the comment groups that lie outside every dropped
+// declaration, so no doc or body comment outlives the code it described.
+func commentsOutside(groups []*ast.CommentGroup, removed []sourceRange) []*ast.CommentGroup {
+	if len(removed) == 0 {
+		return groups
+	}
+	kept := groups[:0]
+	for _, group := range groups {
+		inside := false
+		for _, r := range removed {
+			if group.Pos() >= r.pos && group.End() <= r.end {
+				inside = true
+				break
+			}
+		}
+		if !inside {
+			kept = append(kept, group)
+		}
+	}
+	return kept
 }
 
 func pruneImports(specs []ast.Spec, referenced map[string]bool) []ast.Spec {
