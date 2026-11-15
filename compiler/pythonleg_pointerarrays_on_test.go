@@ -1,14 +1,18 @@
 //go:build schema_leg_python
 
-package pythontable_test
+// Pointer arrays and table field guards through the compiler's driver, in a
+// build with the schema_leg_python tag: `go test -tags schema_leg_python
+// ./compiler -run Python` (make test-python). The driver test lives beside the
+// target, under compiler/, because a tag-bound test file under internal/ is
+// one the untagged toolchain never compiles (internal/ci's
+// TestNoTestFileIsExcludedByABuildConstraint).
+package compiler
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/compiler"
 )
 
 func writeDriverSchema(t *testing.T, name, src string) []string {
@@ -53,7 +57,7 @@ table Node
     }
 }
 `
-	c := compiler.New()
+	c := New()
 	u, err := c.Load(writeDriverSchema(t, "Ptr.schema", accepted))
 	if err != nil {
 		t.Fatalf("load accepted schema: %v", err)
