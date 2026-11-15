@@ -21,6 +21,7 @@ package pythontable
 import (
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -186,9 +187,7 @@ func blobManifestFailures(t *testing.T, mutate func(*testing.T, map[string][]byt
 		}
 		if mutate != nil {
 			edited := make(map[string][]byte, len(files))
-			for name, data := range files {
-				edited[name] = data
-			}
+			maps.Copy(edited, files)
 			mutate(t, edited)
 			files = edited
 		}
@@ -412,9 +411,7 @@ func stringIdentityFailures(t *testing.T, mutate func(*testing.T, map[string][]b
 	}
 	if mutate != nil {
 		edited := make(map[string][]byte, len(files))
-		for name, data := range files {
-			edited[name] = data
-		}
+		maps.Copy(edited, files)
 		mutate(t, edited)
 		files = edited
 	}
@@ -437,9 +434,7 @@ func stringIdentityFailures(t *testing.T, mutate func(*testing.T, map[string][]b
 		"twice_value_and_pointer": stringIdentityReferenceAt(t, u, "Mixed", `{"a":{"s":"hello"},"p":{"s":"hello"}}`),
 	}
 	inputs := map[string][]byte{"main.py": []byte(probe)}
-	for name, data := range references {
-		inputs[name] = data
-	}
+	maps.Copy(inputs, references)
 	current := strings.TrimSpace(string(pyrun.Run(t, dir, "main.py", inputs)))
 	floor := strings.TrimSpace(string(pyrun.RunFloor(t, dir, "main.py", inputs)))
 	var fails []string

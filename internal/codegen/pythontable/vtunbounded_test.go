@@ -17,6 +17,7 @@ package pythontable
 import (
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"strings"
 	"testing"
 
@@ -242,7 +243,6 @@ func TestPythonVtUnbounded(t *testing.T) {
 	})
 
 	for _, c := range vtUnboundedCases {
-		c := c
 		t.Run("roundtrip/"+c.name, func(t *testing.T) {
 			t.Parallel()
 			wire := vtUnboundedEngineWire(t, u, c.root, c.json)
@@ -260,7 +260,6 @@ func TestPythonVtUnbounded(t *testing.T) {
 	}
 
 	for _, c := range vtUnboundedRefusals(t, u) {
-		c := c
 		t.Run("refusal/"+c.name, func(t *testing.T) {
 			t.Parallel()
 			vtUnboundedExpectRefusal(t, files, "Save", c)
@@ -526,7 +525,6 @@ func TestPythonVtUnboundedNegativeControl(t *testing.T) {
 		refusals[c.name] = c
 	}
 	for _, ctl := range vtUnboundedControls {
-		ctl := ctl
 		t.Run(strings.ReplaceAll(ctl.name, " ", "_"), func(t *testing.T) {
 			t.Parallel()
 			text := string(files[ctl.path])
@@ -534,9 +532,7 @@ func TestPythonVtUnboundedNegativeControl(t *testing.T) {
 				t.Fatalf("the control's anchor %q is not once in %s", ctl.anchor, ctl.path)
 			}
 			sabotaged := make(map[string][]byte, len(files))
-			for name, data := range files {
-				sabotaged[name] = data
-			}
+			maps.Copy(sabotaged, files)
 			sabotaged[ctl.path] = []byte(strings.Replace(text, ctl.anchor, ctl.planted, 1))
 			if line, ok := strings.CutPrefix(ctl.name, "write:"); ok {
 				clean := t.TempDir()

@@ -1,6 +1,7 @@
 package pythontable
 
 import (
+	"maps"
 	"math/big"
 	"strings"
 	"testing"
@@ -122,9 +123,7 @@ func TestPythonTablePacketTypesLooseNegativeControl(t *testing.T) {
 		t.Fatalf("the negative control's anchor %q is not exactly once in %s", anchor, path)
 	}
 	sabotaged := make(map[string][]byte, len(files))
-	for name, data := range files {
-		sabotaged[name] = data
-	}
+	maps.Copy(sabotaged, files)
 	sabotaged[path] = []byte(strings.Replace(text, anchor, "        _s_ri.value = self.c + 1\n", 1))
 	dir := t.TempDir()
 	writeTree(t, dir, sabotaged)
@@ -234,7 +233,7 @@ type refBits struct {
 }
 
 func (w *refBits) put(v *big.Int, width int) {
-	for i := 0; i < width; i++ {
+	for i := range width {
 		if w.n%8 == 0 {
 			w.b = append(w.b, 0)
 		}
