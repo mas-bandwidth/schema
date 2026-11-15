@@ -37,7 +37,6 @@ func TestGoPointerTargetTypeChecked(t *testing.T) {
 	}
 	rows = append(rows, pointerTargetNestedRows(t, root)...)
 	for _, row := range rows {
-		row := row
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			wire := row.wire
