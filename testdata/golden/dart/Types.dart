@@ -456,6 +456,8 @@ int writeHandle(Handle value, ByteData view) {
   var v = 0;
   assert(value.objectId >= 0);
   assert(value.objectId <= 9999);
+  assert(value.objectSequence >= 0);
+  assert(value.objectSequence <= 255);
   v = (value.objectId & 0x3fff) | ((value.objectSequence & 0xff) << 14);
   scratch |= v << scratchBits;
   scratchBits += 22;
@@ -1856,6 +1858,8 @@ int writeInputPacket(InputPacket value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.synchronizeSequence >= 0);
+  assert(value.synchronizeSequence <= 65535);
   v = value.synchronizeSequence & 0xffff;
   scratch |= v << scratchBits;
   scratchBits += 16;

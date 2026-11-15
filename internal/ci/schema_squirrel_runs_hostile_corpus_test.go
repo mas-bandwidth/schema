@@ -74,12 +74,7 @@ type squirrelExpectedHostileMismatch struct {
 // wire-non-finite-float, which arrived with the finite-tables ruling (#2226,
 // SPEC-TABLES §3.3), passes since tables-finite/squirrel: the strict read
 // refuses the NaN as non_finite_float, the manifest's verdict.
-var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{
-	// RELAXED 2026-11-14 (maintainer: get main green): #3486 made unpadded
-	// Base64 a refusal (json-base64-canonical); the Squirrel JSON read still
-	// accepts it. re-enable: relax/hostile-rows-squirrel
-	{name: "conformance-base64-unpadded", input: "inputs/conformance-base64-unpadded.json", expected: "refuse damaged", actual: "accept -", fixCard: "relax/hostile-rows-squirrel"},
-}
+var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{}
 
 func squirrelExpectedHostileMismatchNames() []string {
 	names := make([]string, 0, len(squirrelExpectedHostileMismatches))

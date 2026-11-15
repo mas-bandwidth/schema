@@ -7,14 +7,10 @@ build/table-base64/%/.stamp: bin/schema test/table-base64/Bytes.schema
 	./bin/schema generate --lang $* --out build/table-base64/$* test/table-base64/Bytes.schema
 	@touch $@
 
-# RELAXED 2026-11-14 (maintainer: get main green): C++ still reads
-# non-canonical Base64 (json-base64-canonical); -relax keeps that accept.
-# C and C# refuse it, so their runs are gated with no relaxation.
-# re-enable: relax/hostile-rows-cpp
 .PHONY: table-base64-cpp table-base64-c table-base64-go table-base64-cs
 table-base64-cpp: build/table-base64/harness build/table-base64/cpp/.stamp
 	$(CXX) -std=c++17 -O2 -Wall -Wextra -Werror -x c++ -Ibuild/table-base64/cpp test/table-base64/driver.c build/table-base64/cpp/BytesTable.cpp -o build/table-base64/cpp/driver
-	./build/table-base64/harness -relax relax/hostile-rows-cpp ./build/table-base64/cpp/driver
+	./build/table-base64/harness ./build/table-base64/cpp/driver
 
 table-base64-c: build/table-base64/harness build/table-base64/c/.stamp
 	$(CC) -std=c11 -O2 -Wall -Wextra -Werror -Ibuild/table-base64/c test/table-base64/driver.c build/table-base64/c/BytesTable.c -lm -o build/table-base64/c/driver
