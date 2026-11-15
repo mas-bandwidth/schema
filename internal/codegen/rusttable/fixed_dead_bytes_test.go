@@ -179,4 +179,61 @@ fn dead_old_string_tail() {
 		versionAssert(t, string(oldOut), fn)
 	}
 	t.Logf("%s", oldOut)
+
+	// A writer and reader with different layouts exercise a compiled plan.
+	file := filepath.Join(t.TempDir(), "old_optional.bin")
+	writer := fmt.Sprintf(`
+#[test]
+fn write_old_optional() {
+    let mut row = ROWTYPE::default();
+    row.lead = 17;
+    row.trail = 23;
+    let mut data = vec![0u8; 65536];
+    let n = SAVEFN(&[row], &mut data).expect("save older layout");
+    std::fs::write(%[1]q, &data[..n]).expect("write older layout");
+}
+`, file)
+	reader := fmt.Sprintf(`
+#[test]
+fn old_optional_dead_payload() {
+    let clean = std::fs::read(%[1]q).expect("older layout");
+    let block = u32::from_le_bytes(clean[16..20].try_into().unwrap()) as usize;
+    let body = 16 + 4 + block + 8;
+    assert_eq!(clean[body + 1], 0, "optional is absent");
+    assert_eq!(&clean[body + 2..body + 6], &[0; 4]);
+    for bad in [false, true] {
+        let mut data = clean.clone();
+        if bad { data[body + 2] = 1; }
+        let mut values = vec![ROWTYPE::default(); 1];
+        let before = as_bytes(&values[0]).to_vec();
+        let mut plan = vec![TableFixedEntry::default(); 4096];
+        let mut remap = vec![0u16; 4096];
+        let mut report = TableFixedReport::default();
+        let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
+        if bad {
+            assert!(n.is_none(), "nonzero absent payload loaded {n:?}");
+            assert_eq!(as_bytes(&values[0]), before);
+        } else {
+            assert_eq!(n, Some(1), "clean absent optional reads");
+            assert_eq!((values[0].lead, values[0].trail), (17, 23));
+        }
+    }
+}
+`, file)
+	for _, probe := range []versionProbe{
+		{name: "dead_optional_writer", reader: "VOLD_hostile_bool", root: "Hbb", src: versionProbeSource(writer)},
+		{name: "dead_optional_reader", reader: "VNEW_hostile_bool", older: []string{"VOLD_hostile_bool"}, root: "Hbb", src: versionProbeSource(reader)},
+	} {
+		probeRoot := t.TempDir()
+		versionWriteCrate(t, probeRoot, serialize, probe)
+		cmd := exec.Command("cargo", "test", "--", "--nocapture")
+		cmd.Dir = filepath.Join(probeRoot, probe.name)
+		cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"), "CARGO_NET_OFFLINE=true")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s: %v\n%s", probe.name, err, out)
+		}
+		t.Logf("%s", out)
+	}
+
 }

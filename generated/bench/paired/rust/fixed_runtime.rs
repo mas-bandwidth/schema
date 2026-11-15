@@ -492,6 +492,11 @@ pub fn table_fixed_run(
     // unguarded entries first, so the split is the first guarded index.
     let split = plan.iter().take_while(|p| p.guard_count == 0).count();
     for (i, p) in plan.iter().enumerate() {
+        match table_fixed_in_dead(plan, guards, src, u64::from(p.src)) {
+            None => { report.damaged = true; return; }
+            Some(true) => continue,
+            Some(false) => {}
+        }
         if i >= split && p.guard_count != 0 {
             // THE CHAIN IS CONJOINED, OUTERMOST FIRST (§4.1): the entry runs
             // only when EVERY link's tag holds its ordinal, so an arm inside an
@@ -757,8 +762,8 @@ pub fn table_fixed_holes(
 // count outside 0..=bound is not a dead tail — the bounds pass names
 // out_of_range, and clamping a negative count to zero would call the live
 // payload dead. A tag no arm matches is the same: the span is not dead. A
-// present byte is a one-byte copy on this plan. A cleared flag over a payload
-// the writer filled still reads, and a present byte other than 0 or 1 is the
+// A marked one-byte copy carries the writer optional span in aux. A cleared
+// flag makes that entire payload dead; a present byte other than 0 or 1 is the
 // hostile-byte path, which resets the destination rather than leaving it
 // untouched. True means a dead byte is not zero, or the record is too short
 // to hold what the plan names. Nothing is written.
@@ -854,6 +859,14 @@ fn table_fixed_in_dead(
             None => return None,
             Some(false) => continue,
             Some(true) => {}
+        }
+        if e.op == TableFixedOp::Copy && e.aux > 1 {
+            let flag = *body.get(e.src as usize)?;
+            let from = u64::from(e.src) + 1;
+            let to = u64::from(e.src) + u64::from(e.aux);
+            if flag == 0 && at >= from && at < to {
+                return Some(true);
+            }
         }
         if e.op == TableFixedOp::Count && e.aux != 0 && e.size != 0 {
             let raw = table_fixed_i32(body, e.src)?;
@@ -960,15 +973,21 @@ pub fn table_fixed_dead(
     body: &[u8],
 ) -> bool {
     for e in entries {
+        match table_fixed_in_dead(entries, guards, body, u64::from(e.src)) {
+            None => return true,
+            Some(true) => continue,
+            Some(false) => {}
+        }
         match table_fixed_guard_holds(e, guards, body) {
             None => return true,
             Some(false) => continue,
             Some(true) => {}
         }
-        match table_fixed_in_dead(entries, guards, body, u64::from(e.src)) {
-            None => return true,
-            Some(true) => continue,
-            Some(false) => {}
+        if e.op == TableFixedOp::Copy && e.aux > 1 {
+            let Some(&flag) = body.get(e.src as usize) else { return true; };
+            if flag == 0 && table_fixed_dead_nonzero(body, u64::from(e.src) + 1, u64::from(e.src) + u64::from(e.aux)) {
+                return true;
+            }
         }
         match e.op {
             TableFixedOp::Text => {
@@ -1022,15 +1041,15 @@ pub fn table_fixed_dead(
             if table_fixed_tag_seen(entries, guards, i, link.guard) {
                 continue;
             }
-            match table_fixed_outers_hold(e, guards, body, link.guard) {
-                None => return true,
-                Some(false) => continue,
-                Some(true) => {}
-            }
             match table_fixed_in_dead(entries, guards, body, u64::from(link.guard)) {
                 None => return true,
                 Some(true) => continue,
                 Some(false) => {}
+            }
+            match table_fixed_outers_hold(e, guards, body, link.guard) {
+                None => return true,
+                Some(false) => continue,
+                Some(true) => {}
             }
             match table_fixed_dead_span(entries, guards, body, link.guard, link.argw) {
                 None => return true,
@@ -1390,6 +1409,9 @@ impl Compiler<'_> {
         // refused WHOLE and never partly compiled. The boundary is past and
         // not at: a layout reaching EXACTLY to root.size still compiles.
         let mut end = e.src as u64 + Self::op_reach(e.op, e.size);
+        if e.op == TableFixedOp::Copy && e.aux > 1 {
+            end = e.src as u64 + u64::from(e.aux);
+        }
         if e.op == TableFixedOp::Const && e.aux == 0 && e.dstsize != 0 {
             // EXCEPT THE UNION'S None CONST, which reads the writer's raw tag
             // to count a clamp past the writer's arm set. It has a source
@@ -1523,6 +1545,13 @@ pub fn table_fixed_compile(
         if out > 0
             && c.plan[out - 1].op == TableFixedOp::Copy
             && c.plan[i].op == TableFixedOp::Copy
+            && c.plan[out - 1].aux == 0
+            && c.plan[i].aux == 0
+            && !c.plan[..count].iter().any(|p| {
+                p.op == TableFixedOp::Copy && p.aux > 1 &&
+                u64::from(c.plan[out - 1].src) < u64::from(p.src) + u64::from(p.aux) &&
+                u64::from(c.plan[i].src) + u64::from(c.plan[i].size) > u64::from(p.src) + 1
+            })
             && c.plan[out - 1].guard_off == c.plan[i].guard_off
             && c.plan[out - 1].guard_count == c.plan[i].guard_count
             && c.plan[out - 1].src + c.plan[out - 1].size == c.plan[i].src
@@ -1695,11 +1724,12 @@ fn compile_entry(
     }
     match me.kind {
         35 => {
-            // the OPTIONAL wrapper: the present byte, then the payload whole
+            // Preserve the writer's whole optional span for the dead-byte pass.
             c.push(TableFixedEntry {
                 src: their_at,
                 dst: my_at,
                 size: 1,
+                aux: te.size,
                 guard_off: goff as u32,
                 guard_count: gcount as u8,
                 op: TableFixedOp::Copy,
