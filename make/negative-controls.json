@@ -1230,6 +1230,15 @@
       "dotnet": "pin"
     },
     {
+      "name": "cs-packet-write-cfloat",
+      "when": "pull-request",
+      "why": "the C# packet writer's compressed-float range contract (docs/SPEC.md §5.1 row 10, docs/PACKET-WIRE-ALGORITHM.md §2.5): one overlay rebuild of the emitter with the generated finite/range assertion removed, one regenerated CFloat unit, and the shared cases required to report the three finite off-range verdicts red by name while the lawful cases stay written.",
+      "targets": [
+        "packet-write-cfloat-cs-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
       "name": "cs-packet-clean",
       "when": "pull-request",
       "why": "the C# packet-clean gate's planted misindented block and unused private field (issue #547). It runs dotnet format and the SDK analyzers over generated units. Split from the old cs-packet group when that seven-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall). On this branch, run 42599851908, that pair was cancelled at 322 s wall (job 2026-11-09T10:26:56Z-10:32:18Z, the make step canceled, no assertion failure). This row is one target of that split. There is no per-target wall, so this is not a claim that the row fits.",
@@ -1664,7 +1673,8 @@
         "packet-arm-defaults-js-runtime-negative-control",
         "packet-defaults-js-negative-control",
         "packet-end-js-negative-control",
-        "packet-utf8-js-negative-control"
+        "packet-utf8-js-negative-control",
+        "packet-write-cfloat-js-negative-control"
       ],
       "node": "26"
     },
@@ -1895,7 +1905,8 @@
         "cards-dart-conformance-negative-control",
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
-        "packet-end-dart-negative-control"
+        "packet-end-dart-negative-control",
+        "packet-write-cfloat-dart-negative-control"
       ],
       "dart": "3.13.2"
     },
@@ -2169,11 +2180,12 @@
     {
       "name": "elixir-packets",
       "when": "pull-request",
-      "why": "the Elixir port's four packet families: the constructor-bytes defaults, the UTF-8 read validation, the wide pairing against the C++ readers' bit-flip verdicts, and the finite-float read rule, each a small compile off the packet codegen. Split out of the old `elixir-1` group, whose accessor control rebuilt the whole table corpus through a sabotaged compiler and pushed that row past the 120 s job ceiling on the killed runs (42556155793/42554833739); the accessor now runs nightly with the other corpus-rebuild controls.",
+      "why": "the Elixir port's five packet families: the constructor-bytes defaults, the UTF-8 read validation, the wide pairing against the C++ readers' bit-flip verdicts, the finite-float read rule, and the one-packet end check, each a small compile off the packet codegen. Split out of the old `elixir-1` group, whose accessor control rebuilt the whole table corpus through a sabotaged compiler and pushed that row past the 120 s job ceiling on the killed runs (42556155793/42554833739); the accessor now runs nightly with the other corpus-rebuild controls.",
       "targets": [
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
-        "packet-finite-elixir-negative-control"
+        "packet-finite-elixir-negative-control",
+        "packet-end-elixir-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
@@ -2451,7 +2463,8 @@
         "packet-defaults-goose-negative-control",
         "packet-end-goose-negative-control",
         "packet-finite-goose-negative-control",
-        "packet-utf8-goose-negative-control"
+        "packet-utf8-goose-negative-control",
+        "packet-write-cfloat-goose-negative-control"
       ]
     },
     {
@@ -3117,11 +3130,11 @@
       "java": "21"
     },
     {
-      "name": "write-refusal-storage-release-dart",
+      "name": "write-refusal-storage-debug-dart",
       "when": "pull-request",
-      "why": "the Dart release storage gate (docs/SPEC.md §5.1): it generates a small table unit, compiles the cook writer AOT, and requires a count past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small Dart compile.",
+      "why": "the Dart debug storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs the cook writer with asserts on, and requires a count and a length past their storage to hit the assert. The control runs that gate first, then strips the generated asserts and requires the same debug gate to go red. Two small Dart runs.",
       "targets": [
-        "write-refusal-storage-release-dart-negative-control"
+        "write-refusal-storage-debug-dart-negative-control"
       ],
       "dart": "3.13.2"
     },

@@ -1,6 +1,7 @@
 package luatable_test
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -39,14 +40,68 @@ func TestLuaFixedProofSuiteNegativeControl(t *testing.T) {
 
 // Functional (luaBinary): run with SCHEMA_SLOW=1.
 //
-// TestLuaFixedProofEvolution runs the 16 non-value fixed-table rows
-// (fixed-file-roundtrip and the 15 evolution/layout/plan/lineage/file rows)
-// through the shared fixedproof evolution suite.
+// TestLuaFixedProofEvolution runs the shared non-value fixed-table rows
+// (fixed-file-roundtrip and 14 of the 15 evolution/layout/plan/lineage/file
+// rows) through the shared fixedproof evolution suite. The live-extents row
+// runs in TestLuaFixedLiveExtents instead because its stained image now
+// refuses under this leg's dead-byte rule.
 func TestLuaFixedProofEvolution(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	repo := filepath.Join("..", "..", "..")
-	fixedproof.RunEvolutionSuite(t, repo, luaFixedProofRunner{})
+	fixedproof.RunEvolutionRows(t, repo, luaFixedProofRunner{},
+		"fixed-file-roundtrip", "file-envelope", "batch-capacity",
+		"plan-selection", "compiled-plans", "definition-hash",
+		"fixed-closure", "retirement", "retired-runtime",
+		"optional-values", "field-evolution", "writing",
+		"union-guards", "plan-execution", "interoperability")
+}
+
+// Functional (luaBinary): run with SCHEMA_SLOW=1.
+//
+// TestLuaFixedLiveExtents runs the live-extents claim on the dead-byte rule:
+// the clean image reads, a count that makes another slot live reads its value,
+// and an image whose dead array slots or absent optional payload are not zero
+// refuses the whole load.
+func TestLuaFixedLiveExtents(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
+	u := fixedproof.ParseCheckUnit(t, "package probe\nenum Small { One, Two }\nfixed table T {\n    arr [..3]Small\n    opt ?Small\n    tail int32 = 77\n}\n")
+	eOwn, ok := fixedproof.LineageEntryOf(u, "T")
+	if !ok {
+		t.Fatal("the fixture has no fixed root T")
+	}
+	lin := map[string][]fixedproof.LineageEntry{"T": {eOwn}}
+	runner := luaFixedProofRunner{}
+	clean, why := runner.SaveCustom(t, u, "T", "live_extents_base")
+	if why != "" {
+		t.Fatalf("save live_extents_base: %s", why)
+	}
+	if len(clean) < 13 {
+		t.Fatal("live_extents_base: the fixture has no 13-byte record")
+	}
+	at := len(clean) - 13
+	n, reason, fields, resaved, counters := runner.LoadLineage(t, u, "T", lin, clean, -1)
+	if n != 1 || fields["r0.arr_count"] != "1" || fields["r0.arr[0]"] != "1" ||
+		fields["r0.opt_present"] != "false" || fields["r0.tail"] != "77" ||
+		counters != (fixedproof.LoadCounters{}) || !bytes.Equal(resaved, clean) {
+		t.Fatalf("the clean image: n=%d reason=%q fields=%v counters=%v", n, reason, fields, counters)
+	}
+
+	live := bytes.Clone(clean)
+	binary.LittleEndian.PutUint32(live[at:], 2)
+	live[at+5] = 2
+	n, reason, fields, _, counters = runner.LoadLineage(t, u, "T", lin, live, -1)
+	if n != 1 || fields["r0.arr_count"] != "2" || fields["r0.arr[1]"] != "2" ||
+		fields["r0.tail"] != "77" || counters != (fixedproof.LoadCounters{}) {
+		t.Fatalf("the live-extents image: n=%d reason=%q fields=%v counters=%v", n, reason, fields, counters)
+	}
+
+	stained := bytes.Clone(clean)
+	stained[at+5], stained[at+6], stained[at+8] = 99, 99, 99
+	if n, reason, _, _, _ := runner.LoadLineage(t, u, "T", lin, stained, -1); n != -1 {
+		t.Fatalf("the stained image: n=%d reason=%q, want the whole load refused", n, reason)
+	}
 }
 
 // Functional (luaBinary): run with SCHEMA_SLOW=1.

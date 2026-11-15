@@ -13,7 +13,7 @@
 // place the writer would emit it — a scalar field, an array element, a union
 // arm, a nested body, a map entry or a pointer referent — and answers "" as
 // the writer's own cycle refusal does (§3). save itself stays the plain
-// writer, exactly as load stays the tolerant read beside load_strict (§6.5).
+// writer, and save_strict is the walk that refuses a retired variant before it.
 //
 // Renames need no runtime: a field's, variant's, arm's or table's id is the
 // hash of its old name (`was`, §5), so the descriptor's id already matches a
