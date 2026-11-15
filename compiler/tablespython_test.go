@@ -97,7 +97,7 @@ func TestPythonTableCarrySetCarriesTimestamp(t *testing.T) {
 // descriptor generation remains available for later field-codec layers.
 func TestPythonTablesHonorCarriedConstructs(t *testing.T) {
 	t.Parallel()
-	for _, field := range []string{"[]int32", "map[uint32]int32", "?[3]int16"} {
+	for _, field := range []string{"[]int32", "?[3]int16"} {
 		u := unitFromSource(t, "package probe\ntable Root {\n values "+field+"\n}\n")
 		_, err := New().Generate(u, "python", Options{})
 		if err == nil {
@@ -106,9 +106,19 @@ func TestPythonTablesHonorCarriedConstructs(t *testing.T) {
 			t.Errorf("the refusal does not name the target and field: %v", err)
 		}
 	}
+	// A plain map spends no §2 carry construct; the map carrier registry is
+	// what admits it (compiler/carries_python_maps.go).
+	u := unitFromSource(t, "package probe\ntable Root {\n values map[uint32]int32\n}\n")
+	files, err := New().Generate(u, "python", Options{})
+	if err != nil {
+		t.Fatalf("the table frame refused its map field: %v", err)
+	}
+	if _, ok := files["probe/_schema/kind_map.py"]; !ok {
+		t.Error("the map unit emitted no probe/_schema/kind_map.py")
+	}
 	// The table frame carries the full integer widths, independently of the
 	// narrower packet core's temporary refusal chain.
-	u := unitFromSource(t, "package probe\nfixed table Scalar {\n value uint128\n}\n")
+	u = unitFromSource(t, "package probe\nfixed table Scalar {\n value uint128\n}\n")
 	if _, err := New().Generate(u, "python", Options{}); err != nil {
 		t.Fatalf("the table frame refused its uint128 field: %v", err)
 	}

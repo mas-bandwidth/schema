@@ -194,6 +194,11 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 			{Name: "alive", Type: ir.FieldType{Kind: ir.TBool}},
 		}}},
 		{"union", &ir.Union{Name: "Event"}},
+		{"uint128", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}}}},
+		{"fixed", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", HasIntRange: true, IntMin: big.NewInt(-100), IntMax: big.NewInt(100),
+			Type: ir.FieldType{Kind: ir.TFixed, Signed: true, Width: 32, IntBits: 16, FracBits: 16}}}}},
+		{"float32", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat32}}}}},
+		{"float64", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat64}}}}},
 	}
 	for _, c := range generates {
 		u := emptyUnit("game", "Game")
@@ -208,12 +213,8 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 		want string
 	}{
 		{"bits", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "small", Type: ir.FieldType{Kind: ir.TBits, Width: 9}}}}, "uses bits"},
-		{"fixed", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, IntBits: 16, FracBits: 16}}}}, "uses fixed"},
-		{"float32", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat32}}}}, "uses float32"},
-		{"float64", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat64}}}}, "uses float64"},
 		{"string", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TString, Size: 8}}}}, "uses string"},
 		{"bytes", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TBytes, Size: 8}}}}, "uses bytes"},
-		{"int128", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}}}, "uses int128"},
 		{"array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses array"},
 		{"const item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ConstItem{Value: big.NewInt(1), Bits: 8}}}, "uses const"},
 		{"reserved item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ReservedItem{Bits: 5}}}, "uses reserved"},
