@@ -534,13 +534,13 @@ struct JsonIn {
     bad: bool,
     zero: bool,
     rep: JsonReport,
-    keys: u8[>..],
     keys_n: i64,
+    keys: u8[>..],
 }
 
 fn json_in(text: const u8[:]) -> JsonIn {
     var keys: u8[>..] = [];
-    var jr = JsonIn { text: text, pos: 0, bad: false, zero: false, rep: json_report(), keys: copy(keys), keys_n: 0 };
+    var jr = JsonIn { text: text, pos: 0, bad: false, zero: false, rep: json_report(), keys_n: 0, keys: copy(keys) };
     // a leading UTF-8 byte-order mark is skipped, there and nowhere else
     // (docs/SPEC-TABLES.md §16.2, §16.12)
     if text.len >= 3 && text[0] == 0xEF && text[1] == 0xBB && text[2] == 0xBF { jr.pos = 3; }
