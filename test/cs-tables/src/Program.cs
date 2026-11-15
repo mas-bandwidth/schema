@@ -510,27 +510,10 @@ static partial class Program
     {
         byte[] buffer = new byte[4096];
 
-        Demo.RootConfig root = new Demo.RootConfig();
-        root.WeaponsCount = 9; // bound is 8
-        Check(Demo.Schema.RootConfigMeasure(root) == -1, "count above bound: measure refuses");
-        Check(Demo.Schema.RootConfigSave(root, buffer) == -1, "count above bound: save refuses");
-
-        V1.Cfg cfg = new V1.Cfg();
-        cfg.NameLength = -1;
-        Check(V1.Schema.CfgMeasure(cfg) == -1, "negative length: measure refuses");
-        Check(V1.Schema.CfgSave(cfg, buffer) == -1, "negative length: save refuses");
-
-        V1.Cfg cfg2 = new V1.Cfg();
-        cfg2.ItemsCount = -3;
-        Check(V1.Schema.CfgMeasure(cfg2) == -1, "negative count: measure refuses");
-        Check(V1.Schema.CfgSave(cfg2, buffer) == -1, "negative count: save refuses");
-
-        // a violation deep inside a nested, guarded table propagates up
-        Demo.ProfileConfig profile = new Demo.ProfileConfig();
-        profile.HasLoadout = true;
-        profile.Loadout.AttachmentsCount = -5;
-        Check(Demo.Schema.ProfileConfigMeasure(profile) == -1, "nested violation: measure refuses");
-        Check(Demo.Schema.ProfileConfigSave(profile, buffer) == -1, "nested violation: save refuses");
+        // A count or length outside [0, bound] (a count above its bound, a
+        // negative length or count, at the root or nested) is the caller's
+        // contract on a write: the C# leg checks it with a debug assert only
+        // (aa9aa173d), so it is not a refusal and has no case here.
 
         // an out-of-range union tag refuses in measure exactly as in write
         Demo.WeaponConfig weapon = new Demo.WeaponConfig();
