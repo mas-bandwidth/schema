@@ -1309,6 +1309,9 @@ pub unsafe fn table_cook_put(out: *mut u8, at: i64, value: u64, width: u32, orde
 }
 
 // table_cook_raw reads one slot's bytes at the width the descriptor names.
+//
+// # Safety
+// p must point at a readable range of at + width bytes; width is at most eight.
 unsafe fn table_cook_raw(p: *const u8, at: i64, width: u32) -> u64 {
     let mut v: u64 = 0;
     unsafe {
