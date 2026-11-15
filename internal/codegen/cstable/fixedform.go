@@ -2000,9 +2000,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    long need = %sFixedMeasure(values.Length);\n", name)
 	g.pf("    if (values.Length < 0 || buffer.Length < need) { return -1; }\n")
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
-		// a NaN or an infinity is refused by every writer (docs/SPEC-TABLES.md
-		// §3.3), before the first output byte
-		g.pf("    for (int k = 0; k < values.Length; ++k) { if (%sFixedFiniteBody(values[k]) != null) { return -1; } }\n", name)
+		// a NaN or an infinity is a write check (docs/SPEC-TABLES.md §3.3):
+		// a debug assert, as every write contract on this leg is (docs/SPEC.md
+		// §5.1). The fixed READ's finite pass over the same body stays.
+		g.pf("    for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(%sFixedFiniteBody(values[k]) == null); }\n", name)
 	}
 	if g.fixedWriteAdmits(st) != "" {
 		g.pf("    for (int k = 0; k < values.Length; ++k)\n    {\n")
