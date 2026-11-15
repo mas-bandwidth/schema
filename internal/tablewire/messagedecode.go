@@ -803,7 +803,10 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 			}
 			value = new(big.Int).Add(offset, base)
 		} else {
-			raw, ok := d.r.bytes(16)
+			// RAW is the kind's storage width, two's complement when the kind
+			// is signed (docs/SPEC-TABLES.md §3.3). WideFromBytes sign-extends
+			// from ir.TableKindSigned.
+			raw, ok := d.r.bytes(ir.TableKindWidth(int(kind)))
 			if !ok {
 				d.damage()
 				return false
