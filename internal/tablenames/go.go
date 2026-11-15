@@ -104,6 +104,15 @@ func init() {
 		Name{Name: "tableMessageSkip", What: "the announced message bit codec"},
 		Name{Name: "tableMessageSkipBody", What: "the announced message bit codec"},
 		Name{Name: "tableMessageWriteScalar", What: "the announced message bit codec"},
+		Name{Name: "tableMessageSeenOpen", What: "the message body walk's repeat marks"},
+		Name{Name: "tableMessageSeenFirst", What: "the message body walk's repeat marks"},
+		Name{Name: "tableMessageSeenRepeat", What: "the message body walk's repeat marks"},
+		Name{Name: "tableMessageBodyBoost", What: "one table's message body walk"},
+		Name{Name: "tableMessageBodyConfig", What: "one table's message body walk"},
+		Name{Name: "tableMessageBodyEffected", What: "one table's message body walk"},
+		Name{Name: "tableMessageBodyKeyedSlots", What: "one table's message body walk"},
+		Name{Name: "tableMessageBodyPoint", What: "one table's message body walk"},
+		Name{Name: "tableMessageBodyT", What: "one table's message body walk"},
 		Name{Name: "TableMap", What: "map storage, ordering, key validation and text"},
 		Name{Name: "TableMapIndex", What: "map storage, ordering, key validation and text"},
 		Name{Name: "tableJSONDecimalKey", What: "map storage, ordering, key validation and text"},
@@ -344,6 +353,7 @@ func init() {
 		Name{Name: "tableJSONReadNullAsEmpty", What: "the null-as-empty option's read (docs/SPEC-TABLES.md §16.2)"},
 		Name{Name: "tableJSONBytes", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJSONCount", What: "one step of the text form's generic walk (§16)"},
+		Name{Name: "tableJSONCountInContract", What: "a counted field's companion inside the declared contract (docs/SPEC-TABLES.md §16.2)"},
 		Name{Name: "tableJSONElementShape", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJSONEncodeUTF8", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJSONFinite", What: "one step of the text form's generic walk (§16)"},
@@ -507,6 +517,9 @@ func init() {
 		Name{Name: "tableFixedTextRefusal", What: "the fixed form: the text CONTENT refusal as a pre-scan of the plan's text entries (§4.12)"},
 		Name{Name: "tableFixedPresent", What: "the fixed form: the plan entry mark for an optional's present byte (§3.4, THE SLACK RULE)"},
 		Name{Name: "tableFixedDead", What: "the fixed form: whether a source offset lies in slack the pre-scan found (§3.4, THE SLACK RULE)"},
+		Name{Name: "tableFixedSlack", What: "the fixed form: a plan entry for a dead range, an inactive union arm's bytes (§3.4)"},
+		Name{Name: "tableFixedAllZero", What: "the fixed form: whether every byte of a dead range is zero (§3.4)"},
+		Name{Name: "tableFixedDeadSpan", What: "the fixed form: a dead range checked for zero and clamped to the record (§3.4)"},
 		// THE FIXED LOAD'S REFUSAL NAMES — EXPORTED (docs/FIXED-FORM-ALGORITHM.md
 		// §5.3): one string constant per fixed-load refusal name, used by the
 		// emitted <T>FixedLoad in place of a literal so an adopter's
