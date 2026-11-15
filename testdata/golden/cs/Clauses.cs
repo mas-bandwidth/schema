@@ -205,6 +205,15 @@ namespace Example
 
         public static bool ReadW13(ReadStream stream, ref W13 value)
         {
+            if (!ReadW13Body(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadW13Body(ReadStream stream, ref W13 value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadW13Batch(ref batch, ref value);
             batch.End();
@@ -282,6 +291,15 @@ namespace Example
         }
 
         public static bool ReadW17(ReadStream stream, ref W17 value)
+        {
+            if (!ReadW17Body(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadW17Body(ReadStream stream, ref W17 value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadW17Batch(ref batch, ref value);
@@ -361,6 +379,15 @@ namespace Example
 
         public static bool ReadW26(ReadStream stream, ref W26 value)
         {
+            if (!ReadW26Body(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadW26Body(ReadStream stream, ref W26 value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadW26Batch(ref batch, ref value);
             batch.End();
@@ -438,6 +465,15 @@ namespace Example
         }
 
         public static bool ReadW1(ReadStream stream, ref W1 value)
+        {
+            if (!ReadW1Body(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadW1Body(ReadStream stream, ref W1 value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadW1Batch(ref batch, ref value);
@@ -517,6 +553,15 @@ namespace Example
 
         public static bool ReadW52(ReadStream stream, ref W52 value)
         {
+            if (!ReadW52Body(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadW52Body(ReadStream stream, ref W52 value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadW52Batch(ref batch, ref value);
             batch.End();
@@ -595,6 +640,15 @@ namespace Example
 
         public static bool ReadW50(ReadStream stream, ref W50 value)
         {
+            if (!ReadW50Body(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadW50Body(ReadStream stream, ref W50 value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadW50Batch(ref batch, ref value);
             batch.End();
@@ -664,6 +718,15 @@ namespace Example
 
         public static bool ReadF13(ReadStream stream, ref F13 value)
         {
+            if (!ReadF13Body(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadF13Body(ReadStream stream, ref F13 value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadF13Batch(ref batch, ref value);
             batch.End();
@@ -728,6 +791,15 @@ namespace Example
         }
 
         public static bool ReadTri3(ReadStream stream, ref Tri3 value)
+        {
+            if (!ReadTri3Body(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadTri3Body(ReadStream stream, ref Tri3 value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadTri3Batch(ref batch, ref value);
@@ -805,6 +877,15 @@ namespace Example
 
         public static bool ReadArrTri3(ReadStream stream, ref ArrTri3 value)
         {
+            if (!ReadArrTri3Body(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadArrTri3Body(ReadStream stream, ref ArrTri3 value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadArrTri3Batch(ref batch, ref value);
             batch.End();
@@ -869,6 +950,15 @@ namespace Example
         }
 
         public static bool ReadEleven(ReadStream stream, ref Eleven value)
+        {
+            if (!ReadElevenBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadElevenBody(ReadStream stream, ref Eleven value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadElevenBatch(ref batch, ref value);
@@ -937,6 +1027,15 @@ namespace Example
 
         public static bool ReadArrEleven(ReadStream stream, ref ArrEleven value)
         {
+            if (!ReadArrElevenBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadArrElevenBody(ReadStream stream, ref ArrEleven value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadArrElevenBatch(ref batch, ref value);
             batch.End();
@@ -984,6 +1083,15 @@ namespace Example
 
         public static bool ReadEmptyA(ReadStream stream, ref EmptyA value)
         {
+            if (!ReadEmptyABody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadEmptyABody(ReadStream stream, ref EmptyA value)
+        {
             return true;
         }
 
@@ -1020,6 +1128,15 @@ namespace Example
         }
 
         public static bool ReadEmptyB(ReadStream stream, ref EmptyB value)
+        {
+            if (!ReadEmptyBBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadEmptyBBody(ReadStream stream, ref EmptyB value)
         {
             return true;
         }
@@ -1103,6 +1220,15 @@ namespace Example
 
         public static bool ReadEmptyUnion(ReadStream stream, ref EmptyUnion value)
         {
+            if (!ReadEmptyUnionBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadEmptyUnionBody(ReadStream stream, ref EmptyUnion value)
+        {
             int tagValue = 0;
             if (!stream.SerializeInt(ref tagValue, 0, 2)) // rejects a tag above the count (SPEC §4.8)
             {
@@ -1113,10 +1239,10 @@ namespace Example
             {
                 case EmptyUnionType.A:
                     ZeroEmptyA(ref value.A); // every selection starts from construction defaults
-                    return ReadEmptyA(stream, ref value.A);
+                    return ReadEmptyABody(stream, ref value.A);
                 case EmptyUnionType.B:
                     ZeroEmptyB(ref value.B); // every selection starts from construction defaults
-                    return ReadEmptyB(stream, ref value.B);
+                    return ReadEmptyBBody(stream, ref value.B);
             }
             return true; // None
         }
@@ -1186,6 +1312,15 @@ namespace Example
         }
 
         public static bool ReadHoldsEmptyUnion(ReadStream stream, ref HoldsEmptyUnion value)
+        {
+            if (!ReadHoldsEmptyUnionBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadHoldsEmptyUnionBody(ReadStream stream, ref HoldsEmptyUnion value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadHoldsEmptyUnionBatch(ref batch, ref value);
@@ -1266,6 +1401,15 @@ namespace Example
         }
 
         public static bool ReadStrs(ReadStream stream, ref Strs value)
+        {
+            if (!ReadStrsBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadStrsBody(ReadStream stream, ref Strs value)
         {
             if (!stream.SerializeBits(ref value.Lead, 5))
             {
@@ -1380,6 +1524,15 @@ namespace Example
 
         public static bool ReadArrNested(ReadStream stream, ref ArrNested value)
         {
+            if (!ReadArrNestedBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadArrNestedBody(ReadStream stream, ref ArrNested value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadArrNestedBatch(ref batch, ref value);
             batch.End();
@@ -1433,6 +1586,15 @@ namespace Example
         }
 
         public static bool ReadSole(ReadStream stream, ref Sole value)
+        {
+            if (!ReadSoleBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadSoleBody(ReadStream stream, ref Sole value)
         {
             if (!stream.SerializeBits(ref value.Only, 13))
             {

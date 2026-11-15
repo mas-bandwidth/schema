@@ -210,6 +210,15 @@ namespace Example
 
         public static bool ReadVec3(ReadStream stream, ref Vec3 value)
         {
+            if (!ReadVec3Body(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadVec3Body(ReadStream stream, ref Vec3 value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadVec3Batch(ref batch, ref value);
             batch.End();
@@ -284,6 +293,15 @@ namespace Example
 
         public static bool ReadQuat(ReadStream stream, ref Quat value)
         {
+            if (!ReadQuatBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadQuatBody(ReadStream stream, ref Quat value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadQuatBatch(ref batch, ref value);
             batch.End();
@@ -354,6 +372,15 @@ namespace Example
         }
 
         public static bool ReadHandle(ReadStream stream, ref Handle value)
+        {
+            if (!ReadHandleBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadHandleBody(ReadStream stream, ref Handle value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadHandleBatch(ref batch, ref value);
@@ -431,6 +458,15 @@ namespace Example
 
         public static bool ReadQuantizedPosition(ReadStream stream, ref QuantizedPosition value)
         {
+            if (!ReadQuantizedPositionBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadQuantizedPositionBody(ReadStream stream, ref QuantizedPosition value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadQuantizedPositionBatch(ref batch, ref value);
             batch.End();
@@ -507,6 +543,15 @@ namespace Example
 
         public static bool ReadQuantizedVelocity(ReadStream stream, ref QuantizedVelocity value)
         {
+            if (!ReadQuantizedVelocityBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadQuantizedVelocityBody(ReadStream stream, ref QuantizedVelocity value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadQuantizedVelocityBatch(ref batch, ref value);
             batch.End();
@@ -580,6 +625,15 @@ namespace Example
         }
 
         public static bool ReadQuantizedRotation(ReadStream stream, ref QuantizedRotation value)
+        {
+            if (!ReadQuantizedRotationBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadQuantizedRotationBody(ReadStream stream, ref QuantizedRotation value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadQuantizedRotationBatch(ref batch, ref value);
@@ -682,6 +736,15 @@ namespace Example
         }
 
         public static bool ReadRigidBody(ReadStream stream, ref RigidBody value)
+        {
+            if (!ReadRigidBodyBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadRigidBodyBody(ReadStream stream, ref RigidBody value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadRigidBodyBatch(ref batch, ref value);
@@ -801,6 +864,15 @@ namespace Example
         }
 
         public static bool ReadInput(ReadStream stream, ref Input value)
+        {
+            if (!ReadInputBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadInputBody(ReadStream stream, ref Input value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadInputBatch(ref batch, ref value);
@@ -927,6 +999,15 @@ namespace Example
         }
 
         public static bool ReadInputPacket(ReadStream stream, ref InputPacket value)
+        {
+            if (!ReadInputPacketBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadInputPacketBody(ReadStream stream, ref InputPacket value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadInputPacketBatch(ref batch, ref value);
@@ -1056,6 +1137,15 @@ namespace Example
         }
 
         public static bool ReadShipCreate(ReadStream stream, ref ShipCreate value)
+        {
+            if (!ReadShipCreateBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadShipCreateBody(ReadStream stream, ref ShipCreate value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadShipCreateBatch(ref batch, ref value);
@@ -1191,6 +1281,15 @@ namespace Example
 
         public static bool ReadExpressionProbe(ReadStream stream, ref ExpressionProbe value)
         {
+            if (!ReadExpressionProbeBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadExpressionProbeBody(ReadStream stream, ref ExpressionProbe value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadExpressionProbeBatch(ref batch, ref value);
             batch.End();
@@ -1294,6 +1393,15 @@ namespace Example
         }
 
         public static bool ReadExtremeProbe(ReadStream stream, ref ExtremeProbe value)
+        {
+            if (!ReadExtremeProbeBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadExtremeProbeBody(ReadStream stream, ref ExtremeProbe value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadExtremeProbeBatch(ref batch, ref value);
@@ -1408,6 +1516,15 @@ namespace Example
         }
 
         public static bool ReadExtremeRow(ReadStream stream, ref ExtremeRow value)
+        {
+            if (!ReadExtremeRowBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadExtremeRowBody(ReadStream stream, ref ExtremeRow value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadExtremeRowBatch(ref batch, ref value);
