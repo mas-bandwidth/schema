@@ -27,13 +27,8 @@ const (
 	// The ceiling is the measured count rounded up to the next multiple of 250
 	// lines: a card edits a constant only when its measurement crosses a step,
 	// and adds no comment line for it.
-<<<<<<< HEAD
 	goOneTableLineBudget = 10500
 	goExamplesLineBudget = 61250
-=======
-	goOneTableLineBudget = 10250
-	goExamplesLineBudget = 60500
->>>>>>> 972d517c1cadf93bb79ec6f9761d9cbd9b43eb49
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
