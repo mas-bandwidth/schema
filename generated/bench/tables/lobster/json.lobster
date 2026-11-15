@@ -950,6 +950,30 @@ def j_required(r:JsonReader, rec:Record, seen:[bool]) -> bool:
             return j_refuse(r, "missing_required: " + rec.d.name + "." + sl.fd.name)
     return true
 
+// j_comment_text holds a comment's bytes t[start, stop) to the text rule
+// (docs/SPEC-TABLES.md §16.2): well-formed UTF-8, as at a string site
+// (§16.3), and no NUL. One pass, linear in the comment's length.
+def j_comment_text(r:JsonReader, start:int, stop:int) -> bool:
+    let t = r.text
+    var i = start
+    while i < stop:
+        let c = t[i]
+        if c == 0:
+            r.bad = true
+            return false
+        if c < 0x80:
+            i++
+            continue
+        let width = j_utf8_sequence(t, i)
+        if width <= 0 or i + width > stop:
+            r.utf8 = true
+            if r.report.reason == "":
+                r.report.reason = "string_not_utf8: <root>"
+            r.bad = true
+            return false
+        i += width
+    return true
+
 def j_space(r:JsonReader):
     let t = r.text
     let n = length(t)
@@ -960,13 +984,20 @@ def j_space(r:JsonReader):
             continue
         if c == '/' and r.pos + 1 < n and t[r.pos + 1] == '/':
             r.pos += 2
+            let start = r.pos
             while r.pos < n and t[r.pos] != '\n':
                 r.pos++
+            if not j_comment_text(r, start, r.pos):
+                r.pos = n
+                return
             continue
         if c == '/' and r.pos + 1 < n and t[r.pos + 1] == '*':
             let end = find_string(t, "*/", r.pos + 2)
             if end < 0:
                 r.bad = true
+                r.pos = n
+                return
+            if not j_comment_text(r, r.pos + 2, end):
                 r.pos = n
                 return
             r.pos = end + 2
