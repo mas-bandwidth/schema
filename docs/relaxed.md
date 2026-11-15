@@ -141,7 +141,11 @@ listed case that passes fails the leg until its line is removed.
   writes the defaults the tool now zeroes). Real fix: every cook writer zeroes
   the dead slots, and the Go case runs again.
   The same slug relaxes the ten cook-write cases (the five rows, both orders)
+<<<<<<< HEAD
   of the conformance legs cpp, cs, dart, go, elixir, goose, lobster, luau
+=======
+  of the conformance legs cpp, cs, dart, go, elixir, goose, lobster and moo
+>>>>>>> 1fb3dfd7a89a42c14c2db69d572694bd2950bd81
   in `test/conformance/relaxed.txt`: each still writes
   the element defaults into dead counted slots (CI full 43656719730). C, JS
   (its ten cases pass and are gated again, 2026-11-15) and the tool are

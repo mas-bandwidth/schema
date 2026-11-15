@@ -27,16 +27,6 @@ cs cook-write root_default relax/cook-dead-slots-zero-ports
 cs cook-write root_default-be relax/cook-dead-slots-zero-ports
 cs cook-write root_full relax/cook-dead-slots-zero-ports
 cs cook-write root_full-be relax/cook-dead-slots-zero-ports
-dart cook-write archive relax/cook-dead-slots-zero-ports
-dart cook-write archive-be relax/cook-dead-slots-zero-ports
-dart cook-write loadout_full relax/cook-dead-slots-zero-ports
-dart cook-write loadout_full-be relax/cook-dead-slots-zero-ports
-dart cook-write profile_elide relax/cook-dead-slots-zero-ports
-dart cook-write profile_elide-be relax/cook-dead-slots-zero-ports
-dart cook-write root_default relax/cook-dead-slots-zero-ports
-dart cook-write root_default-be relax/cook-dead-slots-zero-ports
-dart cook-write root_full relax/cook-dead-slots-zero-ports
-dart cook-write root_full-be relax/cook-dead-slots-zero-ports
 elixir cook-write archive relax/cook-dead-slots-zero-ports
 elixir cook-write archive-be relax/cook-dead-slots-zero-ports
 elixir cook-write loadout_full relax/cook-dead-slots-zero-ports
@@ -47,16 +37,6 @@ elixir cook-write root_default relax/cook-dead-slots-zero-ports
 elixir cook-write root_default-be relax/cook-dead-slots-zero-ports
 elixir cook-write root_full relax/cook-dead-slots-zero-ports
 elixir cook-write root_full-be relax/cook-dead-slots-zero-ports
-goose cook-write archive relax/cook-dead-slots-zero-ports
-goose cook-write archive-be relax/cook-dead-slots-zero-ports
-goose cook-write loadout_full relax/cook-dead-slots-zero-ports
-goose cook-write loadout_full-be relax/cook-dead-slots-zero-ports
-goose cook-write profile_elide relax/cook-dead-slots-zero-ports
-goose cook-write profile_elide-be relax/cook-dead-slots-zero-ports
-goose cook-write root_default relax/cook-dead-slots-zero-ports
-goose cook-write root_default-be relax/cook-dead-slots-zero-ports
-goose cook-write root_full relax/cook-dead-slots-zero-ports
-goose cook-write root_full-be relax/cook-dead-slots-zero-ports
 lobster cook-write archive relax/cook-dead-slots-zero-ports
 lobster cook-write archive-be relax/cook-dead-slots-zero-ports
 lobster cook-write loadout_full relax/cook-dead-slots-zero-ports
@@ -67,6 +47,7 @@ lobster cook-write root_default relax/cook-dead-slots-zero-ports
 lobster cook-write root_default-be relax/cook-dead-slots-zero-ports
 lobster cook-write root_full relax/cook-dead-slots-zero-ports
 lobster cook-write root_full-be relax/cook-dead-slots-zero-ports
+<<<<<<< HEAD
 luau cook-write archive relax/cook-dead-slots-zero-ports
 luau cook-write archive-be relax/cook-dead-slots-zero-ports
 luau cook-write loadout_full relax/cook-dead-slots-zero-ports
@@ -77,22 +58,26 @@ luau cook-write root_default relax/cook-dead-slots-zero-ports
 luau cook-write root_default-be relax/cook-dead-slots-zero-ports
 luau cook-write root_full relax/cook-dead-slots-zero-ports
 luau cook-write root_full-be relax/cook-dead-slots-zero-ports
+=======
+moo cook-write archive relax/cook-dead-slots-zero-ports
+moo cook-write archive-be relax/cook-dead-slots-zero-ports
+moo cook-write loadout_full relax/cook-dead-slots-zero-ports
+moo cook-write loadout_full-be relax/cook-dead-slots-zero-ports
+moo cook-write profile_elide relax/cook-dead-slots-zero-ports
+moo cook-write profile_elide-be relax/cook-dead-slots-zero-ports
+moo cook-write root_default relax/cook-dead-slots-zero-ports
+moo cook-write root_default-be relax/cook-dead-slots-zero-ports
+moo cook-write root_full relax/cook-dead-slots-zero-ports
+moo cook-write root_full-be relax/cook-dead-slots-zero-ports
+>>>>>>> 1fb3dfd7a89a42c14c2db69d572694bd2950bd81
 #
 # relax/hostile-rows-<lang>: #3486 flipped json-hostile base64-unpadded and
 # str-zero-escape-unknown-key, and write-refusal-json jref_zero_byte, to
 # refused (json-base64-canonical, skipped-value-is-validated, the text writer
 # refuses a zero byte); these legs still read or write them.
-c json-hostile base64-unpadded relax/hostile-rows-c
-c json-hostile str-zero-escape-unknown-key relax/hostile-rows-c
-cs json-hostile base64-unpadded relax/hostile-rows-cs
-cs json-hostile str-zero-escape-unknown-key relax/hostile-rows-cs
-goose json-hostile base64-unpadded relax/hostile-rows-goose
-goose json-hostile str-zero-escape-unknown-key relax/hostile-rows-goose
 js json-hostile base64-unpadded relax/hostile-rows-js
 lua json-hostile str-zero-escape-unknown-key relax/hostile-rows-lua
 rust json-hostile str-zero-escape-unknown-key relax/hostile-rows-rust
-c write-refusal-json jref_zero_byte relax/hostile-rows-c
-cs write-refusal-json jref_zero_byte relax/hostile-rows-cs
 #
 # The go leg (the generated Go API driver): its cook writer still writes the
 # element defaults into dead counted slots (relax/cook-dead-slots-zero-ports).
