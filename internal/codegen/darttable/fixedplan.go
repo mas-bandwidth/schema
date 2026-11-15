@@ -303,35 +303,35 @@ func fixedPlanSub(p *fixedPlanBuild, f *ir.Field, at, guard int64, arg int) {
 	}
 }
 
-// fixedFlatElem reports an element whose whole image is one run: nothing in
-// its closure needs a COUNT of its own, so no byte of it is anything but
-// moved. A string/bytes field's image IS its wire image — the length
-// and the units sit in order — and the TEXT op that clamps a hostile length
-// lives in the decode both paths share, over LIVE elements only. A counted
-// array of wrapped strings is therefore one COPY, never a TEXT per slack slot.
-// Every other construct — an enum, a union, an optional, a nested table of
-// plain fields, a fixed array — is byte-identical between the image and the
-// wire in this backend, because the image IS the wire's layout.
+// fixedFlatElem reports an element whose whole image is one run with no dead
+// byte of its own: nothing in its closure needs a COUNT or a TEXT of its own,
+// and every byte of it is a value the image and the wire agree on. An
+// optional's absent payload, a text/bytes field's slack, a union's inactive
+// arm (and the bytes past a narrower taken arm), a counted array's dead slots
+// and any nested type holding one are DEAD BYTES (docs/FIXED-FORM-
+// ALGORITHM.md §3.1, §4.5, §5.3 step 11), so an element carrying any of them
+// is WALKED one element at a time and its presentCopy, text and dead entries
+// are pushed per live element. Only a closure with no dead byte folds into
+// one copy.
 func fixedFlatElem(f *ir.Field) bool {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			return fixedFlatType(r)
 		case *ir.Union:
-			for _, v := range r.Variants {
-				if v.F == nil || !fixedFlatElem(v.F) {
-					return false
-				}
-			}
-			return true
+			return false
 		}
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes, ir.TMap:
+		return false
 	}
 	return true
 }
 
 func fixedFlatType(st *ir.Struct) bool {
 	for _, f := range st.Fields {
-		if f.Array == ir.ArrayCounted {
+		if f.Type.Optional || f.KeyEnum != "" || f.Array == ir.ArrayCounted {
 			return false
 		}
 		if !fixedFlatElem(f) {

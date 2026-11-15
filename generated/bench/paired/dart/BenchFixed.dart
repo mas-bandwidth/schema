@@ -1934,14 +1934,11 @@ abstract final class TableFixedCompiler {
         );
         break;
       case 12: // string(N)
-        // SAME-SIZE TEXT IS A COPY: a counted array of wrapped strings
-        // would otherwise TEXT every bound slot, and slack lengths would
-        // count. The decode both paths share clamps LIVE used-lengths.
-        // A bound that MOVED still needs the text op (min units).
-        if (theirSize == mySize) {
-          push(plan, TableFixedOp.copy, theirAt, at, mySize, 0, guard, arg, 0);
-          break;
-        }
+        // EVERY TEXT NEEDS THE TEXT OP, same size or not: the bytes past the
+        // used length are DEAD and the op holds them to zero
+        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). A counted
+        // array of wrapped strings TEXTS every bound slot for that reason;
+        // the decode both paths share still clamps LIVE used-lengths.
         final units = (mySize - 4) < (theirSize - 4)
             ? (mySize - 4)
             : (theirSize - 4);

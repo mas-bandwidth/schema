@@ -129,11 +129,13 @@ func dumpFn(t *testing.T, src, fn string) string {
 	return body
 }
 
-// A COUNTED ARRAY OF WRAPPED string(N) IS ONE COPY, never a TEXT per bound
-// slot. v1 refuses `[1..4]string(8)` by name ("wrap the element in a type");
-// the wrap is Item { label string(8) }. LIVE elements only, slack never: the plan copies the run, decode clamps used-lengths behind
-// itemsCount. Compiled same-size text is a COPY for the same reason.
-func TestCountedStringArrayCopiesWholeRun(t *testing.T) {
+// A COUNTED ARRAY OF WRAPPED string(N) WALKS EVERY BOUND SLOT: each element's
+// bytes past its used length are DEAD and the text op holds them to zero
+// (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). v1 refuses
+// `[1..4]string(8)` by name ("wrap the element in a type"); the wrap is
+// Item { label string(8) }. Decode still clamps LIVE used-lengths behind
+// itemsCount, and a same-size text in a compiled plan still needs its op.
+func TestCountedStringArrayWalksEachElement(t *testing.T) {
 	src := `package probe
 
 table Item
@@ -162,11 +164,11 @@ table LiveNested
 	if counts != 1 {
 		t.Fatalf("identity plan count entries = %d, want 1 (items)", counts)
 	}
-	if texts != 0 {
-		t.Fatalf("counted array of wrapped strings must COPY the whole run, not TEXT slack: %d text entries", texts)
+	if texts != 4 {
+		t.Fatalf("counted array of wrapped strings must TEXT every bound slot: %d text entries, want 4", texts)
 	}
-	if copies != 1 {
-		t.Fatalf("identity plan copy entries = %d, want 1 (the four Items as one run)", copies)
+	if copies != 0 {
+		t.Fatalf("identity plan copy entries = %d, want 0 (the array is walked)", copies)
 	}
 
 	nested := dumpFn(t, src, "void liveNestedFixedDecode(")
@@ -184,8 +186,8 @@ table LiveNested
 	if !strings.Contains(item, "report.refused = TableFixedRefusal.lengthOverBound;") {
 		t.Fatalf("decode must refuse by name on a length past its bound:\n%s", item)
 	}
-	if !strings.Contains(fixedRuntime, "SAME-SIZE TEXT IS A COPY") {
-		t.Fatal("compiled same-size string must COPY, or slack lengths count on that path")
+	if !strings.Contains(fixedRuntime, "EVERY TEXT NEEDS THE TEXT OP") {
+		t.Fatal("compiled same-size text must still take the text op, or its dead slack is not checked")
 	}
 }
 
