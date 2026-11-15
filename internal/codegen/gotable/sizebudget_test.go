@@ -62,7 +62,8 @@ const (
 	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
 	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
 	// -4: the comment skip holds each comment to the text rule in one bytes.Index pass, in every JSON read entry (SPEC-TABLES §16.2)
-	goOneTableLineBudget = 10114
+	// -318: unreferenced helpers, their comments and unused shims are omitted from the one-table Go unit
+	goOneTableLineBudget = 9796
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -107,7 +108,8 @@ const (
 	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
 	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
 	// -4: the comment skip holds each comment to the text rule in one bytes.Index pass, in every JSON read entry (SPEC-TABLES §16.2)
-	goExamplesLineBudget = 60105
+	// -253: unreferenced helpers, their comments and unused shims are omitted from the examples Go unit
+	goExamplesLineBudget = 59852
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
