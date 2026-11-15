@@ -1799,6 +1799,9 @@ end
 -- (checked against the reader's own root type), k + 1 is record k. A blob
 -- record resolves to its NODE BOX, so two slots naming one record land one
 -- Lua reference and two distinct records of equal bytes stay two (§3.1, §6.3).
+-- A record whose type this reader DECLARES but which is not the type the slot
+-- requires is damage (docs/rulings.json pointer-target-type-checked); only a
+-- record of a type it cannot name at all reads null.
 local function resolve(ctx, root, rootdesc)
   local report = ctx.report
   local good = ctx.good
@@ -1834,7 +1837,8 @@ local function resolve(ctx, root, rootdesc)
                 seen_blob[p.index] = true
               end
             else
-              report.kindChanged = report.kindChanged + 1
+              report.damaged = true
+              report.wireDamaged = true
             end
           elseif d.shape == "bytes_blob" then
             if node.kind == "b" then
@@ -1846,12 +1850,14 @@ local function resolve(ctx, root, rootdesc)
                 seen_blob[p.index] = true
               end
             else
-              report.kindChanged = report.kindChanged + 1
+              report.damaged = true
+              report.wireDamaged = true
             end
           elseif node.kind == "t" and node.codec.name == d.target then
             value = node.value
           else
-            report.kindChanged = report.kindChanged + 1
+            report.damaged = true
+            report.wireDamaged = true
           end
         elseif d.shape == "pointer" then
           value = false
