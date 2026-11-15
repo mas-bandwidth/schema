@@ -11,6 +11,7 @@ package goosetable
 
 import (
 	"bufio"
+	"hash/fnv"
 	"maps"
 	"os"
 	"path/filepath"
@@ -116,8 +117,22 @@ func manyKeys(prefix string, distinct, repeat int) string {
 	return b.String()
 }
 
+// fnvEqualA and fnvEqualB are two distinct keys with one 64-bit FNV-1a hash
+// (0x6cf61da40889ef2a), so a read that stood a hash in for a name would take
+// them for one key repeated.
+const (
+	fnvEqualA = "935224e645547a49"
+	fnvEqualB = "86913e1496695db9"
+)
+
 func TestGooseSkippedValueIsValidated(t *testing.T) {
 	t.Parallel()
+	ha, hb := fnv.New64a(), fnv.New64a()
+	ha.Write([]byte(fnvEqualA))
+	hb.Write([]byte(fnvEqualB))
+	if fnvEqualA == fnvEqualB || ha.Sum64() != hb.Sum64() {
+		t.Fatalf("the hash-equal keys are not two names with one FNV-1a hash: %x %x", ha.Sum64(), hb.Sum64())
+	}
 	const dir = "testdata/wire/skipped-value"
 	rows := skippedValueRows(t)
 	u := skippedValueReader(t)
@@ -142,8 +157,18 @@ func TestGooseSkippedValueIsValidated(t *testing.T) {
 	// unknown field's key are held to §16.2's one-name rule as a placed key
 	// is, two spellings that decode equal included; a long run of distinct
 	// names still records every one, so a later repeat refuses, and a run
-	// with no repeat reads.
+	// with no repeat reads. Keys compare exactly: two distinct names whose
+	// 64-bit FNV-1a hashes are equal are two keys and read. A key is held
+	// only against its own object's keys, so a name a nested object used
+	// may stand again in its parent or in a sibling.
 	inline := []struct{ name, text, want string }{
+		{"unknown-field-key-hash-equal.json", `{"known":1,"` + fnvEqualA + `":1,"` + fnvEqualB + `":2}`, "read"},
+		{"skipped-object-key-hash-equal.json", `{"known":1,"extra_nested":{"` + fnvEqualA + `":1,"` + fnvEqualB + `":2}}`, "read"},
+		{"unknown-field-key-many-repeat-late.json", `{` + manyKeys(`"known":1`, 200, 150) + `}`, "refused"},
+		{"skipped-object-key-many-repeat-late.json", `{"known":1,"extra_nested":{` + manyKeys("", 200, 150) + `}}`, "refused"},
+		{"unknown-field-key-nested-reuse.json", `{"known":1,"extra":{"x":1},"x":2}`, "read"},
+		{"skipped-object-key-nested-reuse.json", `{"known":1,"extra_nested":{"a":{"b":1},"b":2}}`, "read"},
+		{"skipped-object-key-sibling-reuse.json", `{"known":1,"extra_nested":{"p":{"k":1},"q":{"k":1}}}`, "read"},
 		{"unknown-field-key-repeat.json", `{"known":1,"extra":1,"extra":2}`, "refused"},
 		{"skipped-object-key-repeat.json", `{"known":1,"extra_nested":{"a":1,"a":2}}`, "refused"},
 		{"skipped-object-key-equal-spelling.json", `{"known":1,"extra_nested":{"a":1,"\u0061":2}}`, "refused"},

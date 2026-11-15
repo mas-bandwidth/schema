@@ -1834,13 +1834,14 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
     let shape = jr_shape(c, e, owner, ord, true);
     jr_collection(c, s, d, c.scratch.len, 0);
     var seen: u64[8] = [0; 8];
-    let key_mark = c.jr.keys.len;
+    let key_mark = c.jr.keys_n;
     var dup_unk = false;
     loop {
         let ch = json_peek(c.jr);
         if ch == '}' {
             c.jr.pos += 1;
             if dup_unk && c.jr.rep.repeated == 0 { return json_fail(c.jr); }
+            c.jr.keys_n = key_mark;
             return true;
         }
         if ch == 0 { return json_fail(c.jr); }
@@ -1873,6 +1874,7 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         if r < 0 { return false; }
         if r == 0 {
             if dup_unk && c.jr.rep.repeated == 0 { return json_fail(c.jr); }
+            c.jr.keys_n = key_mark;
             return true;
         }
     }

@@ -535,11 +535,12 @@ struct JsonIn {
     zero: bool,
     rep: JsonReport,
     keys: u8[>..],
+    keys_n: i64,
 }
 
 fn json_in(text: const u8[:]) -> JsonIn {
     var keys: u8[>..] = [];
-    var jr = JsonIn { text: text, pos: 0, bad: false, zero: false, rep: json_report(), keys: copy(keys) };
+    var jr = JsonIn { text: text, pos: 0, bad: false, zero: false, rep: json_report(), keys: copy(keys), keys_n: 0 };
     // a leading UTF-8 byte-order mark is skipped, there and nowhere else
     // (docs/SPEC-TABLES.md §16.2, §16.12)
     if text.len >= 3 && text[0] == 0xEF && text[1] == 0xBB && text[2] == 0xBF { jr.pos = 3; }
@@ -849,9 +850,12 @@ fn json_name_is(name: const u8[:], key: const u8[:]) -> bool {
 // found in every object the read walks, skipped ones included (§16.2,
 // §16.12). The keys are kept whole and compared exactly, in a run that grows
 // with the object: no hash stands in for a name and no count ends the record.
+// Each object compares from its own mark and cuts the live run (keys_n) back
+// to it when it closes, so a key is held only against the earlier keys of
+// its own object.
 fn json_key_repeat(jr: JsonIn&, mark: i64, key: const u8[:]) -> bool {
     var at = mark;
-    while at < jr.keys.len {
+    while at < jr.keys_n {
         let n: i64 = jr.keys[at];
         at += 1;
         if n == key.len {
@@ -868,9 +872,21 @@ fn json_key_repeat(jr: JsonIn&, mark: i64, key: const u8[:]) -> bool {
         }
         at += n;
     }
-    jr.keys.push(key.len as! u8);
-    for b in key { jr.keys.push(b); }
+    json_key_put(jr, key.len as! u8);
+    for b in key { json_key_put(jr, b); }
     return false;
+}
+
+// json_key_put writes one byte at the end of the live run, over a byte a
+// closed object left or past the buffer's end, so cutting the run back never
+// shrinks the buffer.
+fn json_key_put(jr: JsonIn&, b: u8) {
+    if jr.keys_n < jr.keys.len {
+        jr.keys[jr.keys_n] = b;
+    } else {
+        jr.keys.push(b);
+    }
+    jr.keys_n += 1;
 }
 
 // json_walk_number scans one number to RFC 8259's own production, so `1-2`,
@@ -924,11 +940,12 @@ recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
         if depth > JsonMaxDepth { return json_fail(jr); }
         let closing: u8 = if c == '{' { '}' } else { ']' };
         jr.pos += 1;
-        let key_mark = jr.keys.len;
+        let key_mark = jr.keys_n;
         loop {
             let d = json_peek(jr);
             if d == closing {
                 jr.pos += 1;
+                jr.keys_n = key_mark;
                 return true;
             }
             if d == 0 { return json_fail(jr); }
@@ -953,6 +970,7 @@ recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
             }
             if e == closing {
                 jr.pos += 1;
+                jr.keys_n = key_mark;
                 return true;
             }
             return json_fail(jr);
@@ -1423,7 +1441,7 @@ fn json_read_array<F>(jr: JsonIn&, count: i32&, bound: i64, shape: u8, depth: i6
 fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, depth: i64) -> bool {
     if !json_expect(jr, '{') { return false; }
     var seen: u64[8] = [0; 8];
-    let key_mark = jr.keys.len;
+    let key_mark = jr.keys_n;
     var dup_unk = false;
     loop {
         let c = json_peek(jr);
@@ -1466,6 +1484,7 @@ fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, dep
         }
     }
     if dup_unk && jr.rep.repeated == 0 { return json_fail(jr); }
+    jr.keys_n = key_mark;
     return true;
 }
 
@@ -1539,11 +1558,12 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
     }
     if !json_expect(jr, '{') { return false; }
     var seen: u64[8] = [0; 8];
-    let key_mark = jr.keys.len;
+    let key_mark = jr.keys_n;
     loop {
         let c = json_peek(jr);
         if c == '}' {
             jr.pos += 1;
+            jr.keys_n = key_mark;
             return true;
         }
         if c == 0 { return json_fail(jr); }
@@ -1599,7 +1619,10 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
                 if optional && !F(jr, rec, index, JsonOpPresent, depth) { return false; }
             }
         }
-        if !json_after_value(jr, '}') { return !jr.bad; }
+        if !json_after_value(jr, '}') {
+            jr.keys_n = key_mark;
+            return !jr.bad;
+        }
     }
 }
 
