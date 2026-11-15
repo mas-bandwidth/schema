@@ -14,10 +14,17 @@ export const FlatReadSlack = 8;
 
 // ---- type Vec2: the flat codec ----
 
-// WriteVec2Flat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold Vec2MaxBytes.
+// WriteVec2Flat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold Vec2MaxBytes.
 export function WriteVec2Flat(view, value) {
+  if (!Number.isFinite(value.x)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(0, value.x, true);
+  if (!Number.isFinite(value.y)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(8, value.y, true);
   return 16;
 }
@@ -63,11 +70,15 @@ export function ReadVec2FlatBits(view, numBits, value) {
 
 // ---- type SpanF64: the flat codec ----
 
-// WriteSpanF64Flat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold SpanF64MaxBytes.
+// WriteSpanF64Flat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold SpanF64MaxBytes.
 export function WriteSpanF64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
+    if (!Number.isFinite(value.values[i0])) { // a bare float must be finite
+      return -1;
+    }
     SC.setFloat64(0, value.values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -553,11 +564,15 @@ export function ReadSpanChunkFlatBits(view, numBits, value) {
 
 // ---- type SpanTail: the flat codec ----
 
-// WriteSpanTailFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold SpanTailMaxBytes.
+// WriteSpanTailFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold SpanTailMaxBytes.
 export function WriteSpanTailFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
+    if (!Number.isFinite(value.values[i0])) { // a bare float must be finite
+      return -1;
+    }
     SC.setFloat64(0, value.values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -684,11 +699,15 @@ export function ReadSpanTailFlatBits(view, numBits, value) {
 
 // ---- type SpanTwice: the flat codec ----
 
-// WriteSpanTwiceFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold SpanTwiceMaxBytes.
+// WriteSpanTwiceFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold SpanTwiceMaxBytes.
 export function WriteSpanTwiceFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
+    if (!Number.isFinite(value.a[i0])) { // a bare float must be finite
+      return -1;
+    }
     SC.setFloat64(0, value.a[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -710,6 +729,9 @@ export function WriteSpanTwiceFlat(view, value) {
     }
   }
   for (let i0 = 0; i0 < 2; i0++) {
+    if (!Number.isFinite(value.b[i0])) { // a bare float must be finite
+      return -1;
+    }
     SC.setFloat64(0, value.b[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -991,11 +1013,21 @@ export function ReadTrioSoleFlatBits(view, numBits, value) {
 
 // ---- type Vec3Sole: the flat codec ----
 
-// WriteVec3SoleFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold Vec3SoleMaxBytes.
+// WriteVec3SoleFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold Vec3SoleMaxBytes.
 export function WriteVec3SoleFlat(view, value) {
+  if (!Number.isFinite(value.v.x)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(0, value.v.x, true);
+  if (!Number.isFinite(value.v.y)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(8, value.v.y, true);
+  if (!Number.isFinite(value.v.z)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(16, value.v.z, true);
   return 24;
 }

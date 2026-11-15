@@ -1075,6 +1075,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteF32(name, ind)
 	case ir.TFloat64:
 		g.chunkFlush(ind)
+		g.guard(fmt.Sprintf("!Number.isFinite(%s)", name), " // a bare float must be finite", ind)
 		if g.wKnown && g.wSb == 0 {
 			// word-aligned at a static offset: the double's two little-endian
 			// words, low first, are exactly one little-endian 8-byte store
@@ -1103,23 +1104,14 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 	}
 }
 
-// emitWriteF32 is serialize.js float32BitsFromNumber inlined: hardware
-// conversion for non-NaN, software payload narrowing for NaN (quiet bit not
-// forced except the all-low-payload case).
+// emitWriteF32 refuses a value whose float32 rounding is not finite, then
+// writes the hardware-converted 32-bit pattern (SPEC §4.3, §5.1).
 func (g *fgen) emitWriteF32(name, ind string) {
 	g.chunkFlush(ind)
 	g.pf("%sx = %s;\n", ind, name)
-	g.pf("%sif (x === x) {\n", ind)
-	g.pf("%s  SC.setFloat32(0, x, true);\n", ind)
-	g.pf("%s  v = SC.getUint32(0, true);\n", ind)
-	g.pf("%s} else {\n", ind)
-	g.pf("%s  SC.setFloat64(0, x, true);\n", ind)
-	g.pf("%s  bg = SC.getBigUint64(0, true);\n", ind)
-	g.pf("%s  t0 = Number(bg >> 63n) << 31;\n", ind)
-	g.pf("%s  t1 = Number((bg >> 29n) & 0x7fffffn);\n", ind)
-	g.pf("%s  if (t1 === 0) { t1 = 0x400000; }\n", ind)
-	g.pf("%s  v = (t0 | 0x7f800000 | t1) >>> 0;\n", ind)
-	g.pf("%s}\n", ind)
+	g.guard("!Number.isFinite(Math.fround(x))", " // a bare float must be finite", ind)
+	g.pf("%sSC.setFloat32(0, x, true);\n", ind)
+	g.pf("%sv = SC.getUint32(0, true);\n", ind)
 	g.mergeW(32, ind)
 }
 
