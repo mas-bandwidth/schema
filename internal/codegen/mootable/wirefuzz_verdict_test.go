@@ -205,6 +205,10 @@ func runMooWireFuzzVerdictPipe(t *testing.T, generatedRel, manifest string, reta
 	args := []string{"wire-fuzz"}
 	if retain {
 		args = append(args, "--retain")
+	} else {
+		// RELAXED 2026-11-15 moo loads nonzero fixed-form dead bytes the engine
+		// refuses (make/moo-fuzz.mk MOO_WIRE_FUZZ_RELAX); re-enable: relax/dead-bytes-accepted-moo
+		args = append(args, "--relax-dead-bytes-accepted")
 	}
 	args = append(args,
 		"--manifest", manifest,

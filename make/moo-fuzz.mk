@@ -54,6 +54,14 @@ MOOFUZZHOST_CMAKE   := build/moofuzzhost/cmake
 MOO_WIRE_FUZZ_SEED  ?= 1
 MOO_WIRE_FUZZ_N     ?= 2000
 MOO_WIRE_FUZZ_ARGS  ?=
+# RELAXED 2026-11-15 moo loads nonzero fixed-form dead
+# bytes the engine refuses since #3529 (docs/rulings.json
+# fixed-dead-bytes-are-zero): a counted array's count lowered by one leaves a
+# nonzero slot past the count, which this leg reads and loads. Such a mutant is
+# counted, not compared; every other mutant is compared. The plain arm only (the retain
+# arm's roster is variable roots). internal/codegen/mootable/wirefuzz_verdict_test.go passes it too.
+# re-enable: relax/dead-bytes-accepted-moo
+MOO_WIRE_FUZZ_RELAX ?= --relax-dead-bytes-accepted
 MOO_WIRE_FUZZ_ABSENT_COUNT := 0
 MOO_WIRE_FUZZ_ABSENT_PIN   := test/conformance/moo/wire-fuzz-absent.txt
 MOO_WIRE_FUZZ_RETAIN_ABSENT_COUNT := 0
@@ -105,7 +113,7 @@ endef
 tables-moo-wire-fuzz: tables-moo-wire-fuzz-plain tables-moo-wire-fuzz-retain tables-moo-wire-fuzz-pinned
 
 tables-moo-wire-fuzz-plain: toolchain-moo build/conformance-harness build/conformance-moo $(MOOFUZZHOST)
-	$(call moo-wire-fuzz-run,$(MOO_WIRE_FUZZ_ARGS),$(MOO_WIRE_FUZZ_LOG),$(MOO_WIRE_FUZZ_ABSENT),$(MOO_WIRE_FUZZ_ABSENT_PIN),$(MOO_WIRE_FUZZ_ABSENT_COUNT))
+	$(call moo-wire-fuzz-run,$(MOO_WIRE_FUZZ_RELAX) $(MOO_WIRE_FUZZ_ARGS),$(MOO_WIRE_FUZZ_LOG),$(MOO_WIRE_FUZZ_ABSENT),$(MOO_WIRE_FUZZ_ABSENT_PIN),$(MOO_WIRE_FUZZ_ABSENT_COUNT))
 
 # THE RETENTION ARM (--retain, docs/SPEC-TABLES.md §6.6): the same mutants
 # through LoadRetain and SaveRetain. Its roster is the variable-class file

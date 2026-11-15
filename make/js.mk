@@ -1110,6 +1110,12 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 # so a root that drops to absent fails the target by name rather than shrinking
 # the run unseen; it does not depend on SEED or N.
 TABLES_JS_WIRE_FUZZ_ABSENT := 0
+# RELAXED 2026-11-15 JS loads nonzero fixed-form dead
+# bytes the engine refuses since #3529 (docs/rulings.json
+# fixed-dead-bytes-are-zero): a counted array's count lowered by one leaves a
+# nonzero slot past the count, which this leg reads and loads. Such a mutant is
+# counted, not compared; every other mutant is compared. re-enable: relax/dead-bytes-accepted-js
+JS_WIRE_FUZZ_RELAX ?= --relax-dead-bytes-accepted
 tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
 	@./build/conformance-harness wire-fuzz --mixed-builder \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
@@ -1139,7 +1145,7 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 # arm reads the absent pin through the variable, so the pin lives in one place.
 .PHONY: tables-js-wire-fuzz-plain tables-js-wire-fuzz-retain
 tables-js-wire-fuzz-plain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
-	@./build/conformance-harness wire-fuzz --mixed-builder \
+	@./build/conformance-harness wire-fuzz --mixed-builder $(JS_WIRE_FUZZ_RELAX) \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-plain.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-plain.log; \
