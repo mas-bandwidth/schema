@@ -311,16 +311,28 @@ generated class per table and per map entry, each with its descriptor
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  unbounded arrays `[]T` of those and of by-value tables, by-value tables and
-  `*T` pointers to tables, for both the fixed and the variable class. An
-  unbounded array is a kind `14` counted array with no declared bound, so it
-  rides the same bytes a `[..N]T` writes. Its count is held to the read's
-  resource bounds: a body shorter than its header, a count past the int32
-  storage cap, a count the body cannot cover, and bytes left inside its `L`
-  after the elements all refuse, the first two before a list is built.
-  `*bytes`, `*string`, `?T`, `[]*T`, `[E]T`, `[N]T`, `[..N]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
-  `kind_unsupported.py` until their cards land.
+  unbounded arrays `[]T` of those and of by-value tables of both classes (a
+  `fixed table` element and a variable one), by-value tables and `*T` pointers
+  to tables, for both the fixed and the variable class. An unbounded array is a
+  kind `14` counted array with no declared bound, so it rides the same bytes a
+  `[..N]T` writes. Its count is held to the read's resource bounds: a body
+  shorter than its header, a count past the int32 storage cap, a count the
+  body cannot cover, and bytes left inside its `L` after the elements all
+  refuse, the first three before a list is built. A present plain array with a
+  count of 0 is its field's declared default, which every writer elides, so
+  the read refuses it as a non-canonical spelling (SPEC-TABLES §4,
+  docs/rulings.json reads-refuse-non-canonical); an optional array's present
+  empty value is not refused there. A write refuses a list longer than the
+  int32 cap (`InvalidValue`), so the writer never emits a count its own read
+  refuses.
+- **The array element shape is measured.** An element of a fixed-width integer
+  kind of 1 to 8 bytes reads with one `struct.unpack` over the whole body and
+  one range check over the decoded values, and writes with one `struct.pack`;
+  a bool element reads as one slice checked for bytes other than 0 and 1, and
+  writes as one `bytes(list)`. Every other element (int128, tables, pointers)
+  walks its kind module one element at a time. `TestPythonVtUnboundedShapeBench`
+  holds the two shapes to the same value and bytes and times them (Bench
+  below); the bulk shape is kept.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.
@@ -346,6 +358,25 @@ generated load is 2% slower on 3.15.2 and 4% faster on 3.11.18. Save and load
 together, the generated pair is 2% faster on 3.15.2 and 11% faster on 3.11.18,
 so the pair is kept. `TestPythonTableCoreShapeBench` re-measures it and holds
 both shapes to the same value.
+
+The array bench (`TestPythonVtUnboundedShapeBench`) reads and writes one
+array body of 1,000 elements in each shape: `int32` held to a declared range,
+full-range `uint64`, and `bool`. It ran on a SHARED fleet bench with other
+work on it, so the absolute figures are noisy (two runs differed by up to 30%)
+and only the ratio is the finding. Each figure is the minimum of five rounds of
+200 iterations after a check that both shapes agree, in nanoseconds per array:
+
+| operation | 3.15.2 walk | 3.15.2 bulk | 3.11.18 walk | 3.11.18 bulk |
+|---|---:|---:|---:|---:|
+| read `[]int32` | 1,077,958 | 75,194 | 1,411,906 | 80,748 |
+| write `[]int32` | 724,275 | 15,444 | 1,063,570 | 19,861 |
+| read `[]uint64` | 1,064,249 | 66,265 | 1,577,614 | 110,449 |
+| write `[]uint64` | 720,604 | 38,119 | 1,108,210 | 42,423 |
+| read `[]bool` | 373,830 | 37,523 | 546,002 | 51,348 |
+| write `[]bool` | 271,698 | 16,881 | 342,126 | 11,968 |
+
+The bulk shape is 10 to 54 times faster on every row and both pins, so it is
+kept for the elements it carries.
 
 ## IDENTIFIERS
 

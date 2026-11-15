@@ -61,9 +61,10 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 python-table-core-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonTableCoreNegativeControl' ./internal/codegen/pythontable/ -count=1
 
-# The unbounded array's negative control: the element-kind check is removed
-# from a COPY of the generated runtime's array module, and the foreign-kind
-# probe must stop refusing by kind_mismatch. It needs the pins, so test-python
+# The unbounded array's negative controls: each read refusal of the array
+# codec, the write's element validation and its length cap are removed one at
+# a time from a COPY of the generated runtime, and the gate case that watches
+# each must go red by name. It needs the pins, so test-python
 # runs it beside the table tests and make/negative-controls.json schedules it.
 python-vt-unbounded-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonVtUnboundedNegativeControl' ./internal/codegen/pythontable/ -count=1
