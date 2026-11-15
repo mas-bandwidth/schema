@@ -2057,6 +2057,9 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
                     const char * variant = bench_table_json_variant_name( f, (uint64_t) bit );
                     if ( variant != NULL && strcmp( variant, name ) == 0 )
                     {
+                        /* a known variant named twice is a repeated key, refused like one
+                           (§16.2): a conforming writer writes each set bit's name once */
+                        if ( ( bits & ( (uint64_t) 1 << bit ) ) != 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; }
                         bits |= (uint64_t) 1 << bit;
                         found = 1;
                         break;
