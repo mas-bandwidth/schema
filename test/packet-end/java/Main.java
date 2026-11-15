@@ -3,7 +3,9 @@ import java.nio.file.Path;
 
 public final class Main {
     static void check(boolean ok, String what) {
-        if (!ok) throw new AssertionError(what);
+        if (!ok) {
+            throw new AssertionError(what);
+        }
     }
 
     public static void main(String[] args) throws Exception {
