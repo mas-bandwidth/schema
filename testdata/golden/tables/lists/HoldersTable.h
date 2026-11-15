@@ -15334,10 +15334,10 @@ inline bool RowBuilder::Lock()
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const Row & root = *(const Row *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    // ONE NUMBERING NAMES EVERY NODE, ONCE: the root at offset 0 and its
-    // descendants in first-visit order. That order IS the region's order, so
-    // no pass follows a pointer and a chain is not a stack depth
-    // (docs/SPEC-TABLES.md §3.1, §6.3).
+    // MEASURE derives the map from the graph and sizes every node, and it
+    // lays nothing: the root at offset 0 and its descendants in first-visit
+    // order. That order IS the region's order, so no pass follows a pointer
+    // and a chain is not a stack depth (docs/SPEC-TABLES.md §3.1, §6.3).
     TableNumbering numbering;
     TableNumberingInit( numbering, arena.allocator );
     int64_t total = -1;
@@ -15345,8 +15345,34 @@ inline bool RowBuilder::Lock()
     {
         TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
         if ( root_entry != NULL ) { root_entry->offset = 0; }
-        int64_t used = RowPackBytes( ctx, root );
-        bool ok = root_entry != NULL && used >= 0;
+        int64_t measured = RowPackBytes( ctx, root );
+        bool ok = root_entry != NULL && measured >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            measured = TableAlignUp64( measured );
+            entry->offset = measured;
+            measured += bytes;
+        }
+        if ( ok ) { total = measured; }
+    }
+    // PACK derives the map AGAIN from the graph: the measure's map is not
+    // carried across, so used == total is the two walks agreeing rather than
+    // a tautology (docs/SPEC-TABLES.md §3.1).
+    TablePackMapReset( numbering.seen );
+    numbering.count = 0;
+    numbering.work_count = 0;
+    int64_t used = -1;
+    bool ok = total >= 0 && RowNumberFrom( ctx, numbering, root );
+    if ( ok )
+    {
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        used = RowPackBytes( ctx, root );
+        ok = root_entry != NULL && used >= 0;
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
@@ -15357,9 +15383,9 @@ inline bool RowBuilder::Lock()
             entry->offset = used;
             used += bytes;
         }
-        if ( ok ) { total = used; }
+        if ( ok && used != total ) { ok = false; } // the measure and the pack disagree
     }
-    if ( total < 0 )
+    if ( !ok )
     {
         TableNumberingShutdown( numbering );
         return false;
@@ -15373,7 +15399,7 @@ inline bool RowBuilder::Lock()
         TableNumberingShutdown( numbering );
         return false;
     }
-    bool ok = RowPackCopy( ctx, root, packed, packed, total );
+    ok = RowPackCopy( ctx, root, packed, packed, total );
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
@@ -16358,10 +16384,10 @@ inline bool SheetBuilder::Lock()
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const Sheet & root = *(const Sheet *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    // ONE NUMBERING NAMES EVERY NODE, ONCE: the root at offset 0 and its
-    // descendants in first-visit order. That order IS the region's order, so
-    // no pass follows a pointer and a chain is not a stack depth
-    // (docs/SPEC-TABLES.md §3.1, §6.3).
+    // MEASURE derives the map from the graph and sizes every node, and it
+    // lays nothing: the root at offset 0 and its descendants in first-visit
+    // order. That order IS the region's order, so no pass follows a pointer
+    // and a chain is not a stack depth (docs/SPEC-TABLES.md §3.1, §6.3).
     TableNumbering numbering;
     TableNumberingInit( numbering, arena.allocator );
     int64_t total = -1;
@@ -16369,8 +16395,34 @@ inline bool SheetBuilder::Lock()
     {
         TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
         if ( root_entry != NULL ) { root_entry->offset = 0; }
-        int64_t used = SheetPackBytes( ctx, root );
-        bool ok = root_entry != NULL && used >= 0;
+        int64_t measured = SheetPackBytes( ctx, root );
+        bool ok = root_entry != NULL && measured >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            measured = TableAlignUp64( measured );
+            entry->offset = measured;
+            measured += bytes;
+        }
+        if ( ok ) { total = measured; }
+    }
+    // PACK derives the map AGAIN from the graph: the measure's map is not
+    // carried across, so used == total is the two walks agreeing rather than
+    // a tautology (docs/SPEC-TABLES.md §3.1).
+    TablePackMapReset( numbering.seen );
+    numbering.count = 0;
+    numbering.work_count = 0;
+    int64_t used = -1;
+    bool ok = total >= 0 && SheetNumberFrom( ctx, numbering, root );
+    if ( ok )
+    {
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        used = SheetPackBytes( ctx, root );
+        ok = root_entry != NULL && used >= 0;
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
@@ -16381,9 +16433,9 @@ inline bool SheetBuilder::Lock()
             entry->offset = used;
             used += bytes;
         }
-        if ( ok ) { total = used; }
+        if ( ok && used != total ) { ok = false; } // the measure and the pack disagree
     }
-    if ( total < 0 )
+    if ( !ok )
     {
         TableNumberingShutdown( numbering );
         return false;
@@ -16397,7 +16449,7 @@ inline bool SheetBuilder::Lock()
         TableNumberingShutdown( numbering );
         return false;
     }
-    bool ok = SheetPackCopy( ctx, root, packed, packed, total );
+    ok = SheetPackCopy( ctx, root, packed, packed, total );
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
@@ -17413,10 +17465,10 @@ inline bool SquadBuilder::Lock()
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const Squad & root = *(const Squad *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    // ONE NUMBERING NAMES EVERY NODE, ONCE: the root at offset 0 and its
-    // descendants in first-visit order. That order IS the region's order, so
-    // no pass follows a pointer and a chain is not a stack depth
-    // (docs/SPEC-TABLES.md §3.1, §6.3).
+    // MEASURE derives the map from the graph and sizes every node, and it
+    // lays nothing: the root at offset 0 and its descendants in first-visit
+    // order. That order IS the region's order, so no pass follows a pointer
+    // and a chain is not a stack depth (docs/SPEC-TABLES.md §3.1, §6.3).
     TableNumbering numbering;
     TableNumberingInit( numbering, arena.allocator );
     int64_t total = -1;
@@ -17424,8 +17476,34 @@ inline bool SquadBuilder::Lock()
     {
         TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
         if ( root_entry != NULL ) { root_entry->offset = 0; }
-        int64_t used = SquadPackBytes( ctx, root );
-        bool ok = root_entry != NULL && used >= 0;
+        int64_t measured = SquadPackBytes( ctx, root );
+        bool ok = root_entry != NULL && measured >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            measured = TableAlignUp64( measured );
+            entry->offset = measured;
+            measured += bytes;
+        }
+        if ( ok ) { total = measured; }
+    }
+    // PACK derives the map AGAIN from the graph: the measure's map is not
+    // carried across, so used == total is the two walks agreeing rather than
+    // a tautology (docs/SPEC-TABLES.md §3.1).
+    TablePackMapReset( numbering.seen );
+    numbering.count = 0;
+    numbering.work_count = 0;
+    int64_t used = -1;
+    bool ok = total >= 0 && SquadNumberFrom( ctx, numbering, root );
+    if ( ok )
+    {
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        used = SquadPackBytes( ctx, root );
+        ok = root_entry != NULL && used >= 0;
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
@@ -17436,9 +17514,9 @@ inline bool SquadBuilder::Lock()
             entry->offset = used;
             used += bytes;
         }
-        if ( ok ) { total = used; }
+        if ( ok && used != total ) { ok = false; } // the measure and the pack disagree
     }
-    if ( total < 0 )
+    if ( !ok )
     {
         TableNumberingShutdown( numbering );
         return false;
@@ -17452,7 +17530,7 @@ inline bool SquadBuilder::Lock()
         TableNumberingShutdown( numbering );
         return false;
     }
-    bool ok = SquadPackCopy( ctx, root, packed, packed, total );
+    ok = SquadPackCopy( ctx, root, packed, packed, total );
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
@@ -18437,10 +18515,10 @@ inline bool ArmyBuilder::Lock()
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const Army & root = *(const Army *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    // ONE NUMBERING NAMES EVERY NODE, ONCE: the root at offset 0 and its
-    // descendants in first-visit order. That order IS the region's order, so
-    // no pass follows a pointer and a chain is not a stack depth
-    // (docs/SPEC-TABLES.md §3.1, §6.3).
+    // MEASURE derives the map from the graph and sizes every node, and it
+    // lays nothing: the root at offset 0 and its descendants in first-visit
+    // order. That order IS the region's order, so no pass follows a pointer
+    // and a chain is not a stack depth (docs/SPEC-TABLES.md §3.1, §6.3).
     TableNumbering numbering;
     TableNumberingInit( numbering, arena.allocator );
     int64_t total = -1;
@@ -18448,8 +18526,34 @@ inline bool ArmyBuilder::Lock()
     {
         TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
         if ( root_entry != NULL ) { root_entry->offset = 0; }
-        int64_t used = ArmyPackBytes( ctx, root );
-        bool ok = root_entry != NULL && used >= 0;
+        int64_t measured = ArmyPackBytes( ctx, root );
+        bool ok = root_entry != NULL && measured >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            measured = TableAlignUp64( measured );
+            entry->offset = measured;
+            measured += bytes;
+        }
+        if ( ok ) { total = measured; }
+    }
+    // PACK derives the map AGAIN from the graph: the measure's map is not
+    // carried across, so used == total is the two walks agreeing rather than
+    // a tautology (docs/SPEC-TABLES.md §3.1).
+    TablePackMapReset( numbering.seen );
+    numbering.count = 0;
+    numbering.work_count = 0;
+    int64_t used = -1;
+    bool ok = total >= 0 && ArmyNumberFrom( ctx, numbering, root );
+    if ( ok )
+    {
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        used = ArmyPackBytes( ctx, root );
+        ok = root_entry != NULL && used >= 0;
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
@@ -18460,9 +18564,9 @@ inline bool ArmyBuilder::Lock()
             entry->offset = used;
             used += bytes;
         }
-        if ( ok ) { total = used; }
+        if ( ok && used != total ) { ok = false; } // the measure and the pack disagree
     }
-    if ( total < 0 )
+    if ( !ok )
     {
         TableNumberingShutdown( numbering );
         return false;
@@ -18476,7 +18580,7 @@ inline bool ArmyBuilder::Lock()
         TableNumberingShutdown( numbering );
         return false;
     }
-    bool ok = ArmyPackCopy( ctx, root, packed, packed, total );
+    ok = ArmyPackCopy( ctx, root, packed, packed, total );
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
@@ -19461,10 +19565,10 @@ inline bool DeckBuilder::Lock()
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const Deck & root = *(const Deck *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    // ONE NUMBERING NAMES EVERY NODE, ONCE: the root at offset 0 and its
-    // descendants in first-visit order. That order IS the region's order, so
-    // no pass follows a pointer and a chain is not a stack depth
-    // (docs/SPEC-TABLES.md §3.1, §6.3).
+    // MEASURE derives the map from the graph and sizes every node, and it
+    // lays nothing: the root at offset 0 and its descendants in first-visit
+    // order. That order IS the region's order, so no pass follows a pointer
+    // and a chain is not a stack depth (docs/SPEC-TABLES.md §3.1, §6.3).
     TableNumbering numbering;
     TableNumberingInit( numbering, arena.allocator );
     int64_t total = -1;
@@ -19472,8 +19576,34 @@ inline bool DeckBuilder::Lock()
     {
         TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
         if ( root_entry != NULL ) { root_entry->offset = 0; }
-        int64_t used = DeckPackBytes( ctx, root );
-        bool ok = root_entry != NULL && used >= 0;
+        int64_t measured = DeckPackBytes( ctx, root );
+        bool ok = root_entry != NULL && measured >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            measured = TableAlignUp64( measured );
+            entry->offset = measured;
+            measured += bytes;
+        }
+        if ( ok ) { total = measured; }
+    }
+    // PACK derives the map AGAIN from the graph: the measure's map is not
+    // carried across, so used == total is the two walks agreeing rather than
+    // a tautology (docs/SPEC-TABLES.md §3.1).
+    TablePackMapReset( numbering.seen );
+    numbering.count = 0;
+    numbering.work_count = 0;
+    int64_t used = -1;
+    bool ok = total >= 0 && DeckNumberFrom( ctx, numbering, root );
+    if ( ok )
+    {
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        used = DeckPackBytes( ctx, root );
+        ok = root_entry != NULL && used >= 0;
         for ( int64_t k = 0; ok && k < numbering.count; k++ )
         {
             const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
@@ -19484,9 +19614,9 @@ inline bool DeckBuilder::Lock()
             entry->offset = used;
             used += bytes;
         }
-        if ( ok ) { total = used; }
+        if ( ok && used != total ) { ok = false; } // the measure and the pack disagree
     }
-    if ( total < 0 )
+    if ( !ok )
     {
         TableNumberingShutdown( numbering );
         return false;
@@ -19500,7 +19630,7 @@ inline bool DeckBuilder::Lock()
         TableNumberingShutdown( numbering );
         return false;
     }
-    bool ok = DeckPackCopy( ctx, root, packed, packed, total );
+    ok = DeckPackCopy( ctx, root, packed, packed, total );
     for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
         const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
