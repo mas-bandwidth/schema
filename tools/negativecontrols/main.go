@@ -50,7 +50,7 @@ func main() {
 		}
 		bad := false
 		for _, t := range missing {
-			fmt.Fprintf(os.Stderr, "NEGATIVE CONTROL UNCOVERED: %s is defined and the pull-request leg does not run it; add it to a group in %s, or to the exclusion list with a reason\n", t, manifestPath)
+			fmt.Fprintf(os.Stderr, "NEGATIVE CONTROL UNCOVERED: %s is defined and the pull-request leg does not run it; add it to a group with a new file %s/%s.json ({\"group\": \"<group>\", \"targets\": [\"%s\"]}), or to the exclusion list of %s with a reason\n", t, entriesDir, t, t, manifestPath)
 			bad = true
 		}
 		for _, t := range stale {
