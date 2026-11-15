@@ -68,7 +68,7 @@ print("done")
 	out := strings.TrimSpace(string(luarun.Run(t, dir, "main.lua", nil)))
 	t.Logf("%s", out)
 	cases := 0
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if !strings.Contains(line, "ReadFixed=") {
 			continue
 		}
