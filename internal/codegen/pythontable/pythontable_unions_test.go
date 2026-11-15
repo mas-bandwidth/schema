@@ -574,10 +574,15 @@ func unionFailures(t *testing.T, u *ir.Unit, mutate func(map[string][]byte) erro
 		if err != nil {
 			fails = append(fails, fmt.Sprintf("%s: the probe failed: %v\n%s%s", name, err, stdout, stderr))
 		}
+		absent := false
 		for _, line := range want {
 			if !strings.Contains(stdout, line+"\n") {
 				fails = append(fails, fmt.Sprintf("%s: %q is absent", name, line))
+				absent = true
 			}
+		}
+		if absent {
+			fails = append(fails, fmt.Sprintf("%s: the probe printed:\n%s", name, stdout))
 		}
 	}
 	if outs["python-3.15.2"] != outs["python-3.11.18"] {
