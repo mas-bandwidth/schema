@@ -105,6 +105,12 @@ func GunnerSettingsMeasureMessages(values []*GunnerSettings, report *TableReport
 	if w.Overflow {
 		return -1
 	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
+		return -1
+	}
 	return 2 + w.Bits/8
 }
 func GunnerSettingsSaveMessages(values []*GunnerSettings, buffer []byte, report *TableReport) int64 {
@@ -470,6 +476,12 @@ func ShipEntryMeasureMessages(values []*ShipEntry, report *TableReport) int64 {
 	}
 	w.Align()
 	if w.Overflow {
+		return -1
+	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
 		return -1
 	}
 	return 2 + w.Bits/8
@@ -928,6 +940,12 @@ func GlobalSettingsMeasureMessages(values []*GlobalSettings, report *TableReport
 	}
 	w.Align()
 	if w.Overflow {
+		return -1
+	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
 		return -1
 	}
 	return 2 + w.Bits/8
@@ -1394,6 +1412,12 @@ func PackConfigMeasureMessages(values []*PackConfig, report *TableReport) int64 
 	}
 	w.Align()
 	if w.Overflow {
+		return -1
+	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
 		return -1
 	}
 	return 2 + w.Bits/8

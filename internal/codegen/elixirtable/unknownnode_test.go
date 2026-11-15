@@ -190,19 +190,19 @@ store = %{records: [], used: 0, cap: 4096, ids: [], id_cap: 256}
 wire = Base.decode16!(%q, case: :lower)
 label = %q
 case Unnoderead.Table.load("Root", wire) do
-  {:ok, v, r} ->
+  {:ok, {v, _nodes}, r} ->
     check.(r.unknown == 1, label <> ": plain load did not count the record unknown once: " <> inspect(r))
     check.(%s, label <> ": plain load did not read the pointer null: " <> inspect(v))
   other -> check.(false, label <> ": plain load refused an unnamed node type: " <> inspect(other))
 end
 case Unnoderead.Table.variable_load("Root", wire) do
-  {:ok, v, r} ->
+  {:ok, {v, _nodes}, r} ->
     check.(r.unknown == 1, label <> ": variable load did not count the record unknown once: " <> inspect(r))
     check.(%s, label <> ": variable load did not read the pointer null: " <> inspect(v))
   other -> check.(false, label <> ": variable load refused an unnamed node type: " <> inspect(other))
 end
 case Unnoderead.Table.load_retain("Root", wire, store, zero) do
-  {:ok, v, r, _rt} ->
+  {:ok, {v, _nodes}, r, _rt} ->
     check.(r.unknown == 1, label <> ": retaining load did not count the record unknown once: " <> inspect(r))
     check.(%s, label <> ": retaining load did not read the pointer null: " <> inspect(v))
   other -> check.(false, label <> ": retaining load refused an unnamed node type: " <> inspect(other))

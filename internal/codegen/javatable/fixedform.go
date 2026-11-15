@@ -1756,7 +1756,9 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 		// float rides AS THE FLOAT (SPEC §3.4), the bounds are DEFINITIONS in
 		// the digest and the compiled plan carries no range, so the pass can
 		// only be the reader's. The value is finite here, so `<` and `>` see
-		// every case, and a negative zero is not below a min of +0.
+		// every case. A COMPRESSED FLOAT'S `-0` IS `+0` (SPEC §3.3, §3.4;
+		// ALGORITHM §4.6): inside the range only its sign differs, so it lands
+		// as the value zero, refuses nothing and counts nothing.
 		typ, bits, get, mask, conv := "float", "int", "get32", "0x7f800000", "Float.intBitsToFloat"
 		if f.Type.Kind == ir.TFloat64 {
 			typ, bits, get, mask, conv = "double", "long", "get64", "0x7ff0000000000000L", "Double.longBitsToDouble"
@@ -1765,9 +1767,10 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 		g.pf("%s    final %s fbits = TableFixed.%s(%s, %s + %d);\n", ind, bits, get, buf, at, off)
 		g.pf("%s    if (%s && (fbits & %s) == %s) { %s.refuseNonFinite(%q); return; }\n", ind, walked, mask, mask, rep, g.owner+"."+f.Name)
 		if lo, hi, ok := fixedFloatRange(owner); ok {
+			zero := fixedZeroLiteral(typ)
 			g.pf("%s    %s q = %s(fbits);\n", ind, typ, conv)
-			g.pf("%s    if (q < %s) { q = %s; %s } else if (q > %s) { q = %s; %s }\n",
-				ind, lo, lo, scatterRefuse(rep, walked, "outOfRange"), hi, hi, scatterRefuse(rep, walked, "outOfRange"))
+			g.pf("%s    if (q < %s) { q = %s; %s } else if (q > %s) { q = %s; %s } else if (q == 0) { q = %s; }\n",
+				ind, lo, lo, scatterRefuse(rep, walked, "outOfRange"), hi, hi, scatterRefuse(rep, walked, "outOfRange"), zero)
 			g.pf("%s    %s = q;\n", ind, expr)
 		} else {
 			g.pf("%s    %s = %s(fbits);\n", ind, expr, conv)

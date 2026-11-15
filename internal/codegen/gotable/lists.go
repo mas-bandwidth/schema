@@ -175,7 +175,7 @@ func (r *TableReader) wireValueExtent(f *TableFieldInfo,kind uint8,at *int64,nod
  case 13:body,ok:=r.Body();if !ok{return bad};if reason:=tableWireExtent(&body,f.Table(),at,nodes);reason!=TableRefuseOk{return reason};if nodes>=0&&body.Offset!=int64(len(body.Buffer)){return bad}
  case 15:return tableWireUnionExtent(r,f,at,nodes)
  case 12:body,ok:=r.Body();if !ok||nodes>=0&&!tableUTF8Valid(body.Buffer){return bad}
- case 17:index,ok:=r.Leb();if !ok||nodes>=0&&index>uint64(nodes)+1{return bad}
+ case 17:index,ok:=r.Leb();if !ok||nodes>=0&&index>uint64(nodes)+1||nodes>=0&&index!=0&&f.Pointer&&int(index)<=len(r.Nodes.NodeTypes)&&r.Nodes.NodeTypes[index-1]!=0&&r.Nodes.NodeTypes[index-1]!=f.TargetId{return bad}
  case 30:ref,ok:=r.Leb();if !ok{return bad};if ref!=0{if _,ok=r.Resolve(ref);!ok{return bad}}
  case 1:if !r.Has(1){return bad};if r.Get8()>1&&nodes>=0{return bad}
  default:if !r.Skip(kind){return bad}}
