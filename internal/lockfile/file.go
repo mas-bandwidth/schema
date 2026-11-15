@@ -159,7 +159,9 @@ func Update(u *ir.Unit, paths []string) (path string, rewrote bool, err error) {
 		// THE HISTORY CARRIED FORWARD onto what is about to be written: every
 		// locked layout stays, with its retired mark and its reason, and the
 		// declaration's own layout is appended when the hash has MOVED (§11.6).
-		mergeLineage(locked, live)
+		if err := mergeLineage(locked, live); err != nil {
+			return "", false, fmt.Errorf("%s: %w", path, err)
+		}
 		// AND THE RETIRED BLOCKS (§11.5): a retired table's record stays in this
 		// file after its declaration goes, with its lineage and its reason.
 		carryRetired(locked, live)
