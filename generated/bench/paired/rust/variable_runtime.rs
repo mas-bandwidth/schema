@@ -2430,10 +2430,11 @@ impl<'a> Jr<'a> {
     /// read_name reads a string that NAMES a schema name — an object key
     /// naming a field, an enum variant, a flags element, a union arm, an
     /// &node name — and holds it to §16.2's 255-byte cap after decoding. A
-    /// longer one refuses the read; a map key and a string value are data and
-    /// go through read_text/read_string, never this.
+    /// longer one refuses the read, and so does a U+0000 in it, as in every
+    /// object key (§16.3); a map key and a string value are data and go
+    /// through read_text/read_string, never this.
     pub fn read_name(&mut self) -> Option<String> {
-        let s = self.read_string()?;
+        let s = self.read_text()?;
         if s.len() > 255 {
             self.damaged = true;
             return None;
@@ -2806,7 +2807,7 @@ impl<'a> Jr<'a> {
         }
         match self.b[self.p] {
             b'"' => {
-                let _ = self.read_string();
+                let _ = self.read_text();
             }
              b'{' => {
                  if self.depth > JSON_DEPTH_CAP {

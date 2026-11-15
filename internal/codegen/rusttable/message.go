@@ -697,12 +697,16 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
         }
         s.elem = bytes[*at];
         *at += 1;
-        if !known_kind(s.elem) {
-            return (s, false);
-        }
-        // an element kind of 12 is refused here, at the announcement, rather
-        // than at the skip that would meet it (§3.3)
-        if s.elem == 12 {
+        // THE ELEMENT KINDS ARE CLOSED, one list per body kind (§3.3): an
+        // array of strings rides element kind 12 and is walked, while no
+        // declaration produces an array or a keyed body as an element, so
+        // those are damage here at the announcement.
+        let listed = if kind == 14 {
+            (1..=13).contains(&s.elem) || s.elem == 15 || s.elem == 17 || (18..=29).contains(&s.elem) || s.elem == 30
+        } else {
+            (1..=11).contains(&s.elem) || s.elem == 13 || (18..=29).contains(&s.elem) || s.elem == 30
+        };
+        if !listed {
             return (s, false);
         }
         return (s, true);
