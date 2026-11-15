@@ -21,8 +21,12 @@
 -- byte no field covers stays zero (padding, a string's unused tail, the bytes
 -- of a union outside its set arm), and every scalar goes through the TARGET's
 -- byte order — a parameter of the write, never the host's — so a big-endian
--- cook is a byte-swap of every scalar, written once. A counted array writes
--- all N slots; a dead slot carries what the value's storage carries (§7.2).
+-- cook is a byte-swap of every scalar, written once. DEAD BYTES ARE ZERO
+-- (§7.2; docs/rulings.json fixed-dead-bytes-are-zero): a counted array writes
+-- its live slots only, and a slot past its count stays zero whatever the
+-- value's storage holds there; an absent optional writes its presence byte
+-- zero and leaves its payload zero whatever its declared defaults are, which
+-- stay a READ rule.
 --
 -- A list and a map ride in their holder's EXTENT (§2.8, §2.9, §7.2): the
 -- node is its record, rounded to the region's alignment floor, then the
@@ -41,8 +45,9 @@
 -- A float whose bits are a NaN or an infinity is refused as non_finite_float
 -- naming the field (§3.3); a reference the numbering does not carry is
 -- refused as unnumbered_reference, a data cycle as cycle; a map whose keys
--- repeat, and an absent or unguarded field, or a counted array's dead slot,
--- that holds extent the walk does not reach, as invalid_value (§7.4, §7.6).
+-- repeat, and an absent or unguarded field that holds extent the walk does
+-- not reach, as invalid_value (§7.4, §7.6). A counted array's dead slot is
+-- never read: its value, and any extent or reference it names, is ignored.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local S = require("./schema_tables")
@@ -332,7 +337,12 @@ writeField = function(ctx: any, owner: string, fd: any, l: any, base: number, v:
 	local s = fd.s
 	local slot = fd.slot :: string
 	if fd.present ~= nil then
-		buffer.writeu8(b, base + l.p[#l.p], if v[fd.present] == true then 1 else 0)
+		local present = v[fd.present] == true
+		buffer.writeu8(b, base + l.p[#l.p], if present then 1 else 0)
+		if not present then
+			-- an absent optional's payload is dead bytes: it stays zero
+			return true
+		end
 	end
 	if s == "str" then
 		local src = v[slot]
@@ -371,6 +381,8 @@ writeField = function(ctx: any, owner: string, fd: any, l: any, base: number, v:
 				return fail(ctx, "invalid_value", owner, fd)
 			end
 			putUN(ctx, base + l.p[2], 4, count)
+			-- a slot past the live count is dead bytes: it stays zero
+			n = count
 		end
 		local dst = v[slot]
 		if n > 0 and dst == nil then
@@ -622,21 +634,11 @@ carveField = function(c: any, owner: string, fd: any, l: any, base: number, v: a
 	if fd.array == "counted" then
 		live = math.min(v[fd.slot .. "Count"] or 0, n)
 	end
+	-- a counted array's slots past its live count are dead storage: their
+	-- values, and any extent they name, are ignored (§7.2)
 	for i = 1, live do
 		if not carveElement(c, owner, fd, fd.e, at + (i - 1) * l.elem, val[i]) then
 			return false
-		end
-	end
-	-- AN UNREACHED NON-EMPTY EXTENT IS REFUSED (§7.6): a counted array's slots
-	-- past its live count are storage the walk does not reach, so a list in
-	-- one names bytes the region will not hold
-	for i = live + 1, n do
-		local probe = { ctx = c.ctx, write = false, extentAt = 0, at = 0 }
-		if not carveElement(probe, owner, fd, fd.e, 0, val[i]) then
-			return false
-		end
-		if probe.at ~= 0 then
-			return fail(c.ctx, "invalid_value", owner, fd)
 		end
 	end
 	return true
@@ -645,7 +647,7 @@ end
 -- one record's fields in declaration order. A field the save elides (an
 -- absent optional, a field under a false guard) is not reached: its slot
 -- stays zero, and storage in it that would take extent is refused (§2.3,
--- §7.6), as the counted array's dead slot is
+-- §7.6)
 carveRecord = function(c: any, at: number, d: any, v: any): boolean
 	if v == nil then
 		return true
