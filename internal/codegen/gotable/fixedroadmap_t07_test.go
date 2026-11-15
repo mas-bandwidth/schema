@@ -257,20 +257,20 @@ func t07GoW8(t *testing.T) {
 	}
 	// meta 3 is tableFixedTextBytes and meta 1 is tableFixedTextUTF8 in the
 	// runtime the unit carries (fixedruntime.go's tableFixedRuntime const).
-	if blob[1] != "1" || blob[3] != "1" || blob[5] != strconv.Itoa(t07TextBytes) {
+	if blob[1] != "1" || blob[4] != "1" || blob[6] != strconv.Itoa(t07TextBytes) {
 		t.Errorf("W8: bytes(N) takes the ARRAY row — stride 1, a live count, meta bytes — got %v", blob)
 	}
 	note, ok := rows["note"]
 	if !ok {
 		t.Fatal("W8: the emitted RootFixedDst names no note row")
 	}
-	if note[1] != "0" || note[3] != "0" || note[5] != strconv.Itoa(t07TextUtf8) {
+	if note[1] != "0" || note[4] != "0" || note[6] != strconv.Itoa(t07TextUtf8) {
 		t.Errorf("W8: a text field's row is the other way round — no stride, no count, meta utf8 — got %v", note)
 	}
 }
 
 // t07DstRows reads the emitted `var RootFixedDst = []TableFixedDst{ … }` into a
-// map from each row's trailing name to its six comma-separated fields.
+// map from each row's trailing name to its seven comma-separated fields.
 func t07DstRows(t *testing.T, src string) map[string][]string {
 	t.Helper()
 	const open = "var RootFixedDst = []TableFixedDst{"

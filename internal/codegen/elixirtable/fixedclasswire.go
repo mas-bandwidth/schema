@@ -245,10 +245,24 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
     end
   end
 
+  # THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3, §4): an array body
+  # (kind 14) may carry 1–13, 15, 17 and 18–30, and an enum-keyed body (kind
+  # 16) 1–11, 13 and 18–30. Any other kind is damage under ANY count, a count
+  # of 0 included, so the header's kind byte is judged before the elements.
+  defp array_element_kind?(kind),
+    do: kind in 1..13 or kind in [15, 17, 30] or kind in 18..29
+
+  defp keyed_element_kind?(kind),
+    do: kind in 1..11 or kind == 13 or kind in 18..29 or kind == 30
+
   defp unknown_array?(<<ek, rest::binary>>, ids, depth) when rest != <<>> do
-    case leb(rest) do
-      {n, elems} when n <= 0x7FFFFFFF -> unknown_elements?(elems, ek, n, ids, depth)
-      _ -> false
+    if array_element_kind?(ek) do
+      case leb(rest) do
+        {n, elems} when n <= 0x7FFFFFFF -> unknown_elements?(elems, ek, n, ids, depth)
+        _ -> false
+      end
+    else
+      false
     end
   end
 
@@ -264,9 +278,13 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
   end
 
   defp unknown_keyed?(<<ek, rest::binary>>, ids, depth) when rest != <<>> do
-    case leb(rest) do
-      {n, pairs} when n <= 0x7FFFFFFF -> unknown_pairs?(pairs, ek, n, ids, depth, MapSet.new())
-      _ -> false
+    if keyed_element_kind?(ek) do
+      case leb(rest) do
+        {n, pairs} when n <= 0x7FFFFFFF -> unknown_pairs?(pairs, ek, n, ids, depth, MapSet.new())
+        _ -> false
+      end
+    else
+      false
     end
   end
 

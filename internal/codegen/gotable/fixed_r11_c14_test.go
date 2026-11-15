@@ -392,8 +392,8 @@ func TestProbe(t *testing.T) {
 `, data)
 		out, err := runFixedProbe(t, newer, lineage, func(files map[string][]byte) {
 			sabotageGenerated(t, files, "writer-bound count", [2]string{
-				"Size: n, Aux: tel.Size",
-				"Size: myN, Aux: tel.Size",
+				"Size: n, Min: d.Min, Aux: tel.Size",
+				"Size: myN, Min: d.Min, Aux: tel.Size",
 			})
 		}, src)
 		requireRed(t, "the plan's writer bound", out, err, "count_over_bound")
