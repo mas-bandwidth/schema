@@ -39,8 +39,8 @@ func (m *Model) CheckValue(inst *Instance) error {
 	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}, binaryText: true})
 }
 
-// CheckFileValue is CheckValue for the file forms, variable and fixed, which
-// carry a flags mask whole as a u64 (docs/SPEC-TABLES.md §3, §3.4): a mask
+// CheckFileValue is CheckValue for the VARIABLE file form, which
+// carries a flags mask whole as a u64 (docs/SPEC-TABLES.md §3, §3.4): a mask
 // bit above the declared variants is kept, as the read keeps it (§4, A TABLE
 // LOAD DOES NOT JUDGE A MASK AGAINST A RANGE), so a file an older build read
 // writes back byte for byte. A FILE writer also refuses a zero byte or unit

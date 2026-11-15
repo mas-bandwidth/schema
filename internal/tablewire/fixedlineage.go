@@ -172,8 +172,6 @@ func (d *lineageDecoder) table(w *fixedNode, b []byte, inst *tabletext.Instance)
 		i, named := byID[c.id]
 		switch {
 		case !named:
-			// A FIELD THE READER ADDED, or one the older layout never held:
-			// its declared default stands (§21.2).
 			d.report.Unknown++ // a field the reader no longer declares (§4)
 		default:
 			// A DEPRECATED FIELD IS CARRIED LIKE ANY FIELD (docs/SPEC-TABLES.md

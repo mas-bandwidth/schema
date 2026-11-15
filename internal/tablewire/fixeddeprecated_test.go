@@ -127,3 +127,43 @@ func TestFixedDeprecatedFieldIsCarriedRefusesLikeAnyField(t *testing.T) {
 		t.Fatal("a deprecated field holding a value outside its declared range was saved; it must be refused like any field")
 	}
 }
+
+// THE READ CHECKS A DEPRECATED FIELD LIKE ANY FIELD: a stored value outside
+// the field's declared range refuses the whole load (the verdict only). The
+// field's byte is found as the one byte two in-range saves differ in.
+func TestFixedDeprecatedFieldIsCarriedReadRefusesLikeAnyField(t *testing.T) {
+	t.Parallel()
+	m := covModel(t, carriedUnit)
+	inst := m.New(m.Lookup("Root"))
+	carriedField(t, inst, "ranged").Cell.U = 5
+	wire, err := EncodeFixed(m, inst)
+	if err != nil {
+		t.Fatalf("fixed save: %v", err)
+	}
+	carriedField(t, inst, "ranged").Cell.U = 4
+	other, err := EncodeFixed(m, inst)
+	if err != nil {
+		t.Fatalf("fixed save: %v", err)
+	}
+	if len(wire) != len(other) {
+		t.Fatalf("the two saves differ in length: %d and %d", len(wire), len(other))
+	}
+	at := -1
+	for i := range wire {
+		if wire[i] != other[i] {
+			if at >= 0 {
+				t.Fatalf("the two saves differ at %d and %d; want one byte", at, i)
+			}
+			at = i
+		}
+	}
+	if at < 0 || wire[at] != 5 {
+		t.Fatalf("no single byte holds the deprecated ranged field (at=%d)", at)
+	}
+	wire[at] = 9
+	back := m.New(m.Lookup("Root"))
+	var report tabletext.Report
+	if ok, err := Decode(m, back, wire, &report); ok && err == nil && !report.Refused {
+		t.Fatal("a stored deprecated value outside its declared range was read; it must be refused like any field")
+	}
+}

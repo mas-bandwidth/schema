@@ -167,6 +167,42 @@ func TestFixedDeprecatedFieldIsCarriedRefusesLikeAnyField(t *testing.T) {
 		}
 	}
 }
+
+// THE READ CHECKS A DEPRECATED FIELD LIKE ANY FIELD: a stored value outside
+// the field's declared range refuses the whole load (the verdict only). The
+// field's byte is found as the one byte two in-range saves differ in.
+func TestFixedDeprecatedFieldIsCarriedReadRefusesLikeAnyField(t *testing.T) {
+	t.Parallel()
+	v := held()
+	buf := make([]byte, TFixedMeasure(1))
+	if n := TFixedSave([]T{v}, buf); n != int64(len(buf)) {
+		t.Fatalf("save %d, want %d", n, len(buf))
+	}
+	v.RetiredRange = 4
+	other := make([]byte, TFixedMeasure(1))
+	if n := TFixedSave([]T{v}, other); n != int64(len(other)) {
+		t.Fatalf("save %d, want %d", n, len(other))
+	}
+	at := -1
+	for i := range buf {
+		if buf[i] != other[i] {
+			if at >= 0 {
+				t.Fatalf("the two saves differ at %d and %d; want one byte", at, i)
+			}
+			at = i
+		}
+	}
+	if at < 0 || buf[at] != 5 {
+		t.Fatalf("no single byte holds the deprecated ranged field (at=%d)", at)
+	}
+	buf[at] = 9
+	back := make([]T, 1)
+	plan := make([]TableFixedEntry, TFixedPlanMax)
+	var r TableReport
+	if n := TFixedLoad(back, buf, plan, &r); n >= 0 {
+		t.Fatalf("a stored deprecated value outside its declared range was read (load %d); it must be refused like any field", n)
+	}
+}
 `)
 }
 

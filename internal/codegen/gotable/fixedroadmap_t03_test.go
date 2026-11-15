@@ -541,7 +541,7 @@ func t03GoR20(t *testing.T) {
 	t03GoHas(t, load, "defBytes := LineageFixedResetImage", "R20 the default image is the declared defaults, laid once")
 	t03GoHas(t, load, "holes = LineageFixedLineageHoles[pick]", "R20 a lineage plan's holes are laid once, never per call")
 	t03GoHas(t, load, "copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])", "R20 an added field lands the declared default")
-	// A DEPRECATED FIELD, counted ONCE per plan: the census is the lane's, and
+	// AN UNKNOWN (UNDECLARED) FIELD, counted ONCE per plan: the census is the lane's, and
 	// an array's element 0 is the only one that censuses.
 	t03GoHas(t, load, "report.Unknown += censusUnknown", "R20 the census lands once, after the loop")
 	t03GoHas(t, tableFixedRuntime, "if !named && census && c.report != nil {", "R20 an unknown field is counted")
