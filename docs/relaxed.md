@@ -104,13 +104,6 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-moo`: both hostile rows.
   - `relax/hostile-rows-rust`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-squirrel`: both hostile rows.
-- `relax/rust-json-fixed-rows`: five json-hostile cases of the Rust leg
-  (fixed-at-bound, fixed-exact-fraction and fixed-integral-token write 8
-  bytes, a refusal, where the corpus has the canonical text; fixed-fraction-too-fine
-  and int128-fractional read where the corpus refuses), red at CI full
-  43656719730. Files: `test/conformance/relaxed.txt`. Real fix: the Rust JSON
-  read of fixed-point and int128 text follows docs/SPEC-TABLES.md §16 as the
-  engine does. WIP: none.
 - `relax/deprecated-carried`: `test/conformance/go/rows/R20_test.go`, clause 2
   (`TestRowR20DroppedFieldUnknown`). The header is restored to the
   maintainer's ruling of 2026-11-10 (a `| deprecated` fixed-form field is
