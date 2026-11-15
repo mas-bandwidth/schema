@@ -55,11 +55,6 @@
     },
     {
       "row": "surface json-hostile",
-      "lang": "lobster",
-      "slug": "relax/hostile-rows-lobster"
-    },
-    {
-      "row": "surface json-hostile",
       "lang": "lua",
       "slug": "relax/hostile-rows-lua"
     },
