@@ -76,6 +76,10 @@ func TestABadEntryIsRefused(t *testing.T) {
 		{"unknown field", `{"group": "elixir", "target": ["x-negative-control"]}`, `unknown field`},
 		{"no target", `{"group": "elixir", "targets": []}`, `names no target`},
 		{"not json", `{"group": "elixir",`, `x-negative-control.json`},
+		{"group and exclusion", `{"group": "elixir", "targets": ["x-negative-control"], "excluded": [{"target": "y-negative-control", "reason": "r"}]}`, `one or the other`},
+		{"exclusion without reason", `{"excluded": [{"target": "x-negative-control", "reason": " "}]}`, `with no reason`},
+		{"exclusion without target", `{"excluded": [{"reason": "r"}]}`, `with no target`},
+		{"exclusion unknown field", `{"excluded": [{"target": "x-negative-control", "why": "r"}]}`, `unknown field`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -104,5 +108,40 @@ func TestAnEntryDuplicatingAControlIsRefused(t *testing.T) {
 	}
 	if _, err := m.covered(); err == nil || !strings.Contains(err.Error(), "b-negative-control") {
 		t.Fatalf("covered accepted a control placed twice: %v", err)
+	}
+}
+
+// TestAnEntryExcludesAControl holds the second entry form: a file carrying
+// excluded entries adds each, target and reason, to the exclusion list, and
+// the excluded control is accounted for by covered like one of the shared
+// file's own exclusions.
+func TestAnEntryExcludesAControl(t *testing.T) {
+	t.Parallel()
+	root := entriesTree(t, map[string]string{
+		"x-negative-control.json": `{"excluded": [{"target": "x-negative-control", "reason": "needs a toolchain no tier installs"}]}`,
+	})
+	m, err := loadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Skipped) != 1 || m.Skipped[0].Target != "x-negative-control" || m.Skipped[0].Reason != "needs a toolchain no tier installs" {
+		t.Fatalf("exclusions = %+v, want x-negative-control with its reason", m.Skipped)
+	}
+	covered, err := m.covered()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if covered["x-negative-control"] != "excluded" {
+		t.Errorf("x-negative-control is %q in the plan, want excluded", covered["x-negative-control"])
+	}
+	dup := entriesTree(t, map[string]string{
+		"b-negative-control.json": `{"excluded": [{"target": "b-negative-control", "reason": "r"}]}`,
+	})
+	m, err = loadManifest(dup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.covered(); err == nil || !strings.Contains(err.Error(), "b-negative-control") {
+		t.Fatalf("covered accepted a control both grouped and excluded: %v", err)
 	}
 }

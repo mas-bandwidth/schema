@@ -393,9 +393,12 @@ group of `make/negative-controls.json` whose toolchain it needs and whose job
 still fits the rule with it added, and the tool appends the file's targets to
 that group (files in name order). A new file, rather than a line in the shared
 array, means two changes that each add a control never edit the same lines.
-Forgetting the file is a red test rather than a control that runs nowhere. A control that cannot run on either tier goes in the same file's
-`excluded` list with a reason, which the test requires to be non-empty. Nothing
-leaves the leg silently.
+Forgetting the file is a red test rather than a control that runs nowhere. A control that cannot run on either tier gets the same one file,
+holding `{"excluded": [{"target": "<control>", "reason": "<why>"}]}`
+instead of a group: the tool adds it to the exclusion list, and refuses a
+file with an empty reason, or with both a group and exclusions. Never edit
+the shared file's `excluded` list for a new control. Nothing leaves the leg
+silently.
 
 Locally:
 

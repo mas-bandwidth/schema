@@ -162,19 +162,26 @@ func (m Manifest) covered() (map[string]string, error) {
 }
 
 // entriesDir holds one small file per added control, relative to the
-// repository root: make/negative-controls.d/<control>.json. Each names an
-// existing group of manifestPath and the targets it adds to that group, so
-// two changes that each add a control add two files and never edit the same
-// lines of manifestPath. The plan is manifestPath with every entry's targets
-// appended to its group, entries read in file-name order.
+// repository root: make/negative-controls.d/<control>.json. Each either names
+// an existing group of manifestPath and the targets it adds to that group, or
+// carries excluded entries (a target and its reason, the fields of
+// manifestPath's own excluded list) that join the exclusion list. So two
+// changes that each add a control add two files and never edit the same lines
+// of manifestPath. The plan is manifestPath with every entry's targets
+// appended to its group and every entry's exclusions appended to the list,
+// entries read in file-name order.
 const entriesDir = "make/negative-controls.d"
 
-// Entry is one file of entriesDir.
+// Entry is one file of entriesDir: a group and its targets, or exclusions,
+// never both.
 type Entry struct {
 	// Group is the name of the manifestPath group the targets join.
-	Group string `json:"group"`
+	Group string `json:"group,omitempty"`
 	// Targets are the make targets the entry adds to that group.
-	Targets []string `json:"targets"`
+	Targets []string `json:"targets,omitempty"`
+	// Excluded are controls the leg does not run, each with its reason, as
+	// manifestPath's excluded list holds them.
+	Excluded []Exclusion `json:"excluded,omitempty"`
 }
 
 // loadManifest reads the plan from the repository root: manifestPath, with
@@ -194,10 +201,11 @@ func loadManifest(root string) (Manifest, error) {
 	return m, nil
 }
 
-// addEntries appends every entriesDir file's targets to its group. An entry
-// that does not parse, carries an unknown field, names no target, or names a
-// group manifestPath does not hold is refused, so a typo cannot quietly take
-// a control off the plan.
+// addEntries appends every entriesDir file's targets to its group and its
+// exclusions to the exclusion list. An entry that does not parse, carries an
+// unknown field, names no target, names a group manifestPath does not hold,
+// mixes a group with exclusions, or excludes a control with no target or no
+// reason is refused, so a typo cannot quietly take a control off the plan.
 func (m *Manifest) addEntries(root string) error {
 	files, err := filepath.Glob(filepath.Join(root, entriesDir, "*.json"))
 	if err != nil {
@@ -215,6 +223,21 @@ func (m *Manifest) addEntries(root string) error {
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&e); err != nil {
 			return fmt.Errorf("%s: %w", rel, err)
+		}
+		if len(e.Excluded) > 0 {
+			if e.Group != "" || len(e.Targets) > 0 {
+				return fmt.Errorf("%s names a group and exclusions: one entry file is one or the other", rel)
+			}
+			for _, x := range e.Excluded {
+				if strings.TrimSpace(x.Target) == "" {
+					return fmt.Errorf("%s excludes a control with no target", rel)
+				}
+				if strings.TrimSpace(x.Reason) == "" {
+					return fmt.Errorf("%s excludes %s with no reason", rel, x.Target)
+				}
+			}
+			m.Skipped = append(m.Skipped, e.Excluded...)
+			continue
 		}
 		if len(e.Targets) == 0 {
 			return fmt.Errorf("%s names no target", rel)
