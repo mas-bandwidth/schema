@@ -70,7 +70,8 @@ table Holder {
 
 			fset := token.NewFileSet()
 			parsed := make([]*ast.File, 0, len(names))
-			declarations := map[string]*ast.Ident{}
+			declarations := map[string][]*ast.Ident{}
+			methods := map[string]bool{}
 			var blankShims []string
 			for _, name := range names {
 				file, err := parser.ParseFile(fset, name, files[name], 0)
@@ -84,7 +85,10 @@ table Holder {
 					}
 					switch decl := decl.(type) {
 					case *ast.FuncDecl:
-						if decl.Recv == nil && decl.Name.Name != "init" {
+						if decl.Recv != nil {
+							methods[decl.Name.Name] = true
+						}
+						if decl.Recv != nil || decl.Name.Name != "init" {
 							if !api[decl.Name.Name] {
 								addUnexportedDeclaration(declarations, decl.Name)
 							}
@@ -109,12 +113,14 @@ table Holder {
 			}
 
 			referenced := map[string]bool{}
+			selectorNames := map[string]bool{}
 			for _, file := range parsed {
 				nonReferences := map[*ast.Ident]bool{}
 				ast.Inspect(file, func(node ast.Node) bool {
 					switch node := node.(type) {
 					case *ast.SelectorExpr:
 						nonReferences[node.Sel] = true
+						selectorNames[node.Sel.Name] = true
 					case *ast.KeyValueExpr:
 						if key, ok := node.Key.(*ast.Ident); ok {
 							nonReferences[key] = true
@@ -128,7 +134,7 @@ table Holder {
 				})
 				ast.Inspect(file, func(node ast.Node) bool {
 					id, ok := node.(*ast.Ident)
-					if !ok || declarations[id.Name] == nil || id == declarations[id.Name] {
+					if !ok || declarations[id.Name] == nil || declarationIdent(declarations[id.Name], id) {
 						return true
 					}
 					if nonReferences[id] {
@@ -137,6 +143,11 @@ table Holder {
 					referenced[id.Name] = true
 					return true
 				})
+			}
+			for name := range selectorNames {
+				if methods[name] {
+					referenced[name] = true
+				}
 			}
 
 			var unused []string
@@ -147,7 +158,7 @@ table Holder {
 			}
 			sort.Strings(unused)
 			if len(unused) != 0 {
-				t.Errorf("%s has unreferenced unexported top-level declarations: %s", test.name, strings.Join(unused, ", "))
+				t.Errorf("%s has unreferenced unexported declarations: %s", test.name, strings.Join(unused, ", "))
 			}
 			if len(blankShims) != 0 {
 				t.Errorf("%s carries shims it does not use, as blank constants: %s", test.name, strings.Join(blankShims, ", "))
@@ -179,10 +190,19 @@ func blankRuntimeShim(decl ast.Decl) string {
 	return ""
 }
 
-func addUnexportedDeclaration(dst map[string]*ast.Ident, name *ast.Ident) {
+func addUnexportedDeclaration(dst map[string][]*ast.Ident, name *ast.Ident) {
 	if name != nil && name.Name != "_" && !token.IsExported(name.Name) {
-		dst[name.Name] = name
+		dst[name.Name] = append(dst[name.Name], name)
 	}
+}
+
+func declarationIdent(ids []*ast.Ident, id *ast.Ident) bool {
+	for _, declaration := range ids {
+		if declaration == id {
+			return true
+		}
+	}
+	return false
 }
 
 func TestGoPreservesLowercaseTableEntryPoints(t *testing.T) {

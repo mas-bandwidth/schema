@@ -539,13 +539,6 @@ func TableUTF8Valid(data []byte) bool {
 	return hi&0x8080808080808080 == 0 || utf8.Valid(data)
 }
 
-func TableUTF8Clamp(data []byte, n int64) int64 {
-	for n > 0 && n < int64(len(data)) && data[n]&0xc0 == 0x80 {
-		n--
-	}
-	return n
-}
-
 // tableBinaryMaxDepth is the binary nesting bound (mas-bandwidth/schema docs/SPEC-TABLES.md §4,
 // binary_max_depth): a root body or a node record is level 0, each table,
 // array or keyed body one level deeper, and level 129 refuses.
@@ -2018,4 +2011,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x681ce543bdbbb046
+const Version uint64 = 0xed2f7ea486d3d405

@@ -2773,13 +2773,7 @@ func (g *tableJSONGraph) setLabel(key uint64, entry tableJSONLabel) bool {
 	g.labels[i] = entry
 	return true
 }
-func (g *tableJSONGraph) close() {
-	if g.memory != nil {
-		g.release(g.memory)
-		g.memory = nil
-		g.labels = nil
-	}
-}
+
 func tableJSONPointerAt(slot *int64) unsafe.Pointer {
 	if *slot == 0 {
 		return nil

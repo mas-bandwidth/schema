@@ -490,9 +490,4 @@ func tableUTF8Valid(data []byte) bool {
 	if z&0x8080808080808080 != 0 { return false }
 	return hi&0x8080808080808080 == 0 || utf8.Valid(data)
 }
-
-func tableUTF8Clamp(data []byte, n int64) int64 {
-	for n > 0 && n < int64(len(data)) && data[n]&0xc0 == 0x80 { n-- }
-	return n
-}
 `

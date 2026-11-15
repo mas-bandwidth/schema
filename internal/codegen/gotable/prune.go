@@ -28,6 +28,7 @@ func pruneUnreferencedDeclarations(files map[string][]byte, schemaAPI map[string
 	fset := token.NewFileSet()
 	parsed := make(map[string]*ast.File, len(names))
 	declarations := map[string][]*ast.Ident{}
+	methods := map[string]bool{}
 	for _, name := range names {
 		file, err := parser.ParseFile(fset, name, files[name], parser.ParseComments)
 		if err != nil {
@@ -37,7 +38,10 @@ func pruneUnreferencedDeclarations(files map[string][]byte, schemaAPI map[string
 		for _, decl := range file.Decls {
 			switch decl := decl.(type) {
 			case *ast.FuncDecl:
-				if decl.Recv == nil && decl.Name.Name != "init" {
+				if decl.Recv != nil {
+					methods[decl.Name.Name] = true
+				}
+				if decl.Recv != nil || decl.Name.Name != "init" {
 					addPrivateDeclaration(declarations, decl.Name)
 				}
 			case *ast.GenDecl:
@@ -59,7 +63,7 @@ func pruneUnreferencedDeclarations(files map[string][]byte, schemaAPI map[string
 	// so their doc and interior comments leave with them.
 	removed := map[string][]sourceRange{}
 	for {
-		referenced, usedIdentifiers := referencesInFiles(names, parsed, declarations)
+		referenced, usedIdentifiers := referencesInFiles(names, parsed, declarations, methods)
 		for name := range schemaAPI {
 			referenced[name] = true
 		}
@@ -70,7 +74,7 @@ func pruneUnreferencedDeclarations(files map[string][]byte, schemaAPI map[string
 			for _, decl := range file.Decls {
 				switch decl := decl.(type) {
 				case *ast.FuncDecl:
-					if decl.Recv == nil && decl.Name.Name != "init" && isPrivate(decl.Name.Name) && !referenced[decl.Name.Name] {
+					if (decl.Recv != nil || decl.Name.Name != "init") && isPrivate(decl.Name.Name) && !referenced[decl.Name.Name] {
 						removed[name] = append(removed[name], nodeRange(decl.Doc, decl, nil))
 						changed = true
 						continue
@@ -116,9 +120,10 @@ func pruneUnreferencedDeclarations(files map[string][]byte, schemaAPI map[string
 	return files, nil
 }
 
-func referencesInFiles(names []string, parsed map[string]*ast.File, declarations map[string][]*ast.Ident) (map[string]bool, map[string]map[string]bool) {
+func referencesInFiles(names []string, parsed map[string]*ast.File, declarations map[string][]*ast.Ident, methods map[string]bool) (map[string]bool, map[string]map[string]bool) {
 	referenced := map[string]bool{}
 	usedIdentifiers := map[string]map[string]bool{}
+	selectorNames := map[string]bool{}
 	for _, name := range names {
 		file := parsed[name]
 		usedIdentifiers[name] = map[string]bool{}
@@ -127,6 +132,7 @@ func referencesInFiles(names []string, parsed map[string]*ast.File, declarations
 			switch node := node.(type) {
 			case *ast.SelectorExpr:
 				nonReferences[node.Sel] = true
+				selectorNames[node.Sel.Name] = true
 			case *ast.KeyValueExpr:
 				if key, ok := node.Key.(*ast.Ident); ok {
 					nonReferences[key] = true
@@ -153,6 +159,11 @@ func referencesInFiles(names []string, parsed map[string]*ast.File, declarations
 			}
 			return true
 		})
+	}
+	for name := range selectorNames {
+		if methods[name] {
+			referenced[name] = true
+		}
 	}
 	return referenced, usedIdentifiers
 }
