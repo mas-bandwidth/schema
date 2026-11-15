@@ -937,11 +937,48 @@ def j_refuse(r:JsonReader, reason:string) -> bool:
         r.report.reason = reason
     return false
 
-def j_key_once(r:JsonReader, keys:[string], key:string) -> bool:
-    for(keys) prior:
-        if prior == key:
+// j_key_once refuses an object whose keys repeat one. The keys are sorted
+// once, by a bottom-up merge sort, and only neighbours are compared, so an
+// object of n keys costs O(n log n) comparisons (docs/SECURITY.md).
+def j_key_once(r:JsonReader, keys:[string]) -> bool:
+    def key_order(a:string, b:string) -> int:
+        let n = min(length(a), length(b))
+        var i = 0
+        while i < n:
+            if a[i] != b[i]:
+                return if a[i] < b[i]: -1 else: 1
+            i++
+        if length(a) == length(b):
+            return 0
+        return if length(a) < length(b): -1 else: 1
+    var src:[string] = []
+    for(keys) k:
+        push(src, k)
+    let n = length(src)
+    var width = 1
+    while width < n:
+        let dst:[string] = []
+        var lo = 0
+        while lo < n:
+            let mid = min(lo + width, n)
+            let hi = min(lo + 2 * width, n)
+            var i = lo
+            var j = mid
+            while i < mid or j < hi:
+                if j >= hi or (i < mid and key_order(src[i], src[j]) <= 0):
+                    push(dst, src[i])
+                    i++
+                else:
+                    push(dst, src[j])
+                    j++
+            lo = hi
+        src = dst
+        width *= 2
+    var at = 1
+    while at < n:
+        if key_order(src[at - 1], src[at]) == 0:
             return j_refuse(r, "duplicate_key")
-    push(keys, key)
+        at++
     return true
 
 def j_required(r:JsonReader, rec:Record, seen:[bool]) -> bool:
@@ -1267,7 +1304,7 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
             r.pos++
             if definition:
                 definition.open = false
-            return true
+            return j_key_once(r, keys)
         if c == 0:
             r.bad = true
             return false
@@ -1276,8 +1313,7 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
             let key, _, ok = j_scan_string(r, json_max_key)
             if not ok:
                 return false
-            if not j_key_once(r, keys, key):
-                return false
+            push(keys, key)
             if j_peek(r) != ':':
                 r.bad = true
                 return false
@@ -1295,7 +1331,7 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
                     continue
                 if c == close:
                     r.pos++
-                    return true
+                    return j_key_once(r, keys)
                 r.bad = true
                 return false
         if not keyed:
@@ -1310,7 +1346,7 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
                 r.pos++
                 if definition:
                     definition.open = false
-                return true
+                return j_key_once(r, keys)
             r.bad = true
             return false
     return false
@@ -1411,7 +1447,7 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
             let c = j_peek(r)
             if c == '}':
                 r.pos++
-                return j_required(r, rec, seen)
+                return j_key_once(r, keys) and j_required(r, rec, seen)
             if c == 0:
                 return j_refuse(r, "malformed")
             let k, _, ok = j_scan_string(r, json_max_key)
@@ -1421,8 +1457,7 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
                 return j_refuse(r, "malformed")
             r.pos++
             key = k
-        if not j_key_once(r, keys, key):
-            return false
+        push(keys, key)
         if length(key) > 0 and key[0] == '&':
             return j_refuse(r, "malformed")
         let index = j_field_index(rec, key)
@@ -1452,7 +1487,7 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
             continue
         if c == '}':
             r.pos++
-            return j_required(r, rec, seen)
+            return j_key_once(r, keys) and j_required(r, rec, seen)
         return j_refuse(r, "malformed")
     return false
 
@@ -1693,8 +1728,7 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
         let key, _, ok = j_scan_string(r, json_max_key)
         if not ok:
             return false
-        if not j_key_once(r, seen, key):
-            return false
+        push(seen, key)
         if j_peek(r) != ':':
             r.bad = true
             return false
@@ -1718,7 +1752,7 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
             break
         r.bad = true
         return false
-    return true
+    return j_key_once(r, seen)
 
 // j_read_scalar places one value at one cell (Go's readScalar). elem: the
 // cell is an array or keyed element, whose deprecated variant reads None.
@@ -2188,7 +2222,6 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
     let ed = table_of(sl.fd.t)
     let kf = ed.fields[0]
     let string_key = key_is_string(kf)
-    let keys:[string] = []
     while true:
         var c = j_peek(r)
         if c == '}':
@@ -2200,8 +2233,6 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
         let key, _, ok = j_scan_stored(r, key_limit)
         if not ok:
             return false
-        if not j_key_once(r, keys, key):
-            return false
         if j_peek(r) != ':':
             return j_refuse(r, "malformed")
         r.pos++
@@ -2209,10 +2240,6 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
         let placed = j_place_map_key(entry, kf, key)
         if placed != 0:
             return j_refuse(r, "kind_mismatch")
-        for(sl.entries) v:
-            let prior = v.tab
-            if prior and map_key_order(kf, prior.fields[0].cell, entry.fields[0].cell) == 0:
-                return j_refuse(r, "duplicate_key")
         push(sl.entries, Value { tab: entry })
         if not j_read_map_value(r, entry.fields[1], depth):
             return false
@@ -2224,18 +2251,44 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
             r.pos++
             break
         return j_refuse(r, "malformed")
+    // sorted once; a repeated key is then a neighbour of its twin
     sl.entries = j_sorted_entries(kf, sl.entries)
+    var at = 1
+    while at < length(sl.entries):
+        if j_entry_order(kf, sl.entries[at - 1], sl.entries[at]) == 0:
+            return j_refuse(r, "duplicate_key")
+        at++
     return true
 
 
+// j_sorted_entries is the entries in ascending key order by a stable
+// bottom-up merge sort: O(n log n) comparisons whatever order the entries
+// arrive in (docs/SECURITY.md).
 def j_sorted_entries(kf:FieldDescriptor, entries:[Value]) -> [Value]:
-    let out:[Value] = []
+    var src:[Value] = []
     for(entries) v:
-        var i = length(out)
-        while i > 0 and j_entry_order(kf, out[i - 1], v) > 0:
-            i--
-        insert(out, i, v)
-    return out
+        push(src, v)
+    let n = length(src)
+    var width = 1
+    while width < n:
+        let dst:[Value] = []
+        var lo = 0
+        while lo < n:
+            let mid = min(lo + width, n)
+            let hi = min(lo + 2 * width, n)
+            var i = lo
+            var j = mid
+            while i < mid or j < hi:
+                if j >= hi or (i < mid and j_entry_order(kf, src[i], src[j]) <= 0):
+                    push(dst, src[i])
+                    i++
+                else:
+                    push(dst, src[j])
+                    j++
+            lo = hi
+        src = dst
+        width *= 2
+    return src
 
 def j_entry_order(kf:FieldDescriptor, a:Value, b:Value) -> int:
     let ta = a.tab

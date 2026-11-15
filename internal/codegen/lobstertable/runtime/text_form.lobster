@@ -740,15 +740,17 @@ def t_value_into(p:TextParser, sl:Slot, f:FieldDescriptor, v:TNode, path:string)
             let entry = new_record(ed)
             if not t_value_into(p, entry.fields[0], entry.fields[0].fd, pair.items[0], path):
                 return false
-            for(sl.entries) prior:
-                let other = prior.tab
-                if other and map_key_order(ed.fields[0], entry.fields[0].cell, other.fields[0].cell) == 0:
-                    t_set_fail(p, "text_duplicate_key")
-                    return false
             push(sl.entries, Value { tab: entry })
             if not t_value_into(p, entry.fields[1], entry.fields[1].fd, pair.items[1], path):
                 return false
+        // sorted once; a repeated key is then a neighbour of its twin
         sl.entries = j_sorted_entries(ed.fields[0], sl.entries)
+        var at = 1
+        while at < length(sl.entries):
+            if j_entry_order(ed.fields[0], sl.entries[at - 1], sl.entries[at]) == 0:
+                t_set_fail(p, "text_duplicate_key")
+                return false
+            at++
         return true
     return t_set_scalar(p, sl, v, path)
 
