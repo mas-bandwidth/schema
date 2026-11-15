@@ -104,7 +104,7 @@ for(final bad in ['123456789','a\u0000b',String.fromCharCode(0xd800)]){
  try{w.rootWireSave(v);}on StateError{wireRefused=true;}
  check(wireRefused,'invalid authored wire text refused');
  if(bad==String.fromCharCode(0xd800)){var textRefused=false;try{w.rootToJson(v);}on StateError{textRefused=true;}check(textRefused,'authored surrogate JSON refused');}
- else{final output=w.rootToJson(v);if(bad.contains('\u0000'))check(output.contains(r'\u0000'),'authored NUL JSON escaped');}
+ else if(bad.contains('\u0000')){var textRefused=false;try{w.rootToJson(v);}on AssertionError{textRefused=true;}check(textRefused,'authored NUL JSON refused');}
  final out=Uint8List(4096)..fillRange(0,4096,0xa5);final cr=c.TableCookWriteReport();
  check(!c.RootCook.cook(v,out,Endian.little,report:cr)&&out.every((x)=>x==0xa5),'invalid authored cook untouched');
 }

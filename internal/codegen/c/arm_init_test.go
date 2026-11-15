@@ -28,20 +28,20 @@ union Choice {
 		t.Fatal(err)
 	}
 	header := string(files["ArmInitWire.h"])
-	_, read, found := strings.Cut(header, "int read_choice( ")
+	_, read, found := strings.Cut(header, "int schema_read_choice_body_( ")
 	if !found {
-		t.Fatal("generated C has no read_choice")
+		t.Fatal("generated C has no read_choice body")
 	}
 	read, _, found = strings.Cut(read, "\n}\n")
 	if !found {
-		t.Fatal("generated read_choice is unterminated")
+		t.Fatal("generated read_choice body is unterminated")
 	}
 	for _, want := range []string{
-		"case 1:\n            value->as.specified = new_explicit();\n            return read_explicit( stream, &value->as.specified );",
-		"case 2:\n            value->as.nested = new_nested();\n            return read_nested( stream, &value->as.nested );",
-		"case 3:\n            value->as.counted = new_counted();\n            return read_counted( stream, &value->as.counted );",
-		"case 4:\n            memset( &value->as.plain, 0, sizeof( value->as.plain ) );\n            return read_plain( stream, &value->as.plain );",
-		"case 5:\n            value->as.zero = new_explicit_zero();\n            return read_explicit_zero( stream, &value->as.zero );",
+		"case 1:\n            value->as.specified = new_explicit();\n            return schema_read_explicit_body_( stream, &value->as.specified );",
+		"case 2:\n            value->as.nested = new_nested();\n            return schema_read_nested_body_( stream, &value->as.nested );",
+		"case 3:\n            value->as.counted = new_counted();\n            return schema_read_counted_body_( stream, &value->as.counted );",
+		"case 4:\n            memset( &value->as.plain, 0, sizeof( value->as.plain ) );\n            return schema_read_plain_body_( stream, &value->as.plain );",
+		"case 5:\n            value->as.zero = new_explicit_zero();\n            return schema_read_explicit_zero_body_( stream, &value->as.zero );",
 	} {
 		if !strings.Contains(read, want) {
 			t.Errorf("each tag must reconstruct its payload before reading, without a same-tag exception: want %q in:\n%s", want, read)

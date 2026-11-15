@@ -8,20 +8,18 @@ name: schema Lua generated luacheck gate
 # the same lines.
 #
 # THE SPLIT IS BY WHEN. luacheck is a seconds-scale parser, so it runs on every
-# push and pull request. The schedule is kept for the nightly sweep even though
+# push (on a pull request: ci-fast.yml lang-lint, by path). The schedule is kept for the nightly sweep even though
 # today the whole lens is fast: a later heavy addition (a differential against
 # the interpreter, say) belongs on the schedule, never on the push.
 #
 # ZERO WARNINGS, NO ALLOWANCE: the config is luacheck's default set (the make
 # file says why, line by line), so a finding is fixed in the generator.
 # Like the Go golangci-lint and Dart strict-analyze lenses, it runs on every
-# push and on every pull request into main, on the fleet runner that carries
+# push (pull requests: ci-fast.yml lang-lint, by path), on the fleet runner that carries
 # the pinned checker.
 on:
-  push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-  pull_request:
-    branches: [ main ]
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   workflow_dispatch:
   schedule:
     # nightly, 03:17 UTC — not on the hour, so the fleet's jobs do not collide

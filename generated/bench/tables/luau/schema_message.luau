@@ -56,6 +56,7 @@ local function integrityOpen(data: buffer): buffer?
 end
 
 local function bitsReq(lo: number, hi: number): number
+	if hi <= lo then return 0 end
 	local n = hi - lo
 	local bits = 0
 	while n ~= 0 do
@@ -308,6 +309,7 @@ local function shapeRead(r: any, k: number): any
 		s.min = rLeb(r)
 		s.max = rLeb(r)
 		if r.bad or s.max > 0xFFFFFFFF then r.bad = true end
+		if s.max < s.min then r.bad = true; return s end
 	elseif k == 16 then
 		s.max = rLeb(r)
 		if r.bad or s.max > 0xFFFFFFFF then r.bad = true end
@@ -622,6 +624,18 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 			if fd.e ~= nil then ef = named(fd.e, fd.name)
 			elseif fd.s == "map" then ef = { s = "tab", t = fd.t, name = fd.name } end
 		end
+		-- tableMessageEntryRead reads an inner kind and keeps no inner shape.
+		-- A missing element is that zero shape (kind 0, width 0), not a raised index.
+		local element = if e.element ~= nil then e.element else newShape()
+		local ik = element.kind
+		local variable = ik == 12 or ik == 13 or ik == 14 or ik == 15 or ik == 16 or ik == 17 or ik == 30 or ik == 31
+		-- A walked element that consumes no bits refuses the read
+		-- (docs/SPEC-TABLES.md §3.3; tableMessageSkip, r.Offset==before).
+		local function walkOne(): boolean
+			local before = r.off
+			if not skipShape(r, st, { shape = element }, ef, dep) then return false end
+			return r.off ~= before
+		end
 		if k == 16 then
 			local seen: { [integer]: boolean } = {}
 			for _ = 1, n do
@@ -636,13 +650,16 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 				-- A KEYED ARRAY's key is a slot, not a caller value: the key
 				-- may name a retired variant and the element is what is read
 				-- and written (Go's variantWireId key=true, §2.15).
-				if not skipShape(r, st, { shape = e.element }, ef, dep) then return false end
+				if variable then
+					if not walkOne() then return false end
+				elseif not skipShape(r, st, { shape = element }, ef, dep) then
+					return false
+				end
 			end
 			return true
 		end
 		if e.shape.elem == 6 and not align(r) then return false end
-		local ik = e.element.kind
-		if plainFloat(e.element) then
+		if plainFloat(element) then
 			for _ = 1, n do
 				if not floatStep(r, st, ik, ef) then return false end
 			end
@@ -650,11 +667,11 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 		end
 		-- kind 10 is also the quantized float, whose index is checked, so it
 		-- is walked element by element rather than skipped as a run.
-		if ik ~= 10 and ik ~= 12 and ik ~= 13 and ik ~= 14 and ik ~= 15 and ik ~= 16 and ik ~= 17 and ik ~= 30 and ik ~= 31 then
-			return skip(r, n * e.element.bits)
+		if ik ~= 10 and not variable then
+			return skip(r, n * element.bits)
 		end
 		for _ = 1, n do
-			if not skipShape(r, st, { shape = e.element }, ef, dep) then return false end
+			if not walkOne() then return false end
 		end
 		return true
 	elseif k == 31 then

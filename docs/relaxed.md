@@ -59,16 +59,6 @@ case (`<lang> <surface> <case> relax/<slug>`), read by
 in the leg's results (so the proof names it) and does not fail the leg; a
 listed case that passes fails the leg until its line is removed.
 
-- `relax/rust-write-refusal-debug-asserts`: 19 cases of the Rust leg (write-refusal
-  wref_bits_wide, wref_enum, wref_range_high, wref_range_low,
-  wref_text_illformed, wref_text_zero, wref_union_tag; write-refusal-fixed the
-  same seven as fref_*; write-refusal-message mref_element, mref_range_high,
-  mref_range_low, mref_text_illformed, mref_text_zero). PR 3282 moved the
-  rows onto the fixed and message writers, which carry no debug-build checks.
-  Rust is an assert leg, so this is owed work, not a missing release check.
-  Files: `test/conformance/relaxed.txt`. Real fix: debug asserts of the write
-  contract in `internal/codegen/rusttable/fixedform.go` and the message
-  writer. WIP: none.
 - The hostile rows, one slug per leg. #3486 brought the corpus up to three
   landed rulings: json-hostile `base64-unpadded` is refused
   (json-base64-canonical), `str-zero-escape-unknown-key` is refused (the
@@ -88,7 +78,7 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-cpp`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings) and in the pack hostile-value gate (`Makefile`, `HOSTILE_ENGINE_RELAXED`).
   - `relax/hostile-rows-cs`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-dart`: base64-unpadded only: its hostile row, and its row in the port's hostile-corpus run (carried findings). The str-zero-escape-unknown-key row is refused.
-  - `relax/hostile-rows-elixir`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-elixir`: str-zero-escape-unknown-key, jref_zero_byte, and that row in the port's hostile-corpus run (carried finding); the JSON read refuses unpadded Base64 and set pad bits.
   - `relax/hostile-rows-go`: the generated Go JSON walk (not the engine)
     reads str-zero-escape-unknown-key: it does not validate a skipped value.
     Its hostile-corpus run drops that row from the staged manifest
@@ -96,10 +86,10 @@ listed case that passes fails the leg until its line is removed.
     check in `scanText`: the generated tests textzero (a skipped zero reads)
     and the JSONTestSuite probe (y_string_null_escape) hold the old rule. In the go conformance leg (`test/conformance/relaxed.txt`) it relaxes json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte; the dart and js text-boundary controls do not count their legs' relaxed json-hostile cases (relax/hostile-rows-dart, -js).
   - `relax/hostile-rows-goose`: both hostile rows.
-  - `relax/hostile-rows-java`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-java`: str-zero-escape-unknown-key only, in the conformance leg and in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-js`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-lobster`: str-zero-escape-unknown-key, jref_zero_byte, and str-zero-escape-unknown-key in the port's hostile-corpus run (carried finding); the JSON read refuses unpadded Base64 and set pad bits.
-  - `relax/hostile-rows-lua`: both hostile rows, jref_zero_byte.
+  - `relax/hostile-rows-lua`: str-zero-escape-unknown-key and jref_zero_byte (its JSON read refuses unpadded Base64 and set pad bits).
   - `relax/hostile-rows-luau`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-moo`: both hostile rows.
   - `relax/hostile-rows-rust`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
@@ -254,11 +244,9 @@ download, not a walled step.
 Each proof cell below is red at main 3b43e7075, computed from every conformance
 leg run on that commit (the cells are the `relaxed` list of
 `test/proof/in-progress.json`). Generated from `tools/matrix proof`'s red
-list; each line names its cells and why they are red. Where the real fix is
-an open PR: write-refusal on rust is
-relax/rust-write-refusal-debug-asserts; the rest of the write-refusal slugs are
-each leg answering the four write-refusal surfaces; I15 on elixir is PR 3290.
-WIP for every proof slug: none unless named here.
+list; each line names its cells and why they are red. The write-refusal proof
+slugs are each leg answering the four write-refusal surfaces; I15 on elixir is
+PR 3290. WIP for every proof slug: none unless named here.
 
 - `relax/proof-blob-shared-elixir`: 2 cell(s), red at main 18bd2eebb (CI
   full 43637319296): `surface cook-write / elixir` (2 case(s) answered absent

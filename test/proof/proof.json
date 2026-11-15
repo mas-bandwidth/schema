@@ -1162,7 +1162,7 @@
       "row": "surface json-hostile",
       "lang": "java",
       "status": "relaxed",
-      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "why": "1 case(s) fail: json-hostile/str-zero-escape-unknown-key",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-java (docs/relaxed.md)"
     },
     {

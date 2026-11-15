@@ -21,6 +21,7 @@
 
 #include "FX1Table.h"
 #include "FX2Table.h"
+#include "FNZTable.h"
 #include "P1Table.h"
 #include "P3Table.h"
 #include "KeyedTable.h"
@@ -759,6 +760,22 @@ static bool fu2_file( const char * dir )
     return emit( dir, "fu2.bin", v, tblfu2::FuRootFixedMeasure, tblfu2::FuRootFixedSave );
 }
 
+// THE COMPRESSED FLOAT'S NEGATIVE ZERO (docs/SPEC-TABLES.md §3.3). The record
+// holds the bits of -0 in `value`; the manifest's `expect=` states the rule's
+// landing, the value 0 itself, which is also the canonical bytes with that
+// field all zero. The read is not asserted here: the file records what went
+// onto the wire, and every leg's own read is where the rule is held.
+static bool nz_file( const char * dir )
+{
+    std::vector<tblfnz::NegZero> v( 1 );
+    tblfnz::NegZeroReset( v[0] );
+    MS( v[0].lead, 1u );
+    MS( v[0].value, float_from_bits( 0x80000000u ) );
+    MS( v[0].trail, 2u );
+    g_expect = "r0.value=0";
+    return emit( dir, "negative_zero.bin", v, tblfnz::NegZeroFixedMeasure, tblfnz::NegZeroFixedSave );
+}
+
 // ---- the DEAD-BYTE corpus --------------------------------------------------
 // docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 and docs/SPEC-TABLES.md §3.4,
 // §13.10: every dead byte in a fixed record is zero on write and a non-zero one
@@ -766,9 +783,11 @@ static bool fu2_file( const char * dir )
 // control is the reference writer's own bytes (every dead byte zero), and each
 // changed file is a control with ONE region made non-zero.
 //
-// THE DUMP WRITES THE BYTES AND SAYS WHAT WENT ONTO THE WIRE; it does not read
-// them back. The verdict belongs to each leg's own reader, and every changed
-// line carries no `expect=` for that reason.
+// THE DUMP ASSERTS THE REFERENCE'S OWN VERDICT ON EACH FILE BEFORE IT WRITES
+// IT, the way it asserts hostile_range_widen.bin: a control reads (its line
+// carries `expect=`), and a file with one changed dead region is refused whole
+// (its line carries no `expect=`). Each leg then holds its own reader to the
+// same bytes.
 
 static constexpr int64_t kDeadRecordAt = tbldead::kTableFixedHeaderBytes + 4
                                        + tbldead::DeadRootFixedLayoutBytes + 8;
@@ -870,6 +889,33 @@ static bool dead_write( const char * dir, const char * name, const std::vector<u
     g_values = values;
     g_forged = forged;
     g_expect = expect;
+    // THE VERDICT IS THE REFERENCE'S OWN: a control (expect= present) reads,
+    // and a file with one changed dead region is refused whole before a record
+    // lands. The dump refuses to write a row whose bytes the reference does not
+    // answer as its line says.
+    {
+        tbldead::DeadRoot back;
+        tbldead::DeadRootReset( back );
+        tbldead::TableReport r;
+        std::vector<tbldead::TableFixedEntry> plan( 4096 );
+        const int64_t n = tbldead::DeadRootFixedLoad( &back, 1, out.data(), (int64_t) out.size(),
+                                                      plan.data(), 4096, NULL, &r );
+        const bool want_read = !expect.empty();
+        if ( want_read && ( n != 1 || r.damaged || r.refused ) )
+        {
+            std::fprintf( stderr, "%s: the reference answered n=%lld damaged=%d refused=%d, want one record read\n",
+                          name, (long long) n, (int) r.damaged, (int) r.refused );
+            g_values.clear();
+            return false;
+        }
+        if ( !want_read && n != -1 )
+        {
+            std::fprintf( stderr, "%s: the reference read %lld records, want the whole load refused\n",
+                          name, (long long) n );
+            g_values.clear();
+            return false;
+        }
+    }
     man_finish( name, "DeadRoot", 1 );
     return spill( dir, name, out );
 }
@@ -1853,7 +1899,7 @@ int main( int argc, char ** argv )
     const char * dir = argv[1];
     if ( !fx1_file( dir ) || !fx2_file( dir ) || !p1_file( dir ) || !p3_file( dir ) ||
          !keyed_file( dir ) || !pack_file( dir ) ||
-         !fu1_file( dir ) || !fu2_file( dir ) ) { return 1; }
+         !fu1_file( dir ) || !fu2_file( dir ) || !nz_file( dir ) ) { return 1; }
     if ( !dead_bytes_files( dir ) ) { return 1; }
     // ---- rowan/cpp-versioning-numbers: BEGIN ----
     if ( !versioning_numbers_files( dir ) ) { return 1; }
