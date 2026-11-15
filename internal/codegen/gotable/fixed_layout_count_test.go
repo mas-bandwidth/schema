@@ -35,7 +35,10 @@ func TestCount(t *testing.T) {
 					s = strings.Replace(s, old, "count == 0 || count > 0x7fffffff", 1)
 					if mask {
 						s = strings.Replace(s, "count == 0 || count > 0x7fffffff", "count == 0", 1)
-					s = strings.Replace(s, "Count: int32(count)", "Count: int32(count & 0x7fffffff)", 1)
+						s = strings.Replace(s, "Count: int32(count)", "Count: int32(count & 0x7fffffff)", 1)
+					}
+					files[name] = []byte(s)
+					patched++
 				}
 			}
 		})
