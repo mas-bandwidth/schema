@@ -103,7 +103,7 @@ func TestSchemaNativeRunsHostileCorpusWiring(t *testing.T) {
 				t.Errorf("%s.yml does not carry %q", target, want)
 			}
 		}
-		// THE PR GATE IS ci-fast.yml (Glenn 2026-11-15): no pull request
+		// THE PR GATE IS ci-fast.yml (the owner, 2026-11-15): no pull request
 		// starts this workflow; it runs after the merge.
 		if ok, err := jobSelectsSelfHosted(text, "corpus", ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}); err != nil || ok {
 			t.Errorf("%s.yml:corpus ran on a pull request: ok=%v err=%v; the PR gate is ci-fast.yml", target, ok, err)

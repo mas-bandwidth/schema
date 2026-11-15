@@ -143,7 +143,7 @@ func TestSchemaJavaRunsHostileCorpusWiring(t *testing.T) {
 			t.Errorf("Java negative-control under (%+v) = %v (err=%v), want %v", ev, ok, err, wantNeg)
 		}
 	}
-	// THE PR GATE IS ci-fast.yml (Glenn 2026-11-15: "Let us be efficient
+	// THE PR GATE IS ci-fast.yml (the owner, 2026-11-15: "Let us be efficient
 	// first, then scale up if we need only"): no pull request and no
 	// card-branch push starts this workflow; it runs after the merge.
 	for _, ev := range []ciEvent{

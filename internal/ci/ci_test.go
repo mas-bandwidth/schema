@@ -892,7 +892,7 @@ func jobSelectsSelfHosted(wfData, job string, ev ciEvent) (bool, error) {
 }
 
 // prOffHeavyWorkflows start on no pull request: the PR gate is ci-fast.yml
-// (Glenn 2026-11-15: "I'd rather that we got more efficient on tiny PRs").
+// (the owner, 2026-11-15: "I'd rather that we got more efficient on tiny PRs").
 // Each runs on push to main, dev and fixed-table-form, nightly and on
 // dispatch, and checkWorkflowPolicy refuses a pull_request or a card-branch
 // push trigger on any of them.
@@ -981,7 +981,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 			errs = append(errs, fmt.Sprintf("same-repo PR into main did not select self-hosted %s (err=%v)", wantKey, err))
 		}
 	}
-	// THE PR GATE IS ci-fast (Glenn 2026-11-15: "Let us be efficient first,
+	// THE PR GATE IS ci-fast (the owner, 2026-11-15: "Let us be efficient first,
 	// then scale up if we need only"). The per-language heavy workflows start
 	// on no pull request; they run on push to main, dev and fixed-table-form,
 	// nightly and on dispatch (step 5 and 6 below hold that half).
@@ -1420,25 +1420,32 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		wantErr   string
 	}{
 		{
-			name:      "drop Dart fast same-repo PR guard",
+			name:      "drop ci-fast lang-lint same-repo PR guard",
+			workflow:  "ci-fast.yml",
+			oldSubstr: "    if: needs.plan.outputs.lints != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)\n",
+			newSubstr: "    if: needs.plan.outputs.lints != '[]'\n",
+			wantErr:   "ci-fast.yml:lang-lint admits fork PR",
+		},
+		{
+			name:      "restore a pull_request trigger on the Dart strict analyze lens",
 			workflow:  "schema-dart-generated-strict-analyze-gate.yml",
-			oldSubstr: "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n",
-			newSubstr: "",
-			wantErr:   "schema-dart-generated-strict-analyze-gate.yml:fast admits fork PR",
+			oldSubstr: "\non:\n",
+			newSubstr: "\non:\n  pull_request:\n",
+			wantErr:   "schema-dart-generated-strict-analyze-gate.yml triggers on a pull request into main",
 		},
 		{
-			name:      "drop Elixir corpus same-repo PR guard",
+			name:      "restore a pull_request trigger on the Elixir hostile corpus",
 			workflow:  "schema-elixir-runs-hostile-corpus.yml",
-			oldSubstr: "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n",
-			newSubstr: "",
-			wantErr:   "schema-elixir-runs-hostile-corpus.yml:corpus admits fork PR",
+			oldSubstr: "\non:\n",
+			newSubstr: "\non:\n  pull_request:\n    branches: [ main, dev, fixed-table-form, 'sprint/**' ]\n",
+			wantErr:   "schema-elixir-runs-hostile-corpus.yml triggers on a pull request into sprint/schema-main",
 		},
 		{
-			name:      "drop Java corpus same-repo PR guard",
+			name:      "restore a card-branch push on the Java hostile corpus",
 			workflow:  "schema-java-runs-hostile-corpus.yml",
-			oldSubstr: "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n",
-			newSubstr: "",
-			wantErr:   "schema-java-runs-hostile-corpus.yml:corpus admits fork PR",
+			oldSubstr: "branches: [ main, dev, fixed-table-form ]",
+			newSubstr: "branches: [ main, dev, fixed-table-form, 'sprint/*' ]",
+			wantErr:   "schema-java-runs-hostile-corpus.yml triggers on a push to sprint/schema-main",
 		},
 		{
 			name:      "drop ci-full pins same-repo PR guard",
@@ -1478,16 +1485,16 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		{
 			name:      "drop dev from Elixir hostile-corpus triggers",
 			workflow:  "schema-elixir-runs-hostile-corpus.yml",
-			oldSubstr: "branches: [ main, dev, fixed-table-form, 'sprint/**' ]",
-			newSubstr: "branches: [ main, 'sprint/**' ]",
-			wantErr:   "stream-to-dev PR did not select self-hosted schema-elixir-runs-hostile-corpus.yml:corpus",
+			oldSubstr: "branches: [ main, dev, fixed-table-form ]",
+			newSubstr: "branches: [ main ]",
+			wantErr:   "push to dev did not select self-hosted schema-elixir-runs-hostile-corpus.yml:corpus",
 		},
 		{
 			name:      "drop dev from Java hostile-corpus triggers",
 			workflow:  "schema-java-runs-hostile-corpus.yml",
-			oldSubstr: "branches: [ main, dev, fixed-table-form, 'sprint/**' ]",
-			newSubstr: "branches: [ main, 'sprint/**' ]",
-			wantErr:   "stream-to-dev PR did not select self-hosted schema-java-runs-hostile-corpus.yml:corpus",
+			oldSubstr: "branches: [ main, dev, fixed-table-form ]",
+			newSubstr: "branches: [ main ]",
+			wantErr:   "push to dev did not select self-hosted schema-java-runs-hostile-corpus.yml:corpus",
 		},
 		{
 			name:      "serialize ci-fast concurrency across refs",

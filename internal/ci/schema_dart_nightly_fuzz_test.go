@@ -66,7 +66,7 @@ func TestSchemaDartNightlyFuzzWiring(t *testing.T) {
 		t.Error("the nightly workflow needs both schedule: and workflow_dispatch:")
 	}
 	if !strings.Contains(wf, "push:") {
-		t.Error("the replay gate needs a push: trigger (its PR gate is ci-fast.yml, Glenn 2026-11-15)")
+		t.Error("the replay gate needs a push: trigger (its PR gate is ci-fast.yml, the owner, 2026-11-15)")
 	}
 	if !strings.Contains(wf, "schema-dart-nightly-fuzz-replay") {
 		t.Error("the workflow does not run the fast replay target")

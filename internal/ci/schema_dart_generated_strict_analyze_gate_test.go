@@ -173,7 +173,7 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 			t.Errorf("Dart nightly job admitted fork PR (%+v): ok=%v err=%v", ev, ok, err)
 		}
 	}
-	// THE PR GATE IS ci-fast.yml (Glenn 2026-11-15): on a pull request the
+	// THE PR GATE IS ci-fast.yml (the owner, 2026-11-15): on a pull request the
 	// fast half runs there as lang-lint (dart), selected by path.
 	for _, ev := range []ciEvent{
 		{Name: "pull_request", Branch: "dev", HeadRef: "sprint/schema-dart", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},

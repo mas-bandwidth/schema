@@ -202,7 +202,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 }
 
 // TestFastPlanSelectsLanguageLints runs the plan script and holds the
-// per-language lint selection (Glenn 2026-11-15: "run only the fastest unit
+// per-language lint selection (the owner, 2026-11-15: "run only the fastest unit
 // tests as verification, on a per-language basis"): the lens a touched
 // language owns, and only that one, rides the pull request as a lang-lint row,
 // and a broad diff selects all three.

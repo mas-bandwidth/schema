@@ -132,7 +132,7 @@ func TestSchemaLuauHostileCorpusAndWireFuzzWiring(t *testing.T) {
 			}
 		}
 	}
-	// THE PR GATE IS ci-fast.yml (Glenn 2026-11-15): no pull request starts
+	// THE PR GATE IS ci-fast.yml (the owner, 2026-11-15): no pull request starts
 	// the corpus; it runs after the merge.
 	if ok, err := jobSelectsSelfHosted(workflow, "corpus", ciEvent{Name: "pull_request", Branch: "main", HeadRef: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}); err != nil || ok {
 		t.Errorf("the Luau corpus job ran on a pull request: ok=%v err=%v; the PR gate is ci-fast.yml", ok, err)
