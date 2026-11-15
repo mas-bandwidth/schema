@@ -432,9 +432,15 @@ impl TableNodeGraph {
 
 /// One record's state in a LOAD's numbering (docs/SPEC-TABLES.md §3.1).
 pub enum TableNodeSlot {
-    /// a record this root cannot place (counted unknown once, at the record) or
-    /// a text blob refused as damaged: every slot naming it reads null
+    /// a record of a type this reader does NOT declare (counted unknown once,
+    /// at the record) or a text blob refused as damaged: every slot naming it
+    /// reads null
     Null,
+    /// a record of a type this reader DECLARES but this root cannot place
+    /// (counted unknown once, at the record): a slot naming it names a known
+    /// type that is not the type the slot requires, which is damage (§3.1,
+    /// §6.5)
+    Unplaced(u64),
     /// a *bytes blob record (§2.5), materialized ONCE and shared by every
     /// slot that names it
     Bytes(Rc<[u8]>),
@@ -504,10 +510,12 @@ impl TableNodeReader {
     /// does not match make the TABLE damaged: good is false, one damaged
     /// counts, and nothing in it is counted unknown, because the numbering it
     /// belonged to does not exist. A record whose type id this root cannot
-    /// place keeps its index and counts unknown once; a *string blob that is
-    /// not well-formed text is malformed and its slots read null.
+    /// place keeps its index and counts unknown once; one whose type this
+    /// reader DECLARES is remembered so a slot naming it is damage, while one
+    /// whose type it does not declare reads null. A *string blob that is not
+    /// well-formed text is malformed and its slots read null.
     #[allow(clippy::too_many_arguments)]
-    pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
+    pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], declared: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
         let mut reader = TableNodeReader { good: true, count_refused: false, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: vec![Vec::new()], wire_edge_owner: 0, wire_blob_names: Vec::new() };
         let mut seen_node_table = false;
         let mut off = 1usize;
@@ -581,28 +589,32 @@ impl TableNodeReader {
                 let bytes = &wire[start..stop];
                 if tid == BYTES_TYPE_ID && bytes_edge {
                     reader.slots.push(TableNodeSlot::Bytes(Rc::from(bytes)));
-                } else if tid == STRING_TYPE_ID {
-                    if string_edge {
-                        if text_valid(bytes) {
-                            reader.slots.push(TableNodeSlot::Text(Rc::from(std::str::from_utf8(bytes).unwrap())));
-                        } else {
-                            report.damaged = true;
-                            reader.slots.push(TableNodeSlot::Null);
-                        }
+                } else if tid == STRING_TYPE_ID && string_edge {
+                    if text_valid(bytes) {
+                        reader.slots.push(TableNodeSlot::Text(Rc::from(std::str::from_utf8(bytes).unwrap())));
                     } else {
-                        if !text_valid(bytes) { report.damaged = true; }
-                        report.unknown += 1;
-                        if retaining { report.retain_lost += 1; }
+                        report.damaged = true;
                         reader.slots.push(TableNodeSlot::Null);
                     }
                 } else if placeable.contains(&tid) {
                     reader.slots.push(TableNodeSlot::Table(tid));
+                } else if tid == STRING_TYPE_ID {
+                    if !text_valid(bytes) { report.damaged = true; }
+                    report.unknown += 1;
+                    if retaining { report.retain_lost += 1; }
+                    reader.slots.push(TableNodeSlot::Unplaced(tid));
                 } else {
                     // skipped by its length, and it keeps its index (§3.1); a
                     // node record is an excluded class for retention (§6.6)
                     report.unknown += 1;
                     if retaining { report.retain_lost += 1; }
-                    reader.slots.push(TableNodeSlot::Null);
+                    if declared.contains(&tid) || tid == BYTES_TYPE_ID {
+                        // a type this reader can NAME that this root cannot
+                        // place: a slot naming it is damage (§3.1, §6.5)
+                        reader.slots.push(TableNodeSlot::Unplaced(tid));
+                    } else {
+                        reader.slots.push(TableNodeSlot::Null);
+                    }
                 }
             }
         } else {
@@ -929,6 +941,7 @@ impl TableNodeReader {
                 None
             }
             TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) => { report.damaged = true; None }
+            TableNodeSlot::Unplaced(_) => { report.damaged = true; None }
             TableNodeSlot::Table(t) | TableNodeSlot::Built(t, _) => {
                 if *t == want { Some(k + 1) } else { report.damaged = true; None }
             }
