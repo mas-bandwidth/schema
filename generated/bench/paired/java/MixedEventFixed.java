@@ -41,6 +41,14 @@ public final class MixedEventFixed {
 
         /** MixedPickupEvent */
         public final MixedPickupEventFixed.Value pickup = new MixedPickupEventFixed.Value();
+
+        /** restore defaults after a dead optional payload. */
+        void reset() {
+            this.type = none;
+            hit.reset();
+            chat.reset();
+            pickup.reset();
+        }
     }
 
     /**
@@ -78,14 +86,15 @@ public final class MixedEventFixed {
 
     /** the tag, then the selected arm; an unselected arm keeps what it held. */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
-        scatter(b, at, v, r, true);
+        scatter(b, at, v, r, true, false);
     }
 
     /**
      * the same landing. Tag 0 and the bytes past a narrower arm are dead: zero, or the load
      * refuses, and those bytes are not read as a value.
      */
-    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
+    static void scatter(
+            byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.type = (b[at + 0] & 0xFF);
         final int taken = v.type;
         // A TAG PAST THE LAST ARM LANDS None AND COUNTS ONE CLAMPED: it
@@ -99,7 +108,7 @@ public final class MixedEventFixed {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
         }
-        if (live && TableFixed.checkDead && taken == 0) {
+        if (live && checkDead && taken == 0) {
             for (int deadZ = 0; deadZ < 13; deadZ++) {
                 if (b[(at + 1) + (0) + deadZ] != 0) {
                     r.refuse(TableFixed.Reason.wireDamaged);
@@ -110,12 +119,12 @@ public final class MixedEventFixed {
             switch (v.type) {
                 case 1:
                     {
-                        MixedHitEventFixed.scatter(b, at + 1 + 0, v.hit, r, live);
+                        MixedHitEventFixed.scatter(b, at + 1 + 0, v.hit, r, live, checkDead);
                         break;
                     }
                 case 2:
                     {
-                        if (live && TableFixed.checkDead) {
+                        if (live && checkDead) {
                             for (int deadZ = 0; deadZ < 5; deadZ++) {
                                 if (b[(at + 1) + (8) + deadZ] != 0) {
                                     r.refuse(TableFixed.Reason.wireDamaged);
@@ -123,12 +132,12 @@ public final class MixedEventFixed {
                                 }
                             }
                         }
-                        MixedChatEventFixed.scatter(b, at + 1 + 0, v.chat, r, live);
+                        MixedChatEventFixed.scatter(b, at + 1 + 0, v.chat, r, live, checkDead);
                         break;
                     }
                 case 3:
                     {
-                        if (live && TableFixed.checkDead) {
+                        if (live && checkDead) {
                             for (int deadZ = 0; deadZ < 5; deadZ++) {
                                 if (b[(at + 1) + (8) + deadZ] != 0) {
                                     r.refuse(TableFixed.Reason.wireDamaged);
@@ -136,7 +145,7 @@ public final class MixedEventFixed {
                                 }
                             }
                         }
-                        MixedPickupEventFixed.scatter(b, at + 1 + 0, v.pickup, r, live);
+                        MixedPickupEventFixed.scatter(b, at + 1 + 0, v.pickup, r, live, checkDead);
                         break;
                     }
                 default:

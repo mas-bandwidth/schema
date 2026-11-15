@@ -23,6 +23,12 @@ public final class MixedStatFixed {
 
         /** int32 */
         public int delta;
+
+        /** restore defaults after a dead optional payload. */
+        void reset() {
+            statId = 0;
+            delta = 0;
+        }
     }
 
     /**
@@ -55,7 +61,7 @@ public final class MixedStatFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
-        scatter(b, at, v, r, true);
+        scatter(b, at, v, r, true, false);
     }
 
     /**
@@ -63,7 +69,8 @@ public final class MixedStatFixed {
      * optional does not call it: that payload is dead, every byte of it is zero or the load
      * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
      */
-    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
+    static void scatter(
+            byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.statId = TableFixed.get32(b, at + 0);
         if (Integer.compareUnsigned(v.statId, 255) > 0) {
             v.statId = (int) (255L);

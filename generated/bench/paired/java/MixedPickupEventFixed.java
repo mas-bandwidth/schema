@@ -23,6 +23,12 @@ public final class MixedPickupEventFixed {
 
         /** int32 */
         public int amount;
+
+        /** restore defaults after a dead optional payload. */
+        void reset() {
+            itemId = 0;
+            amount = 0;
+        }
     }
 
     /**
@@ -55,7 +61,7 @@ public final class MixedPickupEventFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
-        scatter(b, at, v, r, true);
+        scatter(b, at, v, r, true, false);
     }
 
     /**
@@ -63,7 +69,8 @@ public final class MixedPickupEventFixed {
      * optional does not call it: that payload is dead, every byte of it is zero or the load
      * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
      */
-    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
+    static void scatter(
+            byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.itemId = TableFixed.get32(b, at + 0);
         if (Integer.compareUnsigned(v.itemId, 1023) > 0) {
             v.itemId = (int) (1023L);

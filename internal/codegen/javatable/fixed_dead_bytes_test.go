@@ -1,6 +1,7 @@
 package javatable
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"os/exec"
@@ -41,9 +42,88 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
 			file := filepath.Join(corpus, vec.File)
 			r := runDeadBytesProbe(t, javaBin, classes, pkg, root, file)
 			checkDeadBytesResult(t, vec, r, "identity", true)
+			if vec.Reads && vec.File == "absent_zero.bin" {
+				for key, want := range map[string]string{
+					"optPresent":       "false",
+					"opt.n":            "0",
+					"opt.kind":         "1",
+					"opt.childPresent": "false",
+					"opt.child":        "0",
+				} {
+					if got := r.value[key]; got != want {
+						t.Fatalf("identity absent optional retained stale %s=%q, want %q", key, got, want)
+					}
+				}
+			}
 			r = runDeadBytesProbe(t, javaBin, lineageClasses, lineagePkg, lineageRoot, file)
 			checkDeadBytesResult(t, vec, r, "lineage", false)
+			if vec.Reads && vec.File == "absent_zero.bin" && (r.value["freshPresent"] != "false" || r.value["fresh"] != "0") {
+				t.Fatalf("lineage reader did not reset absent fresh payload: present=%q value=%q", r.value["freshPresent"], r.value["fresh"])
+			}
 		})
+	}
+
+	nestedClasses, nestedPkg, nestedRoot, nestedWriter := buildNestedDeadBytesLineageReader(t, javac)
+	for _, test := range []struct {
+		name     string
+		innerTag byte
+		deadAt   int
+	}{
+		{name: "nested-tag-zero", innerTag: 0, deadAt: 2},
+		{name: "nested-narrow-tail", innerTag: 2, deadAt: 6},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			data := nestedDeadBytesFile(nestedWriter, test.innerTag, test.deadAt)
+			file := filepath.Join(t.TempDir(), "nested-dead.bin")
+			if err := os.WriteFile(file, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			r := runDeadBytesProbe(t, javaBin, nestedClasses, nestedPkg, nestedRoot, file)
+			if r.n == 1 && !r.refused && !r.damaged {
+				t.Fatal("nested lineage reader accepted non-zero union dead bytes")
+			}
+			if !mapsEqual(r.before, r.value) {
+				t.Fatal("nested lineage refusal wrote the caller's destination")
+			}
+		})
+	}
+}
+
+func TestFixedOptionalResetUsesStaticWideUnionDefault(t *testing.T) {
+	files := generate(t, `package probe
+
+union Choice
+{
+    wide uint128
+    narrow int32
+}
+
+fixed table Payload
+{
+    high int128 = -250 | min = -5000000000, max = 5000000000
+    choice Choice
+}
+
+fixed table Root
+{
+    opt ?Payload
+}
+`)
+	choice := string(files["ChoiceFixed.java"])
+	payload := string(files["PayloadFixed.java"])
+	root := string(files["RootFixed.java"])
+	if !strings.Contains(choice, "static final UInt128 __default_wide = UInt128.zero;") {
+		t.Fatal("union Value does not hoist its wide zero default")
+	}
+	if !strings.Contains(choice, "wide = Value.__default_wide;") {
+		t.Fatal("union reset would allocate or lose its wide default")
+	}
+	if !strings.Contains(payload, "static final Int128 __default_high = new Int128(") || !strings.Contains(payload, "high = Value.__default_high;") {
+		t.Fatal("nested nonzero wide default is not restored from its static value")
+	}
+	if !strings.Contains(root, "opt.reset();") {
+		t.Fatal("optional nested table reset was inlined instead of calling the per-type helper")
 	}
 }
 
@@ -111,7 +191,7 @@ func buildDeadBytesLineageReader(t *testing.T, javac string) (classes, pkg, root
 		{"    arr  [..3]int16", "    arr  [..4]int16"},
 		{"    text string(8)", "    text string(12)"},
 		{"    blob bytes(4)", "    blob bytes(8)"},
-		{"    pick DeadPick\n}", "    pick DeadPick\n    newer int32 = 0\n}"},
+		{"    pick DeadPick\n}", "    pick DeadPick\n    newer int32 = 0\n    fresh ?int32\n}"},
 	} {
 		updated := strings.Replace(newerSrc, change[0], change[1], 1)
 		if updated == newerSrc {
@@ -150,6 +230,100 @@ func buildDeadBytesLineageReader(t *testing.T, javac string) (classes, pkg, root
 		t.Fatalf("javac lineage reader: %v\n%s", err, out)
 	}
 	return classes, pkg, root
+}
+
+func buildNestedDeadBytesLineageReader(t *testing.T, javac string) (classes, pkg, root string, writer FixedLineageEntry) {
+	t.Helper()
+	const olderSource = `package probe
+
+union Inner
+{
+    wide int64
+    narrow int32
+}
+
+union Outer
+{
+    nested Inner
+    other int32
+}
+
+fixed table Root
+{
+    choice Outer
+    direct Inner
+}
+`
+	const newerSource = `package probe
+
+union Inner
+{
+    wide int64
+    narrow int32
+}
+
+union Outer
+{
+    nested Inner
+    other int32
+}
+
+fixed table Root
+{
+    choice Outer
+    direct Inner
+    newer int32 = 0
+}
+`
+	older := unitFrom(t, olderSource)
+	newer := unitFrom(t, newerSource)
+	var ok bool
+	writer, ok = FixedLineageOf(older, "Root")
+	if !ok {
+		t.Fatal("no writer layout for nested union reader")
+	}
+	files, err := GenerateLineage(newer, map[string][]FixedLineageEntry{"Root": {writer}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg = javaPackageOf(newer)
+	root = rootOf(t, newer).Name
+	dir := t.TempDir()
+	srcDir := filepath.Join(dir, "src")
+	classes = filepath.Join(dir, "classes")
+	if err := os.MkdirAll(classes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixedJava(t, srcDir, pkg, files)
+	if err := os.WriteFile(filepath.Join(srcDir, "DeadProbe.java"), []byte(deadBytesProbe(pkg, root)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sources, err := filepath.Glob(filepath.Join(srcDir, "*", "*.java"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
+	args = append(args, filepath.Join(srcDir, "DeadProbe.java"))
+	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		t.Fatalf("javac nested lineage reader: %v\n%s", err, out)
+	}
+	return classes, pkg, root, writer
+}
+
+func nestedDeadBytesFile(writer FixedLineageEntry, innerTag byte, deadAt int) []byte {
+	layout := writer.Layout
+	data := make([]byte, 16+4+len(layout)+int(writer.Record))
+	data[0] = 3
+	binary.LittleEndian.PutUint64(data[8:16], writer.Wire)
+	binary.LittleEndian.PutUint32(data[16:20], uint32(len(layout)))
+	copy(data[20:], layout)
+	recordAt := 20 + len(layout)
+	binary.LittleEndian.PutUint64(data[recordAt:recordAt+8], writer.Wire)
+	body := data[recordAt+8:]
+	body[0] = 1 // select Outer.nested
+	body[1] = innerTag
+	body[deadAt] = 0x80
+	return data
 }
 
 type deadProbeRun struct {

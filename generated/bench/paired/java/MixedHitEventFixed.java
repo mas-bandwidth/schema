@@ -29,6 +29,14 @@ public final class MixedHitEventFixed {
 
         /** bool */
         public boolean crit;
+
+        /** restore defaults after a dead optional payload. */
+        void reset() {
+            targetId = 0;
+            damage = 0;
+            hitKind = 0;
+            crit = false;
+        }
     }
 
     /**
@@ -63,7 +71,7 @@ public final class MixedHitEventFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
-        scatter(b, at, v, r, true);
+        scatter(b, at, v, r, true, false);
     }
 
     /**
@@ -71,7 +79,8 @@ public final class MixedHitEventFixed {
      * optional does not call it: that payload is dead, every byte of it is zero or the load
      * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
      */
-    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
+    static void scatter(
+            byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.targetId = TableFixed.get32(b, at + 0);
         if (Integer.compareUnsigned(v.targetId, 4095) > 0) {
             v.targetId = (int) (4095L);
