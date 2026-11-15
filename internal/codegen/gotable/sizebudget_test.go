@@ -61,8 +61,9 @@ const (
 	// +14: the JSON walk reads a bytes body as canonical base64 only (§16.8): padded, pad bits zero
 	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
 	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
+	// -4: the comment skip holds each comment to the text rule in one bytes.Index pass, in every JSON read entry (SPEC-TABLES §16.2)
 	// +73: every dead byte in a fixed record is checked for zero in the pre-scan (fixed-dead-bytes-are-zero)
-	goOneTableLineBudget = 10191
+	goOneTableLineBudget = 10187
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -106,8 +107,9 @@ const (
 	// +14: the JSON walk reads a bytes body as canonical base64 only (§16.8): padded, pad bits zero
 	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
 	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
+	// -4: the comment skip holds each comment to the text rule in one bytes.Index pass, in every JSON read entry (SPEC-TABLES §16.2)
 	// +76: every dead byte in a fixed record is checked for zero in the pre-scan (fixed-dead-bytes-are-zero)
-	goExamplesLineBudget = 60185
+	goExamplesLineBudget = 60181
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
