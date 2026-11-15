@@ -6004,6 +6004,9 @@ func WeaponConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLin
 				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 2, ArgW: 1})
 			}
 		}
+		out[n] = TableFixedEntry{Src: es + 1, Size: 4, Guard: es, Arg: 0, ArgW: 1, Op: tableFixedSlack} // the inactive arm span
+		links[n] = append(links[n], TableFixedGuardLink{Guard: es, Arg: 0, ArgW: 1})
+		n++
 	}
 	return n
 }
@@ -6877,7 +6880,7 @@ var RootConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
 }
 
-var RootConfigFixedPlan = tableFixedBuildPlan(RootConfigFixedLeaves, 331)
+var RootConfigFixedPlan = tableFixedBuildPlan(RootConfigFixedLeaves, 351)
 
 var RootConfigFixedKnown = []TableFixedKnownLayout{
 	{
@@ -7240,7 +7243,7 @@ var WeaponConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // amount
 }
 
-var WeaponConfigFixedPlan = tableFixedBuildPlan(WeaponConfigFixedLeaves, 8)
+var WeaponConfigFixedPlan = tableFixedBuildPlan(WeaponConfigFixedLeaves, 9)
 
 var WeaponConfigFixedKnown = []TableFixedKnownLayout{
 	{
@@ -7607,7 +7610,7 @@ var LoadoutConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
 }
 
-var LoadoutConfigFixedPlan = tableFixedBuildPlan(LoadoutConfigFixedLeaves, 51)
+var LoadoutConfigFixedPlan = tableFixedBuildPlan(LoadoutConfigFixedLeaves, 54)
 
 var LoadoutConfigFixedKnown = []TableFixedKnownLayout{
 	{
@@ -8039,7 +8042,7 @@ var ProfileConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
 }
 
-var ProfileConfigFixedPlan = tableFixedBuildPlan(ProfileConfigFixedLeaves, 66)
+var ProfileConfigFixedPlan = tableFixedBuildPlan(ProfileConfigFixedLeaves, 69)
 
 var ProfileConfigFixedKnown = []TableFixedKnownLayout{
 	{
