@@ -59,6 +59,24 @@ public final class MixedEntityFixed {
 
         /** bool */
         public boolean firing;
+
+        /** restore defaults after a dead optional payload. */
+        void reset() {
+            entityId = 0;
+            posX = 0;
+            posY = 0;
+            posZ = 0;
+            yaw = 0;
+            pitch = 0;
+            velX = 0;
+            velY = 0;
+            velZ = 0;
+            health = 0;
+            weapon = (byte) 0;
+            damage = 0L;
+            moving = false;
+            firing = false;
+        }
     }
 
     /**
@@ -103,15 +121,16 @@ public final class MixedEntityFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
-        scatter(b, at, v, r, true);
+        scatter(b, at, v, r, true, false);
     }
 
     /**
-     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
-     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
-     * (docs/SPEC-TABLES.md §3.4).
+     * the same landing. `live` is false when the caller is not keeping this body. An absent
+     * optional does not call it: that payload is dead, every byte of it is zero or the load
+     * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
      */
-    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
+    static void scatter(
+            byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.entityId = TableFixed.get32(b, at + 0);
         if (Integer.compareUnsigned(v.entityId, 4095) > 0) {
             v.entityId = (int) (4095L);

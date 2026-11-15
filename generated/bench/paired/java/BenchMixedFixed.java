@@ -18,6 +18,9 @@ public final class BenchMixedFixed {
      * packet codec's own shape. Declared defaults are here and nowhere else.
      */
     public static final class Value {
+        static final UInt128 __default_wideKey = UInt128.zero;
+        static final Int128 __default_flux = Int128.zero;
+
         /** bits(16) */
         public int sequence;
 
@@ -87,10 +90,10 @@ public final class BenchMixedFixed {
         public double drift;
 
         /** uint128 */
-        public UInt128 wideKey = UInt128.zero;
+        public UInt128 wideKey = __default_wideKey;
 
         /** int128 */
-        public Int128 flux = Int128.zero;
+        public Int128 flux = __default_flux;
 
         /** ufixed(8, 8) */
         public short ping;
@@ -115,6 +118,45 @@ public final class BenchMixedFixed {
             for (int i = 0; i < stats.length; i++) {
                 stats[i] = new MixedStatFixed.Value();
             }
+        }
+
+        /** restore defaults after a dead optional payload. */
+        void reset() {
+            sequence = 0;
+            ackSequence = 0;
+            ackBits = 0;
+            sessionId = 0L;
+            clientId = 0;
+            nonce = 0L;
+            worldTime = 0L;
+            frameTick = 0L;
+            serverTime = 0;
+            for (int resetI0 = 0; resetI0 < entities.length; resetI0++) {
+                entities[resetI0].reset();
+            }
+            entitiesCount = 1;
+            for (int resetI1 = 0; resetI1 < stats.length; resetI1++) {
+                stats[resetI1].reset();
+            }
+            statsCount = 0;
+            gameEvent.reset();
+            java.util.Arrays.fill(loadout, (byte) 0);
+            java.util.Arrays.fill(playerName, (byte) 0);
+            playerNameLength = 0;
+            java.util.Arrays.fill(payload, (byte) 0);
+            payloadLength = 0;
+            aimX = 0.0f;
+            aimY = 0.0f;
+            aimZ = 0.0f;
+            recoil = 0.0f;
+            drift = 0.0;
+            wideKey = Value.__default_wideKey;
+            flux = Value.__default_flux;
+            ping = (short) 0;
+            crcHint = 0;
+            hasExtra = true;
+            extra = 0;
+            idleTicks = 0;
         }
     }
 
@@ -192,15 +234,16 @@ public final class BenchMixedFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
-        scatter(b, at, v, r, true);
+        scatter(b, at, v, r, true, false);
     }
 
     /**
-     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
-     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
-     * (docs/SPEC-TABLES.md §3.4).
+     * the same landing. `live` is false when the caller is not keeping this body. An absent
+     * optional does not call it: that payload is dead, every byte of it is zero or the load
+     * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
      */
-    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
+    static void scatter(
+            byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.sequence = TableFixed.get32(b, at + 0);
         if (Integer.compareUnsigned(v.sequence, 65535) > 0) {
             v.sequence = (int) (65535L);
@@ -293,8 +336,16 @@ public final class BenchMixedFixed {
             }
             v.entitiesCount = n;
         }
+        if (live && checkDead) {
+            for (int deadZ = 0; deadZ < (8 - v.entitiesCount) * 51; deadZ++) {
+                if (b[(at) + (56 + v.entitiesCount * 51) + deadZ] != 0) {
+                    r.refuse(TableFixed.Reason.wireDamaged);
+                    return;
+                }
+            }
+        }
         for (int i = 0; i < v.entitiesCount; i++) {
-            MixedEntityFixed.scatter(b, at + 56 + i * 51 + 0, v.entities[i], r, live);
+            MixedEntityFixed.scatter(b, at + 56 + i * 51 + 0, v.entities[i], r, live, checkDead);
         }
         {
             int n = TableFixed.get32(b, at + 464);
@@ -311,10 +362,18 @@ public final class BenchMixedFixed {
             }
             v.statsCount = n;
         }
-        for (int i = 0; i < v.statsCount; i++) {
-            MixedStatFixed.scatter(b, at + 468 + i * 8 + 0, v.stats[i], r, live);
+        if (live && checkDead) {
+            for (int deadZ = 0; deadZ < (80 - v.statsCount) * 8; deadZ++) {
+                if (b[(at) + (468 + v.statsCount * 8) + deadZ] != 0) {
+                    r.refuse(TableFixed.Reason.wireDamaged);
+                    return;
+                }
+            }
         }
-        MixedEventFixed.scatter(b, at + 1108, v.gameEvent, r, live);
+        for (int i = 0; i < v.statsCount; i++) {
+            MixedStatFixed.scatter(b, at + 468 + i * 8 + 0, v.stats[i], r, live, checkDead);
+        }
+        MixedEventFixed.scatter(b, at + 1108, v.gameEvent, r, live, checkDead);
         for (int i = 0; i < 4; i++) {
             v.loadout[i] = b[at + 1122 + i * 1 + 0];
         }
@@ -332,6 +391,14 @@ public final class BenchMixedFixed {
                 }
             }
             v.playerNameLength = n;
+        }
+        if (live && checkDead) {
+            for (int deadZ = 0; deadZ < 15 - v.playerNameLength; deadZ++) {
+                if (b[(at) + (1130 + v.playerNameLength) + deadZ] != 0) {
+                    r.refuse(TableFixed.Reason.wireDamaged);
+                    return;
+                }
+            }
         }
         if (live && !TableFixed.textOk(TableFixed.textUtf8, b, at + 1130, v.playerNameLength)) {
             r.refuse(TableFixed.Reason.textIllFormed);
@@ -355,6 +422,14 @@ public final class BenchMixedFixed {
                 }
             }
             v.payloadLength = n;
+        }
+        if (live && checkDead) {
+            for (int deadZ = 0; deadZ < 16 - v.payloadLength; deadZ++) {
+                if (b[(at) + (1149 + v.payloadLength) + deadZ] != 0) {
+                    r.refuse(TableFixed.Reason.wireDamaged);
+                    return;
+                }
+            }
         }
         System.arraycopy(b, at + 1149, v.payload, 0, v.payloadLength);
         if (v.payloadLength < v.payload.length) {
