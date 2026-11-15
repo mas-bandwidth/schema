@@ -19,6 +19,10 @@
 // tags — and NEVER throw on hostile bytes. No slack past the payload is
 // required: the reader prices its 64-bit windows inside the buffer.
 //
+// read<Name>Bits(value, view, numBits, bitOffset) -> the bits consumed, or
+// -1 on the same refusals: the framing entry, read from a bit offset with
+// no end-of-packet check, so several objects read in turn from one buffer.
+//
 // zero<Name>(value) -> the §5 zero form. There is no measure function
 // (SPEC §6.1): write returns the size, <name>MaxBytes sizes buffers.
 
@@ -1281,8 +1285,25 @@ int writeRealPacket(RealPacket value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readRealPacket(RealPacket value, ByteData view, int numBits) {
+  return readRealPacketBits(value, view, numBits, 0) >= 0;
+}
+
+// readRealPacketBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readRealPacket does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readRealPacketBits(
+  RealPacket value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1296,12 +1317,12 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 291 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1311,7 +1332,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0x1fffff;
   bitsRead += 21;
   if (v > 1610990) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f001Int = -805495 + v;
   v = (window >>> 21) & 0xffffffff;
@@ -1326,13 +1347,13 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   bitsRead += 32;
   lo |= v << 32;
   if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   value.f002F64 = Schema.doubleFromFloat64Bits(lo);
   v = (window >>> 32) & 0x1fffff;
   bitsRead += 21;
   if (v > 1671794) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f003Int = -835897 + v;
   if (bitsRead >>> 3 < tailBase) {
@@ -1343,7 +1364,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0x7fff;
   bitsRead += 15;
   if (v > 20000) {
-    return false; // headroom above the quantum count is refused
+    return -1; // headroom above the quantum count is refused
   }
   {
     final q = Schema.fround(Schema.fround(v.toDouble()) / 20000.0);
@@ -1352,13 +1373,13 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = (window >>> 15) & 0x1fff;
   bitsRead += 13;
   if (v > 7316) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f005Uint = v;
   v = (window >>> 28) & 0xfff;
   bitsRead += 12;
   if (v > 3026) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f006Int = -1513 + v;
   if (bitsRead >>> 3 < tailBase) {
@@ -1369,7 +1390,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   if ((v & 0x7f800000) == 0x7f800000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   Schema.u32[0] = v;
   value.f007F32 = Schema.f32[0];
@@ -1393,7 +1414,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = (window >>> 32) & 0x3f;
   bitsRead += 6;
   if (v > 44) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f009Int = -22 + v;
   if (bitsRead >>> 3 < tailBase) {
@@ -1404,7 +1425,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   if ((v & 0x7f800000) == 0x7f800000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   Schema.u32[0] = v;
   value.f010F32 = Schema.f32[0];
@@ -1416,7 +1437,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   value.f012Bool = v != 0;
   if (value.f012Bool) {
     if (bitsRead + 88 > numBits) {
-      return false;
+      return -1;
     }
     if (bitsRead >>> 3 < tailBase) {
       window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1426,20 +1447,20 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     if ((v & 0x7f800000) == 0x7f800000) {
-      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+      return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
     }
     Schema.u32[0] = v;
     value.f013F32 = Schema.f32[0];
     v = (window >>> 32) & 0x3ff;
     bitsRead += 10;
     if (v > 775) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     value.f014Uint = v;
     v = (window >>> 42) & 0x3f;
     bitsRead += 6;
     if (v > 42) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     value.f015Int = -21 + v;
     if (bitsRead >>> 3 < tailBase) {
@@ -1450,13 +1471,13 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     v = window & 0x7ffffff;
     bitsRead += 27;
     if (v > 75497472) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     value.f016Fixed = -37748736 + v;
     v = (window >>> 27) & 0x1fff;
     bitsRead += 13;
     if (v > 4606) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     value.f017Uint = v;
   } else {
@@ -1467,7 +1488,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     value.f017Uint = 0;
   }
   if (bitsRead + 476 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1477,7 +1498,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0x7ff;
   bitsRead += 11;
   if (v > 1668) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f018Int = -834 + v;
   v = (window >>> 11) & 0xffffffff;
@@ -1492,7 +1513,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   bitsRead += 32;
   lo |= v << 32;
   if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   value.f019F64 = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
@@ -1503,7 +1524,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   if ((v & 0x7f800000) == 0x7f800000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   Schema.u32[0] = v;
   value.f020F32 = Schema.f32[0];
@@ -1515,7 +1536,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0x7ffffff;
   bitsRead += 27;
   if (v > 102977536) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f021Ufixed = v;
   if (bitsRead >>> 3 < tailBase) {
@@ -1526,7 +1547,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   if ((v & 0x7f800000) == 0x7f800000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   Schema.u32[0] = v;
   value.f022F32 = Schema.f32[0];
@@ -1541,14 +1562,14 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   if ((v & 0x7f800000) == 0x7f800000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   Schema.u32[0] = v;
   value.f024F32 = Schema.f32[0];
   v = (window >>> 32) & 0xffff;
   bitsRead += 16;
   if (v > 60928) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f025Fixed = -30464 + v;
   v = (window >>> 48) & 0x1ff;
@@ -1562,7 +1583,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0x1f;
   bitsRead += 5;
   if (v > 16) {
-    return false; // headroom above the quantum count is refused
+    return -1; // headroom above the quantum count is refused
   }
   {
     final q = Schema.fround(Schema.fround(v.toDouble()) / 16.0);
@@ -1591,7 +1612,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   if ((v & 0x7f800000) == 0x7f800000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   Schema.u32[0] = v;
   value.f030F32 = Schema.f32[0];
@@ -1601,13 +1622,13 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = (window >>> 33) & 0x7;
   bitsRead += 3;
   if (v > 6) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f032Int = -3 + v;
   v = (window >>> 36) & 0x3ffff;
   bitsRead += 18;
   if (v > 142780) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f033Uint = v;
   if (bitsRead >>> 3 < tailBase) {
@@ -1618,7 +1639,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0x3fff;
   bitsRead += 14;
   if (v > 14149) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f034Uint = v;
   v = (window >>> 14) & 0x1ff;
@@ -1627,7 +1648,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = (window >>> 23) & 0x7;
   bitsRead += 3;
   if (v > 5) {
-    return false; // headroom above the wire range is refused
+    return -1; // headroom above the wire range is refused
   }
   value.f036Enum = PacketMode(v);
   v = (window >>> 26) & 0x1;
@@ -1647,13 +1668,13 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xffff;
   bitsRead += 16;
   if (v > 40960) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f040Fixed = -20480 + v;
   v = (window >>> 16) & 0x7f;
   bitsRead += 7;
   if (v > 110) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f041Int = -55 + v;
   v = (window >>> 23) & 0x3fffffff;
@@ -1664,7 +1685,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   value.f043Bool = v != 0;
   if (value.f043Bool) {
     if (bitsRead + 81 > numBits) {
-      return false;
+      return -1;
     }
     if (bitsRead >>> 3 < tailBase) {
       window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1674,7 +1695,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     if ((v & 0x7f800000) == 0x7f800000) {
-      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+      return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
     }
     Schema.u32[0] = v;
     value.f044F32 = Schema.f32[0];
@@ -1689,13 +1710,13 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     v = window & 0x1ffff;
     bitsRead += 17;
     if (v > 76063) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     value.f046Uint = v;
     v = (window >>> 17) & 0xfffff;
     bitsRead += 20;
     if (v > 861952) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     value.f047Int = -430976 + v;
   } else {
@@ -1705,7 +1726,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     value.f047Int = 0;
   }
   if (bitsRead + 81 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1724,13 +1745,13 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   bitsRead += 32;
   lo |= v << 32;
   if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   value.f048F64 = Schema.doubleFromFloat64Bits(lo);
   v = (window >>> 32) & 0xffff;
   bitsRead += 16;
   if (v > 49152) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f049Ufixed = v;
   v = (window >>> 48) & 0x1;
@@ -1738,7 +1759,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   value.f050Bool = v != 0;
   if (value.f050Bool) {
     if (bitsRead + 47 > numBits) {
-      return false;
+      return -1;
     }
     if (bitsRead >>> 3 < tailBase) {
       window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1751,20 +1772,20 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     v = (window >>> 1) & 0x7f;
     bitsRead += 7;
     if (v > 114) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     value.f052Int = -57 + v;
     v = (window >>> 8) & 0xffffffff;
     bitsRead += 32;
     if ((v & 0x7f800000) == 0x7f800000) {
-      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+      return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
     }
     Schema.u32[0] = v;
     value.f053F32 = Schema.f32[0];
     v = (window >>> 40) & 0x7f;
     bitsRead += 7;
     if (v > 70) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     value.f054Int = -35 + v;
   } else {
@@ -1774,7 +1795,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     value.f054Int = 0;
   }
   if (bitsRead + 290 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1787,19 +1808,19 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = (window >>> 1) & 0x1f;
   bitsRead += 5;
   if (v > 26) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f056Int = -13 + v;
   v = (window >>> 6) & 0x1f;
   bitsRead += 5;
   if (v > 30) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f057Int = -15 + v;
   v = (window >>> 11) & 0xffffffff;
   bitsRead += 32;
   if ((v & 0x7f800000) == 0x7f800000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   Schema.u32[0] = v;
   value.f058F32 = Schema.f32[0];
@@ -1820,7 +1841,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   bitsRead += 32;
   lo |= v << 32;
   if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   value.f059F64 = Schema.doubleFromFloat64Bits(lo);
   v = (window >>> 32) & 0xff;
@@ -1829,7 +1850,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = (window >>> 40) & 0x1ff;
   bitsRead += 9;
   if (v > 360) {
-    return false; // headroom above the quantum count is refused
+    return -1; // headroom above the quantum count is refused
   }
   {
     final q = Schema.fround(Schema.fround(v.toDouble()) / 360.0);
@@ -1843,7 +1864,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0x1ff;
   bitsRead += 9;
   if (v > 503) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f062Uint = v;
   v = (window >>> 9) & 0xffffffff;
@@ -1861,13 +1882,13 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = (window >>> 32) & 0x1ff;
   bitsRead += 9;
   if (v > 299) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f064Uint = v;
   v = (window >>> 41) & 0x3f;
   bitsRead += 6;
   if (v > 60) {
-    return false; // headroom above the quantum count is refused
+    return -1; // headroom above the quantum count is refused
   }
   {
     final q = Schema.fround(Schema.fround(v.toDouble()) / 60.0);
@@ -1881,13 +1902,13 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xffff;
   bitsRead += 16;
   if (v > 32768) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f066Ufixed = v;
   v = (window >>> 16) & 0x3ff;
   bitsRead += 10;
   if (v > 800) {
-    return false; // headroom above the quantum count is refused
+    return -1; // headroom above the quantum count is refused
   }
   {
     final q = Schema.fround(Schema.fround(v.toDouble()) / 800.0);
@@ -1896,7 +1917,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = (window >>> 26) & 0x7ff;
   bitsRead += 11;
   if (v > 2000) {
-    return false; // headroom above the quantum count is refused
+    return -1; // headroom above the quantum count is refused
   }
   {
     final q = Schema.fround(Schema.fround(v.toDouble()) / 2000.0);
@@ -1908,7 +1929,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = (window >>> 48) & 0x3;
   bitsRead += 2;
   if (v > 2) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f070Uint = v;
   if (bitsRead >>> 3 < tailBase) {
@@ -1919,7 +1940,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0x1ff;
   bitsRead += 9;
   if (v > 500) {
-    return false; // headroom above the quantum count is refused
+    return -1; // headroom above the quantum count is refused
   }
   {
     final q = Schema.fround(Schema.fround(v.toDouble()) / 500.0);
@@ -1928,7 +1949,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = (window >>> 9) & 0x3fff;
   bitsRead += 14;
   if (v > 10000) {
-    return false; // headroom above the quantum count is refused
+    return -1; // headroom above the quantum count is refused
   }
   {
     final q = Schema.fround(Schema.fround(v.toDouble()) / 10000.0);
@@ -1937,7 +1958,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = (window >>> 23) & 0xf;
   bitsRead += 4;
   if (v > 8) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f073Int = -4 + v;
   v = (window >>> 27) & 0x1;
@@ -1945,7 +1966,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   value.f074Bool = v != 0;
   if (value.f074Bool) {
     if (bitsRead + 100 > numBits) {
-      return false;
+      return -1;
     }
     if (bitsRead >>> 3 < tailBase) {
       window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1967,13 +1988,13 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     v = (window >>> 32) & 0xffff;
     bitsRead += 16;
     if (v > 52436) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     value.f076Int = -26218 + v;
     v = (window >>> 48) & 0x3f;
     bitsRead += 6;
     if (v > 34) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     value.f077Int = -17 + v;
     if (bitsRead >>> 3 < tailBase) {
@@ -1987,7 +2008,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     v = (window >>> 9) & 0x1f;
     bitsRead += 5;
     if (v > 17) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     value.f079Uint = v;
   } else {
@@ -1998,7 +2019,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     value.f079Uint = 0;
   }
   if (bitsRead + 356 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2022,13 +2043,13 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0x7;
   bitsRead += 3;
   if (v > 5) {
-    return false; // headroom above the wire range is refused
+    return -1; // headroom above the wire range is refused
   }
   value.f083Enum = PacketMode(v);
   v = (window >>> 3) & 0xff;
   bitsRead += 8;
   if (v > 128) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f084Ufixed = v;
   v = (window >>> 11) & 0x1fffff;
@@ -2037,7 +2058,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = (window >>> 32) & 0x1ff;
   bitsRead += 9;
   if (v > 399) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f086Uint = v;
   if (bitsRead >>> 3 < tailBase) {
@@ -2057,13 +2078,13 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   bitsRead += 32;
   lo |= v << 32;
   if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   value.f087F64 = Schema.doubleFromFloat64Bits(lo);
   v = (window >>> 32) & 0x7ff;
   bitsRead += 11;
   if (v > 1388) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f088Int = -694 + v;
   if (bitsRead >>> 3 < tailBase) {
@@ -2077,7 +2098,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = (window >>> 48) & 0xff;
   bitsRead += 8;
   if (v > 214) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f090Uint = v;
   if (bitsRead >>> 3 < tailBase) {
@@ -2114,7 +2135,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xfffffff;
   bitsRead += 28;
   if (v > 206700544) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f095Fixed = -103350272 + v;
   v = (window >>> 28) & 0x3ffff;
@@ -2128,5 +2149,5 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xfff;
   bitsRead += 12;
   value.f097Bits = v;
-  return true;
+  return bitsRead - bitOffset;
 }

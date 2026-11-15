@@ -2219,9 +2219,12 @@ type inside generated code is read through a per-type body that does not end.
 Where the leg reports it, `Read` reports bits consumed. Framing several
 objects in one buffer is not several `Read<T>` calls: use a top-level type
 whose fields are the objects, or the leg's bit-offset entry where it has one
-(§6.1), and the one end check runs once, after the last. The Dart `read<T>`
-and the JavaScript `Read<T>Flat` return a boolean only; they do not report
-bits consumed today. That is an open question for the owner, not changed here.
+(§6.1), and the one end check runs once, after the last. Dart reports bits
+consumed through a second entry, `read<T>Bits(value, view, numBits,
+bitOffset)`, which returns the bits consumed or -1 and runs no end check; its
+`read<T>` returns a boolean. The JavaScript `Read<T>Flat` returns a boolean
+only; it does not report bits consumed today. That is an open question for the
+owner, not changed here.
 
 **Writes check what the declaration does not admit in every packet target, by the leg's own mechanism (§5.1).** A language verifies correctness the way that language verifies
 correctness: a debug-only assert where that is the language's idiom, a refusal

@@ -97,8 +97,20 @@ int writeW13(W13 value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readW13(W13 value, ByteData view, int numBits) {
+  return readW13Bits(value, view, numBits, 0) >= 0;
+}
+
+// readW13Bits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readW13 does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readW13Bits(W13 value, ByteData view, int numBits, int bitOffset) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -112,11 +124,11 @@ bool readW13(W13 value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 4 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -126,11 +138,11 @@ bool readW13(W13 value, ByteData view, int numBits) {
   v = window & 0xf;
   bitsRead += 4;
   if (v > 12) {
-    return false; // the count guards the loop — reject, never clamp
+    return -1; // the count guards the loop — reject, never clamp
   }
   value.itemsCount = v;
   if (bitsRead + value.itemsCount * 13 > numBits) {
-    return false;
+    return -1;
   }
   {
     var i0 = 0;
@@ -166,7 +178,7 @@ bool readW13(W13 value, ByteData view, int numBits) {
       value.items[i0] = v;
     }
   }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type W17
@@ -255,8 +267,20 @@ int writeW17(W17 value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readW17(W17 value, ByteData view, int numBits) {
+  return readW17Bits(value, view, numBits, 0) >= 0;
+}
+
+// readW17Bits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readW17 does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readW17Bits(W17 value, ByteData view, int numBits, int bitOffset) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -270,11 +294,11 @@ bool readW17(W17 value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 4 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -284,11 +308,11 @@ bool readW17(W17 value, ByteData view, int numBits) {
   v = window & 0xf;
   bitsRead += 4;
   if (v > 9) {
-    return false; // the count guards the loop — reject, never clamp
+    return -1; // the count guards the loop — reject, never clamp
   }
   value.itemsCount = v;
   if (bitsRead + value.itemsCount * 17 > numBits) {
-    return false;
+    return -1;
   }
   {
     var i0 = 0;
@@ -321,7 +345,7 @@ bool readW17(W17 value, ByteData view, int numBits) {
       value.items[i0] = v;
     }
   }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type W26
@@ -407,8 +431,20 @@ int writeW26(W26 value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readW26(W26 value, ByteData view, int numBits) {
+  return readW26Bits(value, view, numBits, 0) >= 0;
+}
+
+// readW26Bits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readW26 does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readW26Bits(W26 value, ByteData view, int numBits, int bitOffset) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -422,11 +458,11 @@ bool readW26(W26 value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 3 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -436,11 +472,11 @@ bool readW26(W26 value, ByteData view, int numBits) {
   v = window & 0x7;
   bitsRead += 3;
   if (v > 6) {
-    return false; // the count guards the loop — reject, never clamp
+    return -1; // the count guards the loop — reject, never clamp
   }
   value.itemsCount = v;
   if (bitsRead + value.itemsCount * 26 > numBits) {
-    return false;
+    return -1;
   }
   {
     var i0 = 0;
@@ -470,7 +506,7 @@ bool readW26(W26 value, ByteData view, int numBits) {
       value.items[i0] = v;
     }
   }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type W1
@@ -742,8 +778,20 @@ int writeW1(W1 value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readW1(W1 value, ByteData view, int numBits) {
+  return readW1Bits(value, view, numBits, 0) >= 0;
+}
+
+// readW1Bits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readW1 does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readW1Bits(W1 value, ByteData view, int numBits, int bitOffset) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -757,11 +805,11 @@ bool readW1(W1 value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 5 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -771,11 +819,11 @@ bool readW1(W1 value, ByteData view, int numBits) {
   v = window & 0x1f;
   bitsRead += 5;
   if (v > 20) {
-    return false; // the count guards the loop — reject, never clamp
+    return -1; // the count guards the loop — reject, never clamp
   }
   value.itemsCount = v;
   if (bitsRead + value.itemsCount * 1 > numBits) {
-    return false;
+    return -1;
   }
   {
     var i0 = 0;
@@ -970,7 +1018,7 @@ bool readW1(W1 value, ByteData view, int numBits) {
       value.items[i0] = v;
     }
   }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type W52
@@ -1036,8 +1084,20 @@ int writeW52(W52 value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readW52(W52 value, ByteData view, int numBits) {
+  return readW52Bits(value, view, numBits, 0) >= 0;
+}
+
+// readW52Bits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readW52 does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readW52Bits(W52 value, ByteData view, int numBits, int bitOffset) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1051,12 +1111,12 @@ bool readW52(W52 value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 2 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1067,7 +1127,7 @@ bool readW52(W52 value, ByteData view, int numBits) {
   bitsRead += 2;
   value.itemsCount = v;
   if (bitsRead + value.itemsCount * 52 > numBits) {
-    return false;
+    return -1;
   }
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
     if (bitsRead >>> 3 < tailBase) {
@@ -1079,7 +1139,7 @@ bool readW52(W52 value, ByteData view, int numBits) {
     bitsRead += 52;
     value.items[i0] = lo;
   }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type W50
@@ -1145,8 +1205,20 @@ int writeW50(W50 value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readW50(W50 value, ByteData view, int numBits) {
+  return readW50Bits(value, view, numBits, 0) >= 0;
+}
+
+// readW50Bits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readW50 does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readW50Bits(W50 value, ByteData view, int numBits, int bitOffset) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1160,12 +1232,12 @@ bool readW50(W50 value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 2 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1176,7 +1248,7 @@ bool readW50(W50 value, ByteData view, int numBits) {
   bitsRead += 2;
   value.itemsCount = v;
   if (bitsRead + value.itemsCount * 50 > numBits) {
-    return false;
+    return -1;
   }
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
     if (bitsRead >>> 3 < tailBase) {
@@ -1188,7 +1260,7 @@ bool readW50(W50 value, ByteData view, int numBits) {
     bitsRead += 50;
     value.items[i0] = lo;
   }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type F13
@@ -1246,8 +1318,20 @@ int writeF13(F13 value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readF13(F13 value, ByteData view, int numBits) {
+  return readF13Bits(value, view, numBits, 0) >= 0;
+}
+
+// readF13Bits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readF13 does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readF13Bits(F13 value, ByteData view, int numBits, int bitOffset) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1261,11 +1345,11 @@ bool readF13(F13 value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 91 > numBits) {
-    return false;
+    return -1;
   }
   for (var i0 = 0; i0 < 7; i0++) {
     if (bitsRead >>> 3 < tailBase) {
@@ -1277,7 +1361,7 @@ bool readF13(F13 value, ByteData view, int numBits) {
     bitsRead += 13;
     value.items[i0] = v;
   }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type Tri3
@@ -1327,8 +1411,20 @@ int writeTri3(Tri3 value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTri3(Tri3 value, ByteData view, int numBits) {
+  return readTri3Bits(value, view, numBits, 0) >= 0;
+}
+
+// readTri3Bits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readTri3 does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readTri3Bits(Tri3 value, ByteData view, int numBits, int bitOffset) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1342,11 +1438,11 @@ bool readTri3(Tri3 value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 3 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1359,7 +1455,7 @@ bool readTri3(Tri3 value, ByteData view, int numBits) {
   v = (window >>> 1) & 0x3;
   bitsRead += 2;
   value.b = v;
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type ArrTri3
@@ -1504,8 +1600,20 @@ int writeArrTri3(ArrTri3 value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readArrTri3(ArrTri3 value, ByteData view, int numBits) {
+  return readArrTri3Bits(value, view, numBits, 0) >= 0;
+}
+
+// readArrTri3Bits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readArrTri3 does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readArrTri3Bits(ArrTri3 value, ByteData view, int numBits, int bitOffset) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1519,11 +1627,11 @@ bool readArrTri3(ArrTri3 value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 4 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1533,11 +1641,11 @@ bool readArrTri3(ArrTri3 value, ByteData view, int numBits) {
   v = window & 0xf;
   bitsRead += 4;
   if (v > 10) {
-    return false; // the count guards the loop — reject, never clamp
+    return -1; // the count guards the loop — reject, never clamp
   }
   value.itemsCount = v;
   if (bitsRead + value.itemsCount * 3 > numBits) {
-    return false;
+    return -1;
   }
   {
     var i0 = 0;
@@ -1698,7 +1806,7 @@ bool readArrTri3(ArrTri3 value, ByteData view, int numBits) {
       e0.b = v;
     }
   }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type Eleven
@@ -1748,8 +1856,20 @@ int writeEleven(Eleven value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readEleven(Eleven value, ByteData view, int numBits) {
+  return readElevenBits(value, view, numBits, 0) >= 0;
+}
+
+// readElevenBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readEleven does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readElevenBits(Eleven value, ByteData view, int numBits, int bitOffset) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1763,11 +1883,11 @@ bool readEleven(Eleven value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 11 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1780,7 +1900,7 @@ bool readEleven(Eleven value, ByteData view, int numBits) {
   v = (window >>> 3) & 0xff;
   bitsRead += 8;
   value.b = v;
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type ArrEleven
@@ -1840,8 +1960,25 @@ int writeArrEleven(ArrEleven value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readArrEleven(ArrEleven value, ByteData view, int numBits) {
+  return readArrElevenBits(value, view, numBits, 0) >= 0;
+}
+
+// readArrElevenBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readArrEleven does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readArrElevenBits(
+  ArrEleven value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1855,11 +1992,11 @@ bool readArrEleven(ArrEleven value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 99 > numBits) {
-    return false;
+    return -1;
   }
   for (var i0 = 0; i0 < 9; i0++) {
     final e0 = value.items[i0];
@@ -1875,7 +2012,7 @@ bool readArrEleven(ArrEleven value, ByteData view, int numBits) {
     bitsRead += 8;
     e0.b = v;
   }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type EmptyA
@@ -1919,10 +2056,22 @@ int writeEmptyA(EmptyA value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readEmptyA(EmptyA value, ByteData view, int numBits) {
+  return readEmptyABits(value, view, numBits, 0) >= 0;
+}
+
+// readEmptyABits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readEmptyA does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readEmptyABits(EmptyA value, ByteData view, int numBits, int bitOffset) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
-  return true;
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
+  }
+  return 0; // empty body — presence is the payload (SPEC §4.6)
 }
 
 // type EmptyB
@@ -1966,10 +2115,22 @@ int writeEmptyB(EmptyB value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readEmptyB(EmptyB value, ByteData view, int numBits) {
+  return readEmptyBBits(value, view, numBits, 0) >= 0;
+}
+
+// readEmptyBBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readEmptyB does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readEmptyBBits(EmptyB value, ByteData view, int numBits, int bitOffset) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
-  return true;
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
+  }
+  return 0; // empty body — presence is the payload (SPEC §4.6)
 }
 
 // EmptyUnionType: union EmptyUnion's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -2048,8 +2209,25 @@ int writeEmptyUnion(EmptyUnion value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readEmptyUnion(EmptyUnion value, ByteData view, int numBits) {
+  return readEmptyUnionBits(value, view, numBits, 0) >= 0;
+}
+
+// readEmptyUnionBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readEmptyUnion does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readEmptyUnionBits(
+  EmptyUnion value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -2063,11 +2241,11 @@ bool readEmptyUnion(EmptyUnion value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 2 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2077,7 +2255,7 @@ bool readEmptyUnion(EmptyUnion value, ByteData view, int numBits) {
   v = window & 0x3;
   bitsRead += 2;
   if (v > 2) {
-    return false; // not a wire-legal tag (SPEC §4.8)
+    return -1; // not a wire-legal tag (SPEC §4.8)
   }
   value.type = EmptyUnionType(v);
   switch (value.type) {
@@ -2086,7 +2264,7 @@ bool readEmptyUnion(EmptyUnion value, ByteData view, int numBits) {
     case EmptyUnionType.b:
       break; // empty arm — presence is the payload (SPEC §4.6)
   }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type HoldsEmptyUnion
@@ -2150,8 +2328,25 @@ int writeHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view, int numBits) {
+  return readHoldsEmptyUnionBits(value, view, numBits, 0) >= 0;
+}
+
+// readHoldsEmptyUnionBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readHoldsEmptyUnion does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readHoldsEmptyUnionBits(
+  HoldsEmptyUnion value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -2165,11 +2360,11 @@ bool readHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 5 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2180,12 +2375,12 @@ bool readHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view, int numBits) {
   bitsRead += 5;
   value.lead = v;
   if (bitsRead + 2 > numBits) {
-    return false;
+    return -1;
   }
   v = (window >>> 5) & 0x3;
   bitsRead += 2;
   if (v > 2) {
-    return false; // not a wire-legal tag (SPEC §4.8)
+    return -1; // not a wire-legal tag (SPEC §4.8)
   }
   value.u.type = EmptyUnionType(v);
   switch (value.u.type) {
@@ -2195,7 +2390,7 @@ bool readHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view, int numBits) {
       break; // empty arm — presence is the payload (SPEC §4.6)
   }
   if (bitsRead + 7 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2205,7 +2400,7 @@ bool readHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view, int numBits) {
   v = window & 0x7f;
   bitsRead += 7;
   value.tail = v;
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type Strs
@@ -2367,8 +2562,20 @@ int writeStrs(Strs value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readStrs(Strs value, ByteData view, int numBits) {
+  return readStrsBits(value, view, numBits, 0) >= 0;
+}
+
+// readStrsBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readStrs does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readStrsBits(Strs value, ByteData view, int numBits, int bitOffset) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -2382,11 +2589,11 @@ bool readStrs(Strs value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 5 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2397,28 +2604,28 @@ bool readStrs(Strs value, ByteData view, int numBits) {
   bitsRead += 5;
   value.lead = v;
   if (bitsRead + 4 > numBits) {
-    return false;
+    return -1;
   }
   v = (window >>> 5) & 0xf;
   bitsRead += 4;
   if (v > 8) {
-    return false; // the length guards the slice — reject, never clamp
+    return -1; // the length guards the slice — reject, never clamp
   }
   value.sLength = v;
   {
     final pad = bitsRead & 7;
     if (pad != 0) {
       if (bitsRead + (8 - pad) > numBits) {
-        return false;
+        return -1;
       }
       if (view.getUint8(bitsRead >>> 3) >>> pad != 0) {
-        return false; // nonzero padding is refused (SPEC §4.3)
+        return -1; // nonzero padding is refused (SPEC §4.3)
       }
       bitsRead += 8 - pad;
     }
   }
   if (bitsRead + value.sLength * 8 > numBits) {
-    return false;
+    return -1;
   }
   {
     final base = bitsRead >>> 3;
@@ -2428,15 +2635,15 @@ bool readStrs(Strs value, ByteData view, int numBits) {
   }
   bitsRead += value.sLength * 8;
   if (!Schema.utf8Valid(value.s, value.sLength)) {
-    return false;
+    return -1;
   }
   for (var i0 = 0; i0 < value.sLength; i0++) {
     if (value.s[i0] == 0) {
-      return false; // an interior null is content the read refuses (SPEC §4.7)
+      return -1; // an interior null is content the read refuses (SPEC §4.7)
     }
   }
   if (bitsRead + 4 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2446,23 +2653,23 @@ bool readStrs(Strs value, ByteData view, int numBits) {
   v = window & 0xf;
   bitsRead += 4;
   if (v > 8) {
-    return false; // the length guards the slice — reject, never clamp
+    return -1; // the length guards the slice — reject, never clamp
   }
   value.bLength = v;
   {
     final pad = bitsRead & 7;
     if (pad != 0) {
       if (bitsRead + (8 - pad) > numBits) {
-        return false;
+        return -1;
       }
       if (view.getUint8(bitsRead >>> 3) >>> pad != 0) {
-        return false; // nonzero padding is refused (SPEC §4.3)
+        return -1; // nonzero padding is refused (SPEC §4.3)
       }
       bitsRead += 8 - pad;
     }
   }
   if (bitsRead + value.bLength * 8 > numBits) {
-    return false;
+    return -1;
   }
   {
     final base = bitsRead >>> 3;
@@ -2472,7 +2679,7 @@ bool readStrs(Strs value, ByteData view, int numBits) {
   }
   bitsRead += value.bLength * 8;
   if (bitsRead + 3 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2482,7 +2689,7 @@ bool readStrs(Strs value, ByteData view, int numBits) {
   v = window & 0x7;
   bitsRead += 3;
   value.tail = v;
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type ArrNested
@@ -2594,8 +2801,25 @@ int writeArrNested(ArrNested value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readArrNested(ArrNested value, ByteData view, int numBits) {
+  return readArrNestedBits(value, view, numBits, 0) >= 0;
+}
+
+// readArrNestedBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readArrNested does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readArrNestedBits(
+  ArrNested value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -2609,11 +2833,11 @@ bool readArrNested(ArrNested value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 5 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2624,16 +2848,16 @@ bool readArrNested(ArrNested value, ByteData view, int numBits) {
   bitsRead += 5;
   value.lead = v;
   if (bitsRead + 3 > numBits) {
-    return false;
+    return -1;
   }
   v = (window >>> 5) & 0x7;
   bitsRead += 3;
   if (v > 4) {
-    return false; // the count guards the loop — reject, never clamp
+    return -1; // the count guards the loop — reject, never clamp
   }
   value.itemsCount = v;
   if (bitsRead + value.itemsCount * 11 > numBits) {
-    return false;
+    return -1;
   }
   {
     var i0 = 0;
@@ -2697,7 +2921,7 @@ bool readArrNested(ArrNested value, ByteData view, int numBits) {
     }
   }
   if (bitsRead + 3 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2707,7 +2931,7 @@ bool readArrNested(ArrNested value, ByteData view, int numBits) {
   v = window & 0x7;
   bitsRead += 3;
   value.tail = v;
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type Sole
@@ -2754,8 +2978,20 @@ int writeSole(Sole value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readSole(Sole value, ByteData view, int numBits) {
+  return readSoleBits(value, view, numBits, 0) >= 0;
+}
+
+// readSoleBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readSole does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readSoleBits(Sole value, ByteData view, int numBits, int bitOffset) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -2769,11 +3005,11 @@ bool readSole(Sole value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 13 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2783,5 +3019,5 @@ bool readSole(Sole value, ByteData view, int numBits) {
   v = window & 0x1fff;
   bitsRead += 13;
   value.only = v;
-  return true;
+  return bitsRead - bitOffset;
 }
