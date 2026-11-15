@@ -25,6 +25,20 @@ import (
 
 const (
 	cppJsonIntegersDir = "../../../testdata/wire/json-integers"
+	// cppJsonIntegersSerialize is the one thing the generated header takes from
+	// serialize.h for a 128-bit field: the storage type. The JSON writer and
+	// reader are self-contained, so the unit names no serialize stream and this
+	// shim lets the probe compile without a sibling runtime checkout.
+	cppJsonIntegersSerialize = `#pragma once
+
+#include <cstdint>
+
+namespace serialize
+{
+    using int128_t = __int128;
+    using uint128_t = unsigned __int128;
+}
+`
 	cppJsonIntegersSrc = `package jsonintegers
 
 table Integers
@@ -148,14 +162,6 @@ func TestCppJsonWideIntegersAreStrings(t *testing.T) {
 		}
 		t.Skipf("%s: %v", cxx, err)
 	}
-	serialize, ok := cppSerializeDir(t)
-	if !ok {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("the sibling runtime serialize is absent at %s: the generated header's 128-bit storage does not resolve", serialize)
-		}
-		t.Skipf("named as not run: the sibling serialize runtime is not staged at %s", serialize)
-	}
-
 	rows := cppJsonIntegersRows(t)
 	canonical, err := os.ReadFile(filepath.Join(cppJsonIntegersDir, "canonical.read.json"))
 	if err != nil {
@@ -172,6 +178,13 @@ func TestCppJsonWideIntegersAreStrings(t *testing.T) {
 	}
 	maps.Copy(files, tables)
 	src := t.TempDir()
+	shim := filepath.Join(src, "shim")
+	if err := os.Mkdir(shim, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(shim, "serialize.h"), []byte(cppJsonIntegersSerialize), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	var header string
 	var sources []string
 	for name, data := range files {
@@ -208,7 +221,7 @@ func TestCppJsonWideIntegersAreStrings(t *testing.T) {
 		t.Fatal(err)
 	}
 	exe := filepath.Join(src, "probe")
-	args := append([]string{"-std=c++17", "-O1", "-fsanitize=undefined", "-fno-sanitize-recover=undefined", "-I" + src, "-I" + serialize, probe}, sources...)
+	args := append([]string{"-std=c++17", "-O1", "-fsanitize=undefined", "-fno-sanitize-recover=undefined", "-I" + src, "-I" + shim, probe}, sources...)
 	args = append(args, "-o", exe)
 	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not compile: %v\n%s", err, out)
