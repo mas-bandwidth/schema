@@ -42,13 +42,22 @@ jobs:
             exit 1
           fi
           sbcl --version
+      # Cards never commit ROADMAP.md (tools/roadmap/roadmap.mk): a pull
+      # request that leaves the page alone is held to its data rendering
+      # (roadmap-data-check); a push to main, and a pull request that commits
+      # the page, are held to the page being the render (roadmap-check).
       - name: the tables match the data, blocks hold only tables, and the hand text is Glenn's
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           set -euo pipefail
           if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then BASE=HEAD~1; fi
-          make roadmap-check ROADMAP_BASE="$BASE"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && git diff --quiet "$BASE" HEAD -- ROADMAP.md; then
+            echo "ROADMAP_DATA_ONLY=1" >> "$GITHUB_ENV"
+            make roadmap-data-check ROADMAP_BASE="$BASE"
+          else
+            make roadmap-check ROADMAP_BASE="$BASE"
+          fi
       - name: the gate refuses an "X update:" paragraph put back
         run: make roadmap-check-negative-control
       - name: the renderer and gate suites

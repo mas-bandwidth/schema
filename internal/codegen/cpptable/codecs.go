@@ -829,13 +829,25 @@ func guardWalk(st *ir.Struct, prefix string) map[string]string {
 // is length-prefixed, so a caller can measure subtables in parallel,
 // prefix-sum offsets, and scatter-write disjoint ranges from N workers.
 // Mirrors TableWrite's elision decisions branch for branch: for any value,
-// Save writes exactly this many bytes into a buffer of exactly this size. A value violating its storage invariants (a count or length outside
-// its bound, an out-of-range union tag) measures as -1, exactly as the
-// write side refuses it.
+// Save writes exactly this many bytes into a buffer of exactly this size. A
+// count or length outside its storage is the caller's bug, caught by the debug
+// assert (storageAssert); a value the write side refuses in every build (an
+// out-of-range union tag) measures as -1, exactly as the write side refuses it.
 // framed is a length-shaped payload's cost: its own canonical length, then the
 // bytes.
 func framed(length string) string {
 	return "TableLebBytes( (uint64_t) ( " + length + " ) ) + ( " + length + " )"
+}
+
+// storageAssert is the WRITE-SIDE STORAGE CHECK, DEBUG-ONLY BY RULE
+// (docs/SPEC.md §5.1): a count or length that would index past the storage it
+// describes is the programmer's bug, and C++ is an assert leg, so NDEBUG
+// removes the check exactly as it removes every other write check and a
+// release build carries none. The read side checks the same bound in every
+// build.
+func (g *tableGen) storageAssert(ind, expr string, bound int64) {
+	g.storageAsserts = true
+	g.pf("%sschema_assert( %s >= 0 && %s <= %d ); // storage invariant, debug only (§5.1)\n", ind, expr, expr, bound)
 }
 
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
@@ -941,7 +953,7 @@ func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, acce
 			g.pf("%s    %s += %s;\n", ind, into, framed("elem_len"+sfx))
 		} else {
 			m := ir.TextListValue(f).Type.Size
-			g.pf("%s    if ( ( %s ).value_length < 0 || ( %s ).value_length > %d ) { %s }\n", ind, elemExpr, elemExpr, m, onBad)
+			g.storageAssert(ind+"    ", "( "+elemExpr+" ).value_length", m)
 			g.pf("%s    if ( !TableUtf8Valid( (const uint8_t *) ( %s ).value, (uint64_t) ( %s ).value_length ) ) { %s }\n", ind, elemExpr, elemExpr, onBad)
 			g.pf("%s    %s += %s;\n", ind, into, framed(fmt.Sprintf("( %s ).value_length", elemExpr)))
 		}
@@ -1089,7 +1101,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			// the plain counted array elides at zero
 			count := strconv.FormatInt(f.ArrayBound, 10)
 			if f.Array == ir.ArrayCounted {
-				g.pf("        if ( value.%s_count < 0 || value.%s_count > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
+				g.storageAssert("        ", "value."+f.Name+"_count", f.ArrayBound)
 				count = fmt.Sprintf("value.%s_count", f.Name)
 			}
 			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
@@ -1107,7 +1119,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			g.pf("        if ( text_%s == NULL ) { return -1; }\n", f.Name)
 			g.pf("        bytes += %s + %s; // %s\n", g.hdrBytes(id), framed(fmt.Sprintf("len_%s", f.Name)), f.Name)
 		case f.Type.Kind == ir.TString:
-			g.pf("        if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+			g.storageAssert("        ", "value."+f.Name+"_length", f.Type.Size)
 			g.pf("        if ( !TableUtf8Valid( (const uint8_t *) value.%s, (uint64_t) value.%s_length ) ) { return -1; } // well-formed, no zero byte (§2.13)\n", f.Name, f.Name)
 			g.pf("        bytes += %s + %s; // %s\n", g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
 		case kind == tkEnum:
@@ -1155,7 +1167,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		// an ARRAY OF POINTERS (docs/SPEC-TABLES.md §2.1, §3.1): kind 14 with element
 		// kind 17, N, then N node indices. CONTENT decides, as for any by-value
 		// array: an empty one elides, and a live slot rides as its index, null as 0.
-		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
+		g.storageAssert("    ", "value."+f.Name+"_count", f.ArrayBound)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 		} else {
@@ -1228,14 +1240,14 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		}
 		g.pf("    }\n")
 	case f.Type.Kind == ir.TString:
-		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+		g.storageAssert("    ", "value."+f.Name+"_length", f.Type.Size)
 		if f.Required {
 			g.pf("    if ( true ) { bytes += %s + %s; } // %s (| required: always rides, empty included, §2.3)\n", g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
 		} else {
 			g.pf("    if ( %s ) { bytes += %s + %s; } // %s\n", g.lengthRidesTest(f), g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
 		}
 	case f.Type.Kind == ir.TBytes:
-		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+		g.storageAssert("    ", "value."+f.Name+"_length", f.Type.Size)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides, empty included (§2.3)\n    {\n")
 		} else {
@@ -1246,7 +1258,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        bytes += %s + %s; // %s\n", g.hdrBytes(id), framed("body_"+f.Name), f.Name)
 		g.pf("    }\n")
 	case f.Array == ir.ArrayCounted:
-		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
+		g.storageAssert("    ", "value."+f.Name+"_count", f.ArrayBound)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 		} else {
@@ -1651,7 +1663,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		case f.Array != ir.ArrayNone:
 			count := strconv.FormatInt(f.ArrayBound, 10)
 			if f.Array == ir.ArrayCounted {
-				g.pf("        if ( value.%s_count < 0 || value.%s_count > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
+				g.storageAssert("        ", "value."+f.Name+"_count", f.ArrayBound)
 				count = fmt.Sprintf("value.%s_count", f.Name)
 			}
 			g.emitArrayField(f, id, elemKind, count, "value."+f.Name+"[%s]", "        ")
@@ -1669,7 +1681,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.pf("        w.putleb( (uint64_t) len_%s );\n", f.Name)
 			g.pf("        w.raw( text_%s, len_%s );\n", f.Name, f.Name)
 		case f.Type.Kind == ir.TString:
-			g.pf("        if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+			g.storageAssert("        ", "value."+f.Name+"_length", f.Type.Size)
 			g.pf("        if ( !TableUtf8Valid( (const uint8_t *) value.%s, (uint64_t) value.%s_length ) ) { return false; }\n", f.Name, f.Name)
 			g.pf("        w.header( %[1]s, %[2]d ); // %[3]s\n", g.wireRef(id), tkString, f.Name)
 			g.pf("        w.putleb( (uint64_t) value.%s_length );\n", f.Name)
@@ -1748,7 +1760,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		ind := "        "
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("value.%s_count", f.Name)
-			g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
+			g.storageAssert("    ", "value."+f.Name+"_count", f.ArrayBound)
 			if f.Required {
 				g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 			} else {
@@ -1810,7 +1822,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("            w.putleb( (uint64_t) len_%s );\n", f.Name)
 		g.pf("            w.raw( text_%s, len_%s );\n        }\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TString:
-		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+		g.storageAssert("    ", "value."+f.Name+"_length", f.Type.Size)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides, empty included (§2.3)\n    {\n")
 		} else {
@@ -1820,7 +1832,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        w.putleb( (uint64_t) value.%s_length );\n", f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+		g.storageAssert("    ", "value."+f.Name+"_length", f.Type.Size)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides, empty included (§2.3)\n    {\n")
 		} else {
@@ -1833,7 +1845,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        w.put8( %[1]d );\n        w.putleb( (uint64_t) value.%[2]s_length );\n", tkU8, f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
 	case f.Array == ir.ArrayCounted:
-		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
+		g.storageAssert("    ", "value."+f.Name+"_count", f.ArrayBound)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 		} else {
@@ -1987,7 +1999,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx s
 			g.pf("%s    w.raw( elem_text%s, elem_len%s );\n", ind, sfx, sfx)
 		} else {
 			m := ir.TextListValue(f).Type.Size
-			g.pf("%s    if ( ( %s ).value_length < 0 || ( %s ).value_length > %d ) { return false; }\n", ind, expr, expr, m)
+			g.storageAssert(ind+"    ", "( "+expr+" ).value_length", m)
 			g.pf("%s    if ( !TableUtf8Valid( (const uint8_t *) ( %s ).value, (uint64_t) ( %s ).value_length ) ) { return false; }\n", ind, expr, expr)
 			g.pf("%s    w.putleb( (uint64_t) ( %s ).value_length );\n", ind, expr)
 			g.pf("%s    w.raw( ( %s ).value, ( %s ).value_length );\n", ind, expr, expr)
@@ -2275,6 +2287,12 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("        %sReset( value );\n", st.Name)
 	g.pf("        to->damaged = true;\n")
 	g.pf("        to->refuse_reason = wire_damaged;\n")
+	g.pf("        return TableOpenDamaged;\n    }\n")
+	g.pf("    // THE STRICT FORM-1 WALK (docs/SPEC-TABLES.md §6.5): every condition\n")
+	g.pf("    // decidable from the wire alone, before any value is decoded. A false\n")
+	g.pf("    // answer is the strict read's refusal and nothing is decoded.\n")
+	g.pf("    if ( !TableStrictWalk( buffer + 1, body_bytes, table, to ) )\n    {\n")
+	g.pf("        %sReset( value );\n", st.Name)
 	g.pf("        return TableOpenDamaged;\n    }\n")
 	g.pf("    TableReader r( buffer + 1, body_bytes, to, &table );\n")
 	g.pf("    r.nested = false; // the ROOT body, the one that may carry a node table\n")

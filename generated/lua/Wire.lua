@@ -942,7 +942,8 @@ function _M.WriteProbeSample(stream, v)
   end
   -- the step index (SPEC §4.3)
   if not stream:serializeCompressedFloat({ value = v.Orientation }, -180.0, 180.0, 0.01) then return false end
-  if math.type(v.RawDelta) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.RawDelta) ~= "integer" or v.RawDelta < -2147483648 or v.RawDelta > 2147483647 then return false end
   if not stream:serializeBits({ value = v.RawDelta & 0xffffffff }, 32) then return false end -- the storage width
   if math.type(v.BigDelta) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.BigDelta }, 64) then return false end -- the storage width
@@ -951,18 +952,21 @@ function _M.WriteProbeSample(stream, v)
     if not stream:serializeBits({ value = v.Weapon }, 4) then return false end -- the enum value
     if not stream:serializeBool({ value = v.HasTarget }) then return false end -- SPEC §4.3
     if v.HasTarget then
-      if math.type(v.TargetId) ~= "integer" then return false end
+      -- the declared width (SPEC §5.1 row 11)
+      if math.type(v.TargetId) ~= "integer" or v.TargetId < 0 or v.TargetId > 65535 then return false end
       if not stream:serializeBits({ value = v.TargetId }, 16) then return false end -- the storage width
     end
   else
-    if math.type(v.IdleTicks) ~= "integer" then return false end
+    -- the declared width (SPEC §5.1 row 11)
+    if math.type(v.IdleTicks) ~= "integer" or v.IdleTicks < 0 or v.IdleTicks > 4294967295 then return false end
     if not stream:serializeBits({ value = v.IdleTicks }, 32) then return false end -- the storage width
   end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.SamplesCount) ~= "integer" or v.SamplesCount < 1 or v.SamplesCount > 8 then return false end
   if not stream:serializeBits({ value = v.SamplesCount - 1 }, 3) then return false end -- the count
   for _i = 1, v.SamplesCount do
-    if math.type(v.Samples[_i]) ~= "integer" then return false end
+    -- the declared width (SPEC §5.1 row 11)
+    if math.type(v.Samples[_i]) ~= "integer" or v.Samples[_i] < 0 or v.Samples[_i] > 65535 then return false end
     if not stream:serializeBits({ value = v.Samples[_i] }, 16) then return false end -- the storage width
   end
   return true
@@ -970,7 +974,8 @@ end
 
 -- type ProbeRing (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeRing(stream, v)
-  if math.type(v.Radius) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Radius) ~= "integer" or v.Radius < 0 or v.Radius > 65535 then return false end
   if not stream:serializeBits({ value = v.Radius }, 16) then return false end -- the storage width
   return true
 end
@@ -979,7 +984,8 @@ end
 function _M.WriteProbeSlab(stream, v)
   if math.type(v.Width) ~= "integer" or v.Width < 0 or v.Width > 100 then return false end
   if not stream:serializeBits({ value = v.Width - 0 }, 7) then return false end -- the offset from min
-  if math.type(v.Height) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Height) ~= "integer" or v.Height < 0 or v.Height > 255 then return false end
   if not stream:serializeBits({ value = v.Height }, 8) then return false end -- the storage width
   return true
 end
@@ -999,7 +1005,8 @@ end
 
 -- type ProbeCollider (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeCollider(stream, v)
-  if math.type(v.Armor) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Armor) ~= "integer" or v.Armor < 0 or v.Armor > 255 then return false end
   if not stream:serializeBits({ value = v.Armor }, 8) then return false end -- the storage width
   if not _M.WriteProbeShape(stream, v.Shape) then return false end
   if not _M.WriteProbeShape(stream, v.Backup) then return false end
@@ -1014,7 +1021,8 @@ end
 
 -- type ProbeConfig (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeConfig(stream, v)
-  if math.type(v.Retries) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Retries) ~= "integer" or v.Retries < -2147483648 or v.Retries > 2147483647 then return false end
   if not stream:serializeBits({ value = v.Retries & 0xffffffff }, 32) then return false end -- the storage width
   if math.type(v.Preferred) ~= "integer" or v.Preferred < 0 or v.Preferred > 15 then return false end
   if not stream:serializeBits({ value = v.Preferred }, 4) then return false end -- the enum value
@@ -1037,7 +1045,8 @@ end
 
 -- type Test (SPEC §6.1: the wire order is the declared order)
 function _M.WriteTest(stream, v)
-  if math.type(v.TestA) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.TestA) ~= "integer" or v.TestA < 0 or v.TestA > 65535 then return false end
   if not stream:serializeBits({ value = v.TestA }, 16) then return false end -- the storage width
   if math.type(v.TestB) ~= "integer" or v.TestB < 0 or v.TestB > 1000 then return false end
   if not stream:serializeBits({ value = v.TestB - 0 }, 10) then return false end -- the offset from min
@@ -1112,15 +1121,20 @@ function _M.WriteTestData(stream, v)
   -- the step index (SPEC §4.3)
   if not stream:serializeCompressedFloat({ value = v.CompressedFloatValue }, 0.0, 10.0, 0.01) then return false end
   if not stream:serializeDouble({ value = v.DoubleValue }) then return false end
-  if math.type(v.Int8Value) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Int8Value) ~= "integer" or v.Int8Value < -128 or v.Int8Value > 127 then return false end
   if not stream:serializeBits({ value = v.Int8Value & 0xff }, 8) then return false end -- the storage width
-  if math.type(v.Int16Value) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Int16Value) ~= "integer" or v.Int16Value < -32768 or v.Int16Value > 32767 then return false end
   if not stream:serializeBits({ value = v.Int16Value & 0xffff }, 16) then return false end -- the storage width
-  if math.type(v.Uint8Value) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Uint8Value) ~= "integer" or v.Uint8Value < 0 or v.Uint8Value > 255 then return false end
   if not stream:serializeBits({ value = v.Uint8Value }, 8) then return false end -- the storage width
-  if math.type(v.Uint16Value) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Uint16Value) ~= "integer" or v.Uint16Value < 0 or v.Uint16Value > 65535 then return false end
   if not stream:serializeBits({ value = v.Uint16Value }, 16) then return false end -- the storage width
-  if math.type(v.Uint32Value) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Uint32Value) ~= "integer" or v.Uint32Value < 0 or v.Uint32Value > 4294967295 then return false end
   if not stream:serializeBits({ value = v.Uint32Value }, 32) then return false end -- the storage width
   if math.type(v.Uint64Value) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.Uint64Value }, 64) then return false end -- the storage width
@@ -1133,7 +1147,8 @@ function _M.WriteTestData(stream, v)
   if not stream:serializeBits64({ value = v.Int64Range - -1000000000000 }, 41) then return false end
   if not stream:serializeAlign() then return false end -- SPEC §4.3
   for _i = 1, 17 do
-    if math.type(v.FixedBytes[_i]) ~= "integer" then return false end
+    -- the declared width (SPEC §5.1 row 11)
+    if math.type(v.FixedBytes[_i]) ~= "integer" or v.FixedBytes[_i] < 0 or v.FixedBytes[_i] > 255 then return false end
     if not stream:serializeBits({ value = v.FixedBytes[_i] }, 8) then return false end -- the storage width
   end
   if type(v.Text) ~= "string" or #v.Text > 255 then return false end
