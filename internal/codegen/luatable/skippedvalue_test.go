@@ -141,3 +141,67 @@ end
 		}
 	}
 }
+
+// TestLuaJsonPlacedObjectKeyZero holds every placed-object key scan to §16.3:
+// a key that decodes to U+0000 refuses the read under a table, a pointer, an
+// enum-keyed array and a union, exactly as a skipped object's key does.
+func TestLuaJsonPlacedObjectKeyZero(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Lua interpreter (it runs the generated placed-key probe)")
+
+	src := `package probe
+
+enum Color { Red, Green }
+
+table Inner { n uint8 }
+
+union Body
+{
+    narrow string(8)
+    tally  int32
+}
+
+table Root
+{
+    p *Inner
+    k [Color]uint8
+    u Body
+    n uint8
+}
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Probe.schema")
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u := luarun.LoadUnit(t, path)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	runDir := t.TempDir()
+	luarun.WriteFiles(t, runDir, files)
+	probe := `local T = require("` + ModuleName(u) + `")
+local J = require("json")
+local inputs = require("inputs")
+local r = {}
+local v = J.FromJson(T, "Root", inputs.text, r)
+print((v ~= nil and not r.damaged) and "read" or "refused")
+`
+	if err := os.WriteFile(filepath.Join(runDir, "main.lua"), []byte(probe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ name, text, want string }{
+		{"control", `{"n":1}`, "read"},
+		{"table", `{"n\u0000":1}`, "refused"},
+		{"pointer", `{"p":{"n\u0000":1}}`, "refused"},
+		{"keyed", `{"k":{"Red\u0000":1}}`, "refused"},
+		{"union", `{"u":{"narrow\u0000":"x"}}`, "refused"},
+	}
+	for _, c := range cases {
+		got := strings.TrimSpace(string(luarun.Run(t, runDir, "main.lua", map[string][]byte{"text": []byte(c.text)})))
+		if got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}

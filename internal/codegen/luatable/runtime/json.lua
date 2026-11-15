@@ -233,9 +233,9 @@ end
 -- ONE JSON string into bytes, bounded at cap bytes (cap < 0 unbounded). A
 -- fourth truth is returned when the body carried a U+0000 unit — the \u0000
 -- escape into text storage §16.3 refuses as text_holds_zero — so the caller
--- that places the value can name the field; callers that only scan (an object
--- key that names no field, a skipped value) ignore it, because a zero that
--- never lands in text storage is not the event.
+-- that places the value can name the field; an object key, a skipped value and
+-- every key scan refuse the read on it as well, because a zero in a key or a
+-- skipped string is still the event.
 local function scan_string(inp, cap)
   if peek(inp) ~= '"' then
     inp.bad = true
@@ -1228,9 +1228,9 @@ local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
         inp.bad = true
         return false
       end
-      local over_bound, ok
-      key, over_bound, ok = scan_string(inp, MAX_KEY)
-      if not ok or over_bound then
+      local over_bound, ok, nul
+      key, over_bound, ok, nul = scan_string(inp, MAX_KEY)
+      if not ok or over_bound or nul then
         inp.bad = true
         return false
       end
@@ -1322,8 +1322,8 @@ local function read_pointer(T, d, inp, holder, key, depth, graph, report)
     inp.bad = true
     return false
   end
-  local k, over_bound, ok = scan_string(inp, MAX_KEY)
-  if not ok or over_bound then
+  local k, over_bound, ok, nul = scan_string(inp, MAX_KEY)
+  if not ok or over_bound or nul then
     inp.bad = true
     return false
   end
@@ -1738,8 +1738,8 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_n
       inp.bad = true
       return false
     end
-    local name, over_bound, ok = scan_string(inp, MAX_KEY)
-    if not ok or over_bound then
+    local name, over_bound, ok, nul = scan_string(inp, MAX_KEY)
+    if not ok or over_bound or nul then
       inp.bad = true
       return false
     end
@@ -1802,8 +1802,11 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     return { tag = 0 }
   end
   local start = inp.p
-  local _, _, ok = scan_string(inp, MAX_KEY)
-  if not ok then return nil end
+  local _, _, ok, nul = scan_string(inp, MAX_KEY)
+  if not ok or nul then
+    inp.bad = true
+    return nil
+  end
   local name = inp.t:sub(start + 1, inp.p - 2)
   if peek(inp) ~= ":" then
     inp.bad = true
