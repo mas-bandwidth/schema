@@ -1301,11 +1301,13 @@ fn json_read_enum<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
     return true;
 }
 
-// json_read_flags places a flags mask from its array of names: an unknown
-// name is skipped and counted, a non-string element is kind_mismatch (§16.2).
+// json_read_flags places a flags mask from its array of names: a KNOWN name
+// twice in one array is damage and refuses malformed, an unknown name is
+// skipped and counted, a non-string element is kind_mismatch (§16.2).
 fn json_read_flags<T>(jr: JsonIn&, slot: T&, names: const (const u8[:])[:], depth: i64) -> bool {
     if !json_expect(jr, '[') { return false; }
     var bits: u64 = 0;
+    var seen: u64 = 0;
     loop {
         let c = json_peek(jr);
         if c == ']' {
@@ -1324,7 +1326,12 @@ fn json_read_flags<T>(jr: JsonIn&, slot: T&, names: const (const u8[:])[:], dept
             var b: i64 = 0;
             while b < names.len {
                 if json_name_is(names[b], key[..n]) {
-                    bits |= (1 as u64) << (b as! u64);
+                    let bit = (1 as u64) << (b as! u64);
+                    // A FLAGS NAME TWICE IN ONE ARRAY IS DAMAGE (§16.2): a
+                    // repeated name is a repeated key and refuses the read.
+                    if (seen & bit) != 0 { return json_fail(jr); }
+                    seen |= bit;
+                    bits |= bit;
                     found = true;
                     break;
                 }
