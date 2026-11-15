@@ -8,10 +8,12 @@ package darttable
 // the iterations. The Go reference's walk refuses that shape, and the Dart
 // reader must answer the same verdict for the same bytes.
 //
-// The hostile shape is an array of up to 2^24 elements whose element is an
-// array of exactly one payload-free element. Its inner count has width zero
-// and its inner element rides no bits, so every outer element consumes
-// nothing. A batch carrying a 2^24 outer count is a few bytes.
+// The hostile shape is an array of up to 2^24 elements whose element is a
+// text-list element of length bound zero (after the engine's
+// TestMessageSkipRefusesElementWithNoProgress; a list of lists is refused at
+// the announcement). Its length has width zero, so the first element steps
+// over the alignment pad and every element after it consumes nothing. A
+// batch carrying a 2^24 count is a few bytes.
 
 import (
 	"encoding/binary"
@@ -46,15 +48,10 @@ func skipProgressAnnouncement(t *testing.T, u *ir.Unit) (announcement []byte, sl
 		Id:   0x5a5a5a5a00000001,
 		Kind: ir.TableKindArray,
 		Shape: ir.TableMessageShape{
-			Min:  0,
-			Max:  1 << 24,
-			Elem: ir.TableKindArray,
-			Inner: &ir.TableMessageShape{
-				Min:   1,
-				Max:   1,
-				Elem:  ir.TableKindNoPayload,
-				Inner: &ir.TableMessageShape{},
-			},
+			Min:   0,
+			Max:   1 << 24,
+			Elem:  ir.TableKindString,
+			Inner: &ir.TableMessageShape{Max: 0},
 		},
 	}
 	entries := append(tablewire.MessageVocabulary(u), hostile)
@@ -75,7 +72,8 @@ func skipProgressAnnouncement(t *testing.T, u *ir.Unit) (announcement []byte, sl
 }
 
 // skipProgressBatch is one body: the hostile reference, its 2^24 count at the
-// announced width, the zero reference that ends the body, and the pad.
+// announced width, the first element's alignment pad, the zero reference that
+// ends the body, and the pad.
 func skipProgressBatch(slot uint64, refBits int, width int, count uint64) []byte {
 	out := []byte{ir.TableWireMessageForm, 0}
 	var acc uint64
@@ -94,6 +92,10 @@ func skipProgressBatch(slot uint64, refBits int, width int, count uint64) []byte
 	}
 	put(slot, refBits)
 	put(count, width)
+	if at > 0 {
+		out = append(out, byte(acc))
+		acc, at = 0, 0
+	}
 	put(0, refBits)
 	if at > 0 {
 		out = append(out, byte(acc))
@@ -176,7 +178,6 @@ func skipProgressFixture(t *testing.T) (u *ir.Unit, announcement []byte, body st
 // a walked element that consumes no bits, the same verdict the Go engine
 // reaches for the same announcement and the same bytes.
 func TestDartMessageSkipMakesProgress(t *testing.T) {
-	t.Skip("RELAXED 2026-11-15 (get main green): the fixture's zero-progress element is a list of lists, which the engine now refuses at the announcement (ir.DecodeShape, 90b679296); re-enable: relax/dart-skip-progress-text-list-fixture")
 	t.Parallel()
 	u, announcement, body, wire := skipProgressFixture(t)
 
