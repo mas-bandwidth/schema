@@ -746,7 +746,13 @@ func codecOf(f *ir.Field) string {
 		}
 		return "unsupported"
 	}
-	if f.Type.Optional || f.IsMap() || f.KeyEnum != "" {
+	if f.IsMap() {
+		if f.Type.Optional {
+			return "unsupported"
+		}
+		return "map"
+	}
+	if f.Type.Optional || f.KeyEnum != "" {
 		return "unsupported"
 	}
 	if f.Array != ir.ArrayNone {
@@ -907,6 +913,8 @@ func descriptorDefault(owner string, f *ir.Field) string {
 		return "0"
 	case "union", "union_array":
 		return defaultExpr(owner, f)
+	case "map":
+		return "{}"
 	}
 	return "None"
 }
