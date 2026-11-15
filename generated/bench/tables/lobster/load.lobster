@@ -337,6 +337,28 @@ def widens(kind:int, declared:int) -> bool:
         return kind == 10
     return false
 
+// The element kind an array body (kind 14) may carry is the closed list of
+// §3: 1-13, 15, 17 and 18-30. Any other kind is damage under any count.
+def array_element_kind_allowed(kind:int) -> bool:
+    if kind >= 1 and kind <= 13:
+        return true
+    if kind == 15 or kind == 17:
+        return true
+    if kind >= 18 and kind <= 30:
+        return true
+    return false
+
+// The element kind an enum-keyed body (kind 16) may carry is its own closed
+// list (§3): 1-11, 13 and 18-30. Any other kind is damage under any count.
+def keyed_element_kind_allowed(kind:int) -> bool:
+    if kind >= 1 and kind <= 11:
+        return true
+    if kind == 13:
+        return true
+    if kind >= 18 and kind <= 30:
+        return true
+    return false
+
 // skip steps past a field this reader cannot name (§3): the kind byte is
 // all it needs. Kind 34 (float16) is reserved and, like every kind the set
 // does not hold, is not skippable.
@@ -1150,6 +1172,10 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
     let count, good = leb(sr)
     if not good:
         return read_refuse(rep, "wire_damaged"), false
+    // THE ELEMENT KIND IS CLOSED, judged under any count before any comparison
+    // with the reader's declaration (§3, §4).
+    if not array_element_kind_allowed(ek):
+        return read_refuse(rep, "wire_damaged"), false
     if ek != f.ek and not widens(ek, f.ek):
         return read_refuse(rep, "kind_mismatch"), false
     if count < 0 or count > 0x7FFFFFFF:
@@ -1208,6 +1234,10 @@ class KeyedShape : Shape
         let ek = u8(sr)
         let count, good = leb(sr)
         if not good or count < 0 or count > 0x7FFFFFFF:
+            return read_refuse(rep, "wire_damaged")
+        // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under
+        // any count before the reader's declaration (§3, §4).
+        if not keyed_element_kind_allowed(ek):
             return read_refuse(rep, "wire_damaged")
         if ek != f.ek:
             if not widens(ek, f.ek):
@@ -1429,6 +1459,10 @@ class MapShape : Shape
         let ek = u8(sr)
         let count, good = leb(sr)
         if not good:
+            return read_refuse(rep, "wire_damaged")
+        // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind is
+        // held to the array list first, under any count (§3, §4).
+        if not array_element_kind_allowed(ek):
             return read_refuse(rep, "wire_damaged")
         if ek != 13:
             return read_refuse(rep, "kind_mismatch")
@@ -2008,6 +2042,13 @@ def wire_content_at(c:WireCheck, r:Reader, kind:int) -> bool:
         if not has(r, 2):
             return read_refuse(c.st.report, "wire_damaged")
         let ek = u8(r)
+        // THE ELEMENT KIND IS CLOSED, judged under ANY count, a count of 0
+        // included (§3, §4).
+        if kind == 16:
+            if not keyed_element_kind_allowed(ek):
+                return read_refuse(c.st.report, "wire_damaged")
+        elif not array_element_kind_allowed(ek):
+            return read_refuse(c.st.report, "wire_damaged")
         let count, ok = leb(r)
         if not ok:
             return read_refuse(c.st.report, "wire_damaged")
