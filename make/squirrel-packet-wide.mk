@@ -108,7 +108,8 @@ packet-write-bareint-squirrel-negative-control: packet-write-bareint-squirrel
 	@printf '{"Replace":{"%s/internal/codegen/squirrel/write.go":"%s/build/packet-write-bareint/squirrel-negative/write.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-write-bareint/squirrel-negative/overlay.json
 	go run -overlay=build/packet-write-bareint/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-write-bareint/squirrel-negative/bareint test/packet-write-bareint/BareInt.schema
 	go run -overlay=build/packet-write-bareint/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-write-bareint/squirrel-negative/carriers test/packet-write-bareint/squirrel/Carriers.schema
-	@if "$(SQ)" test/packet-write-bareint/squirrel/main.nut test/packet-write-bareint/cases.txt build/packet-write-bareint/squirrel-negative/bareint build/packet-write-bareint/squirrel-negative/carriers > build/packet-write-bareint/squirrel-negative/log 2>&1; then \
+	-"$(SQ)" test/packet-write-bareint/squirrel/main.nut test/packet-write-bareint/cases.txt build/packet-write-bareint/squirrel-negative/bareint build/packet-write-bareint/squirrel-negative/carriers > build/packet-write-bareint/squirrel-negative/log 2>&1
+	@if grep -Fq 'packet write bare-int Squirrel: ' build/packet-write-bareint/squirrel-negative/log; then \
 		echo 'NEGATIVE CONTROL FAILED: Squirrel unchecked bare-integer width passed'; cat build/packet-write-bareint/squirrel-negative/log; exit 1; fi
 	@grep -Fq 'FAILED: int8-above-max: refused' build/packet-write-bareint/squirrel-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: no out-of-width case failed by name'; cat build/packet-write-bareint/squirrel-negative/log; exit 1; }
