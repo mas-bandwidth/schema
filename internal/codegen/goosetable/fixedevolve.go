@@ -37,9 +37,9 @@ type FixedEvolutionEntry struct {
 	Retired bool
 	Reason  string
 	// Ranges are the WRITER's ranged integer leaves (ir.TableFixedWriterRanges),
-	// so a read through this entry clamps a value to what its writer could
-	// have stored before the reader's own bounds pass runs
-	// (docs/FIXED-FORM-ALGORITHM.md §4.5).
+	// so a read through this entry refuses a value its writer could not have
+	// stored, before the reader's own bounds pass runs
+	// (docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6).
 	Ranges []ir.TableFixedWriterRange
 }
 
@@ -278,7 +278,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("    if !schema_rt::fixed_evolve_layout_ok(data, layout_length, known) {\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseLayoutMalformed, false);\n    }\n")
 	e.p("    if !supported {\n        return schema_rt::fixed_evolve_refuse(report, refuse, false);\n    }\n")
 	e.p("    let rest = data.len - schema_rt::FixedHeaderBytes - 4 - layout_length;\n")
-	e.p("    if record_bytes <= 8 || rest %% record_bytes != 0 {\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseTruncated, true);\n    }\n")
+	e.p("    if rest == 0 || record_bytes <= 8 || rest %% record_bytes != 0 {\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseTruncated, true);\n    }\n")
 	e.p("    let count = rest / record_bytes;\n")
 	e.p("    if count > values.len {\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseBatchTooLarge, false);\n    }\n")
 	e.p("    let first = schema_rt::FixedHeaderBytes + 4 + layout_length;\n")
@@ -292,20 +292,23 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("            let r = _%sFixedScan(data, body);\n", n)
 	e.p("            if r != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, r, false); }\n", typ)
 	e.p("            _%sFixedRead(data, body, values[k]);\n", n)
+	e.emitStrictRefuse(n, typ)
 	for i, plan := range plans {
 		e.p("        } else if pick == %d {\n", i+1)
 		e.p("            var def: %s = %s { .. };\n", typ, typ)
 		e.p("            var img: u8[>..] = [];\n")
+		e.p("            var forged: i64 = 0;\n")
 		e.p("            _%sFixedWrite(img, def);\n", n)
 		seq := 0
 		e.emitNodes(plan.nodes, "body", "", &seq)
 		e.p("            let r = _%sFixedScan(img, 0);\n", n)
 		e.p("            if r != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, r, false); }\n", typ)
 		e.p("            _%sFixedRead(img, 0, values[k]);\n", n)
-		e.emitWriterClamps(st, olds[i].Ranges)
+		e.p("            if forged != 0 { var j: i64 = 0; while j <= k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseOutOfRange, false); }\n", typ)
+		e.emitWriterRefuse(st, olds[i].Ranges)
+		e.emitStrictRefuse(n, typ)
 	}
 	e.p("        }\n")
-	e.p("        report.oor += _%sFixedClamp(values[k]);\n", n)
 	e.p("        k += 1;\n")
 	e.p("    }\n")
 	// THE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, ON A READ THAT RETURNS
@@ -329,16 +332,26 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("}\n")
 }
 
-// emitWriterClamps holds an older entry's ranged leaves to its WRITER's range
-// (docs/FIXED-FORM-ALGORITHM.md §4.5), before the reader's own bounds pass.
-// The value lands inside the writer's range. The clamp count itself is the
-// retired manifest field (fixedvector.Expect.Clamped, zero on every dumped
-// line) and is not incremented here. A range lands on the reader's field the
-// shared helper matches (ir.TableFixedWriterField): a scalar, or every element
-// of a fixed array, each element held the same as a scalar. The lock refuses
-// a narrowed range, so the writer's range lies inside the reader's and the
-// reader's pass that follows never moves it.
-func (e *fixedEvolveEmit) emitWriterClamps(st *ir.Struct, ranges []ir.TableFixedWriterRange) {
+// emitStrictRefuse makes a landed record's strict bounds pass the read's
+// answer (docs/FIXED-FORM-ALGORITHM.md §4.6): the first value a read landed
+// outside its declared bounds refuses out_of_range, and every element of the
+// batch already written goes back to its declared defaults.
+func (e *fixedEvolveEmit) emitStrictRefuse(n, typ string) {
+	e.p("            let why = _%sFixedStrictRefuse(values[k]);\n", n)
+	e.p("            if why != 0 {\n")
+	e.p("                var j: i64 = 0;\n")
+	e.p("                while j <= k { values[j] = %s { .. }; j += 1; }\n", typ)
+	e.p("                return schema_rt::fixed_evolve_refuse(report, why, false);\n")
+	e.p("            }\n")
+}
+
+// emitWriterRefuse holds an older entry's ranged leaves to its WRITER's range
+// (docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6), before the reader's own bounds
+// pass. The pass REFUSES; it never clamps. A range lands on the reader's field
+// the shared helper matches (ir.TableFixedWriterField): a scalar, or every
+// element of a fixed array, each element held the same as a scalar. The lock
+// refuses a narrowed range, so the writer's range lies inside the reader's.
+func (e *fixedEvolveEmit) emitWriterRefuse(st *ir.Struct, ranges []ir.TableFixedWriterRange) {
 	for j, r := range ranges {
 		for _, f := range st.Fields {
 			wf, ok := ir.TableFixedWriterField(f, r)
@@ -353,13 +366,13 @@ func (e *fixedEvolveEmit) emitWriterClamps(st *ir.Struct, ranges []ir.TableFixed
 				e.p("            while %s < %d {\n", i, f.ArrayBound)
 				val = val + "[" + i + "]"
 				for _, b := range bounds {
-					e.p("                if %s { %s = %s; }\n", b.over(val), val, b.land)
+					e.p("                if %s { var j: i64 = 0; while j <= k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseOutOfRange, false); }\n", b.over(val), st.Name)
 				}
 				e.p("                %s += 1;\n            }\n", i)
 				break
 			}
 			for _, b := range bounds {
-				e.p("            if %s { %s = %s; }\n", b.over(val), val, b.land)
+				e.p("            if %s { var j: i64 = 0; while j <= k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseOutOfRange, false); }\n", b.over(val), st.Name)
 			}
 			break
 		}
@@ -458,9 +471,9 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 		case nodeOrdinal:
 			// A SAME-WIDTH ORDINAL IS REMAPPED THROUGH THE WRITER'S VARIANT SET
 			// (docs/FIXED-FORM-ALGORITHM.md §5.2 EMIT kind 30; §5.4, §5.8 row
-			// 12): a raw past the writer's count lands None, and the bounds pass
-			// counts it once per field per record, exactly as gotable's
-			// tableFixedOrdinal and tableFixedForgedBounds do.
+			// 12): a raw past the writer's count sets the record's forged flag,
+			// and the bounds pass after the run refuses out_of_range, exactly as
+			// gotable's tableFixedOrdinal and tableFixedForgedBounds do.
 			v := *seq
 			*seq++
 			e.p("            let or%d: u64 = schema_rt::fixed_evolve_read_u(data, %s, %d);\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.size)
@@ -470,18 +483,19 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 					e.p("            if or%d == %d { ov%d = %d; }\n", v, raw, v, n.remap[raw])
 				}
 			}
-			e.p("            if or%d > %d { report.oor += 1; }\n", v, n.count)
+			e.p("            if or%d > %d { forged = 1; }\n", v, n.count)
 			for b := int64(0); b < n.size; b++ {
 				e.p("            img[%s] = ((ov%d >> %d) & 255) as! u8;\n", addExpr(curBase, fmt.Sprintf("%d", n.curOff+b)), v, 8*b)
 			}
 		case nodeForgedTag:
-			// A FORGED UNION TAG PAST THE WRITER'S ARM SET LANDS NONE AND IS
-			// COUNTED ONCE (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12),
-			// matching gotable's unguarded None const and tableFixedForgedBounds.
+			// A FORGED UNION TAG PAST THE WRITER'S ARM SET LANDS NONE AND SETS
+			// THE FORGED FLAG (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12),
+			// matching gotable's unguarded None const and tableFixedForgedBounds;
+			// the bounds pass after the run refuses out_of_range.
 			v := *seq
 			*seq++
 			e.p("            let ft%d: u64 = schema_rt::fixed_evolve_read_u(data, %s, %d);\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.tagWidth)
-			e.p("            if ft%d > %d { report.oor += 1; }\n", v, n.count)
+			e.p("            if ft%d > %d { forged = 1; }\n", v, n.count)
 		case nodeLoop:
 			v := *seq
 			*seq++
@@ -832,9 +846,10 @@ func (c *evolveCompiler) union(oi, ci int, oldOff, curOff int64, census bool, de
 	}
 	// THE NONE TAG LANDS FIRST AND UNGUARDED (gotable's none const,
 	// docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12): a tag past the writer's
-	// arm set selects no arm, leaves the tag at None and is counted once by the
-	// bounds node below. The default image wrote the union at the reader's
-	// default, so the None tag is stamped over it before any arm can answer.
+	// arm set selects no arm, leaves the tag at None and sets the record's
+	// forged flag for the bounds pass to refuse. The default image wrote the
+	// union at the reader's default, so the None tag is stamped over it before
+	// any arm can answer.
 	out := []evolveNode{{op: nodeSet, curOff: curOff, arg: 0, size: curTag}}
 	if te.children > 0 {
 		c.checkSrc(oldOff, oldTag)

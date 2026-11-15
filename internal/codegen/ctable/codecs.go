@@ -628,12 +628,29 @@ func annotationColumns(doc string, tags []string, tagsName string) string {
 	return fmt.Sprintf("%s, %d, %s", docColumn, len(tags), list)
 }
 
+// ctableExactWideRange reports whether a field carries an exact raw range in
+// its descriptor: every wide kind, and the 64-bit integers whose declared
+// range must be compared at or above 2^53 without a double.
+func ctableExactWideRange(f *ir.Field) bool {
+	kind := ir.TableScalarKind(f)
+	if kind >= 18 && kind <= 29 {
+		return true
+	}
+	if kind != 5 && kind != 9 {
+		return false
+	}
+	return f.HasIntRange || f.Type.Kind == ir.TBits
+}
+
 // emitFieldVocabulary emits one field's variant table, its key table and its
 // union arm table where it has them.
 func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
-	if ir.TableScalarKind(f) >= 18 && ir.TableScalarKind(f) <= 29 {
+	if ctableExactWideRange(f) {
 		lo, hi, ok := ir.TableRawRange(f)
-		if !ok {
+		if !ok && f.Type.Kind == ir.TBits {
+			lo = big.NewInt(0)
+			hi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+		} else if !ok {
 			lo, hi = tableStorageRange(f.Type.Signed, f.Type.Width)
 		}
 		llo, lhi := wideLanes(lo)
@@ -883,7 +900,7 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 
 	wide := "NULL"
 	frac := 0
-	if ir.TableScalarKind(f) >= 18 && ir.TableScalarKind(f) <= 29 {
+	if ctableExactWideRange(f) {
 		wide = "&" + g.vocabularySymbol(st.Name, f.Name, "range")
 	}
 	if f.Type.Kind == ir.TFixed {

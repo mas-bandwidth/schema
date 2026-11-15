@@ -201,7 +201,7 @@ func DecodeShape(in []byte, kind uint8) (TableMessageShape, int, bool) {
 				if at+16 > len(in) {
 					return s, 0, false
 				}
-				s.Base = wideBaseFrom(in[at : at+16])
+				s.Base = wideBaseFrom(in[at:at+16], TableKindSigned(int(kind)))
 				at += 16
 			case TableKindSigned(int(kind)):
 				z, ok := leb()
@@ -215,6 +215,9 @@ func DecodeShape(in []byte, kind uint8) (TableMessageShape, int, bool) {
 					return s, 0, false
 				}
 				s.Base = new(big.Int).SetUint64(u)
+			}
+			if !tableMessageBaseInsideKind(kind, s) {
+				return s, 0, false // A BASE PAST THE KIND'S OWN DOMAIN is a hostile base
 			}
 		case s.Packing == TableMessageQuantized && kind == TableKindF32:
 			if at+12 > len(in) {
@@ -330,6 +333,13 @@ func tableMessageUnsignedBase(v *big.Int) uint64 {
 	if v == nil {
 		return 0
 	}
+	if v.Sign() < 0 {
+		// A NEGATIVE BASE FOR AN UNSIGNED KIND does not come from a lawful
+		// declaration, but writing its low sixty-four bits as the two's
+		// complement they are keeps it the value DecodeShape then holds to
+		// the kind, rather than the magnitude an unsigned read would give.
+		return new(big.Int).And(v, new(big.Int).SetUint64(math.MaxUint64)).Uint64()
+	}
 	return v.Uint64()
 }
 
@@ -339,6 +349,36 @@ func tableMessageUnsignedBase(v *big.Int) uint64 {
 // primitive that holds it.
 func TableMessageKindBits(kind uint8) int64 {
 	return int64(TableKindWidth(int(kind))) * 8
+}
+
+// tableMessageBaseInsideKind holds a RANGED base to the kind's own domain.
+// The base is the declared minimum, so it must be a value the kind can hold:
+// an unsigned kind's is never negative and a signed kind's lies in its two's
+// complement range, exact for the 128-bit kinds.
+//
+// THE OFFSET'S TOP IS NOT THE DECLARATION'S TOP. `bits` is the width of
+// `max - min`, so `base + 2^bits - 1` is the largest offset the width can
+// spell, not the largest value a writer emits: a lawful `uint8 | min = 200,
+// max = 250` announces base 200 at six bits, whose spellable top is 263, and a
+// `fixed(8,8)` over [-100, 100] announces base -25600 at sixteen bits. Both
+// are values their kind holds at every declared point, and a body carrying an
+// offset past the sender's own `max` refuses `out_of_range` when it is read.
+// Holding the spellable top to the kind would refuse these lawful
+// declarations their own announcements, which is why only the base is checked
+// here.
+func tableMessageBaseInsideKind(kind uint8, s TableMessageShape) bool {
+	if s.Base == nil {
+		return true
+	}
+	width := uint(TableMessageKindBits(kind))
+	one := big.NewInt(1)
+	lo := new(big.Int)
+	hi := new(big.Int).Sub(new(big.Int).Lsh(one, width), one)
+	if TableKindSigned(int(kind)) {
+		hi.Rsh(hi, 1)
+		lo.Neg(new(big.Int).Lsh(one, width-1))
+	}
+	return s.Base.Cmp(lo) >= 0 && s.Base.Cmp(hi) <= 0
 }
 
 // ---- the compressed float's rule, in float32 and by nothing else ----
@@ -418,11 +458,11 @@ func appendWideBase(out []byte, v *big.Int) []byte {
 	return binary.LittleEndian.AppendUint64(out, hi)
 }
 
-func wideBaseFrom(in []byte) *big.Int {
+func wideBaseFrom(in []byte, signed bool) *big.Int {
 	lo := new(big.Int).SetUint64(binary.LittleEndian.Uint64(in))
 	hi := new(big.Int).SetUint64(binary.LittleEndian.Uint64(in[8:]))
 	raw := new(big.Int).Or(new(big.Int).Lsh(hi, 64), lo)
-	if raw.Bit(127) == 1 {
+	if signed && raw.Bit(127) == 1 {
 		raw.Sub(raw, new(big.Int).Lsh(big.NewInt(1), 128))
 	}
 	return raw

@@ -68,10 +68,10 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 		g.pf("  }\n  return true; // None — the tag is the whole wire (SPEC §4.8)\n}\n\n")
 	}
 
-	g.pf("export function Read%s(stream, value) {\n", d.Name)
+	g.pf("export function Read%s(stream, value, nested) {\n", d.Name)
 	if d.Max == 0 {
 		g.pf("  value.type = %sType.None; // zero wire bits — only None exists (SPEC §4.8)\n", d.Name)
-		g.pf("  return true;\n}\n\n")
+		g.pf("  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)\n}\n\n")
 		return
 	}
 	scratch := g.numScratch()
@@ -81,14 +81,15 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	for _, v := range d.Variants {
 		g.pf("    case %sType.%s:\n", d.Name, ir.GoExportName(v.Name))
 		if v.Void() {
-			g.pf("      return true; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n")
+			g.pf("      return nested === true || stream.serializeEnd(); // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n")
 			continue
 		}
 		g.addRef(v.Type, "Init"+v.Type, "Read"+v.Type)
 		g.pf("      Init%s(value.%s); // fresh declared defaults on every selection\n", v.Type, MemberName(v.Name))
-		g.pf("      return Read%s(stream, value.%s);\n", v.Type, MemberName(v.Name))
+		g.pf("      if (!Read%s(stream, value.%s, true)) {\n        return false;\n      }\n", v.Type, MemberName(v.Name))
+		g.pf("      return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)\n")
 	}
-	g.pf("  }\n  return true; // None\n}\n\n")
+	g.pf("  }\n  return nested === true || stream.serializeEnd(); // None\n}\n\n")
 }
 
 // emitStructFunctions emits MaxBits/MaxBytes, the Zero helper, and the split
@@ -118,13 +119,13 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	}
 	g.pf("  return true;\n}\n\n")
 
+	g.pf("export function Read%s(stream, value, nested) {\n", st.Name)
 	if len(st.Items) > 0 {
-		g.pf("export function Read%s(stream, value) {\n", st.Name)
 		g.emitReadItems(st.Items, "  ")
 	} else {
-		g.pf("export function Read%s() {\n", st.Name)
+		g.pf("  // empty body — presence is the payload (SPEC §4.6)\n")
 	}
-	g.pf("  return true;\n}\n\n")
+	g.pf("  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)\n}\n\n")
 }
 
 // emitInitFunction restores construction values while preserving every
@@ -400,8 +401,7 @@ func (g *gen) rangeArgsBig(f *ir.Field) (string, string) {
 // the guard returns false WITHOUT latching — the family's generated-guard
 // form. Reads stay on the runtime ranged calls.
 
-// maxUint64 is 2^64 - 1, the top of unsigned-64 storage — the bound against
-// which a range guard becomes vacuous.
+// maxUint64 is 2^64 - 1, the top of unsigned-64 storage.
 var maxUint64 = new(big.Int).SetUint64(math.MaxUint64)
 
 // intRangePath picks the runtime call family for a ranged integer — the same
@@ -458,21 +458,14 @@ func (g *gen) emitWriteFoldedNum(expr, lo, hi string, min, max *big.Int, checkIn
 	g.call(ind, fmt.Sprintf("stream.serializeBits(%s, %d)", scratch, bits), "")
 }
 
-// emitWriteFoldedBig is the BigInt-domain fold: guard (vacuous halves
-// elided per the declared storage bounds, the C# discipline), then the
-// offset via BigInt.asUintN(64, v - min) — BigInt does not wrap, so the
-// two's-complement reduction is explicit where Go relies on defined signed
-// wrap. Where the bit count fits 32, the offset narrows to a Number and
-// rides serializeBits — byte-identical, the runtime's own split.
-func (g *gen) emitWriteFoldedBig(expr, lo, hi string, min, max *big.Int, guardLo, guardHi bool, comment, ind string) {
-	switch {
-	case guardLo && guardHi:
-		g.pf("%sif (%s < %s || %s > %s) {%s\n%s  return false;\n%s}\n", ind, expr, lo, expr, hi, comment, ind, ind)
-	case guardLo:
-		g.pf("%sif (%s < %s) {%s\n%s  return false;\n%s}\n", ind, expr, lo, comment, ind, ind)
-	case guardHi:
-		g.pf("%sif (%s > %s) {%s\n%s  return false;\n%s}\n", ind, expr, hi, comment, ind, ind)
-	}
+// emitWriteFoldedBig is the BigInt-domain fold: both halves of the declared
+// range test always ride (BigInt has no storage bound to make one vacuous),
+// then the offset via BigInt.asUintN(64, v - min) — BigInt does not wrap, so
+// the two's-complement reduction is explicit where Go relies on defined
+// signed wrap. Where the bit count fits 32, the offset narrows to a Number
+// and rides serializeBits — byte-identical, the runtime's own split.
+func (g *gen) emitWriteFoldedBig(expr, lo, hi string, min, max *big.Int, comment, ind string) {
+	g.pf("%sif (%s < %s || %s > %s) {%s\n%s  return false;\n%s}\n", ind, expr, lo, expr, hi, comment, ind, ind)
 	bits := ir.BitsRequired(min, max)
 	if bits == 0 {
 		// degenerate range: ZERO bits — the refusal above is the whole write
@@ -597,17 +590,14 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 					return
 				}
 				lo, hi := g.rangeArgsBig(f)
-				sMin, sMax := storageBoundsBig(f.Type)
-				g.emitWriteFoldedBig(name, lo, hi, f.IntMin, f.IntMax,
-					f.IntMin.Cmp(sMin) > 0, f.IntMax.Cmp(sMax) < 0, "", ind)
+				g.emitWriteFoldedBig(name, lo, hi, f.IntMin, f.IntMax, "", ind)
 			default:
 				// full-range unsigned: raw offset bits (uint64 storage only —
-				// no narrower storage can hold a range past int64); vacuous
-				// guard halves are elided, and BigInt.asUintN supplies the
-				// two's-complement wrap C# ulong storage performs by type
+				// no narrower storage can hold a range past int64), and
+				// BigInt.asUintN supplies the two's-complement wrap C# ulong
+				// storage performs by type
 				lo, hi := g.rangeArgsBig(f)
-				g.emitWriteFoldedBig(name, lo, hi, f.IntMin, f.IntMax,
-					f.IntMin.Sign() != 0, f.IntMax.Cmp(maxUint64) != 0, "", ind)
+				g.emitWriteFoldedBig(name, lo, hi, f.IntMin, f.IntMax, "", ind)
 			}
 			return
 		}
@@ -631,6 +621,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.HasFloatRange {
 			// the holder copy is the write-through temp: the runtime's wire
 			// quantization cannot write back into the input
+			g.pf("%s{\n", ind)
+			g.pf("%s  const x = Math.fround(%s);\n", ind, name)
+			g.pf("%s  if (!Number.isFinite(x) || x < %s || x > %s) {\n",
+				ind, formatFloat32(f.FMin), formatFloat32(f.FMax))
+			g.pf("%s    return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)\n", ind)
+			g.pf("%s  }\n%s}\n", ind, ind)
 			g.pf("%s%s.value = %s;\n", ind, scratch, name)
 			g.call(ind, fmt.Sprintf("stream.serializeCompressedFloat(%s, %s, %s, %s)",
 				scratch, formatFloat32(f.FMin), formatFloat32(f.FMax), formatFloat32(f.Resolution)), "")
@@ -668,17 +664,6 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.call(ind, fmt.Sprintf("Write%s(stream, %s)", f.Type.Name, name), "")
 		}
 	}
-}
-
-// storageBoundsBig is the representable range of a 64-bit integer storage
-// type — the domain against which a BigInt-path guard half is vacuous.
-func storageBoundsBig(t ir.FieldType) (*big.Int, *big.Int) {
-	w := uint(t.Width)
-	if t.Signed {
-		half := new(big.Int).Lsh(big.NewInt(1), w-1)
-		return new(big.Int).Neg(half), new(big.Int).Sub(half, big.NewInt(1))
-	}
-	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w), big.NewInt(1))
 }
 
 // rawLit renders a raw scaled fixed-point value in the field's value domain.
@@ -923,10 +908,10 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			g.emitReadFlags(name, ref.WireBits, ind)
 		case *ir.Struct:
 			g.addRef(f.Type.Name, "Read"+f.Type.Name)
-			g.call(ind, fmt.Sprintf("Read%s(stream, %s)", f.Type.Name, name), "")
+			g.call(ind, fmt.Sprintf("Read%s(stream, %s, true)", f.Type.Name, name), "")
 		case *ir.Union:
 			g.addRef(f.Type.Name, "Read"+f.Type.Name)
-			g.call(ind, fmt.Sprintf("Read%s(stream, %s)", f.Type.Name, name), "")
+			g.call(ind, fmt.Sprintf("Read%s(stream, %s, true)", f.Type.Name, name), "")
 		}
 	}
 }

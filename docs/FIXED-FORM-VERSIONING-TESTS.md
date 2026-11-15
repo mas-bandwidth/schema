@@ -125,6 +125,61 @@ quantized index"), so min, max and resolution are DEFINITIONS in the digest: the
 float whatever the bounds say, which is exactly why the range may WIDEN and the resolution may REFINE here
 and may not there.
 
+## The dead-byte vectors
+
+**Every dead byte in a fixed record is zero on write and refused if non-zero on read**
+(`FIXED-FORM-ALGORITHM.md` §3.1, §4.5, §5.3; `SPEC-TABLES.md` §3.4, §13.10;
+`docs/rulings.json` `fixed-dead-bytes-are-zero`). The dead bytes are an absent optional's payload, a counted
+array's element slots past its live count, a string(N)'s or bytes(N)'s bytes past its used length, and an
+inactive union arm — the arm bytes under tag `0`, and the bytes past a narrower taken arm inside the widest
+arm's span.
+
+`DeadBytes.schema` carries one root with every region: an optional of a type holding a ranged int32, a
+`string(4)`, a `float32`, a `bool`, an enum, a counted array and a nested optional; a `[..3]int16` and a
+`[..3]` small struct; a `string(8)` and a `bytes(4)`; and a union of a narrow and a wide arm.
+`fixedform_dump.cpp` writes one record per file under `build/fixedform-corpus`. Each control is the reference
+writer's file with every dead byte zero, and each changed file is a control with one dead region made
+non-zero. The changed files carry no `expect=` in `manifest.txt` — the rule refuses the whole load — and each
+control carries its `expect=` values and reads, saving back byte for byte. `internal/fixedvector.DeadBytes`
+names every file and its verdict; `TestDeadBytesVectors` holds each manifest line to it.
+
+| file | dead region | verdict |
+|---|---|---|
+| `dead_absent_zero.bin` | absent optional, payload zero | reads |
+| `dead_absent_range.bin` | absent optional's ranged int outside its range | refused |
+| `dead_absent_string_over.bin` | absent optional's string length past its bound | refused |
+| `dead_absent_string_neg.bin` | absent optional's string length `-1` | refused |
+| `dead_absent_string_utf8.bin` | absent optional's string bytes not UTF-8 under a zero length | refused |
+| `dead_absent_lawful.bin` | a lawful payload under the clear flag | refused |
+| `dead_absent_nan.bin` | a NaN's bits in the absent optional's float | refused |
+| `dead_absent_bool.bin` | the absent optional's bool byte `2` | refused |
+| `dead_absent_enum.bin` | the absent optional's enum ordinal past its top | refused |
+| `dead_absent_array_count.bin` | the absent optional's counted array count `1` | refused |
+| `dead_absent_nested.bin` | the absent optional's nested present byte `2` | refused |
+| `dead_array_zero.bin` | counted arrays count `1`, dead slots zero | reads |
+| `dead_array_tail_first.bin` | first slot past the count non-zero | refused |
+| `dead_array_tail_last.bin` | last slot past the count non-zero | refused |
+| `dead_array_tail_struct.bin` | a dead struct element's nested field non-zero | refused |
+| `dead_text_zero.bin` | short text and bytes, slack zero | reads |
+| `dead_text_tail.bin` | a `string(8)` byte past its used length non-zero | refused |
+| `dead_bytes_tail.bin` | a `bytes(4)` byte past its used length non-zero | refused |
+| `dead_union_zero.bin` | tag `0`, arm span zero | reads |
+| `dead_union_arm.bin` | tag `0` with a non-zero byte in the arm span | refused |
+| `dead_union_narrow_zero.bin` | the narrow arm taken, the rest of the wide span zero | reads |
+| `dead_union_narrow_tail.bin` | the narrow arm taken with a non-zero byte past it | refused |
+
+## The compressed float's negative zero: one shared vector
+
+`docs/SPEC-TABLES.md` §3.3 rules that a compressed float's `-0` lands as `+0`,
+uncounted, and is written as `+0` (docs/rulings.json `fixed-compressed-negzero`).
+The vector `build/fixedform-corpus/negative_zero.bin` is the reference writer's
+file holding `-0`'s bits in its compressed field; its manifest line carries
+`expect=r0.value=0`, the value the rule lands, and the canonical bytes are the
+same record with that field all zero. `internal/fixedvector.NegativeZero` names
+it beside `WriterRange`, `TestNegativeZeroVectors` holds the file and its
+manifest line, and the Go leg's `TestFixedCompressedNegZeroRead` reads it
+through its generated load and saves the canonical bytes.
+
 ## The divergence rows: §5.8's 4, 9, 11, 12
 
 Four more rows, one per divergence of `FIXED-FORM-ALGORITHM.md` §5.8 that NO row above can reach — a
@@ -188,6 +243,40 @@ handed to `GenerateLineage` directly. Under §5.8 row 1's INTERIM — the backen
 schema files by the `VOLD_`/`VNEW_` convention — naming the two files the convention's way is all the handing-in
 the row needs, because the convention never runs `BASELINE`. **The day row 1 closes and the lineage comes from
 the lock, this row needs the explicit test-only entry**, and a leg says which of the two its probe used.
+
+## Deprecated fields are carried: the shared vectors
+
+docs/SPEC-TABLES.md §3.4, §21.2 and §22.6 (docs/rulings.json `fixed-deprecated-field-is-carried`): a
+`| deprecated` field in the fixed form reads and writes like any other field. The reader lands the stored
+value and checks it as it checks any field of its kind; the writer stores what the value holds and refuses
+what any field of its kind would refuse; the declared default applies only where the record does not supply
+the field (an older layout without it, read through the lineage). A deprecated ENUM VARIANT (§2.15) is a
+different rule and is not these vectors'.
+
+`test/tables/FD1.schema` declares the fixed root `FdRoot` with one deprecated field of each shape, each with a
+declared default where its kind takes one, and the dump writes one file per shape. Each record holds a lawful
+value in that deprecated field that is NOT its default, and ordinary values elsewhere (`lead = 11`,
+`trail = 22`). `internal/fixedvector.DeprecatedField` names the six files, the list every leg runs: read the
+file under `FdRoot`'s own layout, land exactly the manifest's `expect=` values, and save the landed record back
+to the same bytes. A leg that lands the declared default in place of the stored value fails the read; a leg
+that writes the default in place of the held value fails the byte comparison.
+
+| file | the deprecated field | what it holds (the declared default) |
+|---|---|---|
+| `deprecated_scalar.bin` | `old_count int32 = 4` | `99` (`4`) |
+| `deprecated_string.bin` | `old_tag string(8) = "abc"` | `"hi"`, length 2 (`"abc"`) |
+| `deprecated_array.bin` | `old_marks [..3]uint16` | `300, 400`, count 2 (empty) |
+| `deprecated_optional.bin` | `old_bonus ?uint16` | present, `77` (absent) |
+| `deprecated_nested.bin` | `old_spot Spot` (`x = 5`, `y = 6`) | `x = 50`, `y = 60` (`5`, `6`) |
+| `deprecated_union.bin` | `old_pick Pick` (arms `tally Tally`, `spot Spot`) | the `spot` arm, `x = 70`, `y = 80` (no arm) |
+
+Their manifest lines carry no `forged=`: nothing is damaged. **`expect=` is what the C++ reference landed
+when it read the file back, and it is the stored values, the same list as `values=`**: the dump refuses to
+write a row unless its own read lands the stored deprecated value and the landed record saves back byte for
+byte. A text value in `expect=` is quoted the way `values=` quotes it, for example
+`file=deprecated_string.bin row=deprecated_string side=none root=FdRoot records=1 expect=r0.lead=11,r0.old_tag="hi",r0.old_tag_length=2,r0.trail=22 values=…`
+(the same list again). `fixedvector.Read` answers such a line with the integer values in `Values` and the
+text values in `Texts`.
 
 ## A union's UNSELECTED ARMS after a read that returns: RULED LAWFUL AS IS (schema#1157)
 

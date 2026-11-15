@@ -60,7 +60,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	if unitHasRequired(u) {
 		walk = tableJSONRequiredWalk(walk, u)
 	}
-	imports := "\t\"math\"\n\t\"strconv\"\n\t\"time\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n"
+	imports := "\t\"bytes\"\n\t\"math\"\n\t\"strconv\"\n\t\"time\"\n\t\"unsafe\"\n\t\"unicode/utf8\"\n"
 	// every member but a map entry gets SaveText/LoadText, fixed and variable
 	// alike (docs/SPEC-TABLES.md §16.8), and they are what imports base64
 	needBase64 := false
@@ -550,6 +550,54 @@ func tableJSONIsFlags(f *TableFieldInfo) bool { return f.EnumName != nil && f.Va
 
 func tableJSONIsEnum(f *TableFieldInfo) bool { return f.VariantID != nil && f.Arms == nil }
 
+// tableJSONWideIntegerKind is an integer or fixed-point kind whose storage is
+// wider than 32 bits (docs/SPEC-TABLES.md §16.2): int64, uint64, int128,
+// uint128, and the 64- and 128-bit fixed-point kinds. The writer spells one
+// as a string of decimal digits; the reader takes that string or a number.
+func tableJSONWideIntegerKind(kind uint8) bool {
+	switch kind {
+	case 5, 9, 18, 19, 23, 24, 28, 29:
+		return true
+	}
+	return false
+}
+
+// tableJSONIntegerToken is the digits-and-optional-minus spelling of an
+// integer — an optional '-', then digits with no leading zero, and not '-0'.
+// A fraction, an exponent, a plus and a negative zero are not this spelling.
+func tableJSONIntegerToken(token []byte) bool {
+	i := 0
+	negative := false
+	if i < len(token) && token[i] == '-' {
+		negative = true
+		i++
+	}
+	if i >= len(token) {
+		return false
+	}
+	if token[i] == '0' {
+		return !negative && i+1 == len(token)
+	}
+	if token[i] < '1' || token[i] > '9' {
+		return false
+	}
+	for ; i < len(token); i++ {
+		if token[i] < '0' || token[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// tableJSONShapeMatches reports whether got satisfies want. A wide integer
+// declares 'N' and takes a string or a number; every other shape is exact.
+func tableJSONShapeMatches(want, got byte) bool {
+	if want == got {
+		return true
+	}
+	return want == 'N' && (got == 's' || got == 'n')
+}
+
 func tableJSONShape(f *TableFieldInfo) byte {
 	switch {
 	case f.Kind == 12: // string
@@ -575,6 +623,9 @@ func tableJSONShape(f *TableFieldInfo) byte {
 	case f.Kind == 1:
 		return 'b'
 	}
+	if tableJSONWideIntegerKind(f.Kind) {
+		return 'N'
+	}
 	return 'n'
 }
 
@@ -593,6 +644,9 @@ func tableJSONElementShape(f *TableFieldInfo) byte {
 		return 's'
 	case f.Kind == 1:
 		return 'b'
+	}
+	if tableJSONWideIntegerKind(f.Kind) {
+		return 'N'
 	}
 	return 'n'
 }
@@ -901,7 +955,7 @@ func tableJSONWriteFloat(out *tableJSONOut, value float64, single bool) bool {
 // object, a union, a vocabulary, or a number.
 func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
  if f.Pointer {return tableJSONWritePointer(out,(*int64)(storage),f,depth)}
- if f.Kind>=18 && f.Kind<=29 {tableJSONWriteWide(out,storage,f);return true}
+ if f.Kind>=18 && f.Kind<=29 {if tableJSONWideIntegerKind(f.Kind){out.put('"')};tableJSONWriteWide(out,storage,f);if tableJSONWideIntegerKind(f.Kind){out.put('"')};return true}
  if f.Kind==36 {return tableJSONWriteTimestamp(out,storage)}
 	if f.Arms != nil {
 		// a union is an object with ONE key, the arm's name; None is {}
@@ -999,8 +1053,19 @@ func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFie
 		return tableJSONWriteFloat(out, float64(*(*float32)(storage)), true)
 	case 11:
 		return tableJSONWriteFloat(out, *(*float64)(storage), false)
-	case 2, 3, 4, 5:
+	case 2, 3, 4:
 		tableJSONWriteSigned(out, tableJSONGetSigned(storage, f.ElemSize))
+		return true
+	case 5:
+		// int64 is wider than 32 bits: a string of digits (§16.2)
+		out.put('"')
+		tableJSONWriteSigned(out, tableJSONGetSigned(storage, f.ElemSize))
+		out.put('"')
+		return true
+	case 9:
+		out.put('"')
+		tableJSONWriteUnsigned(out, tableJSONGetRaw(storage, f.ElemSize))
+		out.put('"')
 		return true
 	}
 	tableJSONWriteUnsigned(out, tableJSONGetRaw(storage, f.ElemSize))
@@ -1215,12 +1280,11 @@ type tableJSONIn struct {
 	text   []byte
 	pos    int
 	report *TableReport
-	bad    bool // the text is not JSON: the walk stops and keeps what it placed
+	bad, jsonLayer bool // bad: the text is not JSON; jsonLayer: the JSON layer (§16.12), not the table walk
 	// docs/SPEC-TABLES.md §16.2, the read option: null where the row is an
 	// array or a map reads as [] or {}
 	nullEmpty bool
-	// zero is set when the walk stopped on a U+0000 bound for text storage
-	// (docs/SPEC-TABLES.md 16.3): the field loop names the field in Reason
+	// zero is set on U+0000 text (docs/SPEC-TABLES.md §16.3); its field loop names it.
 	zero bool
 	// utf8 is set when the walk stopped on a byte sequence that is not
 	// well-formed UTF-8 (16.3): the read refuses it by name rather than
@@ -1235,19 +1299,15 @@ func (in *tableJSONIn) space() {
 			in.pos++
 			continue
 		}
-        if c == '/' && in.pos+1 < len(in.text) {
-            switch in.text[in.pos+1] {
-            case '/':
-                in.pos += 2
-                for in.pos < len(in.text) && in.text[in.pos] != '\n' { in.pos++ }
-                continue
-            case '*':
-                in.pos += 2
-                for in.pos+1 < len(in.text) && !(in.text[in.pos] == '*' && in.text[in.pos+1] == '/') { in.pos++ }
-                if in.pos+1 >= len(in.text) { in.bad = true; return }
-                in.pos += 2
-                continue
-            }
+        // a comment, line or block, is well-formed UTF-8 holding no NUL (docs/SPEC-TABLES.md §16.2, §16.3)
+        if c == '/' && in.pos+1 < len(in.text) && (in.text[in.pos+1] == '/' || in.text[in.pos+1] == '*') {
+            body, end := in.text[in.pos+2:], "*/"
+            if in.text[in.pos+1] == '/' { end = "\n" }
+            n := bytes.Index(body, []byte(end))
+            if n < 0 && end == "\n" { n, end = len(body), "" }
+            if n < 0 || bytes.IndexByte(body[:n], 0) >= 0 || !utf8.Valid(body[:n]) { in.bad = true; return }
+            in.pos += 2 + n + len(end)
+            continue
         }
 		return
 	}
@@ -1356,15 +1416,15 @@ func tableJSONEncodeUTF8(code uint32, unit []byte) int32 {
 // U+0000 refuses the read, because no wire carries a zero in text and a read
 // must never place a value the writer or the strict reader refuses. Only the
 // \u0000 escape can produce one; a raw control byte is already not JSON. A
-// string only skipped or measured (no destination) stores nothing, and
-// scanKey's names (object keys, enum and flag names) store nothing either.
-func (in *tableJSONIn) scanString(out []byte) (int32, bool) {return in.scanText(out,false)}
+// string only measured (no destination) stores nothing.
+func (in *tableJSONIn) scanString(out []byte) (int32, bool) {return in.scanText(out,out!=nil)}
 
-// scanKey scans a NAME: an object key or a variant name, compared and never
-// stored, so a zero in it is not 16.3's event (it simply names nothing).
-func (in *tableJSONIn) scanKey(out []byte) (int32, bool) {return in.scanText(out,true)}
+// scanKey scans a NAME, compared and never stored; a zero in it is the value's own row's event.
+func (in *tableJSONIn) scanKey(out []byte) (int32, bool) {return in.scanText(out,false)}
+// scanSkipped holds a skipped string or an object key to the text rules of a placed value (§4, §16.3); the JSON layer (§16.12) has no table, so a zero there stays.
+func (in *tableJSONIn) scanSkipped(out []byte) (int32, bool) {return in.scanText(out,!in.jsonLayer)}
 
-func (in *tableJSONIn) scanText(out []byte, name bool) (int32, bool) {
+func (in *tableJSONIn) scanText(out []byte, zero bool) (int32, bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return 0, false
@@ -1438,9 +1498,8 @@ func (in *tableJSONIn) scanText(out []byte, name bool) (int32, bool) {
 					in.bad = true
 					return 0, false
 				}
-				// docs/SPEC-TABLES.md 16.3: a U+0000 bound for text storage
-				// refuses the read
-				if code == 0 && !name && out != nil {
+				// docs/SPEC-TABLES.md 16.3: a U+0000 bound for text storage or a skipped value refuses the read
+				if code == 0 && zero {
 					in.zero = true
 					in.bad = true
 					return 0, false
@@ -1612,10 +1671,10 @@ func tableJSONNumberToken(token []byte) []byte {
 			kept = append(kept, c)
 		}
 	}
-	exponent := 0
+	exponent := int64(0)
 	if i < len(token) && (token[i] == 'e' || token[i] == 'E') {
 		i++
-		sign := 1
+		sign := int64(1)
 		if i < len(token) && (token[i] == '-' || token[i] == '+') {
 			if token[i] == '-' {
 				sign = -1
@@ -1623,8 +1682,8 @@ func tableJSONNumberToken(token []byte) []byte {
 			i++
 		}
 		for ; i < len(token); i++ {
-			if exponent < 1000000 {
-				exponent = exponent*10 + int(token[i]-'0')
+			if exponent < 100000000000000000 { // the written exponent, accumulated whole so a long mantissa can cancel it
+				exponent = exponent*10 + int64(token[i]-'0')
 			}
 		}
 		exponent *= sign
@@ -1636,13 +1695,13 @@ func tableJSONNumberToken(token []byte) []byte {
 		return []byte("0")
 	}
 	significant := digits - trailing
-	scale := exponent - fraction + trailing
+	scale := exponent - int64(fraction) + int64(trailing)
 	var value []byte
 	if significant <= limit {
 		value = kept[:significant]
 	} else {
 		value = kept[:limit]
-		scale += significant - limit
+		scale += int64(significant - limit)
 		value = append(value, '1')
 		scale--
 	}
@@ -1652,7 +1711,7 @@ func tableJSONNumberToken(token []byte) []byte {
 	}
 	out = append(out, value...)
 	out = append(out, 'e')
-	return strconv.AppendInt(out, int64(scale), 10)
+	return strconv.AppendInt(out, max(-100000, min(scale, 100000)), 10)
 }
 
 // the token's exact double. Go's strconv is locale-free, so unlike the C++
@@ -1747,13 +1806,23 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 		if closing == '}' {
 			_ = in.peek()
 			keyStart := in.pos
-			decodedLen, ok := in.scanString(nil)
+			decodedLen, ok := in.scanSkipped(nil)
 			if !ok {
+				return false
+			}
+			// A schema-name string is capped at 255 bytes wherever the read
+			// meets one (docs/SPEC-TABLES.md §16.2), a skipped object's key
+			// included: a longer name refuses the whole read.
+			if decodedLen >= tableJSONMaxKey {
+				if in.report != nil {
+					in.report.Refuse(TableRefuseOutOfRange, "")
+				}
+				in.bad = true
 				return false
 			}
 			in.pos = keyStart
 			if overflow == nil && decodedLen <= int32(len(keyArena)-arenaLen) && keyCount < len(keyOff) {
-				n, ok := in.scanKey(keyArena[arenaLen : arenaLen+int(decodedLen)])
+				n, ok := in.scanSkipped(keyArena[arenaLen : arenaLen+int(decodedLen)])
 				if !ok {
 					return false
 				}
@@ -1794,7 +1863,7 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 					}
 				}
 				buf := make([]byte, decodedLen)
-				n, ok := in.scanKey(buf)
+				n, ok := in.scanSkipped(buf)
 				if !ok {
 					return false
 				}
@@ -1839,7 +1908,7 @@ func (in *tableJSONIn) skipValue(depth int32) bool {
 	case '[':
 		return in.skipContainer(']', depth)
 	case '"':
-		_, ok := in.scanString(nil)
+		_, ok := in.scanSkipped(nil)
 		return ok
 	case 't':
 		return in.literal("true")
@@ -1894,7 +1963,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 			return true
 		}
 		var key [tableJSONMaxKey]byte
-		keyLength, ok := in.scanKey(key[:tableJSONMaxKey-1])
+		keyLength, ok := in.scanSkipped(key[:tableJSONMaxKey-1])
 		if !ok {
 			return false
 		}
@@ -1918,7 +1987,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		} else {
 			arm := &arms.Arms[tag]
             want := byte('z'); if !arm.Void { want = tableJSONShape(&arm.Field) }
-            if in.valueShape() != want && !(arm.Field.Pointer && !arm.Field.IsArray && in.valueShape()=='z') {
+            if !tableJSONShapeMatches(want, in.valueShape()) && !(arm.Field.Pointer && !arm.Field.IsArray && in.valueShape()=='z') {
                 in.report.Refuse(TableRefuseKindMismatch, "")
                 if !in.skipValue(depth+1) { return false }
             } else {
@@ -2047,12 +2116,52 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		tableJSONSetRaw(storage, f.ElemSize, 0)
 		return true
 	}
-	token, integral, ok := in.scanNumber()
-	if !ok {
-		in.bad = true
-		return false
+	// A wide integer reads as a string OR a number (§16.2). The string holds
+	// the same digits. A narrow integer is a number only; the shape check
+	// above already refused a string there. Neither path goes through a double.
+	var token []byte
+	if tableJSONWideIntegerKind(f.Kind) && in.valueShape() == 's' {
+		start := in.pos
+		n, sok := in.scanKey(nil)
+		if !sok {
+			return false
+		}
+		in.pos = start
+		var scratch [64]byte
+		var buf []byte
+		if int(n) <= len(scratch) {
+			buf = scratch[:n]
+		} else {
+			buf = make([]byte, n)
+		}
+		got, sok := in.scanKey(buf)
+		if !sok {
+			return false
+		}
+		token = buf[:got]
+		probe := tableJSONIn{text: token}
+		if _, nok := probe.walkNumber(); !nok || probe.pos != len(token) {
+			in.report.Refuse(TableRefuseKindMismatch, "")
+			return true
+		}
+	} else {
+		var ok bool
+		token, _, ok = in.scanNumber()
+		if !ok {
+			in.bad = true
+			return false
+		}
 	}
- if f.Kind>=18 && f.Kind<=29 {return tableJSONReadWide(in,token,storage,f)}
+	if f.Kind >= 18 && f.Kind <= 29 {
+		// int128 and uint128 take an integer token. A fixed-point kind keeps
+		// any number whose value is exact in its Q I.F, fraction and exponent
+		// included, and refuses a finer fraction.
+		if (f.Kind == 18 || f.Kind == 19) && !tableJSONIntegerToken(token) {
+			in.report.Refuse(TableRefuseKindMismatch, "")
+			return true
+		}
+		return tableJSONReadWide(in, token, storage, f)
+	}
 	if f.Kind == 10 || f.Kind == 11 {
 		single := f.Kind == 10
 		value := tableJSONTokenDouble(token, single)
@@ -2068,14 +2177,14 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		}
 		if f.HasRange {
 			// A COMPRESSED FLOAT'S -0 LANDS AS +0 (§3.3, the special values):
-			// it is inside the range, so it does not count, and the sign bit
-			// is a spelling the declaration cannot name. A NaN or an infinity
-			// never reaches this line: the text has no spelling for either
-			// and the walk above refused it as kind_mismatch.
-			if value < f.RangeMin {
+			// it is inside the range, so it does not count, and the sign bit is
+			// a spelling the declaration cannot name. A float32 field's ends are
+			// compared at float32; a NaN or an infinity never reaches this line:
+			// the text has no spelling for either and the walk above refused it.
+			if value < f.RangeMin && (!single || float32(value) < float32(f.RangeMin)) {
 				value = f.RangeMin
 				in.report.Refuse(TableRefuseOutOfRange, "")
-			} else if value > f.RangeMax {
+			} else if value > f.RangeMax && (!single || float32(value) > float32(f.RangeMax)) {
 				value = f.RangeMax
 				in.report.Refuse(TableRefuseOutOfRange, "")
 			} else if value == 0 {
@@ -2094,54 +2203,14 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		}
 		return true
 	}
-	// JSON HAS ONE NUMBER TYPE. 2.0 IS the integer 2 and 1e3 IS 1000, and a
-	// library that round-trips numbers through a double emits them that way —
-	// this walker's own float writer emits 1e+21. So an integer field takes any
-	// number whose VALUE is integral, however it was spelled; only a genuinely
-	// fractional value is the wrong shape for it.
-	isSigned := f.Kind >= 2 && f.Kind <= 5
-	saturated := false
-	value := int64(0)
-	if integral {
-		value, saturated = tableJSONTokenInteger(token, isSigned)
-	} else {
-		d := tableJSONTokenDouble(token, false)
-		if !tableJSONFinite(d) {
-			in.report.Refuse(TableRefuseKindMismatch, "")
-			return true
-		}
-		if isSigned {
-			switch {
-			case d >= 9223372036854775808.0:
-				value, saturated = math.MaxInt64, true
-			case d < -9223372036854775808.0:
-				value, saturated = math.MinInt64, true
-			case d != float64(int64(d)):
-				in.report.Refuse(TableRefuseKindMismatch, "")
-				return true
-			default:
-				value = int64(d)
-			}
-		} else {
-			switch {
-			case d < 0.0:
-				// a negative for an unsigned field clamps to zero, as the exact
-				// digit path already does
-				if d != float64(int64(d)) {
-					in.report.Refuse(TableRefuseKindMismatch, "")
-					return true
-				}
-				value, saturated = 0, true
-			case d >= 18446744073709551616.0:
-				value, saturated = ^int64(0), true
-			case d != float64(uint64(d)):
-				in.report.Refuse(TableRefuseKindMismatch, "")
-				return true
-			default:
-				value = int64(uint64(d))
-			}
-		}
+	// AN INTEGER TAKES AN INTEGER TOKEN ONLY (§16.2): digits, an optional
+	// minus, no fraction, no exponent, not -0. The digits are the value.
+	if !tableJSONIntegerToken(token) {
+		in.report.Refuse(TableRefuseKindMismatch, "")
+		return true
 	}
+	isSigned := f.Kind >= 2 && f.Kind <= 5
+	value, saturated := tableJSONTokenInteger(token, isSigned)
 	if saturated {
 		in.report.Refuse(TableRefuseOutOfRange, "")
 	}
@@ -2362,7 +2431,7 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 				return false
 			}
 			var key [tableJSONMaxKey]byte
-			keyLength, ok := in.scanKey(key[:tableJSONMaxKey-1])
+			keyLength, ok := in.scanSkipped(key[:tableJSONMaxKey-1])
 			if !ok {
 				return false
 			}
@@ -2399,7 +2468,7 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 				if !in.skipValue(depth + 1) {
 					return false
 				}
-			case in.valueShape() != shape && !(f.Pointer && in.valueShape()=='z'):
+			case !tableJSONShapeMatches(shape, in.valueShape()) && !(f.Pointer && in.valueShape()=='z'):
 				in.report.Refuse(TableRefuseKindMismatch, "")
 				if !in.skipValue(depth + 1) {
 					return false
@@ -2465,7 +2534,7 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 				if !in.skipValue(depth + 1) {
 					return false
 				}
-			case in.valueShape() != shape && !(f.Pointer && in.valueShape()=='z'):
+			case !tableJSONShapeMatches(shape, in.valueShape()) && !(f.Pointer && in.valueShape()=='z'):
 				in.report.Refuse(TableRefuseKindMismatch, "")
 				if !in.skipValue(depth + 1) {
 					return false
@@ -2547,7 +2616,7 @@ func tableJSONReadTableFields(in *tableJSONIn,base unsafe.Pointer,info *TableTyp
 			return false
 		}
 		var key [tableJSONMaxKey]byte
-		keyLength, ok := in.scanKey(key[:tableJSONMaxKey-1])
+		keyLength, ok := in.scanSkipped(key[:tableJSONMaxKey-1])
 		if !ok {
 			return false
 		}
@@ -2610,7 +2679,7 @@ func tableJSONReadTableFields(in *tableJSONIn,base unsafe.Pointer,info *TableTyp
 					if !tableJSONReadNullAsEmpty(in, base, f, depth) {
 						return false
 					}
-				} else if got != tableJSONShape(f) && !(f.Pointer && !f.IsArray && got=='z') {
+				} else if !tableJSONShapeMatches(tableJSONShape(f), got) && !(f.Pointer && !f.IsArray && got=='z') {
 					// the wrong JSON type for the kind: skipped, never coerced
 					in.report.Refuse(TableRefuseKindMismatch, "")
 					if !in.skipValue(depth + 1) {

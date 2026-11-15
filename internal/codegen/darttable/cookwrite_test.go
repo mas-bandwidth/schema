@@ -65,6 +65,8 @@ fixed table Root { stamp uint64 = 5
 		value.Fields[1].Count = 1
 		value.Fields[1].Elems[0].Tab.Fields[0].Cell.U = 8
 		value.Fields[1].Elems[0].Tab.Fields[1].Cell.B = false
+		value.Fields[1].Elems[1].Tab.Fields[0].Cell.U = 9
+		value.Fields[1].Elems[1].Tab.Fields[1].Cell.B = false
 		for _, big := range []bool{false, true} {
 			key := "cook-le"
 			if big {
@@ -90,6 +92,9 @@ import 'dart:typed_data';
 import 'ProbeFixed.dart' as f;
 import 'ProbeCook.dart' as c;
 void check(bool ok,String what){if(!ok)throw StateError(what);}
+// a storage check is a debug assert (docs/SPEC.md §5.1): this probe runs
+// with asserts on, so an over-long count or length must end in one
+bool asserted(bool Function() write){try{write();}on AssertionError{return true;}return false;}
 String hex(Uint8List b,int length)=>b.take(length).map((v)=>v.toRadixString(16).padLeft(2,'0')).join();
 void main(){
  final value=f.Root();
@@ -97,6 +102,8 @@ void main(){
  value.rowsCount=1;
  value.rows[0].value=8;
  value.rows[0].flag=false;
+ value.rows[1].value=9;
+ value.rows[1].flag=false;
  final size=c.RootCook.cookMeasure(value);
  for(final order in [Endian.little,Endian.big]){
   final bytes=Uint8List(size+4)..fillRange(0,size+4,0xa5);
@@ -106,15 +113,13 @@ void main(){
   check(bytes.every((x)=>x==0xa5),'short capacity changed output');
   for(final count in [-1,3]){
    value.rowsCount=count;
-   check(!c.RootCook.cook(value,bytes,order,report:report),'invalid count accepted');
-   check(report.reason=='invalid_value','invalid count lost refusal reason');
+   check(asserted(()=>c.RootCook.cook(value,bytes,order,report:report)),'invalid count missed the assert');
    check(bytes.every((x)=>x==0xa5),'invalid count changed output');
   }
   value.rowsCount=1;
   for(final length in [-1,5]){
    value.titleLength=length;
-   check(!c.RootCook.cook(value,bytes,order,report:report),'invalid length accepted');
-   check(report.reason=='invalid_value','invalid length lost refusal reason');
+   check(asserted(()=>c.RootCook.cook(value,bytes,order,report:report)),'invalid length missed the assert');
    check(bytes.every((x)=>x==0xa5),'invalid length changed output');
   }
   value.titleLength=2;
