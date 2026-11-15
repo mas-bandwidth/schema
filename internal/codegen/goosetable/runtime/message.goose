@@ -611,6 +611,10 @@ struct MsgReader {
     widened: i64 = 0,
     oor: i64 = 0,
     depth: i64 = 0,
+    // seen is the skip walk's id scratch: one body's or keyed array's ids
+    // from its mark, so a repeated id is found without a local the recursive
+    // walk could not carry (§3.3, §4).
+    seen: u64[>..],
 }
 
 fn msg_has(r: MsgReader&, n: i64) -> bool {
@@ -787,7 +791,17 @@ fn msg_run_bits(r: MsgReader&, e: i64) -> i64 {
     if elem == 0 || elem == 32 { return 0; }
     let inner = r.voc.entries[e].inner;
     if inner < 0 { return -1; }
-    return r.voc.entries[inner].bits;
+    let width = r.voc.entries[inner].bits;
+    // A FLOAT AND A RANGED OR QUANTIZED ELEMENT CARRY A VALUE CONDITION the
+    // wire and the announcement decide (finiteness, an index at or below its
+    // count), so they are WALKED through the same checks a named field takes
+    // rather than stepped over arithmetically (§3.3, §4).
+    if width > 0 {
+        if elem == 10 || elem == 11 { return -1; }
+        let packing = r.voc.entries[inner].packing;
+        if packing == 1 || packing == 2 { return -1; }
+    }
+    return width;
 }
 
 // msg_skip_run steps over n elements of one fixed width in one step.
@@ -834,8 +848,13 @@ recursive fn msg_skip(r: MsgReader&, e: i64) -> bool {
     }
     let max = r.voc.entries[e].max;
     if kind == 12 {
+        // THE STRING'S BYTES ARE READ, NOT MERELY STEPPED OVER: well-formed
+        // UTF-8 with no zero byte is the condition a named string's read
+        // applies, and a value the reader skips is held to it (§3.3, §4).
         let n = msg_get(r, msg_bits_required(0, max));
         if !r.ok || !msg_align_read(r) { return false; }
+        if r.end < r.pos || n > ((r.end - r.pos) / 8) as! u64 { return false; }
+        if !fixed_utf8_ok(r.b, r.pos >> 3, n as! i64) { return msg_damage(r); }
         return msg_skip_run(r, n, 8);
     }
     if kind == 31 {
@@ -844,65 +863,124 @@ recursive fn msg_skip(r: MsgReader&, e: i64) -> bool {
         if !r.ok { return false; }
         return msg_skip_run(r, n, 8);
     }
+    if kind == 10 {
+        // A FLOAT IS FINITE, AND A QUANTIZED FLOAT'S INDEX IS AT MOST ITS
+        // ANNOUNCED COUNT, on the skip path as on a named read (§3.3, §4).
+        msg_f32(r, e);
+        return r.ok;
+    }
+    if kind == 11 {
+        msg_f64(r, e);
+        return r.ok;
+    }
     if kind == 14 || kind == 16 {
-        let min = r.voc.entries[e].min;
-        var n: u64 = min as! u64;
-        var width = msg_bits_required(min, max);
-        if kind == 16 {
-            width = msg_bits_required(0, max);
-            n = 0;
-        }
-        if width > 0 {
-            n = msg_get(r, width);
-            if !r.ok { return false; }
-            if kind == 14 { n += min as! u64; }
-        }
-        let elem = r.voc.entries[e].elem;
-        if kind == 14 && elem == 6 && !msg_align_read(r) { return false; }
-        let run = msg_run_bits(r, e);
-        if run >= 0 { return msg_skip_run(r, n, run); }
-        let inner = r.voc.entries[e].inner;
-        var i: u64 = 0;
-        while i < n {
-            let at = r.pos;
-            if kind == 16 {
-                msg_get(r, r.voc.ref_bits);
-                if !r.ok { return false; }
-            }
-            var ok = false;
-            if inner >= 0 {
-                r.depth += 1;
-                ok = msg_skip(r, inner);
-                r.depth -= 1;
-            } else {
-                ok = elem == 0 || elem == 32;
-            }
-            if !ok { return false; }
-            // A WALKED ELEMENT THAT CONSUMED NO BITS: the rest of the run is
-            // stepped in one, and a count the bits left cannot back is damage
-            if r.pos == at {
-                if n - i - 1 > (r.end - r.pos) as! u64 { return false; }
-                return true;
-            }
-            i += 1;
-        }
-        return true;
+        return msg_skip_array(r, e);
     }
     let width = r.voc.entries[e].bits;
     if width < 0 { return false; }
     return msg_skip_bits(r, width);
 }
 
-// msg_skip_body walks a nested body it cannot name, field by field.
-fn msg_skip_body(r: MsgReader&) -> bool {
-    loop {
-        let ref = msg_get(r, r.voc.ref_bits);
-        if !r.ok { return false; }
-        if ref == 0 { return true; }
-        if ref > r.voc.count as! u64 { return false; }
-        if !msg_skip(r, (ref - 1) as! i64) { return false; }
+// msg_skip_seen records one id in the skip walk's scratch from `mark`, and
+// answers whether it was already there (§3.3, §4: an id twice is damage).
+fn msg_skip_seen(r: MsgReader&, mark: i64, id: u64) -> bool {
+    var k = mark;
+    while k < r.seen.len {
+        if r.seen[k] == id {
+            r.ok = false;
+            return true;
+        }
+        k += 1;
     }
+    r.seen.push(id);
     return false;
+}
+
+// msg_skip_array steps over a counted or enum-keyed array by its announced
+// shape, holding its count to the announced bounds and a keyed slot's key to
+// the rule a named slot's read applies (§3.2, §3.3, §4).
+fn msg_skip_array(r: MsgReader&, e: i64) -> bool {
+    let kind = r.voc.entries[e].kind;
+    let max = r.voc.entries[e].max;
+    let min = r.voc.entries[e].min;
+    var n: u64 = min as! u64;
+    var width = msg_bits_required(min, max);
+    if kind == 16 {
+        width = msg_bits_required(0, max);
+        n = 0;
+    }
+    if width > 0 {
+        n = msg_get(r, width);
+        if !r.ok { return false; }
+        if kind == 14 { n += min as! u64; }
+    }
+    // THE COUNT'S BITS CAN SPELL MORE THAN THE ANNOUNCED MAXIMUM, and a
+    // count outside its announced bounds is refused as at a named field.
+    if n > max as! u64 { return msg_refuse_read(r, MsgRefuseCountOverBound); }
+    let elem = r.voc.entries[e].elem;
+    if kind == 14 && elem == 6 && !msg_align_read(r) { return false; }
+    let run = msg_run_bits(r, e);
+    if run >= 0 { return msg_skip_run(r, n, run); }
+    let inner = r.voc.entries[e].inner;
+    let mark = r.seen.len;
+    var ok = true;
+    var i: u64 = 0;
+    while i < n {
+        let at = r.pos;
+        if kind == 16 {
+            // A KEYED SLOT'S KEY IS RESOLVED: it names a declared no-payload
+            // entry and no key repeats (§3.2, §3.3, §4).
+            let key = msg_name(r);
+            if key < 0 {
+                ok = msg_damage(r);
+            } else if msg_skip_seen(r, mark, r.voc.entries[key].id) {
+                ok = false;
+            }
+            if !ok { break; }
+        }
+        if inner >= 0 {
+            r.depth += 1;
+            ok = msg_skip(r, inner);
+            r.depth -= 1;
+        } else {
+            ok = elem == 0 || elem == 32;
+        }
+        if !ok { break; }
+        // A WALKED ELEMENT THAT CONSUMED NO BITS: the rest of the run is
+        // stepped in one, and a count the bits left cannot back is damage
+        if r.pos == at {
+            if n - i - 1 > (r.end - r.pos) as! u64 { ok = false; }
+            break;
+        }
+        i += 1;
+    }
+    r.seen.resize(mark);
+    return ok;
+}
+
+// msg_skip_body walks a nested body it cannot name, field by field, and holds
+// its ids to the rules a named body's read applies: no reserved id and no id
+// twice (§3.1, §3.3, §4).
+fn msg_skip_body(r: MsgReader&) -> bool {
+    let mark = r.seen.len;
+    var ok = true;
+    loop {
+        let e = msg_field(r);
+        if e < 0 {
+            ok = r.ok;
+            break;
+        }
+        if msg_skip_seen(r, mark, r.voc.entries[e].id) {
+            ok = false;
+            break;
+        }
+        if !msg_skip(r, e) {
+            ok = false;
+            break;
+        }
+    }
+    r.seen.resize(mark);
+    return ok;
 }
 
 // ---- payloads at the SENDER's shape (docs/SPEC-TABLES.md §3.3) --------------

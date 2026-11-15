@@ -799,15 +799,19 @@ fn json_scan_into(jr: JsonIn&, dst: u8[:], store: bool) -> i64, bool {
     return placed, true;
 }
 
-// json_skip_string scans past a string and keeps nothing.
+// json_skip_string scans past a string and keeps nothing, and is still held
+// to the grammar and text rules a PLACED value is held to (§4, §16.3): a
+// string the read only skips that decodes to U+0000 refuses the read as a
+// placed one does.
 fn json_skip_string(jr: JsonIn&) -> bool {
-    return json_scan(jr, false) { unit, n => };
+    return json_scan(jr, true) { unit, n => };
 }
 
 // json_key scans an object key or a variant name into a key buffer: a name is
-// compared and never stored (§16.3).
+// compared and never stored, and is held to a placed value's text rule — one
+// that decodes to U+0000 refuses the read (§4, §16.3).
 fn json_key(jr: JsonIn&, key: u8[256]&) -> i64, bool {
-    return json_scan_into(jr, key[..JsonMaxKey], false);
+    return json_scan_into(jr, key[..JsonMaxKey], true);
 }
 
 fn json_name_is(name: const u8[:], key: const u8[:]) -> bool {
