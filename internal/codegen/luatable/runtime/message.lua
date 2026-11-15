@@ -45,11 +45,11 @@ end
 -- a triple SPEC.md calls non-conforming.
 local function quant_facts(qmin, qmax, qres)
   local mn, mx, rs = f32(qmin), f32(qmax), f32(qres)
-  if not (mn < mx) or not (rs > 0) then return 0, 0, false, mn end
+  if mn ~= mn or mx ~= mx or rs ~= rs or mn >= mx or rs <= 0 then return 0, 0, false, mn end
   local delta = f32(mx - mn)
   local values = f32(delta / rs)
   if delta - delta ~= 0 or values - values ~= 0 then return 0, 0, false, mn end
-  if not (values >= 1) then
+  if values < 1 then
     values = 1
   elseif values > 4294967040.0 then
     values = 4294967040.0
@@ -61,9 +61,9 @@ local function quantize(qmin, qmax, qres, value)
   local count, delta, ok, mn = quant_facts(qmin, qmax, qres)
   if not ok then return 0 end
   local normalized = f32(f32(f32(value) - mn) / delta)
-  if not (normalized >= 0) then
+  if normalized ~= normalized or normalized < 0 then
     normalized = 0
-  elseif not (normalized <= 1) then
+  elseif normalized > 1 then
     normalized = 1
   end
   local scaled = f32(normalized * f32(count))
@@ -311,9 +311,9 @@ end
 -- A PLAIN FLOAT'S SPECIAL VALUES TAKE ONE RULE (docs/SPEC-TABLES.md §3.3,
 -- "-0 IS A VALUE, AND IT RIDES"): the elision compares BIT PATTERNS, never
 -- ==, because -0 == +0 under == and a -0 must ride the message form too.
-local function same_float(f32, a, b)
+local function same_float(is_f32, a, b)
   if type(a) ~= "number" or type(b) ~= "number" then return a == b end
-  if f32 then return string.pack("<f", a) == string.pack("<f", b) end
+  if is_f32 then return string.pack("<f", a) == string.pack("<f", b) end
   return string.pack("<d", a) == string.pack("<d", b)
 end
 
