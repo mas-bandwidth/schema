@@ -53,6 +53,18 @@ pub fn fixed_table_fixed_scatter(b: &[u8], value: &mut FixedTableRow, report: &m
     }
 }
 
+/// FixedTable: true when a DEAD byte of this record image is not zero.
+pub fn fixed_table_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    {
+        let at = 0;
+        if bench_mixed_fixed_dead(&b[at..at + 1236]) {
+            return true;
+        }
+    }
+    false
+}
+
 /// FixedTable's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -366,10 +378,11 @@ pub fn fixed_table_fixed_load(
 ) -> Option<usize> {
     let damaged_before = report.damaged;
     report.damaged = false;
-    let read = fixed_table_fixed_load_records(values, data, plan, remap, report);
+    let mut untouched = false;
+    let read = fixed_table_fixed_load_records(values, data, plan, remap, report, &mut untouched);
     let damaged = report.damaged;
     report.damaged |= damaged_before;
-    if damaged {
+    if damaged && !untouched {
         for value in values.iter_mut() {
             fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
         }
@@ -384,6 +397,7 @@ fn fixed_table_fixed_load_records(
     plan: &mut [TableFixedEntry],
     remap: &mut [u16],
     report: &mut TableFixedReport,
+    untouched: &mut bool,
 ) -> Option<usize> {
     if data.is_empty() {
         report.damaged = true;
@@ -477,6 +491,19 @@ fn fixed_table_fixed_load_records(
     let n = rest.len() / record_bytes;
     if n > values.len() {
         return report.refuse(TableFixedReason::BatchTooLarge);
+    }
+    // THE DEAD-BYTE CHECK PASS (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
+    // §5.3 step 11; docs/rulings.json fixed-dead-bytes-are-zero): every byte
+    // no live value covers is zero, and a non-zero one refuses the whole load
+    // BEFORE any record lands. An absent optional's payload, a counted array's
+    // slots past its count, a text's or bytes' units past its length, and an
+    // inactive union arm are the four dead regions.
+    for k in 0..n {
+        if fixed_table_fixed_dead(&rest[k * record_bytes + 8..(k + 1) * record_bytes]) {
+            report.damaged = true;
+            *untouched = true;
+            return None;
+        }
     }
     // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one
     // `Copy` over the whole body, so the hole list is empty and the loop below

@@ -472,6 +472,7 @@ func tableJSONWriteStringBody(out *tableJSONOut, s []byte) {
 		default:
 			switch {
 			case c < 0x20:
+				out.invalid = out.invalid || c == 0 // text holds no zero byte (§16.14 W8)
 				var escape [6]byte
 				escape[0], escape[1], escape[2], escape[3] = '\\', 'u', '0', '0'
 				escape[4], escape[5] = hex[c>>4], hex[c&0xf]
@@ -2419,6 +2420,9 @@ func tableJSONRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 }
 
 func tableJSONWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte, options TableJSONOptions) int64 {
+	if buffer != nil && tableJSONWrite(value, info, nil, options) < 0 {
+		return -1
+	}
 	out := tableJSONOut{buffer: buffer, measure: buffer == nil, omit: options.OmitDefaults, compact: options.Compact}
 	if !tableJSONWriteValue(&out, value, info, 0) {
 		return -1
