@@ -85,7 +85,9 @@ for (local i = 0; i <= input.len(); i++) {
     continue;
   }
 
-  local bits = stream.bitsProcessed();
+  // The public read ends the packet (SPEC §5): it consumes the final byte's
+  // unused bits, so it stops at the written bits rounded up to a whole byte.
+  local bits = ((stream.bitsProcessed() + 7) / 8) * 8;
   stream.flush();
   local read = serialize.ReadStream(stream.data());
   local got = CFloat.CFloat();
