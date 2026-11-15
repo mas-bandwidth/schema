@@ -91,7 +91,7 @@ func TestSpecPacketWriteBareIntWidth(t *testing.T) {
 	mustState(t, "cases.txt header", casesText,
 		"by the writer's refusal in every build in an every-build leg")
 	got := map[string]string{}
-	for _, line := range strings.Split(cases, "\n") {
+	for line := range strings.SplitSeq(cases, "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
