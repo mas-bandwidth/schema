@@ -224,6 +224,7 @@ func (g *tableGen) emitMapRead(f *ir.Field, dst, bounded string) {
 	} else {
 		g.pf("                    elem_kind=table_reader_get8(&sub); if(!table_reader_leb(&sub,&count)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
 	}
+	g.pf("                    if(!table_array_element_kind_allowed(elem_kind)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
 	g.pf("                    if(elem_kind!=13) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; break; }\n")
 	g.retainReplace(f, "                    ")
 	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),%d);\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(!fill.ok) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", dst, n, g.sequenceAlign(f))

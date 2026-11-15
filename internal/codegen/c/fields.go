@@ -373,9 +373,9 @@ func (g *gen) emitReadScalar(f *ir.Field, expr, ind string) {
 			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &flags_value, %d )", ref.WireBits))
 			g.pf("%s    %s = (%s) flags_value;\n%s}\n", ind, expr, f.Type.Name, ind)
 		case *ir.Struct:
-			g.call(ind, fmt.Sprintf("read_%s( stream, &%s )", snake(f.Type.Name), expr))
+			g.call(ind, fmt.Sprintf("schema_read_%s_body_( stream, &%s )", snake(f.Type.Name), expr))
 		case *ir.Union:
-			g.call(ind, fmt.Sprintf("read_%s( stream, &%s )", snake(f.Type.Name), expr))
+			g.call(ind, fmt.Sprintf("schema_read_%s_body_( stream, &%s )", snake(f.Type.Name), expr))
 		default:
 			g.unsupported("field %s references %s, whose kind has no C read emission", f.Name, f.Type.Name)
 		}

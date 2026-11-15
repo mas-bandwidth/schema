@@ -507,7 +507,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int realworld_write_real_packet( seri
 }
 
 /* Reads RealPacket. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int realworld_read_real_packet( serialize_read_stream_t * stream, realworld_real_packet_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_realworld_read_real_packet_body_( serialize_read_stream_t * stream, realworld_real_packet_t * value )
 {
     {
         serialize_uint64_t offset_value = 0;
@@ -1432,6 +1432,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int realworld_read_real_packet( serial
         value->f097_bits = (uint32_t) raw;
     }
     return 1;
+}
+
+/* Reads RealPacket as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int realworld_read_real_packet( serialize_read_stream_t * stream, realworld_real_packet_t * value )
+{
+    if ( !schema_realworld_read_real_packet_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 #ifdef __cplusplus

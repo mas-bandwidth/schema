@@ -2274,3 +2274,46 @@ packet-write-cfloat-c-negative-control: packet-write-cfloat-c
 	@echo 'packet compressed-float C negative control: removing the writer check lets an off-range value through'
 
 test-c: packet-write-cfloat-c packet-write-cfloat-c-negative-control
+
+# The packet-end corpus (docs/SPEC.md §5, "Read termination"): the generated
+# public read is the one-packet read, so exact.bin is accepted as the value 3
+# and the trailing byte and non-zero final padding are refused.
+PACKET_END_SCHEMA := test/packet-end/End.schema
+PACKET_END_C := build/packet-end/c
+
+build/packet-end/c/.stamp: bin/schema $(PACKET_END_SCHEMA) make/c.mk
+	@mkdir -p $(PACKET_END_C)
+	./bin/schema generate --lang c --out $(PACKET_END_C) $(PACKET_END_SCHEMA)
+	@touch $@
+
+build/packet-end-c-test: build/packet-end/c/.stamp test/packet-end/c/main.c $(SERIALIZE_C)/serialize.h $(SERIALIZE_C)/serialize.c
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O2 -ffp-contract=off -I$(PACKET_END_C) -I$(SERIALIZE_C) \
+		test/packet-end/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
+.PHONY: packet-end-c packet-end-c-negative-control
+packet-end-c: build/packet-end-c-test
+	./build/packet-end-c-test testdata/wire/packet-end
+
+packet-end-c-negative-control: packet-end-c
+	@mkdir -p build/packet-end/c-negative
+	go run ./tools/sabotage -name packet-end-c-read \
+		-out build/packet-end/c-negative/c.gotext internal/codegen/c/c.go
+	@printf '{"Replace":{"%s/internal/codegen/c/c.go":"%s/build/packet-end/c-negative/c.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-end/c-negative/overlay.json
+	go build -overlay=build/packet-end/c-negative/overlay.json -o build/packet-end/c-negative/schema ./cmd/schema
+	./build/packet-end/c-negative/schema generate --lang c --out build/packet-end/c-negative/generated $(PACKET_END_SCHEMA)
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O2 -ffp-contract=off -Ibuild/packet-end/c-negative/generated -I$(SERIALIZE_C) \
+		test/packet-end/c/main.c $(SERIALIZE_C)/serialize.c -o build/packet-end/c-negative/checker -lm
+	@if ./build/packet-end/c-negative/checker testdata/wire/packet-end > build/packet-end/c-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a C read without the end check passed'; exit 1; fi
+	@grep -Fxm1 'FAILED: packet-end trailing refused' build/packet-end/c-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the C read without the end check did not fail on trailing data'; \
+		  cat build/packet-end/c-negative/log; exit 1; }
+	@grep -Fxm1 'FAILED: packet-end padding refused' build/packet-end/c-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the C read without the end check did not fail on final padding'; \
+		  cat build/packet-end/c-negative/log; exit 1; }
+	@echo 'packet end C negative control: removing the end check accepts trailing data and final padding'
+
+test-c: packet-end-c packet-end-c-negative-control

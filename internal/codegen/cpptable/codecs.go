@@ -2422,6 +2422,9 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
 		g.pf("%s    uint64_t count = 0;\n", ind)
 		g.pf("%[1]s    if ( !r.getleb( count ) )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind)
+		g.pf("%s    // THE KEYED BODY'S ELEMENT KIND IS CLOSED, judged under any count\n", ind)
+		g.pf("%s    // before the reader's declaration (§3, §4).\n", ind)
+		g.pf("%[1]s    if ( !TableKeyedElementKind( elem_kind ) )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind)
 		if widenableElement(f) {
 			// THE WIDENING BRANCH at a keyed body's element kind (§4), inside
 			// the mismatch branch and with a loop of its own, so the matching
@@ -2498,6 +2501,9 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s    // RODE, so an optional is still PRESENT (§2.3) — only a foreign\n", ind)
 		g.pf("%s    // ELEMENT KIND says the payload is not this array's at all.\n", ind)
 		g.pf("%s    if ( !counted_ok ) { r.report->damaged = true; }\n", ind)
+		g.pf("%s    // THE ELEMENT KIND IS CLOSED, judged under any count before the\n", ind)
+		g.pf("%s    // reader's declaration (§3, §4).\n", ind)
+		g.pf("%[1]s    if ( !TableArrayElementKind( elem_kind ) )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind)
 		if widenableElement(f) {
 			// THE WIDENING BRANCH at an element kind (docs/SPEC-TABLES.md
 			// §4), inside the mismatch branch: ONE count for the field,

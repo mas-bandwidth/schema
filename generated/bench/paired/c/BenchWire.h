@@ -85,7 +85,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_packet( seriali
 }
 
 /* Reads BenchPacket. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_packet( serialize_read_stream_t * stream, bench_bench_packet_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_bench_read_bench_packet_body_( serialize_read_stream_t * stream, bench_bench_packet_t * value )
 {
     {
         serialize_uint64_t offset_value = 0;
@@ -188,6 +188,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_packet( serialize
     return 1;
 }
 
+/* Reads BenchPacket as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_packet( serialize_read_stream_t * stream, bench_bench_packet_t * value )
+{
+    if ( !schema_bench_read_bench_packet_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes BenchInts. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_ints( serialize_write_stream_t * stream, const bench_bench_ints_t * value )
 {
@@ -245,7 +255,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_ints( serialize
 }
 
 /* Reads BenchInts. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_ints( serialize_read_stream_t * stream, bench_bench_ints_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_bench_read_bench_ints_body_( serialize_read_stream_t * stream, bench_bench_ints_t * value )
 {
     /* fixed 110-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 110 )
@@ -380,6 +390,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_ints( serialize_r
     return 1;
 }
 
+/* Reads BenchInts as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_ints( serialize_read_stream_t * stream, bench_bench_ints_t * value )
+{
+    if ( !schema_bench_read_bench_ints_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes BenchBits. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_bits( serialize_write_stream_t * stream, const bench_bench_bits_t * value )
 {
@@ -426,7 +446,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_bits( serialize
 }
 
 /* Reads BenchBits. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_bits( serialize_read_stream_t * stream, bench_bench_bits_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_bench_read_bench_bits_body_( serialize_read_stream_t * stream, bench_bench_bits_t * value )
 {
     /* fixed 156-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 156 )
@@ -506,6 +526,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_bits( serialize_r
     return 1;
 }
 
+/* Reads BenchBits as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_bits( serialize_read_stream_t * stream, bench_bench_bits_t * value )
+{
+    if ( !schema_bench_read_bench_bits_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes MixedEntity. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_entity( serialize_write_stream_t * stream, const bench_mixed_entity_t * value )
 {
@@ -578,7 +608,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_entity( seriali
 }
 
 /* Reads MixedEntity. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_entity( serialize_read_stream_t * stream, bench_mixed_entity_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_bench_read_mixed_entity_body_( serialize_read_stream_t * stream, bench_mixed_entity_t * value )
 {
     /* fixed 135-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 135 )
@@ -731,6 +761,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_entity( serialize
     return 1;
 }
 
+/* Reads MixedEntity as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_entity( serialize_read_stream_t * stream, bench_mixed_entity_t * value )
+{
+    if ( !schema_bench_read_mixed_entity_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes MixedStat. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_stat( serialize_write_stream_t * stream, const bench_mixed_stat_t * value )
 {
@@ -747,7 +787,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_stat( serialize
 }
 
 /* Reads MixedStat. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_stat( serialize_read_stream_t * stream, bench_mixed_stat_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_bench_read_mixed_stat_body_( serialize_read_stream_t * stream, bench_mixed_stat_t * value )
 {
     /* fixed 18-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 18 )
@@ -776,6 +816,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_stat( serialize_r
     return 1;
 }
 
+/* Reads MixedStat as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_stat( serialize_read_stream_t * stream, bench_mixed_stat_t * value )
+{
+    if ( !schema_bench_read_mixed_stat_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes MixedHitEvent. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_hit_event( serialize_write_stream_t * stream, const bench_mixed_hit_event_t * value )
 {
@@ -801,7 +851,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_hit_event( seri
 }
 
 /* Reads MixedHitEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_hit_event( serialize_read_stream_t * stream, bench_mixed_hit_event_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_bench_read_mixed_hit_event_body_( serialize_read_stream_t * stream, bench_mixed_hit_event_t * value )
 {
     /* fixed 28-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 28 )
@@ -848,6 +898,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_hit_event( serial
     return 1;
 }
 
+/* Reads MixedHitEvent as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_hit_event( serialize_read_stream_t * stream, bench_mixed_hit_event_t * value )
+{
+    if ( !schema_bench_read_mixed_hit_event_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes MixedChatEvent. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_chat_event( serialize_write_stream_t * stream, const bench_mixed_chat_event_t * value )
 {
@@ -864,7 +924,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_chat_event( ser
 }
 
 /* Reads MixedChatEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_chat_event( serialize_read_stream_t * stream, bench_mixed_chat_event_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_bench_read_mixed_chat_event_body_( serialize_read_stream_t * stream, bench_mixed_chat_event_t * value )
 {
     /* fixed 14-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 14 )
@@ -893,6 +953,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_chat_event( seria
     return 1;
 }
 
+/* Reads MixedChatEvent as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_chat_event( serialize_read_stream_t * stream, bench_mixed_chat_event_t * value )
+{
+    if ( !schema_bench_read_mixed_chat_event_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes MixedPickupEvent. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_pickup_event( serialize_write_stream_t * stream, const bench_mixed_pickup_event_t * value )
 {
@@ -909,7 +979,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_pickup_event( s
 }
 
 /* Reads MixedPickupEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_pickup_event( serialize_read_stream_t * stream, bench_mixed_pickup_event_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_bench_read_mixed_pickup_event_body_( serialize_read_stream_t * stream, bench_mixed_pickup_event_t * value )
 {
     /* fixed 18-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 18 )
@@ -938,6 +1008,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_pickup_event( ser
     return 1;
 }
 
+/* Reads MixedPickupEvent as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_pickup_event( serialize_read_stream_t * stream, bench_mixed_pickup_event_t * value )
+{
+    if ( !schema_bench_read_mixed_pickup_event_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes MixedEvent. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_event( serialize_write_stream_t * stream, const bench_mixed_event_t * value )
 {
@@ -960,7 +1040,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_event( serializ
 }
 
 /* Reads MixedEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_event( serialize_read_stream_t * stream, bench_mixed_event_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_bench_read_mixed_event_body_( serialize_read_stream_t * stream, bench_mixed_event_t * value )
 {
     {
         serialize_uint32_t tag_value = 0;
@@ -978,16 +1058,26 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_event( serialize_
     {
         case 1:
             memset( &value->as.hit, 0, sizeof( value->as.hit ) );
-            return bench_read_mixed_hit_event( stream, &value->as.hit );
+            return schema_bench_read_mixed_hit_event_body_( stream, &value->as.hit );
         case 2:
             memset( &value->as.chat, 0, sizeof( value->as.chat ) );
-            return bench_read_mixed_chat_event( stream, &value->as.chat );
+            return schema_bench_read_mixed_chat_event_body_( stream, &value->as.chat );
         case 3:
             memset( &value->as.pickup, 0, sizeof( value->as.pickup ) );
-            return bench_read_mixed_pickup_event( stream, &value->as.pickup );
+            return schema_bench_read_mixed_pickup_event_body_( stream, &value->as.pickup );
         default:
             return 1; /* None */
     }
+}
+
+/* Reads MixedEvent as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_event( serialize_read_stream_t * stream, bench_mixed_event_t * value )
+{
+    if ( !schema_bench_read_mixed_event_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes BenchMixed. */
@@ -1194,7 +1284,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_mixed( serializ
 }
 
 /* Reads BenchMixed. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_mixed( serialize_read_stream_t * stream, bench_bench_mixed_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_bench_read_bench_mixed_body_( serialize_read_stream_t * stream, bench_bench_mixed_t * value )
 {
     {
         serialize_uint32_t const_value = 0;
@@ -1313,7 +1403,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_mixed( serialize_
         int32_t i;
         for ( i = 0; i < value->entities_count; i++ )
         {
-            if ( !bench_read_mixed_entity( stream, &value->entities[i] ) )
+            if ( !schema_bench_read_mixed_entity_body_( stream, &value->entities[i] ) )
             {
                 return 0;
             }
@@ -1327,13 +1417,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_mixed( serialize_
         int32_t i;
         for ( i = 0; i < value->stats_count; i++ )
         {
-            if ( !bench_read_mixed_stat( stream, &value->stats[i] ) )
+            if ( !schema_bench_read_mixed_stat_body_( stream, &value->stats[i] ) )
             {
                 return 0;
             }
         }
     }
-    if ( !bench_read_mixed_event( stream, &value->game_event ) )
+    if ( !schema_bench_read_mixed_event_body_( stream, &value->game_event ) )
     {
         return 0;
     }
@@ -1464,6 +1554,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_mixed( serialize_
         value->idle_ticks = (int32_t) offset_value;
     }
     return 1;
+}
+
+/* Reads BenchMixed as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_mixed( serialize_read_stream_t * stream, bench_bench_mixed_t * value )
+{
+    if ( !schema_bench_read_bench_mixed_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 #ifdef __cplusplus
