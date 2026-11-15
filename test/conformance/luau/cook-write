@@ -1,0 +1,127 @@
+#!/bin/sh
+# THE LUAU LEG's COOK-WRITE GATE (make/luau-cook-write.mk). The Luau cook
+# writer writes every committed cook-write fixture byte for byte, in both byte
+# orders, with no case relaxed: an absent optional's payload and a counted
+# array's slots past its live count are zero (docs/SPEC-TABLES.md §7.2;
+# docs/rulings.json fixed-dead-bytes-are-zero).
+#
+#   gate     runs the leg's harness and passes only when the cook-write line
+#            reads `pass N/N` (the same N twice, no `+Ka` absence suffix) and
+#            no `luau / cook-write` case is RELAXED. The leg's other surfaces
+#            belong to their own gates, so the run's own exit status is not
+#            this gate's verdict.
+#   control  plants ONE fault in a COPY of build/conformance-luau under a
+#            mirror of the repository (the counted array's dead-slot zeroing
+#            cut out of the generated schema_cook.luau) and requires the same
+#            check to go red on cook-write. The leg's own build is never
+#            touched: other gates read it under `make -j`.
+#
+# usage: sh test/conformance/luau/cook-write gate|control
+set -eu
+
+# check <log>: the cook-write verdict of one harness log
+check() {
+	line=$(grep -E '^cook-write ' "$1" || true)
+	if [ -z "$line" ]; then
+		echo "luau cook-write: the harness log $1 has no cook-write line" >&2
+		return 1
+	fi
+	if ! printf '%s\n' "$line" | awk '{ split($3, a, "/"); exit !(NF == 3 && $2 == "pass" && a[1] != "" && a[1] == a[2]) }'; then
+		echo "luau cook-write: want pass N/N, got: $line" >&2
+		return 1
+	fi
+	if grep -E 'RELAXED.* luau / cook-write' "$1" >/dev/null; then
+		echo "luau cook-write: a cook-write case is still relaxed:" >&2
+		grep -E 'RELAXED.* luau / cook-write' "$1" >&2
+		return 1
+	fi
+	echo "luau cook-write: $line, none relaxed"
+}
+
+root=$(pwd)
+for need in build/conformance-harness build/conformance-luau build/luau-driver/inputs.luau build/luau-driver/units.luau; do
+	if [ ! -e "$need" ]; then
+		echo "luau cook-write: $need is missing (make conformance-luau-cook-write builds it)" >&2
+		exit 1
+	fi
+done
+
+case "${1:-}" in
+gate)
+	out=build/conformance-luau-cook-write
+	rm -rf "$out"
+	mkdir -p "$out"
+	build/conformance-harness run --only luau > "$out/log" 2>&1 || true
+	if ! check "$out/log"; then
+		cat "$out/log" >&2
+		exit 1
+	fi
+	;;
+control)
+	out=build/conformance-luau-cook-write-control
+	rm -rf "$out"
+	mkdir -p "$out"
+	mirror=$root/$out/mirror
+	mkdir -p "$mirror/build/luau-driver" "$mirror/test/conformance/luau"
+	for entry in "$root"/* "$root"/.[!.]*; do
+		name=$(basename "$entry")
+		case "$name" in build | test | .git) continue ;; esac
+		[ -e "$entry" ] && ln -s "$entry" "$mirror/$name"
+	done
+	for entry in "$root"/build/*; do
+		name=$(basename "$entry")
+		case "$name" in conformance-luau | luau-driver) continue ;; esac
+		ln -s "$entry" "$mirror/build/$name"
+	done
+	cp test/conformance/luau/driver test/conformance/luau/main.luau "$mirror/test/conformance/luau/"
+	cp build/luau-driver/units.luau build/luau-driver/inputs.luau "$mirror/build/luau-driver/"
+	gen=$mirror/build/conformance-luau
+	mkdir -p "$gen"
+	for d in build/conformance-luau/*; do
+		case "$(basename "$d")" in driver) continue ;; esac
+		cp -R "$d" "$gen/"
+	done
+	n=0
+	for f in "$gen"/*/schema_cook.luau; do
+		grep -q '^		n = used$' "$f" || {
+			echo "negative control failed: no dead-slot zeroing in $f to cut; the fault would be vacuous" >&2
+			exit 1
+		}
+		sed -i.orig '/^		n = used$/d' "$f"
+		rm -f "$f.orig"
+		n=$((n + 1))
+	done
+	if [ "$n" -eq 0 ]; then
+		echo "negative control failed: no generated schema_cook.luau to plant in" >&2
+		exit 1
+	fi
+	luau="${LUAU:-$root/dist/luau-0.741/luau}"
+	case "$luau" in /*) ;; *) luau=$root/$luau ;; esac
+	cat > "$out/driver" <<EOF
+#!/bin/sh
+abs() { case "\$1" in /*) echo "\$1" ;; *) echo "$root/\$1" ;; esac; }
+m=\$(abs "\$1")
+if [ "\$2" = list ]; then cd "$mirror" && exec env LUAU="$luau" sh test/conformance/luau/driver "\$m" list; fi
+o=\$(abs "\$3")
+cd "$mirror" && exec env LUAU="$luau" sh test/conformance/luau/driver "\$m" "\$2" "\$o"
+EOF
+	chmod +x "$out/driver"
+	printf 'luau %s/%s/driver\n' "$root" "$out" > "$out/drivers.txt"
+	build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1 || true
+	if check "$out/log" > "$out/check" 2>&1; then
+		echo "negative control failed: the dead-slot fault left luau cook-write green" >&2
+		cat "$out/log" >&2
+		exit 1
+	fi
+	if ! grep -E 'luau / cook-write: root_full: ' "$out/log" >/dev/null; then
+		echo "negative control failed: cook-write went red, but not on root_full's dead slots" >&2
+		cat "$out/log" >&2
+		exit 1
+	fi
+	echo "negative control: the luau cook writer with its dead-slot zeroing cut turns cook-write red ($(cat "$out/check" | head -1))"
+	;;
+*)
+	echo "usage: sh test/conformance/luau/cook-write gate|control" >&2
+	exit 2
+	;;
+esac

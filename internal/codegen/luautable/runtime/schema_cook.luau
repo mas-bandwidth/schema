@@ -737,7 +737,9 @@ carve_record = function(d: any, v: any, recordBase: number, extentBase: number, 
 	for _, fl in l.fields do
 		local fd = fl.fd
 		local x = field_value(d, fd, v)
-		if fd.s == "map" or (fd.s == "arr" and fd.array == "list") then
+		if fd.present ~= nil and not v[fd.present] then
+			-- an absent optional's storage is dead: the walk carves nothing for it
+		elseif fd.s == "map" or (fd.s == "arr" and fd.array == "list") then
 			if not carve_field(fd, v, x, recordBase + fl.at, extentBase, cursor, w, index) then return false end
 		elseif fd.s == "ptr" or fd.s == "sblob" or fd.s == "bblob" then
 			-- a pointee and a blob are nodes, not this extent
@@ -772,6 +774,9 @@ write_array = function(fd: any, holder: any, x: any, at: number, fl: any, w: any
 		local used = live_count(fd, holder, x)
 		if used == nil then return false end
 		put(w, piece_at(fd, 2, at), used, 4)
+		-- a slot past the live count is DEAD BYTES and stays the buffer's zero
+		-- (§7.2; docs/rulings.json fixed-dead-bytes-are-zero)
+		n = used
 	end
 	-- a [N]uint8 or [E]uint8 is a buffer, 0-based (docs/PORT-LUAU.md, THE TYPE
 	-- MAPPING): its slots are read as bytes, every other array is a 1-based list
@@ -855,12 +860,17 @@ write_record = function(d: any, v: any, base: number, w: any, index: any): boole
 		local at = base + fl.at
 		_owner, _field = d.name, fd.name
 		local x = field_value(d, fd, v)
+		local present = true
 		if fd.present ~= nil then
-			local present = v[fd.present] == true
+			present = v[fd.present] == true
 			put(w, base + fl.pieces[#fl.pieces].at, present and 1 or 0, 1)
 		end
 		local ok = true
-		if fd.s == "map" or (fd.s == "arr" and fd.array == "list") then
+		if not present then
+			-- AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (§7.2; docs/rulings.json
+			-- fixed-dead-bytes-are-zero): it stays the buffer's zero whatever its
+			-- declared defaults are, which stay a READ rule
+		elseif fd.s == "map" or (fd.s == "arr" and fd.array == "list") then
 			-- the extent writer fills its slot
 		else
 			ok = write_value(fd, x, at, w, index, v)
