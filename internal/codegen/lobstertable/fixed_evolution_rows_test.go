@@ -350,8 +350,9 @@ func TestLobsterFixedRowOrdinals(t *testing.T) {
 // the strict read (fix 2): a bool byte or a present byte other than 0 or 1
 // refuses wire_damaged with nothing landed; 1 and 1 land true and the payload
 // behind the present byte lands; a present byte of 0 makes the payload dead
-// storage, never read (0xff there loads) and written back as zeros. The
-// negative control widens the byte check to 255; 0x7f then reads.
+// storage, a non-zero dead byte refuses wire_damaged, and the zero image
+// reads and is written back as zeros. The negative control widens the byte
+// check to 255; 0x7f then reads.
 func TestLobsterFixedRowNormalization(t *testing.T) {
 	slowtest.Gate(t, rowsGate)
 	t.Parallel()
@@ -377,9 +378,12 @@ func TestLobsterFixedRowNormalization(t *testing.T) {
 	if got := rowLoad(t, u, "T", nil, file(1, 1, 42, 0, 0, 0), nil); got.head() != "ok 1 u0 w0" || got.fields["r0.flag"] != "true" || got.fields["r0.opt_present"] != "true" || got.fields["r0.opt"] != "42" {
 		t.Errorf("R17 the lawful bytes: %s %v", got.head(), got.fields)
 	}
-	dead := file(0, 0, 0xff, 0xff, 0xff, 0xff)
-	if got := rowLoad(t, u, "T", nil, dead, nil); got.head() != "ok 1 u0 w0" || got.fields["r0.opt_present"] != "false" || string(got.resaved) != string(file(0, 0, 0, 0, 0, 0)) {
-		t.Errorf("R17 an absent payload: %s %v", got.head(), got.fields)
+	zeroed := file(0, 0, 0, 0, 0, 0)
+	if got := rowLoad(t, u, "T", nil, zeroed, nil); got.head() != "ok 1 u0 w0" || got.fields["r0.opt_present"] != "false" || string(got.resaved) != string(zeroed) {
+		t.Errorf("R17 a zero absent payload: %s %v", got.head(), got.fields)
+	}
+	if got := rowLoad(t, u, "T", nil, file(0, 0, 0xff, 0xff, 0xff, 0xff), nil); got.head() != "refused wire_damaged" {
+		t.Errorf("R17 a non-zero absent payload: %s", got.head())
 	}
 	if got := rowLoad(t, u, "T", nil, file(0x7f, 1, 42, 0, 0, 0), plantRow(t, rowsFixedevolve, "                        if v > 1:\n", "                        if v > 255:\n")); got.count != 1 {
 		t.Errorf("the negative control: the widened byte check still refuses: %s", got.head())
@@ -471,9 +475,10 @@ func TestLobsterFixedRowArrayBounds(t *testing.T) {
 // TestLobsterFixedRowText is text (C3, C4, C5, R24): a length past the
 // field's capacity refuses length_over_bound; ill-formed UTF-8 or a zero in
 // the USED bytes, and an unpaired surrogate in a wstring's used units, refuse
-// text_ill_formed; a hostile byte in the slack past the used length is not
-// read and not a refusal. The negative control drops the UTF-8 check from the
-// read and from the bounds pass; 0xff in the used bytes then reads.
+// text_ill_formed; a hostile byte in the slack past the used length refuses
+// wire_damaged, while the zero slack reads. The negative control drops the
+// UTF-8 check from the read and from the bounds pass; 0xff in the used bytes
+// then reads.
 func TestLobsterFixedRowText(t *testing.T) {
 	slowtest.Gate(t, rowsGate)
 	t.Parallel()
@@ -493,7 +498,7 @@ func TestLobsterFixedRowText(t *testing.T) {
 		{"C3 length -1", cut(func(b []byte) { b[body], b[body+1], b[body+2], b[body+3] = 0xff, 0xff, 0xff, 0xff }), "refused length_over_bound"},
 		{"C4 0xff in the used bytes", cut(func(b []byte) { b[body+4] = 0xff }), "refused text_ill_formed"},
 		{"C4 a zero in the used bytes", cut(func(b []byte) { b[body+5] = 0 }), "refused text_ill_formed"},
-		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), "ok 1 u0 w0"},
+		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), "refused wire_damaged"},
 	}
 	for _, c := range cases {
 		if got := rowLoad(t, u, "T", nil, c.file, nil).head(); got != c.want {
