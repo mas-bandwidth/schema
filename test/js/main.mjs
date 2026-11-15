@@ -230,8 +230,9 @@ function textBytes(s) {
         const rs = new ReadStream(expected);
         readOK = armDefaults.ReadDefaultChoicePacket(rs, out);
         check(readOK, `${tier} default arm read ${pass}`);
-        consumedOK = rs.bitsProcessed() === 7;
-        check(consumedOK, `${tier} default arm consumes seven bits ${pass}`);
+        // seven payload bits, then the accepted end consumes the zero padding
+        consumedOK = rs.bitsProcessed() === 8;
+        check(consumedOK, `${tier} default arm consumes seven bits and the padding ${pass}`);
       } else {
         const buffer = new Uint8Array(expected.length + 8);
         buffer.set(expected);
@@ -1280,12 +1281,15 @@ flatCross("flat testdata", ex, exFlat, "TestData", testDataInstance(), "testdata
   ws.flush();
   goldenWire("degenerate", ws.data());
 
+  // one stream holds every shape, so each reads as a nested object and the
+  // packet's one end check runs once after the last
   const rs = new ReadStream(ws.data());
   for (const [name, inp] of shapes) {
     const out = new dg[name]();
-    check(dg[`Read${name}`](rs, out), `read ${name}`);
+    check(dg[`Read${name}`](rs, out, true), `read ${name}`);
     check(deepEqual(out, inp), `${name} round-trips`);
   }
+  check(rs.serializeEnd(), "the degenerate stream ends exactly after the twelve shapes");
 
   // and every shape through the flat tier, held to the runtime tier's bytes
   for (const [name, inp] of shapes) {

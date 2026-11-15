@@ -51,10 +51,11 @@ Floats never become moo numbers in generated code. Game code that needs one
 crosses the boundary on purpose (`serialize.Float32.toNumber`,
 `Float32.fromNumber`), which is the boundary moo's design names; the schema
 records that game state holds are `fixed` and integer fields, and those are moo
-numbers natively. A float `const` is folded to the nearest Q48.16 value (moo's
-literal rule, round to nearest, ties to even), written exactly, with the
-original value in a trailing comment where they differ; a constant moo cannot
-hold is refused by name at generation.
+numbers natively. A float `const` holds the one value every language holds
+(SPEC §4.3): a `float32` const is a `serialize.Float32` over its binary32
+pattern and a `float64` const a `serialize.Uint64` over its binary64 pattern —
+the same boundary its field rides, exact for the subnormals and the largest
+finite.
 
 Fields are named by `ir.GoExportName` (PascalCase, Luau's idiom, and the Go
 spelling, so the checker's collision claims cover moo). Every module exports a

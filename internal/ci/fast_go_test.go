@@ -127,9 +127,17 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", ev); err != nil || ok {
 		t.Fatalf("ci-fast.yml leg-gate ran below main on a pull request into %s: ok=%v err=%v", ev.Branch, ok, err)
 	}
-	for _, job := range []string{"generated", "pins", "cs-tables"} {
-		if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], job, ev); err != nil || !ok {
-			t.Fatalf("ci-full.yml %s did not run on a pull request into %s: ok=%v err=%v", job, ev.Branch, ok, err)
+	// ci-full.yml on any base: pr-select runs, and pins and cs-tables follow
+	// it (the owner, 2026-11-15: heavy suite failure on main is fine, like a
+	// hierarchical merge); generated is behind the full-ci label.
+	if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], "pr-select", ev); err != nil || !ok {
+		t.Fatalf("ci-full.yml pr-select did not run on a pull request into %s: ok=%v err=%v", ev.Branch, ok, err)
+	}
+	selected := ev
+	selected.PRPins, selected.PRCS = "yes", "yes"
+	for _, job := range []string{"pins", "cs-tables"} {
+		if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], job, selected); err != nil || !ok {
+			t.Fatalf("ci-full.yml %s did not run on a pull request into %s that selects it: ok=%v err=%v", job, ev.Branch, ok, err)
 		}
 	}
 	if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], "go-test", ev); err != nil || ok {

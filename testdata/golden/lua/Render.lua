@@ -52,9 +52,17 @@ function _M.ZeroRenderSprite(value)
   value.Team = 0
 end
 
--- ReadRenderSprite reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadRenderSprite reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadRenderSprite(stream, value)
+  if not _M.ReadRenderSpriteBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadRenderSpriteBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadRenderSpriteBody(stream, value)
   if not stream:serializeBits64(BIG, 64) then return false end
   value.SortKey = BIG.value
   if not stream:serializeBits(BITS, 32) then return false end
@@ -78,9 +86,17 @@ function _M.ZeroRenderBlock(value)
   value.SpritesCount = 0
 end
 
--- ReadRenderBlock reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadRenderBlock reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadRenderBlock(stream, value)
+  if not _M.ReadRenderBlockBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadRenderBlockBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadRenderBlockBody(stream, value)
   if not stream:serializeBits(BITS, 32) then return false end
   value.WorkerIndex = BITS.value
   if not stream:serializeBits(BITS, 32) then return false end
@@ -90,7 +106,7 @@ function _M.ReadRenderBlock(stream, value)
   end
   value.SpritesCount = BITS.value
   for i = 1, value.SpritesCount do
-    if not _M.ReadRenderSprite(stream, value.Sprites[i]) then return false end
+    if not _M.ReadRenderSpriteBody(stream, value.Sprites[i]) then return false end
   end
   return true
 end

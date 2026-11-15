@@ -1103,7 +1103,10 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 			if anyBlob {
 				blobGraph = tableBlobGraphRuntime
 			}
-			h.WriteString(strings.Replace(tableGraphRuntime, "@BLOB_GRAPH@", blobGraph, 1))
+			graph := strings.Replace(tableGraphRuntime, "@BLOB_GRAPH@", blobGraph, 1)
+			graph = strings.ReplaceAll(graph, "@BYTES_TYPE_ID@", fmt.Sprintf("0x%016x", ir.BytesWireTypeId))
+			graph = strings.ReplaceAll(graph, "@STRING_TYPE_ID@", fmt.Sprintf("0x%016x", ir.StringWireTypeId))
+			h.WriteString(graph)
 		}
 	}
 	// the COOKED FORM's read side (docs/SPEC-TABLES.md §7) and the BUILD VERSION
