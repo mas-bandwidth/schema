@@ -26,7 +26,7 @@ func generatedMessageModule(t *testing.T, src string) string {
 }
 
 func lineContaining(src, needle string) string {
-	for _, line := range strings.Split(src, "\n") {
+	for line := range strings.SplitSeq(src, "\n") {
 		if strings.Contains(line, needle) {
 			return line
 		}

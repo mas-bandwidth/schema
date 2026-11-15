@@ -322,7 +322,7 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 		expectation{"export const ShapeType = Object.freeze({", 1},
 		expectation{"export class Shape {", 1},
 		expectation{"export function WriteShape(stream, value) {", 1},
-		expectation{"export function ReadShape(stream, value) {", 1},
+		expectation{"export function ReadShape(stream, value, nested) {", 1},
 		expectation{"export function ZeroShape(value) {", 1},
 		expectation{"export const ShapeMaxBits = 18;", 1})
 	cFiles, cErr := cgen.Generate(u)

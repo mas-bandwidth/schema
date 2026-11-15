@@ -6283,6 +6283,15 @@ namespace Bench
             // fixed form refuses any other value, as the variable form does. Copy
             // would land a forged byte as truth.
             public const byte BoolByte = 9;
+            // A DEAD RANGE ALL-ZERO CHECK (docs/rulings.json fixed-dead-bytes-are-zero;
+            // docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3 step 11): Src is the range start
+            // and Size its length. A non-zero byte inside refuses wire_damaged.
+            public const byte Dead = 10;
+
+            // Meta on a BoolByte entry: the byte is an optional's PRESENT flag, and
+            // Aux is the payload's source byte count behind it. A present byte of 0
+            // makes that whole payload dead (docs/FIXED-FORM-ALGORITHM.md §4.5).
+            public const byte BoolPresent = 1;
 
             // Arg on a Text entry
             public const byte TextUtf8 = 1;
@@ -7469,6 +7478,17 @@ namespace Bench
                 return end;
             }
 
+            // DeadZero answers "wire_damaged" when the dead range [start,end) holds a
+            // byte other than zero, and null otherwise. EVERY DEAD BYTE IN A FIXED
+            // RECORD IS ZERO ON WRITE AND REFUSED ON READ WHEN NOT ZERO
+            // (docs/rulings.json fixed-dead-bytes-are-zero; docs/FIXED-FORM-ALGORITHM.md
+            // §4.5, §5.3 step 11). The range is never read as a value.
+            public static string DeadZero(ReadOnlySpan<byte> src, uint start, uint end)
+            {
+                for (uint i = start; i < end; ++i) { if (src[(int)i] != 0) { return "wire_damaged"; } }
+                return null;
+            }
+
             // THE WIDEN SCRATCH IS THE CALLER'S, AND IT IS HOISTED OUT OF THE RECORD
             // LOOP. Run is called ONCE PER RECORD, so a new byte[runs * dw] taken
             // inside the FlatWiden case allocated once per widened run per record —
@@ -7556,6 +7576,16 @@ namespace Bench
                             {
                                 ulong raw = src[(int)p.Src];
                                 if (raw > 1) { return "wire_damaged"; }
+                                // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                                // fixed-dead-bytes-are-zero): a present byte of 0 makes
+                                // the whole payload behind it dead, and a non-zero dead
+                                // byte refuses wire_damaged. Aux is the payload's source
+                                // byte count (§4.5).
+                                if (p.Meta == BoolPresent && raw == 0 && p.Aux != 0)
+                                {
+                                    string why = DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                    if (why != null) { return why; }
+                                }
                                 slots[(int)p.Dst].SetRaw?.Invoke(dst, raw);
                                 break;
                             }
@@ -7614,6 +7644,15 @@ namespace Bench
                             {
                                 int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                                 if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                                // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD
+                                // (docs/rulings.json fixed-dead-bytes-are-zero): Aux is
+                                // one element's source byte count, Size the writer's
+                                // bound in elements (§4.5).
+                                if (p.Aux != 0 && (uint)v < p.Size)
+                                {
+                                    string why = DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                    if (why != null) { return why; }
+                                }
                                 slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
                                 break;
                             }
@@ -7622,6 +7661,14 @@ namespace Bench
                                 uint cap = p.Size;
                                 int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                                 if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                                // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                                // DEAD (docs/rulings.json fixed-dead-bytes-are-zero):
+                                // a non-zero dead byte refuses wire_damaged (§4.5).
+                                if ((uint)v < p.Size)
+                                {
+                                    string why = DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                    if (why != null) { return why; }
+                                }
                                 ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                                 // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING
                                 // ELSE, and a violation REFUSES BY NAME, the verdict the
@@ -7729,6 +7776,16 @@ namespace Bench
                                 {
                                     slots[(int)p.Dst].SetRawReport?.Invoke(dst, p.Aux, report);
                                 }
+                                break;
+                            }
+                        case Dead:
+                            {
+                                // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                                // fixed-dead-bytes-are-zero): an inactive union arm's
+                                // span under tag 0, and the tail past a narrower taken
+                                // arm (§4.5). The range is never read as a value.
+                                string why = DeadZero(src, p.Src, p.Src + p.Size);
+                                if (why != null) { return why; }
                                 break;
                             }
                         default: break;
@@ -9415,9 +9472,9 @@ namespace Bench
                     default: break;
                 }
             }
-            if (value.AimX < -1.0f || value.AimX > 1.0f) { clamped++; }
-            if (value.AimY < -1.0f || value.AimY > 1.0f) { clamped++; }
-            if (value.AimZ < -1.0f || value.AimZ > 1.0f) { clamped++; }
+            if (value.AimX < -1.0f || value.AimX > 1.0f) { clamped++; } else if (value.AimX == 0) { value.AimX = 0.0f; }
+            if (value.AimY < -1.0f || value.AimY > 1.0f) { clamped++; } else if (value.AimY == 0) { value.AimY = 0.0f; }
+            if (value.AimZ < -1.0f || value.AimZ > 1.0f) { clamped++; } else if (value.AimZ == 0) { value.AimZ = 0.0f; }
             if (((System.Int128)value.Flux) < unchecked((Int128)(((UInt128)0xfffffff000000000ul << 64) | 0x0ul)) || ((System.Int128)value.Flux) > unchecked((Int128)(((UInt128)0x1000000000ul << 64) | 0x0ul))) { clamped++; }
             if (value.Ping > 64000) { clamped++; }
             // bits(24) width clamp
