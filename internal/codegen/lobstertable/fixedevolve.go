@@ -932,11 +932,18 @@ func emitFixedBoundElement(g *lobster.Gen, f *ir.Field, expr, ind string, pass f
 	if chk {
 		switch f.Type.Kind {
 		case ir.TFloat32:
-			// the writer's finite rule (docs/SPEC-TABLES.md §3.3): a NaN or an
-			// infinity, at the width it is written, is invalid_value
+			// THE FINITE RULE (docs/SPEC-TABLES.md §3.3): a NaN or an infinity,
+			// at the width it is written, is invalid_value on a write and
+			// non_finite_float on a read.
 			g.Pf("%sif not schema_rt.finite_f32(%s):\n%s    return false\n", ind, expr, ind)
 			if f.HasFloatRange {
 				g.Pf("%sif %s < %s or %s > %s:\n%s    return false\n", ind, expr, lobster.FormatFloat32(f.FMin), expr, lobster.FormatFloat32(f.FMax), ind)
+				if pass == fixedPassRead {
+					// A COMPRESSED FLOAT'S -0 IS +0 (docs/SPEC-TABLES.md §3.3,
+					// docs/rulings.json fixed-compressed-negzero): inside the
+					// range it lands as the value 0 itself, uncounted.
+					g.Pf("%sif %s == 0.0:\n%s    %s = 0.0\n", ind, expr, ind, expr)
+				}
 			}
 			return true
 		case ir.TFloat64:

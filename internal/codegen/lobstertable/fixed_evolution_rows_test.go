@@ -217,10 +217,10 @@ func TestLobsterFixedRowNumericEvolution(t *testing.T) {
 // re-save byte for byte; one value past either end of any of them refuses
 // out_of_range with nothing landed (fix 5: it clamped and counted before). A
 // compressed float is saved as its float32 bits unquantized; past its range it
-// refuses out_of_range, -0.0 lands as written, and its resolution is in the
-// digest under 'Q', so a finer or a dropped resolution is a new hash whose
-// compiled plan reads the old writer's bits unchanged. The negative control
-// drops the int32 range check from the bounds pass.
+// refuses out_of_range, -0.0 lands as +0 and re-saves as the +0 image, and its
+// resolution is in the digest under 'Q', so a finer or a dropped resolution is
+// a new hash whose compiled plan reads the old writer's bits unchanged. The
+// negative control drops the int32 range check from the bounds pass.
 func TestLobsterFixedRowScalarBounds(t *testing.T) {
 	slowtest.Gate(t, rowsGate)
 	t.Parallel()
@@ -279,8 +279,14 @@ func TestLobsterFixedRowScalarBounds(t *testing.T) {
 		f := cloneRow(saved)
 		binary.LittleEndian.PutUint32(f[at:], c.bits)
 		got := rowLoad(t, old, "Reading", nil, f, nil)
-		if got.head() != c.want || (got.count == 1 && string(got.resaved) != string(f)) {
-			t.Errorf("R30 %#08x: %s (re-save identical %v), want %s", c.bits, got.head(), string(got.resaved) == string(f), c.want)
+		canonical := c.bits
+		if canonical == 0x80000000 {
+			canonical = 0
+		}
+		want := cloneRow(f)
+		binary.LittleEndian.PutUint32(want[at:], canonical)
+		if got.head() != c.want || (got.count == 1 && string(got.resaved) != string(want)) {
+			t.Errorf("R30 %#08x: %s (re-save identical %v), want %s", c.bits, got.head(), string(got.resaved) == string(want), c.want)
 		}
 	}
 	lin := rowLineage(t, old, "Reading")
