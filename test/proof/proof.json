@@ -342,7 +342,7 @@
       "status": "proven",
       "gate": "make conformance: 13 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "surface message",
@@ -595,7 +595,7 @@
       "status": "proven",
       "gate": "make conformance: 102 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "surface framing",
@@ -722,7 +722,7 @@
       "status": "proven",
       "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "surface retain",
@@ -849,7 +849,7 @@
       "status": "proven",
       "gate": "make conformance: 7 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "surface retain-save",
@@ -1112,106 +1112,93 @@
     {
       "row": "surface json-hostile",
       "lang": "cpp",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (cpp)",
-      "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
+      "status": "relaxed",
+      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-cpp (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
       "lang": "c",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (c)",
-      "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
+      "status": "relaxed",
+      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-c (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
       "lang": "cs",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (cs)",
-      "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
+      "status": "relaxed",
+      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-cs (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
       "lang": "dart",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (dart)",
-      "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
+      "status": "relaxed",
+      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-dart (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
       "lang": "elixir",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (elixir)",
-      "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
+      "status": "relaxed",
+      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-elixir (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
       "lang": "go",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (go)",
-      "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
+      "status": "relaxed",
+      "why": "1 case(s) fail: json-hostile/str-zero-escape-unknown-key",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-go (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
       "lang": "goose",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (goose)",
-      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
+      "status": "relaxed",
+      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-goose (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
       "lang": "java",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (java)",
-      "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
+      "status": "relaxed",
+      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-java (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
       "lang": "js",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (js)",
-      "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
+      "status": "relaxed",
+      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-js (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
       "lang": "lobster",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (lobster)",
-      "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
+      "status": "relaxed",
+      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-lobster (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
       "lang": "lua",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (lua)",
-      "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
+      "status": "relaxed",
+      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-lua (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
       "lang": "luau",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (luau)",
-      "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
+      "status": "relaxed",
+      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-luau (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
       "lang": "moo",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (moo)",
-      "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
+      "status": "relaxed",
+      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-moo (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
@@ -1224,16 +1211,15 @@
       "row": "surface json-hostile",
       "lang": "rust",
       "status": "relaxed",
-      "why": "4 case(s) answered absent with no ruling: json-hostile/text-total-after-clamp, json-hostile/text-total-and-count, json-hostile/text-total-at and 1 more",
+      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-rust-fixed-roots (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
       "lang": "squirrel",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (squirrel)",
-      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
+      "status": "relaxed",
+      "why": "1 case(s) fail: json-hostile/base64-unpadded",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-squirrel (docs/relaxed.md)"
     },
     {
       "row": "surface cook",
@@ -1352,7 +1338,7 @@
       "status": "proven",
       "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "surface cook",
@@ -1365,10 +1351,9 @@
     {
       "row": "surface cook-write",
       "lang": "cpp",
-      "status": "proven",
-      "gate": "make conformance: 142 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (cpp)",
-      "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
+      "status": "relaxed",
+      "why": "10 case(s) fail: cook-write/archive, cook-write/archive-be, cook-write/loadout_full and 7 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "surface cook-write",
@@ -1381,41 +1366,37 @@
     {
       "row": "surface cook-write",
       "lang": "cs",
-      "status": "proven",
-      "gate": "make conformance: 142 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (cs)",
-      "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
+      "status": "relaxed",
+      "why": "10 case(s) fail: cook-write/archive, cook-write/archive-be, cook-write/loadout_full and 7 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "surface cook-write",
       "lang": "dart",
-      "status": "proven",
-      "gate": "make conformance: 142 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (dart)",
-      "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
+      "status": "relaxed",
+      "why": "10 case(s) fail: cook-write/archive, cook-write/archive-be, cook-write/loadout_full and 7 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "surface cook-write",
       "lang": "elixir",
       "status": "relaxed",
-      "why": "2 case(s) answered absent with no ruling: cook-write/blob_shared, cook-write/blob_shared-be",
+      "why": "10 case(s) fail: cook-write/archive, cook-write/archive-be, cook-write/loadout_full and 7 more",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-blob-shared-elixir (docs/relaxed.md)"
     },
     {
       "row": "surface cook-write",
       "lang": "go",
-      "status": "proven",
-      "gate": "make conformance: 142 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (go)",
-      "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
+      "status": "relaxed",
+      "why": "10 case(s) fail: cook-write/archive, cook-write/archive-be, cook-write/loadout_full and 7 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "surface cook-write",
       "lang": "goose",
-      "status": "proven",
-      "gate": "make conformance: 142 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (goose)",
-      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
+      "status": "relaxed",
+      "why": "10 case(s) fail: cook-write/archive, cook-write/archive-be, cook-write/loadout_full and 7 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "surface cook-write",
@@ -1427,42 +1408,37 @@
     {
       "row": "surface cook-write",
       "lang": "js",
-      "status": "proven",
-      "gate": "make conformance: 142 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (js)",
-      "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
+      "status": "relaxed",
+      "why": "10 case(s) fail: cook-write/archive, cook-write/archive-be, cook-write/loadout_full and 7 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "surface cook-write",
       "lang": "lobster",
-      "status": "proven",
-      "gate": "make conformance: 142 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (lobster)",
-      "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
+      "status": "relaxed",
+      "why": "10 case(s) fail: cook-write/archive, cook-write/archive-be, cook-write/loadout_full and 7 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "surface cook-write",
       "lang": "lua",
-      "status": "proven",
-      "gate": "make conformance: 142 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (lua)",
-      "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
+      "status": "relaxed",
+      "why": "10 case(s) fail: cook-write/archive, cook-write/archive-be, cook-write/loadout_full and 7 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "surface cook-write",
       "lang": "luau",
-      "status": "proven",
-      "gate": "make conformance: 142 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (luau)",
-      "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
+      "status": "relaxed",
+      "why": "10 case(s) fail: cook-write/archive, cook-write/archive-be, cook-write/loadout_full and 7 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "surface cook-write",
       "lang": "moo",
-      "status": "proven",
-      "gate": "make conformance: 142 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (moo)",
-      "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
+      "status": "relaxed",
+      "why": "10 case(s) fail: cook-write/archive, cook-write/archive-be, cook-write/loadout_full and 7 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "surface cook-write",
@@ -1481,10 +1457,9 @@
     {
       "row": "surface cook-write",
       "lang": "squirrel",
-      "status": "proven",
-      "gate": "make conformance: 142 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (squirrel)",
-      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
+      "status": "relaxed",
+      "why": "10 case(s) fail: cook-write/archive, cook-write/archive-be, cook-write/loadout_full and 7 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "surface cook-foreign",
@@ -1603,7 +1578,7 @@
       "status": "proven",
       "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "surface cook-foreign",
@@ -1730,7 +1705,7 @@
       "status": "proven",
       "gate": "make conformance: 2 case(s) pass, e.g. block/block_padded",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "surface block",
@@ -1857,7 +1832,7 @@
       "status": "proven",
       "gate": "make conformance: 2 case(s) pass, e.g. block-foreign/block_padded",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "surface block-foreign",
@@ -1984,7 +1959,7 @@
       "status": "proven",
       "gate": "make conformance: 2 case(s) pass, e.g. block-dump/block_padded",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "surface block-dump",
@@ -2111,7 +2086,7 @@
       "status": "proven",
       "gate": "make conformance: 13 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "surface forgery",
@@ -2238,7 +2213,7 @@
       "status": "proven",
       "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "surface cook-forgery",
@@ -2611,26 +2586,23 @@
     {
       "row": "surface write-refusal-json",
       "lang": "cpp",
-      "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
-      "job": "CI full / conformance (cpp)",
-      "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
+      "status": "relaxed",
+      "why": "1 case(s) fail: write-refusal-json/jref_zero_byte",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-cpp (docs/relaxed.md)"
     },
     {
       "row": "surface write-refusal-json",
       "lang": "c",
-      "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
-      "job": "CI full / conformance (c)",
-      "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
+      "status": "relaxed",
+      "why": "1 case(s) fail: write-refusal-json/jref_zero_byte",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-c (docs/relaxed.md)"
     },
     {
       "row": "surface write-refusal-json",
       "lang": "cs",
-      "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
-      "job": "CI full / conformance (cs)",
-      "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
+      "status": "relaxed",
+      "why": "1 case(s) fail: write-refusal-json/jref_zero_byte",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-cs (docs/relaxed.md)"
     },
     {
       "row": "surface write-refusal-json",
@@ -2642,18 +2614,16 @@
     {
       "row": "surface write-refusal-json",
       "lang": "elixir",
-      "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
-      "job": "CI full / conformance (elixir)",
-      "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
+      "status": "relaxed",
+      "why": "1 case(s) fail: write-refusal-json/jref_zero_byte",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-elixir (docs/relaxed.md)"
     },
     {
       "row": "surface write-refusal-json",
       "lang": "go",
-      "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
-      "job": "CI full / conformance (go)",
-      "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
+      "status": "relaxed",
+      "why": "1 case(s) fail: write-refusal-json/jref_zero_byte",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-go (docs/relaxed.md)"
     },
     {
       "row": "surface write-refusal-json",
@@ -2672,26 +2642,23 @@
     {
       "row": "surface write-refusal-json",
       "lang": "js",
-      "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
-      "job": "CI full / conformance (js)",
-      "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
+      "status": "relaxed",
+      "why": "1 case(s) fail: write-refusal-json/jref_zero_byte",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-js (docs/relaxed.md)"
     },
     {
       "row": "surface write-refusal-json",
       "lang": "lobster",
-      "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
-      "job": "CI full / conformance (lobster)",
-      "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
+      "status": "relaxed",
+      "why": "1 case(s) fail: write-refusal-json/jref_zero_byte",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-lobster (docs/relaxed.md)"
     },
     {
       "row": "surface write-refusal-json",
       "lang": "lua",
-      "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
-      "job": "CI full / conformance (lua)",
-      "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
+      "status": "relaxed",
+      "why": "1 case(s) fail: write-refusal-json/jref_zero_byte",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-lua (docs/relaxed.md)"
     },
     {
       "row": "surface write-refusal-json",
@@ -2857,100 +2824,92 @@
     {
       "row": "cases tabledemo",
       "lang": "cpp",
-      "status": "proven",
-      "gate": "make conformance: 220 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (cpp)",
-      "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
+      "status": "relaxed",
+      "why": "8 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 5 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "c",
-      "status": "proven",
-      "gate": "make conformance: 220 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (c)",
-      "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
+      "status": "relaxed",
+      "why": "3 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key, write-refusal-json/jref_zero_byte",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-c (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "cs",
-      "status": "proven",
-      "gate": "make conformance: 220 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (cs)",
-      "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
+      "status": "relaxed",
+      "why": "8 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 5 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "dart",
       "status": "relaxed",
-      "why": "39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 more",
+      "why": "7 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 4 more",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-dart (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "elixir",
-      "status": "proven",
-      "gate": "make conformance: 220 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (elixir)",
-      "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
+      "status": "relaxed",
+      "why": "8 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 5 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "go",
-      "status": "proven",
-      "gate": "make conformance: 220 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (go)",
-      "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
+      "status": "relaxed",
+      "why": "7 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 4 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "goose",
       "status": "relaxed",
-      "why": "39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 more",
+      "why": "7 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 4 more",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-goose (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "java",
       "status": "relaxed",
-      "why": "87 case(s) answered absent with no ruling: cook-write/archive, cook-write/keyed_config, cook-write/keyed_default and 84 more",
+      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-java (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "js",
-      "status": "proven",
-      "gate": "make conformance: 220 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (js)",
-      "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
+      "status": "relaxed",
+      "why": "8 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 5 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "lobster",
-      "status": "proven",
-      "gate": "make conformance: 220 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (lobster)",
-      "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
+      "status": "relaxed",
+      "why": "8 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 5 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "lua",
-      "status": "proven",
-      "gate": "make conformance: 220 case(s) pass, e.g. cook-write/archive",
-      "job": "CI full / conformance (lua)",
-      "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
+      "status": "relaxed",
+      "why": "8 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 5 more",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "luau",
       "status": "relaxed",
-      "why": "39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 more",
+      "why": "7 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 4 more",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-luau (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "moo",
       "status": "relaxed",
-      "why": "39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 more",
+      "why": "7 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 4 more",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-moo (docs/relaxed.md)"
     },
     {
@@ -2964,14 +2923,14 @@
       "row": "cases tabledemo",
       "lang": "rust",
       "status": "relaxed",
-      "why": "14 case(s) fail: write-refusal/wref_bits_wide, write-refusal/wref_enum, write-refusal/wref_range_high and 11 more",
+      "why": "16 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key, write-refusal/wref_bits_wide and 13 more",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-rust (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "squirrel",
       "status": "relaxed",
-      "why": "39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 more",
+      "why": "7 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 4 more",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-squirrel (docs/relaxed.md)"
     },
     {
@@ -3591,7 +3550,7 @@
       "status": "proven",
       "gate": "make conformance: 3 case(s) pass, e.g. report/p1_as_p2",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases tblp2",
@@ -3719,7 +3678,7 @@
       "status": "proven",
       "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases graphdemo",
@@ -3846,7 +3805,7 @@
       "status": "proven",
       "gate": "make conformance: 6 case(s) pass, e.g. block/block_padded",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases blockdemo",
@@ -4098,7 +4057,7 @@
       "status": "proven",
       "gate": "make conformance: 30 case(s) pass, e.g. cook-write/stream_arm_first",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases streamdemo",
@@ -4600,7 +4559,7 @@
       "status": "proven",
       "gate": "make conformance: 10 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases tbla2",
@@ -4727,7 +4686,7 @@
       "status": "proven",
       "gate": "make conformance: 4 case(s) pass, e.g. wire/guard_false_no_edge",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases tblg1",
@@ -4854,7 +4813,7 @@
       "status": "proven",
       "gate": "make conformance: 1 case(s) pass, e.g. report/k2_as_k1",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases tblk1",
@@ -4981,7 +4940,7 @@
       "status": "proven",
       "gate": "make conformance: 1 case(s) pass, e.g. report/k1_as_k2",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases tblk2",
@@ -5108,7 +5067,7 @@
       "status": "proven",
       "gate": "make conformance: 7 case(s) pass, e.g. json-read/w1_fleet",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases tblw1",
@@ -5235,7 +5194,7 @@
       "status": "proven",
       "gate": "make conformance: 5 case(s) pass, e.g. json-read/w2_fleet",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases tblw2",
@@ -5737,7 +5696,7 @@
       "status": "proven",
       "gate": "make conformance: 3 case(s) pass, e.g. report/field_scalar_widen",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases tblscalars2",
@@ -6239,7 +6198,7 @@
       "status": "proven",
       "gate": "make conformance: 15 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases tblrt1",
@@ -6366,7 +6325,7 @@
       "status": "proven",
       "gate": "make conformance: 54 case(s) pass, e.g. cook-write/list_before_pointer",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases listdemo",
@@ -6493,7 +6452,7 @@
       "status": "proven",
       "gate": "make conformance: 62 case(s) pass, e.g. cook-write/map_cells",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases mapdemo",
@@ -6620,7 +6579,7 @@
       "status": "proven",
       "gate": "make conformance: 4 case(s) pass, e.g. cook-write/widelist_wide",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-framing (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
     {
       "row": "cases widelist",
@@ -8366,7 +8325,7 @@
       "status": "proven",
       "gate": "conformance-rust-absent",
       "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
-      "control": "conformance-rust-absent-negative-control (CI full / negative controls (rust-conformance-framing))"
+      "control": "conformance-rust-absent-negative-control (CI full / negative controls (rust-conformance-absent))"
     },
     {
       "row": "porting I4",
