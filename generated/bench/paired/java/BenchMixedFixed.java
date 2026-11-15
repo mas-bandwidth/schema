@@ -191,6 +191,12 @@ public final class BenchMixedFixed {
         assert v.playerNameLength >= 0 && v.playerNameLength <= 15;
         assert TableFixed.textOk(TableFixed.textUtf8, v.playerName, 0, v.playerNameLength);
         assert v.payloadLength >= 0 && v.payloadLength <= 16;
+        {
+            final Int128 min = new Int128(0xfffffff000000000L, 0L);
+            final Int128 max = new Int128(0x1000000000L, 0L);
+            assert v.flux.compareTo(min) >= 0;
+            assert v.flux.compareTo(max) <= 0;
+        }
         assert (v.ping & 0xFFFF) >= 0L && (v.ping & 0xFFFF) <= 64000L;
         assert (v.crcHint & 0xffffffffff000000L) == 0;
         assert v.extra >= 0L && v.extra <= 255L;

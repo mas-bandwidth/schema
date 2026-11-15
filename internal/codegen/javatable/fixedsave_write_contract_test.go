@@ -1,22 +1,24 @@
 package javatable
 
 // THE FIXED-FORM SAVE HOLDS THE WRITE CONTRACT (docs/SPEC.md §5.1) on the Java
-// leg, an assert leg: every write check is `assert checkWrite(v)`, active under
-// `-ea` and gone without it. One case per row 1-6 and 8 (ill-formed bytes and a
-// zero byte as two row-8 cases), plus row 1 in every slot shape the save
-// stores (a fixed and a keyed array element, a present optional, a union arm,
-// a nested table) and row 8 in a union arm:
+// leg. Rows 1-6 and 8 are `assert checkWrite(v)`, active under `-ea` and gone
+// without it. One case per row 1-6 and 8 (ill-formed bytes and a zero byte as
+// two row-8 cases), plus row 1 in every slot shape the save stores (a fixed
+// and a keyed array element, a present optional, a union arm, a nested table)
+// for a narrow integer and for ranged 128-bit storage (int128, and fixed or
+// ufixed wider than 64 bits; a bare uint128 has no range), and row 8 in a
+// union arm:
 //
 //   - under -ea each refuses by AssertionError, and its lawful twin at the same
 //     boundary saves and loads back equal;
 //   - without -ea nothing asserts: the writer trusts, so the save writes its
 //     bytes and throws nothing, and the twin still loads back equal.
 //
-// Row 7 (a NaN or an infinity in a plain float) is refused under -ea. The
-// contract asks an assert leg's release build for no write check, so this
-// test requires none there. Row 4's case is a length past N, which no
-// release build can store into an N-byte array: without -ea it is the JVM's
-// own bounds check that stops it, never the leg's assert.
+// Row 7 (a NaN or an infinity in a plain float) is the finite pass: save
+// answers -1 in every build, under -ea and without it. Row 4's case is a
+// length past N, which no release build can store into an N-byte array:
+// without -ea it is the JVM's own bounds check that stops it, never the
+// leg's assert.
 
 import (
 	"os"
@@ -25,18 +27,29 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 )
 
 const fixedSaveContractSchema = `package probe
 
 enum Mode { Walk, Run }
 
-type Leaf { lv int32 | min = 0, max = 9 }
+type Leaf
+{
+    lv int32 | min = 0, max = 9
+    le int128 | min = -5000000000, max = 5000000000
+}
 
 union Pick
 {
     n int32 | min = 0, max = 9
     t string(4)
+}
+
+union Wide
+{
+    n int128 | min = -5000000000, max = 5000000000
 }
 
 fixed table Rec
@@ -53,6 +66,14 @@ fixed table Rec
     ms   [Mode]int32 | min = 0, max = 9
     ro   ?int32 | min = 0, max = 9
     leaf Leaf
+    energy int128 | min = -5000000000, max = 5000000000
+    wide   uint128
+    q      fixed(112, 16) | min = -5, max = 5
+    uq     ufixed(112, 16) | min = 0, max = 5
+    ea     [2]int128 | min = -5000000000, max = 5000000000
+    ek     [Mode]int128 | min = -5000000000, max = 5000000000
+    eo     ?int128 | min = -5000000000, max = 5000000000
+    w      Wide
 }
 `
 
@@ -88,6 +109,18 @@ public final class Driver {
         v.roPresent = true;
         v.ro = 4;
         v.leaf.lv = 5;
+        v.leaf.le = Int128.fromLong(1L);
+        v.energy = Int128.fromLong(1L);
+        v.wide = new UInt128(0L, 10L);
+        v.q = Int128.fromLong(0L);
+        v.uq = UInt128.zero;
+        v.ea[0] = Int128.fromLong(1L);
+        v.ea[1] = Int128.fromLong(1L);
+        for (int i = 0; i < v.ek.length; i++) { v.ek[i] = Int128.fromLong(1L); }
+        v.eoPresent = true;
+        v.eo = Int128.fromLong(1L);
+        v.w.type = WideFixed.n;
+        v.w.n = Int128.fromLong(1L);
         return v;
     }
 
@@ -138,6 +171,18 @@ public final class Driver {
         return k;
     }
 
+    static long pairKey(long hi, long lo) {
+        return hi * 0x9E3779B97F4A7C15L ^ lo;
+    }
+
+    static long i128Key(Int128 v) {
+        return v == null ? -1L : pairKey(v.hi, v.lo);
+    }
+
+    static long u128Key(UInt128 v) {
+        return v == null ? -1L : pairKey(v.hi, v.lo);
+    }
+
     public static void main(String[] args) {
         run("row1.max.lawful", v -> v.r = 5, v -> v.r);
         run("row1.max.refused", v -> v.r = 6, v -> v.r);
@@ -156,6 +201,30 @@ public final class Driver {
         run("row1.arm.refused", v -> v.p.n = 10, v -> v.p.n);
         run("row1.nested.lawful", v -> v.leaf.lv = 9, v -> v.leaf.lv);
         run("row1.nested.refused", v -> v.leaf.lv = 10, v -> v.leaf.lv);
+        run("row1.i128.max.lawful", v -> v.energy = Int128.fromLong(5000000000L), v -> i128Key(v.energy));
+        run("row1.i128.max.refused", v -> v.energy = Int128.fromLong(5000000001L), v -> i128Key(v.energy));
+        run("row1.i128.min.lawful", v -> v.energy = Int128.fromLong(-5000000000L), v -> i128Key(v.energy));
+        run("row1.i128.min.refused", v -> v.energy = Int128.fromLong(-5000000001L), v -> i128Key(v.energy));
+        run("row1.i128.high.refused", v -> v.energy = new Int128(1L, 1L), v -> i128Key(v.energy));
+        run("row1.u128.lawful", v -> v.wide = new UInt128(-1L, -1L), v -> u128Key(v.wide));
+        run("row1.fix.max.lawful", v -> v.q = Int128.fromLong(327680L), v -> i128Key(v.q));
+        run("row1.fix.max.refused", v -> v.q = Int128.fromLong(327681L), v -> i128Key(v.q));
+        run("row1.fix.min.lawful", v -> v.q = Int128.fromLong(-327680L), v -> i128Key(v.q));
+        run("row1.fix.min.refused", v -> v.q = Int128.fromLong(-327681L), v -> i128Key(v.q));
+        run("row1.ufix.max.lawful", v -> v.uq = new UInt128(0L, 327680L), v -> u128Key(v.uq));
+        run("row1.ufix.max.refused", v -> v.uq = new UInt128(0L, 327681L), v -> u128Key(v.uq));
+        run("row1.ufix.high.refused", v -> v.uq = new UInt128(1L, 0L), v -> u128Key(v.uq));
+        run("row1.i128.array.lawful", v -> v.ea[1] = Int128.fromLong(5000000000L), v -> i128Key(v.ea[1]));
+        run("row1.i128.array.refused", v -> v.ea[1] = Int128.fromLong(5000000001L), v -> i128Key(v.ea[1]));
+        run("row1.i128.keyed.lawful", v -> v.ek[v.ek.length - 1] = Int128.fromLong(5000000000L), v -> i128Key(v.ek[v.ek.length - 1]));
+        run("row1.i128.keyed.refused", v -> v.ek[v.ek.length - 1] = Int128.fromLong(5000000001L), v -> i128Key(v.ek[v.ek.length - 1]));
+        run("row1.i128.optional.lawful", v -> v.eo = Int128.fromLong(5000000000L), v -> i128Key(v.eo));
+        run("row1.i128.optional.refused", v -> v.eo = Int128.fromLong(5000000001L), v -> i128Key(v.eo));
+        run("row1.i128.optional.absent.lawful", v -> { v.eoPresent = false; v.eo = Int128.fromLong(5000000001L); }, v -> v.eoPresent ? 1 : 0);
+        run("row1.i128.arm.lawful", v -> { v.w.type = WideFixed.n; v.w.n = Int128.fromLong(5000000000L); }, v -> i128Key(v.w.n));
+        run("row1.i128.arm.refused", v -> { v.w.type = WideFixed.n; v.w.n = Int128.fromLong(5000000001L); }, v -> i128Key(v.w.n));
+        run("row1.i128.nested.lawful", v -> v.leaf.le = Int128.fromLong(5000000000L), v -> i128Key(v.leaf.le));
+        run("row1.i128.nested.refused", v -> v.leaf.le = Int128.fromLong(5000000001L), v -> i128Key(v.leaf.le));
         run("row2.lawful", v -> v.b = 63, v -> v.b);
         run("row2.refused", v -> v.b = 64, v -> v.b);
         run("row3.lawful", v -> v.arrCount = 4, v -> v.arrCount);
@@ -181,7 +250,8 @@ public final class Driver {
 func TestJavaFixedSaveWriteContract(t *testing.T) {
 	t.Parallel()
 	javac, javaBin := javaToolsRequired(t)
-	files, err := Generate(unitFrom(t, fixedSaveContractSchema))
+	u := unitFrom(t, fixedSaveContractSchema)
+	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,6 +259,22 @@ func TestJavaFixedSaveWriteContract(t *testing.T) {
 	src := filepath.Join(dir, "src")
 	classes := filepath.Join(dir, "classes")
 	writeFixedJava(t, src, "probe", files)
+	// Int128 and UInt128 belong to the packet emitter. A fixed closure that
+	// reaches the pair gets those two classes from it, the same hand-off the
+	// driver uses; the fixed form names them and does not emit them.
+	pkt, err := javacodegen.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Int128.java", "UInt128.java"} {
+		data, ok := pkt[name]
+		if !ok {
+			t.Fatalf("packet generate did not emit %s", name)
+		}
+		if err := os.WriteFile(filepath.Join(src, "probe", name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	driver := filepath.Join(src, "probe", "Driver.java")
 	if err := os.WriteFile(driver, []byte(fixedSaveContractDriver), 0o644); err != nil {
 		t.Fatal(err)
@@ -229,8 +315,8 @@ func TestJavaFixedSaveWriteContract(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	if len(names) != 35 {
-		t.Fatalf("the driver ran %d cases, want 35", len(names))
+	if len(names) != 59 {
+		t.Fatalf("the driver ran %d cases, want 59", len(names))
 	}
 	for _, name := range names {
 		d, r := debug[name], release[name]
@@ -241,9 +327,12 @@ func TestJavaFixedSaveWriteContract(t *testing.T) {
 				t.Errorf("%s: -ea %s, release %s; want roundtrip in both", name, d, r)
 			}
 		case name == "row7.refused":
-			// the debug build refuses it; the release build owes nothing
+			// the finite pass refuses a NaN or an infinity in every build
 			if d != "assert" && d != "refused" {
 				t.Errorf("%s: -ea %s; want a refusal", name, d)
+			}
+			if r != "refused" {
+				t.Errorf("%s: release %s; want refused", name, r)
 			}
 		case name == "row4.refused":
 			// a length past N cannot be stored into N bytes: without -ea the

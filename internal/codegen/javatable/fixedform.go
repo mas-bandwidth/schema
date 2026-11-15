@@ -1034,10 +1034,12 @@ func (g *fixedGen) emitCheckWrite(st *ir.Struct, cls string) {
 // fixed-point inside its min/max (row 1), a bits(N) inside N bits (row 2), an
 // enum ordinal inside its variants (row 5), and a string's live units
 // well-formed UTF-8 with no zero byte (row 8), the fixed reader's own
-// textIllFormed rule, so a writer never stores what its reader refuses. An
-// optional's value rows hold only while it is present, because an absent
-// payload rides as zeros. A nested table or union holds its own rows (row 6
-// is the union's tag) through its own writeBody's assert.
+// textIllFormed rule, so a writer never stores what its reader refuses. A
+// ranged 128-bit slot — int128, or fixed/ufixed wider than 64 bits — compares
+// with Int128.compareTo or UInt128.compareUnsigned, the packet emitter's
+// ranged-128 check. An optional's value rows hold only while it is present,
+// because an absent payload rides as zeros. A nested table or union holds its
+// own rows (row 6 is the union's tag) through its own writeBody's assert.
 func fixedCheckField(f *ir.Field, val, ind string) []string {
 	var lines []string
 	name := javaName(f.Name)
@@ -1063,8 +1065,8 @@ func fixedCheckField(f *ir.Field, val, ind string) []string {
 			body = append(body, fmt.Sprintf("%sassert TableFixed.textOk(TableFixed.textUtf8, %s, 0, %sLength);\n", inner, expr, expr))
 		}
 	case f.KeyEnum != "" || f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
-		cond := fixedCheckElement(f, expr+"[i]")
-		if cond == "" {
+		slot := fixedCheckSlot(f, expr+"[i]", inner+"    ")
+		if len(slot) == 0 {
 			break
 		}
 		count := fmt.Sprintf("%d", f.ArrayBound)
@@ -1073,14 +1075,11 @@ func fixedCheckField(f *ir.Field, val, ind string) []string {
 		} else if f.Array == ir.ArrayCounted {
 			count = expr + "Count"
 		}
-		body = append(body,
-			fmt.Sprintf("%sfor (int i = 0; i < %s; i++) {\n", inner, count),
-			fmt.Sprintf("%s    assert %s;\n", inner, cond),
-			fmt.Sprintf("%s}\n", inner))
+		body = append(body, fmt.Sprintf("%sfor (int i = 0; i < %s; i++) {\n", inner, count))
+		body = append(body, slot...)
+		body = append(body, fmt.Sprintf("%s}\n", inner))
 	default:
-		if cond := fixedCheckElement(f, expr); cond != "" {
-			body = append(body, fmt.Sprintf("%sassert %s;\n", inner, cond))
-		}
+		body = append(body, fixedCheckSlot(f, expr, inner)...)
 	}
 	if len(body) == 0 {
 		return lines
@@ -1093,11 +1092,69 @@ func fixedCheckField(f *ir.Field, val, ind string) []string {
 	return lines
 }
 
-// fixedCheckElement is the value rows' condition for ONE stored slot, as the
-// reader would load it from the bytes the store keeps, or "" when the slot's
-// type admits every value its storage holds (a bool, a float — row 7 is the
-// save's finite pass — a flags mask, a 128-bit integer, a nested table or
-// union, which assert their own).
+// fixedCheckSlot is one stored slot's value-row asserts. A ranged 128-bit
+// slot is a block — Int128.compareTo or UInt128.compareUnsigned, as the
+// packet emitter's emitCheck128Ranged — and every other slot is one assert
+// of fixedCheckElement, or no lines when the slot admits every value its
+// storage holds (a bool, a float — row 7 is the save's finite pass — a bare
+// uint128, a flags mask, a nested table or union, which assert their own).
+func fixedCheckSlot(f *ir.Field, e, ind string) []string {
+	typ := fixedScalarType(f.Type)
+	if typ == "Int128" || typ == "UInt128" {
+		return fixedCheck128(f, e, typ, ind)
+	}
+	if cond := fixedCheckElement(f, e); cond != "" {
+		return []string{fmt.Sprintf("%sassert %s;\n", ind, cond)}
+	}
+	return nil
+}
+
+// fixedCheck128 is row 1 for one 128-bit slot. A bound sitting on the storage
+// domain is vacuous and is left out; a range of one value is equals. A slot
+// with no declared range — a bare uint128 — admits every pattern it holds.
+func fixedCheck128(f *ir.Field, e, typ, ind string) []string {
+	lo, hi, ok := ir.TableRawRange(f)
+	if !ok {
+		return nil
+	}
+	signed := typ == "Int128"
+	cmp := "compareUnsigned"
+	loDomain := big.NewInt(0)
+	hiDomain := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1))
+	if signed {
+		cmp = "compareTo"
+		loDomain = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), 127))
+		hiDomain = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 127), big.NewInt(1))
+	}
+	if lo.Cmp(hi) == 0 {
+		return []string{fmt.Sprintf("%sassert %s.equals(%s);\n", ind, e, fixedNarrowLit(typ, lo))}
+	}
+	guardLo := lo.Cmp(loDomain) > 0
+	guardHi := hi.Cmp(hiDomain) < 0
+	if !guardLo && !guardHi {
+		return nil
+	}
+	lines := []string{ind + "{\n"}
+	if guardLo {
+		lines = append(lines, fmt.Sprintf("%s    final %s min = %s;\n", ind, typ, fixedNarrowLit(typ, lo)))
+	}
+	if guardHi {
+		lines = append(lines, fmt.Sprintf("%s    final %s max = %s;\n", ind, typ, fixedNarrowLit(typ, hi)))
+	}
+	if guardLo {
+		lines = append(lines, fmt.Sprintf("%s    assert %s.%s(min) >= 0;\n", ind, e, cmp))
+	}
+	if guardHi {
+		lines = append(lines, fmt.Sprintf("%s    assert %s.%s(max) <= 0;\n", ind, e, cmp))
+	}
+	lines = append(lines, ind+"}\n")
+	return lines
+}
+
+// fixedCheckElement is the value rows' condition for ONE stored slot narrower
+// than 128 bits, as the reader would load it from the bytes the store keeps,
+// or "" when the slot's type admits every value its storage holds. A 128-bit
+// slot is fixedCheck128's, not a long compare.
 func fixedCheckElement(f *ir.Field, e string) string {
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Enum); ok {
