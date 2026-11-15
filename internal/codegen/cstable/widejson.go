@@ -18,17 +18,21 @@ const tableWideJsonSource = `
     }
     static void WriteWide(ref Out o, UInt128 raw, TableFieldInfo f)
     {
+        // a wide kind is a STRING of decimal digits (§16.14 W10, W11); a
+        // 32-bit fixed kind stays a bare number
+        bool quoted = TableWideJson(f);
+        if (quoted) { o.Put((byte)'"'); }
         if (f.WideSigned && unchecked((Int128)raw) < 0) { o.Put((byte)'-'); raw = unchecked(0 - raw); }
         int frac = f.FracBits;
         UInt128 whole = raw >> frac;
         Span<char> digits = stackalloc char[40];
         whole.TryFormat(digits, out int used);
         for (int i = 0; i < used; i++) { o.Put((byte)digits[i]); }
-        if (f.Kind < 20 || f.Kind > 29) { return; }
+        if (f.Kind < 20 || f.Kind > 29) { if (quoted) { o.Put((byte)'"'); } return; }
         o.Put((byte)'.');
         UInt128 mask = ((UInt128)1 << frac) - 1;
         UInt128 fraction = raw & mask;
-        if (fraction == 0) { o.Put((byte)'0'); return; }
+        if (fraction == 0) { o.Put((byte)'0'); if (quoted) { o.Put((byte)'"'); } return; }
         while (fraction != 0)
         {
             UInt128 low = (UInt128)unchecked((ulong)fraction) * 10;
@@ -39,6 +43,7 @@ const tableWideJsonSource = `
             if (frac > 64) { digit |= (ulong)carry << (128 - frac); }
             o.Put((byte)('0' + (int)digit)); fraction &= mask;
         }
+        if (quoted) { o.Put((byte)'"'); }
     }
     static bool ReadWide(ReadOnlySpan<char> token, ref In input, object owner, TableFieldInfo f, int index)
     {
