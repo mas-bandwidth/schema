@@ -28,7 +28,7 @@ const (
 	// lines: a card edits a constant only when its measurement crosses a step,
 	// and adds no comment line for it.
 	goOneTableLineBudget = 10250
-	goExamplesLineBudget = 60500
+	goExamplesLineBudget = 60750
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
