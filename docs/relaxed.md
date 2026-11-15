@@ -85,7 +85,7 @@ listed case that passes fails the leg until its line is removed.
   C++, C#, Rust, Java and Dart; a refusal in every build elsewhere). Then the
   leg's lines go. WIP: none.
   - `relax/hostile-rows-c`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-cpp`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-cpp`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings) and in the pack hostile-value gate (`Makefile`, `HOSTILE_ENGINE_RELAXED`).
   - `relax/hostile-rows-cs`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-dart`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-elixir`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
@@ -157,32 +157,15 @@ listed case that passes fails the leg until its line is removed.
   red. Files: `make/negative-controls.json`. Real fix: aim the sabotage at the
   check that now holds the whole-load discard (or drop the discard if it is
   dead code), then return the group to the pull-request tier. WIP: none.
-- `relax/hostile-engine-refuses-read-rows`: the pack hostile-value gate
-  (`tables-hostile-values`, under the control group `base-hostile`) runs on
-  `build/hostile-values/MANIFEST.txt`, a copy of the conformance manifest
-  without the json-hostile rows `base64-unpadded` and
-  `str-zero-escape-unknown-key`. The manifest says both read; the engine
-  refuses both since the rulings json-base64-canonical (#3401) and the
-  skipped-value rule (dc06421b6), while every port still reads them, so the
-  rows cannot simply flip to `refused` without turning every port's
-  conformance red. Files: `Makefile` (`HOSTILE_ENGINE_RELAXED`). Real fix: the
-  ports carry both rules, the two rows flip to `refused`, and the filter goes.
-  WIP: none.
-- `relax/cook-dead-slots-zero-ports`: `tables-tool-cook-node-align-negative-control`
-  (group `base-tool-cook-differential-b`) does not count the cook-write rows
-  archive, loadout_full, profile_elide, root_default and root_full. Since #3424
-  (fixed-dead-bytes-are-zero) the tool and the C writer leave a counted
-  array's slots past its count zero, but those five fixtures still hold the
-  element defaults there, so `TestCookWriteFixturesAreTheToolsBytes` is red on
-  them with no plant. Regenerating them (`conformance-harness generate`) makes
-  the C leg green and the C++ and Go cook writers red, which still write the
-  defaults (measured on bench; the C++ reference behind
-  `tables-tool-cook-differential` too). Files: `Makefile`
-  (`NODE_ALIGN_STALE_ROWS`), and internal/codegen/gotable/cookwrite_test.go,
+- `relax/cook-dead-slots-zero-ports`: since #3424 (fixed-dead-bytes-are-zero)
+  the tool and the C writer leave a counted array's slots past its count zero,
+  and #3486 regenerated the five cook-write fixtures (archive, loadout_full,
+  profile_elide, root_default, root_full) to match; the C++ and Go cook writers
+  still write the element defaults (the C++ reference behind
+  `tables-tool-cook-differential` too). Files: internal/codegen/gotable/cookwrite_test.go,
   whose `TestCookWriterMatchesIndependentLayout/fixed` skips (the Go writer
-  writes the defaults the tool now zeroes). The five fixtures were regenerated
-  on main by #3486. Real fix: every cook writer zeroes the dead slots, and the
-  rows go back into the control and the Go case runs again.
+  writes the defaults the tool now zeroes). Real fix: every cook writer zeroes
+  the dead slots, and the Go case runs again.
   The same slug relaxes the ten cook-write cases (the five rows, both orders)
   of the conformance legs cpp, cs, dart, elixir, goose, js, lobster, lua,
   luau, moo and squirrel in `test/conformance/relaxed.txt`: each still writes
