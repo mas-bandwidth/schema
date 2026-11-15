@@ -2304,7 +2304,7 @@ a caller can hold that the declaration does not admit:
 whose established idiom is a debug-only assert checks in its debug build and
 pays nothing in release; a language without one refuses in every build, by its
 own error idiom. No leg silently writes a value off the contract in the build
-where its check is active. **In an assert leg (C, C++, C#, Rust, Java, Dart, and Lobster packet writes)
+where its check is active. **In an assert leg (C, C++, C#, Rust, Java, Dart)
 every write check is a debug assert and nothing else, the storage checks
 included** (a count or length that would index past the array it describes):
 correct writes are the programmer's responsibility, and the assert is how the

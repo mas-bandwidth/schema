@@ -84,15 +84,25 @@ print("write completed")
 	if defaultTrapped && !releaseTrapped && releaseConfigured {
 		packetList = "debug-only assert"
 	}
-	if !containsWriteRefusalLeg(t, source, packetList, "Lobster packet writes") {
+	// The leg lists hold bare leg names (one §5.1 idiom-table row each); the
+	// per-wire split is stated in the ruling's prose and in that row's build cell.
+	otherList := "debug-only assert"
+	if packetList == otherList {
+		otherList = "refusal in every build"
+	}
+	if !containsWriteRefusalLeg(t, source, packetList, "Lobster") {
 		t.Errorf("write-refusal does not place Lobster in the %q list selected by the pinned packet runs and release configuration", packetList)
 	}
-	if !containsWriteRefusalLeg(t, source, "refusal in every build", "Lobster table writes") {
-		t.Error("write-refusal does not place Lobster table writes in the every-build list")
+	if containsWriteRefusalLeg(t, source, otherList, "Lobster") {
+		t.Errorf("write-refusal also places Lobster in the %q list", otherList)
 	}
-	if !strings.Contains(source, "table writers SaveChecked") ||
-		!strings.Contains(source, "SaveChecked") || !strings.Contains(source, "save_reasoned") {
-		t.Error("write-refusal does not name the table writers' every-build refusal paths")
+	if packetList == "debug-only assert" {
+		if !strings.Contains(source, "For Lobster, the assert placement applies to packet writes only") {
+			t.Error("write-refusal does not say Lobster's assert placement is the packet writer's only")
+		}
+		if !strings.Contains(source, "Its table writers SaveChecked and save_reasoned refuse invalid values in every build.") {
+			t.Error("write-refusal does not name the table writers' every-build refusal paths")
+		}
 	}
 }
 
