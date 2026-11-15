@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -79,6 +80,7 @@ func javaBitsBoundOffset(t *testing.T, zero, one []byte) int {
 }
 
 func TestFixedBitsUnsignedBound(t *testing.T) {
+	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	javac, javaBin := javaToolsRequired(t)
 
