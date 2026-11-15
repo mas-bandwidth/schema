@@ -705,7 +705,13 @@ func codecOf(f *ir.Field) string {
 		}
 		return "unsupported"
 	}
-	if f.IsMap() || f.KeyEnum != "" || f.Type.Optional || f.IsTextList() {
+	if f.IsMap() {
+		if f.Type.Optional {
+			return "unsupported"
+		}
+		return "map"
+	}
+	if f.KeyEnum != "" || f.Type.Optional || f.IsTextList() {
 		return "unsupported"
 	}
 	if f.Array != ir.ArrayNone {
@@ -1049,6 +1055,9 @@ func enumDefaultValue(f *ir.Field, ref *ir.Enum) string {
 }
 
 func descriptorDefault(f *ir.Field) string {
+	if codecOf(f) == "map" {
+		return "{}"
+	}
 	if f.Type.Pointer || f.Type.Optional || f.IsMap() || f.Array != ir.ArrayNone {
 		return "None"
 	}
