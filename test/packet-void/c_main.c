@@ -89,13 +89,13 @@ int main(int argc, char **argv)
         value.as.payload = packetvoid_new_default_arm(); value.type = PACKETVOID_MIXED_TYPE_PAYLOAD;
         oracle[0] = 0x01;
         serialize_read_stream_init(&r, oracle, 1);
-        CHECK(packetvoid_read_mixed(&r, &value), "packet-void read succeeds");
+        CHECK(schema_packetvoid_read_mixed_body_(&r, &value), "packet-void read succeeds");
         CHECK(value.type == PACKETVOID_MIXED_TYPE_PING, "packet-void read selects Ping");
-        CHECK(serialize_read_bits_processed(&r) == 8, "packet-void read has tag bits and final padding");
+        CHECK(serialize_read_bits_processed(&r) == 2, "packet-void read has tag bits only");
         /* Do not inspect inactive payload bytes: they are unspecified. */
         oracle[0] = 0x00;
         serialize_read_stream_init(&r, oracle, 1);
-        CHECK(packetvoid_read_mixed(&r, &value) && value.type == PACKETVOID_MIXED_TYPE_NONE && serialize_read_bits_processed(&r) == 8, "read None");
+        CHECK(schema_packetvoid_read_mixed_body_(&r, &value) && value.type == PACKETVOID_MIXED_TYPE_NONE && serialize_read_bits_processed(&r) == 2, "read None");
         value.as.payload = packetvoid_new_default_arm(); value.type = PACKETVOID_MIXED_TYPE_PAYLOAD;
         for (repeat = 0; repeat < 2; ++repeat)
         {
@@ -103,29 +103,53 @@ int main(int argc, char **argv)
             value.as.payload.entries[0].retries = 99; value.as.payload.entries[1].retries = 99;
             oracle[0] = 0x52;
             serialize_read_stream_init(&r, oracle, 1);
-            CHECK(packetvoid_read_mixed(&r, &value), "payload oracle read succeeds");
-            CHECK(value.type == PACKETVOID_MIXED_TYPE_PAYLOAD && serialize_read_bits_processed(&r) == 8 &&
+            CHECK(schema_packetvoid_read_mixed_body_(&r, &value), "payload oracle read succeeds");
+            CHECK(value.type == PACKETVOID_MIXED_TYPE_PAYLOAD && serialize_read_bits_processed(&r) == 7 &&
                   value.as.payload.entries_count == 0 && value.as.payload.marker == 5, "payload oracle shape");
             CHECK(value.as.payload.entries[0].retries == -1 && value.as.payload.entries[1].retries == -1,
                   "payload defaults on repeated selection");
         }
         oracle[0] = 0xCD;
         serialize_read_stream_init(&r, oracle, 1);
-        CHECK(packetvoid_read_frame(&r, &frame), "framed oracle read succeeds");
+        CHECK(schema_packetvoid_read_frame_body_(&r, &frame), "framed oracle read succeeds");
         CHECK(serialize_read_bits_processed(&r) == 8 && frame.lead == 5 && frame.choice.type == PACKETVOID_MIXED_TYPE_PING && frame.tail == 6,
               "tag between fields reads without payload or alignment");
         oracle[0] = 0x05;
         serialize_read_stream_init(&r, oracle, 1);
-        CHECK(packetvoid_read_batch(&r, &batch) && serialize_read_bits_processed(&r) == 8 && batch.values_count == 1 &&
+        CHECK(schema_packetvoid_read_batch_body_(&r, &batch) && serialize_read_bits_processed(&r) == 4 && batch.values_count == 1 &&
               batch.values[0].type == PACKETVOID_MIXED_TYPE_PING, "short union array oracle");
         oracle[0] = 0x02;
         serialize_read_stream_init(&r, oracle, 1);
-        CHECK(packetvoid_read_tags(&r, &tags) && tags.type == PACKETVOID_TAGS_TYPE_PONG && serialize_read_bits_processed(&r) == 8, "all-void oracle");
+        CHECK(schema_packetvoid_read_tags_body_(&r, &tags) && tags.type == PACKETVOID_TAGS_TYPE_PONG && serialize_read_bits_processed(&r) == 2, "all-void oracle");
         oracle[0] = 0x01;
         serialize_read_stream_init(&r, oracle, 1);
-        CHECK(packetvoid_read_single(&r, &single) && single.type == PACKETVOID_SINGLE_TYPE_ACK && serialize_read_bits_processed(&r) == 8, "single void oracle");
+        CHECK(schema_packetvoid_read_single_body_(&r, &single) && single.type == PACKETVOID_SINGLE_TYPE_ACK && serialize_read_bits_processed(&r) == 1, "single void oracle");
         serialize_read_stream_init(&r, oracle, 0);
-        CHECK(packetvoid_read_empty(&r, &empty) && empty.type == PACKETVOID_EMPTY_TYPE_NONE && serialize_read_bits_processed(&r) == 0, "empty union reads no bits");
+        CHECK(schema_packetvoid_read_empty_body_(&r, &empty) && empty.type == PACKETVOID_EMPTY_TYPE_NONE && serialize_read_bits_processed(&r) == 0, "empty union reads no bits");
+
+        /* The public read is the one-packet read: the same body, then the
+           packet end (SPEC §5, "Read termination") consumes the final byte's
+           zero padding and refuses non-zero padding. */
+        oracle[0] = 0x01;
+        serialize_read_stream_init(&r, oracle, 1);
+        CHECK(packetvoid_read_mixed(&r, &value) && value.type == PACKETVOID_MIXED_TYPE_PING && serialize_read_bits_processed(&r) == 8, "packet-void one-packet read ends the packet");
+        oracle[0] = 0xCD;
+        serialize_read_stream_init(&r, oracle, 1);
+        CHECK(packetvoid_read_frame(&r, &frame) && frame.choice.type == PACKETVOID_MIXED_TYPE_PING && serialize_read_bits_processed(&r) == 8, "framed one-packet read");
+        oracle[0] = 0x05;
+        serialize_read_stream_init(&r, oracle, 1);
+        CHECK(packetvoid_read_batch(&r, &batch) && batch.values_count == 1 && serialize_read_bits_processed(&r) == 8, "short union array one-packet read");
+        oracle[0] = 0x02;
+        serialize_read_stream_init(&r, oracle, 1);
+        CHECK(packetvoid_read_tags(&r, &tags) && tags.type == PACKETVOID_TAGS_TYPE_PONG && serialize_read_bits_processed(&r) == 8, "all-void one-packet read");
+        oracle[0] = 0x01;
+        serialize_read_stream_init(&r, oracle, 1);
+        CHECK(packetvoid_read_single(&r, &single) && single.type == PACKETVOID_SINGLE_TYPE_ACK && serialize_read_bits_processed(&r) == 8, "single void one-packet read");
+        serialize_read_stream_init(&r, oracle, 0);
+        CHECK(packetvoid_read_empty(&r, &empty) && empty.type == PACKETVOID_EMPTY_TYPE_NONE && serialize_read_bits_processed(&r) == 0, "empty union one-packet read");
+        oracle[0] = 0x05;
+        serialize_read_stream_init(&r, oracle, 1);
+        CHECK(!packetvoid_read_mixed(&r, &value), "one-packet read refuses non-zero final padding");
         oracle[0] = 0x03;
         serialize_read_stream_init(&r, oracle, 1);
         CHECK(!packetvoid_read_mixed(&r, &value), "invalid tag read rejects");
