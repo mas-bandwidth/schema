@@ -2,8 +2,9 @@ package jstable
 
 import "testing"
 
-// Stored text rejects NUL before a bound can hide it. Object field names and
-// unknown values are not stored text, and other control escapes remain valid.
+// Stored text rejects NUL before a bound can hide it, and a skipped value and
+// every object key are held to the same rule (docs/SPEC-TABLES.md §4, §16.3).
+// Other control escapes remain valid.
 func TestStoredTextZeroRefusalJavaScript(t *testing.T) {
 	u := loadSchemaString(t, "text.schema", `package textprobe
 table Child { name string(2) }
@@ -36,7 +37,12 @@ for (const [text, field] of bad) {
  if (m.RootFromJson('{"name":"ok"}', r) === null || r.reason || r.refused)
   fail("prior text refusal poisoned a clean read");
 }
-for (const text of ['{"unknown":"\\u0000"}','{"\\u0000":"ignored"}','{"name":"\\u0001"}','{"name":"ab"}']) {
+for (const text of ['{"unknown":"\\u0000"}','{"\\u0000":"ignored"}']) {
+ const r = new m.TableVariableReport();
+ if (m.RootFromJson(text, r) !== null || !r.damaged)
+  fail("skipped NUL must refuse: " + text);
+}
+for (const text of ['{"name":"\\u0001"}','{"name":"ab"}']) {
  const r = new m.TableVariableReport();
  if (m.RootFromJson(text, r) === null || r.damaged || r.reason)
   fail("valid/skipped control text refused: " + text);
