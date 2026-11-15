@@ -31,9 +31,6 @@ pub fn mixed_entity_message_default() -> MixedEntityRow {
 
 /// One MixedEntity body (§3.3): each field off its declared default, then the zero
 /// reference.
-// The ride loop indexes the row's storage by the declared count: an
-// iterator would turn an off-contract short row into a silent short write.
-#[allow(clippy::needless_range_loop)]
 pub fn mixed_entity_save_message_body(w: &mut TableBitWriter, value: &MixedEntityRow) -> bool {
     let dflt = mixed_entity_message_default();
     {
@@ -473,9 +470,6 @@ pub fn mixed_stat_message_default() -> MixedStatRow {
 
 /// One MixedStat body (§3.3): each field off its declared default, then the zero
 /// reference.
-// The ride loop indexes the row's storage by the declared count: an
-// iterator would turn an off-contract short row into a silent short write.
-#[allow(clippy::needless_range_loop)]
 pub fn mixed_stat_save_message_body(w: &mut TableBitWriter, value: &MixedStatRow) -> bool {
     let dflt = mixed_stat_message_default();
     {
@@ -570,9 +564,6 @@ pub fn mixed_hit_event_message_default() -> MixedHitEventRow {
 
 /// One MixedHitEvent body (§3.3): each field off its declared default, then the zero
 /// reference.
-// The ride loop indexes the row's storage by the declared count: an
-// iterator would turn an off-contract short row into a silent short write.
-#[allow(clippy::needless_range_loop)]
 pub fn mixed_hit_event_save_message_body(w: &mut TableBitWriter, value: &MixedHitEventRow) -> bool {
     let dflt = mixed_hit_event_message_default();
     {
@@ -719,9 +710,6 @@ pub fn mixed_chat_event_message_default() -> MixedChatEventRow {
 
 /// One MixedChatEvent body (§3.3): each field off its declared default, then the zero
 /// reference.
-// The ride loop indexes the row's storage by the declared count: an
-// iterator would turn an off-contract short row into a silent short write.
-#[allow(clippy::needless_range_loop)]
 pub fn mixed_chat_event_save_message_body(w: &mut TableBitWriter, value: &MixedChatEventRow) -> bool {
     let dflt = mixed_chat_event_message_default();
     {
@@ -822,9 +810,6 @@ pub fn mixed_pickup_event_message_default() -> MixedPickupEventRow {
 
 /// One MixedPickupEvent body (§3.3): each field off its declared default, then the zero
 /// reference.
-// The ride loop indexes the row's storage by the declared count: an
-// iterator would turn an off-contract short row into a silent short write.
-#[allow(clippy::needless_range_loop)]
 pub fn mixed_pickup_event_save_message_body(w: &mut TableBitWriter, value: &MixedPickupEventRow) -> bool {
     let dflt = mixed_pickup_event_message_default();
     {

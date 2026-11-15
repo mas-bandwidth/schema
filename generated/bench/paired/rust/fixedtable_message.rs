@@ -105,9 +105,6 @@ pub fn fixed_table_message_default() -> FixedTableRow {
 
 /// One FixedTable body (§3.3): each field off its declared default, then the zero
 /// reference.
-// The ride loop indexes the row's storage by the declared count: an
-// iterator would turn an off-contract short row into a silent short write.
-#[allow(clippy::needless_range_loop)]
 pub fn fixed_table_save_message_body(w: &mut TableBitWriter, value: &FixedTableRow) -> bool {
     {
         let mut probe1 = TableBitWriter::measure();

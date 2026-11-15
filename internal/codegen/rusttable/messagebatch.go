@@ -211,17 +211,21 @@ func (m *msgGen) emitSaveBody(st *ir.Struct) {
 		body.pf("    }\n")
 	}
 	m.n = body.n
+	generated := body.b.String()
 	m.pf("/// One %s body (§3.3): each field off its declared default, then the zero\n/// reference.\n", st.Name)
-	// The emitted ride loop indexes the row's storage by the declared count:
-	// an iterator would turn an off-contract short row into a silent short
-	// write instead of the indexing failure the contract names.
-	m.pf("// The ride loop indexes the row's storage by the declared count: an\n// iterator would turn an off-contract short row into a silent short write.\n")
-	m.pf("#[allow(clippy::needless_range_loop)]\n")
+	if strings.Contains(generated, "for i in 0..") {
+		// The emitted ride loop indexes the row's storage by the declared
+		// count: an iterator would turn an off-contract short row into a
+		// silent short write instead of the indexing failure the contract
+		// names.
+		m.pf("// The ride loop indexes the row's storage by the declared count: an\n// iterator would turn an off-contract short row into a silent short write.\n")
+		m.pf("#[allow(clippy::needless_range_loop)]\n")
+	}
 	m.pf("pub fn %s_save_message_body(w: &mut TableBitWriter, value: &%sRow) -> bool {\n", snake, st.Name)
-	if strings.Contains(body.b.String(), "dflt.") {
+	if strings.Contains(generated, "dflt.") {
 		m.pf("    let dflt = %s_message_default();\n", snake)
 	}
-	m.pf("%s", body.b.String())
+	m.pf("%s", generated)
 	m.pf("    w.put(0, TABLE_MESSAGE_REF_BITS);\n    !w.overflow\n}\n\n")
 }
 
