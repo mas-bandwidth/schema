@@ -66,6 +66,13 @@ type wireFuzzOptions struct {
 	// --relax-dead-bytes, because the engine still accepts dead bytes the
 	// ruling says a reader refuses; re-enable: relax/dead-bytes
 	relaxDeadBytes bool
+	// RELAXED 2026-11-15 legs accept nonzero fixed-form dead bytes the engine
+	// refuses since #3529: the mirror of relaxDeadBytes. A fixed-class mutant
+	// the leg accepts and the oracle refuses as wire_damaged, whose leg save
+	// the oracle accepts unchanged at the input's length and differs from the
+	// input only in bytes the save zeroed, is counted and not compared;
+	// re-enable: relax/dead-bytes-accepted-<lang>
+	relaxDeadBytesAccepted bool
 	// RELAXED 2026-11-14 (maintainer: get main green): the pinned vectors a
 	// leg is known to diverge on (comma-separated names from the index). A
 	// named vector that diverges is counted and not failed; one that agrees
@@ -115,6 +122,35 @@ func deadByteMutant(root *wireRoot, reply legReply, ans oracleAnswer, data []byt
 		return false
 	}
 	return len(ans.encoded) == len(data) && !bytes.Equal(ans.encoded, data)
+}
+
+// deadByteAcceptedMutant says the mutant is one relax/dead-bytes-accepted-<lang>
+// leaves uncompared: a fixed-class root, the leg accepts, the oracle refuses
+// it as wire_damaged, and the leg's save is a wire the oracle accepts and
+// re-encodes unchanged, of the input's length, differing from the input only
+// in bytes the save wrote as zero. The fixed form has one size, so those are
+// the dead bytes (an array tail past the count, an absent optional's payload,
+// a text tail, an inactive arm) the leg read past and the engine refuses
+// nonzero (docs/rulings.json fixed-dead-bytes-are-zero). A leg that accepts a
+// bool or present byte past 1 saves 1, not 0, so it stays compared.
+// RELAXED 2026-11-15 legs accept nonzero dead bytes; re-enable: relax/dead-bytes-accepted-<lang>.
+func deadByteAcceptedMutant(root *wireRoot, reply legReply, ans oracleAnswer, data []byte) bool {
+	if root.variable || root.message || !reply.accepted() || ans.accepted || reply.saveFail {
+		return false
+	}
+	if ans.reason != tablewire.ReasonWireDamaged && !strings.HasPrefix(ans.reason, tablewire.ReasonWireDamaged+":") {
+		return false
+	}
+	if len(reply.saved) != len(data) || bytes.Equal(reply.saved, data) {
+		return false
+	}
+	for i := range data {
+		if reply.saved[i] != data[i] && reply.saved[i] != 0 {
+			return false
+		}
+	}
+	saved, err := root.oracle(reply.saved)
+	return err == nil && saved.accepted && bytes.Equal(saved.encoded, reply.saved)
 }
 
 // wireRoot is one (unit, root) the seeds name, with what the oracle needs to
@@ -259,6 +295,7 @@ type legReply struct {
 type oracleAnswer struct {
 	accepted bool
 	report   Counts // diagnostics only
+	reason   string // the refusal's reason, diagnostics and relax/dead-bytes-accepted-<lang> only
 	encoded  []byte
 	encFail  bool
 }
@@ -333,6 +370,7 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		rep.Refused = true
 	}
 	ans.report = Counts{Unknown: rep.Unknown, Widened: rep.Widened, Refused: rep.Refused}
+	ans.reason = rep.Reason
 	if derr != nil {
 		return ans, nil
 	}
@@ -815,6 +853,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	total := 0
 	enumeratedCount := 0
 	relaxed := 0
+	relaxedAccepted := 0
 	relaxVector := relaxedVectorSet(opts.relaxVectors)
 	relaxedVectorSeen := map[string]bool{}
 	for mut := range sent {
@@ -834,6 +873,12 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 			// RELAXED 2026-11-14 (maintainer: get main green): a dead-byte
 			// mutant is counted, not compared; re-enable: relax/dead-bytes
 			relaxed++
+			verdict = ""
+		}
+		if verdict != "" && opts.relaxDeadBytesAccepted && deadByteAcceptedMutant(root, reply, ans, mut.data) {
+			// RELAXED 2026-11-15 legs accept nonzero dead bytes the engine
+			// refuses: counted, not compared; re-enable: relax/dead-bytes-accepted-<lang>
+			relaxedAccepted++
 			verdict = ""
 		}
 		verdict, err = relaxVectorVerdict(mut.pass, mut.seed.name, verdict, relaxVector, relaxedVectorSeen)
@@ -902,6 +947,10 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	}
 	if opts.relaxDeadBytes {
 		absence += fmt.Sprintf(", %d dead-byte mutants not compared (RELAXED, relax/dead-bytes)", relaxed)
+	}
+	if opts.relaxDeadBytesAccepted {
+		// RELAXED 2026-11-15 legs accept nonzero dead bytes; re-enable: relax/dead-bytes-accepted-<lang>
+		absence += fmt.Sprintf(", %d accepted dead-byte mutants not compared (RELAXED, relax/dead-bytes-accepted-<lang>)", relaxedAccepted)
 	}
 	if len(relaxVector) > 0 {
 		// RELAXED 2026-11-14 (maintainer: get main green): every relaxed

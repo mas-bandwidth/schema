@@ -984,10 +984,18 @@ build/tables-generated-rust/.stamp: build/tables-generated-rust/tblrt1/src/lib.r
 build/conformance-rust-all: bin/schema test/conformance/rust/src/wire_fuzz_all.rs test/conformance/rust/wire-fuzz-all-build
 	PATH="$(RUSTUP_BIN):$$PATH" sh test/conformance/rust/wire-fuzz-all-build $@
 
+# RELAXED 2026-11-15 Rust loads nonzero fixed-form dead
+# bytes the engine refuses since #3529 (docs/rulings.json
+# fixed-dead-bytes-are-zero): a counted array's count lowered by one leaves a
+# nonzero slot past the count, which this leg reads and loads. Such a mutant is
+# counted, not compared; every other mutant is compared. The negative control's runs
+# pass it too, so its red is the plant's. re-enable: relax/dead-bytes-accepted-rust
+RUST_WIRE_FUZZ_RELAX ?= --relax-dead-bytes-accepted
+
 tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run TestRetainsAndWidensOnEveryRootRust -v
 	@set -e; for arm in '' '--retain'; do \
-		./build/conformance-harness wire-fuzz --driver 'build/conformance-rust-all' $$arm --seed $(SEED) --n $(N) \
+		./build/conformance-harness wire-fuzz --driver 'build/conformance-rust-all' $$arm --seed $(SEED) --n $(N) $(RUST_WIRE_FUZZ_RELAX) \
 			> build/rust-wire-fuzz-all.log 2>&1 || { cat build/rust-wire-fuzz-all.log; exit 1; }; \
 		cat build/rust-wire-fuzz-all.log; \
 		grep -q ' 0 divergences' build/rust-wire-fuzz-all.log; \
@@ -1020,7 +1028,7 @@ tables-rust-wire-fuzz-negative-control: build/conformance-harness build/conforma
 	go build -overlay=build/rust-wire-fuzz-control/overlay.json -o build/rust-wire-fuzz-control/schema ./cmd/schema
 	PATH="$(RUSTUP_BIN):$$PATH" sh test/conformance/rust/wire-fuzz-all-build build/rust-wire-fuzz-control/driver build/rust-wire-fuzz-control/schema
 	@if ./build/conformance-harness wire-fuzz --driver build/rust-wire-fuzz-control/driver \
-			--n 0 --failed build/rust-wire-fuzz-control/failed.bin > build/rust-wire-fuzz-control/log 2>&1; then \
+			--n 0 $(RUST_WIRE_FUZZ_RELAX) --failed build/rust-wire-fuzz-control/failed.bin > build/rust-wire-fuzz-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wire fuzzer stayed green with the node-index verdict removed"; \
 		cat build/rust-wire-fuzz-control/log; exit 1; \
 	fi
@@ -1030,7 +1038,7 @@ tables-rust-wire-fuzz-negative-control: build/conformance-harness build/conforma
 	@root=$$(grep -m1 '^  replay:' build/rust-wire-fuzz-control/log | sed 's/.* --unit /--unit /'); \
 	case "$$root" in --unit\ *\ --root\ *) ;; *) echo "NEGATIVE CONTROL: the fuzzer named no replayable root"; \
 		cat build/rust-wire-fuzz-control/log; exit 1;; esac; \
-	./build/conformance-harness wire-fuzz --driver build/conformance-rust-all --replay build/rust-wire-fuzz-control/failed.bin \
+	./build/conformance-harness wire-fuzz --driver build/conformance-rust-all --replay build/rust-wire-fuzz-control/failed.bin $(RUST_WIRE_FUZZ_RELAX) \
 		--failed build/rust-wire-fuzz-control/clean.bin $$root > build/rust-wire-fuzz-control/clean.log 2>&1 || \
 		{ echo "NEGATIVE CONTROL FAILED: the clean leg is red on the same mutant, so the red is not the plant's"; \
 		  cat build/rust-wire-fuzz-control/clean.log; exit 1; }

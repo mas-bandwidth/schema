@@ -319,3 +319,47 @@ WIP for every proof slug: none unless named here.
   such a pointer null by the root's closure. Re-enabling needs: the Elixir
   plain and retaining reads refuse a wrong-type target of any declared type
   (and of either blob id), then drop the `continue` at the site.
+
+- `relax/dead-bytes-accepted-<lang>` (`-cs`, `-js`, `-java`, `-rust`, `-moo`):
+  the wire fuzz of each leg passes `--relax-dead-bytes-accepted`
+  (`CS_WIRE_FUZZ_RELAX` in `make/cs.mk`, `JS_WIRE_FUZZ_RELAX` in `make/js.mk`
+  for `tables-js-wire-fuzz-plain`, `JAVA_WIRE_FUZZ_RELAX` in `make/java.mk` for
+  the plain arm of `tables-java-wire-fuzz`, `RUST_WIRE_FUZZ_RELAX` in
+  `make/rust.mk` for `tables-rust-wire-fuzz-all` and the three runs of
+  `tables-rust-wire-fuzz-negative-control`, `MOO_WIRE_FUZZ_RELAX` in
+  `make/moo-fuzz.mk` for the plain arm, and the plain arm of
+  `TestMooWireFuzzVerdictPipe` in
+  `internal/codegen/mootable/wirefuzz_verdict_test.go`). Since #3529 the
+  engine refuses a fixed record whose dead bytes are not zero
+  (docs/rulings.json fixed-dead-bytes-are-zero). These legs still read past
+  them: the enumerated `entry-count` pass lowers a counted array's count by
+  one, the slot past the new count holds the old element, and the leg loads
+  it (C#, JS, Java on tabledemo.RootConfig `root_full`, moo on
+  `loadout_full`; Rust's negative control met the same mutant before its
+  plant's). What is skipped: a fixed-class mutant the leg accepts and the
+  oracle refuses as `wire_damaged`, whose leg save the oracle accepts and
+  re-encodes unchanged at the input's length, and which differs from the
+  input only in bytes the save wrote as zero. It is counted ("N accepted
+  dead-byte mutants not compared") and not compared; every other mutant is
+  compared. A bool or present byte past 1 is saved as 1, so it stays
+  compared. Files: `test/conformance/harness/main.go`,
+  `test/conformance/harness/wirefuzz.go` (`deadByteAcceptedMutant`, pinned by
+  `relaxdeadbytesaccepted_test.go`), and the make files above. Real fix, per
+  leg: the fixed read refuses a nonzero byte in every dead range (a counted
+  array's slots past the count, an absent optional's payload, a text or
+  bytes tail past the used length, an inactive union arm), as
+  `internal/tablewire/fixed.go` `fixedDead` does; then drop the leg's flag.
+  WIP: none.
+- `relax/dead-bytes` retired from the C# leg: with the engine refusing
+  nonzero dead bytes, a mutant the leg refuses and the oracle accepts can no
+  longer be a dead-byte one (the C# run over seed 24845619678, 324190
+  mutants, counted 0), so `CS_WIRE_FUZZ_RELAX` no longer passes
+  `--relax-dead-bytes`. No leg passes it now; the flag stays in the harness
+  until the 2026-11-14 entry above is closed.
+- `relax/hostile-rows-moo` extended to `internal/codegen/mootable/json_golden_test.go`:
+  `TestMooJsonHostileVerdicts` and its negative control leave out the two
+  hostile rows the moo JSON read still accepts (`base64-unpadded`,
+  `str-zero-escape-unknown-key`, `mooHostileRelaxed`), the same two rows
+  `test/conformance/relaxed.txt` relaxes for moo. A relaxed row that reads
+  right is a red line ("drop it from mooHostileRelaxed"). Real fix: as the
+  hostile-rows entry above; then empty `mooHostileRelaxed`. WIP: none.

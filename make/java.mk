@@ -1755,6 +1755,12 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # and the retaining pair (--retain, §6.6), whose own pinned vectors it also
 # replays.
 JAVA_WIRE_FUZZ_N ?= $(N)
+# RELAXED 2026-11-15 Java loads nonzero fixed-form dead
+# bytes the engine refuses since #3529 (docs/rulings.json
+# fixed-dead-bytes-are-zero): a counted array's count lowered by one leaves a
+# nonzero slot past the count, which this leg reads and loads. Such a mutant is
+# counted, not compared; every other mutant is compared. re-enable: relax/dead-bytes-accepted-java
+JAVA_WIRE_FUZZ_RELAX ?= --relax-dead-bytes-accepted
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
 JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells ../widelist_wide:widelist:Wide
 # THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header and a map header whose foreign
@@ -1769,7 +1775,7 @@ JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_h
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
 	./build/conformance-harness wire-fuzz --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
-		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java.bin
+		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) $(JAVA_WIRE_FUZZ_RELAX) --failed build/wire-fuzz/failed-java.bin
 	./build/conformance-harness wire-fuzz --driver "$(JAVA_WIRE_FUZZ_DRIVER)" --retain \
 		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java-retain.bin
 	@set -e; for v in $(JAVA_PLAIN_VECTORS); do \
