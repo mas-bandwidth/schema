@@ -1957,3 +1957,43 @@ packet-end-rust-negative-control: packet-end-rust
 	@echo 'packet end Rust negative control: removing the end check turns a trailing byte red'
 
 test-rust: packet-end-rust packet-end-rust-negative-control
+
+# Packet Write holds row 8 (SPEC §5.1) in a Rust debug build: the driver
+# writes every shared case and catches the writer's debug_assert! panic as
+# the refusal; well-formed twins are written and read back byte-exact. A
+# release build carries no write check by design, so only debug is run.
+PACKET_WRITE_TEXT_RUST := build/packet-write-text/rust
+PACKET_WRITE_TEXT_RUST_TOML = '[package]\nname = "packetwritetext"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n'
+
+$(PACKET_WRITE_TEXT_RUST)/.stamp: bin/schema test/packet-write-text/Text.schema test/packet-write-text/rust/src/main.rs make/rust.mk
+	@rm -rf $(PACKET_WRITE_TEXT_RUST)/src
+	./bin/schema generate --lang rust --out $(PACKET_WRITE_TEXT_RUST)/src test/packet-write-text/Text.schema
+	cp test/packet-write-text/rust/src/main.rs $(PACKET_WRITE_TEXT_RUST)/src/main.rs
+	@printf $(PACKET_WRITE_TEXT_RUST_TOML) "$(CURDIR)" > $(PACKET_WRITE_TEXT_RUST)/Cargo.toml
+	@touch $@
+
+.PHONY: packet-write-text-rust packet-write-text-rust-negative-control
+packet-write-text-rust: $(PACKET_WRITE_TEXT_RUST)/.stamp
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path $(PACKET_WRITE_TEXT_RUST)/Cargo.toml
+	./$(PACKET_WRITE_TEXT_RUST)/target/debug/packetwritetext test/packet-write-text/cases.txt
+
+packet-write-text-rust-negative-control: packet-write-text-rust
+	@rm -rf $(PACKET_WRITE_TEXT_RUST)-negative/src
+	@mkdir -p $(PACKET_WRITE_TEXT_RUST)-negative
+	go run ./tools/sabotage -name packet-write-text-rust-utf8-write \
+		-out $(PACKET_WRITE_TEXT_RUST)-negative/functions.gotext internal/codegen/rust/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/rust/functions.go":"%s/$(PACKET_WRITE_TEXT_RUST)-negative/functions.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(PACKET_WRITE_TEXT_RUST)-negative/overlay.json
+	go build -overlay=$(PACKET_WRITE_TEXT_RUST)-negative/overlay.json -o $(PACKET_WRITE_TEXT_RUST)-negative/schema ./cmd/schema
+	./$(PACKET_WRITE_TEXT_RUST)-negative/schema generate --lang rust --out $(PACKET_WRITE_TEXT_RUST)-negative/src test/packet-write-text/Text.schema
+	cp test/packet-write-text/rust/src/main.rs $(PACKET_WRITE_TEXT_RUST)-negative/src/main.rs
+	@printf $(PACKET_WRITE_TEXT_RUST_TOML) "$(CURDIR)" > $(PACKET_WRITE_TEXT_RUST)-negative/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path $(PACKET_WRITE_TEXT_RUST)-negative/Cargo.toml
+	@if ./$(PACKET_WRITE_TEXT_RUST)-negative/target/debug/packetwritetext test/packet-write-text/cases.txt > $(PACKET_WRITE_TEXT_RUST)-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: Rust packet Write without the UTF-8 debug assert passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-text invalid-byte:' $(PACKET_WRITE_TEXT_RUST)-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Rust packet Write did not fail on invalid-byte'; cat $(PACKET_WRITE_TEXT_RUST)-negative/log; exit 1; }
+	@grep -Fm1 'FAILED: packet-write-text invalid-byte:' $(PACKET_WRITE_TEXT_RUST)-negative/log
+	@echo 'Rust packet Write negative control: removing the UTF-8 debug assert fails invalid-byte'
+
+test-rust: packet-write-text-rust packet-write-text-rust-negative-control
