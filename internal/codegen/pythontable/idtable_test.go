@@ -22,6 +22,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"testing"
 
@@ -457,9 +458,7 @@ func TestPythonVtIdtableNegativeControl(t *testing.T) {
 		t.Run(control.name, func(t *testing.T) {
 			t.Parallel()
 			sabotaged := make(map[string][]byte, len(files))
-			for name, data := range files {
-				sabotaged[name] = data
-			}
+			maps.Copy(sabotaged, files)
 			src := string(sabotaged[control.file])
 			if strings.Count(src, control.from) != 1 {
 				t.Fatalf("%s carries %q %d times, want 1: the control would be vacuous", control.file, control.from, strings.Count(src, control.from))

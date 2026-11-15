@@ -178,6 +178,7 @@ type filePlan struct {
 	unions       []*ir.Union
 	packets      []*ir.Struct
 	packetUnions []*ir.Union
+	enums        []*ir.Enum
 }
 
 // filePlans groups everything one generated module holds by the schema file
@@ -214,6 +215,10 @@ func filePlans(u *ir.Unit) []*filePlan {
 			case *ir.Union:
 				plan := get(f.Base)
 				plan.packetUnions = append(plan.packetUnions, d)
+			case *ir.Enum:
+				// the packet core emits the enum's class; the package exports it
+				plan := get(f.Base)
+				plan.enums = append(plan.enums, d)
 			}
 		}
 	}
@@ -909,6 +914,15 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 		if len(unions) > 0 {
 			sort.Strings(unions)
 			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(unions, ", "))
+		}
+		enums := make([]string, 0, len(plan.enums))
+		for _, e := range plan.enums {
+			enums = append(enums, e.Name)
+			names = append(names, e.Name)
+		}
+		if len(enums) > 0 {
+			sort.Strings(enums)
+			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(enums, ", "))
 		}
 	}
 	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n\n", u.ProtocolId)
