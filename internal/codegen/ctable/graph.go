@@ -2,8 +2,11 @@ package ctable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"maps"
+	"slices"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // The VARIABLE class on form 1 uses one numbering shared by the root and every
@@ -350,6 +353,7 @@ typedef struct TableNodeMap
     int good, arena, refused, cycle_indices;
     TableSink * sink;
     uint8_t * blob_named; /* parallel to entries; 1 = the blob node is already named */
+    int ( *declared )( uint64_t type_id ); /* a type this reader declares (§3.1) */
 } TableNodeMap;
 
 static SCHEMA_UNUSED void table_node_resolve( const TableNodeMap * nodes, TableRef * slot,
@@ -360,7 +364,14 @@ static SCHEMA_UNUSED void table_node_resolve( const TableNodeMap * nodes, TableR
     if ( index == 0 || nodes == NULL || !nodes->good ) { return; }
     if ( index > nodes->count ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return; }
     entry = &nodes->entries[index-1];
-    if ( entry->offset == UINT64_MAX ) { return; }
+    /* a node this root does not place reads null when its type is one this
+       reader cannot name; naming a type it DOES declare that is not the
+       slot's target is damage (docs/SPEC-TABLES.md §3.1) */
+    if ( entry->offset == UINT64_MAX )
+    {
+        if ( nodes->declared != NULL && nodes->declared( entry->type_id ) ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }
+        return;
+    }
     if ( entry->type_id != target ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; return; }
     if ( nodes->cycle_indices && target != UINT64_C(0x2f2ec0474f1c4fe4) && target != UINT64_C(0x704be0d8faaffc58) )
     {
@@ -925,7 +936,8 @@ func (g *tableGen) emitGraphLock(st *ir.Struct) {
 func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 	n := st.Name
 	// Dispatch is generated per root: a node type outside its reachable schema
-	// remains unknown even if another root in the same unit can name it.
+	// has no place under this root. A slot can name it only as the wrong type,
+	// which node_declared below makes damage (docs/SPEC-TABLES.md §3.1).
 	reachable := ir.PointerReachable(st)
 	g.pf("static SCHEMA_UNUSED const TableNodeType * %s(uint64_t id)\n{\n    switch (id) {\n", g.sym(n, "node_lookup"))
 	for _, t := range reachable {
@@ -939,6 +951,17 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 		g.pf("        case kTableStringTypeId: return &table_string_node_type;\n")
 	}
 	g.pf("        default: return NULL;\n    }\n}\n")
+	// A TYPE THIS READER DECLARES (docs/SPEC-TABLES.md §3.1): every table of
+	// the unit and the two reserved blob types. A record of one that this root
+	// does not place is no newer writer's type: a slot naming it names the
+	// wrong type, which is damage, and it is not counted unknown.
+	g.pf("static SCHEMA_UNUSED int %s(uint64_t id)\n{\n    switch (id) {\n", g.sym(n, "node_declared"))
+	for _, name := range slices.Sorted(maps.Keys(g.unit.Tables)) {
+		if t := g.unit.Tables[name]; !t.IsMapEntry() {
+			g.pf("        case UINT64_C(0x%016x):\n", ir.TableWireId(t.WireName()))
+		}
+	}
+	g.pf("        case UINT64_C(0x%016x):\n        case UINT64_C(0x%016x): return 1;\n        default: return 0;\n    }\n}\n", ir.BytesWireTypeId, ir.StringWireTypeId)
 	for _, measure := range []bool{true, false} {
 		verb, args, buffer, capacity := "save", ", uint8_t * buffer, int64_t capacity", "buffer", "capacity"
 		if measure {
@@ -1021,9 +1044,9 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	// One fill procedure serves caller-owned regions and editable arenas. Both
 	// passes use the resident directory; following a reference never decodes it.
 	g.pf("static SCHEMA_UNUSED int %s(TableReader * reader, %s * root, TableNodeMap * nodes, TableNodeDirEntry * directory, TableSink * sink)\n{\n", g.sym(n, "load_graph"), n)
-	g.pf("    TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;\n    %s(root);\n", g.api(n, "reset"))
+	g.pf("    TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;\n    %s(root); nodes->declared=%s;\n", g.api(n, "reset"), g.sym(n, "node_declared"))
 	g.pf("    while (table_node_scan_next(&scan,&id,&body)) {\n        const TableNodeType * type=%s(id);\n        directory[k+1].type_id=id; directory[k+1].offset=UINT64_MAX;\n", g.sym(n, "node_lookup"))
-	g.pf("        if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }\n        if (type!=NULL && type->blob==2 && !table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }\n        if (type==NULL) { unknown++; }\n        else if (sink->region!=NULL) {\n            int64_t at=sink->region->used, size=table_node_wire_storage(type,&body);\n            if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n            directory[k+1].offset=(uint64_t)at; sink->region->used+=size;\n        } else {\n            uint32_t at=table_worker_alloc(sink->worker,type->blob ? table_node_wire_storage(type,&body) : type->size);\n            if(at==kTableAllocFailed) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n            directory[k+1].offset=at;\n        }\n        k++;\n    }\n")
+	g.pf("        if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }\n        if (type!=NULL && type->blob==2 && !table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }\n        if (type==NULL) { if(!nodes->declared(id)) { unknown++; } }\n        else if (sink->region!=NULL) {\n            int64_t at=sink->region->used, size=table_node_wire_storage(type,&body);\n            if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n            directory[k+1].offset=(uint64_t)at; sink->region->used+=size;\n        } else {\n            uint32_t at=table_worker_alloc(sink->worker,type->blob ? table_node_wire_storage(type,&body) : type->size);\n            if(at==kTableAllocFailed) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n            directory[k+1].offset=at;\n        }\n        k++;\n    }\n")
 	retainedUnknown := ""
 	if g.retain {
 		retainedUnknown = "if(retention.retain)reader->report->retain_lost+=unknown;"
