@@ -365,7 +365,7 @@ namespace Ludicrous
                 {
                     return false;
                 }
-                value.Tail = (byte)rawValue;
+                value.Tail = unchecked((byte)rawValue);
             }
             return true;
         }
@@ -503,7 +503,7 @@ namespace Ludicrous
             }
             Debug.Assert(value.KeysCount >= 0 && value.KeysCount <= 4, "value.KeysCount out of range [0, 4]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.KeysCount);
+                uint offsetValue = unchecked((uint)(value.KeysCount));
                 if (!stream.SerializeBits(ref offsetValue, 3))
                 {
                     return false;
@@ -644,7 +644,7 @@ namespace Ludicrous
                 {
                     return false;
                 }
-                value.Tail = (byte)rawValue;
+                value.Tail = unchecked((byte)rawValue);
             }
             return true;
         }

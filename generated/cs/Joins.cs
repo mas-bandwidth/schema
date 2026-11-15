@@ -712,7 +712,7 @@ namespace Example
             {
                 Debug.Assert(value.SLength >= 0 && value.SLength <= 4, "value.SLength out of range [0, 4]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
                 {
-                    uint offsetValue = (uint)(value.SLength);
+                    uint offsetValue = unchecked((uint)(value.SLength));
                     if (!stream.SerializeBits(ref offsetValue, 3))
                     {
                         return false;
@@ -861,7 +861,7 @@ namespace Example
             {
                 Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
                 {
-                    uint offsetValue = (uint)(value.ItemsCount);
+                    uint offsetValue = unchecked((uint)(value.ItemsCount));
                     if (!batch.SerializeBits(ref offsetValue, 2))
                     {
                         return false;
@@ -871,7 +871,7 @@ namespace Example
                 {
                     Debug.Assert(value.Items[i] <= 8191, "value.Items[i] out of range [0, 8191]");
                     {
-                        uint offsetValue = (uint)(value.Items[i]);
+                        uint offsetValue = unchecked((uint)(value.Items[i]));
                         if (!batch.SerializeBits(ref offsetValue, 13))
                         {
                             return false;
@@ -1299,7 +1299,7 @@ namespace Example
             }
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.ItemsCount);
+                uint offsetValue = unchecked((uint)(value.ItemsCount));
                 if (!batch.SerializeBits(ref offsetValue, 2))
                 {
                     return false;
@@ -1389,7 +1389,7 @@ namespace Example
             }
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.ItemsCount);
+                uint offsetValue = unchecked((uint)(value.ItemsCount));
                 if (!stream.SerializeBits(ref offsetValue, 2))
                 {
                     return false;
@@ -1399,7 +1399,7 @@ namespace Example
             {
                 Debug.Assert(value.Items[i] <= 8191, "value.Items[i] out of range [0, 8191]");
                 {
-                    uint offsetValue = (uint)(value.Items[i]);
+                    uint offsetValue = unchecked((uint)(value.Items[i]));
                     if (!stream.SerializeBits(ref offsetValue, 13))
                     {
                         return false;
@@ -1408,7 +1408,7 @@ namespace Example
             }
             Debug.Assert(value.SLength >= 0 && value.SLength <= 4, "value.SLength out of range [0, 4]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.SLength);
+                uint offsetValue = unchecked((uint)(value.SLength));
                 if (!stream.SerializeBits(ref offsetValue, 3))
                 {
                     return false;

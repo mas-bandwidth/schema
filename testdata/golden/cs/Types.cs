@@ -360,7 +360,7 @@ namespace Example
             {
                 // flat run: 22 bits in 1 chunk(s) — the field placement is folded
                 Debug.Assert(value.ObjectId >= 0 && value.ObjectId <= (int)(MaxObjects - 1), "value.ObjectId out of range [0, (int)(MaxObjects - 1)]");
-                ulong f0 = ((ulong)((uint)(value.ObjectId))) & 0x3fffUL;
+                ulong f0 = ((ulong)(unchecked((uint)(value.ObjectId)))) & 0x3fffUL;
                 ulong f1 = ((ulong)(value.ObjectSequence)) & 0xffUL;
                 uint w0 = (uint)(f0 | (f1 << 14));
                 if (!batch.SerializeBits(ref w0, 22))
@@ -402,7 +402,7 @@ namespace Example
                 {
                     return false;
                 }
-                value.ObjectSequence = (byte)rawValue;
+                value.ObjectSequence = unchecked((byte)rawValue);
             }
             return true;
         }
@@ -439,9 +439,9 @@ namespace Example
                 Debug.Assert(value.X >= (int)(-MaxPositionUnits) && value.X <= (int)MaxPositionUnits, "value.X out of range [(int)(-MaxPositionUnits), (int)MaxPositionUnits]");
                 Debug.Assert(value.Y >= (int)(-MaxPositionUnits) && value.Y <= (int)MaxPositionUnits, "value.Y out of range [(int)(-MaxPositionUnits), (int)MaxPositionUnits]");
                 Debug.Assert(value.Z >= (int)(-MaxPositionUnits) && value.Z <= (int)MaxPositionUnits, "value.Z out of range [(int)(-MaxPositionUnits), (int)MaxPositionUnits]");
-                ulong f0 = ((ulong)((uint)(value.X) - unchecked((uint)((int)(-MaxPositionUnits))))) & 0x1ffffffUL;
-                ulong f1 = ((ulong)((uint)(value.Y) - unchecked((uint)((int)(-MaxPositionUnits))))) & 0x1ffffffUL;
-                ulong f2 = ((ulong)((uint)(value.Z) - unchecked((uint)((int)(-MaxPositionUnits))))) & 0x1ffffffUL;
+                ulong f0 = ((ulong)(unchecked((uint)(value.X) - unchecked((uint)((int)(-MaxPositionUnits)))))) & 0x1ffffffUL;
+                ulong f1 = ((ulong)(unchecked((uint)(value.Y) - unchecked((uint)((int)(-MaxPositionUnits)))))) & 0x1ffffffUL;
+                ulong f2 = ((ulong)(unchecked((uint)(value.Z) - unchecked((uint)((int)(-MaxPositionUnits)))))) & 0x1ffffffUL;
                 ulong w0 = f0 | (f1 << 25) | (f2 << 50);
                 if (!batch.SerializeBits64(ref w0, 64))
                 {
@@ -524,9 +524,9 @@ namespace Example
                 Debug.Assert(value.X >= (int)(-MaxVelocityUnits) && value.X <= (int)MaxVelocityUnits, "value.X out of range [(int)(-MaxVelocityUnits), (int)MaxVelocityUnits]");
                 Debug.Assert(value.Y >= (int)(-MaxVelocityUnits) && value.Y <= (int)MaxVelocityUnits, "value.Y out of range [(int)(-MaxVelocityUnits), (int)MaxVelocityUnits]");
                 Debug.Assert(value.Z >= (int)(-MaxVelocityUnits) && value.Z <= (int)MaxVelocityUnits, "value.Z out of range [(int)(-MaxVelocityUnits), (int)MaxVelocityUnits]");
-                ulong f0 = ((ulong)((uint)(value.X) - unchecked((uint)((int)(-MaxVelocityUnits))))) & 0x7fffffUL;
-                ulong f1 = ((ulong)((uint)(value.Y) - unchecked((uint)((int)(-MaxVelocityUnits))))) & 0x7fffffUL;
-                ulong f2 = ((ulong)((uint)(value.Z) - unchecked((uint)((int)(-MaxVelocityUnits))))) & 0x7fffffUL;
+                ulong f0 = ((ulong)(unchecked((uint)(value.X) - unchecked((uint)((int)(-MaxVelocityUnits)))))) & 0x7fffffUL;
+                ulong f1 = ((ulong)(unchecked((uint)(value.Y) - unchecked((uint)((int)(-MaxVelocityUnits)))))) & 0x7fffffUL;
+                ulong f2 = ((ulong)(unchecked((uint)(value.Z) - unchecked((uint)((int)(-MaxVelocityUnits)))))) & 0x7fffffUL;
                 ulong w0 = f0 | (f1 << 23) | (f2 << 46);
                 if (!batch.SerializeBits64(ref w0, 64))
                 {
@@ -611,10 +611,10 @@ namespace Example
                 Debug.Assert(value.Y >= (int)(-RotationUnits) && value.Y <= (int)RotationUnits, "value.Y out of range [(int)(-RotationUnits), (int)RotationUnits]");
                 Debug.Assert(value.Z >= (int)(-RotationUnits) && value.Z <= (int)RotationUnits, "value.Z out of range [(int)(-RotationUnits), (int)RotationUnits]");
                 Debug.Assert(value.W >= (int)(-RotationUnits) && value.W <= (int)RotationUnits, "value.W out of range [(int)(-RotationUnits), (int)RotationUnits]");
-                ulong f0 = ((ulong)((uint)(value.X) - unchecked((uint)((int)(-RotationUnits))))) & 0xfffUL;
-                ulong f1 = ((ulong)((uint)(value.Y) - unchecked((uint)((int)(-RotationUnits))))) & 0xfffUL;
-                ulong f2 = ((ulong)((uint)(value.Z) - unchecked((uint)((int)(-RotationUnits))))) & 0xfffUL;
-                ulong f3 = ((ulong)((uint)(value.W) - unchecked((uint)((int)(-RotationUnits))))) & 0xfffUL;
+                ulong f0 = ((ulong)(unchecked((uint)(value.X) - unchecked((uint)((int)(-RotationUnits)))))) & 0xfffUL;
+                ulong f1 = ((ulong)(unchecked((uint)(value.Y) - unchecked((uint)((int)(-RotationUnits)))))) & 0xfffUL;
+                ulong f2 = ((ulong)(unchecked((uint)(value.Z) - unchecked((uint)((int)(-RotationUnits)))))) & 0xfffUL;
+                ulong f3 = ((ulong)(unchecked((uint)(value.W) - unchecked((uint)((int)(-RotationUnits)))))) & 0xfffUL;
                 ulong w0 = f0 | (f1 << 12) | (f2 << 24) | (f3 << 36);
                 if (!batch.SerializeBits64(ref w0, 48))
                 {
@@ -982,7 +982,7 @@ namespace Example
             }
             Debug.Assert(value.InputsCount >= 0 && value.InputsCount <= (int)MaxInputsPerPacket, "value.InputsCount out of range [0, (int)MaxInputsPerPacket]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.InputsCount);
+                uint offsetValue = unchecked((uint)(value.InputsCount));
                 if (!batch.SerializeBits(ref offsetValue, 5))
                 {
                     return false;
@@ -1025,7 +1025,7 @@ namespace Example
                 {
                     return false;
                 }
-                value.SynchronizeSequence = (ushort)rawValue;
+                value.SynchronizeSequence = unchecked((ushort)rawValue);
             }
             if (!batch.SerializeBits64(ref value.CurrentFrame, 64))
             {
@@ -1125,8 +1125,8 @@ namespace Example
                 Debug.Assert(value.Thrust >= 0 && value.Thrust <= 100, "value.Thrust out of range [0, 100]");
                 Debug.Assert((uint)value.Pending <= 0, "value.Pending above the enum wire range [0, 0]"); // headroom above the wire range cannot ride
                 ulong f0 = ((ulong)(uint)value.Team) & 0x3UL;
-                ulong f1 = ((ulong)((uint)(value.Health))) & 0x3ffUL;
-                ulong f2 = ((ulong)((uint)(value.Thrust))) & 0x7fUL;
+                ulong f1 = ((ulong)(unchecked((uint)(value.Health)))) & 0x3ffUL;
+                ulong f2 = ((ulong)(unchecked((uint)(value.Thrust)))) & 0x7fUL;
                 uint w0 = (uint)(f0 | (f1 << 2) | (f2 << 12));
                 if (!batch.SerializeBits(ref w0, 19))
                 {
@@ -1268,8 +1268,8 @@ namespace Example
                 // flat run: 16 bits in 1 chunk(s) — the field placement is folded
                 Debug.Assert(value.HardpointIndex >= 0 && value.HardpointIndex <= (int)((ShipMaxLasers + ShipMaxMissiles) - 1), "value.HardpointIndex out of range [0, (int)((ShipMaxLasers + ShipMaxMissiles) - 1)]");
                 Debug.Assert(value.SpinRate >= (int)(-(-RotationUnits)) && value.SpinRate <= (int)(RotationUnits * 2), "value.SpinRate out of range [(int)(-(-RotationUnits)), (int)(RotationUnits * 2)]");
-                ulong f0 = ((ulong)((uint)(value.HardpointIndex))) & 0x1fUL;
-                ulong f1 = ((ulong)((uint)(value.SpinRate) - (uint)((int)(-(-RotationUnits))))) & 0x7ffUL;
+                ulong f0 = ((ulong)(unchecked((uint)(value.HardpointIndex)))) & 0x1fUL;
+                ulong f1 = ((ulong)(unchecked((uint)(value.SpinRate) - (uint)((int)(-(-RotationUnits)))))) & 0x7ffUL;
                 uint w0 = (uint)(f0 | (f1 << 5));
                 if (!batch.SerializeBits(ref w0, 16))
                 {
@@ -1356,7 +1356,7 @@ namespace Example
         {
             Debug.Assert(value.FloorBound <= 100, "value.FloorBound out of range [-9223372036854775808, 100]");
             {
-                ulong offsetValue = (ulong)(value.FloorBound) - unchecked((ulong)(-9223372036854775808));
+                ulong offsetValue = unchecked((ulong)(value.FloorBound) - unchecked((ulong)(-9223372036854775808)));
                 if (!batch.SerializeBits64(ref offsetValue, 64))
                 {
                     return false;
@@ -1364,7 +1364,7 @@ namespace Example
             }
             Debug.Assert(value.DoubledFloor <= 100, "value.DoubledFloor out of range [-9223372036854775808, 100]");
             {
-                ulong offsetValue = (ulong)(value.DoubledFloor) - unchecked((ulong)(-9223372036854775808));
+                ulong offsetValue = unchecked((ulong)(value.DoubledFloor) - unchecked((ulong)(-9223372036854775808)));
                 if (!batch.SerializeBits64(ref offsetValue, 64))
                 {
                     return false;
@@ -1379,7 +1379,7 @@ namespace Example
                 }
             }
             {
-                ulong rawValue = (ulong)value.FloorDefault;
+                ulong rawValue = unchecked((ulong)value.FloorDefault);
                 if (!batch.SerializeBits64(ref rawValue, 64))
                 {
                     return false;
@@ -1439,7 +1439,7 @@ namespace Example
                 {
                     return false;
                 }
-                value.FloorDefault = (long)rawValue;
+                value.FloorDefault = unchecked((long)rawValue);
             }
             if (!batch.SerializeBits64(ref value.CeilingDefault, 64))
             {
@@ -1487,7 +1487,7 @@ namespace Example
         {
             Debug.Assert(value.ClampedFloor <= 100, "value.ClampedFloor out of range [-9223372036854775808, 100]");
             {
-                ulong offsetValue = (ulong)(value.ClampedFloor) - unchecked((ulong)(-9223372036854775808));
+                ulong offsetValue = unchecked((ulong)(value.ClampedFloor) - unchecked((ulong)(-9223372036854775808)));
                 if (!batch.SerializeBits64(ref offsetValue, 64))
                 {
                     return false;
@@ -1502,7 +1502,7 @@ namespace Example
                 }
             }
             {
-                ulong rawValue = (ulong)value.FloorDef;
+                ulong rawValue = unchecked((ulong)value.FloorDef);
                 if (!batch.SerializeBits64(ref rawValue, 64))
                 {
                     return false;
@@ -1558,7 +1558,7 @@ namespace Example
                 {
                     return false;
                 }
-                value.FloorDef = (long)rawValue;
+                value.FloorDef = unchecked((long)rawValue);
             }
             if (!batch.SerializeBits64(ref value.CeilingDef, 64))
             {

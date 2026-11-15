@@ -261,8 +261,8 @@ namespace Benchtable
                 Debug.Assert(value.Damage >= 0 && value.Damage <= 4095, "value.Damage out of range [0, 4095]");
                 Debug.Assert(value.HitKind >= 0 && value.HitKind <= 7, "value.HitKind out of range [0, 7]");
                 ulong f0 = ((ulong)value.TargetId) & 0xfffUL;
-                ulong f1 = ((ulong)((uint)(value.Damage))) & 0xfffUL;
-                ulong f2 = ((ulong)((uint)(value.HitKind))) & 0x7UL;
+                ulong f1 = ((ulong)(unchecked((uint)(value.Damage)))) & 0xfffUL;
+                ulong f2 = ((ulong)(unchecked((uint)(value.HitKind)))) & 0x7UL;
                 ulong f3 = value.Crit ? 1UL : 0UL;
                 uint w0 = (uint)(f0 | (f1 << 12) | (f2 << 24) | (f3 << 27));
                 if (!batch.SerializeBits(ref w0, 28))
@@ -306,9 +306,9 @@ namespace Benchtable
                 ulong v0 = c0 & 0xfffUL;
                 value.TargetId = (uint)v0;
                 ulong v1 = (c0 >> 12) & 0xfffUL;
-                value.Damage = (int)((int)(uint)v1);
+                value.Damage = (int)unchecked((int)(uint)v1);
                 ulong v2 = (c0 >> 24) & 0x7UL;
-                value.HitKind = (int)((int)(uint)v2);
+                value.HitKind = (int)unchecked((int)(uint)v2);
                 ulong v3 = (c0 >> 27) & 0x1UL;
                 value.Crit = v3 != 0UL;
             }
@@ -344,7 +344,7 @@ namespace Benchtable
             {
                 // flat run: 14 bits in 1 chunk(s) — the field placement is folded
                 Debug.Assert(value.Channel >= 0 && value.Channel <= 3, "value.Channel out of range [0, 3]");
-                ulong f0 = ((ulong)((uint)(value.Channel))) & 0x3UL;
+                ulong f0 = ((ulong)(unchecked((uint)(value.Channel)))) & 0x3UL;
                 ulong f1 = ((ulong)value.Speaker) & 0xfffUL;
                 uint w0 = (uint)(f0 | (f1 << 2));
                 if (!batch.SerializeBits(ref w0, 14))
@@ -386,7 +386,7 @@ namespace Benchtable
                     return false;
                 }
                 ulong v0 = c0 & 0x3UL;
-                value.Channel = (int)((int)(uint)v0);
+                value.Channel = (int)unchecked((int)(uint)v0);
                 ulong v1 = (c0 >> 2) & 0xfffUL;
                 value.Speaker = (uint)v1;
             }
@@ -423,7 +423,7 @@ namespace Benchtable
                 // flat run: 18 bits in 1 chunk(s) — the field placement is folded
                 Debug.Assert(value.Amount >= 0 && value.Amount <= 255, "value.Amount out of range [0, 255]");
                 ulong f0 = ((ulong)value.ItemId) & 0x3ffUL;
-                ulong f1 = ((ulong)((uint)(value.Amount))) & 0xffUL;
+                ulong f1 = ((ulong)(unchecked((uint)(value.Amount)))) & 0xffUL;
                 uint w0 = (uint)(f0 | (f1 << 10));
                 if (!batch.SerializeBits(ref w0, 18))
                 {
@@ -466,7 +466,7 @@ namespace Benchtable
                 ulong v0 = c0 & 0x3ffUL;
                 value.ItemId = (uint)v0;
                 ulong v1 = (c0 >> 10) & 0xffUL;
-                value.Amount = (int)((int)(uint)v1);
+                value.Amount = (int)unchecked((int)(uint)v1);
             }
             return true;
         }

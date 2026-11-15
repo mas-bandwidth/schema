@@ -623,6 +623,11 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 	if !good {
 		return r.damage("a map count that is truncated or not canonical")
 	}
+	// THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind is held to
+	// the array list first, under any count (§3, §4).
+	if !arrayElementKindAllowed(int(elemKind)) {
+		return r.damage("a map element kind outside the closed list")
+	}
 	// A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the array kind mismatch of
 	// §4, and nothing about a map is special-cased
 	if int(elemKind) != ir.TableKindTable {
@@ -779,6 +784,11 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) bool {
 	if !good || r.off > end {
 		return r.damage("an array count that crosses its L")
 	}
+	// THE ELEMENT KIND IS CLOSED, judged under any count before any comparison
+	// with the reader's declaration (docs/SPEC-TABLES.md §3, §4).
+	if !arrayElementKindAllowed(int(ek)) {
+		return r.damage("an array element kind outside the closed list")
+	}
 	if int(ek) != ir.TableWireElemKind(f) {
 		if !ir.TableKindWidens(int(ek), ir.TableWireElemKind(f)) {
 			// the element kind is part of the array's identity (§3)
@@ -912,6 +922,11 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 	count, good := r.leb()
 	if !good || r.off > end {
 		return r.damage("a keyed count that crosses its L")
+	}
+	// THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under any
+	// count before the reader's declaration (docs/SPEC-TABLES.md §3, §4).
+	if !keyedElementKindAllowed(int(elemKind)) {
+		return r.damage("a keyed element kind outside the closed list")
 	}
 	if int(elemKind) != ir.TableWireElemKind(f) {
 		if !ir.TableKindWidens(int(elemKind), ir.TableWireElemKind(f)) {

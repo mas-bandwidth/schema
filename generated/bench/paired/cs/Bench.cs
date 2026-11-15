@@ -266,9 +266,9 @@ namespace Bench
                 Debug.Assert(value.A >= -100 && value.A <= 100, "value.A out of range [-100, 100]");
                 Debug.Assert(value.B >= 0 && value.B <= 65535, "value.B out of range [0, 65535]");
                 Debug.Assert(value.C >= -1000000 && value.C <= 1000000, "value.C out of range [-1000000, 1000000]");
-                ulong f0 = ((ulong)((uint)(value.A) - unchecked((uint)(-100)))) & 0xffUL;
-                ulong f1 = ((ulong)((uint)(value.B))) & 0xffffUL;
-                ulong f2 = ((ulong)((uint)(value.C) - unchecked((uint)(-1000000)))) & 0x1fffffUL;
+                ulong f0 = ((ulong)(unchecked((uint)(value.A) - unchecked((uint)(-100))))) & 0xffUL;
+                ulong f1 = ((ulong)(unchecked((uint)(value.B)))) & 0xffffUL;
+                ulong f2 = ((ulong)(unchecked((uint)(value.C) - unchecked((uint)(-1000000))))) & 0x1fffffUL;
                 ulong f3 = ((ulong)value.Bits7) & 0x7fUL;
                 ulong f4 = ((ulong)value.Bits13) & 0x1fffUL;
                 ulong f5 = ((ulong)value.Bits23) & 0x7fffffUL;
@@ -425,16 +425,16 @@ namespace Bench
                 Debug.Assert(value.F7 >= 0 && value.F7 <= 255, "value.F7 out of range [0, 255]");
                 Debug.Assert(value.F8 >= -600000 && value.F8 <= 600000, "value.F8 out of range [-600000, 600000]");
                 Debug.Assert(value.F9 >= 0 && value.F9 <= 100, "value.F9 out of range [0, 100]");
-                ulong f0 = ((ulong)((uint)(value.F0) - unchecked((uint)(-100)))) & 0xffUL;
-                ulong f1 = ((ulong)((uint)(value.F1))) & 0xffffUL;
-                ulong f2 = ((ulong)((uint)(value.F2) - unchecked((uint)(-1000000)))) & 0x1fffffUL;
-                ulong f3 = ((ulong)((uint)(value.F3))) & 0x3UL;
-                ulong f4 = ((ulong)((uint)(value.F4) - unchecked((uint)(-15)))) & 0x1fUL;
-                ulong f5 = ((ulong)((uint)(value.F5))) & 0x3ffUL;
-                ulong f6 = ((ulong)((uint)(value.F6) - unchecked((uint)(-2048)))) & 0xfffUL;
-                ulong f7 = ((ulong)((uint)(value.F7))) & 0xffUL;
-                ulong f8 = ((ulong)((uint)(value.F8) - unchecked((uint)(-600000)))) & 0x1fffffUL;
-                ulong f9 = ((ulong)((uint)(value.F9))) & 0x7fUL;
+                ulong f0 = ((ulong)(unchecked((uint)(value.F0) - unchecked((uint)(-100))))) & 0xffUL;
+                ulong f1 = ((ulong)(unchecked((uint)(value.F1)))) & 0xffffUL;
+                ulong f2 = ((ulong)(unchecked((uint)(value.F2) - unchecked((uint)(-1000000))))) & 0x1fffffUL;
+                ulong f3 = ((ulong)(unchecked((uint)(value.F3)))) & 0x3UL;
+                ulong f4 = ((ulong)(unchecked((uint)(value.F4) - unchecked((uint)(-15))))) & 0x1fUL;
+                ulong f5 = ((ulong)(unchecked((uint)(value.F5)))) & 0x3ffUL;
+                ulong f6 = ((ulong)(unchecked((uint)(value.F6) - unchecked((uint)(-2048))))) & 0xfffUL;
+                ulong f7 = ((ulong)(unchecked((uint)(value.F7)))) & 0xffUL;
+                ulong f8 = ((ulong)(unchecked((uint)(value.F8) - unchecked((uint)(-600000))))) & 0x1fffffUL;
+                ulong f9 = ((ulong)(unchecked((uint)(value.F9)))) & 0x7fUL;
                 ulong w0 = f0 | (f1 << 8) | (f2 << 24) | (f3 << 45) | (f4 << 47) | (f5 << 52) | (f6 << 62);
                 if (!batch.SerializeBits64(ref w0, 64))
                 {
@@ -504,9 +504,9 @@ namespace Bench
                     return false;
                 }
                 ulong v0 = c0 & 0xfffUL;
-                value.F6 = (int)((int)((uint)v0 + unchecked((uint)(-2048))));
+                value.F6 = (int)unchecked((int)((uint)v0 + unchecked((uint)(-2048))));
                 ulong v1 = (c0 >> 12) & 0xffUL;
-                value.F7 = (int)((int)(uint)v1);
+                value.F7 = (int)unchecked((int)(uint)v1);
             }
             if (!batch.SerializeInt(ref value.F8, -600000, 600000))
             {
@@ -794,15 +794,15 @@ namespace Bench
                 Debug.Assert((uint)value.Weapon <= 15, "value.Weapon above the enum wire range [0, 15]"); // headroom above the wire range cannot ride
                 Debug.Assert((ulong)value.Damage < 1ul << 8, "value.Damage has a mask bit above the 8-bit wire width"); // a mask bit above the wire width cannot ride
                 ulong f0 = ((ulong)value.EntityId) & 0xfffUL;
-                ulong f1 = ((ulong)((uint)(value.PosX) - unchecked((uint)(-16383)))) & 0x7fffUL;
-                ulong f2 = ((ulong)((uint)(value.PosY) - unchecked((uint)(-16383)))) & 0x7fffUL;
-                ulong f3 = ((ulong)((uint)(value.PosZ) - unchecked((uint)(-16383)))) & 0x7fffUL;
+                ulong f1 = ((ulong)(unchecked((uint)(value.PosX) - unchecked((uint)(-16383))))) & 0x7fffUL;
+                ulong f2 = ((ulong)(unchecked((uint)(value.PosY) - unchecked((uint)(-16383))))) & 0x7fffUL;
+                ulong f3 = ((ulong)(unchecked((uint)(value.PosZ) - unchecked((uint)(-16383))))) & 0x7fffUL;
                 ulong f4 = ((ulong)value.Yaw) & 0x1ffUL;
                 ulong f5 = ((ulong)value.Pitch) & 0x1ffUL;
-                ulong f6 = ((ulong)((uint)(value.VelX) - unchecked((uint)(-2048)))) & 0xfffUL;
-                ulong f7 = ((ulong)((uint)(value.VelY) - unchecked((uint)(-2048)))) & 0xfffUL;
-                ulong f8 = ((ulong)((uint)(value.VelZ) - unchecked((uint)(-2048)))) & 0xfffUL;
-                ulong f9 = ((ulong)((uint)(value.Health))) & 0x3ffUL;
+                ulong f6 = ((ulong)(unchecked((uint)(value.VelX) - unchecked((uint)(-2048))))) & 0xfffUL;
+                ulong f7 = ((ulong)(unchecked((uint)(value.VelY) - unchecked((uint)(-2048))))) & 0xfffUL;
+                ulong f8 = ((ulong)(unchecked((uint)(value.VelZ) - unchecked((uint)(-2048))))) & 0xfffUL;
+                ulong f9 = ((ulong)(unchecked((uint)(value.Health)))) & 0x3ffUL;
                 ulong f10 = ((ulong)(uint)value.Weapon) & 0xfUL;
                 ulong f11 = ((ulong)value.Damage) & 0xffUL;
                 ulong f12 = value.Moving ? 1UL : 0UL;
@@ -877,11 +877,11 @@ namespace Bench
                 ulong v1 = (c0 >> 9) & 0x1ffUL;
                 value.Pitch = (uint)v1;
                 ulong v2 = (c0 >> 18) & 0xfffUL;
-                value.VelX = (int)((int)((uint)v2 + unchecked((uint)(-2048))));
+                value.VelX = (int)unchecked((int)((uint)v2 + unchecked((uint)(-2048))));
                 ulong v3 = (c0 >> 30) & 0xfffUL;
-                value.VelY = (int)((int)((uint)v3 + unchecked((uint)(-2048))));
+                value.VelY = (int)unchecked((int)((uint)v3 + unchecked((uint)(-2048))));
                 ulong v4 = (c0 >> 42) & 0xfffUL;
-                value.VelZ = (int)((int)((uint)v4 + unchecked((uint)(-2048))));
+                value.VelZ = (int)unchecked((int)((uint)v4 + unchecked((uint)(-2048))));
             }
             if (!batch.SerializeInt(ref value.Health, 0, 1000))
             {
@@ -938,7 +938,7 @@ namespace Bench
                 // flat run: 18 bits in 1 chunk(s) — the field placement is folded
                 Debug.Assert(value.Delta >= -512 && value.Delta <= 511, "value.Delta out of range [-512, 511]");
                 ulong f0 = ((ulong)value.StatId) & 0xffUL;
-                ulong f1 = ((ulong)((uint)(value.Delta) - unchecked((uint)(-512)))) & 0x3ffUL;
+                ulong f1 = ((ulong)(unchecked((uint)(value.Delta) - unchecked((uint)(-512))))) & 0x3ffUL;
                 uint w0 = (uint)(f0 | (f1 << 8));
                 if (!batch.SerializeBits(ref w0, 18))
                 {
@@ -981,7 +981,7 @@ namespace Bench
                 ulong v0 = c0 & 0xffUL;
                 value.StatId = (uint)v0;
                 ulong v1 = (c0 >> 8) & 0x3ffUL;
-                value.Delta = (int)((int)((uint)v1 + unchecked((uint)(-512))));
+                value.Delta = (int)unchecked((int)((uint)v1 + unchecked((uint)(-512))));
             }
             return true;
         }
@@ -1019,8 +1019,8 @@ namespace Bench
                 Debug.Assert(value.Damage >= 0 && value.Damage <= 4095, "value.Damage out of range [0, 4095]");
                 Debug.Assert(value.HitKind >= 0 && value.HitKind <= 7, "value.HitKind out of range [0, 7]");
                 ulong f0 = ((ulong)value.TargetId) & 0xfffUL;
-                ulong f1 = ((ulong)((uint)(value.Damage))) & 0xfffUL;
-                ulong f2 = ((ulong)((uint)(value.HitKind))) & 0x7UL;
+                ulong f1 = ((ulong)(unchecked((uint)(value.Damage)))) & 0xfffUL;
+                ulong f2 = ((ulong)(unchecked((uint)(value.HitKind)))) & 0x7UL;
                 ulong f3 = value.Crit ? 1UL : 0UL;
                 uint w0 = (uint)(f0 | (f1 << 12) | (f2 << 24) | (f3 << 27));
                 if (!batch.SerializeBits(ref w0, 28))
@@ -1064,9 +1064,9 @@ namespace Bench
                 ulong v0 = c0 & 0xfffUL;
                 value.TargetId = (uint)v0;
                 ulong v1 = (c0 >> 12) & 0xfffUL;
-                value.Damage = (int)((int)(uint)v1);
+                value.Damage = (int)unchecked((int)(uint)v1);
                 ulong v2 = (c0 >> 24) & 0x7UL;
-                value.HitKind = (int)((int)(uint)v2);
+                value.HitKind = (int)unchecked((int)(uint)v2);
                 ulong v3 = (c0 >> 27) & 0x1UL;
                 value.Crit = v3 != 0UL;
             }
@@ -1102,7 +1102,7 @@ namespace Bench
             {
                 // flat run: 14 bits in 1 chunk(s) — the field placement is folded
                 Debug.Assert(value.Channel >= 0 && value.Channel <= 3, "value.Channel out of range [0, 3]");
-                ulong f0 = ((ulong)((uint)(value.Channel))) & 0x3UL;
+                ulong f0 = ((ulong)(unchecked((uint)(value.Channel)))) & 0x3UL;
                 ulong f1 = ((ulong)value.Speaker) & 0xfffUL;
                 uint w0 = (uint)(f0 | (f1 << 2));
                 if (!batch.SerializeBits(ref w0, 14))
@@ -1144,7 +1144,7 @@ namespace Bench
                     return false;
                 }
                 ulong v0 = c0 & 0x3UL;
-                value.Channel = (int)((int)(uint)v0);
+                value.Channel = (int)unchecked((int)(uint)v0);
                 ulong v1 = (c0 >> 2) & 0xfffUL;
                 value.Speaker = (uint)v1;
             }
@@ -1181,7 +1181,7 @@ namespace Bench
                 // flat run: 18 bits in 1 chunk(s) — the field placement is folded
                 Debug.Assert(value.Amount >= 0 && value.Amount <= 255, "value.Amount out of range [0, 255]");
                 ulong f0 = ((ulong)value.ItemId) & 0x3ffUL;
-                ulong f1 = ((ulong)((uint)(value.Amount))) & 0xffUL;
+                ulong f1 = ((ulong)(unchecked((uint)(value.Amount)))) & 0xffUL;
                 uint w0 = (uint)(f0 | (f1 << 10));
                 if (!batch.SerializeBits(ref w0, 18))
                 {
@@ -1224,7 +1224,7 @@ namespace Bench
                 ulong v0 = c0 & 0x3ffUL;
                 value.ItemId = (uint)v0;
                 ulong v1 = (c0 >> 10) & 0xffUL;
-                value.Amount = (int)((int)(uint)v1);
+                value.Amount = (int)unchecked((int)(uint)v1);
             }
             return true;
         }
@@ -1434,12 +1434,12 @@ namespace Bench
                 Debug.Assert(value.WorldTime >= -1000000000000 && value.WorldTime <= 1000000000000, "value.WorldTime out of range [-1000000000000, 1000000000000]");
                 ulong f0 = (49374UL) & 0xffffUL;
                 ulong f1 = ((ulong)value.Sequence) & 0xffffUL;
-                ulong f2 = ((ulong)((uint)(value.AckSequence))) & 0xffffUL;
+                ulong f2 = ((ulong)(unchecked((uint)(value.AckSequence)))) & 0xffffUL;
                 ulong f3 = ((ulong)value.AckBits) & 0xffffffffUL;
-                ulong f4 = (ulong)value.SessionId;
+                ulong f4 = unchecked((ulong)value.SessionId);
                 ulong f5 = ((ulong)(value.ClientId)) & 0xffffffffUL;
-                ulong f6 = (ulong)((ulong)(value.Nonce));
-                ulong f7 = ((ulong)((ulong)(value.WorldTime) - unchecked((ulong)(-1000000000000)))) & 0x1ffffffffffUL;
+                ulong f6 = (ulong)(unchecked((ulong)(value.Nonce)));
+                ulong f7 = ((ulong)(unchecked((ulong)(value.WorldTime) - unchecked((ulong)(-1000000000000))))) & 0x1ffffffffffUL;
                 ulong f8 = ((ulong)value.FrameTick) & 0xffffffffffffUL;
                 ulong w0 = f0 | (f1 << 16) | (f2 << 32) | (f3 << 48);
                 if (!stream.SerializeBits64(ref w0, 64))
@@ -1478,7 +1478,7 @@ namespace Bench
             }
             Debug.Assert(value.EntitiesCount >= 1 && value.EntitiesCount <= 8, "value.EntitiesCount out of range [1, 8]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.EntitiesCount) - (uint)(1);
+                uint offsetValue = unchecked((uint)(value.EntitiesCount) - (uint)(1));
                 if (!stream.SerializeBits(ref offsetValue, 3))
                 {
                     return false;
@@ -1504,7 +1504,7 @@ namespace Bench
             }
             Debug.Assert(value.StatsCount >= 0 && value.StatsCount <= 80, "value.StatsCount out of range [0, 80]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.StatsCount);
+                uint offsetValue = unchecked((uint)(value.StatsCount));
                 if (!stream.SerializeBits(ref offsetValue, 7))
                 {
                     return false;
@@ -1550,7 +1550,7 @@ namespace Bench
             }
             Debug.Assert(value.PlayerNameLength >= 0 && value.PlayerNameLength <= 15, "value.PlayerNameLength out of range [0, 15]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.PlayerNameLength);
+                uint offsetValue = unchecked((uint)(value.PlayerNameLength));
                 if (!stream.SerializeBits(ref offsetValue, 4))
                 {
                     return false;
@@ -1562,7 +1562,7 @@ namespace Bench
             }
             Debug.Assert(value.PayloadLength >= 0 && value.PayloadLength <= 16, "value.PayloadLength out of range [0, 16]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.PayloadLength);
+                uint offsetValue = unchecked((uint)(value.PayloadLength));
                 if (!stream.SerializeBits(ref offsetValue, 5))
                 {
                     return false;
@@ -1630,8 +1630,8 @@ namespace Bench
                 Debug.Assert(value.IdleTicks >= 0 && value.IdleTicks <= 15, "value.IdleTicks out of range [0, 15]");
                 ulong f0 = ((ulong)value.CrcHint) & 0xffffffUL;
                 ulong f1 = value.HasExtra ? 1UL : 0UL;
-                ulong f2 = ((ulong)((uint)(value.Extra))) & 0xffUL;
-                ulong f3 = ((ulong)((uint)(value.IdleTicks))) & 0xfUL;
+                ulong f2 = ((ulong)(unchecked((uint)(value.Extra)))) & 0xffUL;
+                ulong f3 = ((ulong)(unchecked((uint)(value.IdleTicks)))) & 0xfUL;
                 ulong w0 = f0 | (f1 << 24) | (f2 << 25) | (f3 << 33);
                 if (!stream.SerializeBits64(ref w0, 37))
                 {
@@ -1675,13 +1675,13 @@ namespace Bench
                 ulong v1 = (c0 >> 16) & 0xffffUL;
                 value.Sequence = (uint)v1;
                 ulong v2 = (c0 >> 32) & 0xffffUL;
-                value.AckSequence = (int)((int)(uint)v2);
+                value.AckSequence = (int)unchecked((int)(uint)v2);
                 ulong v3 = ((c0 >> 48) | (c1 << 16)) & 0xffffffffUL;
                 value.AckBits = (uint)v3;
                 ulong v4 = ((c1 >> 16) | (c2 << 48));
                 value.SessionId = v4;
                 ulong v5 = (c2 >> 16) & 0xffffffffUL;
-                value.ClientId = (uint)(uint)v5;
+                value.ClientId = unchecked((uint)(uint)v5);
                 ulong v6 = ((c2 >> 48) | (c3 << 16));
                 value.Nonce = v6;
             }
@@ -1759,7 +1759,7 @@ namespace Bench
                     {
                         return false;
                     }
-                    value.Loadout[i] = (byte)rawValue;
+                    value.Loadout[i] = unchecked((byte)rawValue);
                 }
             }
             if (!stream.SerializeInt(ref value.PlayerNameLength, 0, 15)) // the length guards the slice (§6.3)
@@ -1866,9 +1866,9 @@ namespace Bench
                 ulong v1 = (c0 >> 24) & 0x1UL;
                 value.HasExtra = v1 != 0UL;
                 ulong v2 = (c0 >> 25) & 0xffUL;
-                value.Extra = (int)((int)(uint)v2);
+                value.Extra = (int)unchecked((int)(uint)v2);
                 ulong v3 = (c0 >> 33) & 0xfUL;
-                value.IdleTicks = (int)((int)(uint)v3);
+                value.IdleTicks = (int)unchecked((int)(uint)v3);
             }
             return true;
         }

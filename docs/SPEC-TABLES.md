@@ -16139,7 +16139,7 @@ own output, which carries no comment, and neither reaches a hand-edited text:
 carried**, exactly as it drops the input's own line breaks and key order. That
 is the honest statement of what round-trip byte stability covers, and a tool
 that must preserve a person's comments does not rewrite the file in place.
-`unpack --tolerate` and the goldens hold the writer to a comment-free text.
+`unpack` and the goldens hold the writer to a comment-free text.
 
 **The report** (§4): `unknown` on a read that returns, or the one reason on a
 refusal: `malformed` for a text that is not this dialect's JSON or that repeats
@@ -17969,10 +17969,11 @@ part of what it promises:
   a tool nobody could run on a checkout — and the skip is narrow enough that it
   cannot swallow a value: a hidden `.json` file and a hidden directory still
   name something, and are refused if they name no field.
-- **A report that is not silent is a nonzero exit.** "Reported, never fatal"
-  (§4) is about the walk not stopping, not about a tool's exit code: a value
-  that was skipped, renamed away or cut down is a thing a build pipeline has to
-  be able to fail on. `--tolerate` is how a caller says the report is expected.
+- **A refusal is a nonzero exit; lawful evolution is not.** "Reported, never
+  fatal" (§4) is about the walk not stopping, not about a tool's exit code: a
+  value the read refused is a thing a build pipeline has to be able to fail on.
+  A report that counts only what version evolution carries — unknown fields
+  from a newer writer, a widening — prints its line and exits 0.
 - **Neither verb writes to the unit's schema sources.** Every other command
   canonicalizes them in place because formatting is part of what it is doing to
   them; these two are pointed at a config tree and only READ the declarations.

@@ -183,7 +183,7 @@ namespace Example
         {
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 12, "value.ItemsCount out of range [0, 12]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.ItemsCount);
+                uint offsetValue = unchecked((uint)(value.ItemsCount));
                 if (!batch.SerializeBits(ref offsetValue, 4))
                 {
                     return false;
@@ -193,7 +193,7 @@ namespace Example
             {
                 Debug.Assert(value.Items[i] <= 8191, "value.Items[i] out of range [0, 8191]");
                 {
-                    uint offsetValue = (uint)(value.Items[i]);
+                    uint offsetValue = unchecked((uint)(value.Items[i]));
                     if (!batch.SerializeBits(ref offsetValue, 13))
                     {
                         return false;
@@ -270,7 +270,7 @@ namespace Example
         {
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 9, "value.ItemsCount out of range [0, 9]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.ItemsCount);
+                uint offsetValue = unchecked((uint)(value.ItemsCount));
                 if (!batch.SerializeBits(ref offsetValue, 4))
                 {
                     return false;
@@ -280,7 +280,7 @@ namespace Example
             {
                 Debug.Assert(value.Items[i] <= 131071, "value.Items[i] out of range [0, 131071]");
                 {
-                    uint offsetValue = (uint)(value.Items[i]);
+                    uint offsetValue = unchecked((uint)(value.Items[i]));
                     if (!batch.SerializeBits(ref offsetValue, 17))
                     {
                         return false;
@@ -357,7 +357,7 @@ namespace Example
         {
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 6, "value.ItemsCount out of range [0, 6]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.ItemsCount);
+                uint offsetValue = unchecked((uint)(value.ItemsCount));
                 if (!batch.SerializeBits(ref offsetValue, 3))
                 {
                     return false;
@@ -367,7 +367,7 @@ namespace Example
             {
                 Debug.Assert(value.Items[i] <= 67108863, "value.Items[i] out of range [0, 67108863]");
                 {
-                    uint offsetValue = (uint)(value.Items[i]);
+                    uint offsetValue = unchecked((uint)(value.Items[i]));
                     if (!batch.SerializeBits(ref offsetValue, 26))
                     {
                         return false;
@@ -444,7 +444,7 @@ namespace Example
         {
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 20, "value.ItemsCount out of range [0, 20]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.ItemsCount);
+                uint offsetValue = unchecked((uint)(value.ItemsCount));
                 if (!batch.SerializeBits(ref offsetValue, 5))
                 {
                     return false;
@@ -454,7 +454,7 @@ namespace Example
             {
                 Debug.Assert(value.Items[i] <= 1, "value.Items[i] out of range [0, 1]");
                 {
-                    uint offsetValue = (uint)(value.Items[i]);
+                    uint offsetValue = unchecked((uint)(value.Items[i]));
                     if (!batch.SerializeBits(ref offsetValue, 1))
                     {
                         return false;
@@ -531,7 +531,7 @@ namespace Example
         {
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.ItemsCount);
+                uint offsetValue = unchecked((uint)(value.ItemsCount));
                 if (!batch.SerializeBits(ref offsetValue, 2))
                 {
                     return false;
@@ -541,7 +541,7 @@ namespace Example
             {
                 Debug.Assert(value.Items[i] <= 4503599627370495, "value.Items[i] out of range [0, 4503599627370495]");
                 {
-                    ulong offsetValue = (ulong)(value.Items[i]);
+                    ulong offsetValue = unchecked((ulong)(value.Items[i]));
                     if (!batch.SerializeBits64(ref offsetValue, 52))
                     {
                         return false;
@@ -618,7 +618,7 @@ namespace Example
         {
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.ItemsCount);
+                uint offsetValue = unchecked((uint)(value.ItemsCount));
                 if (!batch.SerializeBits(ref offsetValue, 2))
                 {
                     return false;
@@ -628,7 +628,7 @@ namespace Example
             {
                 Debug.Assert(value.Items[i] <= 1125899906842623, "value.Items[i] out of range [0, 1125899906842623]");
                 {
-                    ulong offsetValue = (ulong)(value.Items[i]);
+                    ulong offsetValue = unchecked((ulong)(value.Items[i]));
                     if (!batch.SerializeBits64(ref offsetValue, 50))
                     {
                         return false;
@@ -706,7 +706,7 @@ namespace Example
             {
                 Debug.Assert(value.Items[i] <= 8191, "value.Items[i] out of range [0, 8191]");
                 {
-                    uint offsetValue = (uint)(value.Items[i]);
+                    uint offsetValue = unchecked((uint)(value.Items[i]));
                     if (!batch.SerializeBits(ref offsetValue, 13))
                     {
                         return false;
@@ -859,7 +859,7 @@ namespace Example
         {
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 10, "value.ItemsCount out of range [0, 10]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.ItemsCount);
+                uint offsetValue = unchecked((uint)(value.ItemsCount));
                 if (!batch.SerializeBits(ref offsetValue, 4))
                 {
                     return false;
@@ -1371,7 +1371,7 @@ namespace Example
             }
             Debug.Assert(value.SLength >= 0 && value.SLength <= 8, "value.SLength out of range [0, 8]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.SLength);
+                uint offsetValue = unchecked((uint)(value.SLength));
                 if (!stream.SerializeBits(ref offsetValue, 4))
                 {
                     return false;
@@ -1383,7 +1383,7 @@ namespace Example
             }
             Debug.Assert(value.BLength >= 0 && value.BLength <= 8, "value.BLength out of range [0, 8]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.BLength);
+                uint offsetValue = unchecked((uint)(value.BLength));
                 if (!stream.SerializeBits(ref offsetValue, 4))
                 {
                     return false;
@@ -1502,7 +1502,7 @@ namespace Example
             }
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 4, "value.ItemsCount out of range [0, 4]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.ItemsCount);
+                uint offsetValue = unchecked((uint)(value.ItemsCount));
                 if (!batch.SerializeBits(ref offsetValue, 3))
                 {
                     return false;

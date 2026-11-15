@@ -1456,7 +1456,12 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 		len(layout), bodyBytes, trailer)
 
 	// Checked writer: <Name>FixedSaveChecked(values, buffer) -> int, string, string
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md
+	// §22.6): an empty batch is refused in every build, as every other
+	// table write refusal is (docs/SPEC.md §5.1).
 	g.Pf("def %sSaveChecked(values:[%s], buffer:string) -> int, string, string:\n", name, st.Name)
+	g.Pf("    if length(values) == 0:\n")
+	g.Pf("        return -1, buffer, schema_rt.TableRefuseInvalidValue\n")
 	g.Pf("    let need = %sMeasure(length(values))\n", name)
 	g.Pf("    if length(buffer) < need:\n")
 	g.Pf("        return -1, buffer, schema_rt.TableRefuseTruncated\n")
@@ -1564,7 +1569,10 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)\n")
 	g.Pf("    let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes\n")
 	g.Pf("    let rest = length(data) - records_start\n")
-	g.Pf("    if record_bytes <= 8 or (rest %% record_bytes) != 0:\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/FIXED-FORM-ALGORITHM.md
+	// §5.3 step 9): a layout followed by no record is truncated, never a
+	// batch of none.
+	g.Pf("    if rest == 0 or record_bytes <= 8 or (rest %% record_bytes) != 0:\n")
 	g.Pf("        report.malformed = true\n")
 	g.Pf("        report.reason = schema_rt.TableRefuseTruncated\n")
 	g.Pf("        for(values) failed: %sReset(failed)\n", st.Name)

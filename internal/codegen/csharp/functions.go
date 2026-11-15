@@ -698,9 +698,9 @@ func (g *gen) emitWriteFoldedRange(expr, lo, hi string, min, max *big.Int, wide,
 		loCast = fmt.Sprintf("unchecked((%s)(%s))", typ, lo)
 	}
 	if min.Sign() == 0 {
-		g.sf("%s{\n%s    %s offsetValue = (%s)(%s);\n", ind, ind, typ, typ, expr)
+		g.sf("%s{\n%s    %s offsetValue = unchecked((%s)(%s));\n", ind, ind, typ, typ, expr)
 	} else {
-		g.sf("%s{\n%s    %s offsetValue = (%s)(%s) - %s;\n", ind, ind, typ, typ, expr, loCast)
+		g.sf("%s{\n%s    %s offsetValue = unchecked((%s)(%s) - %s);\n", ind, ind, typ, typ, expr, loCast)
 	}
 	g.call(ind+"    ", fmt.Sprintf("%s.%s(ref offsetValue, %d)", g.rv(), fn, bits), "")
 	g.sf("%s}\n", ind)
@@ -966,7 +966,7 @@ func (g *gen) emitWriteFoldedEnum(ref *ir.Enum, name, ind string) {
 func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
 	if f.Type.Width == 64 {
 		if f.Type.Signed {
-			g.sf("%s{\n%s    ulong rawValue = (ulong)%s;\n", ind, ind, name)
+			g.sf("%s{\n%s    ulong rawValue = unchecked((ulong)%s);\n", ind, ind, name)
 			g.call(ind+"    ", g.rv()+".SerializeBits64(ref rawValue, 64)", "")
 			g.sf("%s}\n", ind)
 			return
@@ -987,10 +987,10 @@ func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
 // 32-bit) bare integer: signed narrows go through the same-width unsigned.
 func fmt32Cast(f *ir.Field, name string) string {
 	if f.Type.Signed && f.Type.Width < 32 {
-		return "(" + csUint(f.Type.Width) + ")" + name
+		return "unchecked((" + csUint(f.Type.Width) + ")" + name + ")"
 	}
 	if f.Type.Signed {
-		return "(uint)" + name
+		return "unchecked((uint)" + name + ")"
 	}
 	return name // byte/ushort widen implicitly
 }
@@ -1212,7 +1212,7 @@ func (g *gen) emitReadBareInt(f *ir.Field, name, ind string) {
 		if f.Type.Signed {
 			g.sf("%s{\n%s    ulong rawValue = 0;\n", ind, ind)
 			g.call(ind+"    ", g.rv()+".SerializeBits64(ref rawValue, 64)", "")
-			g.sf("%s    %s = (long)rawValue;\n%s}\n", ind, name, ind)
+			g.sf("%s    %s = unchecked((long)rawValue);\n%s}\n", ind, name, ind)
 			return
 		}
 		g.call(ind, fmt.Sprintf("%s.SerializeBits64(ref %s, 64)", g.rv(), name), "")
@@ -1226,10 +1226,10 @@ func (g *gen) emitReadBareInt(f *ir.Field, name, ind string) {
 	g.call(ind+"    ", fmt.Sprintf("%s.SerializeBits(ref rawValue, %d)", g.rv(), f.Type.Width), "")
 	if f.Type.Signed && f.Type.Width < 32 {
 		// back through the same-width unsigned so the sign bit lands right
-		g.sf("%s    %s = (%s)(%s)rawValue;\n%s}\n", ind, name, csInt(f.Type.Width), csUint(f.Type.Width), ind)
+		g.sf("%s    %s = unchecked((%s)(%s)rawValue);\n%s}\n", ind, name, csInt(f.Type.Width), csUint(f.Type.Width), ind)
 		return
 	}
-	g.sf("%s    %s = (%s)rawValue;\n%s}\n", ind, name, g.csFieldType(f.Type), ind)
+	g.sf("%s    %s = unchecked((%s)rawValue);\n%s}\n", ind, name, g.csFieldType(f.Type), ind)
 }
 
 // emitReadFlags reads a flags value through an unsigned temp — a ulong past

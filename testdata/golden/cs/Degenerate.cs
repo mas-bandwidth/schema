@@ -334,7 +334,7 @@ namespace Example
             for (int i = 0; i < 2; i++)
             {
                 {
-                    ulong rawValue = (ulong)value.Values[i];
+                    ulong rawValue = unchecked((ulong)value.Values[i]);
                     if (!batch.SerializeBits64(ref rawValue, 64))
                     {
                         return false;
@@ -373,7 +373,7 @@ namespace Example
                     {
                         return false;
                     }
-                    value.Values[i] = (long)rawValue;
+                    value.Values[i] = unchecked((long)rawValue);
                 }
             }
             return true;
@@ -490,7 +490,7 @@ namespace Example
                     {
                         return false;
                     }
-                    value.Values[i] = (ushort)rawValue;
+                    value.Values[i] = unchecked((ushort)rawValue);
                 }
             }
             return true;
