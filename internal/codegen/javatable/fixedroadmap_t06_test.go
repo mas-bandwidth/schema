@@ -105,21 +105,20 @@ func t06C14(t *testing.T) {
 		"C14 a count outside this reader's own bound refuses the load")
 }
 
-// t06W4: W4 "read slack unspecified". A union's slack behind a NARROWER arm is
-// IGNORED on read, never a refusal (docs/SPEC-TABLES.md §3.4). FU1's `plain`
-// arm (one int32) is narrower than its `labelled` arm, so the writer lays the
-// wider arm's bytes behind the selected plain one; the direct assertion writes
-// the plain arm with this leg's own writer and reads it back through the
-// compiled plan, asserting the read RETURNS clean and the plain value lands. A
-// reader that refused on the arm's slack would go red here by name.
+// t06W4: W4 moved off "read slack unspecified". The bytes past a narrower arm
+// are dead: zero on write, and a non-zero byte refuses the load
+// (docs/rulings.json fixed-dead-bytes-are-zero). FU1's `plain` arm (one int32)
+// is narrower than its `labelled` arm. This probe writes the plain arm with
+// this leg's own writer, which zeros that slack, and reads it back through the
+// compiled plan. The read returns clean and the plain value lands.
 func t06W4(t *testing.T) {
 	classes := t03Build(t, t.TempDir(), "fu1_read_slack", []sideSpec{
 		{key: "reads", schema: "FU1.schema"},
 	}, map[string]string{
 		"Probe_capability.java": t03SaveLoadProbe("Probe_capability", "tblfu1", "FuRoot", `
         // THE SELECTED ARM IS NARROWER THAN THE WIDEST: plain is one int32,
-        // labelled is lead+label(8)+trail. The slack behind plain is the
-        // wider arm's width and is IGNORED on read, never refused.
+        // labelled is lead+label(8)+trail. The writer's image zeros the bytes
+        // past plain; a non-zero byte there would refuse the load.
         vals[0].pick.type = tblfu1.PickFixed.plain;
         vals[0].pick.plain.n = 303;
         vals[0].tail = 12;`),
@@ -146,7 +145,7 @@ func t06W4(t *testing.T) {
 // whole-record copy that would overwrite a range the plan lands.
 func t06W9(t *testing.T) {
 	load := string(t06Files(t, t06Flat)["TFixed.java"])
-	t06Has(t, load, "final int holeN = TableFixed.holes(entries, made, cover, hole);",
+	t06Has(t, load, "final int holeN = pre.count;",
 		"W9 the prefill covers the plan's hole list")
 	t06Has(t, load, "for (int h = 0; h < holeN; h++) {",
 		"W9 the prefill runs over the hole list")

@@ -65,7 +65,7 @@ func lobsterProofRun(t *testing.T, tc fixedproof.RowCase, u *ir.Unit, wire []byt
 	maps.Copy(files, tables)
 	if mutate {
 		// Change the emitted record writer, leaving layout, hash and envelope intact.
-		anchor := fmt.Sprintf("%sFixedPut(schema_rt.zeros(%d), 0, v)", tc.Root, tc.Body)
+		anchor := fmt.Sprintf("%sFixedPut(schema_rt.zeros(%d), 0, v·)", tc.Root, tc.Body)
 		replacement := "fixed_proof_mutate(" + anchor + ")"
 		hits := 0
 		for name, data := range files {

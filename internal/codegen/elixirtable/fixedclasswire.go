@@ -245,8 +245,18 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
     end
   end
 
+  # THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3, §4): an array body
+  # (kind 14) may carry 1–13, 15, 17 and 18–30, and an enum-keyed body (kind
+  # 16) 1–11, 13 and 18–30. Any other kind is damage under ANY count, a count
+  # of 0 included, so the header's kind byte is judged before the elements.
+  defp array_element_kind?(kind),
+    do: kind in 1..13 or kind in [15, 17, 30] or kind in 18..29
+
+  defp keyed_element_kind?(kind),
+    do: kind in 1..11 or kind == 13 or kind in 18..29 or kind == 30
+
   defp unknown_array?(<<ek, rest::binary>>, ids, depth) when rest != <<>> do
-    if unknown_array_element?(ek) do
+    if array_element_kind?(ek) do
       case leb(rest) do
         {n, elems} when n <= 0x7FFFFFFF -> unknown_elements?(elems, ek, n, ids, depth)
         _ -> false
@@ -258,18 +268,6 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
 
   defp unknown_array?(_b, _ids, _depth), do: false
 
-  # THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3, §4), judged under any
-  # count, a count of 0 included: an array body opens with 1-13, 15, 17, 18-30,
-  # and an enum-keyed body with 1-11, 13, 18-30. No declaration produces any
-  # other element kind, so no reader can hold a declaration it agrees with.
-  defp unknown_array_element?(kind),
-    do:
-      (kind >= 1 and kind <= 13) or kind == 15 or kind == 17 or
-        (kind >= 18 and kind <= 30)
-
-  defp unknown_keyed_element?(kind),
-    do: (kind >= 1 and kind <= 11) or kind == 13 or (kind >= 18 and kind <= 30)
-
   defp unknown_elements?(rest, _ek, 0, _ids, _depth), do: rest == <<>>
 
   defp unknown_elements?(rest, ek, n, ids, depth) do
@@ -280,7 +278,7 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
   end
 
   defp unknown_keyed?(<<ek, rest::binary>>, ids, depth) when rest != <<>> do
-    if unknown_keyed_element?(ek) do
+    if keyed_element_kind?(ek) do
       case leb(rest) do
         {n, pairs} when n <= 0x7FFFFFFF -> unknown_pairs?(pairs, ek, n, ids, depth, MapSet.new())
         _ -> false

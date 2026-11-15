@@ -89,11 +89,42 @@ int writeRenderSprite(RenderSprite value, ByteData view) {
 }
 
 // readRenderSprite decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readRenderSprite(RenderSprite value, ByteData view, int numBits) {
+  final bitsRead = readRenderSpriteBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readRenderSpriteBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readRenderSprite does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readRenderSpriteBits(
+  RenderSprite value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -107,12 +138,12 @@ bool readRenderSprite(RenderSprite value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 138 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -153,10 +184,10 @@ bool readRenderSprite(RenderSprite value, ByteData view, int numBits) {
   v = (window >>> 40) & 0x3;
   bitsRead += 2;
   if (v > 2) {
-    return false; // headroom above the wire range is refused
+    return -1; // headroom above the wire range is refused
   }
   value.team = Team(v);
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type RenderBlock
@@ -267,11 +298,42 @@ int writeRenderBlock(RenderBlock value, ByteData view) {
 }
 
 // readRenderBlock decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readRenderBlock(RenderBlock value, ByteData view, int numBits) {
+  final bitsRead = readRenderBlockBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readRenderBlockBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readRenderBlock does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readRenderBlockBits(
+  RenderBlock value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -285,12 +347,12 @@ bool readRenderBlock(RenderBlock value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 64 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -309,16 +371,16 @@ bool readRenderBlock(RenderBlock value, ByteData view, int numBits) {
   bitsRead += 32;
   value.spriteCountHint = v;
   if (bitsRead + 7 > numBits) {
-    return false;
+    return -1;
   }
   v = (window >>> 32) & 0x7f;
   bitsRead += 7;
   if (v > 64) {
-    return false; // the count guards the loop — reject, never clamp
+    return -1; // the count guards the loop — reject, never clamp
   }
   value.spritesCount = v;
   if (bitsRead + value.spritesCount * 138 > numBits) {
-    return false;
+    return -1;
   }
   for (var i0 = 0; i0 < value.spritesCount; i0++) {
     final e0 = value.sprites[i0];
@@ -361,9 +423,9 @@ bool readRenderBlock(RenderBlock value, ByteData view, int numBits) {
     v = (window >>> 40) & 0x3;
     bitsRead += 2;
     if (v > 2) {
-      return false; // headroom above the wire range is refused
+      return -1; // headroom above the wire range is refused
     }
     e0.team = Team(v);
   }
-  return true;
+  return bitsRead - bitOffset;
 }
