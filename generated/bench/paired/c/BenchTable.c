@@ -34,9 +34,16 @@
 /* A key longer than this cannot name a field, so it is skipped as unknown. */
 #define BENCH_K_TABLE_JSON_MAX_KEY 256
 
-/* The longest numeric token the walk will convert. Anything longer is a
-   value no field can hold and counts as a kind mismatch. */
-#define BENCH_K_TABLE_JSON_MAX_NUMBER 512
+/* The longest spelling handed to the runtime's number converter. A number
+   TOKEN has no length limit (§16.2): the document's own size bounds the scan,
+   and the token is read where it lies in the text. A token too long to hand
+   over whole is handed over as the same value in at most
+   kTableJsonMaxNumber - 32 significant digits: every digit past them is folded
+   into the exponent, and a non-zero one is kept as one sticky digit so the
+   rounding is the token's own. A point halfway between two doubles spells in
+   at most 767 significant digits, so no such point lies between the token and
+   the digits the converter is handed. */
+#define BENCH_K_TABLE_JSON_MAX_NUMBER 800
 
 /* The decimal point the C runtime is CURRENTLY using. Number conversion is
    the one locale-sensitive corner of the grammar — JSON's point is always
@@ -1369,39 +1376,90 @@ static SCHEMA_UNUSED int bench_table_json_walk_number( bench_table_json_in_t * i
     return 1;
 }
 
-/* the same production, with the token kept for conversion */
-static SCHEMA_UNUSED int bench_table_json_scan_number( bench_table_json_in_t * in, char * token, int32_t capacity, int32_t * length, int * integral )
+/* the same production, with the token kept for conversion: it is read where
+   it lies in the text, so its length is never a reason to refuse it */
+static SCHEMA_UNUSED int bench_table_json_scan_number( bench_table_json_in_t * in, const char ** token, int64_t * length, int * integral )
 {
     int64_t start;
-    int64_t count;
     bench_table_json_space( in );
     start = in->pos;
     if ( !bench_table_json_walk_number( in, integral ) ) { return 0; }
-    count = in->pos - start;
-    if ( count <= 0 || count >= capacity ) { return 0; }
-    memcpy( token, in->text + start, (size_t) count );
-    token[count] = 0;
-    *length = (int32_t) count;
+    if ( in->pos <= start ) { return 0; }
+    *token = in->text + start;
+    *length = in->pos - start;
     return 1;
 }
 
 /* the token's exact double, through the runtime's own converter — which
    speaks the LOCALE's decimal point, so the token crosses back over that
-   character on its way in */
-static SCHEMA_UNUSED double bench_table_json_token_double( const char * token, int32_t length, int single )
+   character on its way in. A token too long to copy whole is handed over as
+   the same value, [-]0.<significant digits>e<exponent>: leading zeros move
+   the exponent, digits past kTableJsonMaxNumber - 32 are folded into it, and
+   a non-zero one among them leaves one sticky digit behind. */
+static SCHEMA_UNUSED double bench_table_json_token_double( const char * token, int64_t length, int single )
 {
     char work[BENCH_K_TABLE_JSON_MAX_NUMBER];
-    char point;
-    memcpy( work, token, (size_t) length );
-    work[length] = 0;
-    point = bench_table_json_decimal_point();
-    if ( point != '.' )
+    char point = bench_table_json_decimal_point();
+    if ( length < (int64_t) sizeof( work ) )
     {
-        int32_t i;
-        for ( i = 0; i < length; i++ )
+        memcpy( work, token, (size_t) length );
+        work[length] = 0;
+        if ( point != '.' )
         {
-            if ( work[i] == '.' ) { work[i] = point; }
+            int64_t i;
+            for ( i = 0; i < length; i++ )
+            {
+                if ( work[i] == '.' ) { work[i] = point; }
+            }
         }
+    }
+    else
+    {
+        int64_t i = 0;
+        int64_t exponent = 0;    /* the point's place after the digits kept: 0.<digits> times ten to this */
+        int64_t written = 0;     /* the exponent the token spells */
+        int fraction = 0;
+        int seen = 0;            /* a non-zero digit has been read */
+        int sticky = 0;          /* a non-zero digit was dropped */
+        int32_t kept = 0;
+        int32_t n = 0;
+        if ( token[i] == '-' ) { work[n++] = '-'; i++; }
+        work[n++] = '0';
+        work[n++] = point;
+        for ( ; i < length && token[i] != 'e' && token[i] != 'E'; i++ )
+        {
+            const char c = token[i];
+            if ( c == '.' ) { fraction = 1; continue; }
+            if ( !seen && c == '0' )
+            {
+                if ( fraction ) { exponent--; }
+                continue;
+            }
+            seen = 1;
+            if ( !fraction ) { exponent++; }
+            if ( kept < BENCH_K_TABLE_JSON_MAX_NUMBER - 32 ) { work[n++] = c; kept++; }
+            else if ( c != '0' ) { sticky = 1; }
+        }
+        if ( i < length )
+        {
+            int negative = 0;
+            i++;
+            if ( token[i] == '-' || token[i] == '+' ) { negative = token[i] == '-'; i++; }
+            for ( ; i < length; i++ )
+            {
+                /* past this no document holds enough digits to bring the
+                   value back from overflow or underflow */
+                if ( written < 100000000000000000LL ) { written = written * 10 + ( token[i] - '0' ); }
+            }
+            exponent += negative ? -written : written;
+        }
+        if ( !seen ) { work[n++] = '0'; exponent = 0; }
+        if ( sticky ) { work[n++] = '1'; }
+        /* ten to the 99999 overflows and ten to the -99999 underflows whatever
+           seven hundred digits stand in front of it */
+        if ( exponent > 99999 ) { exponent = 99999; }
+        if ( exponent < -99999 ) { exponent = -99999; }
+        snprintf( work + n, sizeof( work ) - (size_t) n, "e%d", (int) exponent );
     }
     if ( single ) { return (double) strtof( work, NULL ); }
     return strtod( work, NULL );
@@ -1531,7 +1589,7 @@ typedef struct bench_table_json_integer_t
 // THE FIELD'S INTERPRETATION: the token, parsed digit by digit so no width and
 // no locale can move it, and through the runtime's converter only where the
 // spelling carries a fraction or an exponent
-static SCHEMA_UNUSED bench_table_json_integer_t bench_table_json_interpret( const char * token, int32_t length, int integral )
+static SCHEMA_UNUSED bench_table_json_integer_t bench_table_json_interpret( const char * token, int64_t length, int integral )
 {
     bench_table_json_integer_t out;
     out.magnitude = 0;
@@ -1541,7 +1599,7 @@ static SCHEMA_UNUSED bench_table_json_integer_t bench_table_json_interpret( cons
     out.finite = 1;
     if ( integral )
     {
-        int32_t i = 0;
+        int64_t i = 0;
         if ( i < length && token[i] == '-' ) // WalkNumber refuses a leading plus
         {
             out.negative = 1;
@@ -1624,18 +1682,18 @@ static SCHEMA_UNUSED int64_t bench_table_json_integer_in_domain( bench_table_jso
 }
 
 
-static SCHEMA_UNUSED int bench_table_json_read_wide( bench_table_json_in_t * in, const char * token, int32_t length, void * storage, const bench_table_field_info_t * f )
+static SCHEMA_UNUSED int bench_table_json_read_wide( bench_table_json_in_t * in, const char * token, int64_t length, void * storage, const bench_table_field_info_t * f )
 {
     int is_signed = bench_table_json_kind_wide_signed( f->kind );
     int frac = f->frac_bits;
-    int32_t i = 0;
+    int64_t i = 0;
     int negative = 0;
     if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { negative = token[i] == '-'; i++; }
     const char * int_digits = token + i;
-    int32_t int_len = 0;
+    int64_t int_len = 0;
     while ( i < length && token[i] >= '0' && token[i] <= '9' ) { int_len++; i++; }
     const char * frac_digits = token + i;
-    int32_t frac_len = 0;
+    int64_t frac_len = 0;
     if ( i < length && token[i] == '.' )
     {
         i++;
@@ -1650,14 +1708,15 @@ static SCHEMA_UNUSED int bench_table_json_read_wide( bench_table_json_in_t * in,
         if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { exp_negative = token[i] == '-'; i++; }
         while ( i < length && token[i] >= '0' && token[i] <= '9' )
         {
-            if ( exp < 100000 ) { exp = exp * 10 + ( token[i] - '0' ); }
+            // held past any count of digits a document can put in front
+            if ( exp < 100000000000000000LL ) { exp = exp * 10 + ( token[i] - '0' ); }
             i++;
         }
         if ( exp_negative ) { exp = -exp; }
     }
     // the digits, with the point after "point" of them; leading and trailing
     // zeros stripped. digit( k ) reads the k-th of the int and frac runs.
-    int32_t start = 0, end = int_len + frac_len;
+    int64_t start = 0, end = int_len + frac_len;
     int64_t point = int_len + exp;
     while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' ) { start++; point--; }
     while ( end > start && ( end - 1 < int_len ? int_digits[end - 1] : frac_digits[end - 1 - int_len] ) == '0' ) { end--; }
@@ -1688,10 +1747,19 @@ static SCHEMA_UNUSED int bench_table_json_read_wide( bench_table_json_in_t * in,
         // its magnitude: its digits, with the zeros a negative point puts in
         // front, doubled F times; each doubling's carry is the next bit, and
         // the value is exact iff nothing is left after the last one
-        char fd[BENCH_K_TABLE_JSON_MAX_NUMBER + 48];
+        char fd[256];
         int32_t fn = 0;
+        // a fraction exact in F bits spells in at most F decimal digits (its
+        // last digit is not zero, so 10^n divides digits * 2^F only for n <= F):
+        // a longer one is inexact without being doubled out
+        const int64_t fraction_digits = ( point < 0 ? -point : 0 ) + ( end - start - ( point > 0 ? point : 0 ) );
+        if ( fraction_digits > frac || fraction_digits > (int64_t) sizeof( fd ) )
+        {
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
+            return 1;
+        }
         for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
-        for ( int32_t k = (int32_t) ( point > 0 ? point : 0 ) + start; k < end; k++ )
+        for ( int64_t k = ( point > 0 ? point : 0 ) + start; k < end; k++ )
         {
             fd[fn++] = (char) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
         }
@@ -1940,8 +2008,8 @@ static SCHEMA_UNUSED int schema_bench_table_json_text_total_keep_( bench_table_j
 
 static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * in, void * storage, const bench_table_field_info_t * f, int32_t depth )
 {
-    char token[BENCH_K_TABLE_JSON_MAX_NUMBER];
-    int32_t length = 0;
+    const char * token = NULL;
+    int64_t length = 0;
     int integral = 0;
     if ( f->text_list != 0 ) { return schema_bench_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
@@ -2091,7 +2159,7 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
         bench_table_json_set_raw( storage, f->elem_size, (uint64_t) nanos );
         return 1;
     }
-    if ( !bench_table_json_scan_number( in, token, BENCH_K_TABLE_JSON_MAX_NUMBER, &length, &integral ) )
+    if ( !bench_table_json_scan_number( in, &token, &length, &integral ) )
     {
         in->bad = 1;
         return 0;
