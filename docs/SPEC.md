@@ -2465,7 +2465,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 10 every build on the flat and the runtime tier; 8 not yet held
+  - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 10 and 11 every build on the flat and the runtime tier; 8 not yet held
 
 - **Elixir**
 
