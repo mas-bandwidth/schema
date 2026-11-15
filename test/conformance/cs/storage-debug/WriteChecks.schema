@@ -1,0 +1,36 @@
+// The value write checks the C# debug gate drives (docs/SPEC.md §5.1): one
+// field per check the table writers assert rather than refuse, beside the
+// storage companions test/conformance/storage-release/Storage.schema holds.
+package writechecks
+
+enum Grade
+{
+    Gold,
+    Silver,
+}
+
+table Hit
+{
+    damage int32
+}
+
+union Effect
+{
+    hit Hit
+    heal int32
+}
+
+table Probe
+{
+    v      float32
+    grade  Grade
+    effect Effect
+    name   string(8)
+    labels [..3]string(5) | total=5
+    x      float32 | min=0.25, max=1.0, resolution=0.25, required
+}
+
+fixed table Flat
+{
+    v float32
+}

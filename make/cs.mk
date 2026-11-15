@@ -1464,24 +1464,29 @@ conformance-negative-control-cs-write-refusal-message: build-conformance-cs buil
 		'Debug\.Assert\(StorePurchaseFixedWriteAdmits\(v\)\);' write-refusal-message message
 	@echo 'C# write-refusal-message negative control: the message writer without its value write check is detected by cs / write-refusal-message; message stays green'
 
-# C# storage companions are checked by Debug.Assert (SPEC §5.1). This gate
-# routes assertion failures through a listener so both violations are observed.
+# C# write checks are Debug.Assert (SPEC §5.1): the storage companions and the
+# table writers' value checks. This gate routes assertion failures through a
+# listener so every violation is observed.
 STORAGE_DEBUG_CS := build/storage-debug-cs
+STORAGE_DEBUG_CS_VALUES := test/conformance/cs/storage-debug/WriteChecks.schema
 .PHONY: write-refusal-storage-debug-cs write-refusal-storage-debug-cs-negative-control
-write-refusal-storage-debug-cs: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cs/storage_debug.cs test/conformance/cs/storage-debug/StorageDebug.csproj
+write-refusal-storage-debug-cs: bin/schema $(STORAGE_RELEASE_SCHEMA) $(STORAGE_DEBUG_CS_VALUES) test/conformance/cs/storage_debug.cs test/conformance/cs/storage-debug/StorageDebug.csproj
 	@mkdir -p $(STORAGE_DEBUG_CS)/generated
 	./bin/schema generate --lang cs --out $(STORAGE_DEBUG_CS)/generated $(STORAGE_RELEASE_SCHEMA)
+	./bin/schema generate --lang cs --out $(STORAGE_DEBUG_CS)/generated $(STORAGE_DEBUG_CS_VALUES)
 	$(DOTNET) run -c Debug --nologo -v quiet --project test/conformance/cs/storage-debug/StorageDebug.csproj \
 		-p:StorageGeneratedDir=$(CURDIR)/$(STORAGE_DEBUG_CS)/generated \
 		-p:SerializeDir=$(abspath $(SERIALIZE_CS)) \
 		-p:BaseIntermediateOutputPath=$(CURDIR)/$(STORAGE_DEBUG_CS)/obj/ \
 		-p:BaseOutputPath=$(CURDIR)/$(STORAGE_DEBUG_CS)/bin/
 
-write-refusal-storage-debug-cs-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cs/storage_debug.cs test/conformance/cs/storage-debug/StorageDebug.csproj
+write-refusal-storage-debug-cs-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) $(STORAGE_DEBUG_CS_VALUES) test/conformance/cs/storage_debug.cs test/conformance/cs/storage-debug/StorageDebug.csproj
 	@mkdir -p $(STORAGE_DEBUG_CS)-negative/generated
 	./bin/schema generate --lang cs --out $(STORAGE_DEBUG_CS)-negative/generated $(STORAGE_RELEASE_SCHEMA)
-	@sed -i.bak 's/System.Diagnostics.Debug.Assert(/System.Diagnostics.Debug.Assert(true || /g' $(STORAGE_DEBUG_CS)-negative/generated/StoragereleaseTable.cs
+	./bin/schema generate --lang cs --out $(STORAGE_DEBUG_CS)-negative/generated $(STORAGE_DEBUG_CS_VALUES)
+	@sed -i.bak 's/System.Diagnostics.Debug.Assert(/System.Diagnostics.Debug.Assert(true || /g' $(STORAGE_DEBUG_CS)-negative/generated/StoragereleaseTable.cs $(STORAGE_DEBUG_CS)-negative/generated/WriteChecksTable.cs
 	@grep -q 'Debug.Assert(true || ' $(STORAGE_DEBUG_CS)-negative/generated/StoragereleaseTable.cs
+	@grep -q 'Debug.Assert(true || ' $(STORAGE_DEBUG_CS)-negative/generated/WriteChecksTable.cs
 	@if $(DOTNET) run -c Debug --nologo -v quiet --project test/conformance/cs/storage-debug/StorageDebug.csproj \
 		-p:StorageGeneratedDir=$(CURDIR)/$(STORAGE_DEBUG_CS)-negative/generated \
 		-p:SerializeDir=$(abspath $(SERIALIZE_CS)) \
@@ -1491,10 +1496,12 @@ write-refusal-storage-debug-cs-negative-control: bin/schema $(STORAGE_RELEASE_SC
 		echo 'NEGATIVE CONTROL FAILED: removing storage assertions left the debug gate green'; \
 		exit 1; \
 	fi
-	@grep -q 'FAIL storage debug: count' $(STORAGE_DEBUG_CS)-negative/log
-	@grep -q 'FAIL storage debug: length' $(STORAGE_DEBUG_CS)-negative/log
+	@for check in count length finite 'cook finite' 'fixed finite' enum 'union tag' text 'text-list length' 'text-list total' 'required range'; do \
+		grep -q "FAIL storage debug: $$check " $(STORAGE_DEBUG_CS)-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the $$check assert"; cat $(STORAGE_DEBUG_CS)-negative/log; exit 1; }; \
+	done
 	@cat $(STORAGE_DEBUG_CS)-negative/log
-	@echo 'negative control: removing C# storage assertions turns the debug gate RED'
+	@echo 'negative control: removing the C# write assertions turns the debug gate RED on every one'
 
 # THE PACKET-END GATE (docs/SPEC.md §5 "Read termination"): the generated
 # public read of a type is the one-packet read — it reads the top-level object
