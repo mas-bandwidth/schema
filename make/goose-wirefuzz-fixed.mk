@@ -15,7 +15,7 @@
 # oracle says false"). A leg that read a fixed root anywhere but its
 # <Root>FixedLoad could not go red on this plant. Its group is goose-wire
 # (make/negative-controls.d/tables-goose-wire-fuzz-fixed-negative-control.json);
-# measured on 2026-11-15 at MEASURED_WALL s make wall (time -p real), with
+# measured on 2026-11-15 at 9.89 s make wall (time -p real), with
 # schema-goose-fuzz rebuilt and the harness already built.
 GOOSE_FUZZ_SED_fixed := s|let why = _ChainFixedStrictRefuse(values\[k\]);|let why = _ChainFixedStrictRefuse(values[k]) * 0; // SABOTAGED: the strict bounds refusal dropped|
 
