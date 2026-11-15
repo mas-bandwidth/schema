@@ -6062,9 +6062,15 @@ defmodule Bench.Table do
   end
 
   # a flags mask (docs/SPEC-TABLES.md §3, §16.2) is the list of its set names;
-  # a name the flags do not have counts unknown.
+  # an element that is not a string is a kind mismatch that refuses the read,
+  # and a string naming a variant the flags do not have counts unknown.
   defp json_read_field(%{t: :int, flags: names}, raw, report) when is_list(raw) do
     Enum.reduce(raw, {0, report}, fn n, {mask, report} ->
+      if not is_binary(n) do
+        json_skip_value(n)
+        throw(:wire_damaged)
+      end
+
       case Enum.find_index(names, &(&1 == n)) do
         nil ->
           {mask, %{report | unknown: report.unknown + 1}}
