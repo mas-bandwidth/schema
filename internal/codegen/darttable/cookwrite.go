@@ -1148,10 +1148,16 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		case ref != nil:
 			// a DEAD slot is the zero the region was filled with, never the
 			// element's declared defaults (docs/SPEC-TABLES.md §7.2,
-			// docs/rulings.json fixed-dead-bytes-are-zero)
+			// docs/rulings.json fixed-dead-bytes-are-zero): the walk does
+			// not reach it, as the tool leaves it
 			g.pf("%s  if (i >= %s.length) break;\n", ind, expr)
-			g.pf("%s  final e = %s[i];\n", ind, expr)
-			g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d)) return false;\n", ind, ref.Name, offset, stride)
+			call := fmt.Sprintf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;", ind, ref.Name, expr, offset, stride)
+			if len(call) <= 80 {
+				g.pf("%s\n", call)
+			} else {
+				g.pf("%s  final e = %s[i];\n", ind, expr)
+				g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d)) return false;\n", ind, ref.Name, offset, stride)
+			}
 		case unionRef(f) != nil:
 			// an element that is a union: its own storage, a dead slot being
 			// the zero storage the region already holds (§2.6)

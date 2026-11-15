@@ -1222,8 +1222,7 @@ final class FixedTableCookWire {
     out?.setInt32(at + 1220, value.stats.length, order);
     for (var i = 0; i < 80; i++) {
       if (i >= value.stats.length) break;
-      final e = value.stats[i];
-      if (!_cookMixedStat(e, c, at + 580 + i * 8)) return false;
+      if (!_cookMixedStat(value.stats[i], c, at + 580 + i * 8)) return false;
     }
     final gameEventArm = value.gameEvent.armTag;
     assert(gameEventArm >= 0);
