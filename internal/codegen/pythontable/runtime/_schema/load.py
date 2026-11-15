@@ -204,8 +204,13 @@ def load_table(cls: type[_T], data: Any, report: LoadReport | None = None) -> _T
             # compares a byte with a declaration (internal/tablewire/
             # wirecheck.go, checkFile), so damage anywhere outranks a kind
             # mismatch or a range met first; the walk runs only on this
-            # refusal path.
-            _check_file(view, ids)
+            # refusal path. A walk that names the decode's own reason keeps
+            # the decode's refusal, which names the field.
+            try:
+                _check_file(view, ids)
+            except Refused as walked:
+                if walked.reason != err.reason:
+                    raise walked from None
         raise
     _resolve(ctx)
     if report is not None:
@@ -726,7 +731,7 @@ def _array_header(data: memoryview, ctx: Ctx) -> tuple[int, int, Reader]:
 def _skip_array(data: memoryview, ctx: Ctx, depth: int) -> None:
     element, count, reader = _array_header(data, ctx)
     if element not in _ARRAY_ELEMENT_KINDS:
-        raise Refused("wire_damaged", "an array element kind outside the closed list")
+        raise Refused("wire_damaged", "a walked array's element kind outside the closed list")
     for _ in range(count):
         _skip_payload(reader, element, ctx, depth)
     if reader.pos != reader.end:
