@@ -10558,7 +10558,7 @@ inline bool HandSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         const uint64_t arm_refu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                         {
                             const int64_t arm_bodyu = LeafMeasureBody( ctx, numbering, ids, value.entries[elem_i].leaf );
-                            if ( arm_bodyu < 0 ) { return -1; }
+                            if ( arm_bodyu < 0 ) { return false; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
                         body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -10572,7 +10572,7 @@ inline bool HandSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
                     }
-                    default: return -1; // invalid tag — the write side refuses it too
+                    default: return false; // invalid tag — the write side refuses it too
                 }
             }
         }
@@ -10990,7 +10990,7 @@ inline bool ChainSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                             const uint64_t arm_ref_linksu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             {
                                 const int64_t arm_body_linksu = LeafMeasureBody( ctx, numbering, ids, cursor_links[elem_i_links].leaf );
-                                if ( arm_body_linksu < 0 ) { return -1; }
+                                if ( arm_body_linksu < 0 ) { return false; }
                                 arm_payload_linksu += arm_body_linksu; // the arm's own table body (§3)
                             }
                             body_links += TableLebBytes( arm_ref_linksu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_linksu ) ) + ( arm_payload_linksu );
@@ -11004,7 +11004,7 @@ inline bool ChainSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                             body_links += TableLebBytes( arm_ref_linksu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_linksu ) ) + ( arm_payload_linksu );
                             break;
                         }
-                        default: return -1; // invalid tag — the write side refuses it too
+                        default: return false; // invalid tag — the write side refuses it too
                     }
                 }
             }
@@ -17484,7 +17484,7 @@ inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         const uint64_t arm_refu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                         {
                             const int64_t arm_bodyu = LeafMeasureBodyRetain( ctx, numbering, ids, value.entries[elem_i].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( elem_i ) ), 0, (uint32_t) ( 0 ) ) );
-                            if ( arm_bodyu < 0 ) { return -1; }
+                            if ( arm_bodyu < 0 ) { return false; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
                         body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
@@ -17498,7 +17498,7 @@ inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
                     }
-                    default: return -1; // invalid tag — the write side refuses it too
+                    default: return false; // invalid tag — the write side refuses it too
                 }
             }
         }
@@ -17926,7 +17926,7 @@ inline bool ChainSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                             const uint64_t arm_ref_linksu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             {
                                 const int64_t arm_body_linksu = LeafMeasureBodyRetain( ctx, numbering, ids, cursor_links[elem_i_links].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( elem_i_links ) ), 0, (uint32_t) ( 0 ) ) );
-                                if ( arm_body_linksu < 0 ) { return -1; }
+                                if ( arm_body_linksu < 0 ) { return false; }
                                 arm_payload_linksu += arm_body_linksu; // the arm's own table body (§3)
                             }
                             body_links += TableLebBytes( arm_ref_linksu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_linksu ) ) + ( arm_payload_linksu );
@@ -17940,7 +17940,7 @@ inline bool ChainSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                             body_links += TableLebBytes( arm_ref_linksu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_linksu ) ) + ( arm_payload_linksu );
                             break;
                         }
-                        default: return -1; // invalid tag — the write side refuses it too
+                        default: return false; // invalid tag — the write side refuses it too
                     }
                 }
             }

@@ -306,6 +306,12 @@ pub const fn fixed_table_fixed_measure(count: usize) -> usize {
 /// None when the buffer is smaller than fixed_table_fixed_measure says or a float
 /// holds a NaN or an infinity, which no form carries (docs/SPEC-TABLES.md §3.3).
 pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Option<usize> {
+    // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§22.6). The write
+    // contract is a debug assert, as this leg's other write checks are.
+    debug_assert!(
+        !values.is_empty(),
+        "a fixed-form file holds at least one record (docs/SPEC-TABLES.md §22.6)"
+    );
     let need = fixed_table_fixed_measure(values.len());
     if buffer.len() < need {
         return None;
@@ -461,9 +467,10 @@ fn fixed_table_fixed_load_records(
     // The REMAP lane is the build's too, laid beside the plan it belongs to;
     // the caller's slice stays in the signature as the capacity it always was.
     let _ = remap;
-    // A ROOT IS ONE RECORD (§3.4): a caller with room for exactly one and a
-    // file carrying none has no value to read, which is truncation.
-    if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) || (rest.len() == 0 && values.len() == 1) {
+    // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6):
+    // a header and a layout followed by no record is truncation, at any
+    // capacity. A record size of 8 or less, or a ragged tail, is the same.
+    if rest.is_empty() || record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {
         report.damaged = true;
         return None;
     }

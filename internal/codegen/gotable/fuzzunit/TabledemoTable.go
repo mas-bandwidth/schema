@@ -28,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x2a66886f4fb555e7)
-const _ = uint64(0x2a66886f4fb555e7 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xb7baabf01755ab61)
+const _ = uint64(0xb7baabf01755ab61 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -2398,7 +2398,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// bounded at 4 must land 4 and COUNT, not be admitted because this
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
-			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Min: d.Min, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
@@ -3131,7 +3131,11 @@ func tableNodeWrite(w *TableWriter, e *tableNodeEntry) bool {
 		return e.info.SaveBody(w, e.node)
 	}
 	length := uint64(*(*uint32)(e.node))
-	w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length)))
+	text := unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length))
+	if e.id == tableStringTypeID && !tableUTF8Valid(text) {
+		return false
+	}
+	w.Raw(text)
 	return !w.Overflow
 }
 func tableNodeMeasure(w *TableWriter, ids *TableIds, e *tableNodeEntry) int64 {
@@ -5499,7 +5503,11 @@ func tableNodeWriteRetain(w *TableRetainWriter, e *tableNodeEntry) bool {
 		return ok
 	}
 	length := (*TableBlob)(e.node).Length
-	w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length)))
+	text := unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length))
+	if e.id == tableStringTypeID && !tableUTF8Valid(text) {
+		return false
+	}
+	w.Raw(text)
 	return !w.Overflow
 }
 func tableNodeMeasureRetain(w *TableRetainWriter, ids *TableRetainIds, e *tableNodeEntry) int64 {

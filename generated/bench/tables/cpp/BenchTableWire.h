@@ -64,12 +64,23 @@ SCHEMA_WRITE_INLINE bool WriteTableHitEvent( serialize::WriteStream & stream, co
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadTableHitEvent( serialize::ReadStream & stream, TableHitEvent & value )
+SCHEMA_READ_INLINE bool ReadTableHitEventBody( serialize::ReadStream & stream, TableHitEvent & value )
 {
     read_bits( stream, value.target_id, 12 );
     read_int( stream, value.damage, 0, 4095 );
     read_int( stream, value.hit_kind, 0, 7 );
     read_bool( stream, value.crit );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadTableHitEvent( serialize::ReadStream & stream, TableHitEvent & value )
+{
+    if ( !ReadTableHitEventBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -81,10 +92,21 @@ SCHEMA_WRITE_INLINE bool WriteTableChatEvent( serialize::WriteStream & stream, c
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadTableChatEvent( serialize::ReadStream & stream, TableChatEvent & value )
+SCHEMA_READ_INLINE bool ReadTableChatEventBody( serialize::ReadStream & stream, TableChatEvent & value )
 {
     read_int( stream, value.channel, 0, 3 );
     read_bits( stream, value.speaker, 12 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadTableChatEvent( serialize::ReadStream & stream, TableChatEvent & value )
+{
+    if ( !ReadTableChatEventBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -96,10 +118,21 @@ SCHEMA_WRITE_INLINE bool WriteTablePickupEvent( serialize::WriteStream & stream,
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadTablePickupEvent( serialize::ReadStream & stream, TablePickupEvent & value )
+SCHEMA_READ_INLINE bool ReadTablePickupEventBody( serialize::ReadStream & stream, TablePickupEvent & value )
 {
     read_bits( stream, value.item_id, 10 );
     read_int( stream, value.amount, 0, 255 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadTablePickupEvent( serialize::ReadStream & stream, TablePickupEvent & value )
+{
+    if ( !ReadTablePickupEventBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -126,7 +159,7 @@ SCHEMA_WRITE_INLINE bool WriteTableEvent( serialize::WriteStream & stream, const
     return true; // an out-of-set tag selected no arm, so no bits rode: the assert above is the contract (SPEC §5)
 }
 
-SCHEMA_READ_INLINE bool ReadTableEvent( serialize::ReadStream & stream, TableEvent & value )
+SCHEMA_READ_INLINE bool ReadTableEventBody( serialize::ReadStream & stream, TableEvent & value )
 {
     int32_t tag_value = 0;
     read_int( stream, tag_value, 0, 3 ); // TableEventType::Max — rejects a tag above the count (SPEC §4.8)
@@ -137,15 +170,26 @@ SCHEMA_READ_INLINE bool ReadTableEvent( serialize::ReadStream & stream, TableEve
             return true;
         case TableEventType::Hit:
             ::new ( static_cast<void *>( &value.hit ) ) TableHitEvent{};
-            return ReadTableHitEvent( stream, value.hit );
+            return ReadTableHitEventBody( stream, value.hit );
         case TableEventType::Chat:
             ::new ( static_cast<void *>( &value.chat ) ) TableChatEvent{};
-            return ReadTableChatEvent( stream, value.chat );
+            return ReadTableChatEventBody( stream, value.chat );
         case TableEventType::Pickup:
             ::new ( static_cast<void *>( &value.pickup ) ) TablePickupEvent{};
-            return ReadTablePickupEvent( stream, value.pickup );
+            return ReadTablePickupEventBody( stream, value.pickup );
     }
     return false;
+}
+
+SCHEMA_READ_INLINE bool ReadTableEvent( serialize::ReadStream & stream, TableEvent & value )
+{
+    if ( !ReadTableEventBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
 }
 
 } // namespace benchtable
