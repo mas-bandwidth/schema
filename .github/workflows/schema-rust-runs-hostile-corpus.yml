@@ -10,10 +10,9 @@ name: schema-rust-runs-hostile-corpus
 # gate has a blade rather than the corpus's content.
 
 on:
+  # PR gate is ci-fast (Glenn 2026-11-15: efficient on tiny PRs first); this runs on main, nightly, dispatch
   push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-  pull_request:
-    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+    branches: [ main, dev, fixed-table-form ]
   schedule:
     - cron: "47 3 * * *"
   workflow_dispatch:
