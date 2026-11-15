@@ -282,6 +282,10 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("_M.%sFixedSave <- function(out, recs) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
 	m.Printf("  _M.FixedField <- null;\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+	// an empty batch is refused in every build before any byte is written, and
+	// raises nothing (docs/rulings.json write-refusal).
+	m.Printf("  if (recs.len() == 0) { _M.FixedReason = \"invalid_value\"; return -1; }\n")
 	// CHECK THE WHOLE BATCH BEFORE SEEKING OR WRITING THE CALLER'S BUFFER
 	// (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/SPEC.md §5.1). FixedCheckBody
 	// reuses the body writer's guards against one private record buffer, so the
@@ -373,7 +377,10 @@ func emitFixedRead(m *Module, st *ir.Struct) {
 	m.Printf("  local rb = e.record;\n")
 	m.Printf("  if (rb <= 8 || rb > 8 + %d) { _M.FixedReason = \"layout_record_too_large\"; return -1; }\n", ir.TableFixedRecordMaxBytes)
 	m.Printf("  local rest = len - 20 - L;\n")
-	m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+	// a header and a layout followed by no record is refused, never read as a
+	// batch of zero.
+	m.Printf("  if (rest == 0 || rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  local count = rest / rb;\n")
 	m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
 	m.Printf("  if (count > out.len()) { _M.FixedReason = \"batch_too_large\"; return -1; }\n")
