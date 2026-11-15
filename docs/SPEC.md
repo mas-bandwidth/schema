@@ -2336,7 +2336,7 @@ check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal
 is the leg's assert, "every build" its refusal. These tables record the code as
 it stands, not the contract: an "every build" entry in an assert leg is a
 release-build check the contract does not ask for, and the contract for that
-row is the debug assert. As a fact of today's code, C, Rust and Java
+row is the debug assert. As a fact of today's code, C and Java
 also refuse a count or length past the storage it indexes in a release
 build, before the first byte, held by the `write-refusal-storage-release-<lang>`
 gates.
@@ -2431,7 +2431,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `FixedSave`: 1–6 and 8 debug; 7 every build
 
-  - `SaveMessages`: 1–3 and 8 debug; 4–7 every build
+  - `SaveMessages`: 1–4 and 8 debug; 5–7 every build
 
   - packet `Write`: 1–5, 7 and 8 debug; 6 unrepresentable; 10 not yet held
 
