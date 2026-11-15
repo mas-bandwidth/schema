@@ -434,7 +434,7 @@ func defParamNames(line string) []string {
 		return nil
 	}
 	var names []string
-	for _, part := range strings.Split(line[open+1:close], ",") {
+	for part := range strings.SplitSeq(line[open+1:close], ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
