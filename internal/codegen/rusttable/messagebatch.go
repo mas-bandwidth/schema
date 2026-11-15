@@ -263,6 +263,44 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 	return scalarDiffers(f, expr, dexpr)
 }
 
+// scalarWriteCheck is the debug-only half of the message write contract
+// (docs/SPEC.md §5.1 rows 1–3 and 8): a ranged integer or a fixed/ufixed raw
+// value off its raw min/max, a bits(N) value wider than N, and (at the text
+// site) an ill-formed used prefix. A count or length past its storage, an enum
+// ordinal or a union tag outside its set, and a NaN or infinity refuse in every
+// build elsewhere.
+func (m *msgGen) scalarWriteCheck(f *ir.Field, expr, ind string) {
+	switch f.Type.Kind {
+	case ir.TBool, ir.TFloat32, ir.TFloat64, ir.TNamed:
+		return
+	}
+	x := expr
+	if (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Width > 64 {
+		x += ".0"
+	}
+	if lo, hi, ok := ir.TableRawRange(f); ok {
+		minBits, maxBits, _ := storageLimits(f)
+		var conds []string
+		what := f.Name + " out of range"
+		if f.Type.Kind == ir.TFixed {
+			what = f.Name + " raw value out of range"
+		}
+		if lo.Cmp(minBits) > 0 {
+			conds = append(conds, fmt.Sprintf("%s >= %s", x, lo.String()))
+		}
+		if hi.Cmp(maxBits) < 0 {
+			conds = append(conds, fmt.Sprintf("%s <= %s", x, hi.String()))
+		}
+		if len(conds) > 0 {
+			m.pf("%sdebug_assert!(%s, \"%s [%s, %s]\");\n", ind, strings.Join(conds, " && "), what, lo.String(), hi.String())
+		}
+	}
+	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < int64(rustTypeWidth(scalarRust(f))) {
+		maxv := (uint64(1) << f.Type.Width) - 1
+		m.pf("%sdebug_assert!(%s <= %d, \"%s exceeds bits(%d) width\");\n", ind, x, maxv, f.Name, f.Type.Width)
+	}
+}
+
 // keyedPairs counts the slots of a keyed array that ride (§3.3).
 func (m *msgGen) keyedPairs(f *ir.Field, expr, dexpr, ind string) string {
 	pairs := m.tmp("pairs")
@@ -330,6 +368,7 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 		m.writeValue(e, msgElementEntry(entry), expr+"[i]", dexpr+"[i]", ind+"    ")
 		m.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
+		m.pf("%sdebug_assert!(table_message_utf8(&%s[..%s_length as usize]), \"%s is ill-formed text\");\n", ind, expr, expr, f.Name)
 		m.pf("%sw.put(%s_length as u64, %d);\n%sw.raw(&%s[..%s_length as usize]);\n", ind, expr, ir.TableMessageCountBits(entry.Shape), ind, expr, expr)
 	case isStructRef(f.Type):
 		m.pf("%sif !%s_save_message_body(w, &%s) { return false; }\n", ind, ir.RustSnake(f.Type.Name), expr)
@@ -364,6 +403,7 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 	case entry.Kind == 1:
 		m.pf("%sw.put(if %s { 1 } else { 0 }, 1);\n", ind, expr)
 	default:
+		m.scalarWriteCheck(f, expr, ind)
 		lo, hi := expr+" as u64", "0"
 		if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
 			// A NaN OR AN INFINITY IS REFUSED, never quantized or held

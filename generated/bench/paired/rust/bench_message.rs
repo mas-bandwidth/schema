@@ -43,60 +43,70 @@ pub fn mixed_entity_save_message_body(w: &mut TableBitWriter, value: &MixedEntit
     {
         if value.entity_id != d.entity_id {
             w.put(31, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.entity_id <= 4095, "entity_id exceeds bits(12) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.entity_id as u64, 0);
         }
     }
     {
         if value.pos_x != d.pos_x {
             w.put(32, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.pos_x >= -16383 && value.pos_x <= 16383, "pos_x out of range [-16383, 16383]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pos_x as i64 as u64, 0);
         }
     }
     {
         if value.pos_y != d.pos_y {
             w.put(33, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.pos_y >= -16383 && value.pos_y <= 16383, "pos_y out of range [-16383, 16383]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pos_y as i64 as u64, 0);
         }
     }
     {
         if value.pos_z != d.pos_z {
             w.put(34, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.pos_z >= -16383 && value.pos_z <= 16383, "pos_z out of range [-16383, 16383]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pos_z as i64 as u64, 0);
         }
     }
     {
         if value.yaw != d.yaw {
             w.put(35, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.yaw <= 511, "yaw exceeds bits(9) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 9, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.yaw as u64, 0);
         }
     }
     {
         if value.pitch != d.pitch {
             w.put(36, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.pitch <= 511, "pitch exceeds bits(9) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 9, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pitch as u64, 0);
         }
     }
     {
         if value.vel_x != d.vel_x {
             w.put(37, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.vel_x >= -2048 && value.vel_x <= 2047, "vel_x out of range [-2048, 2047]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.vel_x as i64 as u64, 0);
         }
     }
     {
         if value.vel_y != d.vel_y {
             w.put(38, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.vel_y >= -2048 && value.vel_y <= 2047, "vel_y out of range [-2048, 2047]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.vel_y as i64 as u64, 0);
         }
     }
     {
         if value.vel_z != d.vel_z {
             w.put(39, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.vel_z >= -2048 && value.vel_z <= 2047, "vel_z out of range [-2048, 2047]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.vel_z as i64 as u64, 0);
         }
     }
     {
         if value.health != d.health {
             w.put(40, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.health >= 0 && value.health <= 1000, "health out of range [0, 1000]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.health as i64 as u64, 0);
         }
     }
@@ -488,6 +498,7 @@ pub fn mixed_stat_save_message_body(w: &mut TableBitWriter, value: &MixedStatRow
     {
         if value.delta != d.delta {
             w.put(52, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.delta >= -512 && value.delta <= 511, "delta out of range [-512, 511]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0xfffffffffffffe00, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.delta as i64 as u64, 0);
         }
     }
@@ -572,18 +583,21 @@ pub fn mixed_hit_event_save_message_body(w: &mut TableBitWriter, value: &MixedHi
     {
         if value.target_id != d.target_id {
             w.put(45, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.target_id <= 4095, "target_id exceeds bits(12) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.target_id as u64, 0);
         }
     }
     {
         if value.damage != d.damage {
             w.put(46, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.damage >= 0 && value.damage <= 4095, "damage out of range [0, 4095]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.damage as i64 as u64, 0);
         }
     }
     {
         if value.hit_kind != d.hit_kind {
             w.put(47, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.hit_kind >= 0 && value.hit_kind <= 7, "hit_kind out of range [0, 7]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 3, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.hit_kind as i64 as u64, 0);
         }
     }
@@ -714,12 +728,14 @@ pub fn mixed_chat_event_save_message_body(w: &mut TableBitWriter, value: &MixedC
     {
         if value.channel != d.channel {
             w.put(29, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.channel >= 0 && value.channel <= 3, "channel out of range [0, 3]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 2, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.channel as i64 as u64, 0);
         }
     }
     {
         if value.speaker != d.speaker {
             w.put(30, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.speaker <= 4095, "speaker exceeds bits(12) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.speaker as u64, 0);
         }
     }
@@ -808,12 +824,14 @@ pub fn mixed_pickup_event_save_message_body(w: &mut TableBitWriter, value: &Mixe
     {
         if value.item_id != d.item_id {
             w.put(49, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.item_id <= 1023, "item_id exceeds bits(10) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.item_id as u64, 0);
         }
     }
     {
         if value.amount != d.amount {
             w.put(50, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.amount >= 0 && value.amount <= 255, "amount out of range [0, 255]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.amount as i64 as u64, 0);
         }
     }
@@ -985,6 +1003,7 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
     {
         if value.ack_sequence != d.ack_sequence {
             w.put(2, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.ack_sequence >= 0 && value.ack_sequence <= 65535, "ack_sequence out of range [0, 65535]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 16, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.ack_sequence as i64 as u64, 0);
         }
     }
@@ -1015,18 +1034,21 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
     {
         if value.world_time != d.world_time {
             w.put(7, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.world_time >= -1000000000000 && value.world_time <= 1000000000000, "world_time out of range [-1000000000000, 1000000000000]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 41, base_lo: 0xffffff172b5af000, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.world_time as i64 as u64, 0);
         }
     }
     {
         if value.frame_tick != d.frame_tick {
             w.put(8, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.frame_tick <= 281474976710655, "frame_tick exceeds bits(48) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 48, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.frame_tick as u64, 0);
         }
     }
     {
         if value.server_time != d.server_time {
             w.put(9, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.server_time >= 0 && value.server_time <= 16776960, "server_time raw value out of range [0, 16776960]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 24, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.server_time as i64 as u64, 0);
         }
     }
@@ -1088,6 +1110,7 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
         if value.player_name_length < 0 || value.player_name_length > 15 { return false; }
         if value.player_name_length > 0 {
             w.put(14, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(table_message_utf8(&value.player_name[..value.player_name_length as usize]), "player_name is ill-formed text");
             w.put(value.player_name_length as u64, 4);
             w.raw(&value.player_name[..value.player_name_length as usize]);
         }
@@ -1147,18 +1170,21 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
     {
         if value.flux != d.flux {
             w.put(22, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.flux.0 >= -1267650600228229401496703205376 && value.flux.0 <= 1267650600228229401496703205376, "flux out of range [-1267650600228229401496703205376, 1267650600228229401496703205376]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 102, base_lo: 0x0, base_hi: 0xfffffff000000000, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.flux.0 as u64, (value.flux.0 >> 64) as u64);
         }
     }
     {
         if value.ping != d.ping {
             w.put(23, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.ping <= 64000, "ping raw value out of range [0, 64000]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 16, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.ping as u64, 0);
         }
     }
     {
         if value.crc_hint != d.crc_hint {
             w.put(24, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.crc_hint <= 16777215, "crc_hint exceeds bits(24) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 24, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.crc_hint as u64, 0);
         }
     }
@@ -1171,12 +1197,14 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
     {
         if value.extra != d.extra {
             w.put(26, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.extra >= 0 && value.extra <= 255, "extra out of range [0, 255]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.extra as i64 as u64, 0);
         }
     }
     {
         if value.idle_ticks != d.idle_ticks {
             w.put(27, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.idle_ticks >= 0 && value.idle_ticks <= 15, "idle_ticks out of range [0, 15]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 4, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.idle_ticks as i64 as u64, 0);
         }
     }

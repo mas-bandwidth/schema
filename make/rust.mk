@@ -1838,7 +1838,7 @@ define rust_wref_control
 		echo "NEGATIVE CONTROL FAILED: the Rust $(5) writer without its check left the matrix green"; \
 		cat $(1)/log; exit 1; \
 	fi
-	@grep -Eq '^ *$(5) +FAIL' $(1)/log || \
+	@grep -Eq '^ *$(5) *FAIL' $(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: $(5) is not marked FAIL"; cat $(1)/log; exit 1; }
 	@grep -Eq '^ *$(6) +pass' $(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: $(6) did not stay green"; cat $(1)/log; exit 1; }

@@ -667,22 +667,38 @@ func (g *gen) scalarWrite(f *ir.Field, x, dst string) string {
 // value (a bool or a float assert its own way, and a bits(N) whose storage
 // is exactly N bits broad cannot exceed them).
 func (g *gen) scalarSaveRefusal(f *ir.Field, x, ind string) string {
-	if lo, hi, ok := intRange(f); ok {
+	// a fixed field is stored RAW: its declared whole-unit bounds shift by F
+	// onto the raw scale, exactly as the read's clamp does (docs/SPEC-TABLES.md
+	// §4). Comparing the raw storage with the whole-unit bound would refuse a
+	// lawful fixed value.
+	if lo, hi, ok := ir.TableRawRange(f); ok {
 		// only an end the storage can actually hold is asserted: a bound that
 		// sits on the storage's own limit cannot fire and would be an absurd
 		// comparison (deny-by-default clippy), exactly as clampStmt elides it
 		minBits, maxBits, _ := storageLimits(f)
 		var conds []string
-		if f.IntMin.Cmp(minBits) > 0 {
-			conds = append(conds, fmt.Sprintf("%s >= %s", x, lo))
+		low, high := lo.Cmp(minBits) > 0, hi.Cmp(maxBits) < 0
+		if low {
+			conds = append(conds, fmt.Sprintf("%s >= %s", x, lo.String()))
 		}
-		if f.IntMax.Cmp(maxBits) < 0 {
-			conds = append(conds, fmt.Sprintf("%s <= %s", x, hi))
+		if high {
+			conds = append(conds, fmt.Sprintf("%s <= %s", x, hi.String()))
 		}
 		if len(conds) == 0 {
 			return ""
 		}
-		return fmt.Sprintf("%sdebug_assert!(%s, \"%s out of range [%s, %s]\");\n", ind, strings.Join(conds, " && "), f.Name, lo, hi)
+		what := f.Name + " out of range"
+		if f.Type.Kind == ir.TFixed {
+			what = f.Name + " raw value out of range"
+		}
+		span := fmt.Sprintf("[%s, %s]", lo.String(), hi.String())
+		switch {
+		case low && !high:
+			span = ">= " + lo.String()
+		case high && !low:
+			span = "<= " + hi.String()
+		}
+		return fmt.Sprintf("%sdebug_assert!(%s, \"%s %s\");\n", ind, strings.Join(conds, " && "), what, span)
 	}
 	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < int64(rustTypeWidth(scalarRust(f))) {
 		maxv := (uint64(1) << f.Type.Width) - 1
