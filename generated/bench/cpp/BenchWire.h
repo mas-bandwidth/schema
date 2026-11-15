@@ -492,11 +492,12 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
     {
         write_bits( stream, value.loadout[i], 8 );
     }
+    serialize_assert( int32_t( value.player_name_length ) >= int32_t( 0 ) && int32_t( value.player_name_length ) <= int32_t( 15 ) );
     for ( int32_t i = 0; i < value.player_name_length; i++ )
     {
         serialize_assert( value.player_name[i] != 0 );
     }
-    serialize_assert( int32_t( value.player_name_length ) >= int32_t( 0 ) && int32_t( value.player_name_length ) <= int32_t( 15 ) );
+    serialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( value.player_name ), value.player_name_length ) );
     write_bits( stream, uint32_t( value.player_name_length ), 4 );
     write_bytes( stream, value.player_name, value.player_name_length );
     serialize_assert( int32_t( value.payload_length ) >= int32_t( 0 ) && int32_t( value.payload_length ) <= int32_t( 16 ) );

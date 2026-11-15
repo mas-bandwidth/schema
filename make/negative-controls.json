@@ -147,6 +147,14 @@
       ]
     },
     {
+      "name": "base-packet-4",
+      "when": "pull-request",
+      "why": "the C++ packet text write control (docs/SPEC.md §5.1 row 8): one overlay build of the packet emitter removes the emitted UTF-8 write assert, the same driver is rebuilt against the sabotaged copy, and exactly the UTF-8 cases must go red. One generate and one small compile, with no toolchain beyond the host C++ compiler.",
+      "targets": [
+        "packet-write-text-cpp-negative-control"
+      ]
+    },
+    {
       "name": "base-conformance-1",
       "when": "nightly",
       "why": "conformance-negative-control compiles all C++ CONFORMANCE_SOURCES twice in single-threaded g++ invocations (build/conformance-cpp plus the -DCONFORMANCE_SABOTAGE_CLAMP binary), running >107 s of control time and 131 s wall on run 42556155793 (killed at 2m) and >77 s inside the first g++ call on run 42554833739 (136 s wall, killed at 2m).",

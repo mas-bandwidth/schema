@@ -348,11 +348,12 @@ SCHEMA_WRITE_INLINE bool WriteArmAlign( serialize::WriteStream & stream, const A
     write_bool( stream, value.flag );
     if ( value.flag )
     {
+        serialize_assert( int32_t( value.s_length ) >= int32_t( 0 ) && int32_t( value.s_length ) <= int32_t( 4 ) );
         for ( int32_t i = 0; i < value.s_length; i++ )
         {
             serialize_assert( value.s[i] != 0 );
         }
-        serialize_assert( int32_t( value.s_length ) >= int32_t( 0 ) && int32_t( value.s_length ) <= int32_t( 4 ) );
+        serialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( value.s ), value.s_length ) );
         write_bits( stream, uint32_t( value.s_length ), 3 );
         write_bytes( stream, value.s, value.s_length );
     }
@@ -556,11 +557,12 @@ SCHEMA_WRITE_INLINE bool WriteRegainAfterAlign( serialize::WriteStream & stream,
         serialize_assert( int32_t( value.items[i] ) <= int32_t( 8191 ) );
         write_bits( stream, uint32_t( value.items[i] ), 13 );
     }
+    serialize_assert( int32_t( value.s_length ) >= int32_t( 0 ) && int32_t( value.s_length ) <= int32_t( 4 ) );
     for ( int32_t i = 0; i < value.s_length; i++ )
     {
         serialize_assert( value.s[i] != 0 );
     }
-    serialize_assert( int32_t( value.s_length ) >= int32_t( 0 ) && int32_t( value.s_length ) <= int32_t( 4 ) );
+    serialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( value.s ), value.s_length ) );
     write_bits( stream, uint32_t( value.s_length ), 3 );
     write_bytes( stream, value.s, value.s_length );
     write_bits( stream, value.p, 32 );

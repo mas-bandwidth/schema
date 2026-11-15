@@ -558,11 +558,12 @@ SCHEMA_READ_INLINE bool ReadBlock( serialize::ReadStream & stream, Block & value
 
 SCHEMA_WRITE_INLINE bool WriteChat( serialize::WriteStream & stream, const Chat & value )
 {
+    serialize_assert( int32_t( value.text_length ) >= int32_t( 0 ) && int32_t( value.text_length ) <= int32_t( MaxChatLength ) );
     for ( int32_t i = 0; i < value.text_length; i++ )
     {
         serialize_assert( value.text[i] != 0 );
     }
-    serialize_assert( int32_t( value.text_length ) >= int32_t( 0 ) && int32_t( value.text_length ) <= int32_t( MaxChatLength ) );
+    serialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( value.text ), value.text_length ) );
     write_bits( stream, uint32_t( value.text_length ), 9 );
     write_bytes( stream, value.text, value.text_length );
     return true;
@@ -637,11 +638,12 @@ SCHEMA_WRITE_INLINE bool WriteTestData( serialize::WriteStream & stream, const T
     write_bits( stream, uint64_t( value.int64_range ) - uint64_t( -1000000000000 ), 41 );
     write_align( stream );
     write_bytes( stream, value.fixed_bytes, 17 ); // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+    serialize_assert( int32_t( value.text_length ) >= int32_t( 0 ) && int32_t( value.text_length ) <= int32_t( 255 ) );
     for ( int32_t i = 0; i < value.text_length; i++ )
     {
         serialize_assert( value.text[i] != 0 );
     }
-    serialize_assert( int32_t( value.text_length ) >= int32_t( 0 ) && int32_t( value.text_length ) <= int32_t( 255 ) );
+    serialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( value.text ), value.text_length ) );
     write_bits( stream, uint32_t( value.text_length ), 8 );
     write_bytes( stream, value.text, value.text_length );
     return true;
