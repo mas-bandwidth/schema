@@ -251,7 +251,7 @@ jobs:
               internal/codegen/goosetable/*|internal/codegen/goose/*|test/conformance/goose/*|test/goose/*|test/goose-ludicrous/*|test/goose-hostile/*|test/packet-*/goose/*|make/goose.mk|make/goose-*) add_leg goose ;;
               # the Squirrel row is the card leg (make/squirrel-cards.mk): the
               # facade, its driver and the runtime the generated unit carries
-              internal/codegen/squirreltable/*|tables/cards/squirrel/*|make/squirrel.mk|make/squirrel-cards.mk) add_leg squirrel ;;
+              internal/codegen/squirreltable/*|internal/codegen/squirrel/*|tables/cards/squirrel/*|make/squirrel.mk|make/squirrel-cards.mk) add_leg squirrel ;;
             esac
           done <<EOF
           $files
@@ -284,6 +284,30 @@ jobs:
                       case " $packages " in *" ./$d "*) ;; *) packages="$packages ./$d" ;; esac ;;
               esac
             done
+            # THE RUNTIME-ONLY DIFF. A language's emitted runtime (a .lua, .moo,
+            # .nut, .goose, .rs ... file under its codegen directory) is tested
+            # by that language's two Go packages, the type surface and the
+            # table surface, and the .go rule above names neither. Every
+            # language, leg row or not, gets both for a non-Go file under
+            # either of its codegen directories.
+            for f in $files; do
+              case "$f" in
+                *.go) continue ;;
+                internal/codegen/*/*) ;;
+                *) continue ;;
+              esac
+              dir=${f#internal/codegen/}; dir=${dir%%/*}
+              case "$dir" in
+                csharp|cstable) pair="csharp cstable" ;;
+                golang|gotable) pair="golang gotable" ;;
+                *table)         pair="${dir%table} $dir" ;;
+                *)              pair="$dir ${dir}table" ;;
+              esac
+              for p in $pair; do
+                ls "internal/codegen/$p"/*.go >/dev/null 2>&1 || continue
+                case " $packages " in *" ./internal/codegen/$p "*) ;; *) packages="$packages ./internal/codegen/$p" ;; esac
+              done
+            done
             for leg in $legs; do
               case "$leg" in
                 cpp)     ps=./internal/codegen/cpptable ;;
@@ -300,14 +324,21 @@ jobs:
                 case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
               done
             done
-            # THE LUA UNIT TESTS. Lua is not a leg row, so a diff to its
-            # runtime, make files or conformance tree (no .go file) selected no
-            # package; its two packages are its fast unit tests.
-            if echo "$files" | grep -E '^(internal/codegen/lua/|internal/codegen/luatable/|make/lua[.-]|test/conformance/lua/)' >/dev/null; then
-              for p in ./internal/codegen/lua ./internal/codegen/luatable; do
-                case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
-              done
-            fi
+            # THE LUA, MOO AND SQUIRREL UNIT TESTS for a diff to their make
+            # files or conformance tree. None is a leg row with packages (the
+            # Squirrel row runs make targets only), so with no .go file in the
+            # diff their two packages, the fast unit tests, would not run.
+            for lang in lua moo squirrel; do
+              case "$lang" in
+                squirrel) paths='^(internal/codegen/squirrel/|internal/codegen/squirreltable/|make/squirrel[.-]|tables/cards/squirrel/|test/conformance/squirrel/)' ;;
+                *)        paths="^(internal/codegen/$lang/|internal/codegen/${lang}table/|make/$lang[.-]|test/conformance/$lang/)" ;;
+              esac
+              if echo "$files" | grep -E "$paths" >/dev/null; then
+                for p in ./internal/codegen/$lang ./internal/codegen/${lang}table; do
+                  case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
+                done
+              fi
+            done
             # THE SOURCE GOLDENS. internal/goldens holds every emitter's output
             # to the files under testdata/golden, so a diff to an emitter, to a
             # golden, or to the examples and usage page it renders re-checks
@@ -320,22 +351,33 @@ jobs:
             packages=$(echo "$packages" | xargs || true)
           fi
 
-          # THE LANGUAGE LINTS (Glenn 2026-11-15: "run only the fastest unit
-          # tests as verification, on a per-language basis"). The generated-code
-          # lenses that answer in seconds, Dart's strict analyze, golangci-lint
-          # over the generated Go, and luacheck and StyLua over the generated
-          # Lua, were workflows of their own started by every pull request.
-          # They run here now, one `lang-lint` row per touched language; their
-          # own workflows keep the nightly halves and run on main, nightly and
-          # dispatch. The broad rule selects all three.
+          # THE LANGUAGE LINTS (the owner, 2026-11-15: "run only the fastest
+          # unit tests as verification, on a per-language basis"). The
+          # generated-code lenses that answer in seconds, Dart's strict
+          # analyze, golangci-lint over the generated Go, and luacheck and
+          # StyLua over the generated Lua, were workflows of their own started
+          # by every pull request. They run here now, one `lang-lint` row per
+          # touched language; their own workflows keep the nightly halves and
+          # run on main, nightly and dispatch. The broad rule selects all three.
+          #
+          # THE SHARED PACKET CORPORA are every lens's own input (the Lua
+          # lens's LUA_LUACHECK_DIRS and LUA_LUACHECK_FILES, the Dart and Go
+          # packet trees), so a diff to them selects all three too. They feed
+          # every language's packet output and goldens (./internal/goldens,
+          # selected above for examples/ and examples128/) and no fixed-form
+          # leg, so they are not the broad rule.
+          corpus=no
+          if echo "$files" | grep -E '^(examples/|examples128/|bench/corpus/|test/guard/.*\.schema$)' >/dev/null; then
+            corpus=yes
+          fi
           lints=""
-          if [ "$broad" = yes ] || case " $legs " in *" dart "*) true ;; *) false ;; esac || echo "$files" | grep 'schema-dart-generated-strict-analyze' >/dev/null; then
+          if [ "$broad" = yes ] || [ "$corpus" = yes ] || case " $legs " in *" dart "*) true ;; *) false ;; esac || echo "$files" | grep 'schema-dart-generated-strict-analyze' >/dev/null; then
             lints="$lints dart"
           fi
-          if [ "$broad" = yes ] || case " $legs " in *" go "*) true ;; *) false ;; esac || echo "$files" | grep 'schema-go-generated-golangci-lint' >/dev/null; then
+          if [ "$broad" = yes ] || [ "$corpus" = yes ] || case " $legs " in *" go "*) true ;; *) false ;; esac || echo "$files" | grep 'schema-go-generated-golangci-lint' >/dev/null; then
             lints="$lints go"
           fi
-          if [ "$broad" = yes ] || echo "$files" | grep -E '^(internal/codegen/lua/|internal/codegen/luatable/|make/lua[.-]|test/conformance/lua/)|schema-lua-generated-luacheck' >/dev/null; then
+          if [ "$broad" = yes ] || [ "$corpus" = yes ] || echo "$files" | grep -E '^(internal/codegen/lua/|internal/codegen/luatable/|make/lua[.-]|test/conformance/lua/)|schema-lua-generated-luacheck' >/dev/null; then
             lints="$lints lua"
           fi
           lints_json=$(printf '%s' "$lints" | xargs -n1 2>/dev/null | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')

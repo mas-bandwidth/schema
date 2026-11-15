@@ -368,7 +368,19 @@ func TestGeneratedTreeAndPinsRunAfterTheMerge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wf := string(data)
+	for _, e := range guardsMissingAfterTheMerge(string(data)) {
+		t.Error(e)
+	}
+}
+
+// guardsMissingAfterTheMerge names each of generated, pins and cs-tables that
+// does not run on a push to main, dev or fixed-table-form, the schedule or a
+// dispatch. pins and cs-tables need pr-select, which runs on pull requests
+// only, so it is their `always() && !cancelled()` that keeps them here; the
+// model skips a job whose need was skipped unless its `if:` names a status
+// function.
+func guardsMissingAfterTheMerge(wf string) []string {
+	var errs []string
 	events := []ciEvent{
 		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
 		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
@@ -376,11 +388,43 @@ func TestGeneratedTreeAndPinsRunAfterTheMerge(t *testing.T) {
 		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
 		{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
 	}
-	for _, job := range []string{"generated", "pins"} {
+	for _, job := range []string{"generated", "pins", "cs-tables"} {
 		for _, ev := range events {
 			if ok, err := jobSelectsSelfHosted(wf, job, ev); err != nil || !ok {
-				t.Errorf("ci-full.yml's %q job does not run on %s %s (ok=%v err=%v): a stale committed tree or pin would land with no job able to see it (issue #1421)", job, ev.Name, ev.Branch, ok, err)
+				errs = append(errs, fmt.Sprintf("ci-full.yml's %q job does not run on %s %s (ok=%v err=%v): a stale committed tree or pin would land with no job able to see it (issue #1421)", job, ev.Name, ev.Branch, ok, err))
 			}
+		}
+	}
+	return errs
+}
+
+// TestGeneratedTreeAndPinsRunAfterTheMergeNegativeControl: pins or cs-tables
+// with `always() && !cancelled()` taken out of its `if:` is skipped on every
+// push, nightly and dispatch, because pr-select (its need) is skipped there,
+// and the check above must name it.
+func TestGeneratedTreeAndPinsRunAfterTheMergeNegativeControl(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-full.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wf := string(data)
+	if errs := guardsMissingAfterTheMerge(wf); len(errs) != 0 {
+		t.Fatalf("the unmutated workflow already fails: %v", errs)
+	}
+	for _, tc := range []struct{ job, output string }{{"pins", "pins"}, {"cs-tables", "cs"}} {
+		old := "    if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs." + tc.output + " == 'yes'"
+		if strings.Count(wf, old) != 1 {
+			t.Fatalf("%s's if: moved; the control patches nothing", tc.job)
+		}
+		mutated := strings.Replace(wf, old, "    if: (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs."+tc.output+" == 'yes'", 1)
+		found := false
+		for _, e := range guardsMissingAfterTheMerge(mutated) {
+			if strings.Contains(e, fmt.Sprintf("%q job does not run on push main", tc.job)) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("dropping always() && !cancelled() from %s left the after-merge check green", tc.job)
 		}
 	}
 }
@@ -874,11 +918,86 @@ func jobRunsInWorkflow(wfData, job string, ev ciEvent) (bool, error) {
 	if !workflowTriggersOn(wfData, ev) {
 		return false, nil
 	}
+	return jobRunsGivenNeeds(wfData, job, ev, map[string]bool{})
+}
+
+// jobRunsGivenNeeds evaluates a job's `if:` the way Actions does with its
+// needs: a job whose `if:` names no status function (always(), success(),
+// failure(), cancelled()) carries an implicit success(), so it is SKIPPED
+// when any job it needs was skipped. ci-full.yml's pins and cs-tables need
+// pr-select, which runs on pull requests only; without their
+// `always() && !cancelled()` a push, the nightly and a dispatch would skip
+// them, and this is the model that says so.
+func jobRunsGivenNeeds(wfData, job string, ev ciEvent, seen map[string]bool) (bool, error) {
 	jobs := yamlJobs(wfData)
-	if _, ok := jobs[job]; !ok {
+	body, ok := jobs[job]
+	if !ok {
 		return false, fmt.Errorf("job %q not found", job)
 	}
-	return evalCIExpr(jobIfCondition(wfData, job), ev)
+	if seen[job] {
+		return false, fmt.Errorf("needs cycle through job %q", job)
+	}
+	seen[job] = true
+	defer delete(seen, job)
+	cond := jobIfCondition(wfData, job)
+	if !usesStatusFunction(cond) {
+		for _, need := range jobNeeds(body) {
+			runs, err := jobRunsGivenNeeds(wfData, need, ev, seen)
+			if err != nil {
+				return false, err
+			}
+			if !runs {
+				return false, nil
+			}
+		}
+	}
+	return evalCIExpr(cond, ev)
+}
+
+func usesStatusFunction(cond string) bool {
+	for _, fn := range []string{"always()", "success()", "failure()", "cancelled()"} {
+		if strings.Contains(cond, fn) {
+			return true
+		}
+	}
+	return false
+}
+
+// jobNeeds returns a job's `needs:`, written as one name, a flow list, or a
+// block list.
+func jobNeeds(body string) []string {
+	var out []string
+	inBlock := false
+	for raw := range strings.SplitSeq(body, "\n") {
+		if before, _, found := strings.Cut(raw, "#"); found {
+			raw = before
+		}
+		if inBlock {
+			if item, ok := strings.CutPrefix(strings.TrimSpace(raw), "- "); ok && strings.HasPrefix(raw, "      ") {
+				out = append(out, strings.TrimSpace(item))
+				continue
+			}
+			inBlock = false
+		}
+		rest, ok := strings.CutPrefix(raw, "    needs:")
+		if !ok {
+			continue
+		}
+		rest = strings.TrimSpace(rest)
+		switch {
+		case rest == "":
+			inBlock = true
+		case strings.HasPrefix(rest, "["):
+			for part := range strings.SplitSeq(strings.Trim(rest, "[]"), ",") {
+				if p := strings.TrimSpace(part); p != "" {
+					out = append(out, p)
+				}
+			}
+		default:
+			out = append(out, rest)
+		}
+	}
+	return out
 }
 
 func jobSelectsSelfHosted(wfData, job string, ev ciEvent) (bool, error) {
@@ -1524,6 +1643,22 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			oldSubstr: "needs.pr-select.outputs.cs == 'yes'",
 			newSubstr: "github.event_name == 'pull_request'",
 			wantErr:   "with nothing selected ran ci-full.yml:cs-tables",
+		},
+		// pr-select is skipped on a push: pins and cs-tables without
+		// always() && !cancelled() would be skipped with it on main.
+		{
+			name:      "drop always() from ci-full pins",
+			workflow:  "ci-full.yml",
+			oldSubstr: "    if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.pins == 'yes'",
+			newSubstr: "    if: (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.pins == 'yes'",
+			wantErr:   "push to dev did not select self-hosted ci-full.yml:pins",
+		},
+		{
+			name:      "drop always() from ci-full cs-tables",
+			workflow:  "ci-full.yml",
+			oldSubstr: "    if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.cs == 'yes'",
+			newSubstr: "    if: (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.cs == 'yes'",
+			wantErr:   "push to dev did not run ci-full.yml:cs-tables",
 		},
 		{
 			name:      "cs-tables reads the pins selection",

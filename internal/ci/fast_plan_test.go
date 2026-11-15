@@ -137,10 +137,10 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 			want:  `no|./internal/codegen/goosetable ./internal/goldens|["goose"]`,
 		},
 		{
-			// the Squirrel row runs make targets only, so it names no package
+			// the Squirrel leg row runs make targets; its two unit packages ride the make-file rule
 			name:  "squirrel card leg only",
 			files: "make/squirrel-cards.mk",
-			want:  `no||["squirrel"]`,
+			want:  `no|./internal/codegen/squirrel ./internal/codegen/squirreltable|["squirrel"]`,
 		},
 		{
 			name:  "dart leg only",
@@ -236,6 +236,31 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|`},
 		{"docs only", "docs/CONTRIBUTING.md", `[]|`},
 		{"broad", "compiler/compiler.go", `["dart","go","lua"]|./...`},
+		// the shared packet corpora are every lens's input
+		{"packet examples", "examples/Types.schema", `["dart","go","lua"]|./internal/goldens`},
+		{"128-bit examples", "examples128/Ludicrous.schema", `["dart","go","lua"]|./internal/goldens`},
+		{"bench corpus", "bench/corpus/Bench.schema", `["dart","go","lua"]|`},
+		{"guard unit", "test/guard/second.schema", `["dart","go","lua"]|`},
+		{"guard non-schema", "test/guard/README.md", `[]|`},
+		// a runtime-only (non-Go) diff runs its language's two unit packages
+		{"c runtime", "internal/codegen/ctable/testdata/runtime.h", `[]|./internal/codegen/c ./internal/codegen/ctable ./internal/goldens`},
+		{"cs runtime", "internal/codegen/cstable/testdata/Runtime.cs", `[]|./internal/codegen/csharp ./internal/codegen/cstable ./internal/goldens`},
+		{"go runtime", "internal/codegen/gotable/testdata/runtime.go.txt", `["go"]|./internal/codegen/golang ./internal/codegen/gotable ./internal/goldens`},
+		{"rust runtime", "internal/codegen/rusttable/testdata/runtime.rs", `[]|./internal/codegen/rust ./internal/codegen/rusttable ./internal/goldens`},
+		{"js runtime", "internal/codegen/js/testdata/runtime.js", `[]|./internal/codegen/js ./internal/codegen/jstable ./internal/goldens`},
+		{"java runtime", "internal/codegen/javatable/testdata/Runtime.java", `[]|./internal/codegen/java ./internal/codegen/javatable ./internal/goldens`},
+		{"dart runtime", "internal/codegen/darttable/testdata/runtime.dart", `["dart"]|./internal/codegen/dart ./internal/codegen/darttable ./internal/goldens`},
+		{"elixir runtime", "internal/codegen/elixirtable/testdata/runtime.ex", `[]|./internal/codegen/elixir ./internal/codegen/elixirtable ./internal/goldens`},
+		{"luau runtime", "internal/codegen/luau/runtime/serialize_bytes.luau", `[]|./internal/codegen/luau ./internal/codegen/luautable ./internal/goldens`},
+		{"lobster runtime", "internal/codegen/lobster/runtime/serialize_compressed_float.lobster", `[]|./internal/codegen/lobster ./internal/codegen/lobstertable ./internal/goldens`},
+		{"goose runtime", "internal/codegen/goosetable/runtime/schema_json.goose", `[]|./internal/codegen/goose ./internal/codegen/goosetable ./internal/goldens`},
+		{"squirrel runtime", "internal/codegen/squirrel/runtime/module.nut", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable ./internal/goldens`},
+		{"squirrel table runtime", "internal/codegen/squirreltable/runtime/cook.nut", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable ./internal/goldens`},
+		{"lua type runtime", "internal/codegen/lua/runtime/serialize_int_relative.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens`},
+		{"moo runtime", "internal/codegen/moo/runtime/serialize_float.moo", `[]|./internal/codegen/moo ./internal/codegen/mootable ./internal/goldens`},
+		{"moo table runtime", "internal/codegen/mootable/runtime/json.moo", `[]|./internal/codegen/moo ./internal/codegen/mootable ./internal/goldens`},
+		{"moo make file", "make/moo.mk", `[]|./internal/codegen/moo ./internal/codegen/mootable`},
+		{"squirrel make file", "make/squirrel.mk", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
