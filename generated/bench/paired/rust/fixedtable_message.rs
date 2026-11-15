@@ -127,6 +127,7 @@ pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
     let mut seen_ids = [0u64; 64];
     let mut seen_count = 0usize;
     let mut seen_more: Vec<u64> = Vec::new();
+    let mut next_field = 0usize;
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
@@ -137,6 +138,9 @@ pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
         seen_count += 1;
         match entry.id {
             0x7ce4fd9430e80cea => {
+                if next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3)
+                next_field = 1;
+                let unknown_before = report.unknown;
                 'f2: {
                     if entry.kind != 13 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -144,6 +148,10 @@ pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         break 'f2;
                     }
                     if !bench_mixed_load_message_body(r, v, report, &mut value.value) { return false; }
+                    let mut probe3 = TableBitWriter::measure();
+                    if !bench_mixed_save_message_body(&mut probe3, &value.value) { return false; }
+                    let rides = probe3.bits > TABLE_MESSAGE_REF_BITS as u64;
+                    if report.unknown == unknown_before && !rides { report.damaged = true; return false; } // a field stored at its default (§4)
                 }
             }
             _ => {

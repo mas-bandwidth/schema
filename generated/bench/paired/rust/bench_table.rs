@@ -269,8 +269,10 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
     let mut seen_ids_inline = [0u64; 3];
     let mut seen_ids_len = 0usize;
     let mut seen_ids: Vec<u64> = Vec::new();
+    let mut next_field = 0usize;
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
+        if r != 0 && seen_node { report.damaged = true; return false; } // a node table out of its place (§3.1)
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
         if seen_ids_inline[..seen_ids_len].contains(&id) || seen_ids.contains(&id) { report.damaged = true; }
@@ -292,23 +294,31 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
             0xa5013e9ad5caeda4 => {
                 if seen[0] { report.damaged = true; return false; }
                 seen[0] = true;
+                if next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 1;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
                     if x < 0i64 { x = 0i64; report.damaged = true; } else if x > 3i64 { x = 3i64; report.damaged = true; }
                     v.channel = x as i32;
+                    let rides = v.channel != 0i32;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xfbf1ac4d96ebd022 => {
                 if seen[1] { report.damaged = true; return false; }
                 seen[1] = true;
+                if next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 2;
                 if kind == 7 || table_kind_widens(kind, 7) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
                     let mut x = raw;
                     if x > 4095u64 { x = 4095u64; report.damaged = true; }
                     v.speaker = x as u16;
+                    let rides = v.speaker != 0u16;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
@@ -362,8 +372,10 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
     let mut seen_ids_inline = [0u64; 15];
     let mut seen_ids_len = 0usize;
     let mut seen_ids: Vec<u64> = Vec::new();
+    let mut next_field = 0usize;
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
+        if r != 0 && seen_node { report.damaged = true; return false; } // a node table out of its place (§3.1)
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
         if seen_ids_inline[..seen_ids_len].contains(&id) || seen_ids.contains(&id) { report.damaged = true; }
@@ -385,118 +397,161 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
             0x23fcfd6678e36712 => {
                 if seen[0] { report.damaged = true; return false; }
                 seen[0] = true;
+                if next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 1;
                 if kind == 7 || table_kind_widens(kind, 7) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
                     let mut x = raw;
                     if x > 4095u64 { x = 4095u64; report.damaged = true; }
                     v.entity_id = x as u16;
+                    let rides = v.entity_id != 0u16;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xcb4b37357667310e => {
                 if seen[1] { report.damaged = true; return false; }
                 seen[1] = true;
+                if next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 2;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
                     if x < -16383i64 { x = -16383i64; report.damaged = true; } else if x > 16383i64 { x = 16383i64; report.damaged = true; }
                     v.pos_x = x as i32;
+                    let rides = v.pos_x != 0i32;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xcb4b3835766732c1 => {
                 if seen[2] { report.damaged = true; return false; }
                 seen[2] = true;
+                if next_field > 2 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 3;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
                     if x < -16383i64 { x = -16383i64; report.damaged = true; } else if x > 16383i64 { x = 16383i64; report.damaged = true; }
                     v.pos_y = x as i32;
+                    let rides = v.pos_y != 0i32;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xcb4b353576672da8 => {
                 if seen[3] { report.damaged = true; return false; }
                 seen[3] = true;
+                if next_field > 3 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 4;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
                     if x < -16383i64 { x = -16383i64; report.damaged = true; } else if x > 16383i64 { x = 16383i64; report.damaged = true; }
                     v.pos_z = x as i32;
+                    let rides = v.pos_z != 0i32;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xb54d8e19798e16e8 => {
                 if seen[4] { report.damaged = true; return false; }
                 seen[4] = true;
+                if next_field > 4 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 5;
                 if kind == 7 || table_kind_widens(kind, 7) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
                     let mut x = raw;
                     if x > 511u64 { x = 511u64; report.damaged = true; }
                     v.yaw = x as u16;
+                    let rides = v.yaw != 0u16;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x53a9f665a90cc1b1 => {
                 if seen[5] { report.damaged = true; return false; }
                 seen[5] = true;
+                if next_field > 5 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 6;
                 if kind == 7 || table_kind_widens(kind, 7) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
                     let mut x = raw;
                     if x > 511u64 { x = 511u64; report.damaged = true; }
                     v.pitch = x as u16;
+                    let rides = v.pitch != 0u16;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x6cede6b6eb60ee67 => {
                 if seen[6] { report.damaged = true; return false; }
                 seen[6] = true;
+                if next_field > 6 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 7;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
                     if x < -2048i64 { x = -2048i64; report.damaged = true; } else if x > 2047i64 { x = 2047i64; report.damaged = true; }
                     v.vel_x = x as i32;
+                    let rides = v.vel_x != 0i32;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x6cede5b6eb60ecb4 => {
                 if seen[7] { report.damaged = true; return false; }
                 seen[7] = true;
+                if next_field > 7 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 8;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
                     if x < -2048i64 { x = -2048i64; report.damaged = true; } else if x > 2047i64 { x = 2047i64; report.damaged = true; }
                     v.vel_y = x as i32;
+                    let rides = v.vel_y != 0i32;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x6cede8b6eb60f1cd => {
                 if seen[8] { report.damaged = true; return false; }
                 seen[8] = true;
+                if next_field > 8 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 9;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
                     if x < -2048i64 { x = -2048i64; report.damaged = true; } else if x > 2047i64 { x = 2047i64; report.damaged = true; }
                     v.vel_z = x as i32;
+                    let rides = v.vel_z != 0i32;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x7f69d4b5288ba9cf => {
                 if seen[9] { report.damaged = true; return false; }
                 seen[9] = true;
+                if next_field > 9 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 10;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
                     if x < 0i64 { x = 0i64; report.damaged = true; } else if x > 1000i64 { x = 1000i64; report.damaged = true; }
                     v.health = x as i32;
+                    let rides = v.health != 0i32;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xa0b610205f2c6e01 => {
                 if seen[10] { report.damaged = true; return false; }
                 seen[10] = true;
+                if next_field > 10 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 11;
                 if kind != 30 { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
                 else {
+                    let unknown_before = report.unknown;
                     let Some(vref) = leb_read(wire, off) else { report.damaged = true; return false; };
                     if *off > end { report.damaged = true; return false; }
                     v.weapon = if vref == 0 { MixedWeapon::None }
@@ -521,36 +576,49 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                             _ => { report.unknown += 1; if retain.is_some() { report.retain_lost += 1; } MixedWeapon::None },
                         }
                     };
+                    if report.unknown == unknown_before && v.weapon == MixedWeapon::None { report.damaged = true; return false; } // a field stored at its default (§4)
                 }
             }
             0x7f6308be8ab37fc0 => {
                 if seen[11] { report.damaged = true; return false; }
                 seen[11] = true;
+                if next_field > 11 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 12;
                 if kind == 9 || table_kind_widens(kind, 9) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 9 { report.widened += 1; }
                     let x = raw;
                     v.damage = x;
+                    let rides = v.damage != 0u64;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x11a44fc1d1243da7 => {
                 if seen[12] { report.damaged = true; return false; }
                 seen[12] = true;
+                if next_field > 12 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 13;
                 if kind == 1 || table_kind_widens(kind, 1) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 1 { report.widened += 1; }
                     v.moving = raw != 0;
                     if raw > 1 { report.damaged = true; }
+                    let rides = v.moving;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x7674cfd19b9031ca => {
                 if seen[13] { report.damaged = true; return false; }
                 seen[13] = true;
+                if next_field > 13 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 14;
                 if kind == 1 || table_kind_widens(kind, 1) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 1 { report.widened += 1; }
                     v.firing = raw != 0;
                     if raw > 1 { report.damaged = true; }
+                    let rides = v.firing;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
@@ -604,8 +672,10 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
     let mut seen_ids_inline = [0u64; 5];
     let mut seen_ids_len = 0usize;
     let mut seen_ids: Vec<u64> = Vec::new();
+    let mut next_field = 0usize;
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
+        if r != 0 && seen_node { report.damaged = true; return false; } // a node table out of its place (§3.1)
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
         if seen_ids_inline[..seen_ids_len].contains(&id) || seen_ids.contains(&id) { report.damaged = true; }
@@ -627,44 +697,60 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
             0xb7bc9ac015a25050 => {
                 if seen[0] { report.damaged = true; return false; }
                 seen[0] = true;
+                if next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 1;
                 if kind == 7 || table_kind_widens(kind, 7) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
                     let mut x = raw;
                     if x > 4095u64 { x = 4095u64; report.damaged = true; }
                     v.target_id = x as u16;
+                    let rides = v.target_id != 0u16;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x7f6308be8ab37fc0 => {
                 if seen[1] { report.damaged = true; return false; }
                 seen[1] = true;
+                if next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 2;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
                     if x < 0i64 { x = 0i64; report.damaged = true; } else if x > 4095i64 { x = 4095i64; report.damaged = true; }
                     v.damage = x as i32;
+                    let rides = v.damage != 0i32;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x01fbc365b059b925 => {
                 if seen[2] { report.damaged = true; return false; }
                 seen[2] = true;
+                if next_field > 2 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 3;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
                     if x < 0i64 { x = 0i64; report.damaged = true; } else if x > 7i64 { x = 7i64; report.damaged = true; }
                     v.hit_kind = x as i32;
+                    let rides = v.hit_kind != 0i32;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x126167908c9aa52d => {
                 if seen[3] { report.damaged = true; return false; }
                 seen[3] = true;
+                if next_field > 3 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 4;
                 if kind == 1 || table_kind_widens(kind, 1) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 1 { report.widened += 1; }
                     v.crit = raw != 0;
                     if raw > 1 { report.damaged = true; }
+                    let rides = v.crit;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
@@ -718,8 +804,10 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
     let mut seen_ids_inline = [0u64; 3];
     let mut seen_ids_len = 0usize;
     let mut seen_ids: Vec<u64> = Vec::new();
+    let mut next_field = 0usize;
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
+        if r != 0 && seen_node { report.damaged = true; return false; } // a node table out of its place (§3.1)
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
         if seen_ids_inline[..seen_ids_len].contains(&id) || seen_ids.contains(&id) { report.damaged = true; }
@@ -741,23 +829,31 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
             0x9e7fd06d864fbd56 => {
                 if seen[0] { report.damaged = true; return false; }
                 seen[0] = true;
+                if next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 1;
                 if kind == 7 || table_kind_widens(kind, 7) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
                     let mut x = raw;
                     if x > 1023u64 { x = 1023u64; report.damaged = true; }
                     v.item_id = x as u16;
+                    let rides = v.item_id != 0u16;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x8113fe7ea2b16969 => {
                 if seen[1] { report.damaged = true; return false; }
                 seen[1] = true;
+                if next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 2;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
                     if x < 0i64 { x = 0i64; report.damaged = true; } else if x > 255i64 { x = 255i64; report.damaged = true; }
                     v.amount = x as i32;
+                    let rides = v.amount != 0i32;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
@@ -811,8 +907,10 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
     let mut seen_ids_inline = [0u64; 3];
     let mut seen_ids_len = 0usize;
     let mut seen_ids: Vec<u64> = Vec::new();
+    let mut next_field = 0usize;
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
+        if r != 0 && seen_node { report.damaged = true; return false; } // a node table out of its place (§3.1)
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
         if seen_ids_inline[..seen_ids_len].contains(&id) || seen_ids.contains(&id) { report.damaged = true; }
@@ -834,23 +932,31 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
             0x80ab75f0866dbf65 => {
                 if seen[0] { report.damaged = true; return false; }
                 seen[0] = true;
+                if next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 1;
                 if kind == 6 || table_kind_widens(kind, 6) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 6 { report.widened += 1; }
                     let mut x = raw;
                     if x > 255u64 { x = 255u64; report.damaged = true; }
                     v.stat_id = x as u8;
+                    let rides = v.stat_id != 0u8;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x52076675ec13a0c1 => {
                 if seen[1] { report.damaged = true; return false; }
                 seen[1] = true;
+                if next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§22.2)
+                next_field = 2;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
                     if x < -512i64 { x = -512i64; report.damaged = true; } else if x > 511i64 { x = 511i64; report.damaged = true; }
                     v.delta = x as i32;
+                    let rides = v.delta != 0i32;
+                    if !rides && report.non_finite_float.is_empty() { report.damaged = true; return false; } // a field stored at its default (§4)
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
