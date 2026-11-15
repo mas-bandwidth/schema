@@ -567,6 +567,15 @@ defmodule Example.Wire do
     # const(0xAB, 8) rides the wire (SPEC §4.3)
     v = 171
     scratch = v
+
+    if value_version < 0 do
+      raise ArgumentError, "value.version is below the wire minimum"
+    end
+
+    if value_version > 7 do
+      raise ArgumentError, "value.version is above the wire maximum"
+    end
+
     v = value_version &&& 0x7
     scratch = scratch ||| v <<< 8
     # reserved bits ride as zeros (SPEC §4.3)
@@ -682,12 +691,38 @@ defmodule Example.Wire do
       nonce: value_nonce
     } = value
 
+    if value_small < 0 do
+      raise ArgumentError, "value.small is below the wire minimum"
+    end
+
+    if value_small > 511 do
+      raise ArgumentError, "value.small is above the wire maximum"
+    end
+
     v = value_small &&& 0x1FF
     scratch = v
+
+    if value_boundary < 0 do
+      raise ArgumentError, "value.boundary is below the wire minimum"
+    end
+
+    if value_boundary > 8_589_934_591 do
+      raise ArgumentError, "value.boundary is above the wire maximum"
+    end
+
     v = value_boundary &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< 9
     v = value_boundary >>> 32 &&& 0x1
     scratch = scratch ||| v <<< 41
+
+    if value_wide < 0 do
+      raise ArgumentError, "value.wide is below the wire minimum"
+    end
+
+    if value_wide > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.wide is above the wire maximum"
+    end
+
     v = value_wide &&& 0xFFFFFFFF
     sc0 = scratch
     scratch = scratch >>> 40
@@ -2397,6 +2432,15 @@ defmodule Example.Wire do
     # const(0xAB, 8) rides the wire (SPEC §4.3)
     v = 171
     scratch = v
+
+    if value_header_version < 0 do
+      raise ArgumentError, "value.header.version is below the wire minimum"
+    end
+
+    if value_header_version > 7 do
+      raise ArgumentError, "value.header.version is above the wire maximum"
+    end
+
     v = value_header_version &&& 0x7
     scratch = scratch ||| v <<< 8
     # reserved bits ride as zeros (SPEC §4.3)
@@ -2670,10 +2714,37 @@ defmodule Example.Wire do
 
     v = value_c + 100
     scratch = scratch ||| v <<< 16
+
+    if value_d < 0 do
+      raise ArgumentError, "value.d is below the wire minimum"
+    end
+
+    if value_d > 255 do
+      raise ArgumentError, "value.d is above the wire maximum"
+    end
+
     v = value_d &&& 0xFF
     scratch = scratch ||| v <<< 24
+
+    if value_e < 0 do
+      raise ArgumentError, "value.e is below the wire minimum"
+    end
+
+    if value_e > 255 do
+      raise ArgumentError, "value.e is above the wire maximum"
+    end
+
     v = value_e &&& 0xFF
     scratch = scratch ||| v <<< 32
+
+    if value_f < 0 do
+      raise ArgumentError, "value.f is below the wire minimum"
+    end
+
+    if value_f > 255 do
+      raise ArgumentError, "value.f is above the wire maximum"
+    end
+
     v = value_f &&& 0xFF
     scratch = scratch ||| v <<< 40
     v = if value_g, do: 1, else: 0

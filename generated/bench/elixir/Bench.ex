@@ -542,12 +542,39 @@ defmodule Bench.Bench do
 
     v = value_c + 1_000_000
     scratch = scratch ||| v <<< 24
+
+    if value_bits7 < 0 do
+      raise ArgumentError, "value.bits7 is below the wire minimum"
+    end
+
+    if value_bits7 > 127 do
+      raise ArgumentError, "value.bits7 is above the wire maximum"
+    end
+
     v = value_bits7 &&& 0x7F
     scratch = scratch ||| v <<< 45
+
+    if value_bits13 < 0 do
+      raise ArgumentError, "value.bits13 is below the wire minimum"
+    end
+
+    if value_bits13 > 8191 do
+      raise ArgumentError, "value.bits13 is above the wire maximum"
+    end
+
     v = value_bits13 &&& 0x1FFF
     sc0 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 4
+
+    if value_bits23 < 0 do
+      raise ArgumentError, "value.bits23 is below the wire minimum"
+    end
+
+    if value_bits23 > 8_388_607 do
+      raise ArgumentError, "value.bits23 is above the wire maximum"
+    end
+
     v = value_bits23 &&& 0x7FFFFF
     scratch = scratch ||| v <<< 17
     v = if value_flag, do: 1, else: 0
@@ -995,24 +1022,95 @@ defmodule Bench.Bench do
       b48: value_b48
     } = value
 
+    if value_b7 < 0 do
+      raise ArgumentError, "value.b7 is below the wire minimum"
+    end
+
+    if value_b7 > 127 do
+      raise ArgumentError, "value.b7 is above the wire maximum"
+    end
+
     v = value_b7 &&& 0x7F
     scratch = v
+
+    if value_b13 < 0 do
+      raise ArgumentError, "value.b13 is below the wire minimum"
+    end
+
+    if value_b13 > 8191 do
+      raise ArgumentError, "value.b13 is above the wire maximum"
+    end
+
     v = value_b13 &&& 0x1FFF
     scratch = scratch ||| v <<< 7
+
+    if value_b23 < 0 do
+      raise ArgumentError, "value.b23 is below the wire minimum"
+    end
+
+    if value_b23 > 8_388_607 do
+      raise ArgumentError, "value.b23 is above the wire maximum"
+    end
+
     v = value_b23 &&& 0x7FFFFF
     scratch = scratch ||| v <<< 20
+
+    if value_b3 < 0 do
+      raise ArgumentError, "value.b3 is below the wire minimum"
+    end
+
+    if value_b3 > 7 do
+      raise ArgumentError, "value.b3 is above the wire maximum"
+    end
+
     v = value_b3 &&& 0x7
     scratch = scratch ||| v <<< 43
+
+    if value_b32 < 0 do
+      raise ArgumentError, "value.b32 is below the wire minimum"
+    end
+
+    if value_b32 > 4_294_967_295 do
+      raise ArgumentError, "value.b32 is above the wire maximum"
+    end
+
     v = value_b32 &&& 0xFFFFFFFF
     sc0 = scratch
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 6
+
+    if value_b11 < 0 do
+      raise ArgumentError, "value.b11 is below the wire minimum"
+    end
+
+    if value_b11 > 2047 do
+      raise ArgumentError, "value.b11 is above the wire maximum"
+    end
+
     v = value_b11 &&& 0x7FF
     scratch = scratch ||| v <<< 38
+
+    if value_b19 < 0 do
+      raise ArgumentError, "value.b19 is below the wire minimum"
+    end
+
+    if value_b19 > 524_287 do
+      raise ArgumentError, "value.b19 is above the wire maximum"
+    end
+
     v = value_b19 &&& 0x7FFFF
     sc1 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 1
+
+    if value_b48 < 0 do
+      raise ArgumentError, "value.b48 is below the wire minimum"
+    end
+
+    if value_b48 > 281_474_976_710_655 do
+      raise ArgumentError, "value.b48 is above the wire maximum"
+    end
+
     v = value_b48 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< 20
     v = value_b48 >>> 32 &&& 0xFFFF
@@ -1293,6 +1391,14 @@ defmodule Bench.Bench do
       firing: value_firing
     } = value
 
+    if value_entity_id < 0 do
+      raise ArgumentError, "value.entity_id is below the wire minimum"
+    end
+
+    if value_entity_id > 4095 do
+      raise ArgumentError, "value.entity_id is above the wire maximum"
+    end
+
     v = value_entity_id &&& 0xFFF
     scratch = v
 
@@ -1330,8 +1436,26 @@ defmodule Bench.Bench do
     sc0 = scratch
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 2
+
+    if value_yaw < 0 do
+      raise ArgumentError, "value.yaw is below the wire minimum"
+    end
+
+    if value_yaw > 511 do
+      raise ArgumentError, "value.yaw is above the wire maximum"
+    end
+
     v = value_yaw &&& 0x1FF
     scratch = scratch ||| v <<< 17
+
+    if value_pitch < 0 do
+      raise ArgumentError, "value.pitch is below the wire minimum"
+    end
+
+    if value_pitch > 511 do
+      raise ArgumentError, "value.pitch is above the wire maximum"
+    end
+
     v = value_pitch &&& 0x1FF
     scratch = scratch ||| v <<< 26
 
@@ -1534,6 +1658,15 @@ defmodule Bench.Bench do
   @spec write_mixed_stat!(Bench.MixedStat.t()) :: binary()
   def write_mixed_stat!(value) do
     %{stat_id: value_stat_id, delta: value_delta} = value
+
+    if value_stat_id < 0 do
+      raise ArgumentError, "value.stat_id is below the wire minimum"
+    end
+
+    if value_stat_id > 255 do
+      raise ArgumentError, "value.stat_id is above the wire maximum"
+    end
+
     v = value_stat_id &&& 0xFF
     scratch = v
 
@@ -1640,6 +1773,14 @@ defmodule Bench.Bench do
       hit_kind: value_hit_kind,
       crit: value_crit
     } = value
+
+    if value_target_id < 0 do
+      raise ArgumentError, "value.target_id is below the wire minimum"
+    end
+
+    if value_target_id > 4095 do
+      raise ArgumentError, "value.target_id is above the wire maximum"
+    end
 
     v = value_target_id &&& 0xFFF
     scratch = v
@@ -1776,6 +1917,15 @@ defmodule Bench.Bench do
 
     v = value_channel
     scratch = v
+
+    if value_speaker < 0 do
+      raise ArgumentError, "value.speaker is below the wire minimum"
+    end
+
+    if value_speaker > 4095 do
+      raise ArgumentError, "value.speaker is above the wire maximum"
+    end
+
     v = value_speaker &&& 0xFFF
     scratch = scratch ||| v <<< 2
     data = <<scratch::little-size(1)-unit(8)>>
@@ -1865,6 +2015,15 @@ defmodule Bench.Bench do
   @spec write_mixed_pickup_event!(Bench.MixedPickupEvent.t()) :: binary()
   def write_mixed_pickup_event!(value) do
     %{item_id: value_item_id, amount: value_amount} = value
+
+    if value_item_id < 0 do
+      raise ArgumentError, "value.item_id is below the wire minimum"
+    end
+
+    if value_item_id > 1023 do
+      raise ArgumentError, "value.item_id is above the wire maximum"
+    end
+
     v = value_item_id &&& 0x3FF
     scratch = v
 
@@ -2011,6 +2170,14 @@ defmodule Bench.Bench do
             crit: value_hit_crit
           } = value_hit
 
+          if value_hit_target_id < 0 do
+            raise ArgumentError, "value.hit.target_id is below the wire minimum"
+          end
+
+          if value_hit_target_id > 4095 do
+            raise ArgumentError, "value.hit.target_id is above the wire maximum"
+          end
+
           v = value_hit_target_id &&& 0xFFF
           scratch = scratch ||| v <<< 2
 
@@ -2055,6 +2222,15 @@ defmodule Bench.Bench do
 
           v = value_chat_channel
           scratch = scratch ||| v <<< 2
+
+          if value_chat_speaker < 0 do
+            raise ArgumentError, "value.chat.speaker is below the wire minimum"
+          end
+
+          if value_chat_speaker > 4095 do
+            raise ArgumentError, "value.chat.speaker is above the wire maximum"
+          end
+
           v = value_chat_speaker &&& 0xFFF
           scratch = scratch ||| v <<< 4
           data = <<data::binary, scratch::little-size(2)-unit(8)>>
@@ -2064,6 +2240,15 @@ defmodule Bench.Bench do
 
         {:pickup, value_pickup} ->
           %{item_id: value_pickup_item_id, amount: value_pickup_amount} = value_pickup
+
+          if value_pickup_item_id < 0 do
+            raise ArgumentError, "value.pickup.item_id is below the wire minimum"
+          end
+
+          if value_pickup_item_id > 1023 do
+            raise ArgumentError, "value.pickup.item_id is above the wire maximum"
+          end
+
           v = value_pickup_item_id &&& 0x3FF
           scratch = scratch ||| v <<< 2
 
@@ -2282,6 +2467,15 @@ defmodule Bench.Bench do
     # const(0xC0DE, 16) rides the wire (SPEC §4.3)
     v = 49374
     scratch = v
+
+    if value_sequence < 0 do
+      raise ArgumentError, "value.sequence is below the wire minimum"
+    end
+
+    if value_sequence > 65535 do
+      raise ArgumentError, "value.sequence is above the wire maximum"
+    end
+
     v = value_sequence &&& 0xFFFF
     scratch = scratch ||| v <<< 16
 
@@ -2295,6 +2489,15 @@ defmodule Bench.Bench do
 
     v = value_ack_sequence
     scratch = scratch ||| v <<< 32
+
+    if value_ack_bits < 0 do
+      raise ArgumentError, "value.ack_bits is below the wire minimum"
+    end
+
+    if value_ack_bits > 4_294_967_295 do
+      raise ArgumentError, "value.ack_bits is above the wire maximum"
+    end
+
     v = value_ack_bits &&& 0xFFFFFFFF
     sc0 = scratch
     scratch = v
@@ -2337,6 +2540,15 @@ defmodule Bench.Bench do
     scratch = v
     v = w >>> 32
     scratch = scratch ||| v <<< 32
+
+    if value_frame_tick < 0 do
+      raise ArgumentError, "value.frame_tick is below the wire minimum"
+    end
+
+    if value_frame_tick > 281_474_976_710_655 do
+      raise ArgumentError, "value.frame_tick is above the wire maximum"
+    end
+
     v = value_frame_tick &&& 0xFFFFFFFF
     sc7 = scratch
     scratch = scratch >>> 40
@@ -2432,6 +2644,14 @@ defmodule Bench.Bench do
             crit: value_game_event_hit_crit
           } = value_game_event_hit
 
+          if value_game_event_hit_target_id < 0 do
+            raise ArgumentError, "value.game_event.hit.target_id is below the wire minimum"
+          end
+
+          if value_game_event_hit_target_id > 4095 do
+            raise ArgumentError, "value.game_event.hit.target_id is above the wire maximum"
+          end
+
           v = value_game_event_hit_target_id &&& 0xFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 12
@@ -2485,6 +2705,15 @@ defmodule Bench.Bench do
           v = value_game_event_chat_channel
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 2
+
+          if value_game_event_chat_speaker < 0 do
+            raise ArgumentError, "value.game_event.chat.speaker is below the wire minimum"
+          end
+
+          if value_game_event_chat_speaker > 4095 do
+            raise ArgumentError, "value.game_event.chat.speaker is above the wire maximum"
+          end
+
           v = value_game_event_chat_speaker &&& 0xFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 12
@@ -2499,6 +2728,14 @@ defmodule Bench.Bench do
             item_id: value_game_event_pickup_item_id,
             amount: value_game_event_pickup_amount
           } = value_game_event_pickup
+
+          if value_game_event_pickup_item_id < 0 do
+            raise ArgumentError, "value.game_event.pickup.item_id is below the wire minimum"
+          end
+
+          if value_game_event_pickup_item_id > 1023 do
+            raise ArgumentError, "value.game_event.pickup.item_id is above the wire maximum"
+          end
 
           v = value_game_event_pickup_item_id &&& 0x3FF
           scratch = scratch ||| v <<< scratch_bits
@@ -2628,6 +2865,15 @@ defmodule Bench.Bench do
     scratch = scratch >>> 24
     # align: zero-pad to the byte boundary (SPEC §4.3)
     data = <<data::binary, scratch>>
+
+    if value_crc_hint < 0 do
+      raise ArgumentError, "value.crc_hint is below the wire minimum"
+    end
+
+    if value_crc_hint > 16_777_215 do
+      raise ArgumentError, "value.crc_hint is above the wire maximum"
+    end
+
     v = value_crc_hint &&& 0xFFFFFF
     scratch = v
     v = if value_has_extra, do: 1, else: 0
@@ -3157,6 +3403,14 @@ defmodule Bench.Bench do
       firing: e_firing
     } = e
 
+    if e_entity_id < 0 do
+      raise ArgumentError, "e.entity_id is below the wire minimum"
+    end
+
+    if e_entity_id > 4095 do
+      raise ArgumentError, "e.entity_id is above the wire maximum"
+    end
+
     v = e_entity_id &&& 0xFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
@@ -3200,9 +3454,27 @@ defmodule Bench.Bench do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
+
+    if e_yaw < 0 do
+      raise ArgumentError, "e.yaw is below the wire minimum"
+    end
+
+    if e_yaw > 511 do
+      raise ArgumentError, "e.yaw is above the wire maximum"
+    end
+
     v = e_yaw &&& 0x1FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
+
+    if e_pitch < 0 do
+      raise ArgumentError, "e.pitch is below the wire minimum"
+    end
+
+    if e_pitch > 511 do
+      raise ArgumentError, "e.pitch is above the wire maximum"
+    end
+
     v = e_pitch &&& 0x1FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
@@ -3290,6 +3562,15 @@ defmodule Bench.Bench do
 
   defp wZbench_mixedZstats([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     %{stat_id: e1_stat_id, delta: e1_delta} = e1
+
+    if e1_stat_id < 0 do
+      raise ArgumentError, "e.stat_id is below the wire minimum"
+    end
+
+    if e1_stat_id > 255 do
+      raise ArgumentError, "e.stat_id is above the wire maximum"
+    end
+
     v = e1_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3306,6 +3587,15 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
     %{stat_id: e2_stat_id, delta: e2_delta} = e2
+
+    if e2_stat_id < 0 do
+      raise ArgumentError, "e.stat_id is below the wire minimum"
+    end
+
+    if e2_stat_id > 255 do
+      raise ArgumentError, "e.stat_id is above the wire maximum"
+    end
+
     v = e2_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3322,6 +3612,15 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
     %{stat_id: e3_stat_id, delta: e3_delta} = e3
+
+    if e3_stat_id < 0 do
+      raise ArgumentError, "e.stat_id is below the wire minimum"
+    end
+
+    if e3_stat_id > 255 do
+      raise ArgumentError, "e.stat_id is above the wire maximum"
+    end
+
     v = e3_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3342,6 +3641,15 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
     %{stat_id: e4_stat_id, delta: e4_delta} = e4
+
+    if e4_stat_id < 0 do
+      raise ArgumentError, "e.stat_id is below the wire minimum"
+    end
+
+    if e4_stat_id > 255 do
+      raise ArgumentError, "e.stat_id is above the wire maximum"
+    end
+
     v = e4_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3366,6 +3674,15 @@ defmodule Bench.Bench do
 
   defp wZbench_mixedZstats([e | rest], data, scratch, scratch_bits) do
     %{stat_id: e_stat_id, delta: e_delta} = e
+
+    if e_stat_id < 0 do
+      raise ArgumentError, "e.stat_id is below the wire minimum"
+    end
+
+    if e_stat_id > 255 do
+      raise ArgumentError, "e.stat_id is above the wire maximum"
+    end
+
     v = e_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
