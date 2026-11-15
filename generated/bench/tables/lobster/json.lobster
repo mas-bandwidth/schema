@@ -1534,6 +1534,10 @@ def j_read_base64(r:JsonReader, sl:Slot, bound:int) -> bool:
             malformed = true
     if malformed:
         return j_refuse(r, "kind_mismatch")
+    // §16.8: only the canonical spelling reads; unpadded text decodes but
+    // is not it
+    if pad == 0 and symbols % 4 != 0:
+        return j_refuse(r, "base64_not_canonical")
     let total = symbols * 6 / 8
     let keep = total
     if bound >= 0 and keep > bound:
@@ -1551,6 +1555,10 @@ def j_read_base64(r:JsonReader, sl:Slot, bound:int) -> bool:
             out = write_int8_le(out, at, (acc >> held) & 0xFF)
             at++
         i++
+    // §16.8: the pad bits of the last symbol are zero in the canonical
+    // spelling
+    if (acc & ((1 << held) - 1)) != 0:
+        return j_refuse(r, "base64_not_canonical")
     sl.cell.s = out
     sl.count = keep
     return true
