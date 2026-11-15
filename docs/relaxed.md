@@ -257,13 +257,6 @@ green)` and its slug.
   at announce time. Real fix: a fixture shape the engine admits, following
   TestMessageSkipRefusesElementWithNoProgress (a text-list element with
   length bound 0).
-- `relax/go-fixed-read-dead-bytes-zero`: `internal/codegen/gotable/fuzzunit`
-  TestGeneratedFixedAgreesWithEngine and TestGeneratedFixedOneVerdictEveryByte
-  hold (count and log, not compare) the inputs the generated Go fixed read
-  accepts and the engine refuses for non-zero dead bytes (325796bca); every
-  other disagreement is still compared. Real fix: the generated Go fixed read
-  refuses non-zero dead bytes (internal/codegen/gotable/fixedform.go,
-  tables/goruntime), the fuzzunit tree is regenerated, and the hold goes.
 
 ## Proof cells
 
