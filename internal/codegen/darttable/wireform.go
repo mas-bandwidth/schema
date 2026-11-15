@@ -543,6 +543,19 @@ func (g *wireGen) emitConstants() {
 	g.pf("// body, an array, a keyed or map body, and a union.\n")
 	g.pf("bool _structuralKind(int kind) => kind == %d || kind == %d || kind == %d || kind == %d;\n",
 		ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed, ir.TableKindUnion)
+	g.pf("\n")
+	g.pf("// _arrayElementKindAllowed is §3's closed list for an array body (kind 14):\n")
+	g.pf("// 1–13, 15, 17 and 18–30. Any other element kind is damage under any count\n")
+	g.pf("// (internal/tablewire elementkinds.go).\n")
+	g.pf("bool _arrayElementKindAllowed(int kind) =>\n")
+	g.pf("    (kind >= %d && kind <= %d) || kind == %d || kind == %d || (kind >= %d && kind <= %d);\n",
+		ir.TableKindBool, ir.TableKindTable, ir.TableKindUnion, ir.TableKindPointer, ir.TableKindI128, ir.TableKindEnum)
+	g.pf("\n")
+	g.pf("// _keyedElementKindAllowed is §3's closed list for an enum-keyed body\n")
+	g.pf("// (kind 16): 1–11, 13 and 18–30 (internal/tablewire elementkinds.go).\n")
+	g.pf("bool _keyedElementKindAllowed(int kind) =>\n")
+	g.pf("    (kind >= %d && kind <= %d) || kind == %d || (kind >= %d && kind <= %d);\n",
+		ir.TableKindBool, ir.TableKindF64, ir.TableKindTable, ir.TableKindI128, ir.TableKindEnum)
 }
 
 // emitRuntime emits the generic form-1 writer/reader (§3, §4), shared by every
@@ -2011,6 +2024,9 @@ final class TableWireReader {
         return depth < _kBinaryMaxDepth && _wireBody(b, false, out, depth + 1);
       case 14:
         if (depth >= _kBinaryMaxDepth || b.length < 2) return false;
+        // THE ELEMENT KIND IS CLOSED, judged under any count, a count of 0
+        // included (docs/SPEC-TABLES.md §3, §4).
+        if (!_arrayElementKindAllowed(b[0])) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
         var off = head.$2;
@@ -2021,6 +2037,9 @@ final class TableWireReader {
         return off == b.length;
       case 16:
         if (depth >= _kBinaryMaxDepth || b.length < 2) return false;
+        // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under
+        // any count, a count of 0 included (docs/SPEC-TABLES.md §3, §4).
+        if (!_keyedElementKindAllowed(b[0])) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
         var off = head.$2;

@@ -969,7 +969,7 @@ function _M.ZeroTestData(value: any)
   value.Uint64Value = 0i
   value.Int64Full = 0i
   value.Int64Range = 0i
-  for i = 1, 17 do value.FixedBytes[i] = 0 end
+  buffer.fill(value.FixedBytes, 0, 0)
   buffer.fill(value.Text, 0, 0)
   value.TextLength = 0
 end

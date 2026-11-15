@@ -110,7 +110,10 @@ fn readWire<T>(name: const u8[:], wire: const u8[:], bits: i64, value: T&, want:
         check(false, str(name, ": read: ", serialize_refusal_name(serialize_error(r))));
         return;
     }
-    check(serialize_bits_processed(r) == bits, str(name, ": read consumed bits"));
+    // the public read ends the packet, so it consumes the final byte's padding
+    // to the stream's end (SPEC §5); the golden's bits are the object's.
+    let consumed = (bits + 7) / 8 * 8;
+    check(serialize_bits_processed(r) == consumed, str(name, ": read consumed bits"));
     check(value == want, str(name, ": read values and backing storage"));
 }
 

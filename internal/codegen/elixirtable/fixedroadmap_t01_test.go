@@ -58,9 +58,9 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
     check(not is_list(reason), "cut #{cut}: nothing was decoded")
     check(report == R.report(), "cut #{cut}: a named refusal moves nothing and is never malformed: #{why(report)}")
   end
-  {wtag, wvalues, wreport} = load(binary_part(data, 0, 20 + l))
-  check(wtag == :ok and wvalues == [] and true,
-    "20 + L == len(file) is a whole layout and no records: #{inspect({wtag, wvalues})}")`)
+  {wtag, wvalues, _wreport} = load(binary_part(data, 0, 20 + l))
+  check(wtag == :error,
+    "20 + L == len(file) is a whole layout and no records, and a fixed-form file holds at least one record: #{inspect({wtag, wvalues})}")`)
 		}},
 
 		// §5.3 step 10: "n := rest / record_bytes ; if n > capacity: REFUSE
