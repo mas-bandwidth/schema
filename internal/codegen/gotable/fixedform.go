@@ -1012,6 +1012,14 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, dest, expr string, depth, 
 		g.pf("%s{\n%s\tp := uint8(0)\n%s\tif %s {\n%s\t\tp = 1\n%s\t}\n%s\ttableFixedPut8(%s, p)\n%s}\n",
 			ind, ind, ind, expr, ind, ind, ind, dest, ind)
 	case ir.TFloat32:
+		if f.HasFloatRange {
+			// A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md
+			// §3.3): every value has one encoding, so the zero test stores the
+			// +0 bits. A plain float's -0 is stored bit-exact below.
+			g.pf("%sif %s == 0 {\n%s\ttableFixedPutF32(%s, 0)\n%s} else {\n%s\ttableFixedPutF32(%s, %s)\n%s}\n",
+				ind, expr, ind, dest, ind, ind, dest, expr, ind)
+			return
+		}
 		g.pf("%stableFixedPutF32(%s, %s)\n", ind, dest, expr)
 	case ir.TFloat64:
 		g.pf("%stableFixedPutF64(%s, %s)\n", ind, dest, expr)

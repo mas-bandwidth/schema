@@ -7911,9 +7911,21 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	copy(b[1126:][4:], value.PlayerName[:min(uint32(value.PlayerNameLength), 15)])
 	tableFixedPut32(b[1145:], uint32(value.PayloadLength))
 	copy(b[1145:][4:], value.Payload[:min(uint32(value.PayloadLength), 16)])
-	tableFixedPutF32(b[1165:], value.AimX)
-	tableFixedPutF32(b[1169:], value.AimY)
-	tableFixedPutF32(b[1173:], value.AimZ)
+	if value.AimX == 0 {
+		tableFixedPutF32(b[1165:], 0)
+	} else {
+		tableFixedPutF32(b[1165:], value.AimX)
+	}
+	if value.AimY == 0 {
+		tableFixedPutF32(b[1169:], 0)
+	} else {
+		tableFixedPutF32(b[1169:], value.AimY)
+	}
+	if value.AimZ == 0 {
+		tableFixedPutF32(b[1173:], 0)
+	} else {
+		tableFixedPutF32(b[1173:], value.AimZ)
+	}
 	tableFixedPutF32(b[1177:], value.Recoil)
 	tableFixedPutF64(b[1181:], value.Drift)
 	tableFixedPut128(b[1189:], value.WideKey.Lo, value.WideKey.Hi)
