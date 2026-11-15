@@ -143,7 +143,8 @@
         "packet-void-c-read-negative-control",
         "packet-void-c-write-negative-control",
         "packet-void-cpp-read-negative-control",
-        "packet-void-cpp-write-negative-control"
+        "packet-void-cpp-write-negative-control",
+        "packet-end-cpp-negative-control"
       ]
     },
     {

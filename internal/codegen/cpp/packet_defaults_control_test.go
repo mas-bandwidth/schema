@@ -564,6 +564,35 @@ public:
 
     int64_t GetBitsProcessed() const { return bits_; }
 
+    // The end check: no whole byte may follow the object, and the final
+    // byte's unused bits must be zero (SPEC §5).
+    bool SerializeEnd()
+    {
+        if ( failed_ || bits_ > size_ * 8 )
+        {
+            failed_ = true;
+            return false;
+        }
+        const int64_t remaining = size_ * 8 - bits_;
+        if ( remaining >= 8 )
+        {
+            failed_ = true;
+            return false;
+        }
+        if ( remaining > 0 )
+        {
+            uint64_t padding = 0;
+            if ( !ReadBitsRaw( padding, int32_t( remaining ) ) )
+                return false;
+            if ( padding != 0 )
+            {
+                failed_ = true;
+                return false;
+            }
+        }
+        return true;
+    }
+
 private:
     bool AlignToByte()
     {
@@ -644,6 +673,12 @@ private:
     do \
     { \
         if ( !( stream ).ReadInt( ( value ), ( minimum ), ( maximum ) ) ) \
+            return false; \
+    } while ( 0 )
+#define serialize_end( stream ) \
+    do \
+    { \
+        if ( !( stream ).SerializeEnd() ) \
             return false; \
     } while ( 0 )
 `
