@@ -612,7 +612,7 @@ func gatherConformanceFixtures(root string) ([]wideFixture, error) {
 		out = append(out, wideFixture{schema: schema, root: table, file: file, manifest: manifest, row: row})
 		return nil
 	}
-	for _, manifest := range []string{dir + "/MANIFEST.txt", dir + "/JSON-HOSTILE-NUMBER-TOKEN.txt"} {
+	for _, manifest := range []string{dir + "/MANIFEST.txt", dir + "/bom-entry/MANIFEST.txt", dir + "/JSON-HOSTILE-NUMBER-TOKEN.txt"} {
 		rows, err := manifestLines(root, manifest)
 		if err != nil {
 			// an absent number-token manifest binds nothing; its exemption
@@ -649,7 +649,8 @@ func gatherConformanceFixtures(root string) ([]wideFixture, error) {
 			case "retain":
 				files = append(files, dir+"/retain-values/"+name+".json")
 			case "rewrite":
-				files = append(files, dir+"/rewrite/"+name+".json")
+				// and the hand-authored out-of-order text of the same value
+				files = append(files, dir+"/rewrite/"+name+".json", dir+"/rewrite/"+name+"_unsorted.json")
 			case "framing":
 				if len(f) >= 7 && f[6] != "-" {
 					files = append(files, f[6])
@@ -684,10 +685,14 @@ func gatherConformanceFixtures(root string) ([]wideFixture, error) {
 	for _, fx := range out {
 		seen[fx.file] = true
 	}
+	var unbound []string
 	for _, file := range all {
 		if !seen[file] {
-			return nil, fmt.Errorf("%s: no manifest row binds this JSON file to a schema", file)
+			unbound = append(unbound, file)
 		}
+	}
+	if len(unbound) > 0 {
+		return nil, fmt.Errorf("no manifest row binds these JSON files to a schema: %s", strings.Join(unbound, ", "))
 	}
 	return out, nil
 }
