@@ -108,11 +108,11 @@ func cDeadPlanLine(t *testing.T, header, snake, comment string) string {
 		t.Fatalf("the header publishes no %s_fixed_plan", snake)
 	}
 	body := header[at+len(marker):]
-	end := strings.Index(body, "};")
-	if end < 0 {
+	before, _, ok := strings.Cut(body, "};")
+	if !ok {
 		t.Fatalf("the header's %s_fixed_plan has no closing brace", snake)
 	}
-	for line := range strings.SplitSeq(body[:end], "\n") {
+	for line := range strings.SplitSeq(before, "\n") {
 		if strings.Contains(line, "/* "+comment+" */") {
 			return line
 		}

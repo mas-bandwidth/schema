@@ -14,6 +14,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -277,7 +278,9 @@ func TestLuauCookOpenAgreesWithGo(t *testing.T) {
 			}
 		})
 	}
-	if compared == 0 || refused == 0 {
+	// Every probe shells out to the pinned Luau interpreter and skips when the
+	// slow half is off, so the floor holds only where the probes ran.
+	if slowtest.Enabled() && (compared == 0 || refused == 0) {
 		t.Fatalf("comparisons %d, refusals %d", compared, refused)
 	}
 }
