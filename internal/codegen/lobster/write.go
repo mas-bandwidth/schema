@@ -285,7 +285,14 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 func emitCompressedFloat(g *Gen, val string, f *ir.Field, indent string) {
 	steps, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	min32 := float32(f.FMin)
-	delta := float32(f.FMax) - min32
+	max32 := float32(f.FMax)
+	delta := max32 - min32
+	// A finite value is held inside [min, max] before quantizing by a debug
+	// assert (SPEC §5.1 row 10); --runtime-no-asserts removes it. A non-finite
+	// value is the runtime's trap in every build, and the integer clamp after
+	// rounding stays part of quantizing an in-range value.
+	g.Pf("%sassert %s - %s != 0.0 or (%s >= %s and %s <= %s) // a finite value is in [min, max] (SPEC §5.1 row 10)\n",
+		indent, val, val, val, FormatFloat32(float64(min32)), val, FormatFloat32(float64(max32)))
 	g.Pf("%ss.serialize_compressed_float_precomputed(%s, %d, %d, %s, %s) // the step index; a non-finite value traps (SPEC §4.3)\n",
 		indent, val, steps, bits, FormatFloat32(float64(delta)), FormatFloat32(float64(min32)))
 }
