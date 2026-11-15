@@ -5667,31 +5667,24 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_body_pack_(struct graphdemo_tabl
 static SCHEMA_UNUSED int schema_graphdemo_depot_body_pack_(struct graphdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
 static SCHEMA_UNUSED int schema_graphdemo_album_body_pack_(struct graphdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
 SCHEMA_TABLE_STATIC_ASSERT( graphdemo_schema_graphdemo_settings_arena_alignment_, SCHEMA_TABLE_ALIGNOF(graphdemo_settings_t) <= GRAPHDEMO_K_TABLE_ALIGN, "a table node's alignment must fit the arena's" );
-static const graphdemo_table_node_type_t schema_graphdemo_settings_node_type_;
 static SCHEMA_UNUSED int schema_graphdemo_settings_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage );
 static SCHEMA_UNUSED int schema_graphdemo_settings_cycle_edges_( graphdemo_table_cycle_t * cycle, const void * storage );
 SCHEMA_TABLE_STATIC_ASSERT( graphdemo_schema_graphdemo_list_node_arena_alignment_, SCHEMA_TABLE_ALIGNOF(graphdemo_list_node_t) <= GRAPHDEMO_K_TABLE_ALIGN, "a table node's alignment must fit the arena's" );
-static const graphdemo_table_node_type_t schema_graphdemo_list_node_node_type_;
 static SCHEMA_UNUSED int schema_graphdemo_list_node_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage );
 static SCHEMA_UNUSED int schema_graphdemo_list_node_cycle_edges_( graphdemo_table_cycle_t * cycle, const void * storage );
 SCHEMA_TABLE_STATIC_ASSERT( graphdemo_schema_graphdemo_tree_node_arena_alignment_, SCHEMA_TABLE_ALIGNOF(graphdemo_tree_node_t) <= GRAPHDEMO_K_TABLE_ALIGN, "a table node's alignment must fit the arena's" );
-static const graphdemo_table_node_type_t schema_graphdemo_tree_node_node_type_;
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage );
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_cycle_edges_( graphdemo_table_cycle_t * cycle, const void * storage );
 SCHEMA_TABLE_STATIC_ASSERT( graphdemo_schema_graphdemo_layer_arena_alignment_, SCHEMA_TABLE_ALIGNOF(graphdemo_layer_t) <= GRAPHDEMO_K_TABLE_ALIGN, "a table node's alignment must fit the arena's" );
-static const graphdemo_table_node_type_t schema_graphdemo_layer_node_type_;
 static SCHEMA_UNUSED int schema_graphdemo_layer_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage );
 static SCHEMA_UNUSED int schema_graphdemo_layer_cycle_edges_( graphdemo_table_cycle_t * cycle, const void * storage );
 SCHEMA_TABLE_STATIC_ASSERT( graphdemo_schema_graphdemo_scene_arena_alignment_, SCHEMA_TABLE_ALIGNOF(graphdemo_scene_t) <= GRAPHDEMO_K_TABLE_ALIGN, "a table node's alignment must fit the arena's" );
-static const graphdemo_table_node_type_t schema_graphdemo_scene_node_type_;
 static SCHEMA_UNUSED int schema_graphdemo_scene_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage );
 static SCHEMA_UNUSED int schema_graphdemo_scene_cycle_edges_( graphdemo_table_cycle_t * cycle, const void * storage );
 SCHEMA_TABLE_STATIC_ASSERT( graphdemo_schema_graphdemo_depot_arena_alignment_, SCHEMA_TABLE_ALIGNOF(graphdemo_depot_t) <= GRAPHDEMO_K_TABLE_ALIGN, "a table node's alignment must fit the arena's" );
-static const graphdemo_table_node_type_t schema_graphdemo_depot_node_type_;
 static SCHEMA_UNUSED int schema_graphdemo_depot_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage );
 static SCHEMA_UNUSED int schema_graphdemo_depot_cycle_edges_( graphdemo_table_cycle_t * cycle, const void * storage );
 SCHEMA_TABLE_STATIC_ASSERT( graphdemo_schema_graphdemo_album_arena_alignment_, SCHEMA_TABLE_ALIGNOF(graphdemo_album_t) <= GRAPHDEMO_K_TABLE_ALIGN, "a table node's alignment must fit the arena's" );
-static const graphdemo_table_node_type_t schema_graphdemo_album_node_type_;
 static SCHEMA_UNUSED int schema_graphdemo_album_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage );
 static SCHEMA_UNUSED int schema_graphdemo_album_cycle_edges_( graphdemo_table_cycle_t * cycle, const void * storage );
 static SCHEMA_UNUSED int schema_graphdemo_settings_extent_(graphdemo_table_numbering_t * n,const void * storage,uint8_t * target,int64_t * at);
@@ -10997,6 +10990,32 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_album_wire_storage_(const graphdem
 }
 static SCHEMA_UNUSED int schema_graphdemo_settings_node_save_( graphdemo_table_writer_t * w, const void * storage )
 { return graphdemo_settings_save_body(w,(const graphdemo_settings_t *)storage); }
+static const graphdemo_table_node_type_t schema_graphdemo_settings_node_type_ = { UINT64_C(0x9d8b8aa2b404c2c8), sizeof(graphdemo_settings_t), schema_graphdemo_settings_node_save_, schema_graphdemo_settings_graph_edges_, 0, schema_graphdemo_settings_extent_, schema_graphdemo_settings_wire_storage_, 4, 0, schema_graphdemo_settings_body_pack_, NULL };
+
+static SCHEMA_UNUSED int schema_graphdemo_list_node_node_save_( graphdemo_table_writer_t * w, const void * storage )
+{ return graphdemo_list_node_save_body(w,(const graphdemo_list_node_t *)storage); }
+static const graphdemo_table_node_type_t schema_graphdemo_list_node_node_type_ = { UINT64_C(0xf60ec899a5a69fa9), sizeof(graphdemo_list_node_t), schema_graphdemo_list_node_node_save_, schema_graphdemo_list_node_graph_edges_, 0, schema_graphdemo_list_node_extent_, schema_graphdemo_list_node_wire_storage_, 8, 0, schema_graphdemo_list_node_body_pack_, NULL };
+
+static SCHEMA_UNUSED int schema_graphdemo_tree_node_node_save_( graphdemo_table_writer_t * w, const void * storage )
+{ return graphdemo_tree_node_save_body(w,(const graphdemo_tree_node_t *)storage); }
+static const graphdemo_table_node_type_t schema_graphdemo_tree_node_node_type_ = { UINT64_C(0xb97e90a3784c431d), sizeof(graphdemo_tree_node_t), schema_graphdemo_tree_node_node_save_, schema_graphdemo_tree_node_graph_edges_, 0, schema_graphdemo_tree_node_extent_, schema_graphdemo_tree_node_wire_storage_, 8, 0, schema_graphdemo_tree_node_body_pack_, NULL };
+
+static SCHEMA_UNUSED int schema_graphdemo_layer_node_save_( graphdemo_table_writer_t * w, const void * storage )
+{ return graphdemo_layer_save_body(w,(const graphdemo_layer_t *)storage); }
+static const graphdemo_table_node_type_t schema_graphdemo_layer_node_type_ = { UINT64_C(0x9d167ef77aed79b6), sizeof(graphdemo_layer_t), schema_graphdemo_layer_node_save_, schema_graphdemo_layer_graph_edges_, 0, schema_graphdemo_layer_extent_, schema_graphdemo_layer_wire_storage_, 8, 0, schema_graphdemo_layer_body_pack_, NULL };
+
+static SCHEMA_UNUSED int schema_graphdemo_scene_node_save_( graphdemo_table_writer_t * w, const void * storage )
+{ return graphdemo_scene_save_body(w,(const graphdemo_scene_t *)storage); }
+static const graphdemo_table_node_type_t schema_graphdemo_scene_node_type_ = { UINT64_C(0x4a9a31623ab5f213), sizeof(graphdemo_scene_t), schema_graphdemo_scene_node_save_, schema_graphdemo_scene_graph_edges_, 0, schema_graphdemo_scene_extent_, schema_graphdemo_scene_wire_storage_, 8, 0, schema_graphdemo_scene_body_pack_, NULL };
+
+static SCHEMA_UNUSED int schema_graphdemo_depot_node_save_( graphdemo_table_writer_t * w, const void * storage )
+{ return graphdemo_depot_save_body(w,(const graphdemo_depot_t *)storage); }
+static const graphdemo_table_node_type_t schema_graphdemo_depot_node_type_ = { UINT64_C(0x327fe6dc702553fd), sizeof(graphdemo_depot_t), schema_graphdemo_depot_node_save_, schema_graphdemo_depot_graph_edges_, 0, schema_graphdemo_depot_extent_, schema_graphdemo_depot_wire_storage_, 8, 0, schema_graphdemo_depot_body_pack_, NULL };
+
+static SCHEMA_UNUSED int schema_graphdemo_album_node_save_( graphdemo_table_writer_t * w, const void * storage )
+{ return graphdemo_album_save_body(w,(const graphdemo_album_t *)storage); }
+static const graphdemo_table_node_type_t schema_graphdemo_album_node_type_ = { UINT64_C(0xd858c2cb7f1514cc), sizeof(graphdemo_album_t), schema_graphdemo_album_node_save_, schema_graphdemo_album_graph_edges_, 0, schema_graphdemo_album_extent_, schema_graphdemo_album_wire_storage_, 8, 0, schema_graphdemo_album_body_pack_, NULL };
+
 static SCHEMA_UNUSED int schema_graphdemo_settings_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage )
 {
     const graphdemo_settings_t * value=(const graphdemo_settings_t *)storage;
@@ -11009,10 +11028,6 @@ static SCHEMA_UNUSED int schema_graphdemo_settings_cycle_edges_( graphdemo_table
     (void)value; (void)cycle;
     return 1;
 }
-static const graphdemo_table_node_type_t schema_graphdemo_settings_node_type_ = { UINT64_C(0x9d8b8aa2b404c2c8), sizeof(graphdemo_settings_t), schema_graphdemo_settings_node_save_, schema_graphdemo_settings_graph_edges_, 0, schema_graphdemo_settings_extent_, schema_graphdemo_settings_wire_storage_, 4, 0, schema_graphdemo_settings_body_pack_, NULL };
-
-static SCHEMA_UNUSED int schema_graphdemo_list_node_node_save_( graphdemo_table_writer_t * w, const void * storage )
-{ return graphdemo_list_node_save_body(w,(const graphdemo_list_node_t *)storage); }
 static SCHEMA_UNUSED int schema_graphdemo_list_node_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage )
 {
     const graphdemo_list_node_t * value=(const graphdemo_list_node_t *)storage;
@@ -11027,10 +11042,6 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_cycle_edges_( graphdemo_tabl
     if (!graphdemo_table_cycle_slot(cycle,&value->next)) { return 0; }
     return 1;
 }
-static const graphdemo_table_node_type_t schema_graphdemo_list_node_node_type_ = { UINT64_C(0xf60ec899a5a69fa9), sizeof(graphdemo_list_node_t), schema_graphdemo_list_node_node_save_, schema_graphdemo_list_node_graph_edges_, 0, schema_graphdemo_list_node_extent_, schema_graphdemo_list_node_wire_storage_, 8, 0, schema_graphdemo_list_node_body_pack_, NULL };
-
-static SCHEMA_UNUSED int schema_graphdemo_tree_node_node_save_( graphdemo_table_writer_t * w, const void * storage )
-{ return graphdemo_tree_node_save_body(w,(const graphdemo_tree_node_t *)storage); }
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage )
 {
     const graphdemo_tree_node_t * value=(const graphdemo_tree_node_t *)storage;
@@ -11047,10 +11058,6 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_cycle_edges_( graphdemo_tabl
     if (!graphdemo_table_cycle_slot(cycle,&value->right)) { return 0; }
     return 1;
 }
-static const graphdemo_table_node_type_t schema_graphdemo_tree_node_node_type_ = { UINT64_C(0xb97e90a3784c431d), sizeof(graphdemo_tree_node_t), schema_graphdemo_tree_node_node_save_, schema_graphdemo_tree_node_graph_edges_, 0, schema_graphdemo_tree_node_extent_, schema_graphdemo_tree_node_wire_storage_, 8, 0, schema_graphdemo_tree_node_body_pack_, NULL };
-
-static SCHEMA_UNUSED int schema_graphdemo_layer_node_save_( graphdemo_table_writer_t * w, const void * storage )
-{ return graphdemo_layer_save_body(w,(const graphdemo_layer_t *)storage); }
 static SCHEMA_UNUSED int schema_graphdemo_layer_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage )
 {
     const graphdemo_layer_t * value=(const graphdemo_layer_t *)storage;
@@ -11065,10 +11072,6 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_cycle_edges_( graphdemo_table_cy
     if (!graphdemo_table_cycle_slot(cycle,&value->head)) { return 0; }
     return 1;
 }
-static const graphdemo_table_node_type_t schema_graphdemo_layer_node_type_ = { UINT64_C(0x9d167ef77aed79b6), sizeof(graphdemo_layer_t), schema_graphdemo_layer_node_save_, schema_graphdemo_layer_graph_edges_, 0, schema_graphdemo_layer_extent_, schema_graphdemo_layer_wire_storage_, 8, 0, schema_graphdemo_layer_body_pack_, NULL };
-
-static SCHEMA_UNUSED int schema_graphdemo_scene_node_save_( graphdemo_table_writer_t * w, const void * storage )
-{ return graphdemo_scene_save_body(w,(const graphdemo_scene_t *)storage); }
 static SCHEMA_UNUSED int schema_graphdemo_scene_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage )
 {
     const graphdemo_scene_t * value=(const graphdemo_scene_t *)storage;
@@ -11099,10 +11102,6 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_cycle_edges_( graphdemo_table_cy
     } }
     return 1;
 }
-static const graphdemo_table_node_type_t schema_graphdemo_scene_node_type_ = { UINT64_C(0x4a9a31623ab5f213), sizeof(graphdemo_scene_t), schema_graphdemo_scene_node_save_, schema_graphdemo_scene_graph_edges_, 0, schema_graphdemo_scene_extent_, schema_graphdemo_scene_wire_storage_, 8, 0, schema_graphdemo_scene_body_pack_, NULL };
-
-static SCHEMA_UNUSED int schema_graphdemo_depot_node_save_( graphdemo_table_writer_t * w, const void * storage )
-{ return graphdemo_depot_save_body(w,(const graphdemo_depot_t *)storage); }
 static SCHEMA_UNUSED int schema_graphdemo_depot_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage )
 {
     const graphdemo_depot_t * value=(const graphdemo_depot_t *)storage;
@@ -11127,10 +11126,6 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_cycle_edges_( graphdemo_table_cy
     if (!graphdemo_table_cycle_slot(cycle,&value->head)) { return 0; }
     return 1;
 }
-static const graphdemo_table_node_type_t schema_graphdemo_depot_node_type_ = { UINT64_C(0x327fe6dc702553fd), sizeof(graphdemo_depot_t), schema_graphdemo_depot_node_save_, schema_graphdemo_depot_graph_edges_, 0, schema_graphdemo_depot_extent_, schema_graphdemo_depot_wire_storage_, 8, 0, schema_graphdemo_depot_body_pack_, NULL };
-
-static SCHEMA_UNUSED int schema_graphdemo_album_node_save_( graphdemo_table_writer_t * w, const void * storage )
-{ return graphdemo_album_save_body(w,(const graphdemo_album_t *)storage); }
 static SCHEMA_UNUSED int schema_graphdemo_album_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage )
 {
     const graphdemo_album_t * value=(const graphdemo_album_t *)storage;
@@ -11149,8 +11144,6 @@ static SCHEMA_UNUSED int schema_graphdemo_album_cycle_edges_( graphdemo_table_cy
     if (!graphdemo_table_cycle_slot(cycle,&value->head)) { return 0; }
     return 1;
 }
-static const graphdemo_table_node_type_t schema_graphdemo_album_node_type_ = { UINT64_C(0xd858c2cb7f1514cc), sizeof(graphdemo_album_t), schema_graphdemo_album_node_save_, schema_graphdemo_album_graph_edges_, 0, schema_graphdemo_album_extent_, schema_graphdemo_album_wire_storage_, 8, 0, schema_graphdemo_album_body_pack_, NULL };
-
 /* ---- ListNode: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 
    MUTABLE: ListNodeBuilder — allocate nodes, wire them together, then Lock.

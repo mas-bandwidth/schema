@@ -5362,7 +5362,6 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int tabledemo_patrol_load_bod
 
 static SCHEMA_UNUSED int schema_tabledemo_patrol_body_pack_(struct tabledemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_schema_tabledemo_patrol_arena_alignment_, SCHEMA_TABLE_ALIGNOF(tabledemo_patrol_t) <= TABLEDEMO_K_TABLE_ALIGN, "a table node's alignment must fit the arena's" );
-static const tabledemo_table_node_type_t schema_tabledemo_patrol_node_type_;
 static SCHEMA_UNUSED int schema_tabledemo_patrol_graph_edges_( tabledemo_table_numbering_t * numbering, const void * storage );
 static SCHEMA_UNUSED int schema_tabledemo_patrol_cycle_edges_( tabledemo_table_cycle_t * cycle, const void * storage );
 static SCHEMA_UNUSED int schema_tabledemo_patrol_extent_(tabledemo_table_numbering_t * n,const void * storage,uint8_t * target,int64_t * at);
@@ -6030,6 +6029,8 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_patrol_wire_storage_(const tablede
 }
 static SCHEMA_UNUSED int schema_tabledemo_patrol_node_save_( tabledemo_table_writer_t * w, const void * storage )
 { return tabledemo_patrol_save_body(w,(const tabledemo_patrol_t *)storage); }
+static const tabledemo_table_node_type_t schema_tabledemo_patrol_node_type_ = { UINT64_C(0x1c182e1c2529027b), sizeof(tabledemo_patrol_t), schema_tabledemo_patrol_node_save_, schema_tabledemo_patrol_graph_edges_, 0, schema_tabledemo_patrol_extent_, schema_tabledemo_patrol_wire_storage_, 4, 0, schema_tabledemo_patrol_body_pack_, NULL };
+
 static SCHEMA_UNUSED int schema_tabledemo_patrol_graph_edges_( tabledemo_table_numbering_t * numbering, const void * storage )
 {
     const tabledemo_patrol_t * value=(const tabledemo_patrol_t *)storage;
@@ -6052,8 +6053,6 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_cycle_edges_( tabledemo_table_c
     (void)value; (void)cycle;
     return 1;
 }
-static const tabledemo_table_node_type_t schema_tabledemo_patrol_node_type_ = { UINT64_C(0x1c182e1c2529027b), sizeof(tabledemo_patrol_t), schema_tabledemo_patrol_node_save_, schema_tabledemo_patrol_graph_edges_, 0, schema_tabledemo_patrol_extent_, schema_tabledemo_patrol_wire_storage_, 4, 0, schema_tabledemo_patrol_body_pack_, NULL };
-
 /* ---- Patrol: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 
    MUTABLE: PatrolBuilder — allocate nodes, wire them together, then Lock.
