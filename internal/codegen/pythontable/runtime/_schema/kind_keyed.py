@@ -4,8 +4,9 @@ A keyed array rides as kind 16: its element kind, the count of PRESENT slots,
 then one (key reference, L, element) triple per present slot, ascending by
 variant ordinal. A slot at its default is elided, and a keyed array with no
 present slot is not written at all. A read places each triple by its key's
-wire id: a key this reader cannot name is skipped by its L and counted
-unknown, and a slot the writer never sent keeps its default. A key reference
+wire id: a key this reader cannot name has its element walked by the
+declaration-free wire check every skipped payload gets (load.py, THE SKIP
+WALK) and is counted unknown, and a slot the writer never sent keeps its default. A key reference
 of 0 or past the id table, a repeated key, an element kind outside the keyed
 body's closed list, a slot whose element does not fill its L exactly, and a
 byte left inside the body's L each refuse the whole load.
@@ -21,34 +22,6 @@ from .kind_int import _width
 # The element kinds a keyed body may open with (§3, THE ELEMENT KINDS ARE
 # CLOSED): the array list without 12, 15 and 17.
 _ELEMENT_KINDS = frozenset((*range(1, 12), 13, *range(18, 31)))
-
-# The fixed payload widths, for the one check an unknown slot's element gets
-# without a declaration (§4, skipped is not unread).
-_FIXED_WIDTH = {
-    1: 1,
-    2: 1,
-    3: 2,
-    4: 4,
-    5: 8,
-    6: 1,
-    7: 2,
-    8: 4,
-    9: 8,
-    10: 4,
-    11: 8,
-    18: 16,
-    19: 16,
-    20: 1,
-    21: 2,
-    22: 4,
-    23: 8,
-    24: 16,
-    25: 1,
-    26: 2,
-    27: 4,
-    28: 8,
-    29: 16,
-}
 
 
 def _elem(fd: FieldDesc) -> FieldDesc:
@@ -100,7 +73,7 @@ class _Keyed:
             yield current, f"{path}[{slot + 1}]"
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
-        from .load import Reader, read_body
+        from .load import Reader, _skip_content, read_body
 
         elem = _elem(fd)
         length = r.varint()
@@ -135,7 +108,10 @@ class _Keyed:
             try:
                 slot = fd.keys.index(key_id)
             except ValueError:
-                _check_unknown(element, elem_kind)
+                # SKIPPED IS NOT UNREAD (§4): a slot this reader cannot name is
+                # walked by the same declaration-free wire check every skipped
+                # payload gets, then counted
+                _skip_content(element, elem_kind, ctx, ctx.depth)
                 ctx.unknown += 1
                 continue
             if target is not None:
@@ -201,16 +177,6 @@ def _write_scalar(w: Any, elem: FieldDesc, value: Any) -> None:
         w.byte(1 if value else 0)
         return
     w.raw(int(value).to_bytes(_width(elem), "little", signed=elem.lo < 0))
-
-
-def _check_unknown(element: memoryview, elem_kind: int) -> None:
-    width = _FIXED_WIDTH.get(elem_kind)
-    if width is None:
-        return
-    if len(element) != width:
-        raise _damaged("an unknown keyed slot whose L is not its kind's width")
-    if elem_kind == 1 and element[0] > 1:
-        raise _damaged("a bool payload is not 0 or 1")
 
 
 kinds.register("keyed", _Keyed())
