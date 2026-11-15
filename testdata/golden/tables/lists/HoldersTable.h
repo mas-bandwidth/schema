@@ -1554,7 +1554,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -13896,7 +13896,7 @@ inline int64_t DeckMeasureBody( const Ctx & ctx, const TableNumbering & numberin
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.hands_count < 0 || value.hands_count > 3 ) { return -1; } // storage invariant
+    schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.hands_count > 0 )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );
@@ -13919,7 +13919,7 @@ inline bool DeckSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
 {
     (void) ctx;
     (void) numbering;
-    if ( value.hands_count < 0 || value.hands_count > 3 ) { return false; } // storage invariant
+    schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.hands_count > 0 )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );
@@ -23416,7 +23416,7 @@ inline int64_t DeckMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.hands_count < 0 || value.hands_count > 3 ) { return -1; } // storage invariant
+    schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.hands_count > 0 )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );
@@ -23440,7 +23440,7 @@ inline bool DeckSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
 {
     (void) ctx;
     (void) numbering;
-    if ( value.hands_count < 0 || value.hands_count > 3 ) { return false; } // storage invariant
+    schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.hands_count > 0 )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );

@@ -1512,7 +1512,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -10716,7 +10716,7 @@ inline int64_t PatrolMeasureBody( const Ctx & ctx, const TableNumbering & number
     }
     if ( !value.active )
     {
-        if ( value.note_length < 0 || value.note_length > 8 ) { return -1; } // storage invariant
+        schema_assert( value.note_length >= 0 && value.note_length <= 8 ); // storage invariant, debug only (§5.1)
         if ( value.note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); } // note
     }
     return bytes;
@@ -10768,7 +10768,7 @@ inline bool PatrolSaveBodyFields( const Ctx & ctx, const TableNumbering & number
     }
     if ( !value.active )
     {
-        if ( value.note_length < 0 || value.note_length > 8 ) { return false; } // storage invariant
+        schema_assert( value.note_length >= 0 && value.note_length <= 8 ); // storage invariant, debug only (§5.1)
         if ( value.note_length > 0 )
         {
             w.header( ids.ref_at( 37, 0x3bf8fbbad1587cddull ), 12 ); // note
@@ -12127,7 +12127,7 @@ inline int64_t PatrolMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
     }
     if ( !value.active )
     {
-        if ( value.note_length < 0 || value.note_length > 8 ) { return -1; } // storage invariant
+        schema_assert( value.note_length >= 0 && value.note_length <= 8 ); // storage invariant, debug only (§5.1)
         if ( value.note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); } // note
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
@@ -12180,7 +12180,7 @@ inline bool PatrolSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
     }
     if ( !value.active )
     {
-        if ( value.note_length < 0 || value.note_length > 8 ) { return false; } // storage invariant
+        schema_assert( value.note_length >= 0 && value.note_length <= 8 ); // storage invariant, debug only (§5.1)
         if ( value.note_length > 0 )
         {
             w.header( ids.ref_at( 37, 0x3bf8fbbad1587cddull ), 12 ); // note

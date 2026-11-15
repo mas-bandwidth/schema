@@ -1512,7 +1512,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -10978,7 +10978,7 @@ inline int64_t GunnerSettingsMeasureBody( TableIds & ids, const GunnerSettings &
     if ( !TableFloatFinite( value.reaction ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.reaction ) != table_float_to_bits( 0.2f ) ) { bytes += TableLebBytes( ids.ref_at( 101, 0xb75aa3662201646aull ) ) + 1 + 4; } // reaction
     if ( value.tracking != false ) { bytes += TableLebBytes( ids.ref_at( 90, 0xa6bf719a4602b0bcull ) ) + 1 + 1; } // tracking
-    if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return -1; } // storage invariant
+    schema_assert( value.callsign_length >= 0 && value.callsign_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( value.callsign_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 53, 0x5bc44627b9848818ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.callsign_length ) ) + ( value.callsign_length ); } // callsign
     return bytes;
 }
@@ -11006,7 +11006,7 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
         w.header( ids.ref_at( 90, 0xa6bf719a4602b0bcull ), 1 ); // tracking
         w.put8( value.tracking ? 1 : 0 );
     }
-    if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return false; } // storage invariant
+    schema_assert( value.callsign_length >= 0 && value.callsign_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( value.callsign_length > 0 )
     {
         w.header( ids.ref_at( 53, 0x5bc44627b9848818ull ), 12 ); // callsign
@@ -11319,7 +11319,7 @@ inline int64_t GunnerSettingsMeasureMessageBody( int64_t at, const GunnerSetting
         bits += kTableMessageRefBitsHere;
         bits += 1;
     }
-    if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return -1; } // storage invariant
+    schema_assert( value.callsign_length >= 0 && value.callsign_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( value.callsign_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -11348,7 +11348,7 @@ inline bool GunnerSettingsSaveMessageBody( TableBitWriter & w, const GunnerSetti
         w.put( 12, kTableMessageRefBitsHere );
         w.put( value.tracking ? 1 : 0, 1 );
     }
-    if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return false; } // storage invariant
+    schema_assert( value.callsign_length >= 0 && value.callsign_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( value.callsign_length > 0 )
     {
         w.put( 13, kTableMessageRefBitsHere );
@@ -11629,13 +11629,13 @@ inline bool GunnerSettingsLoadMessages( GunnerSettings * values, int64_t * count
 inline int64_t ShipEntryMeasureBody( TableIds & ids, const ShipEntry & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.display_name_length >= 0 && value.display_name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.display_name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x2d21d7cd66bd5a5dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.display_name_length ) ) + ( value.display_name_length ); } // display_name
     if ( !TableFloatFinite( value.health ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.health ) != table_float_to_bits( 100.0f ) ) { bytes += TableLebBytes( ids.ref_at( 67, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     if ( !TableFloatFinite( value.mass ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.mass ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 20, 0x1f3757a2ce7b0ab1ull ) ) + 1 + 4; } // mass
-    if ( value.hardpoints_count < 0 || value.hardpoints_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.hardpoints_count > 0 )
     {
         const uint64_t ref_hardpoints = ids.ref_at( 77, 0x95d0cce09ca82b73ull );
@@ -11666,7 +11666,7 @@ inline int64_t ShipEntryMeasure( const ShipEntry & value )
 
 TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBody( TableWriter & w, TableIds & ids, const ShipEntry & value )
 {
-    if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.display_name_length >= 0 && value.display_name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.display_name_length > 0 )
     {
         w.header( ids.ref_at( 27, 0x2d21d7cd66bd5a5dull ), 12 ); // display_name
@@ -11685,7 +11685,7 @@ TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBody( TableWriter & w, TableIds & ids, 
         if ( !TableFloatFinite( value.mass ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.mass ) );
     }
-    if ( value.hardpoints_count < 0 || value.hardpoints_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.hardpoints_count > 0 )
     {
         const uint64_t ref_hardpoints = ids.ref_at( 77, 0x95d0cce09ca82b73ull );
@@ -12186,7 +12186,7 @@ inline bool ShipEntryLoad( ShipEntry & value, const uint8_t * buffer, int64_t by
 inline int64_t ShipEntryMeasureMessageBody( int64_t at, const ShipEntry & value )
 {
     int64_t bits = 0;
-    if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.display_name_length >= 0 && value.display_name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.display_name_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -12206,7 +12206,7 @@ inline int64_t ShipEntryMeasureMessageBody( int64_t at, const ShipEntry & value 
         if ( !TableFloatFinite( value.mass ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
         bits += 32;
     }
-    if ( value.hardpoints_count < 0 || value.hardpoints_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.hardpoints_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -12232,7 +12232,7 @@ inline int64_t ShipEntryMeasureMessageBody( int64_t at, const ShipEntry & value 
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool ShipEntrySaveMessageBody( TableBitWriter & w, const ShipEntry & value )
 {
-    if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.display_name_length >= 0 && value.display_name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.display_name_length > 0 )
     {
         w.put( 89, kTableMessageRefBitsHere );
@@ -12252,7 +12252,7 @@ inline bool ShipEntrySaveMessageBody( TableBitWriter & w, const ShipEntry & valu
         if ( !TableFloatFinite( value.mass ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put( (uint64_t) table_float_to_bits( value.mass ), 32 );
     }
-    if ( value.hardpoints_count < 0 || value.hardpoints_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.hardpoints_count > 0 )
     {
         w.put( 90, kTableMessageRefBitsHere );
@@ -12756,7 +12756,7 @@ inline int64_t GlobalSettingsMeasureBody( TableIds & ids, const GlobalSettings &
         if ( !TableEnumRef( ids, value.difficulty, variant_difficulty ) ) { return -1; }
         bytes += TableLebBytes( ref_difficulty ) + 1 + TableLebBytes( variant_difficulty ); // difficulty: the variant's reference
     }
-    if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return -1; } // storage invariant
+    schema_assert( value.build_note_length >= 0 && value.build_note_length <= 48 ); // storage invariant, debug only (§5.1)
     if ( value.build_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 11, 0x14ec921cc2549d60ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.build_note_length ) ) + ( value.build_note_length ); } // build_note
     {
         bool all_default_spawn_delays = true;
@@ -12802,7 +12802,7 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsSaveBody( TableWriter & w, TableIds & 
         if ( !TableEnumRef( ids, value.difficulty, variant_difficulty ) ) { return false; }
         w.header( ref_difficulty, 30 ); w.putleb( variant_difficulty ); // difficulty
     }
-    if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return false; } // storage invariant
+    schema_assert( value.build_note_length >= 0 && value.build_note_length <= 48 ); // storage invariant, debug only (§5.1)
     if ( value.build_note_length > 0 )
     {
         w.header( ids.ref_at( 11, 0x14ec921cc2549d60ull ), 12 ); // build_note
@@ -13261,7 +13261,7 @@ inline int64_t GlobalSettingsMeasureMessageBody( int64_t at, const GlobalSetting
         bits += kTableMessageRefBitsHere;
         bits += kTableMessageRefBitsHere;
     }
-    if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return -1; } // storage invariant
+    schema_assert( value.build_note_length >= 0 && value.build_note_length <= 48 ); // storage invariant, debug only (§5.1)
     if ( value.build_note_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -13307,7 +13307,7 @@ inline bool GlobalSettingsSaveMessageBody( TableBitWriter & w, const GlobalSetti
             w.put( slot, kTableMessageRefBitsHere );
         }
     }
-    if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return false; } // storage invariant
+    schema_assert( value.build_note_length >= 0 && value.build_note_length <= 48 ); // storage invariant, debug only (§5.1)
     if ( value.build_note_length > 0 )
     {
         w.put( 9, kTableMessageRefBitsHere );
@@ -13779,7 +13779,7 @@ inline int64_t PackConfigMeasureBody( TableIds & ids, const PackConfig & value )
         }
         else { ids.truncate( mark_thresholds ); } // an ELIDED field costs nothing in the id table either
     }
-    if ( value.reserves_count < 0 || value.reserves_count > 3 ) { return -1; } // storage invariant
+    schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.reserves_count > 0 )
     {
         const uint64_t ref_reserves = ids.ref_at( 64, 0x77707fccd201c228ull );
@@ -13914,7 +13914,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBody( TableWriter & w, TableIds & ids,
         }
         else { ids.truncate( mark_thresholds ); } // an ELIDED field costs nothing in the id table either
     }
-    if ( value.reserves_count < 0 || value.reserves_count > 3 ) { return false; } // storage invariant
+    schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.reserves_count > 0 )
     {
         const uint64_t ref_reserves = ids.ref_at( 64, 0x77707fccd201c228ull );
@@ -14668,7 +14668,7 @@ inline int64_t PackConfigMeasureMessageBody( int64_t at, const PackConfig & valu
             }
         }
     }
-    if ( value.reserves_count < 0 || value.reserves_count > 3 ) { return -1; } // storage invariant
+    schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.reserves_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -14760,7 +14760,7 @@ inline bool PackConfigSaveMessageBody( TableBitWriter & w, const PackConfig & va
             }
         }
     }
-    if ( value.reserves_count < 0 || value.reserves_count > 3 ) { return false; } // storage invariant
+    schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.reserves_count > 0 )
     {
         w.put( 31, kTableMessageRefBitsHere );
@@ -17813,7 +17813,7 @@ inline int64_t GunnerSettingsMeasureBodyRetain( TableRetainIds & ids, const Gunn
     if ( !TableFloatFinite( value.reaction ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.reaction ) != table_float_to_bits( 0.2f ) ) { bytes += TableLebBytes( ids.ref_at( 101, 0xb75aa3662201646aull ) ) + 1 + 4; } // reaction
     if ( value.tracking != false ) { bytes += TableLebBytes( ids.ref_at( 90, 0xa6bf719a4602b0bcull ) ) + 1 + 1; } // tracking
-    if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return -1; } // storage invariant
+    schema_assert( value.callsign_length >= 0 && value.callsign_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( value.callsign_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 53, 0x5bc44627b9848818ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.callsign_length ) ) + ( value.callsign_length ); } // callsign
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -17832,7 +17832,7 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsSaveBodyRetain( TableWriter & w, Table
         w.header( ids.ref_at( 90, 0xa6bf719a4602b0bcull ), 1 ); // tracking
         w.put8( value.tracking ? 1 : 0 );
     }
-    if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return false; } // storage invariant
+    schema_assert( value.callsign_length >= 0 && value.callsign_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( value.callsign_length > 0 )
     {
         w.header( ids.ref_at( 53, 0x5bc44627b9848818ull ), 12 ); // callsign
@@ -18017,13 +18017,13 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsLoadBodyRetain( TableReader & r, Gunne
 inline int64_t ShipEntryMeasureBodyRetain( TableRetainIds & ids, const ShipEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.display_name_length >= 0 && value.display_name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.display_name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x2d21d7cd66bd5a5dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.display_name_length ) ) + ( value.display_name_length ); } // display_name
     if ( !TableFloatFinite( value.health ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.health ) != table_float_to_bits( 100.0f ) ) { bytes += TableLebBytes( ids.ref_at( 67, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     if ( !TableFloatFinite( value.mass ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.mass ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 20, 0x1f3757a2ce7b0ab1ull ) ) + 1 + 4; } // mass
-    if ( value.hardpoints_count < 0 || value.hardpoints_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.hardpoints_count > 0 )
     {
         const uint64_t ref_hardpoints = ids.ref_at( 77, 0x95d0cce09ca82b73ull );
@@ -18045,7 +18045,7 @@ inline int64_t ShipEntryMeasureBodyRetain( TableRetainIds & ids, const ShipEntry
 
 TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const ShipEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.display_name_length >= 0 && value.display_name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.display_name_length > 0 )
     {
         w.header( ids.ref_at( 27, 0x2d21d7cd66bd5a5dull ), 12 ); // display_name
@@ -18064,7 +18064,7 @@ TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBodyRetain( TableWriter & w, TableRetai
         if ( !TableFloatFinite( value.mass ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.mass ) );
     }
-    if ( value.hardpoints_count < 0 || value.hardpoints_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.hardpoints_count > 0 )
     {
         const uint64_t ref_hardpoints = ids.ref_at( 77, 0x95d0cce09ca82b73ull );
@@ -18458,7 +18458,7 @@ inline int64_t GlobalSettingsMeasureBodyRetain( TableRetainIds & ids, const Glob
         if ( !TableEnumRef( ids, value.difficulty, variant_difficulty ) ) { return -1; }
         bytes += TableLebBytes( ref_difficulty ) + 1 + TableLebBytes( variant_difficulty ); // difficulty: the variant's reference
     }
-    if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return -1; } // storage invariant
+    schema_assert( value.build_note_length >= 0 && value.build_note_length <= 48 ); // storage invariant, debug only (§5.1)
     if ( value.build_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 11, 0x14ec921cc2549d60ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.build_note_length ) ) + ( value.build_note_length ); } // build_note
     {
         bool all_default_spawn_delays = true;
@@ -18495,7 +18495,7 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsSaveBodyRetain( TableWriter & w, Table
         if ( !TableEnumRef( ids, value.difficulty, variant_difficulty ) ) { return false; }
         w.header( ref_difficulty, 30 ); w.putleb( variant_difficulty ); // difficulty
     }
-    if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return false; } // storage invariant
+    schema_assert( value.build_note_length >= 0 && value.build_note_length <= 48 ); // storage invariant, debug only (§5.1)
     if ( value.build_note_length > 0 )
     {
         w.header( ids.ref_at( 11, 0x14ec921cc2549d60ull ), 12 ); // build_note
@@ -18880,7 +18880,7 @@ inline int64_t PackConfigMeasureBodyRetain( TableRetainIds & ids, const PackConf
         }
         else { ids.truncate( mark_thresholds ); } // an ELIDED field costs nothing in the id table either
     }
-    if ( value.reserves_count < 0 || value.reserves_count > 3 ) { return -1; } // storage invariant
+    schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.reserves_count > 0 )
     {
         const uint64_t ref_reserves = ids.ref_at( 64, 0x77707fccd201c228ull );
@@ -19006,7 +19006,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBodyRetain( TableWriter & w, TableReta
         }
         else { ids.truncate( mark_thresholds ); } // an ELIDED field costs nothing in the id table either
     }
-    if ( value.reserves_count < 0 || value.reserves_count > 3 ) { return false; } // storage invariant
+    schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.reserves_count > 0 )
     {
         const uint64_t ref_reserves = ids.ref_at( 64, 0x77707fccd201c228ull );

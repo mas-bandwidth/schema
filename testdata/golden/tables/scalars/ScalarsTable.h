@@ -1480,7 +1480,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -6702,7 +6702,7 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
             bytes += TableLebBytes( ref_samples ) + 1 + TableLebBytes( (uint64_t) ( body_samples ) ) + ( body_samples ); // samples
         }
     }
-    if ( value.weights_count < 0 || value.weights_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.weights_count >= 0 && value.weights_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.weights_count > 0 )
     {
         const uint64_t ref_weights = ids.ref_at( 23, 0xb1494b6ef08a411eull );
@@ -6730,7 +6730,7 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
         }
         else { ids.truncate( mark_axes ); } // an ELIDED field costs nothing in the id table either
     }
-    if ( value.seeds_count < 0 || value.seeds_count > 2 ) { return -1; } // storage invariant
+    schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.seeds_count > 0 )
     {
         const uint64_t ref_seeds = ids.ref_at( 10, 0x5af1ac301b4ae16dull );
@@ -6873,7 +6873,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
             }
         }
     }
-    if ( value.weights_count < 0 || value.weights_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.weights_count >= 0 && value.weights_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.weights_count > 0 )
     {
         const uint64_t ref_weights = ids.ref_at( 23, 0xb1494b6ef08a411eull );
@@ -6926,7 +6926,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
         }
         else { ids.truncate( mark_axes ); } // an ELIDED field costs nothing in the id table either
     }
-    if ( value.seeds_count < 0 || value.seeds_count > 2 ) { return false; } // storage invariant
+    schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.seeds_count > 0 )
     {
         const uint64_t ref_seeds = ids.ref_at( 10, 0x5af1ac301b4ae16dull );
@@ -8266,7 +8266,7 @@ inline int64_t SimStateMeasureMessageBody( int64_t at, const SimState & value )
             bits += (int64_t) ( 3 ) * 21;
         }
     }
-    if ( value.weights_count < 0 || value.weights_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.weights_count >= 0 && value.weights_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.weights_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -8297,7 +8297,7 @@ inline int64_t SimStateMeasureMessageBody( int64_t at, const SimState & value )
             }
         }
     }
-    if ( value.seeds_count < 0 || value.seeds_count > 2 ) { return -1; } // storage invariant
+    schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.seeds_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -8414,7 +8414,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
             }
         }
     }
-    if ( value.weights_count < 0 || value.weights_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.weights_count >= 0 && value.weights_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.weights_count > 0 )
     {
         w.put( 19, kTableMessageRefBitsHere );
@@ -8450,7 +8450,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
             }
         }
     }
-    if ( value.seeds_count < 0 || value.seeds_count > 2 ) { return false; } // storage invariant
+    schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // storage invariant, debug only (§5.1)
     if ( value.seeds_count > 0 )
     {
         w.put( 21, kTableMessageRefBitsHere );

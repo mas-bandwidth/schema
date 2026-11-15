@@ -1555,7 +1555,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -11870,7 +11870,7 @@ inline bool EdgeRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
 inline int64_t RowEntriesEntryMeasureBody( TableIds & ids, const RowEntriesEntry & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key_length < 0 || value.key_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
@@ -11885,7 +11885,7 @@ inline int64_t RowEntriesEntryMeasureBody( TableIds & ids, const RowEntriesEntry
 
 MAPDEMO_TABLE_INLINE bool RowEntriesEntrySaveBody( TableWriter & w, TableIds & ids, const RowEntriesEntry & value )
 {
-    if ( value.key_length < 0 || value.key_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -12951,7 +12951,7 @@ inline bool WideRowLoadBody( TableReader & r, const TableNodeMap & nodes, WideRo
 inline int64_t EdgeRowNamesEntryMeasureBody( TableIds & ids, const EdgeRowNamesEntry & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key_length < 0 || value.key_length > 300 ) { return -1; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 300 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
@@ -12966,7 +12966,7 @@ inline int64_t EdgeRowNamesEntryMeasureBody( TableIds & ids, const EdgeRowNamesE
 
 MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntrySaveBody( TableWriter & w, TableIds & ids, const EdgeRowNamesEntry & value )
 {
-    if ( value.key_length < 0 || value.key_length > 300 ) { return false; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 300 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -18122,7 +18122,7 @@ inline const EdgeRow * EdgeRowReadStrict( const uint8_t * wire_file, int64_t wir
 inline int64_t RowEntriesEntryMeasureBodyRetain( TableRetainIds & ids, const RowEntriesEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key_length < 0 || value.key_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
@@ -18138,7 +18138,7 @@ inline int64_t RowEntriesEntryMeasureBodyRetain( TableRetainIds & ids, const Row
 
 MAPDEMO_TABLE_INLINE bool RowEntriesEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const RowEntriesEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.key_length < 0 || value.key_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -19239,7 +19239,7 @@ inline bool WideRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
 inline int64_t EdgeRowNamesEntryMeasureBodyRetain( TableRetainIds & ids, const EdgeRowNamesEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key_length < 0 || value.key_length > 300 ) { return -1; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 300 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
@@ -19255,7 +19255,7 @@ inline int64_t EdgeRowNamesEntryMeasureBodyRetain( TableRetainIds & ids, const E
 
 MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const EdgeRowNamesEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.key_length < 0 || value.key_length > 300 ) { return false; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 300 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key

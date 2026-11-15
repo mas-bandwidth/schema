@@ -1512,7 +1512,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -11112,7 +11112,7 @@ inline int64_t TeamConfigMeasureBody( TableIds & ids, const TeamConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 120, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
-    if ( value.banner_length < 0 || value.banner_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.banner_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ) ) + 1 + TableLebBytes( (uint64_t) ( value.banner_length ) ) + ( value.banner_length ); } // banner
     return bytes;
 }
@@ -11134,7 +11134,7 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBody( TableWriter & w, TableIds & ids,
         w.header( ids.ref_at( 120, 0xceec99e2d65db674ull ), 4 ); // spawn_count
         w.put32( uint32_t( value.spawn_count ) );
     }
-    if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.banner_length > 0 )
     {
         w.header( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ), 12 ); // banner
@@ -11447,7 +11447,7 @@ inline int64_t TeamConfigMeasureMessageBody( int64_t at, const TeamConfig & valu
         bits += kTableMessageRefBitsHere;
         bits += 7;
     }
-    if ( value.banner_length < 0 || value.banner_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.banner_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -11470,7 +11470,7 @@ inline bool TeamConfigSaveMessageBody( TableBitWriter & w, const TeamConfig & va
         w.put( 92, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.spawn_count ), 7 );
     }
-    if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.banner_length > 0 )
     {
         w.put( 93, kTableMessageRefBitsHere );
@@ -18422,7 +18422,7 @@ inline int64_t TeamConfigMeasureBodyRetain( TableRetainIds & ids, const TeamConf
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 120, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
-    if ( value.banner_length < 0 || value.banner_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.banner_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ) ) + 1 + TableLebBytes( (uint64_t) ( value.banner_length ) ) + ( value.banner_length ); } // banner
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -18435,7 +18435,7 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBodyRetain( TableWriter & w, TableReta
         w.header( ids.ref_at( 120, 0xceec99e2d65db674ull ), 4 ); // spawn_count
         w.put32( uint32_t( value.spawn_count ) );
     }
-    if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.banner_length > 0 )
     {
         w.header( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ), 12 ); // banner

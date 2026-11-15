@@ -1488,7 +1488,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -9826,7 +9826,7 @@ inline int64_t MarkerMeasureBody( const Ctx & ctx, const TableNumbering & number
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.label_length < 0 || value.label_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     {
         const Tally * pointee_note = TallyAt( ctx, value.note ); // *Tally
@@ -9850,7 +9850,7 @@ inline bool MarkerSaveBodyFields( const Ctx & ctx, const TableNumbering & number
 {
     (void) ctx;
     (void) numbering;
-    if ( value.label_length < 0 || value.label_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -11857,7 +11857,7 @@ inline int64_t MarkerMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.label_length < 0 || value.label_length > 8 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     {
         const Tally * pointee_note = TallyAt( ctx, value.note ); // *Tally
@@ -11882,7 +11882,7 @@ inline bool MarkerSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
 {
     (void) ctx;
     (void) numbering;
-    if ( value.label_length < 0 || value.label_length > 8 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
