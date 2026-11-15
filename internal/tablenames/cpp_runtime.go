@@ -28,6 +28,7 @@ func cppRuntimeNames() []Name {
 			"TableMapVisitStored", "kTableCycleAbsent", "kTableCycleOffsetMask", "kTableCycleOrdinalShift", "kTableCycleVertex",
 		}},
 		{what: "the pointer graph's wire-alone check: the framing walk, its work list and its verdicts (docs/SPEC-TABLES.md §3.1, §6.5)", names: []string{
+			"TableNodeWrongTarget",
 			"TableGraphBody", "TableGraphCheck", "TableGraphCollect", "TableGraphContent", "TableGraphCount",
 			"TableGraphCountEdge", "TableGraphFail", "TableGraphKahn", "TableGraphKahnEdge", "TableGraphKahnPush",
 			"TableGraphParseNode", "TableGraphPayload", "TableGraphReach", "TableGraphReachEdge", "TableGraphUnion",
@@ -35,6 +36,7 @@ func cppRuntimeNames() []Name {
 			"kTableGraphQueued", "kTableGraphVisited",
 		}},
 		{what: "a bound of the text form's JSON walk (§16)", names: []string{
+			"kTableJsonFieldSeenWords", "kTableJsonSlotSeenWords",
 			"kTableJsonDecimalBand",
 		}},
 		{what: "a file's open verdict and the refusal path (docs/SPEC-TABLES.md §6.5, §7)", names: []string{
@@ -52,6 +54,7 @@ func cppRuntimeNames() []Name {
 			"kTableFixedNoGuard",
 		}},
 		{what: "a named constant of the message form (docs/SPEC-TABLES.md §3.3)", names: []string{
+			"kTableMessageSeenBits",
 			"kTableMessageListMax", "kTableMessageVocabularyFieldId",
 		}},
 		{what: "a shared runtime helper or constant of the table wire (docs/SPEC-TABLES.md §3, §6)", names: []string{
@@ -77,6 +80,8 @@ func cppRuntimeNames() []Name {
 			"TableAlignBits", "TableAlignUp", "TableAlignUp64", "TableBitsRequired",
 		}},
 		{what: "the fixed form's runtime: plan compile, layout read and the read loop (docs/SPEC-TABLES.md §3.4)", names: []string{
+			"TableFixedDeadSpan", "TableFixedDeadZero", "TableFixedEntryEnd", "TableFixedEntryTagArg", "TableFixedGuardHolds",
+			"TableFixedInAbsentPayload", "TableFixedOptionalWireBytes", "TableFixedTagSeen",
 			"TableFixedPut128",
 			"TableFixedApply", "TableFixedBigEndianHost", "TableFixedClampKnownRanges", "TableFixedCopyLe", "TableFixedCopyRun", "TableFixedDepth",
 			"TableFixedEntryAt", "TableFixedEntryLands", "TableFixedFills", "TableFixedGet32", "TableFixedGet64", "TableFixedGetLe",
@@ -96,6 +101,7 @@ func cppRuntimeNames() []Name {
 			"kTableMapSegmentEntries",
 		}},
 		{what: "the message form's runtime: batches, entries, quantization and the skip walk (docs/SPEC-TABLES.md §3.3)", names: []string{
+			"TableMessageSeenOnce", "TableMessageSignedKind",
 			"TableMessageArmEntry", "TableMessageBatch", "TableMessageBatchBegin", "TableMessageBatchBytes",
 			"TableMessageBatchCheckIntegrity", "TableMessageBatchOpenSealed", "TableMessageBatchSeal",
 			"TableMessageBatchEnd", "TableMessageDequantize", "TableMessageElementRunBits", "TableMessageFixedKind",
@@ -153,6 +159,9 @@ func cppRuntimeNames() []Name {
 			"TableJsonSpace", "TableJsonTokenDouble", "TableJsonUtf8", "TableJsonWalkNumber",
 		}},
 		{what: "the text form's JSON reader and writer walk (§16)", names: []string{
+			"TableJsonElementShapeFits", "TableJsonFieldShapeFits", "TableJsonIntegerTokenOnly", "TableJsonKeyEquals",
+			"TableJsonKeyScope", "TableJsonKeyTrack", "TableJsonKeysGrow", "TableJsonKeysInit", "TableJsonKeysShutdown",
+			"TableJsonKindInteger", "TableJsonKindWideText", "TableJsonScanWideString",
 			"TableJsonRead", "TableJsonReadBlob", "TableJsonReadField", "TableJsonReadGraph", "TableJsonReadList",
 			"TableJsonReadMap", "TableJsonReadPointer", "TableJsonReadScalar", "TableJsonReadTable",
 			"TableJsonReadTableKeys", "TableJsonReadWide", "TableJsonWrite", "TableJsonWriteBase64",
@@ -217,7 +226,7 @@ var cppSharedNames = []string{
 	"TableJsonOut", "TableJsonWide", "TableKindWidens", "TableKindWidth", "TableListStorage",
 	"TableMessageBatchClose", "TableMessageBatchOpen", "TableMessageBatchReader", "TableMessageEntry",
 	"TableMessageEntryRead", "TableMessageKindBits", "TableMessageKnownKind", "TableMessageLeb",
-	"TableMessageShapeFacts", "TableMessageShapeRead", "TableMessageSkip", "TableMessageSkipBody",
+	"TableMessageShapeFacts", "TableMessageShapeRead", "TableMessageSkip", "TableMessageSkipBody", "TableMessageSkipRanged",
 	"TableMessageValueBits", "TableOpenBodyStopped", "TableOpenDamaged", "TableOpenOk", "TableOpenRefused",
 	"TableOpenVerdict", "TableRetainIds", "TableRetainIn", "TableRetainOut", "TableRetainPath",
 	"TableRetainStep", "TableStringAt", "TableStringEmplace", "TableStringView", "TableTextFormEdit",

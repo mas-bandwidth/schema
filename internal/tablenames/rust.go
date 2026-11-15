@@ -116,6 +116,8 @@ func init() {
 		Name{Name: "TableUnlink", What: "TableDropUnlink's method, table_unlink (§3.1, §4)", Scoped: true},
 		Name{Name: "TableKindWidth", What: "a fixed-width kind's payload size (§3)", Scoped: true},
 		Name{Name: "TableKindWidens", What: "the widening ladder: a narrower kind decoded exactly into a wider declaration (§4)", Scoped: true},
+		Name{Name: "TableArrayElementKindAllowed", What: "whether an announced kind may be an array element (§3)", Scoped: true},
+		Name{Name: "TableKeyedElementKindAllowed", What: "whether an announced kind may be a keyed array element (§3)", Scoped: true},
 		Name{Name: "TableScalarRead", What: "one scalar read at its kind's own width (§3, §4)", Scoped: true},
 		Name{Name: "TableRetainedFloatFinite", What: "the finite rule on a retained unknown of a float kind, tested on its raw bits like a known field (§3.3, §6.6)", Scoped: true},
 		Name{Name: "TableFloatRefuse", What: "the writer's finite rule: a NaN or an infinity is the save's refusal by name, non_finite_float (§3.3)", Scoped: true},
