@@ -54,6 +54,17 @@ def validate_int(value: object, path: str, min: int, max: int) -> None:
         raise InvalidValue(path, f"{value} is outside [{min}, {max}]")
 
 
+def validate_array(value: object, path: str, min: int, max: int) -> None:
+    """Hold an array field to a list whose length is in [min, max]: exactly N
+    for [N]T, the count's range for [A..B]T."""
+    if type(value) is not list:
+        raise InvalidValue(path, "expected list")
+    if len(value) < min or len(value) > max:
+        if min == max:
+            raise InvalidValue(path, f"{len(value)} elements, expected {max}")
+        raise InvalidValue(path, f"{len(value)} elements is outside [{min}, {max}]")
+
+
 def validate_bool(value: object, path: str) -> None:
     """Hold a bool field to True or False; 0 and 1 are refused."""
     if type(value) is not bool:

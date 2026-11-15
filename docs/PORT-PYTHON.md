@@ -471,12 +471,25 @@ the core stands against the P4 row; the rules of this page are unchanged.
   with their name tables, a class per type and per union with every field
   born at its default, `__eq__` by value (a float's bits included) and a
   readable `__repr__`. The codec carries `bool`, `int8` to `uint64` (bare or
-  ranged), enums, flags, types by value, unions, and `if`/`else` branches. A
+  ranged), enums, flags, types by value, unions, `if`/`else` branches, and
+  fixed `[N]T` and counted `[A..B]T` arrays of any element kind it carries. A
   field or item of any other kind (`bits`, `fixed`, `float32`, `float64`,
-  `string`, `bytes`, an array, `const`, `reserved`, `align`, or a 128-bit
-  integer) is refused at generate time by its kind, naming P4 the packet
-  wire. The class surface knows how to birth and compare those kinds already;
-  only their wire emitters are still to come.
+  `string`, `bytes`, a keyed `[E]T` array, a list `[]T`, `const`,
+  `reserved`, `align`, or a 128-bit integer) is refused at generate time by
+  its kind, naming P4 the packet wire; an array of an uncarried element is
+  refused by its element's kind. The class surface knows how to birth and
+  compare those kinds already; only their wire emitters are still to come.
+- **An array is a `list`, and a counted array's length is its count.** The
+  array kind (`kind_array.go`) writes a counted array's count first, as the
+  ranged integer in [A, B] it is, then each element through the element
+  kind's own emitter, so a kind that lands later composes with no change to
+  arrays. A write refuses anything but a `list` of exactly N (`[N]T`) or of a
+  length in [A, B] (`[A..B]T`) with `InvalidValue` at the field
+  (`Fleet.ships`), and a bad element at its index (`Fleet.ships[3].hull`). A
+  read checks the count against [A, B] before it builds an element, so a
+  hostile count is `Refused` with no allocation past B. The SPEC §5 zero form
+  of an untaken branch is an empty counted array and a fixed array of zero
+  elements; the zero form never carries a counted array's birth at A.
 - **The implicit enum zero is `None_`.** Python will not let a class body
   assign to `None`, so the zero every leg spells `None` is spelled `None_`
   in generated code. The name tables keep the schema spelling `"None"`, and

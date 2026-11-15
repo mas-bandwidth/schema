@@ -3235,6 +3235,15 @@
         "python-packet-core-negative-control"
       ],
       "python": "pin"
+    },
+    {
+      "name": "python-packet-arrays",
+      "when": "pull-request",
+      "why": "the array kind's control (docs/PORT-PYTHON.md, THE PACKET CORE CUT): a copy of the generated Small reader reads its counted array's count from 0 instead of its declared minimum of 1, and TestPythonPacketArraysNegativeControl must go red on the hand-checked vector by name. One SCHEMA_SLOW go test on the current pin beside the Go reference writer, the cost of the pin cache restore rather than the run.",
+      "targets": [
+        "python-packet-arrays-negative-control"
+      ],
+      "python": "pin"
     }
   ],
   "excluded": [
