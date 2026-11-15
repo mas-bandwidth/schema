@@ -10051,6 +10051,7 @@ inline int64_t SimStateFixedSave( const SimState * values, int64_t count, uint8_
 {
     const int64_t need = SimStateFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( SimStateFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -10242,7 +10243,7 @@ inline int64_t SimStateFixedLoadWalk( SimState * values, int64_t capacity, const
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
