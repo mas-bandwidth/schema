@@ -577,10 +577,8 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 // differently, is drift and fails.
 var luauHostileCarried = []struct{ name, got, fix string }{
 	// RELAXED 2026-11-14 (maintainer: get main green): the Luau JSON read
-	// accepts unpadded base64 (json-base64-canonical) and a zero escape in a
-	// skipped value (the skipped-value rule). re-enable: relax/hostile-rows-luau
+	// accepts unpadded base64 (json-base64-canonical). re-enable: relax/hostile-rows-luau
 	{"conformance-base64-unpadded", "[verdict] got accept/-/- want refuse/damaged/-", "relax/hostile-rows-luau"},
-	{"conformance-str-zero-escape-unknown-key", "[verdict] got accept/-/- want refuse/damaged/-", "relax/hostile-rows-luau"},
 }
 
 // luauHostileCarriedFinding: a finding line (after its FIX-CARD prefix) that
