@@ -1,0 +1,6 @@
+package packetwritetext
+
+type Payload
+{
+    text string(8)
+}

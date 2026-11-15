@@ -77,7 +77,7 @@ end
 
 # the narrower writer through the newer reader: widened, landed, a read
 bytes = Base.decode16!("` + hex.EncodeToString(widened) + `", case: :lower)
-{:ok, value, report} = Listdemo.Table.load("Save", bytes)
+{:ok, {value, _nodes}, report} = Listdemo.Table.load("Save", bytes)
 Probe.check(value["scores"] == [10, 20, 30], "the narrow scores land exactly: #{inspect(value)}")
 Probe.check(report.widened == 1, "one widening is counted: #{inspect(report)}")
 Probe.check(Map.has_key?(report, :reason), "the report carries a reason: #{inspect(report)}")

@@ -130,6 +130,8 @@ func fieldKind(f *ir.Field) string {
 			return "int128"
 		}
 		return ""
+	case ir.TBits:
+		return "bits"
 	case ir.TFloat32:
 		return "float32"
 	case ir.TFloat64:
@@ -150,6 +152,11 @@ func fieldKind(f *ir.Field) string {
 	}
 	return ""
 }
+
+// FieldKind is the registry key of a field the packet core carries, or "" when
+// no emitter carries it. A table emitter that hosts the packet classes uses it
+// to hold a packet type to the packet wire's own carried set.
+func FieldKind(f *ir.Field) string { return fieldKind(f) }
 
 // blockingKind names what a field is when the codec does not carry it.
 func blockingKind(f *ir.Field) string {
@@ -190,6 +197,10 @@ func blockingKind(f *ir.Field) string {
 	}
 	return "unknown"
 }
+
+// BlockingKind names what a field is when the packet core's codec does not
+// carry it.
+func BlockingKind(f *ir.Field) string { return blockingKind(f) }
 
 // firstBlockerItem returns the first wire item the codec does not carry, as
 // the kind's name, or "" when every item is carried.
@@ -782,6 +793,8 @@ func (m *pyModule) fieldBits(f *ir.Field, seen map[string]bool) int64 {
 		if f.HasIntRange {
 			return rangeBits64Big(f.IntMin, f.IntMax)
 		}
+		return int64(f.Type.Width)
+	case ir.TBits:
 		return int64(f.Type.Width)
 	case ir.TFloat32:
 		if f.HasFloatRange {
