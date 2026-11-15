@@ -72,9 +72,106 @@ int main( int argc, char ** argv )
         const bool ok = RootFromJson( value, (const char *) raw.data(), (int64_t) raw.size(), &report );
         printf( "ROW\t%s\t%s\n", file, ok ? "read" : "refused" );
     }
+
+    // THE SHAPES THE SHARED VECTORS CANNOT CARRY, skipped under a vocabulary
+    // built here: a ranged integer and an enum-keyed array of zero-bit slots.
+    static TableMessageEntry built[3];
+    TableVocabulary names( built, 3 );
+    built[0].id = 100; built[0].kind = 0;
+    built[1].id = 101; built[1].kind = 0;
+    built[2].id = 102; built[2].kind = 4; built[2].value_bits = 32; // carries a payload
+    names.count = 3;
+    names.ref_bits = TableBitsRequired( 0, 3 );
+    names.announced = true;
+    for ( const SkipCase & c : skip_cases() )
+    {
+        uint8_t buffer[64] = {};
+        TableBitWriter w( buffer, (int64_t) sizeof( buffer ) );
+        for ( int i = 0; i < c.fields; i++ ) { w.put( c.values[i], c.widths[i] ); }
+        TableBitReader r( buffer, ( w.bits + 7 ) / 8 );
+        const bool ok = TableMessageSkip( r, names, 0, c.entry, 0 );
+        printf( "ROW\t%s\t%s\n", c.name, ok ? "read" : "refused" );
+    }
     return 0;
 }
 `
+
+// cppSkippedShapeCases are the skip cases the shared vectors cannot carry,
+// because the writer unit declares no ranged integer: a ranged offset held to
+// its kind's domain (docs/SPEC-TABLES.md §3.3), as a field and as an array
+// element, and an enum-keyed array whose slots carry no bits and whose keys
+// still resolve. Each pair is the edge that reads and the step past it.
+const cppSkippedShapeCases = `
+struct SkipCase
+{
+    const char * name;
+    TableMessageEntry entry;
+    int fields;
+    uint64_t values[4];
+    int64_t widths[4];
+};
+
+static TableMessageEntry ranged( uint8_t kind, int64_t bits, int64_t base_lo, int64_t base_hi )
+{
+    TableMessageEntry e;
+    e.kind = kind; e.packing = 1; e.value_bits = (int16_t) bits; e.base_lo = base_lo; e.base_hi = base_hi;
+    return e;
+}
+
+static TableMessageEntry ranged_array( uint8_t kind, int64_t bits, int64_t base_lo )
+{
+    TableMessageEntry e;
+    e.kind = 14; e.min = 1; e.max = 1; e.elem_kind = kind; e.elem_packing = 1;
+    e.elem_value_bits = (int16_t) bits; e.elem_base_lo = base_lo;
+    return e;
+}
+
+static TableMessageEntry keyed_names()
+{
+    TableMessageEntry e;
+    e.kind = 16; e.max = 3; e.elem_kind = 0; e.elem_value_bits = 0;
+    return e;
+}
+
+static std::vector<SkipCase> skip_cases()
+{
+    const int64_t i64_max = INT64_MAX;
+    return {
+        { "ranged-i8-at-max", ranged( 2, 8, -100, 0 ), 1, { 227 }, { 8 } },
+        { "ranged-i8-over-max", ranged( 2, 8, -100, 0 ), 1, { 228 }, { 8 } },
+        { "ranged-u8-at-max", ranged( 6, 8, 200, 0 ), 1, { 55 }, { 8 } },
+        { "ranged-u8-over-max", ranged( 6, 8, 200, 0 ), 1, { 56 }, { 8 } },
+        { "ranged-u64-at-max", ranged( 9, 8, (int64_t) ( UINT64_MAX - 5 ), 0 ), 1, { 5 }, { 8 } },
+        { "ranged-u64-over-max", ranged( 9, 8, (int64_t) ( UINT64_MAX - 5 ), 0 ), 1, { 6 }, { 8 } },
+        { "ranged-i128-at-max", ranged( 18, 8, -4, i64_max ), 1, { 3 }, { 8 } },
+        { "ranged-i128-over-max", ranged( 18, 8, -4, i64_max ), 1, { 4 }, { 8 } },
+        { "ranged-element-at-max", ranged_array( 2, 8, -100 ), 1, { 227 }, { 8 } },
+        { "ranged-element-over-max", ranged_array( 2, 8, -100 ), 1, { 228 }, { 8 } },
+        { "keyed-zero-bit-distinct", keyed_names(), 3, { 2, 1, 2 }, { 2, 2, 2 } },
+        { "keyed-zero-bit-repeat", keyed_names(), 3, { 2, 1, 1 }, { 2, 2, 2 } },
+        { "keyed-zero-bit-payload-entry", keyed_names(), 3, { 2, 1, 3 }, { 2, 2, 2 } },
+        { "keyed-zero-bit-above-count", keyed_names(), 2, { 1, 0 }, { 2, 2 } },
+    };
+}
+`
+
+// cppSkippedShapeVerdicts is the verdict each built case holds.
+var cppSkippedShapeVerdicts = map[string]string{
+	"ranged-i8-at-max":             "read",
+	"ranged-i8-over-max":           "refused",
+	"ranged-u8-at-max":             "read",
+	"ranged-u8-over-max":           "refused",
+	"ranged-u64-at-max":            "read",
+	"ranged-u64-over-max":          "refused",
+	"ranged-i128-at-max":           "read",
+	"ranged-i128-over-max":         "refused",
+	"ranged-element-at-max":        "read",
+	"ranged-element-over-max":      "refused",
+	"keyed-zero-bit-distinct":      "read",
+	"keyed-zero-bit-repeat":        "refused",
+	"keyed-zero-bit-payload-entry": "refused",
+	"keyed-zero-bit-above-count":   "refused",
+}
 
 func cppSkippedValueRun(t *testing.T, fixtures string) ([]byte, error) {
 	t.Helper()
@@ -124,7 +221,7 @@ func cppSkippedValueRun(t *testing.T, fixtures string) ([]byte, error) {
 #include <string>
 #include <vector>
 #include "` + header + `"
-` + cppSkippedValueProbe
+` + strings.Replace(cppSkippedValueProbe, "int main(", cppSkippedShapeCases+"\nint main(", 1)
 	if err := os.WriteFile(filepath.Join(dir, "probe.cpp"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -192,6 +289,16 @@ func TestCppSkippedValueIsValidated(t *testing.T) {
 		}
 		if verdict != r.verdict {
 			t.Errorf("%s: verdict %s, want %s", r.file, verdict, r.verdict)
+		}
+	}
+	for name, want := range cppSkippedShapeVerdicts {
+		verdict, ok := got[name]
+		if !ok {
+			t.Errorf("%s: the probe reported no verdict", name)
+			continue
+		}
+		if verdict != want {
+			t.Errorf("%s: verdict %s, want %s", name, verdict, want)
 		}
 	}
 }
