@@ -1020,6 +1020,11 @@ end
 function F.save(d: any, fixed: Fixed, values: { any }): (buffer?, any?)
 	local ok, res = pcall(function(): buffer
 		local own = fixed.lineage[#fixed.lineage]
+		-- A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6):
+		-- an empty batch is refused before any byte is written.
+		if #values == 0 then
+			refuse("invalid_value")
+		end
 		local plan = planFor(d, fixed, #fixed.lineage)
 		local total = F.measure(d, fixed, #values)
 		local out = buffer.create(total)
@@ -1135,7 +1140,10 @@ local function loadAll(d: any, fixed: Fixed, file: buffer, report: any, capacity
 	local at = HEADER + COUNT + L
 	local rest = len - at
 	local stride = 8 + entry.recordBytes
-	if entry.recordBytes <= 0 or rest % stride ~= 0 then
+	-- A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6): a
+	-- header and a layout with no record behind them is refused, never read
+	-- as a batch of none.
+	if rest == 0 or entry.recordBytes <= 0 or rest % stride ~= 0 then
 		refuse("truncated", true)
 	end
 	local count = rest // stride
