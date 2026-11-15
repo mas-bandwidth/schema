@@ -270,17 +270,22 @@ def _resolve(ctx: Ctx) -> None:
             setattr(owner, name, value)
 
 
-def _skip(reader: Reader, kind: int, depth: int = 0) -> None:
+def _skip(reader: Reader, kind: int, depth: int = 0, nonfinite: list[bool] | None = None) -> None:
     """Step past one self-framed payload of kind, judging every byte of it.
 
     A value this reader cannot name is skipped, never trusted: it is held to
     the same wire-alone rules the Go engine's wire check applies to every
     payload before its decode (internal/tablewire/wirecheck.go, payload), so a
     skipped value the engine refuses is refused here with the same reason.
+
+    On the decode's own skip `nonfinite` is None and a non-finite float is
+    refused at once; the refusal path's file walk passes a list, records the
+    float and reads on, as the engine's wire check does, so damage later in
+    the file still outranks it.
     """
     width = _FIXED_WIDTH.get(kind)
     if width is not None:
-        _check_scalar(reader.take(width), kind)
+        _check_scalar(reader.take(width), kind, nonfinite)
         return
     if kind == 17:
         reader.varint()
@@ -301,10 +306,10 @@ def _skip(reader: Reader, kind: int, depth: int = 0) -> None:
             if depth >= _MAX_DEPTH:
                 raise Refused("wire_damaged", "a union arm nested past the binary bound")
             depth += 1
-        _check_content(payload, arm_kind, reader.ids, depth)
+        _check_content(payload, arm_kind, reader.ids, depth, nonfinite)
         return
     if kind in (12, 13, 14, 16, 31, 32):
-        _check_content(reader.take(reader.varint()), kind, reader.ids, depth)
+        _check_content(reader.take(reader.varint()), kind, reader.ids, depth, nonfinite)
         return
     raise Refused("wire_damaged", f"kind {kind} is a kind no reader can skip")
 
@@ -315,9 +320,12 @@ _ARRAY_ELEMENT_KINDS = frozenset((*range(1, 14), 15, 17, *range(18, 31)))
 _KEYED_ELEMENT_KINDS = frozenset((*range(1, 12), 13, *range(18, 31)))
 _EXTENT_CAP = 0x7FFFFFFF
 _RESERVED_IDS = frozenset((0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFD))
+_RESERVED_TYPE_IDS = _RESERVED_IDS | frozenset((NODE_WIRE_ID,))
 
 
-def _check_content(data: memoryview, kind: int, ids: list[int], depth: int = 0) -> None:
+def _check_content(
+    data: memoryview, kind: int, ids: list[int], depth: int = 0, nonfinite: list[bool] | None = None
+) -> None:
     """Judge a payload its length already frames: it must be consumed exactly.
 
     The port of the engine's wire check over a field's, an arm's or a keyed
@@ -327,7 +335,7 @@ def _check_content(data: memoryview, kind: int, ids: list[int], depth: int = 0) 
     if width is not None:
         if len(data) != width:
             raise Refused("wire_damaged", "an L that is not its kind's width")
-        _check_scalar(data, kind)
+        _check_scalar(data, kind, nonfinite)
         return
     if kind == 12:
         _check_text(data)
@@ -343,31 +351,38 @@ def _check_content(data: memoryview, kind: int, ids: list[int], depth: int = 0) 
             raise Refused("wire_damaged", "a framed payload nested past the binary bound")
         reader = Reader(data, 0, len(data), ids)
         if kind == 13:
-            _check_body(reader, depth + 1)
+            _check_body(reader, depth + 1, nonfinite=nonfinite)
         elif kind == 14:
-            _check_array(reader, depth + 1)
+            _check_array(reader, depth + 1, nonfinite)
         else:
-            _check_keyed(reader, depth + 1)
+            _check_keyed(reader, depth + 1, nonfinite)
         return
     if kind in (15, 17, 30):
         reader = Reader(data, 0, len(data), ids)
-        _skip(reader, kind, depth)
+        _skip(reader, kind, depth, nonfinite)
         if reader.pos != reader.end:
             raise Refused("wire_damaged", "bytes left inside an arm after its payload")
         return
     raise Refused("wire_damaged", f"kind {kind} is a kind no reader can skip")
 
 
-def _check_scalar(data: memoryview, kind: int) -> None:
+def _check_scalar(data: memoryview, kind: int, nonfinite: list[bool] | None = None) -> None:
     if kind == 1:
         if data[0] > 1:
             raise Refused("wire_damaged", "a bool byte other than 0 or 1")
     elif kind == 10:
         if int.from_bytes(data, "little") & 0x7F800000 == 0x7F800000:
-            raise Refused("non_finite_float", "a float the wire carries")
+            _not_finite(nonfinite)
     elif kind == 11:
         if int.from_bytes(data, "little") & 0x7FF0000000000000 == 0x7FF0000000000000:
-            raise Refused("non_finite_float", "a float the wire carries")
+            _not_finite(nonfinite)
+
+
+def _not_finite(nonfinite: list[bool] | None) -> None:
+    """Record a non-finite float on the file walk, or refuse it in the decode."""
+    if nonfinite is None:
+        raise Refused("non_finite_float", "a float the wire carries")
+    nonfinite.append(True)
 
 
 def _check_text(data: memoryview) -> None:
@@ -384,29 +399,32 @@ def _check_file(view: memoryview, ids: list[int]) -> None:
     """Raise the wire check's damage over the whole root body, if any.
 
     The root body is walked as a nested one is, except that it may hold the
-    node table, whose records are each a body. A non-finite float the walk
-    meets does not outrank the decode's refusal: the engine names it at its
-    field instead (internal/tablewire/decode.go, decodeWalk).
+    node table, whose records are each a body. A non-finite float is recorded
+    and the walk reads on, as the engine's wire check does; only after the
+    whole body is clean is it ignored, so damage later in the file outranks
+    it. With no damage, the decode's own refusal of the float stands
+    (internal/tablewire/wirecheck.go, checkFile; decode.go, decodeWalk).
     """
-    try:
-        _check_body(Reader(view, 1, _body_end(view), ids), 0, True)
-    except Refused as err:
-        if err.reason == "non_finite_float":
-            return
-        raise
+    nonfinite: list[bool] = []
+    _check_body(Reader(view, 1, _body_end(view), ids), 0, True, nonfinite)
 
 
-def _check_node_table(data: memoryview, ids: list[int]) -> None:
+def _check_node_table(data: memoryview, ids: list[int], nonfinite: list[bool] | None = None) -> None:
     reader = Reader(data, 0, len(data), ids)
     for _ in range(reader.varint()):
-        reader.id_at(reader.varint())
+        type_id = reader.id_at(reader.varint())
+        if type_id in _RESERVED_TYPE_IDS:
+            # A reserved id is damage anywhere but the body whose transport it
+            # is, so it cannot be a record's type (internal/tablewire/nodetable.go,
+            # scanNodeRecords).
+            raise Refused("wire_damaged", "a reserved id in a record's type position")
         body = reader.take(reader.varint())
-        _check_body(Reader(body, 0, len(body), ids), 0)
+        _check_body(Reader(body, 0, len(body), ids), 0, nonfinite=nonfinite)
     if reader.pos != reader.end:
         raise Refused("wire_damaged", "bytes left inside the node table")
 
 
-def _check_body(reader: Reader, depth: int, root: bool = False) -> None:
+def _check_body(reader: Reader, depth: int, root: bool = False, nonfinite: list[bool] | None = None) -> None:
     seen: set[int] = set()
     while True:
         reference = reader.varint()
@@ -428,9 +446,9 @@ def _check_body(reader: Reader, depth: int, root: bool = False) -> None:
                 raise Refused("wire_damaged", "the node table's reserved id in a nested body")
             if kind != 12:
                 raise Refused("wire_damaged", "the node table under a kind other than 12")
-            _check_node_table(reader.take(reader.varint()), reader.ids)
+            _check_node_table(reader.take(reader.varint()), reader.ids, nonfinite)
             continue
-        _skip(reader, kind, depth)
+        _skip(reader, kind, depth, nonfinite)
 
 
 def _array_header(reader: Reader) -> tuple[int, int]:
@@ -443,17 +461,17 @@ def _array_header(reader: Reader) -> tuple[int, int]:
     return element_kind, count
 
 
-def _check_array(reader: Reader, depth: int) -> None:
+def _check_array(reader: Reader, depth: int, nonfinite: list[bool] | None = None) -> None:
     element_kind, count = _array_header(reader)
     if element_kind not in _ARRAY_ELEMENT_KINDS:
         raise Refused("wire_damaged", "an array element kind outside the closed list")
     for _ in range(count):
-        _skip(reader, element_kind, depth)
+        _skip(reader, element_kind, depth, nonfinite)
     if reader.pos != reader.end:
         raise Refused("wire_damaged", "bytes left inside an array's L after its elements")
 
 
-def _check_keyed(reader: Reader, depth: int) -> None:
+def _check_keyed(reader: Reader, depth: int, nonfinite: list[bool] | None = None) -> None:
     element_kind, count = _array_header(reader)
     if element_kind not in _KEYED_ELEMENT_KINDS:
         raise Refused("wire_damaged", "a keyed element kind outside the closed list")
@@ -465,6 +483,6 @@ def _check_keyed(reader: Reader, depth: int) -> None:
         if key in seen:
             raise Refused("wire_damaged", "the same keyed slot twice in one keyed body")
         seen.add(key)
-        _check_content(reader.take(reader.varint()), element_kind, reader.ids, depth)
+        _check_content(reader.take(reader.varint()), element_kind, reader.ids, depth, nonfinite)
     if reader.pos != reader.end:
         raise Refused("wire_damaged", "bytes left inside a keyed array's L after its slots")

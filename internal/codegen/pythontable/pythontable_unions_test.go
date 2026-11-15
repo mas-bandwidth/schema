@@ -155,7 +155,12 @@ func unionCat(parts ...[]byte) []byte {
 func unionI32(v int32) []byte { return binary.LittleEndian.AppendUint32(nil, uint32(v)) }
 
 func (w *unionWire) ref(name string) []byte {
-	id := ir.TableWireId(name)
+	return w.refID(ir.TableWireId(name))
+}
+
+// refID interns a literal wire id, so a file can name one of the reserved ids
+// that no declaration spells.
+func (w *unionWire) refID(id uint64) []byte {
 	for i, v := range w.ids {
 		if v == id {
 			return unionLeb(uint64(i + 1))
@@ -163,6 +168,22 @@ func (w *unionWire) ref(name string) []byte {
 	}
 	w.ids = append(w.ids, id)
 	return unionLeb(uint64(len(w.ids)))
+}
+
+// node is the root body's node table: one count, then each record's type
+// reference, its body length and its body.
+func (w *unionWire) node(records ...[]byte) []byte {
+	payload := unionLeb(uint64(len(records)))
+	for _, record := range records {
+		payload = unionCat(payload, record)
+	}
+	return unionCat(w.refID(ir.TableNodeWireId), []byte{12}, unionLeb(uint64(len(payload))), payload)
+}
+
+// nodeRecord is one node record: the id reference naming its type and the
+// body bytes under it.
+func nodeRecord(typeRef []byte, body []byte) []byte {
+	return unionCat(typeRef, unionLeb(uint64(len(body))), body)
 }
 
 // arm is one arm header: the arm id reference, the kind, L and the payload.
@@ -268,6 +289,21 @@ var unionCases = []unionCase{
 		// compares a kind: damage in a later field outranks the mismatch.
 		return w.file(w.union("pick", w.arm("number", 12, []byte("ab"))), w.least(),
 			unionCat(w.ref("ghost_field"), []byte{99}))
+	}},
+	{"arm-nonfinite-then-damage", "refused wire_damaged", func(w *unionWire) []byte {
+		// A skipped arm carrying a NaN is only a non-finite float when the
+		// rest of the file is sound: the file walk records it, finishes the
+		// body, and names the damage it finds later.
+		nan := binary.LittleEndian.AppendUint32(nil, 0x7FC00000)
+		return w.file(w.union("pick", w.arm("ghost", 10, nan)), w.least(),
+			unionCat(w.ref("ghost_field"), []byte{99}))
+	}},
+	{"arm-kind-mismatch-then-reserved-node-type", "refused wire_damaged", func(w *unionWire) []byte {
+		// A node record's type position is never a reserved id, even where
+		// the decode met a kind mismatch before the node table: the file walk
+		// refuses the record as damage, which outranks the mismatch.
+		record := nodeRecord(w.refID(ir.TableBuildVersionWireId), []byte{0})
+		return w.file(w.union("pick", w.arm("number", 12, []byte("ab"))), w.least(), w.node(record))
 	}},
 	{"arm-short-width", "refused wire_damaged", func(w *unionWire) []byte {
 		return w.file(w.union("pick", w.arm("number", 4, []byte{1, 2, 3})), w.least())
@@ -628,7 +664,9 @@ var unionControls = []struct {
 	{"canonical-arm-length", "kind_union.py", "w.varint(len(payload))", "w.varint(len(payload) + 1)", "union_canonical_bytes True"},
 	{"arm-zero-read", "kind_union.py", "    if reference == 0:\n", "    if reference == 0:\n        raise Refused(\"wire_damaged\", \"arm 0\")\n", "case arm-zero-field "},
 	{"unknown-arm-check", "kind_union.py", "        _load._check_content(payload, kind, ctx.ids)\n", "", "case unknown-arm-kind99 "},
-	{"unknown-field-check", "load.py", "        _check_content(reader.take(reader.varint()), kind, reader.ids, depth)\n        return\n    raise", "        reader.take(reader.varint())\n        return\n    raise", "case unknown-field-kind32-nonzero-l "},
+	{"unknown-field-check", "load.py", "        _check_content(reader.take(reader.varint()), kind, reader.ids, depth, nonfinite)\n        return\n    raise", "        reader.take(reader.varint())\n        return\n    raise", "case unknown-field-kind32-nonzero-l "},
+	{"file-walk-stops-at-nonfinite", "load.py", "    nonfinite.append(True)", "    raise Refused(\"non_finite_float\", \"a float the wire carries\")", "case arm-nonfinite-then-damage "},
+	{"node-record-reserved-type", "load.py", "        if type_id in _RESERVED_TYPE_IDS:", "        if False:", "case arm-kind-mismatch-then-reserved-node-type "},
 	{"damage-outranks-mismatch", "load.py", "            _check_file(view, ids)\n", "            pass\n", "case arm-kind-mismatch-then-damage "},
 	{"arm-kind-check", "kind_union.py", "    if kind != arm.kind:\n", "    if False:\n", "case arm-kind-mismatch "},
 	{"void-arm-length", "kind_union.py", "        if length != 0:\n", "        if False:\n", "case void-arm-nonzero-l "},
