@@ -3237,6 +3237,15 @@
         "python-packet-core-negative-control"
       ],
       "python": "pin"
+    },
+    {
+      "name": "python-packet-int128",
+      "when": "pull-request",
+      "why": "the 128-bit integer kinds' control (docs/PORT-PYTHON.md, THE HARNESS): a copy of the generated Raw reader lands its uint128 one too high and TestPythonPacketInt128NegativeControl must go red on the Go-reference read marker. One SCHEMA_SLOW go test under the pinned interpreter beside the generated Go reference over serialize.go, the cost of the pin cache restore rather than the run.",
+      "targets": [
+        "python-packet-int128-negative-control"
+      ],
+      "python": "pin"
     }
   ],
   "excluded": [

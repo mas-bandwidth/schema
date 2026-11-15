@@ -109,6 +109,9 @@ func fieldKind(f *ir.Field) string {
 		if f.Type.Width <= 64 {
 			return "int"
 		}
+		if f.Type.Width == 128 {
+			return "int128"
+		}
 		return ""
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
