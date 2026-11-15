@@ -338,6 +338,11 @@ func (s *scan) field(at int64, f *ir.Field) error {
 			return err
 		}
 		used := int64(int32(s.ord.Uint32(s.buf[pieces[1].Offset:])))
+		if used < 0 {
+			// The companion above refuses a negative used count: it is not an
+			// extent, and the dead-slot scan must never index behind the array.
+			return nil
+		}
 		if err := s.slots(value.Offset, f, used); err != nil {
 			return err
 		}

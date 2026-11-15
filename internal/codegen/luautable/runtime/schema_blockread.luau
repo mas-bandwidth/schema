@@ -16,6 +16,9 @@
 -- stride is a constant this build asserts against, never what a row is indexed
 -- with (§19.2, §19.4). Read walks a projection or a row through the descriptor
 -- graph alone: offsets, sizes, kinds and the element column are data (§8.1).
+-- A read never leaves its record: a count past the declared bound of the array
+-- it belongs to, at any depth, is a refusal of the whole read rather than a
+-- walk past the rows or the bytes the caller opened.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 export type Field = {
@@ -151,6 +154,14 @@ end
 -- the block, naming <Owner>.<field> (the first one wins), and answers +0.
 local _block: Block? = nil
 local _owner = "?"
+-- the layout refusal a read latched: an array whose count leaves its declared
+-- bound, or an out-of-line triple that leaves the block. The first one wins,
+-- and Read answers nil and it rather than a partly read value.
+local _refusal: string? = nil
+local function refuseLayout()
+	if _refusal == nil then _refusal = "bad_layout" end
+end
+
 local function nonFinite(f: Field): number
 	local b = _block
 	if b ~= nil and b.nonFiniteFloat == nil then b.nonFiniteFloat = _owner .. "." .. f.name end
@@ -205,6 +216,20 @@ local function readArray(f: Field, buf: buffer, at: number): { any }
 	local offsetOf = integer.tonumber(buffer.readinteger(buf, at + (f.offsetOfOffset :: number)))
 	local count = buffer.readu32(buf, at + (f.countOffset :: number))
 	local stride = buffer.readu32(buf, at + (f.strideOffset :: number))
+	-- THE SAME CLAUSES BlockOpen runs for the root's arrays (§19.2), applied
+	-- wherever a record is reached: the count is inside its declared maximum,
+	-- the pitch is this build's own, and every row lies inside the block's
+	-- extent. A nested record's out-of-line array is held exactly as the root's.
+	local block = _block
+	if block ~= nil then
+		local start = at + offsetOf
+		local limit = block.base + block.bytes
+		local span = count * stride
+		if count > (f.bound :: number) or stride ~= (f.stride :: number) or offsetOf < 0 or start > limit or span > limit - start then
+			refuseLayout()
+			return {}
+		end
+	end
 	local rows: { any } = {}
 	for i = 0, count - 1 do
 		rows[i + 1] = readRecord(f.element :: Info, buf, at + offsetOf + i * stride)
@@ -222,9 +247,17 @@ readRecord = function(info: Info, buf: buffer, at: number): { [string]: any }
 			out[f.name] = nil
 		elseif f.element ~= nil then
 			if f.isArray then
-				local n = f.arrayBound or 0
+				local bound = f.arrayBound or 0
+				local n = bound
 				if f.countOffset ~= nil then
 					n = buffer.readu32(buf, at + f.countOffset)
+				end
+				-- an inline counted array's count is bounded by its declared
+				-- maximum HERE, at the depth it is read: a nested record's array
+				-- is held as the root's out-of-line array is (§19.2)
+				if n > bound then
+					refuseLayout()
+					n = 0
 				end
 				local elem = f.element :: Info
 				local stride = f.elemSize or elem.size
@@ -256,11 +289,19 @@ end
 -- Read(info, block) walks one record — a table's projection, or a row — into
 -- a value keyed by field name, using the descriptors alone (docs/SPEC-TABLES.md
 -- §19.2). An out-of-line array answers a one-based list of row values.
-function B.Read(info: Info, block: Block): { [string]: any }
+-- A count past its declared bound at any depth answers nil and "bad_layout":
+-- a refusal is the whole answer, never a clipped list.
+function B.Read(info: Info, block: Block): ({ [string]: any }?, string?)
 	_block = block
+	_refusal = nil
 	local out = readRecord(info, block.buffer, block.base)
+	local refusal = _refusal
+	_refusal = nil
 	_block = nil
-	return out
+	if refusal ~= nil then
+		return nil, refusal
+	end
+	return out, nil
 end
 
 -- NonFiniteFloat(block) is the latched refusal, "non_finite_float: <Owner>.<field>",
