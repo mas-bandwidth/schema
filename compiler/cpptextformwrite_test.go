@@ -77,9 +77,13 @@ func TestCPPTextFormDocumentEdits(t *testing.T) {
 		t.Helper()
 		return exec.Command(filepath.Join(h.dir, "probe"), args...).CombinedOutput()
 	}
+	// The subtests run in parallel in one probe directory, and os.WriteFile
+	// truncates before it writes, so each subtest writes its own input file:
+	// a shared roadmap.input.sexp let one subtest's probe read another's
+	// half-written copy and refuse it as text_syntax.
 	write := func(t *testing.T, h harness, name string, data []byte) string {
 		t.Helper()
-		path := filepath.Join(h.dir, name)
+		path := filepath.Join(h.dir, strings.ReplaceAll(t.Name(), "/", "_")+"."+name)
 		if err := os.WriteFile(path, data, 0600); err != nil {
 			t.Fatal(err)
 		}

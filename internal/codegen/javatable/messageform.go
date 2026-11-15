@@ -223,75 +223,111 @@ public final class TableVocabulary {
     // the trailer of ids. The two strict checks are the two facts an
     // announcement's body must carry, and a failed one is MALFORMED, not a
     // refusal (docs/SPEC-TABLES.md §3.3).
+    // keepBuildVersion preserves §3.3's "kept the moment it is read" fact on a
+    // read the form-1 open already refused or damaged: it decides no verdict
+    // and moves no counter, it only walks the body far enough to keep the
+    // build version. The walk uses the form-1 reader's own skip.
+    private static void keepBuildVersion(TableVocabulary v, byte[] data) {
+        if (data == null || data.length < 9 || (data[0] & 0xff) != 1) {
+            return;
+        }
+        TableVariable.Report ignored = new TableVariable.Report();
+        int base = TableVariable.trailerBase(data, ignored);
+        if (base < 0) {
+            return;
+        }
+        int count = (data.length - 8 - base) / 8;
+        long[] ids = new long[count];
+        for (int i = 0; i < count; i++) {
+            ids[i] = TableVariable.u64(data, base + i * 8);
+        }
+        TableVariable.Reader r = new TableVariable.Reader(data, ids, ignored);
+        r.off = 1;
+        r.limit = base;
+        r.rootBody = true;
+        while (true) {
+            long ref = r.leb();
+            if (r.fail) {
+                return;
+            }
+            if (ref == 0) {
+                return;
+            }
+            long id = r.resolve(ref);
+            if (r.fail || !r.has(1)) {
+                return;
+            }
+            int kind = r.get8();
+            if (id == -2L) {
+                if (kind == 9 && r.has(8)) {
+                    v.buildVersion = r.get64();
+                }
+                return;
+            }
+            r.skip(kind);
+            if (r.fail) {
+                return;
+            }
+        }
+    }
+
     private static boolean announceReadInner(TableVocabulary v, byte[] data, Report report) {
-        if (data == null || data.length == 0) {
+        if (data == null) {
             report.damaged = true;
             return false;
         }
-        if ((data[0] & 0xff) != 1) {
-            report.refused = true;
-            report.reason = (data[0] & 0xff) == 2 ? "message_form_as_file" : "newer_form";
+        // THE FORM-1 READER'S OWN OPEN: the form byte, the trailer's bound and
+        // distinctness, the body extent and every wire-alone rule over every
+        // byte, with the announcement's two reserved ids admitted in the root
+        // body (§3, §3.3, §4).
+        TableVariable.Report opened = new TableVariable.Report();
+        TableVariable.Reader r = TableVariable.openAnnouncement(data, opened);
+        if (r == null) {
+            report.damaged = opened.damaged;
+            report.refused = opened.refused;
+            report.reason = opened.reason;
+            keepBuildVersion(v, data);
             return false;
         }
-        if (data.length < 9) {
-            report.damaged = true;
-            return false;
-        }
-        long entryCount = readU64(data, data.length - 8);
-        if (entryCount < 0 || entryCount > (data.length - 9) / 8) {
-            report.damaged = true;
-            return false;
-        }
-        int idsStart = data.length - 8 - (int) entryCount * 8;
-        Reader r = new Reader(data, 1);
+        int idsStart = r.limit;
         int versionCount = 0;
         int vocabCount = 0;
         byte[] vocab = null;
         while (true) {
             long ref = r.leb();
-            if (r.err) {
+            if (r.fail) {
                 report.damaged = true;
                 return false;
             }
             if (ref == 0) {
                 break;
             }
-            if (Long.compareUnsigned(ref, entryCount) > 0) {
+            long id = r.resolve(ref);
+            if (r.fail || !r.has(1)) {
                 report.damaged = true;
                 return false;
             }
-            long id = readU64(data, idsStart + (int) (ref - 1) * 8);
-            int kind = r.u8();
-            if (r.err) {
-                report.damaged = true;
-                return false;
-            }
+            int kind = r.get8();
             if (id == -2L) { // the reserved build-version id, 0xFFFFFFFFFFFFFFFE
                 if (kind != 9 || !r.has(8)) {
                     report.damaged = true;
                     return false;
                 }
-                v.buildVersion = r.u64();
+                v.buildVersion = r.get64();
                 versionCount++;
             } else if (id == -3L) { // the reserved vocabulary id, 0xFFFFFFFFFFFFFFFD
                 if (kind != 14) {
                     report.damaged = true;
                     return false;
                 }
-                long len = r.leb();
-                if (r.err || len < 0 || len > r.buf.length - r.at) {
+                TableVariable.Reader sub = r.body();
+                if (sub == null || !sub.has(1)) {
                     report.damaged = true;
                     return false;
                 }
-                int bodyStart = r.at;
-                Reader sub = new Reader(r.buf, bodyStart);
-                int elem = sub.u8();
-                if (sub.err || elem != 6) {
-                    report.damaged = true;
-                    return false;
-                }
+                int elem = sub.get8();
                 long n = sub.leb();
-                if (sub.err || n < 0 || n != len - (sub.at - bodyStart)) {
+                if (sub.fail || elem != 6 || n < 0 || n != sub.limit - sub.off) {
                     report.damaged = true;
                     return false;
                 }
@@ -305,18 +341,18 @@ public final class TableVocabulary {
                     return false;
                 }
                 vocab = new byte[(int) n];
-                System.arraycopy(r.buf, sub.at, vocab, 0, (int) n);
-                r.at = bodyStart + (int) len;
+                System.arraycopy(sub.buf, sub.off, vocab, 0, (int) n);
                 vocabCount++;
             } else {
                 report.unknown++;
-                if (!skip(r, kind)) {
+                r.skip(kind);
+                if (r.fail) {
                     report.damaged = true;
                     return false;
                 }
             }
         }
-        if (r.at != idsStart) {
+        if (r.off != idsStart) {
             report.damaged = true;
             return false;
         }
@@ -328,10 +364,12 @@ public final class TableVocabulary {
             return false;
         }
         // Resolve the vocabulary once: every entry an id, a kind and a shape.
-        // The ENTRY bound is the caller's capacity, narrowed by maxEntries when
+        // The ENTRY bound is the caller's storage, narrowed by maxEntries when
         // the receiver sets one, and an announcement above it is refused by
-        // name as vocabulary_too_large before an entry is touched (§3.3).
-        int entryBound = v.entries.length;
+        // name as vocabulary_too_large before an entry is touched (§3.3). A
+        // vocabulary in its constructed state has declared no storage, so its
+        // bound is zero and the first entry is refused by name.
+        int entryBound = v.entries == null ? 0 : v.entries.length;
         if (v.maxEntries > 0 && v.maxEntries < entryBound) {
             entryBound = v.maxEntries;
         }
@@ -445,14 +483,6 @@ public final class TableVocabulary {
         }
     }
 
-    static long readU64(byte[] buf, int at) {
-        long v = 0;
-        for (int i = 0; i < 8; i++) {
-            v |= (long) (buf[at + i] & 0xff) << (8 * i);
-        }
-        return v;
-    }
-
     static int bitCount(long n) {
         if (n <= 0) {
             return 0;
@@ -501,34 +531,6 @@ public final class TableVocabulary {
         }
     }
 
-    // Skip an unknown field by its announced kind (§3.3): a strict reader
-    // steps over a field it cannot name exactly, by the width the kind states.
-    static boolean skip(Reader r, int kind) {
-        int w = kindWidth(kind);
-        if (w > 0) {
-            if (!r.has(w)) {
-                return false;
-            }
-            r.at += w;
-            return true;
-        }
-        switch (kind) {
-            case 12:
-            case 13:
-            case 14:
-                { // string, table, array: a length then its bytes
-                    long n = r.leb();
-                    if (r.err || n < 0 || n > r.buf.length - r.at) {
-                        return false;
-                    }
-                    r.at += (int) n;
-                    return true;
-                }
-            default:
-                return false;
-        }
-    }
-
     static Shape shapeRead(Reader r, int kind) {
         Shape s = new Shape();
         s.kind = kind;
@@ -547,7 +549,7 @@ public final class TableVocabulary {
             }
             if (s.packing == 1 && kind != 10) {
                 long bits = r.leb();
-                if (r.err || bits > (long) kindWidth(kind) * 8) {
+                if (r.err || Long.compareUnsigned(bits, (long) kindWidth(kind) * 8) > 0) {
                     return null;
                 }
                 s.bits = bits;
@@ -598,7 +600,7 @@ public final class TableVocabulary {
         }
         if (kind == 12) {
             long max = r.leb();
-            if (r.err || max > 0x7fffffffL) {
+            if (r.err || Long.compareUnsigned(max, 0x7fffffffL) > 0) {
                 return null;
             }
             s.max = max;
@@ -607,13 +609,13 @@ public final class TableVocabulary {
         if (kind == 14 || kind == 16) {
             if (kind == 14) {
                 long min = r.leb();
-                if (r.err || min > 0xffffffffL) {
+                if (r.err || Long.compareUnsigned(min, 0xffffffffL) > 0) {
                     return null;
                 }
                 s.min = min;
             }
             long max = r.leb();
-            if (r.err || max > 0xffffffffL || max < s.min) {
+            if (r.err || Long.compareUnsigned(max, 0xffffffffL) > 0 || Long.compareUnsigned(max, s.min) < 0) {
                 return null;
             }
             s.max = max;
@@ -641,7 +643,9 @@ public final class TableVocabulary {
                 return false;
             }
             int elem = r.u8();
-            if (!knownKind(elem) || elem == 12) {
+            // AN ELEMENT KIND OF 12 IS AN ANNOUNCED SHAPE LIKE ANY OTHER
+            // (§3.3): a string element's shape is the max its kind names.
+            if (!knownKind(elem)) {
                 return false;
             }
             e.element = shapeRead(r, elem);
@@ -653,7 +657,12 @@ public final class TableVocabulary {
                     return false;
                 }
                 int inner = r.u8();
-                if (!knownKind(inner) || inner == 12) {
+                if (!knownKind(inner)) {
+                    return false;
+                }
+                // The inner element's own shape follows its kind byte, and a
+                // kind 12 there reads its max like any other announced shape.
+                if (inner == 12 && shapeRead(r, inner) == null) {
                     return false;
                 }
             }
@@ -1020,7 +1029,10 @@ public final class TableMessage {
             case 12: {
                 long n = r.get(TableVocabulary.bitCount(s.max));
                 if (r.err || !r.align()) { return false; }
-                return r.skipBits(n * 8L);
+                // A SKIPPED STRING IS HELD TO THE TEXT RULE (§3.3, §4): bytes
+                // this reader does not keep are still damage when ill-formed.
+                final int start = r.atByte();
+                return r.skipBits(n * 8L) && utf8Valid(r.buf, start, (int) n);
             }
             case 31: {
                 if (!r.align()) { return false; }
@@ -1741,9 +1753,9 @@ func (g *messageGen) emitWriteBoundsCheck(f *ir.Field, owner string, indent int)
 	expr := owner + "." + name
 	switch {
 	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Array == ir.ArrayNone && f.KeyEnum == "":
-		g.pf("%sif (%sLength < 0 || %sLength > %d) { return false; }\n", ind, expr, expr, f.Type.Size)
+		g.pf("%sassert %sLength >= 0 && %sLength <= %d;\n", ind, expr, expr, f.Type.Size)
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
-		g.pf("%sif (%sCount < %d || %sCount > %d) { return false; }\n", ind, expr, f.ArrayMin, expr, f.ArrayBound)
+		g.pf("%sassert %sCount >= %d && %sCount <= %d;\n", ind, expr, f.ArrayMin, expr, f.ArrayBound)
 	}
 }
 
@@ -2451,7 +2463,8 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("            }\n")
 	g.pf("            return -1;\n")
 	g.pf("        }\n")
-	g.pf("        if (values == null || count > values.length) { return -1; }\n")
+	g.pf("        if (values == null) { return -1; }\n")
+	g.pf("        assert count <= values.length;\n")
 	g.pf("        TableMessage.Writer w = new TableMessage.Writer(null, 2, true);\n")
 	g.pf("        for (int i = 0; i < count; i++) {\n")
 	g.pf("            if (values[i] == null || !saveMessageBody(w, values[i])) { return -1; }\n")
@@ -2480,10 +2493,11 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("            return -1;\n")
 	g.pf("        }\n")
 	if st.Integrity != "" {
-		g.pf("        if (values == null || count > values.length || buffer == null || buffer.length < 6) { return -1; }\n")
+		g.pf("        if (values == null || buffer == null || buffer.length < 6) { return -1; }\n")
 	} else {
-		g.pf("        if (values == null || count > values.length || buffer == null || buffer.length < 2) { return -1; }\n")
+		g.pf("        if (values == null || buffer == null || buffer.length < 2) { return -1; }\n")
 	}
+	g.pf("        assert count <= values.length;\n")
 	g.pf("        TableMessage.Writer mw = new TableMessage.Writer(null, 2, true);\n")
 	g.pf("        for (int i = 0; i < count; i++) {\n")
 	g.pf("            if (values[i] == null || !saveMessageBody(mw, values[i])) { return -1; }\n")

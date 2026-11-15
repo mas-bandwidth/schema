@@ -6,8 +6,9 @@ import (
 	"testing"
 )
 
-// Stored NUL refuses for every port. Unknown skipped values preserve the
-// accepted value, and no carried-by metadata creates an acceptance exemption.
+// Stored NUL refuses for every port, and so does a NUL in the value of an
+// unknown key the read only skips (docs/rulings.json
+// skipped-value-is-validated). No carried-by metadata creates an exemption.
 func TestHostileZeroEscapeRows(t *testing.T) {
 	t.Parallel()
 	const root = "../../../"
@@ -15,7 +16,7 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"str-zero-byte-bounded", "str-zero-byte-bounded-nested", "str-zero-escape-value", "str-zero-escape-map-key"} {
+	for _, name := range []string{"str-zero-byte-bounded", "str-zero-byte-bounded-nested", "str-zero-escape-value", "str-zero-escape-map-key", "str-zero-escape-unknown-key"} {
 		row := findHostile(t, m, name)
 		for _, lang := range []string{"go", "cpp", "dart", "lobster", "unported"} {
 			if row.VerdictFor(lang) != "refused" {
@@ -46,15 +47,6 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 					t.Fatalf("%s/%s verdict %q: %+v", name, lang, verdict, result)
 				}
 			}
-		}
-	}
-	clean := findHostile(t, m, "str-zero-escape-unknown-key")
-	for _, lang := range []string{"go", "cpp", "unported"} {
-		if clean.VerdictFor(lang) != "read" {
-			t.Fatalf("skipped unknown value changed acceptance for %s", lang)
-		}
-		if want := hostileExpectation(*clean, lang); want.value == "" || want.verdictOnly {
-			t.Fatalf("accepted value not compared: %+v", want)
 		}
 	}
 }

@@ -212,19 +212,9 @@ func (c *carver) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 				return err
 			}
 		}
-		// AN UNREACHED NON-EMPTY EXTENT IS REFUSED (§7.6): a counted array's
-		// slots past its live count are storage the walk does not reach, so a
-		// list with elements in one names bytes the region will not hold. It
-		// is the refusal §7.6 gives a pointer in the same place.
-		for i := live; i < int64(len(fv.Elems)); i++ {
-			probe := &carver{m: c.m}
-			if err := probe.element(0, f, &fv.Elems[i]); err != nil {
-				return err
-			}
-			if probe.at != 0 {
-				return fmt.Errorf("slot %d is past the live count %d and holds %d bytes of extent: a cook cannot carry storage the walk does not reach (docs/SPEC-TABLES.md §7.6)", i, fv.Count, probe.at)
-			}
-		}
+		// A slot past the live count is dead storage. Its value and any
+		// extent it names are ignored (docs/SPEC-TABLES.md §7.2;
+		// docs/rulings.json fixed-dead-bytes-are-zero).
 		return nil
 	default:
 		for i := range int64(len(fv.Elems)) {

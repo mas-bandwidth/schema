@@ -13,9 +13,10 @@ import (
 // §5.8 row 4, writer_bound_count: the reader's bound is WIDER than the writer's
 // and a forged file carries a count BETWEEN the two. The NEW build reads the
 // forged OLD bytes through its lineage, so the plan in hand is a COMPILED one and
-// the count's bound is the WRITER's, carried by the plan. That is the number this
-// row exists to settle: 4. The two wrong answers it tells apart are the reader's
-// own bound 8 and the forged word 7, and both must fail before 4 can land.
+// the count's bound is the WRITER's, carried by the plan: 4. Under the strict
+// read (docs/FIXED-FORM-ALGORITHM.md §4.5: a count past the bound is itself
+// refused) the forged 7 refuses the whole load and writes nothing; a reader
+// that bounds by its own 8 reads it, and that is the fault this row catches.
 func TestFixedVersioningWriterBoundCount(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
@@ -50,43 +51,40 @@ func TestFixedVersioningWriterBoundCount(t *testing.T) {
             TableReport r = new TableReport();
             TableFixedEntry[] plan = new TableFixedEntry[8192];
             long n = Schema.@TABLE@FixedLoad(back, data, plan, r);
-            if (n != 1)
+            @TABLE@ fresh = new @TABLE@();
+            if (n != -1)
             {
-                bad += ProbeLog.Fail(@NAME@, "writer_bound_count: n is not 1: " + n);
+                bad += ProbeLog.Fail(@NAME@, "writer_bound_count: a count past the WRITER's bound must refuse the load: n=" + n);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (!r.Refused || r.Verdict != Schema.TableWire.Verdict.Refused)
             {
-                bad += ProbeLog.Fail(@NAME@, "a clean read is not a refusal: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a forged count is a refusal, never a clamp: refused=" + r.Refused + " verdict=" + r.Verdict);
             }
-            if (back[0].ValsCount != 4)
+            if (back[0].ValsCount != fresh.ValsCount)
             {
-                bad += ProbeLog.Fail(@NAME@, "vals_count is the WRITER's bound carried by the plan, never the reader's 8 nor the forged 7: " + back[0].ValsCount);
+                bad += ProbeLog.Fail(@NAME@, "a refusal landed a count, never the writer's 4 nor the reader's 8 nor the forged 7: " + back[0].ValsCount);
             }
             for (int i = 0; i < 4; ++i)
             {
-                if (back[0].Vals[i] != 1000 + i)
+                if (back[0].Vals[i] != fresh.Vals[i])
                 {
-                    bad += ProbeLog.Fail(@NAME@, "vals[" + i + "] did not land its own value: " + back[0].Vals[i] + " != " + (1000 + i));
+                    bad += ProbeLog.Fail(@NAME@, "vals[" + i + "] was written by a refused load: " + back[0].Vals[i] + " != " + fresh.Vals[i]);
                 }
             }
             for (int i = 4; i < 8; ++i)
             {
-                if (back[0].Vals[i] != 0)
+                if (back[0].Vals[i] != fresh.Vals[i])
                 {
                     bad += ProbeLog.Fail(@NAME@, "vals[" + i + "] is not the reader's declared default: " + back[0].Vals[i]);
                 }
             }
-            if (back[0].Lead != 0xAAAAAAAAu || back[0].Trail != 0xBBBBBBBBu)
+            if (back[0].Lead != fresh.Lead || back[0].Trail != fresh.Trail)
             {
-                bad += ProbeLog.Fail(@NAME@, "the row moved a neighbour: lead=" + back[0].Lead + " trail=" + back[0].Trail);
+                bad += ProbeLog.Fail(@NAME@, "a refusal wrote a neighbour: lead=" + back[0].Lead + " trail=" + back[0].Trail);
             }
-            if (r.Clamped != 1)
+            if (r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "the bounds pass counts once per entry per record, so clamped is EXACTLY 1, never 2: clamped=" + r.Clamped);
-            }
-            if (r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0)
-            {
-                bad += ProbeLog.Fail(@NAME@, "counters moved on a clean clamped read: unknown=" + r.Unknown + " kind=" + r.KindMismatch + " widened=" + r.Widened + " duplicate=" + r.Duplicate + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves: unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`,
 	}
 

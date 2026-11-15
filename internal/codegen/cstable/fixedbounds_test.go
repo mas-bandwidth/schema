@@ -113,7 +113,7 @@ func TestFixedCompiledUnionLandsNoneFirst(t *testing.T) {
 		t.Fatal("the compiler has no union case")
 	}
 	rest := tableFixedWireSource[at:]
-	none := strings.Index(rest, "c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, 0));")
+	none := strings.Index(rest, "c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, their_arms, meta: c.ArgW));")
 	if none < 0 {
 		t.Fatal("the compiled union never lands None: only the guarded arm consts are pushed")
 	}

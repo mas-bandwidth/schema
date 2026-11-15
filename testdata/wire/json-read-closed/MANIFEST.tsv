@@ -1,0 +1,35 @@
+# The JSON read-closed vectors (docs/SPEC-TABLES.md §16.2, docs/rulings.json
+# json-read-closed). One small unit — `Closed` (a flags field, an enum, a
+# union, a map keyed by string, a string field) and `Scene` (a pointer, for the
+# `&` name's site) — read by the engine and every port card.
+#
+# The three rules, one corpus:
+#   (1) a schema-name string — an object key naming a field, an enum variant
+#       name, a flags element, a union arm key, a pointer's first key (the
+#       `&node` name's site) — is capped at 255 bytes and a longer one refuses;
+#       a map key and a string value are data, never capped for length.
+#   (2) the depth cap, 128, counts every container (object and array), the
+#       root at depth 0, in a skipped value too.
+#   (3) a lone surrogate and an ill-formed UTF-8 byte in a string value refuse.
+#
+# Columns, tab-separated: name, root, json file, verdict, what it holds.
+field-key-255	Closed	field-key-255.read.json	read	an object key of 255 bytes
+field-key-256	Closed	field-key-256.refused.json	refused	an object key of 256 bytes
+skipped-key-255	Closed	skipped-key-255.read.json	read	an object key of 255 bytes inside a skipped value
+skipped-key-256	Closed	skipped-key-256.refused.json	refused	an object key of 256 bytes inside a skipped value
+enum-name-255	Closed	enum-name-255.read.json	read	an enum variant name of 255 bytes
+enum-name-256	Closed	enum-name-256.refused.json	refused	an enum variant name of 256 bytes
+flags-element-255	Closed	flags-element-255.read.json	read	a flags element of 255 bytes
+flags-element-256	Closed	flags-element-256.refused.json	refused	a flags element of 256 bytes
+union-arm-255	Closed	union-arm-255.read.json	read	a union arm key of 255 bytes
+union-arm-256	Closed	union-arm-256.refused.json	refused	a union arm key of 256 bytes
+ampersand-255	Scene	ampersand-255.read.json	read	a pointer's first key of 255 bytes
+ampersand-256	Scene	ampersand-256.refused.json	refused	a pointer's first key of 256 bytes
+map-key-long	Closed	map-key-long.read.json	read	a map key of 300 bytes, data not capped
+string-value-long	Closed	string-value-long.read.json	read	a string value of 300 bytes, data not capped
+depth-arrays-128	Closed	depth-arrays-128.read.json	read	128 nested arrays under an unknown key
+depth-arrays-129	Closed	depth-arrays-129.refused.json	refused	129 nested arrays under an unknown key
+depth-objects-128	Closed	depth-objects-128.read.json	read	128 nested objects under an unknown key
+depth-objects-129	Closed	depth-objects-129.refused.json	refused	129 nested objects under an unknown key
+lone-surrogate	Closed	lone-surrogate.refused.json	refused	a lone surrogate escape in a string value
+illformed-utf8	Closed	illformed-utf8.refused.json	refused	an ill-formed UTF-8 byte in a string value

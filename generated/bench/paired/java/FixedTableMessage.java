@@ -109,9 +109,10 @@ public final class FixedTableMessage {
             }
             return -1;
         }
-        if (values == null || count > values.length) {
+        if (values == null) {
             return -1;
         }
+        assert count <= values.length;
         TableMessage.Writer w = new TableMessage.Writer(null, 2, true);
         for (int i = 0; i < count; i++) {
             if (values[i] == null || !saveMessageBody(w, values[i])) {
@@ -145,9 +146,10 @@ public final class FixedTableMessage {
             }
             return -1;
         }
-        if (values == null || count > values.length || buffer == null || buffer.length < 2) {
+        if (values == null || buffer == null || buffer.length < 2) {
             return -1;
         }
+        assert count <= values.length;
         TableMessage.Writer mw = new TableMessage.Writer(null, 2, true);
         for (int i = 0; i < count; i++) {
             if (values[i] == null || !saveMessageBody(mw, values[i])) {
