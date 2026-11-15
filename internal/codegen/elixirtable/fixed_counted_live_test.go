@@ -26,7 +26,7 @@ func TestFixedCountedArrayLiveExtent(t *testing.T) {
 			dir := t.TempDir()
 			write := fmt.Sprintf(`
     dir = %q
-    header = Slack.ProbeFixed.root_fixed_save([])
+    header = binary_part(Slack.ProbeFixed.root_fixed_save([%%Slack.Root{vals: []}]), 0, Slack.ProbeFixed.root_fixed_measure(0))
     for n <- [0, 1, 4] do
       value = %%Slack.Root{vals: Enum.take(%s, n)}
       wire = Slack.ProbeFixed.root_fixed_save([value])
@@ -66,8 +66,8 @@ func TestFixedCountedArrayLiveExtent(t *testing.T) {
         check(report.widened == expected, "widened counted slack: #{inspect(report)}")
         check(true and report.unknown == 0 and true and true, "slack changed counters")
         saved = Slack.ProbeFixed.root_fixed_save([value])
-        empty = Slack.ProbeFixed.root_fixed_save([])
-        body = binary_part(saved, byte_size(empty) + 8, byte_size(saved) - byte_size(empty) - 8)
+        empty = Slack.ProbeFixed.root_fixed_measure(0)
+        body = binary_part(saved, empty + 8, byte_size(saved) - empty - 8)
         <<count::little-unsigned-32, payload::binary>> = body
         check(count == n, "reader writer count")
         width = div(byte_size(payload), 4)

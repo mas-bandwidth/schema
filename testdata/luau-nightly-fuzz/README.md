@@ -21,3 +21,4 @@ then delete the `pending=` line so the input gates like every other.
 | --- | --- | --- | --- |
 | `luau-load-negative-id-count.bin` | 088e3e73 | load.luau `open()`: a high-bit id count passed the bound | green (fixed by luau-load-negative-id-count) |
 | `luau-fixed-layout-bounds.bin` | 088e3e73 | fixed.luau: a forged layout read past the record | green |
+| `luau-count-over-extent-cap.bin` | a028f662 | load.luau: the wire-alone walk's over-cap count now names `count_over_extent_cap` | green |

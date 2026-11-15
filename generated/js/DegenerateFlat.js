@@ -36,6 +36,9 @@ export function ReadVec2Flat(view, numBits, value) {
   if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
     return false;
   }
+  if (((128 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -119,6 +122,13 @@ export function ReadSpanF64Flat(view, numBits, value) {
     }
     value.values[i0] = SC.getFloat64(0, true);
     br += 32;
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -218,6 +228,13 @@ export function ReadSpanU64Flat(view, numBits, value) {
     value.values[i0] = bg;
     br += 32;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -314,6 +331,13 @@ export function ReadSpanI64Flat(view, numBits, value) {
     bg = SC.getBigUint64(0, true);
     value.values[i0] = BigInt.asIntN(64, bg);
     br += 32;
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -412,6 +436,13 @@ export function ReadSpanOneFlat(view, numBits, value) {
     value.values[i0] = bg;
     br += 32;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -487,6 +518,13 @@ export function ReadSpanChunkFlat(view, numBits, value) {
     v = (out & 0xffff) >>> 0;
     value.values[i0] = v;
     br += 16;
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -591,6 +629,14 @@ export function ReadSpanTailFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
   value.tail = v;
+  br += 32;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -741,6 +787,13 @@ export function ReadSpanTwiceFlat(view, numBits, value) {
     value.b[i0] = SC.getFloat64(0, true);
     br += 32;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -831,6 +884,9 @@ export function ReadTrioFlat(view, numBits, value) {
   out = view.getUint32(5, true);
   v = (out & 0xffffff) >>> 0;
   value.c = v;
+  if (((64 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -886,6 +942,9 @@ export function ReadTrioSoleFlat(view, numBits, value) {
   out = view.getUint32(5, true);
   v = (out & 0xffffff) >>> 0;
   value.inner.c = v;
+  if (((64 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -937,6 +996,9 @@ export function ReadVec3SoleFlat(view, numBits, value) {
   }
   value.v.z = view.getFloat64(16, true);
   if ((view.getUint32(20, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  if (((192 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
     return false;
   }
   return true;
@@ -1001,6 +1063,9 @@ export function ReadTrioFirstFlat(view, numBits, value) {
   out = view.getUint32(8, true);
   v = (out & 0xffff) >>> 0;
   value.trailer = v;
+  if (((80 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -1130,6 +1195,9 @@ export function ReadTrioStraddleFlat(view, numBits, value) {
   out = view.getUint32(48, true);
   v = (out & 0xffffff) >>> 0;
   value.inner.c = v;
+  if (((408 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
