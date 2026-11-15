@@ -56,6 +56,7 @@ var cppFramingStrictRows = []string{
 	"node_unknown_to_fixed_reader",
 	"frame_unknown_array_count_over_cap",
 	"frame_unknown_keyed_count_over_cap",
+	"frame_unknown_float_non_finite",
 }
 
 type cppFramingRow struct {
@@ -82,11 +83,11 @@ func cppFramingManifestRows(t *testing.T, root string) []cppFramingRow {
 	return rows
 }
 
-// cppFramingUnknownCountRows changes an unknown field in a pinned form-1
-// fixture into an array or keyed field whose canonical count exceeds the
-// wire's int32 extent cap. The declared reader skips that field, so only its
-// generated strict walk can refuse the count.
-func cppFramingUnknownCountRows(t *testing.T, root string) []cppFramingRow {
+// cppFramingUnknownWireRows changes an unknown field in a pinned form-1
+// fixture into a count above the extent cap or a non-finite float. The
+// declared reader skips that field, so only its generated strict walk can
+// refuse the wire-alone condition inside it.
+func cppFramingUnknownWireRows(t *testing.T, root string) []cppFramingRow {
 	t.Helper()
 	base, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "framing", "frame_unknown_id_length.bin"))
 	if err != nil {
@@ -98,13 +99,14 @@ func cppFramingUnknownCountRows(t *testing.T, root string) []cppFramingRow {
 	}
 	var rows []cppFramingRow
 	for _, tc := range []struct {
-		name string
-		kind byte
+		name    string
+		payload []byte
 	}{
-		{"frame_unknown_array_count_over_cap", 14},
-		{"frame_unknown_keyed_count_over_cap", 16},
+		{"frame_unknown_array_count_over_cap", []byte{14, 6, 1, 0x80, 0x80, 0x80, 0x80, 8}},
+		{"frame_unknown_keyed_count_over_cap", []byte{16, 6, 1, 0x80, 0x80, 0x80, 0x80, 8}},
+		{"frame_unknown_float_non_finite", []byte{10, 0, 0, 0xc0, 0x7f}},
 	} {
-		wire := append([]byte{1, 16, tc.kind, 6, 1, 0x80, 0x80, 0x80, 0x80, 8}, base[len(prefix):]...)
+		wire := append(append([]byte{1, 16}, tc.payload...), base[len(prefix):]...)
 		path := filepath.Join(t.TempDir(), tc.name+".bin")
 		if err := os.WriteFile(path, wire, 0o600); err != nil {
 			t.Fatal(err)
@@ -242,7 +244,7 @@ func cppConformanceRoot(t *testing.T) string {
 // value and its write-back wire.
 func TestCppDriverRefusesFormOneFraming(t *testing.T) {
 	root := cppConformanceRoot(t)
-	rows := append(cppFramingManifestRows(t, root), cppFramingUnknownCountRows(t, root)...)
+	rows := append(cppFramingManifestRows(t, root), cppFramingUnknownWireRows(t, root)...)
 	cppConformanceMake(t, root, "build/conformance-cpp")
 	answers := cppFramingRun(t, root, filepath.Join(root, "build", "conformance-cpp"), rows)
 	for _, wrong := range cppFramingCheck(t, root, answers, rows) {
@@ -295,7 +297,7 @@ func discardStrictWalk(src []byte, anchor string) []byte {
 // refuses them.
 func TestCppDriverRefusesFormOneFramingNegativeControl(t *testing.T) {
 	root := cppConformanceRoot(t)
-	rows := append(cppFramingManifestRows(t, root), cppFramingUnknownCountRows(t, root)...)
+	rows := append(cppFramingManifestRows(t, root), cppFramingUnknownWireRows(t, root)...)
 	// generate the Table headers and compile the objects the driver links
 	cppConformanceMake(t, root, "conformance-cpp-objects")
 

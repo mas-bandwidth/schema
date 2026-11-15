@@ -1755,7 +1755,7 @@ func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct) {
 	g.pf("    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) ) { return -1; }\n")
 	g.pf("    // THE STRICT FORM-1 WALK (docs/SPEC-TABLES.md §6.5): every condition\n")
 	g.pf("    // decidable from the wire alone, before a region is sized from it.\n")
-	g.pf("    if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, &ignored ) )\n    {\n        if ( reason_out != NULL ) { *reason_out = wire_damaged; }\n        return -1;\n    }\n")
+	g.pf("    if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, &ignored ) )\n    {\n        if ( reason_out != NULL ) { *reason_out = ignored.refuse_reason; }\n        return -1;\n    }\n")
 	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
 	g.pf("    const int64_t wire_bytes = body_bytes;\n")
 	g.pf("    TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );\n")

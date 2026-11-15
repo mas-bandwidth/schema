@@ -1331,6 +1331,7 @@ struct TableStrict
     // whether this reader carries pointer-bearing types and can therefore
     // reach a node: a fixed reader cannot, so a non-null pointer is damage
     bool pointers;
+    TableRefuseReason refusal;
 };
 
 // THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4): a framed payload is one
@@ -1375,9 +1376,28 @@ inline bool TableStrictSeen( uint64_t * seen, uint64_t ref )
 }
 
 // a fixed-width value's bytes: a bool byte other than 0 or 1 is damage
-inline bool TableStrictScalar( const uint8_t * b, uint8_t kind )
+inline bool TableStrictScalar( TableStrict & s, const uint8_t * b, uint8_t kind )
 {
-    return kind != 1 || b[0] <= 1;
+    if ( kind == 1 ) { return b[0] <= 1; }
+    // Kinds 10 and 11 are the plain floats. Their all-ones exponent is
+    // visible in the raw little-endian wire bytes, including skipped fields.
+    const bool non_finite32 = kind == 10 && ( b[3] & 0x7f ) == 0x7f && ( b[2] & 0x80 ) != 0;
+    const bool non_finite64 = kind == 11 && ( b[7] & 0x7f ) == 0x7f && ( b[6] & 0xf0 ) == 0xf0;
+    if ( non_finite32 || non_finite64 ) { s.refusal = non_finite_float; return false; }
+    return true;
+}
+
+inline bool TableStrictFailed( const TableStrict & s, TableReport * report )
+{
+    if ( s.refusal == non_finite_float ) { TableNonFiniteFloat( report ); }
+    else if ( s.refusal == count_over_extent_cap )
+    {
+        report->refused = true;
+        report->reason = count_over_extent_cap;
+        report->refuse_reason = count_over_extent_cap;
+    }
+    else { report->damaged = true; report->refuse_reason = wire_damaged; }
+    return false;
 }
 
 // THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body opens
@@ -1434,7 +1454,7 @@ inline bool TableStrictContent( TableStrict & s, const uint8_t * b, int64_t n, u
     if ( width > 0 )
     {
         if ( n != width ) { return false; } // an L that is not its kind's width (H9)
-        return TableStrictScalar( b, kind );
+        return TableStrictScalar( s, b, kind );
     }
     switch ( kind )
     {
@@ -1475,7 +1495,7 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
     if ( width > 0 )
     {
         if ( !r.has( width ) ) { return false; }
-        if ( !TableStrictScalar( r.buffer + r.offset, kind ) ) { return false; }
+        if ( !TableStrictScalar( s, r.buffer + r.offset, kind ) ) { return false; }
         r.offset += width;
         return true;
     }
@@ -1543,7 +1563,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
     uint64_t count = 0;
     if ( !r.getleb( count ) ) { return false; }
     // the cap applies even when this array belongs to an unknown field
-    if ( count > 0x7FFFFFFFull ) { return false; }
+    if ( count > 0x7FFFFFFFull ) { s.refusal = count_over_extent_cap; return false; }
     for ( uint64_t i = 0; i < count; i++ )
     {
         if ( !TableStrictPayload( s, r, elem, depth ) ) { return false; }
@@ -1561,7 +1581,7 @@ inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int
     uint64_t count = 0;
     if ( !r.getleb( count ) ) { return false; }
     // the cap applies even when this keyed array belongs to an unknown field
-    if ( count > 0x7FFFFFFFull ) { return false; }
+    if ( count > 0x7FFFFFFFull ) { s.refusal = count_over_extent_cap; return false; }
     uint64_t seen[kTableStrictSeenWords];
     for ( int32_t w = 0; w < kTableStrictSeenWords; w++ ) { seen[w] = 0; }
     for ( uint64_t i = 0; i < count; i++ )
@@ -6914,7 +6934,8 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
     s.node_table_bytes = 0;
     s.node_table_present = false;
     s.pointers = true;
-    if ( !TableStrictBody( s, body, body_bytes, true, 0 ) ) { report->damaged = true; report->refuse_reason = wire_damaged; return false; }
+    s.refusal = wire_damaged;
+    if ( !TableStrictBody( s, body, body_bytes, true, 0 ) ) { return TableStrictFailed( s, report ); }
     int64_t records = 0;
     if ( s.node_table_present )
     {
@@ -6928,7 +6949,7 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
             // a blob record is its bytes; the graph check reads its text (§3.1)
             if ( type_id != kTableBytesTypeId && type_id != kTableStringTypeId )
             {
-                if ( !TableStrictBody( s, rec, len, false, 0 ) ) { report->damaged = true; report->refuse_reason = wire_damaged; return false; }
+                if ( !TableStrictBody( s, rec, len, false, 0 ) ) { return TableStrictFailed( s, report ); }
             }
             records++;
         }
@@ -12715,7 +12736,7 @@ inline int64_t LeafLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
     // decidable from the wire alone, before a region is sized from it.
     if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, &ignored ) )
     {
-        if ( reason_out != NULL ) { *reason_out = wire_damaged; }
+        if ( reason_out != NULL ) { *reason_out = ignored.refuse_reason; }
         return -1;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -13731,7 +13752,7 @@ inline int64_t HolderLoadMeasure( const uint8_t * wire_file, int64_t wire_file_b
     // decidable from the wire alone, before a region is sized from it.
     if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, &ignored ) )
     {
-        if ( reason_out != NULL ) { *reason_out = wire_damaged; }
+        if ( reason_out != NULL ) { *reason_out = ignored.refuse_reason; }
         return -1;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -14747,7 +14768,7 @@ inline int64_t HandLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
     // decidable from the wire alone, before a region is sized from it.
     if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, &ignored ) )
     {
-        if ( reason_out != NULL ) { *reason_out = wire_damaged; }
+        if ( reason_out != NULL ) { *reason_out = ignored.refuse_reason; }
         return -1;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -15763,7 +15784,7 @@ inline int64_t ChainLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
     // decidable from the wire alone, before a region is sized from it.
     if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, &ignored ) )
     {
-        if ( reason_out != NULL ) { *reason_out = wire_damaged; }
+        if ( reason_out != NULL ) { *reason_out = ignored.refuse_reason; }
         return -1;
     }
     const uint8_t * const wire = wire_file + 1;
