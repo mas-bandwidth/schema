@@ -1,1 +1,1 @@
-{"group": "rust-cards-packet", "targets": ["packet-write-cfloat-rust-negative-control"]}
+{"group": "rust-strict", "targets": ["packet-write-cfloat-rust-negative-control"]}
