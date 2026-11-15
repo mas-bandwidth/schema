@@ -238,8 +238,8 @@ func TestGooseStringIdentityNegativeControl(t *testing.T) {
 		name, from, to, red string
 	}{
 		{"by-view",
-			"    c.order.push(wire);\n    c.index[wire] = c.order.len + 1;",
-			"    if blob { for o in c.order { if o >= 2 && c.nodes[o - 2].blob != 0 && c.nodes[o - 2].off == c.nodes[wire - 2].off && c.nodes[o - 2].len == c.nodes[wire - 2].len { refuse(c, SaveRefuseBlobShared); return; } } }\n    c.order.push(wire);\n    c.index[wire] = c.order.len + 1;",
+			"        c.order.push(wire);\n        c.index[wire] = c.order.len + 1;",
+			"        if blob { for o in c.order { if o >= 2 && c.nodes[o - 2].blob != 0 && c.nodes[o - 2].off == c.nodes[wire - 2].off && c.nodes[o - 2].len == c.nodes[wire - 2].len { refuse(c, SaveRefuseBlobShared); continue; } } }\n        c.order.push(wire);\n        c.index[wire] = c.order.len + 1;",
 			"/view"},
 		{"no-shared-refusal",
 			"        if blob { refuse(c, SaveRefuseBlobShared); }\n",
