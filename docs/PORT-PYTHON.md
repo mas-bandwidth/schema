@@ -509,6 +509,7 @@ the core stands against the P4 row; the rules of this page are unchanged.
   - `bool`: carried
 
   - `int8` to `uint64` (bare or ranged): carried
+    ([the packet ranged integers and bits](port-python/packet-ranged-bits.md))
 
   - enums: carried
 
@@ -526,7 +527,8 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - `float64`: carried ([the packet floats](port-python/packet-floats.md))
 
-  - `bits`: refused
+  - `bits`: carried
+    ([the packet ranged integers and bits](port-python/packet-ranged-bits.md))
 
   - `string`: refused
 
