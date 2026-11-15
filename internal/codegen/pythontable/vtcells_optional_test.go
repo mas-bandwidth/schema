@@ -13,7 +13,10 @@ import (
 // optionalSchema is the optional-field kind's construct surface: ?bool,
 // ?int32, ?bits(12), an optional by-value table and an optional nested table,
 // beside the base kinds this cut already carries (a by-value root scalar and
-// a *T pointer). Nothing here needs a kind a later card owns.
+// a *T pointer). D declares non-zero defaults so present-at-default and
+// present-at-zero differ on the wire; Holder (Root.h, by value) and Node
+// (behind *Node) carry ?T inside a nested table and a pointer node. Nothing
+// here needs a kind a later card owns.
 const optionalSchema = `package optional
 
 table Pair
