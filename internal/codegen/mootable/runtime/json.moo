@@ -787,18 +787,6 @@ local function bnToNumber(a: Big): number
 	return v
 end
 
--- dblRound(a): the integer a rounded to the nearest double, ties to even,
--- as an integer again: the value Go's float64(magnitude) compares with
-local function dblRound(a: Big): Big
-	if bnBitLen(a) <= 53 then
-		return a
-	end
-	local qh, ql, e = roundBinary(a, { 1 }, 0, 53, -1074)
-	local q = bnShl(bnSmall(qh), 24)
-	bnAddSmall(q, ql)
-	return bnShl(q, e)
-end
-
 -- the signed order of two (negative, magnitude) pairs; a zero is never negative
 local function cmpSigned(an: boolean, am: Big, bn: boolean, bm: Big): number
 	if an ~= bn then
@@ -1349,11 +1337,14 @@ local function writeBase64(w: Out, b: buffer?, n: number)
 	put(w, table.concat(parts))
 end
 
--- decodeBase64(s, bound): §16.2's grammar, then the bytes (at most bound,
--- -1 for none) and whether any were dropped; nil when it is not base64
+-- decodeBase64(s, bound): §16.2's and §16.8's CANONICAL grammar — the
+-- standard alphabet, padded, pad bits zero — then the bytes (at most bound,
+-- -1 for none) and whether any were dropped; nil when it is not that exact
+-- spelling. A body that decodes but is not canonical refuses like one that
+-- does not decode at all: the verdict is the contract (§16.2).
 local function decodeBase64(s: string, bound: number): (buffer?, number, boolean)
 	local n = #s
-	local symbols, pad = 0, 0
+	local symbols, pad, last = 0, 0, 0
 	for i = 1, n do
 		local c = string.byte(s, i) :: number
 		if c == 61 then
@@ -1361,6 +1352,7 @@ local function decodeBase64(s: string, bound: number): (buffer?, number, boolean
 		elseif pad > 0 or B64VALUE[c + 1] < 0 then
 			return nil, 0, false
 		else
+			last = B64VALUE[c + 1]
 			symbols += 1
 		end
 	end
@@ -1368,7 +1360,14 @@ local function decodeBase64(s: string, bound: number): (buffer?, number, boolean
 		if pad > 2 or (symbols + pad) % 4 ~= 0 or symbols % 4 < 2 then
 			return nil, 0, false
 		end
-	elseif symbols % 4 == 1 then
+		-- The last group's spare bits are the pad bits; canonical leaves them
+		-- zero (§16.8): four spare when two symbols ride, two when three.
+		if (pad == 2 and last % 16 ~= 0) or (pad == 1 and last % 4 ~= 0) then
+			return nil, 0, false
+		end
+	elseif symbols % 4 ~= 0 then
+		-- padded: a group of two or three symbols without its `=` is not the
+		-- text the writer writes, so it is not canonical (§16.2, §16.8)
 		return nil, 0, false
 	end
 	local total = symbols * 6 // 8
@@ -1419,6 +1418,25 @@ type Reader = {
 	graph: { [any]: { open: boolean, node: any, t: string? } }?,
 }
 
+-- commentTextHolds: the bytes of one comment, from..to inclusive, are text like
+-- the rest of the input (docs/SPEC-TABLES.md §16.2): well-formed UTF-8 with no
+-- zero byte. A sequence that would run past the comment's end is truncated.
+local function commentTextHolds(s: string, from: number, to: number): boolean
+	local i = from
+	while i <= to do
+		local c = string.byte(s, i) :: number
+		if c == 0 then
+			return false
+		end
+		local width = utf8Sequence(s, i)
+		if width < 0 or i + width - 1 > to then
+			return false
+		end
+		i += width
+	end
+	return true
+end
+
 local function space(r: Reader)
 	local t, n = r.t, r.n
 	while r.pos <= n do
@@ -1428,13 +1446,23 @@ local function space(r: Reader)
 		elseif c == 47 then
 			local nx = string.byte(t, r.pos + 1)
 			if nx == 47 then
+				-- only LF ends a line comment: a lone CR is inside it
 				local e = string.find(t, "\n", r.pos + 2, true)
+				local stop = if e == nil then n else (e :: number) - 1
+				if not commentTextHolds(t, r.pos + 2, stop) then
+					r.bad = true
+					return
+				end
 				r.pos = if e == nil then n + 1 else e
 			elseif nx == 42 then
 				local _, e = string.find(t, "*/", r.pos + 2, true)
 				if e == nil then
 					r.bad = true
 					r.pos = n + 1
+					return
+				end
+				if not commentTextHolds(t, r.pos + 2, (e :: number) - 2) then
+					r.bad = true
 					return
 				end
 				r.pos = (e :: number) + 1
@@ -1676,6 +1704,24 @@ local function scanStored(r: Reader, capacity: number): (string, boolean, boolea
 	return scanText(r, capacity, true, false)
 end
 
+-- scanName: ONE schema-name string — a field key, an enum variant name, a
+-- flags element, a union arm key, an `&node` key, or a key inside a skipped
+-- object. §16.2 caps it at 255 bytes after decoding, and a longer one refuses
+-- the whole read. Every one of them is an object key, so it is held to the
+-- U+0000 rule a placed value is held to (§4, §16.3). Map keys and string
+-- values are data and stay on scan.
+local function scanName(r: Reader): (string, boolean)
+	local s, over, ok = scanText(r, MAX_KEY, false, true)
+	if not ok then
+		return "", false
+	end
+	if over then
+		r.bad = true
+		return "", false
+	end
+	return s, true
+end
+
 -- walkNumber: the cursor over ONE RFC 8259 number, and whether it was
 -- integral in FORM — no fraction and no exponent
 local function walkNumber(r: Reader): (boolean, boolean)
@@ -1793,7 +1839,7 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 		end
 		local resumed = false
 		if close == 125 then
-			local key, _, ok = scanKey(r, MAX_KEY)
+			local key, ok = scanName(r)
 			if not ok then
 				return false
 			end
@@ -2106,7 +2152,7 @@ local function readPointerCell(r: Reader, holder: any, key: any, t: string?, dep
 		r.bad = true
 		return false
 	end
-	local name, _, ok = scanKey(r, MAX_KEY)
+	local name, ok = scanName(r)
 	if not ok then
 		return false
 	end
@@ -2293,17 +2339,16 @@ local function placeInteger(r: Reader, fd: any, holder: any, key: any, token: st
 	if saturated then
 		r.report.outOfRange += 1
 	end
-	-- THE DECLARED RANGE FIRST, compared as the doubles the engine compares
+	-- THE DECLARED RANGE FIRST, compared exactly: a value one past a bound
+	-- refuses at every magnitude, and no wide integer passes through a double
 	local bn, bm = negative, mag
 	local has, ln, lm, hn, hm = intBounds(fd)
 	if has then
-		local scale = dblRound(mag)
-		local dlo, dhi = dblRound(lm), dblRound(hm)
-		if cmpSigned(negative, scale, ln, dlo) < 0 then
-			bn, bm = ln and #dlo > 0, dlo
+		if cmpSigned(negative, mag, ln, lm) < 0 then
+			bn, bm = ln and #lm > 0, lm
 			r.report.outOfRange += 1
-		elseif cmpSigned(negative, scale, hn, dhi) > 0 then
-			bn, bm = hn and #dhi > 0, dhi
+		elseif cmpSigned(negative, mag, hn, hm) > 0 then
+			bn, bm = hn and #hm > 0, hm
 			r.report.outOfRange += 1
 		end
 		if bnCmp(bm, MAX64) > 0 then
@@ -2369,7 +2414,7 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 		r.pos += 1
 		return true
 	end
-	local name, _, ok = scanKey(r, MAX_KEY)
+	local name, ok = scanName(r)
 	if not ok then
 		return false
 	end
@@ -2474,7 +2519,7 @@ local function readFlags(r: Reader, names: { string }, holder: any, key: any, de
 				return false
 			end
 		else
-			local name, _, ok = scanString(r, MAX_KEY)
+			local name, ok = scanName(r)
 			if not ok then
 				return false
 			end
@@ -2482,8 +2527,24 @@ local function readFlags(r: Reader, names: { string }, holder: any, key: any, de
 			if bit == nil then
 				r.report.unknown += 1
 			elseif bit <= 32 then
+				if bit32.btest(low, POW2[bit - 1]) then
+					-- A KNOWN VARIANT NAMED TWICE REFUSES (§16.2)
+					r.bad = true
+					if r.report.reason == nil then
+						r.report.reason = "a repeated key"
+					end
+					return false
+				end
 				low = bit32.bor(low, POW2[bit - 1])
 			else
+				if bit32.btest(high, POW2[bit - 33]) then
+					-- A KNOWN VARIANT NAMED TWICE REFUSES (§16.2)
+					r.bad = true
+					if r.report.reason == nil then
+						r.report.reason = "a repeated key"
+					end
+					return false
+				end
 				high = bit32.bor(high, POW2[bit - 33])
 			end
 		end
@@ -2534,7 +2595,7 @@ local function readScalar(r: Reader, fd: any, holder: any, key: any, depth: numb
 		return readTable(r, d, v, depth + 1)
 	end
 	if s == "enum" then
-		local text, _, ok = scanString(r, MAX_KEY)
+		local text, ok = scanName(r)
 		if not ok then
 			return false
 		end
@@ -2874,7 +2935,7 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 			r.bad = true
 			return false
 		end
-		local name, _, ok = scanKey(r, MAX_KEY)
+		local name, ok = scanName(r)
 		if not ok then
 			return false
 		end
@@ -2981,7 +3042,7 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 			r.bad = true
 			return false
 		end
-		local name, over, ok = scanStored(r, MAX_KEY)
+		local name, over, ok = scanStored(r, -1)
 		if not ok then
 			return false
 		end
@@ -3177,7 +3238,7 @@ readTableKeys = function(r: Reader, d: any, rec: any, depth: number, firstKey: s
 				r.bad = true
 				return false
 			end
-			local k, _, ok = scanKey(r, MAX_KEY)
+			local k, ok = scanName(r)
 			if not ok then
 				return false
 			end

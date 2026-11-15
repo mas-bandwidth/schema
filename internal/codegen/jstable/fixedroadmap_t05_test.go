@@ -417,12 +417,12 @@ fixed table T
 }
 
 // t05R24: R24 [owed] "ill-formed text in the USED units refuses by name
-// (text_ill_formed); text is counted in bytes with the refusal in units; slack
-// is unspecified on read and not a refusal" (docs/FIXED-FORM-ALGORITHM.md
-// §4.5 fix 11; docs/SPEC-TABLES.md §3.4). All three clauses are sites of the
-// emitted runtime: the content refusal by name, the length refusal in units
-// (`cap = size / unit`), and the check over the used units (`v * unit`) and
-// never the slack (`size`).
+// (text_ill_formed); text is counted in bytes with the refusal in units; dead
+// bytes are zero" (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.3 step 11;
+// docs/SPEC-TABLES.md §3.4). The content refusal by name, the length refusal
+// in units (`cap = size / unit`), and the check over the used units (`v * unit`)
+// are the runtime's; the bytes past the used length are dead and the separate
+// CHECK pass holds them to zero as wire_damaged.
 func t05R24(t *testing.T) {
 	_, src := t02Table(t, `package probe
 
@@ -435,7 +435,8 @@ fixed table T
 	t02Has(t, t02Norm(src), "cp > 0x10FFFF", "R24 ill-formed text past U+10FFFF is a refusal, not a default")
 	t02Has(t, t02Norm(src), "const cap = size | 0;", "R24 the refusal is in units")
 	t02Has(t, t02Norm(src), "if (v < 0 || v > cap) { report.refused = TableFixedRefusal.LengthOverBound; return; }", "R24 the length refuses once in units")
-	// THE CONTENT CHECK HOLDS THE USED UNITS (v) AND NOT THE SLACK (size):
-	// slack is unspecified on read and is not a refusal.
-	t02Has(t, t02Norm(src), ", v)) { report.refused = TableFixedRefusal.TextIllFormed", "R24 the content check holds the used units and not the slack")
+	// THE CONTENT CHECK HOLDS THE USED UNITS (v): the dead slack is the CHECK
+	// pass's, held to zero by the dead-byte scan (§4.5, §5.3 step 11).
+	t02Has(t, t02Norm(src), ", v)) { report.refused = TableFixedRefusal.TextIllFormed", "R24 the content check holds the used units")
+	t02Has(t, t02Norm(jsFn(src, "TFixedCheckDead")), "TableFixedRefusal.WireDamaged", "R24 the check pass holds the dead slack to zero")
 }

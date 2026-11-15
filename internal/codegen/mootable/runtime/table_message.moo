@@ -29,6 +29,7 @@
 
 local S = require("./schema_tables")
 local V = require("./table_values")
+local L = require("./table_load")
 local Fl = require("./serialize_float")
 
 local Int64 = V.Int64
@@ -37,6 +38,7 @@ local Uint64 = V.Uint64
 local MS = {}
 
 local BATCH_MAX = 256
+local SKIP_MAX_DEPTH = 128 -- ir.TableBinaryMaxDepth (docs/SPEC-TABLES.md message_skip_depth)
 local DEFAULT_MAX_ENTRIES = 4096 -- ir.TableVocabularyMaxEntries
 local DEFAULT_MAX_BYTES = 65536 -- ir.TableVocabularyMaxBytes
 local LIST_MAX = 4294967295 -- ir.TableMessageListMax
@@ -396,8 +398,16 @@ end
 
 local readShape: any
 
-readShape = function(b: buffer, at: number, e: number, kind: number): (any, number?)
+-- THE ONE NESTING BOUND (docs/SPEC-TABLES.md §4): the announcement is a form-1
+-- file, its shape nests no deeper than 128 levels, and a shape past it is
+-- damage rather than a deeper walk.
+local SHAPE_MAX_DEPTH = 128
+
+readShape = function(b: buffer, at: number, e: number, kind: number, level: number): (any, number?)
 	local s: any = { packing = 0, bits = 0, base = nil, min = 0, max = 0, elem = 0, inner = nil }
+	if level > SHAPE_MAX_DEPTH then
+		return s, nil
+	end
 	if integerKind(kind) or fixedKind(kind) or kind == 10 then
 		if at >= e then
 			return s, nil
@@ -488,7 +498,7 @@ readShape = function(b: buffer, at: number, e: number, kind: number): (any, numb
 		if not knownKind(s.elem) then
 			return s, nil
 		end
-		local inner, next = readShape(b, at, e, s.elem)
+		local inner, next = readShape(b, at, e, s.elem, level + 1)
 		if next == nil then
 			return s, nil
 		end
@@ -574,6 +584,14 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 	local ids = table.create(lo)
 	for i = 0, lo - 1 do
 		ids[i + 1] = buffer.readstring(data, start + i * 8, 8)
+	end
+	-- THE ANNOUNCEMENT IS A FILE (§3.3): every wire-alone condition the file
+	-- form holds applies to its body before anything is read, the unknown
+	-- fields it may gain included — skipped is not unread (§4, §6.5).
+	local wireFail, wireNonFinite = L.wireCheckAnnouncement(data, 1, start, ids)
+	if wireFail ~= nil or wireNonFinite then
+		report.damaged = true
+		return false
 	end
 	-- the body's extent: a terminated body must end exactly at the id table
 	local at = 1
@@ -695,7 +713,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 				return false
 			end
 		end
-		local shape, next = readShape(wb, p + 9, we, kind)
+		local shape, next = readShape(wb, p + 9, we, kind, 0)
 		if next == nil then
 			report.damaged = true
 			return false
@@ -1417,7 +1435,10 @@ local function skipRun(r: any, n: number, width: number): boolean
 	return skipBits(r, n * width)
 end
 
-local function skipBody(t: any): boolean
+local function skipBody(t: any, depth: number): boolean
+	if depth > SKIP_MAX_DEPTH then
+		return false
+	end
 	local seen: { [string]: boolean } = {}
 	while true do
 		local ref, ok = reference(t)
@@ -1432,13 +1453,17 @@ local function skipBody(t: any): boolean
 			return dmal(t)
 		end
 		seen[e.id] = true
-		if not skipEntry(t, e.kind, e.shape) then
+		if not skipEntry(t, e.kind, e.shape, depth) then
 			return false
 		end
 	end
 end
 
-skipEntry = function(t: any, kind: number, shape: any): boolean
+skipEntry = function(t: any, kind: number, shape: any, depth: number?): boolean
+	depth = depth or 0
+	if depth > SKIP_MAX_DEPTH then
+		return false
+	end
 	local r = t.r
 	if kind == 0 or kind == 32 then
 		return true
@@ -1463,9 +1488,9 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 		if arm == nil then
 			return false
 		end
-		return skipEntry(t, arm.kind, arm.shape)
+		return skipEntry(t, arm.kind, arm.shape, depth + 1)
 	elseif kind == 13 then
-		return skipBody(t)
+		return skipBody(t, depth + 1)
 	elseif kind == 17 then
 		local _, ok = index(t)
 		return ok
@@ -1555,7 +1580,7 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 				end
 				seen[key.id] = true
 			end
-			if not skipEntry(t, shape.elem, inner) then
+			if not skipEntry(t, shape.elem, inner, depth + 1) then
 				return false
 			end
 			if r.off == at then
@@ -1989,7 +2014,7 @@ decodeArm = function(t: any, fd: any): (any, boolean)
 	end
 	if tag == 0 then
 		t.report.unknown += 1
-		return u, skipEntry(t, entry.kind, entry.shape)
+		return u, skipEntry(t, entry.kind, entry.shape, 0)
 	end
 	local arm = un.arms[tag]
 	local mine = mineEntry(slotOf(un, tag))
@@ -2033,7 +2058,7 @@ decodeBody = function(t: any, d: any, v: any): boolean
 		local hit = byId[entry.id]
 		if hit == nil then
 			t.report.unknown += 1
-			if not skipEntry(t, entry.kind, entry.shape) then
+			if not skipEntry(t, entry.kind, entry.shape, 0) then
 				return dmal(t)
 			end
 			continue
