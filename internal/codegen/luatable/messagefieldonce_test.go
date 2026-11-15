@@ -131,7 +131,7 @@ func msgSetBit(data []byte, at, bit int) {
 }
 
 func msgCopyBits(dst []byte, dstat int, src []byte, srcat, n int) {
-	for i := 0; i < n; i++ {
+	for i := range n {
 		msgSetBit(dst, dstat+i, msgBit(src, srcat+i))
 	}
 }

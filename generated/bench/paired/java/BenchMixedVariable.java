@@ -867,7 +867,10 @@ public final class BenchMixedVariable {
                     if (ar != null && ar.has(2)) {
                         int ek = ar.get8();
                         long n = ar.count(r.limit);
-                        if (!ar.fail && ek != 13) {
+                        if (!ar.fail && !TableVariable.arrayElemKindClosed(ek)) {
+                            report.damaged = true;
+                            ar.fail = true;
+                        } else if (!ar.fail && ek != 13) {
                             report.refuse("kind_mismatch");
                         } else {
                             if (ar.fail) {
@@ -903,7 +906,10 @@ public final class BenchMixedVariable {
                     if (ar != null && ar.has(2)) {
                         int ek = ar.get8();
                         long n = ar.count(r.limit);
-                        if (!ar.fail && ek != 13) {
+                        if (!ar.fail && !TableVariable.arrayElemKindClosed(ek)) {
+                            report.damaged = true;
+                            ar.fail = true;
+                        } else if (!ar.fail && ek != 13) {
                             report.refuse("kind_mismatch");
                         } else {
                             if (ar.fail) {
@@ -948,6 +954,8 @@ public final class BenchMixedVariable {
                             int ek = ar.get8();
                             long n = ar.count(r.limit);
                             if (ar.fail) {
+                            } else if (!TableVariable.arrayElemKindClosed(ek)) {
+                                report.damaged = true;
                             } else if (!(ek == 6)) {
                                 report.refuse("kind_mismatch");
                             } else {
@@ -1015,6 +1023,8 @@ public final class BenchMixedVariable {
                         long n = r.leb();
                         if (r.fail) {
                             r.fail = false;
+                            report.damaged = true;
+                        } else if (!TableVariable.arrayElemKindClosed(ek)) {
                             report.damaged = true;
                         } else if (ek != 6) {
                             report.refuse("kind_mismatch");
@@ -2869,9 +2879,13 @@ public final class BenchMixedVariable {
                         if (text != null) {
                             try {
                                 byte[] bytes = java.util.Base64.getDecoder().decode(text);
-                                int keep = Math.min(bytes.length, 16);
-                                v.payload = java.util.Arrays.copyOf(bytes, keep);
-                                if (bytes.length > keep) in.rep.refuse("out_of_range");
+                                if (!java.util.Base64.getEncoder().encodeToString(bytes).equals(text)) {
+                                    in.rep.refuse("base64_not_canonical");
+                                } else {
+                                    int keep = Math.min(bytes.length, 16);
+                                    v.payload = java.util.Arrays.copyOf(bytes, keep);
+                                    if (bytes.length > keep) in.rep.refuse("out_of_range");
+                                }
                             } catch (IllegalArgumentException invalid) {
                                 in.rep.refuse("kind_mismatch");
                             }

@@ -147,7 +147,7 @@ int main( void )
 	}
 
 	got := make(map[string]bool, len(cppRepeatCases))
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
 			t.Fatalf("the C++ probe printed %q, want `<case> ok|refused`", line)
