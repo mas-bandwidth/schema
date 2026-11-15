@@ -212,6 +212,22 @@ fn msg_kind_bits(k: u8) -> i64 {
     };
 }
 
+// msg_base_inside_kind holds a ranged base to the kind's own domain, the
+// declaration's minimum the wire carries (ir.DecodeShape). The offset's
+// spellable top is NOT checked: `bits` is the width of `max - min`, and an
+// offset past the sender's own `max` refuses out_of_range when it is read.
+// A kind sixty-four bits wide or wider holds every bit pattern its base takes.
+fn msg_base_inside_kind(kind: u8, base: u64) -> bool {
+    let w = msg_kind_bits(kind);
+    if w >= 64 { return true; }
+    if msg_signed_kind(kind) {
+        let half: u64 = (1 as u64) << ((w - 1) as u64);
+        let lo: u64 = 0xFFFFFFFFFFFFFFFF - half + 1;
+        return base <= half - 1 || base >= lo;
+    }
+    return base <= ((1 as u64) << (w as u64)) - 1;
+}
+
 // msg_quantization is SPEC.md §4.3's derivation over an announced triple, in
 // float32 and by nothing else; false is a non-conforming triple, which on the
 // announcement is a hostile width.
@@ -269,6 +285,7 @@ recursive fn msg_shape(w: const u8[:], at: i64&, kind: u8, e: MsgEntry&, v: MsgV
                 if !msg_wide_kind(kind) {
                     // a 64-bit-or-narrower fixed kind's base is its low lane
                     e.base_hi = 0;
+                    if !msg_base_inside_kind(kind, e.base_lo) { return false; }
                 }
                 return true;
             }
@@ -282,6 +299,7 @@ recursive fn msg_shape(w: const u8[:], at: i64&, kind: u8, e: MsgEntry&, v: MsgV
             } else {
                 e.base_lo = z;
             }
+            if !msg_base_inside_kind(kind, e.base_lo) { return false; }
             return true;
         }
         if e.packing == 2 && kind == 10 {

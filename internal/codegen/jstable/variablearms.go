@@ -543,6 +543,9 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     const ek = r.u8();
     const count = r.leb();
     if (r.bad) { report.damaged = true; r.at = end; return true; }
+    // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind is held to
+    // the array list first, under any count (docs/SPEC-TABLES.md §3, §4).
+    if (!TableVariableArrayElementKindAllowed(ek)) { report.damaged = true; r.at = end; return false; }
     if (ek !== 13) { report.mismatch++; r.at = end; return undefined; }
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     const m = new Map();
@@ -604,6 +607,9 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   const ek = r.u8();
   const count = r.leb();
   if (r.bad) { report.damaged = true; r.at = end; return true; }
+  // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under any
+  // count before the reader's declaration (docs/SPEC-TABLES.md §3, §4).
+  if (!TableVariableKeyedElementKindAllowed(ek)) { report.damaged = true; r.at = end; return false; }
   const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
   if (ek !== fd.ek) {
     if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; r.at = end; return undefined; }

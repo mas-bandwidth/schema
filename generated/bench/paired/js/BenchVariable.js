@@ -1841,9 +1841,23 @@ function TableVariableNoteCount(count, report) {
   return true;
 }
 
+// THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3, §4): an array body
+// (kind 14) opens with 1–13, 15, 17 or 18–30, and an enum-keyed body (kind 16)
+// with 1–11, 13 or 18–30. Every other element kind is damage under ANY count,
+// a count of 0 included, in a declared field and in an unknown one alike, and
+// it is judged before any comparison with the reader's own element kind.
+function TableVariableArrayElementKindAllowed(kind) {
+  return (kind >= 1 && kind <= 13) || kind === 15 || kind === 17 || (kind >= 18 && kind <= 30);
+}
+
+function TableVariableKeyedElementKindAllowed(kind) {
+  return (kind >= 1 && kind <= 11) || kind === 13 || (kind >= 18 && kind <= 30);
+}
+
 function TableVariableNoteArray(inner, table, st, report, depth) {
   if (inner.end - inner.at < 2) { return false; }
   const ek = inner.u8();
+  if (!TableVariableArrayElementKindAllowed(ek)) { return false; }
   const count = inner.leb();
   if (inner.bad || !TableVariableNoteCount(count, report)) { return false; }
   for (let i = 0; i < count; i++) {
@@ -1855,6 +1869,7 @@ function TableVariableNoteArray(inner, table, st, report, depth) {
 function TableVariableNoteKeyed(inner, table, st, report, depth) {
   if (inner.end - inner.at < 2) { return false; }
   const ek = inner.u8();
+  if (!TableVariableKeyedElementKindAllowed(ek)) { return false; }
   const count = inner.leb();
   if (inner.bad || !TableVariableNoteCount(count, report)) { return false; }
   let seen = null;
@@ -2204,6 +2219,13 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     const ek = r.u8();
     const count = r.leb();
     if (r.bad) {
+      report.damaged = true;
+      if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
+      return false;
+    }
+    // THE ELEMENT KIND IS CLOSED, judged under any count before the comparison
+    // with the reader's declaration (docs/SPEC-TABLES.md §3, §4).
+    if (!TableVariableArrayElementKindAllowed(ek)) {
       report.damaged = true;
       if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
       return false;
@@ -3006,6 +3028,9 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     const ek = r.u8();
     const count = r.leb();
     if (r.bad) { report.damaged = true; r.at = end; return true; }
+    // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind is held to
+    // the array list first, under any count (docs/SPEC-TABLES.md §3, §4).
+    if (!TableVariableArrayElementKindAllowed(ek)) { report.damaged = true; r.at = end; return false; }
     if (ek !== 13) { report.mismatch++; r.at = end; return undefined; }
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     const m = new Map();
@@ -3067,6 +3092,9 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   const ek = r.u8();
   const count = r.leb();
   if (r.bad) { report.damaged = true; r.at = end; return true; }
+  // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under any
+  // count before the reader's declaration (docs/SPEC-TABLES.md §3, §4).
+  if (!TableVariableKeyedElementKindAllowed(ek)) { report.damaged = true; r.at = end; return false; }
   const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
   if (ek !== fd.ek) {
     if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; r.at = end; return undefined; }
@@ -5132,11 +5160,8 @@ export const TableCookWrite = (() => {
         if (fd.k === "rec") {
           return writeStruct(view, base + fd.at, layouts[fd.t], layouts[fd.t].make(), le, ctx);
         }
-        if (fd.k === "arr") {
-          if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, 0, true, le)) { return false; }
-          for (let i = 0; i < fd.bound; i++) {
-            if (!writeValue(view, base + fd.at + i * fd.stride, fd.elem, holeValue(fd.elem), le, ctx)) { return false; }
-          }
+        if (fd.k === "arr" && fd.countAt >= 0) {
+          if (!putWidth(view, base + fd.countAt, 4, 0, true, le)) { return false; }
         }
         return true;
       }
@@ -5195,17 +5220,6 @@ export const TableCookWrite = (() => {
         return false;
     }
   }
-  function holeValue(fd) {
-    switch (fd.k) {
-      case "bool": return false;
-      case "int": return fd.w >= 8 ? 0n : 0;
-      case "f32": case "f64": case "enum": return 0;
-      case "venum": case "ptr": case "sblob": case "bblob": return null;
-      case "union": return fd.var ? null : undefined;
-      case "rec": return layouts[fd.t].make();
-      default: return undefined;
-    }
-  }
   function writeArray(view, base, fd, parent, le, ctx) {
     const arr = parent[fd.n];
     let count;
@@ -5216,13 +5230,12 @@ export const TableCookWrite = (() => {
     } else { count = parent[fd.n + "Count"]; }
     if (!Number.isInteger(count) || count < 0 || count > fd.bound) { return false; }
     if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, count, true, le)) { return false; }
-    for (let i = 0; i < fd.bound; i++) {
-      let el;
-      if (i < count || fd.countFrom !== "len") {
-        if (arr == null || arr[i] === undefined) { return false; }
-        el = arr[i];
-      } else { el = holeValue(fd.elem); }
-      if (!writeValue(view, base + fd.at + i * fd.stride, fd.elem, el, le, ctx)) { return false; }
+    // a counted array's slots past the live count are DEAD BYTES and stay the
+    // buffer's zero (docs/SPEC-TABLES.md §7.2, §7.4; docs/rulings.json
+    // fixed-dead-bytes-are-zero), so only the live elements are written
+    for (let i = 0; i < count; i++) {
+      if (arr == null || arr[i] === undefined) { return false; }
+      if (!writeValue(view, base + fd.at + i * fd.stride, fd.elem, arr[i], le, ctx)) { return false; }
     }
     return true;
   }

@@ -1,0 +1,36 @@
+package noncanonical
+
+table Root
+{
+    mode  uint8 = 7
+    count uint8
+    head  *Node
+    pick  Pick
+}
+
+table Node
+{
+    value uint8
+}
+
+table OtherNode
+{
+    value uint8
+}
+
+type Leaf
+{
+    tag uint8
+}
+
+union Pick
+{
+    leaf Leaf
+}
+
+fixed table Message
+{
+    mode  uint8 = 7
+    count uint8
+    pick  Pick
+}
