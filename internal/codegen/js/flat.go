@@ -714,8 +714,7 @@ func (g *fgen) emitReadFlatBody(name string, emit func()) {
 	g.fn.Reset()
 	g.resetNeeds()
 	emit()
-	// the last window's advance is dead: `return true` is all that follows
-	g.readDrop()
+	g.emitReadEnd("  ")
 	body := g.readBody(g.fn.String())
 	g.fn.Reset()
 
@@ -724,6 +723,30 @@ func (g *fgen) emitReadFlatBody(name string, emit func()) {
 	// a parameter nothing reads is not declared (eslint no-unused-vars) — an
 	// empty type reads none; a caller's arguments are accepted and ignored
 	g.bpf("export function Read%sFlat(%s) {\n%s  return true;\n}\n\n", name, usedParams(body, "view", "numBits", "value"), body)
+}
+
+// emitReadEnd appends the packet's one end check (SPEC §5, "Read termination"):
+// the bits consumed, rounded up to a whole byte, must be the packet's length in
+// bytes as numBits gives it, and the final byte's unused bits must be zero. It
+// settles the read window first, so the cursor names the true position.
+func (g *fgen) emitReadEnd(ind string) {
+	g.readClose()
+	if g.rKnown {
+		consumed := g.rBr
+		g.rawf("%sif (((%d + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes\n", ind, consumed)
+		g.rawf("%s  return false;\n%s}\n", ind, ind)
+		if sh := consumed & 7; sh != 0 {
+			mask := (0xff << uint(sh)) & 0xff
+			g.rawf("%sif ((view.getUint8(%d) & 0x%02x) !== 0) { // nonzero unused bits in the final byte\n", ind, consumed>>3, mask)
+			g.rawf("%s  return false;\n%s}\n", ind, ind)
+		}
+		return
+	}
+	g.rawf("%ss2 = (br + 7) >> 3;\n", ind)
+	g.rawf("%sif (s2 !== ((numBits + 7) >> 3)) { // trailing bytes\n", ind)
+	g.rawf("%s  return false;\n%s}\n", ind, ind)
+	g.rawf("%sif ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte\n", ind)
+	g.rawf("%s  return false;\n%s}\n", ind, ind)
 }
 
 // emitReadFlatBits emits Read<name>FlatBits beside Read<name>Flat (SPEC §5,

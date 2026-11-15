@@ -1917,6 +1917,14 @@ export function ReadRealPacketFlat(view, numBits, value) {
   value.f096Bits = v;
   v = (out >>> 18) & 0xfff;
   value.f097Bits = v;
+  br += 30;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
