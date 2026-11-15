@@ -2127,6 +2127,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (32 - scratchBits);
   }
+  assert(value.clientId >= 0);
+  assert(value.clientId <= 4294967295);
   v = value.sessionId;
   scratch |= v << scratchBits;
   scratchBits += 64;

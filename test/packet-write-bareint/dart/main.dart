@@ -134,7 +134,10 @@ void main(List<String> args) {
 
     if (refused) {
       if (assertsEnabled) {
-        check(fired, 'packet-write-bareint $name: out-of-width value was written');
+        check(
+          fired,
+          'packet-write-bareint $name: out-of-width value was written',
+        );
       }
       continue;
     }
@@ -144,7 +147,10 @@ void main(List<String> args) {
       continue;
     }
     final back = leg.read(view, written * 8);
-    check(back != null, 'packet-write-bareint $name: the writer bytes read back');
+    check(
+      back != null,
+      'packet-write-bareint $name: the writer bytes read back',
+    );
     if (back != null) {
       check(back == stored, 'packet-write-bareint $name: read back $back');
     }
