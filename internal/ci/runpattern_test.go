@@ -265,13 +265,13 @@ type runPatternException struct {
 // subtest pattern cannot be listed; and slow-gate-coverage's pattern is
 // emitted by tools/slowgatescan when its recipe runs.
 var runPatternExceptions = []runPatternException{
-	{"make/lobster.mk:89", "the recipe selects the block extent negative-control subtest; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzzNegativeControl/block_extent_bounds_removed$"},
-	{"make/lobster.mk:91", "the recipe selects the used-length negative-control subtest; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzzNegativeControl/block_used_length_unchecked$"},
-	{"make/lobster.mk:93", "the recipe selects the cook negative-control subtest; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzzNegativeControl/cook_reserved_words_unchecked$"},
-	{"make/lobster.mk:108", "the recipe selects the fixed-proof value cases a-f; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterFixedProofSuiteValues$/^[a-f]"},
-	{"make/lobster.mk:110", "the recipe selects the fixed-proof value cases g-r; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterFixedProofSuiteValues$/^[g-r]"},
-	{"make/lobster.mk:114", "the recipe selects the fixed-proof control cases a-f; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterFixedProofSuiteNegativeControl$/^[a-f]"},
-	{"make/lobster.mk:116", "the recipe selects the fixed-proof control cases g-r; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterFixedProofSuiteNegativeControl$/^[g-r]"},
+	{"make/lobster.mk:90", "the recipe selects the block extent negative-control subtest; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzzNegativeControl/block_extent_bounds_removed$"},
+	{"make/lobster.mk:92", "the recipe selects the used-length negative-control subtest; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzzNegativeControl/block_used_length_unchecked$"},
+	{"make/lobster.mk:94", "the recipe selects the cook negative-control subtest; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzzNegativeControl/cook_reserved_words_unchecked$"},
+	{"make/lobster.mk:111", "the recipe selects the fixed-proof value cases a-f; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterFixedProofSuiteValues$/^[a-f]"},
+	{"make/lobster.mk:113", "the recipe selects the fixed-proof value cases g-r; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterFixedProofSuiteValues$/^[g-r]"},
+	{"make/lobster.mk:117", "the recipe selects the fixed-proof control cases a-f; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterFixedProofSuiteNegativeControl$/^[a-f]"},
+	{"make/lobster.mk:119", "the recipe selects the fixed-proof control cases g-r; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterFixedProofSuiteNegativeControl$/^[g-r]"},
 	{"make/go.mk:346", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root", "^TestCorpusFixtureWrite$"},
 	{"make/go.mk:482", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'", "^TestCardFixtureWrite$"},
 	{"make/go.mk:560", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root", "Soak"},

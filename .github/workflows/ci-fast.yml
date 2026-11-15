@@ -857,7 +857,9 @@ jobs:
   #                       — the fixed-proof value and control suites, a
   #                         third of the row cases each
   #   packages-rest-a     — the remaining table tests named TestLobster[A-I]
-  #   packages-rest-b     — every remaining table test
+  #   packages-rest-b     — the table tests named TestLobster[J-T]
+  #   packages-rest-c     — every remaining table test (TestLobster[U-Z] and
+  #                         any test not named TestLobster*)
   #                         The package parts together run every test
   #                         test-lobster-packages runs, exactly once, under
   #                         SCHEMA_REQUIRE_CORPUS=1; only the fixed-form part
@@ -879,7 +881,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: [ conformance-a, conformance-b, conformance-c, wire-fuzz, packages-type-fixed, packages-forgery, packages-forgery-block-extent, packages-forgery-used-length, packages-forgery-cook, packages-cook, packages-proof-values-a, packages-proof-values-b, packages-proof-values-c, packages-proof-control-a, packages-proof-control-b, packages-proof-control-c, packages-rest-a, packages-rest-b, gates ]
+        part: [ conformance-a, conformance-b, conformance-c, wire-fuzz, packages-type-fixed, packages-forgery, packages-forgery-block-extent, packages-forgery-used-length, packages-forgery-cook, packages-cook, packages-proof-values-a, packages-proof-values-b, packages-proof-values-c, packages-proof-control-a, packages-proof-control-b, packages-proof-control-c, packages-rest-a, packages-rest-b, packages-rest-c, gates ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -940,6 +942,7 @@ jobs:
             packages-proof-control-c) make test-lobster-packages-proof-control-c ;;
             packages-rest-a)     make test-lobster-packages-rest-a ;;
             packages-rest-b)     make test-lobster-packages-rest-b ;;
+            packages-rest-c)     make test-lobster-packages-rest-c ;;
             gates)
               # test-lobster's prerequisites as make reads them, less the
               # rows above and the nightly pair
