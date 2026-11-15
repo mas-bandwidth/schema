@@ -3090,6 +3090,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 {
                     if ( strcmp( f->enum_name( (uint64_t) bit ), name ) == 0 )
                     {
+                        // A FLAGS NAME TWICE IN ONE ARRAY IS DAMAGE (§16.2): a
+                        // repeated name is a repeated key, and refuses malformed
+                        if ( ( bits & ( uint64_t( 1 ) << bit ) ) != 0 )
+                        {
+                            in.report->refused = true;
+                            in.report->refuse_reason = malformed;
+                        }
                         bits |= uint64_t( 1 ) << bit;
                         found = true;
                         break;
