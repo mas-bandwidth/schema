@@ -1662,6 +1662,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // BEFORE any record lands. An absent optional's payload, a counted array's\n")
 	g.pf("    // slots past its count, a text's or bytes' units past its length, and an\n")
 	g.pf("    // inactive union arm are the four dead regions.\n")
+	// Identity walks this build's own layout: its plan is one Copy and cannot
+	// see a tail. A compiled plan walks the selected writer's entries, whose
+	// source offsets are the file's, and refuses before any record lands.
 	deadInd := "    "
 	if len(lineage) > 1 {
 		g.pf("    if identity {\n")
@@ -1675,6 +1678,14 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("%s    }\n", deadInd)
 	g.pf("%s}\n", deadInd)
 	if len(lineage) > 1 {
+		g.pf("    } else {\n")
+		g.pf("        for k in 0..n {\n")
+		g.pf("            if table_fixed_dead(entries, guards, &rest[k * record_bytes + 8..(k + 1) * record_bytes]) {\n")
+		g.pf("                report.damaged = true;\n")
+		g.pf("                *untouched = true;\n")
+		g.pf("                return None;\n")
+		g.pf("            }\n")
+		g.pf("        }\n")
 		g.pf("    }\n")
 	}
 	g.pf("    // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one\n")

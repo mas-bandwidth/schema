@@ -113,4 +113,70 @@ fn %[1]s() {
 		versionAssert(t, string(out), fn)
 	}
 	t.Logf("%s", out)
+
+	// AN OLDER WRITER'S DEAD TAIL. The own-layout vectors above take the identity
+	// plan. string_grow's file was written by string(8) and is read by string(16),
+	// so the load compiles a plan. Shortening the length word from 8 to 7 leaves
+	// the last text byte ('h') as one non-zero dead byte of the WRITER's span.
+	// The whole file is refused and the caller's destination stays the sentinel.
+	// The unmodified file still reads, so a check that refuses every old file
+	// cannot pass this row. Verdict only: no reason string.
+	oldFile := filepath.Join(corpus, "old_string_grow.bin")
+	oldTests := fmt.Sprintf(`
+#[test]
+fn dead_old_string_clean() {
+    let data = std::fs::read(%[1]q).expect("the older writer's clean file");
+    let mut values = vec![ROWTYPE::default(); 8];
+    let mut plan = vec![TableFixedEntry::default(); 4096];
+    let mut remap = vec![0u16; 4096];
+    let mut report = TableFixedReport::default();
+    let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
+    assert_eq!(n, Some(1), "the older writer's clean file reads");
+}
+
+#[test]
+fn dead_old_string_tail() {
+    let mut data = std::fs::read(%[1]q).expect("the older writer's clean file");
+    let block = u32::from_le_bytes(data[16..20].try_into().expect("four bytes")) as usize;
+    let len_at = 16 + 4 + block + 8 + 4;
+    data[len_at..len_at + 4].copy_from_slice(&7i32.to_le_bytes());
+    let mut values = vec![ROWTYPE::default(); 8];
+    unsafe {
+        core::ptr::write_bytes(
+            values.as_mut_ptr() as *mut u8,
+            0xA5,
+            core::mem::size_of::<ROWTYPE>() * values.len(),
+        );
+    }
+    let mut plan = vec![TableFixedEntry::default(); 4096];
+    let mut remap = vec![0u16; 4096];
+    let mut report = TableFixedReport::default();
+    let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
+    assert!(n.is_none(), "the older writer's dead tail loaded {n:?}");
+    for (k, value) in values.iter().enumerate() {
+        for (i, &b) in as_bytes(value).iter().enumerate() {
+            assert!(b == 0xA5, "a refused load wrote destination {k}.{i} = {b:#04x}");
+        }
+    }
+}
+`, oldFile)
+	oldRoot := t.TempDir()
+	versionWriteCrate(t, oldRoot, serialize, versionProbe{
+		name:   "probe_dead_bytes_old",
+		reader: "VNEW_string_grow",
+		older:  []string{"VOLD_string_grow"},
+		root:   "StringGrow",
+		src:    versionProbeSource(oldTests),
+	})
+	oldCmd := exec.Command("cargo", "test", "--", "--nocapture")
+	oldCmd.Dir = filepath.Join(oldRoot, "probe_dead_bytes_old")
+	oldCmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
+	oldOut, oldErr := oldCmd.CombinedOutput()
+	if oldErr != nil {
+		t.Fatalf("the older-writer dead-byte probe did not run: %v\n%s", oldErr, oldOut)
+	}
+	for _, fn := range []string{"dead_old_string_clean", "dead_old_string_tail"} {
+		versionAssert(t, string(oldOut), fn)
+	}
+	t.Logf("%s", oldOut)
 }
