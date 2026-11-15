@@ -168,7 +168,7 @@ listed case that passes fails the leg until its line is removed.
   fixtures were regenerated in 695103dad with an absent optional's payload
   zeroed, and the Squirrel cook writer still writes its defaults there.
   Files: internal/codegen/squirreltable/cookwrite_test.go (`squirrelCookRelaxed`;
-  a relaxed row that matches fails the test). Real fix: find the bytes the
+  a relaxed row that matches fails the test). Real fix: make the
   Squirrel cook writer zero an absent optional's payload, as the C writer
   and the tool do, and drop the rows from the map. WIP: none.
 
