@@ -2165,10 +2165,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
         cond do
           not utf8_valid?(raw) ->
-            {:cont, "", throw(:wire_damaged)}
+            throw(:wire_damaged)
 
           not Map.get(f, :unbounded, false) and len > f.size ->
-            {:cont, utf8_prefix(raw, f.size), throw(:wire_damaged)}
+            throw(:wire_damaged)
 
           true ->
             {:cont, raw, report}
@@ -2844,10 +2844,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         {value, report} =
           cond do
             not utf8_valid?(raw) ->
-              {"", throw(:wire_damaged)}
+              throw(:wire_damaged)
 
             not Map.get(f, :text_unbounded, false) and len > f.text_size ->
-              {utf8_prefix(raw, f.text_size), throw(:wire_damaged)}
+              throw(:wire_damaged)
 
             true ->
               {raw, report}
@@ -2961,8 +2961,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
         value =
           cond do
-            not utf8_valid?(raw) -> ""
-            len > f.size -> utf8_prefix(raw, f.size)
+            not utf8_valid?(raw) -> throw(:wire_damaged)
+            len > f.size -> throw(:wire_damaged)
             true -> raw
           end
 
@@ -3054,8 +3054,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp read_list_elements(_f, _rest, _n, _nodes, _ids, acc, report),
-    do: {Enum.reverse(acc), report}
+  defp read_list_elements(_f, _rest, _n, _nodes, _ids, acc, _report),
+    do: {Enum.reverse(acc), throw(:wire_damaged)}
 
   # read_element decodes one L-framed nested body: a []T element, a by-value
   # table, a keyed slot, a map entry or a table arm (docs/SPEC-TABLES.md §2.9,
@@ -3405,7 +3405,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp int_of(<<v::little-unsigned-32>>, 4, false), do: v
   defp int_of(<<v::little-unsigned-64>>, 8, false), do: v
   defp int_of(<<v::little-unsigned-128>>, 16, false), do: v
-  defp int_of(_payload, _w, _signed), do: 0
+  defp int_of(_payload, _w, _signed), do: throw(:wire_damaged)
 
   defp clamp_int(v, %{min: lo, max: _hi}, _report) when v < lo,
     do: {lo, throw(:wire_damaged)}
@@ -3927,6 +3927,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_field(%{t: :int, flags: names}, v, depth) do
+    # A bit above the named variants has no text spelling (docs/SPEC-TABLES.md
+    # §16.2): the file read keeps it whole, and the text writer refuses it.
+    if v >>> length(names) != 0, do: throw(:invalid_value)
+
     set = for {n, i} <- Enum.with_index(names), (v >>> i &&& 1) == 1, do: n
 
     case set do

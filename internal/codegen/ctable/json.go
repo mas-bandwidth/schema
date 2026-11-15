@@ -114,9 +114,16 @@ const tableJsonWalkSource = `/* ---- json walk: begin ----
 /* A key longer than this cannot name a field, so it is skipped as unknown. */
 #define kTableJsonMaxKey 256
 
-/* The longest numeric token the walk will convert. Anything longer is a
-   value no field can hold and counts as a kind mismatch. */
-#define kTableJsonMaxNumber 512
+/* The longest spelling handed to the runtime's number converter. A number
+   TOKEN has no length limit (§16.2): the document's own size bounds the scan,
+   and the token is read where it lies in the text. A token too long to hand
+   over whole is handed over as the same value in at most
+   kTableJsonMaxNumber - 32 significant digits: every digit past them is folded
+   into the exponent, and a non-zero one is kept as one sticky digit so the
+   rounding is the token's own. A point halfway between two doubles spells in
+   at most 767 significant digits, so no such point lies between the token and
+   the digits the converter is handed. */
+#define kTableJsonMaxNumber 800
 
 /* The decimal point the C runtime is CURRENTLY using. Number conversion is
    the one locale-sensitive corner of the grammar — JSON's point is always
@@ -1449,39 +1456,90 @@ static SCHEMA_UNUSED int table_json_walk_number( TableJsonIn * in, int * integra
     return 1;
 }
 
-/* the same production, with the token kept for conversion */
-static SCHEMA_UNUSED int table_json_scan_number( TableJsonIn * in, char * token, int32_t capacity, int32_t * length, int * integral )
+/* the same production, with the token kept for conversion: it is read where
+   it lies in the text, so its length is never a reason to refuse it */
+static SCHEMA_UNUSED int table_json_scan_number( TableJsonIn * in, const char ** token, int64_t * length, int * integral )
 {
     int64_t start;
-    int64_t count;
     table_json_space( in );
     start = in->pos;
     if ( !table_json_walk_number( in, integral ) ) { return 0; }
-    count = in->pos - start;
-    if ( count <= 0 || count >= capacity ) { return 0; }
-    memcpy( token, in->text + start, (size_t) count );
-    token[count] = 0;
-    *length = (int32_t) count;
+    if ( in->pos <= start ) { return 0; }
+    *token = in->text + start;
+    *length = in->pos - start;
     return 1;
 }
 
 /* the token's exact double, through the runtime's own converter — which
    speaks the LOCALE's decimal point, so the token crosses back over that
-   character on its way in */
-static SCHEMA_UNUSED double table_json_token_double( const char * token, int32_t length, int single )
+   character on its way in. A token too long to copy whole is handed over as
+   the same value, [-]0.<significant digits>e<exponent>: leading zeros move
+   the exponent, digits past kTableJsonMaxNumber - 32 are folded into it, and
+   a non-zero one among them leaves one sticky digit behind. */
+static SCHEMA_UNUSED double table_json_token_double( const char * token, int64_t length, int single )
 {
     char work[kTableJsonMaxNumber];
-    char point;
-    memcpy( work, token, (size_t) length );
-    work[length] = 0;
-    point = table_json_decimal_point();
-    if ( point != '.' )
+    char point = table_json_decimal_point();
+    if ( length < (int64_t) sizeof( work ) )
     {
-        int32_t i;
-        for ( i = 0; i < length; i++ )
+        memcpy( work, token, (size_t) length );
+        work[length] = 0;
+        if ( point != '.' )
         {
-            if ( work[i] == '.' ) { work[i] = point; }
+            int64_t i;
+            for ( i = 0; i < length; i++ )
+            {
+                if ( work[i] == '.' ) { work[i] = point; }
+            }
         }
+    }
+    else
+    {
+        int64_t i = 0;
+        int64_t exponent = 0;    /* the point's place after the digits kept: 0.<digits> times ten to this */
+        int64_t written = 0;     /* the exponent the token spells */
+        int fraction = 0;
+        int seen = 0;            /* a non-zero digit has been read */
+        int sticky = 0;          /* a non-zero digit was dropped */
+        int32_t kept = 0;
+        int32_t n = 0;
+        if ( token[i] == '-' ) { work[n++] = '-'; i++; }
+        work[n++] = '0';
+        work[n++] = point;
+        for ( ; i < length && token[i] != 'e' && token[i] != 'E'; i++ )
+        {
+            const char c = token[i];
+            if ( c == '.' ) { fraction = 1; continue; }
+            if ( !seen && c == '0' )
+            {
+                if ( fraction ) { exponent--; }
+                continue;
+            }
+            seen = 1;
+            if ( !fraction ) { exponent++; }
+            if ( kept < kTableJsonMaxNumber - 32 ) { work[n++] = c; kept++; }
+            else if ( c != '0' ) { sticky = 1; }
+        }
+        if ( i < length )
+        {
+            int negative = 0;
+            i++;
+            if ( token[i] == '-' || token[i] == '+' ) { negative = token[i] == '-'; i++; }
+            for ( ; i < length; i++ )
+            {
+                /* past this no document holds enough digits to bring the
+                   value back from overflow or underflow */
+                if ( written < 100000000000000000LL ) { written = written * 10 + ( token[i] - '0' ); }
+            }
+            exponent += negative ? -written : written;
+        }
+        if ( !seen ) { work[n++] = '0'; exponent = 0; }
+        if ( sticky ) { work[n++] = '1'; }
+        /* ten to the 99999 overflows and ten to the -99999 underflows whatever
+           seven hundred digits stand in front of it */
+        if ( exponent > 99999 ) { exponent = 99999; }
+        if ( exponent < -99999 ) { exponent = -99999; }
+        snprintf( work + n, sizeof( work ) - (size_t) n, "e%d", (int) exponent );
     }
     if ( single ) { return (double) strtof( work, NULL ); }
     return strtod( work, NULL );
@@ -1542,8 +1600,14 @@ static SCHEMA_UNUSED int table_json_skip_value( TableJsonIn * in, int32_t depth 
 
 static SCHEMA_UNUSED int table_json_skip_container( TableJsonIn * in, char close, int32_t depth )
 {
-    if ( depth > kTableJsonMaxDepth ) { in->bad = 1; return 0; }
+    /* a skipped object's keys are held to the layer's rule too: a zero in one
+       refuses the read, and a repeated key refuses in every object (§16.2,
+       §16.3). The repeat set is bounded and allocation-free like the table's. */
+    uint64_t seen[64];
+    int32_t seen_count = 0;
     int first = 1;
+    if ( depth > kTableJsonMaxDepth ) { in->bad = 1; return 0; }
+    memset( seen, 0, sizeof( seen ) );
     in->pos++; /* the opening bracket */
     for ( ;; )
     {
@@ -1555,8 +1619,16 @@ static SCHEMA_UNUSED int table_json_skip_container( TableJsonIn * in, char close
         {
             char key[kTableJsonMaxKey];
             int32_t length = 0;
-            if ( !table_json_scan_string(in,key,kTableJsonMaxKey-1,&length) ) { return 0; }
+            uint64_t hash = 1469598103934665603ULL;
+            int32_t k;
+            if ( !table_json_scan_text(in,key,kTableJsonMaxKey-1,&length) ) { return 0; }
             key[length] = 0;
+            for ( k = 0; k < length; k++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[k] ) * 1099511628211ULL; }
+            for ( k = 0; k < seen_count; k++ )
+            {
+                if ( seen[k] == hash ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; in->bad = 1; return 0; }
+            }
+            if ( seen_count < 64 ) { seen[seen_count++] = hash; }
             if ( table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
             if ( key[0] == '&' && in->graph != NULL ) { if ( !first ) { in->bad = 1; return 0; } if ( !table_json_skipped_ampersand(in,key) ) { return 0; } consumed = 1; }
@@ -1578,7 +1650,9 @@ static SCHEMA_UNUSED int table_json_skip_value( TableJsonIn * in, int32_t depth 
     {
         case '{': return table_json_skip_container( in, '}', depth );
         case '[': return table_json_skip_container( in, ']', depth );
-        case '"': return table_json_scan_string( in, NULL, 0, NULL );
+        /* a skipped string is held to the text rules of a placed value: a
+           U+0000 refuses the read (§16.3), as text_holds_zero does at a field */
+        case '"': return table_json_scan_text( in, NULL, 0, NULL );
         case 't': return table_json_literal( in, "true" );
         case 'f': return table_json_literal( in, "false" );
         case 'n': return table_json_literal( in, "null" );
@@ -1611,7 +1685,7 @@ typedef struct TableJsonInteger
 // THE FIELD'S INTERPRETATION: the token, parsed digit by digit so no width and
 // no locale can move it, and through the runtime's converter only where the
 // spelling carries a fraction or an exponent
-static SCHEMA_UNUSED TableJsonInteger table_json_interpret( const char * token, int32_t length, int integral )
+static SCHEMA_UNUSED TableJsonInteger table_json_interpret( const char * token, int64_t length, int integral )
 {
     TableJsonInteger out;
     out.magnitude = 0;
@@ -1621,7 +1695,7 @@ static SCHEMA_UNUSED TableJsonInteger table_json_interpret( const char * token, 
     out.finite = 1;
     if ( integral )
     {
-        int32_t i = 0;
+        int64_t i = 0;
         if ( i < length && token[i] == '-' ) // WalkNumber refuses a leading plus
         {
             out.negative = 1;
@@ -1704,18 +1778,18 @@ static SCHEMA_UNUSED int64_t table_json_integer_in_domain( TableJsonInteger numb
 }
 
 
-static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * token, int32_t length, void * storage, const TableFieldInfo * f )
+static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * token, int64_t length, void * storage, const TableFieldInfo * f )
 {
     int is_signed = table_json_kind_wide_signed( f->kind );
     int frac = f->frac_bits;
-    int32_t i = 0;
+    int64_t i = 0;
     int negative = 0;
     if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { negative = token[i] == '-'; i++; }
     const char * int_digits = token + i;
-    int32_t int_len = 0;
+    int64_t int_len = 0;
     while ( i < length && token[i] >= '0' && token[i] <= '9' ) { int_len++; i++; }
     const char * frac_digits = token + i;
-    int32_t frac_len = 0;
+    int64_t frac_len = 0;
     if ( i < length && token[i] == '.' )
     {
         i++;
@@ -1730,14 +1804,15 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
         if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { exp_negative = token[i] == '-'; i++; }
         while ( i < length && token[i] >= '0' && token[i] <= '9' )
         {
-            if ( exp < 100000 ) { exp = exp * 10 + ( token[i] - '0' ); }
+            // held past any count of digits a document can put in front
+            if ( exp < 100000000000000000LL ) { exp = exp * 10 + ( token[i] - '0' ); }
             i++;
         }
         if ( exp_negative ) { exp = -exp; }
     }
     // the digits, with the point after "point" of them; leading and trailing
     // zeros stripped. digit( k ) reads the k-th of the int and frac runs.
-    int32_t start = 0, end = int_len + frac_len;
+    int64_t start = 0, end = int_len + frac_len;
     int64_t point = int_len + exp;
     while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' ) { start++; point--; }
     while ( end > start && ( end - 1 < int_len ? int_digits[end - 1] : frac_digits[end - 1 - int_len] ) == '0' ) { end--; }
@@ -1768,10 +1843,19 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
         // its magnitude: its digits, with the zeros a negative point puts in
         // front, doubled F times; each doubling's carry is the next bit, and
         // the value is exact iff nothing is left after the last one
-        char fd[kTableJsonMaxNumber + 48];
+        char fd[256];
         int32_t fn = 0;
+        // a fraction exact in F bits spells in at most F decimal digits (its
+        // last digit is not zero, so 10^n divides digits * 2^F only for n <= F):
+        // a longer one is inexact without being doubled out
+        const int64_t fraction_digits = ( point < 0 ? -point : 0 ) + ( end - start - ( point > 0 ? point : 0 ) );
+        if ( fraction_digits > frac || fraction_digits > (int64_t) sizeof( fd ) )
+        {
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
+            return 1;
+        }
         for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
-        for ( int32_t k = (int32_t) ( point > 0 ? point : 0 ) + start; k < end; k++ )
+        for ( int64_t k = ( point > 0 ? point : 0 ) + start; k < end; k++ )
         {
             fd[fn++] = (char) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
         }
@@ -2020,8 +2104,8 @@ static SCHEMA_UNUSED int schema_table_json_text_total_keep_( TableJsonIn * in, v
 
 static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
 {
-    char token[kTableJsonMaxNumber];
-    int32_t length = 0;
+    const char * token = NULL;
+    int64_t length = 0;
     int integral = 0;
     if ( f->text_list != 0 ) { return schema_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
@@ -2043,7 +2127,7 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
         in->pos++;
         table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
         if ( table_json_peek( in ) == '}' ) { in->pos++; return 1; }
-        if ( !table_json_scan_string( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return 0; }
+        if ( !table_json_scan_text( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return 0; }
         key[key_length] = 0;
         if ( table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
         in->pos++;
@@ -2137,6 +2221,9 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
                     const char * variant = table_json_variant_name( f, (uint64_t) bit );
                     if ( variant != NULL && strcmp( variant, name ) == 0 )
                     {
+                        /* a known variant named twice is a repeated key, refused like one
+                           (§16.2): a conforming writer writes each set bit's name once */
+                        if ( ( bits & ( (uint64_t) 1 << bit ) ) != 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }
                         bits |= (uint64_t) 1 << bit;
                         found = 1;
                         break;
@@ -2168,7 +2255,7 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
         table_json_set_raw( storage, f->elem_size, (uint64_t) nanos );
         return 1;
     }
-    if ( !table_json_scan_number( in, token, kTableJsonMaxNumber, &length, &integral ) )
+    if ( !table_json_scan_number( in, &token, &length, &integral ) )
     {
         in->bad = 1;
         return 0;
@@ -2380,7 +2467,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             int64_t v;
             if ( c == '}' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( !table_json_scan_string( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return 0; }
+            if ( !table_json_scan_text( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return 0; }
             key[key_length] = 0;
             if ( table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
@@ -2556,7 +2643,7 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
             c = table_json_peek(in);
             if ( c == '}' ) { in->pos++; return schema_table_json_require_seen_( in, base, info, seen ); }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( !table_json_scan_string(in,key,kTableJsonMaxKey-1,&key_length) ) { return 0; }
+            if ( !table_json_scan_text(in,key,kTableJsonMaxKey-1,&key_length) ) { return 0; }
             key[key_length] = 0;
             if ( table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
             in->pos++;

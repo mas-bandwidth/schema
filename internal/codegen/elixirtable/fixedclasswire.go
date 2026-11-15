@@ -2,8 +2,10 @@ package elixirtable
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -580,7 +582,67 @@ func fixedClassHelpers(u *ir.Unit) string {
 			unionFrom = fixedClassUnionFromNoVoid
 		}
 	}
-	return fixedClassHelperHead + unionTo + unionFrom + fixedClassHelperTail
+	atoms, tail := fixedClassAtoms(u), fixedClassHelperTail
+	if atoms == "" {
+		// no declared name at all: every name is refused, and an empty
+		// attribute would be a type warning at its lookup
+		if strings.Count(tail, fixedClassEnumFromName) != 1 {
+			panic("elixirtable: fixed-class enum name clause not found exactly once")
+		}
+		tail = strings.Replace(tail, fixedClassEnumFromName, fixedClassEnumFromNoName, 1)
+	}
+	return atoms + fixedClassHelperHead + unionTo + unionFrom + tail
+}
+
+const fixedClassEnumFromName = `  defp fixed_class_enum_from_table(f, value) when is_binary(value) do
+    case Map.fetch(Map.get(f, :by_name, %{}), value) do
+      {:ok, _id} -> Map.fetch!(@fixed_class_atoms, value)
+      :error -> raise ArgumentError, "not a variant name: #{inspect(value)}"
+    end
+  end
+`
+
+const fixedClassEnumFromNoName = `  defp fixed_class_enum_from_table(_f, value) when is_binary(value),
+    do: raise(ArgumentError, "not a variant name: #{inspect(value)}")
+`
+
+// fixedClassAtoms is every enum variant and union arm name the unit declares,
+// mapped at generation time to the atom the fixed form's value carries. A
+// Table save looks a name up in its descriptor first and takes the atom from
+// here, so no caller's string ever becomes an atom: atoms are never collected.
+func fixedClassAtoms(u *ir.Unit) string {
+	atoms := map[string]string{}
+	for _, e := range u.Enums {
+		for _, v := range e.Variants {
+			atoms[v] = elixir.EnumAtom(v)
+		}
+	}
+	for _, unions := range []map[string]*ir.Union{u.Unions, u.TableUnions} {
+		for _, un := range unions {
+			for _, v := range un.Variants {
+				atoms[v.Name] = elixir.EnumAtom(v.Name)
+			}
+		}
+	}
+	if len(atoms) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(atoms))
+	for name := range atoms {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	b.WriteString("%{")
+	for i, name := range names {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "%q => %s", name, atoms[name])
+	}
+	b.WriteString("}")
+	return "  # the atom each declared enum variant and union arm name stands for\n" +
+		exAttribute("fixed_class_atoms", b.String()) + "\n"
 }
 
 func hasVoidUnionArm(u *ir.Unit) bool {
@@ -654,13 +716,14 @@ const fixedClassUnionFrom = `
 
       {arm, payload} when is_binary(arm) ->
         union = Map.fetch!(@unions, Map.fetch!(f, :elem))
-        atom = String.to_atom(fixed_class_snake(arm))
 
         case Map.get(union.by_name, arm) do
           nil ->
-            {atom, payload}
+            raise ArgumentError, "not an arm name: #{inspect(arm)}"
 
           desc ->
+            atom = Map.fetch!(@fixed_class_atoms, arm)
+
             if Map.get(desc, :t) == :void,
               do: atom,
               else: {atom, fixed_class_value_from_table(desc, payload)}
@@ -683,14 +746,13 @@ const fixedClassUnionFromNoVoid = `
 
       {arm, payload} when is_binary(arm) ->
         union = Map.fetch!(@unions, Map.fetch!(f, :elem))
-        atom = String.to_atom(fixed_class_snake(arm))
 
         case Map.get(union.by_name, arm) do
           nil ->
-            {atom, payload}
+            raise ArgumentError, "not an arm name: #{inspect(arm)}"
 
           desc ->
-            {atom, fixed_class_value_from_table(desc, payload)}
+            {Map.fetch!(@fixed_class_atoms, arm), fixed_class_value_from_table(desc, payload)}
         end
 
       {arm, payload} when is_atom(arm) ->
@@ -941,8 +1003,12 @@ const fixedClassHelperTail = `
 
   defp fixed_class_enum_from_table(_f, "None"), do: :none
 
-  defp fixed_class_enum_from_table(_f, value) when is_binary(value),
-    do: String.to_atom(fixed_class_snake(value))
+  defp fixed_class_enum_from_table(f, value) when is_binary(value) do
+    case Map.fetch(Map.get(f, :by_name, %{}), value) do
+      {:ok, _id} -> Map.fetch!(@fixed_class_atoms, value)
+      :error -> raise ArgumentError, "not a variant name: #{inspect(value)}"
+    end
+  end
 
   defp fixed_class_enum_from_table(_f, value), do: value
 

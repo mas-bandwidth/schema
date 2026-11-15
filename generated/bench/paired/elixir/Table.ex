@@ -1400,6 +1400,28 @@ defmodule Bench.Table do
   # The write is the fixed form's own. The variable codec below is for
   # variable roots, including one that holds a fixed table.
 
+  # the atom each declared enum variant and union arm name stands for
+  @fixed_class_atoms %{
+    "Drone" => :drone,
+    "Fists" => :fists,
+    "Flamer" => :flamer,
+    "Grenade" => :grenade,
+    "Mine" => :mine,
+    "Pistol" => :pistol,
+    "Plasma" => :plasma,
+    "Railgun" => :railgun,
+    "Repair" => :repair,
+    "Rifle" => :rifle,
+    "Rocket" => :rocket,
+    "Shotgun" => :shotgun,
+    "Smg" => :smg,
+    "Sniper" => :sniper,
+    "Turret" => :turret,
+    "chat" => :chat,
+    "hit" => :hit,
+    "pickup" => :pickup
+  }
+
   # A fixed root's Table value is the Table API's value: the fixed record
   # converted by the descriptors above, so the text form, the cook writer
   # and a re-save walk the same string-keyed map a variable root returns.
@@ -1566,14 +1588,13 @@ defmodule Bench.Table do
 
       {arm, payload} when is_binary(arm) ->
         union = Map.fetch!(@unions, Map.fetch!(f, :elem))
-        atom = String.to_atom(fixed_class_snake(arm))
 
         case Map.get(union.by_name, arm) do
           nil ->
-            {atom, payload}
+            raise ArgumentError, "not an arm name: #{inspect(arm)}"
 
           desc ->
-            {atom, fixed_class_value_from_table(desc, payload)}
+            {Map.fetch!(@fixed_class_atoms, arm), fixed_class_value_from_table(desc, payload)}
         end
 
       {arm, payload} when is_atom(arm) ->
@@ -1697,8 +1718,12 @@ defmodule Bench.Table do
 
   defp fixed_class_enum_from_table(_f, "None"), do: :none
 
-  defp fixed_class_enum_from_table(_f, value) when is_binary(value),
-    do: String.to_atom(fixed_class_snake(value))
+  defp fixed_class_enum_from_table(f, value) when is_binary(value) do
+    case Map.fetch(Map.get(f, :by_name, %{}), value) do
+      {:ok, _id} -> Map.fetch!(@fixed_class_atoms, value)
+      :error -> raise ArgumentError, "not a variant name: #{inspect(value)}"
+    end
+  end
 
   defp fixed_class_enum_from_table(_f, value), do: value
 
@@ -3729,10 +3754,10 @@ defmodule Bench.Table do
 
         cond do
           not utf8_valid?(raw) ->
-            {:cont, "", throw(:wire_damaged)}
+            throw(:wire_damaged)
 
           not Map.get(f, :unbounded, false) and len > f.size ->
-            {:cont, utf8_prefix(raw, f.size), throw(:wire_damaged)}
+            throw(:wire_damaged)
 
           true ->
             {:cont, raw, report}
@@ -4388,10 +4413,10 @@ defmodule Bench.Table do
         {value, report} =
           cond do
             not utf8_valid?(raw) ->
-              {"", throw(:wire_damaged)}
+              throw(:wire_damaged)
 
             not Map.get(f, :text_unbounded, false) and len > f.text_size ->
-              {utf8_prefix(raw, f.text_size), throw(:wire_damaged)}
+              throw(:wire_damaged)
 
             true ->
               {raw, report}
@@ -4505,8 +4530,8 @@ defmodule Bench.Table do
 
         value =
           cond do
-            not utf8_valid?(raw) -> ""
-            len > f.size -> utf8_prefix(raw, f.size)
+            not utf8_valid?(raw) -> throw(:wire_damaged)
+            len > f.size -> throw(:wire_damaged)
             true -> raw
           end
 
@@ -4598,8 +4623,8 @@ defmodule Bench.Table do
     end
   end
 
-  defp read_list_elements(_f, _rest, _n, _nodes, _ids, acc, report),
-    do: {Enum.reverse(acc), report}
+  defp read_list_elements(_f, _rest, _n, _nodes, _ids, acc, _report),
+    do: {Enum.reverse(acc), throw(:wire_damaged)}
 
   # read_element decodes one L-framed nested body: a []T element, a by-value
   # table, a keyed slot, a map entry or a table arm (docs/SPEC-TABLES.md §2.9,
@@ -4949,7 +4974,7 @@ defmodule Bench.Table do
   defp int_of(<<v::little-unsigned-32>>, 4, false), do: v
   defp int_of(<<v::little-unsigned-64>>, 8, false), do: v
   defp int_of(<<v::little-unsigned-128>>, 16, false), do: v
-  defp int_of(_payload, _w, _signed), do: 0
+  defp int_of(_payload, _w, _signed), do: throw(:wire_damaged)
 
   defp clamp_int(v, %{min: lo, max: _hi}, _report) when v < lo,
     do: {lo, throw(:wire_damaged)}
@@ -5458,6 +5483,10 @@ defmodule Bench.Table do
   end
 
   defp json_field(%{t: :int, flags: names}, v, depth) do
+    # A bit above the named variants has no text spelling (docs/SPEC-TABLES.md
+    # §16.2): the file read keeps it whole, and the text writer refuses it.
+    if v >>> length(names) != 0, do: throw(:invalid_value)
+
     set = for {n, i} <- Enum.with_index(names), (v >>> i &&& 1) == 1, do: n
 
     case set do

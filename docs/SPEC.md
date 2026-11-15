@@ -2332,7 +2332,7 @@ check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal
 is the leg's assert, "every build" its refusal. These tables record the code as
 it stands, not the contract: an "every build" entry in an assert leg is a
 release-build check the contract does not ask for, and the contract for that
-row is the debug assert. As a fact of today's code, C++, C, C#, Rust, Java and
+row is the debug assert. As a fact of today's code, C++, C, Rust, Java and
 Dart also refuse a count or length past the storage it indexes in a release
 build, before the first byte, held by the `write-refusal-storage-release-<lang>`
 gates.
@@ -2350,7 +2350,7 @@ across languages.
 |---|---|
 | C++ | 1–2 and 8 debug; 3–7 every build (8 too for optional text and text-list elements); 9 unchecked; 10 every build |
 | C | 1–4 and 8 debug; 5–7 every build; 9 unchecked; 10 every build |
-| C# | 1–2 debug; 3–8 every build; 9 unchecked; 10 every build |
+| C# | 1–4 debug, except that every build still refuses a negative text-list element length (`TextFits`) and a count past its bound in the region `Save`'s node walk; 5–8 every build; 9 unchecked; 10 every build for `required` fields only |
 | Rust | 1–2 and 4 debug; 3 and 7 every build; 5–6 and 8 unrepresentable (native enums, a Rust `String`); 9 unchecked; 10 every build |
 | Java | 1–5 and 8 debug; 6–7 every build; 9 unchecked; 10 every build |
 | Dart | 1–5 and 8 debug; 6–7 every build; 10 every build for `required` fields only; 9 unchecked |

@@ -432,6 +432,12 @@ static SCHEMA_UNUSED int table_node_scan_next( TableNodeScan * scan, uint64_t * 
     if ( !table_reader_leb(&scan->payload,&ref) || ref == 0 || ref > scan->payload.id_count ||
          !table_reader_span(&scan->payload,body) ) { scan->damaged = 1; return 0; }
     *type_id = table_reader_id_at(&scan->payload,ref); scan->records++;
+    /* A RECORD'S TYPE MAY NOT NAME A RESERVED ID (docs/SPEC-TABLES.md §3.1,
+       §3.3): the node table, build version and vocabulary ids are transport,
+       never a record's type, so a reserved id in the TYPE position is
+       damage and the whole load refuses. The two blob type ids are a blob
+       record's lawful type (§2.5). */
+    if ( *type_id == UINT64_MAX || *type_id == UINT64_MAX - 1 || *type_id == UINT64_MAX - 2 ) { scan->damaged = 1; return 0; }
     return 1;
 }
 
@@ -459,6 +465,7 @@ static SCHEMA_UNUSED void table_mark_body( TableReader r, uint8_t * named, uint6
 static SCHEMA_UNUSED void table_mark_framed( TableReader sub, uint8_t kind, uint8_t * named, uint64_t records, int depth )
 {
     uint8_t elem_kind; uint64_t count, i;
+    if ( depth > 128 ) { return; }
     switch ( kind )
     {
         case 13: table_mark_body( sub, named, records, depth ); return;
@@ -466,13 +473,18 @@ static SCHEMA_UNUSED void table_mark_framed( TableReader sub, uint8_t kind, uint
             if ( sub.size < 2 ) { return; }
             elem_kind = table_reader_get8( &sub );
             if ( !table_reader_leb( &sub, &count ) ) { return; }
+            if ( count > 2147483647ull ) { return; }
+            if ( count > (uint64_t)( sub.size - sub.offset ) ) { return; }
             for ( i = 0; i < count; i++ )
             {
+                int64_t before = sub.offset;
                 if ( kind == 14 ) { table_mark_value( &sub, elem_kind, named, records, depth ); }
-                else { uint64_t key; TableReader elem; if ( !table_reader_leb( &sub, &key ) || !table_reader_span( &sub, &elem ) ) { return; } table_mark_framed( elem, elem_kind, named, records, depth ); }
+                else { uint64_t key; TableReader elem; if ( !table_reader_leb( &sub, &key ) || !table_reader_span( &sub, &elem ) ) { return; } table_mark_framed( elem, elem_kind, named, records, depth + 1 ); }
+                if ( sub.offset == before ) { return; }
             }
             return;
         case 15: { TableReader rr = sub; table_mark_value( &rr, kind, named, records, depth ); return; }
+        case 17: table_mark_value( &sub, kind, named, records, depth ); return;
         default: return;
     }
 }
@@ -513,6 +525,7 @@ static SCHEMA_UNUSED void table_mark_value( TableReader * r, uint8_t kind, uint8
                 case 18: case 19: case 24: case 29: width = 16; break;
                 default: return;
             }
+            if ( !table_reader_has( r, width ) ) { r->offset = r->size; return; }
             r->offset += width;
             return;
         }
@@ -1015,9 +1028,6 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	n := st.Name
 	reachCheck := "if(nodes->good && !nodes->refused && !table_nodes_all_named(reader,(uint64_t)(nodes->count-1))) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n      "
-	if g.retain {
-		reachCheck = ""
-	}
 	// One fill procedure serves caller-owned regions and editable arenas. Both
 	// passes use the resident directory; following a reference never decodes it.
 	g.pf("static SCHEMA_UNUSED int %s(TableReader * reader, %s * root, TableNodeMap * nodes, TableNodeDirEntry * directory, TableSink * sink)\n{\n", g.sym(n, "load_graph"), n)

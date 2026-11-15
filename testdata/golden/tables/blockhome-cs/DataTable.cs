@@ -359,7 +359,7 @@ namespace Blockhome
         public static bool GunnerSettingsCollectTyped(GunnerSettings v, ref TableWire.Ids ids)
         {
             int count_0 = v.FiringGroupsCount;
-            if (count_0 < 0 || count_0 > 32) return false;
+            System.Diagnostics.Debug.Assert(count_0 >= 0 && count_0 <= 32);
             if (count_0 > 0)
             {
                 if (!ids.Add(0x260b8ca6b0c3db7ful)) return false;
@@ -369,7 +369,7 @@ namespace Blockhome
                 }
             }
             int count_1 = v.MissileGroupsCount;
-            if (count_1 < 0 || count_1 > 4) return false;
+            System.Diagnostics.Debug.Assert(count_1 >= 0 && count_1 <= 4);
             if (count_1 > 0)
             {
                 if (!ids.Add(0x3c99105aa087f6bcul)) return false;

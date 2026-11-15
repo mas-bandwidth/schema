@@ -441,7 +441,7 @@ namespace Tabledemo
             if (!TableWire.CollectField(v, fields[4], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[5], ref ids)) return false;
             int count_6 = v.AttachmentsCount;
-            if (count_6 < 0 || count_6 > 8) return false;
+            System.Diagnostics.Debug.Assert(count_6 >= 0 && count_6 <= 8);
             if (count_6 > 0)
             {
                 if (!ids.Add(0xf901aa0340249a41ul)) return false;

@@ -2130,9 +2130,11 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// else (docs/SPEC-TABLES.md §3.4): a text field's used length and a
 		// counted array's live count, checked debug-only, with no abort behind
 		// them. The §5.1 write contract (range, bits width, enum ordinal,
-		// union tag, ill-formed text) asserts through the same hook. A unit
-		// with nothing to check gets no hook.
-		if !anyKeyed && !anyList && !anyTextList && ir.TableFixedHasWriteCheck(u) {
+		// union tag, ill-formed text) asserts through the same hook, and so
+		// does every fixed save's at-least-one-record check (§22.6), so a file
+		// that emits the fixed form carries the hook. A unit with no fixed
+		// form and nothing to check gets no hook.
+		if !anyKeyed && !anyList && !anyTextList && (ir.TableFixedHasWriteCheck(u) || len(g.fixedRoots(members)) > 0) {
 			h.WriteString(tableAssertHook)
 		}
 		if anyKeyed || anyList || anyTextList {
