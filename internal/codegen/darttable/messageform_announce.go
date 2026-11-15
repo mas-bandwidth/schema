@@ -88,6 +88,14 @@ class TableVocabulary {
   bool announced = false;
   bool attempted = false;
 
+  /// THE BODY'S SEEN SLOTS (docs/SPEC-TABLES.md §3.3, §4): one bitset over
+  /// this vocabulary's announced entries per body nesting level, sized ONCE
+  /// from the announced entry count and cleared by the body that uses it. A
+  /// field or a keyed slot met twice in one body is damage, and a nested body
+  /// keeps its own level so its fields do not shadow its host's.
+  Uint8List seen = Uint8List(0);
+  static const int seenBodyLevels = 129;
+
   /// "THE ONE-ANNOUNCEMENT WORK BUDGET" (§3.3): the caller declares the bound
   /// the payload length and the entry count are held to.
   int maxEntries;
@@ -143,6 +151,15 @@ final class TableMessageShape {
   int min = 0;
   int max = 0;
   int elem = 0;
+  int base = 0;
+  int baseLo = 0;
+  int baseHi = 0;
+  /// The quantized triple's derived facts, kept so the SKIP path can hold an
+  /// index to its count and a dequantized value to a finite float, exactly as
+  /// a named read does (docs/SPEC-TABLES.md §3.3, §4).
+  double qMin = 0;
+  double qDelta = 0;
+  int qCount = 0;
   TableMessageShape? inner;
 
   /// Decodes ONE shape at at in an announced entry's signature, mirroring
@@ -164,13 +181,30 @@ final class TableMessageShape {
         at = n.$2;
         if (kind >= 18) {
           if (at + 16 > end) return null;
+          s.baseLo = sig[at] | (sig[at + 1] << 8) | (sig[at + 2] << 16) |
+              (sig[at + 3] << 24) | (sig[at + 4] << 32) |
+              (sig[at + 5] << 40) | (sig[at + 6] << 48) |
+              (sig[at + 7] << 56);
+          s.baseHi = sig[at + 8] | (sig[at + 9] << 8) | (sig[at + 10] << 16) |
+              (sig[at + 11] << 24) | (sig[at + 12] << 32) |
+              (sig[at + 13] << 40) | (sig[at + 14] << 48) |
+              (sig[at + 15] << 56);
+          s.base = s.baseLo;
           return (s, at + 16);
         }
         final b = tableMessageLeb(sig, at, end);
-        return b.$3 ? (s, b.$2) : null;
+        if (!b.$3) return null;
+        var base = b.$1;
+        if (kind >= 2 && kind <= 5) {
+          base = (base >>> 1) ^ -(base & 1);
+        }
+        s.base = base;
+        s.baseLo = base;
+        s.baseHi = base < 0 ? -1 : 0;
+        return (s, b.$2);
       }
       if (s.packing == 2 && kind == 10) {
-        final bits = quantizedBits(sig, at, end);
+        final bits = quantizedBits(sig, at, end, s);
         if (bits == null) return null;
         s.bits = bits;
         return (s, at + 12);
@@ -209,7 +243,7 @@ final class TableMessageShape {
   /// The width of a quantized f32 (ir.DecodeShape, ir.TableMessageQuantization):
   /// bits.Len32 of ceil(float32((max - min) / res)), clamped to [1, 2^32 - 256],
   /// or null where the triple is not conforming.
-  static int? quantizedBits(Uint8List sig, int at, int end) {
+  static int? quantizedBits(Uint8List sig, int at, int end, TableMessageShape s) {
     if (at + 12 > end) return null;
     final view = ByteData.sublistView(sig, at, at + 12);
     final f = Float32List(3);
@@ -229,10 +263,14 @@ final class TableMessageShape {
     }
     var count = values.ceil();
     var width = 0;
+    final kept = count;
     while (count != 0) {
       width++;
       count >>= 1;
     }
+    s.qMin = f[0];
+    s.qDelta = delta;
+    s.qCount = kept;
     return width;
   }
 
@@ -527,6 +565,8 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
   }
   vocabulary.count = seen;
   vocabulary.refBits = seen == 0 ? 1 : tableMessageBits(seen);
+  final stride = seen == 0 ? 1 : (seen + 7) >> 3;
+  vocabulary.seen = Uint8List(stride * TableVocabulary.seenBodyLevels);
   vocabulary.announced = true;
   return true;
 }

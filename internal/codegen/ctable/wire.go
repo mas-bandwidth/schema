@@ -4,6 +4,7 @@ package ctable
 // and flat node records for the variable class.
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -84,7 +85,7 @@ func (g *tableGen) wirePrimitives() string {
 		runtime = strings.ReplaceAll(runtime, "@WRITE_NODES@", writeNodes)
 		runtime = strings.ReplaceAll(runtime, "@READ_NODES@", readNodes)
 	}
-	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime, true, unitHasWideStorage(g.unit), len(ir.TableFixedFormRoots(g.unit)) > 0)
+	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime, true, unitHasWideStorage(g.unit), unitHasWriteBound(g.unit))
 }
 
 const fileWireRuntime = `
@@ -394,11 +395,11 @@ static SCHEMA_UNUSED int table_skip_framed( TableReader sub, uint8_t kind, int64
         case 12: return table_skip_utf8( sub.buffer, (uint64_t) sub.size );
         case 31: return 1;
         case 32: return sub.size == 0;
-        case 13: return table_skip_body( sub, nodes, depth, 0 ) == sub.size;
+        case 13: return depth < 128 && table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size;
         case 14: case 16:
         {
             TableReader rr = sub;
-            return table_skip_array( &rr, kind == 16, nodes, depth );
+            return depth < 128 && table_skip_array( &rr, kind == 16, nodes, depth + 1 );
         }
         case 15: case 17: case 30:
         {
@@ -488,14 +489,17 @@ static SCHEMA_UNUSED int table_skip_value( TableReader * r, uint8_t kind, int64_
             if ( !table_reader_has( r, 1 ) ) { return 0; }
             arm_kind = table_reader_get8( r );
             if ( !table_reader_span( r, &arm ) ) { return 0; }
-            return table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            /* a union is a level when its arm is structural (§4) */
+            if ( arm_kind == 13 || arm_kind == 14 || arm_kind == 15 || arm_kind == 16 )
+            {
+                return depth < 128 && table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            }
+            return table_skip_framed( arm, arm_kind, nodes, depth );
         }
         case 12: case 13: case 14: case 16: case 31: case 32:
         {
             TableReader sub;
             if ( !table_reader_span( r, &sub ) ) { return 0; }
-            if ( kind == 13 ) { return depth < 128 && table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size; }
-            if ( kind == 14 || kind == 16 ) { return depth < 128 && table_skip_array( &sub, kind == 16, nodes, depth + 1 ); }
             return table_skip_framed( sub, kind, nodes, depth );
         }
         default:
@@ -670,7 +674,8 @@ func (g *tableGen) wirePayload(f *ir.Field, expr, ind string) {
 			g.pf("%s  table_writer_leb( w, (uint64_t)len );\n", ind)
 			g.pf("%s  table_writer_raw( w, text, len ); }\n", ind)
 		} else {
-			g.pf("%sif ( (%s).value_length < 0 || (%s).value_length > %d || !table_wire_utf8( (const uint8_t *)(%s).value, (uint64_t)(%s).value_length ) ) { return 0; }\n", ind, expr, expr, val.Type.Size, expr, expr)
+			g.writeStorageBound("("+expr+").value_length", val.Type.Size, ind)
+			g.pf("%sif ( !table_wire_utf8( (const uint8_t *)(%s).value, (uint64_t)(%s).value_length ) ) { return 0; }\n", ind, expr, expr)
 			g.pf("%stable_writer_leb( w, (uint64_t)(%s).value_length );\n", ind, expr)
 			g.pf("%stable_writer_raw( w, (%s).value, (%s).value_length );\n", ind, expr, expr)
 		}
@@ -681,6 +686,67 @@ func (g *tableGen) wirePayload(f *ir.Field, expr, ind string) {
 	default:
 		g.wireScalarWrite(f, expr, ind)
 	}
+}
+
+// writeStorageBound is the WRITE-SIDE STORAGE CHECK, DEBUG-ONLY BY RULE
+// (docs/SPEC.md §5.1): a count or a length that would index past the storage
+// it describes is the programmer's error, so C holds it with schema_assert,
+// which NDEBUG removes exactly as it removes assert. A release build carries
+// no write-side check. The read side checks the same number in every build.
+func (g *tableGen) writeStorageBound(expr string, bound int64, ind string) {
+	g.pf("%sschema_assert( 0 <= %s && %s <= %d );\n", ind, expr, expr, bound)
+}
+
+// unitHasWriteBound reports a unit whose writers carry a debug-only write
+// check — the fixed form's bounds and value checks, or a storage bound
+// of the variable or message form — so its header takes <assert.h> and
+// defines schema_assert. It may answer yes for a unit that emits none; it
+// never answers no for one that does.
+func unitHasWriteBound(u *ir.Unit) bool {
+	// THE FIXED SAVE REFUSES AN EMPTY BATCH with schema_assert (docs/SPEC-TABLES.md
+	// §22.6), so every unit that emits the form carries the assert hook even when
+	// a plain-scalar record declares no other write bound.
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			if ir.TableFixedEmitted(u, st) {
+				return true
+			}
+		}
+	}
+	if ir.TableFixedHasWriteCheck(u) {
+		return true
+	}
+	bounded := func(f *ir.Field) bool {
+		return f.Array == ir.ArrayCounted || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.IsTextList()
+	}
+	names := ir.TableClosure(u)
+	for name := range ir.TableClosureVocabulary(u) {
+		names[name] = true
+	}
+	for name := range names {
+		un := u.TableUnions[name]
+		if un == nil {
+			un = u.Unions[name]
+		}
+		if un != nil {
+			for _, v := range un.Variants {
+				if !v.Void() && bounded(v.F) {
+					return true
+				}
+			}
+		}
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		if slices.ContainsFunc(st.Fields, bounded) {
+			return true
+		}
+	}
+	return false
 }
 
 func (g *tableGen) wireFieldHelper(st *ir.Struct, f *ir.Field) string {
@@ -712,9 +778,9 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	}
 	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value%s )\n{\n", g.wireFieldHelper(st, f), st.Name, cacheArg)
 	if !f.Type.TextUnbounded() && ((f.Type.Kind == ir.TString && !f.Type.Blob()) || (f.Type.Kind == ir.TBytes && !f.Type.Blob())) {
-		g.pf("    if ( %s_length < 0 || %s_length > %d ) { return 0; }\n", expr, expr, f.Type.Size)
+		g.writeStorageBound(expr+"_length", f.Type.Size, "    ")
 	} else if f.Array == ir.ArrayCounted {
-		g.pf("    if ( %s_count < 0 || %s_count > %d ) { return 0; }\n", expr, expr, f.ArrayBound)
+		g.writeStorageBound(expr+"_count", f.ArrayBound, "    ")
 	}
 	switch {
 	case f.IsList() || f.IsMap():
@@ -763,7 +829,7 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 			if val.Type.Optional {
 				g.pf("          if ( !%s[ti].value_present ) { continue; }\n", expr)
 			}
-			g.pf("          if ( %s[ti].value_length < 0 || %s[ti].value_length > %d ) { return 0; }\n", expr, expr, val.Type.Size)
+			g.writeStorageBound(expr+"[ti].value_length", val.Type.Size, "          ")
 			g.pf("          total += %s[ti].value_length;\n", expr)
 			g.pf("          if ( total > %d ) { return 0; }\n", f.TextTotal)
 			g.pf("      }\n    }\n")
@@ -887,10 +953,10 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 			g.pf("        if ( text_len < 0 ) { return 0; }\n")
 			condition = "text_len > 0"
 		case (f.Type.Kind == ir.TBytes && !f.Type.Blob()) || (f.Type.Kind == ir.TString && !f.Type.Blob()):
-			g.pf("        if ( %s_length < 0 || %s_length > %d ) { return 0; }\n", expr, expr, f.Type.Size)
+			g.writeStorageBound(expr+"_length", f.Type.Size, "        ")
 			condition = g.wireBytesDiffer(f, expr)
 		case f.Array == ir.ArrayCounted:
-			g.pf("        if ( %s_count < 0 || %s_count > %d ) { return 0; }\n", expr, expr, f.ArrayBound)
+			g.writeStorageBound(expr+"_count", f.ArrayBound, "        ")
 			condition = expr + "_count > 0"
 		case f.KeyEnum != "":
 			if f.Required {
@@ -956,6 +1022,7 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 	if g.retain || g.isVar(st.Name) || st.IsMapEntry() {
 		return
 	}
+	g.emitWriteAdmitsDecl(st)
 	for _, measure := range []bool{true, false} {
 		verb, args, buffer, cap := "save", ", uint8_t * buffer, int64_t capacity", "buffer", "capacity"
 		if measure {

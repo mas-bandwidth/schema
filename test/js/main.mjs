@@ -230,8 +230,9 @@ function textBytes(s) {
         const rs = new ReadStream(expected);
         readOK = armDefaults.ReadDefaultChoicePacket(rs, out);
         check(readOK, `${tier} default arm read ${pass}`);
-        consumedOK = rs.bitsProcessed() === 7;
-        check(consumedOK, `${tier} default arm consumes seven bits ${pass}`);
+        // seven payload bits, then the accepted end consumes the zero padding
+        consumedOK = rs.bitsProcessed() === 8;
+        check(consumedOK, `${tier} default arm consumes seven bits and the padding ${pass}`);
       } else {
         const buffer = new Uint8Array(expected.length + 8);
         buffer.set(expected);
@@ -838,10 +839,8 @@ function pinShape(name, expectedBytes, mod, shape, inp) {
 // goldens AND against the runtime tier (the cross-tier equivalence gate:
 // bytes, fields and verdicts), both directions. The leg runs in BOTH runtime
 // modes (the Makefile's NODE_ENV pair), and both modes compare to the same
-// goldens — so the checked and production flat writers are held
-// byte-identical transitively, every run.
-
-const CHECKED_MODE = process.env.NODE_ENV !== "production";
+// goldens. The flat writer is one writer in every build, and its refusals
+// are asserted in both modes (SPEC §5.1: JavaScript refuses in every build).
 
 // flatCross: runtime write -> flat write byte-compare (+ golden), flat read
 // vs runtime read field-compare, flat re-write byte-compare.
@@ -1039,10 +1038,8 @@ flatCross("flat testdata", ex, exFlat, "TestData", testDataInstance(), "testdata
   flatCross("flat defaultchoice", armDefaults, armDefaultsFlat, "DefaultChoice", choice, null);
   const rogue = new ex.ProbeShape();
   rogue.type = 3;
-  if (CHECKED_MODE) {
-    check(exFlat.WriteProbeShapeFlat(new DataView(new ArrayBuffer(64)), rogue) === -1,
-      "the checked flat writer refuses an out-of-set union tag (SPEC §4.8)");
-  }
+  check(exFlat.WriteProbeShapeFlat(new DataView(new ArrayBuffer(64)), rogue) === -1,
+    "the flat writer refuses an out-of-set union tag in every build (SPEC §4.8)");
   const tagOnly = new Uint8Array(8 + 8);
   tagOnly[0] = 3; // a two-bit tag of 3 is past the count
   check(!exFlat.ReadProbeShapeFlat(new DataView(tagOnly.buffer), 2, new ex.ProbeShape()),
@@ -1139,11 +1136,10 @@ flatCross("flat testdata", ex, exFlat, "TestData", testDataInstance(), "testdata
     "flat: an out-of-range count is refused before the loop");
 }
 
-// ---- checked-mode write refusals: verdict-identical across tiers ----
-// (production mode: the flat writer is the trusted-writer release shape and
-// these vectors are caller misuse by contract — asserted in checked runs
-// only, which the Makefile's mode pair guarantees happen)
-if (CHECKED_MODE) {
+// ---- write refusals: verdict-identical across tiers, in every build ----
+// (SPEC §5.1: JavaScript refuses in every build; the Makefile's mode pair
+// runs these under NODE_ENV unset and NODE_ENV=production alike)
+{
   const fview = new DataView(new Uint8Array(4096).buffer);
 
   const bad = new ex.ShipCreate();
@@ -1285,12 +1281,15 @@ if (CHECKED_MODE) {
   ws.flush();
   goldenWire("degenerate", ws.data());
 
+  // one stream holds every shape, so each reads as a nested object and the
+  // packet's one end check runs once after the last
   const rs = new ReadStream(ws.data());
   for (const [name, inp] of shapes) {
     const out = new dg[name]();
-    check(dg[`Read${name}`](rs, out), `read ${name}`);
+    check(dg[`Read${name}`](rs, out, true), `read ${name}`);
     check(deepEqual(out, inp), `${name} round-trips`);
   }
+  check(rs.serializeEnd(), "the degenerate stream ends exactly after the twelve shapes");
 
   // and every shape through the flat tier, held to the runtime tier's bytes
   for (const [name, inp] of shapes) {

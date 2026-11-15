@@ -49,7 +49,7 @@ func generateRegion(u *ir.Unit) []byte {
 	g.emitRetain()
 	g.emitRegionCookSurface(names)
 	g.emitBuilders(names)
-	g.pf("public static unsafe partial class TableWire\n{\n%s\n}\n", tableNativeTextListSource+tableBuilderLoadSource+tableBuilderCollectionWireSource+tableBuilderWireSource+tableRegionCookSource+tableRegionSource+tableRegionGraphSource+tableRegionWriteSource+tableRetainRegionSource()+tableRetainWriteSource())
+	g.pf("public static unsafe partial class TableWire\n{\n%s\n}\n", tableNativeTextListSource+tableBuilderLoadSource+tableBuilderCollectionWireSource+tableBuilderWireSource(u)+tableRegionCookSource+tableRegionSource+tableRegionGraphSource+tableRegionWriteSource+tableRetainRegionSource()+tableRetainWriteSource())
 	return g.assemble()
 }
 
@@ -198,6 +198,12 @@ const tableRegionSource = `
                 long offset = unchecked((long)NativeWord(row, 8)); ulong id = unchecked((ulong)NativeWord(row + 8, 8));
                 if (offset != -1)
                 { if (id != f.PointerTypeId) { Fail(report, "kind_mismatch"); } else { target = offset; } }
+                // A record this reader DECLARES but cannot place below this
+                // root is still a type it names: a pointer slot to another
+                // type is a wrong-type target and damage (docs/SPEC-TABLES.md
+                // §3.1). A type the reader does not declare stays unknown and
+                // the slot is null.
+                else if (state.Root.DeclaredType(id) != null) { Fail(report, "kind_mismatch"); }
             }
         }
         value.SetRaw(f, index, target == long.MinValue ? 0 : (f.BlobKind == 0 ? node : unchecked((ulong)(target - (value.Slot(f, index) - value.Base)))));
@@ -691,7 +697,7 @@ const tableRegionSource = `
         {
             scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
             long offset = -1; TableTypeInfo node = type.PointerType(id);
-            bool blob = (type.BytesEdge && id == BytesTypeId) || (type.StringEdge && id == StringTypeId);
+            bool blob = id == BytesTypeId || id == StringTypeId;
             if (blob)
             {
                 offset = at; at += Align(8L + body.Buffer.Length + (id == StringTypeId ? 1 : 0), type.RegionAlign);

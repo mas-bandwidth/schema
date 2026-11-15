@@ -358,7 +358,7 @@ fixed table T
 		t.Fatalf("C3: Generate: %v", err)
 	}
 	surface := t04Surface(t, out)
-	t04Has(t, surface, "if (n < 0) { n = 0; r.refuse(TableFixed.Reason.lengthOverBound); } else if (n > 8) { n = 8; r.refuse(TableFixed.Reason.lengthOverBound); }", "C3 a string(N)'s length outside its bound refuses the load")
+	t04Has(t, surface, "if (n < 0) { n = 0; if (live) { r.refuse(TableFixed.Reason.lengthOverBound); } } else if (n > 8) { n = 8; if (live) { r.refuse(TableFixed.Reason.lengthOverBound); } }", "C3 a string(N)'s length outside its bound refuses the load")
 }
 
 // ---- java/C4 ---------------------------------------------------------------
@@ -382,7 +382,7 @@ fixed table T
 		t.Fatalf("C4: Generate: %v", err)
 	}
 	surface := t04Surface(t, out)
-	t04Has(t, surface, "if (!TableFixed.textOk(TableFixed.textUtf8, b, at + 4, v.labelLength)) { r.refuse(TableFixed.Reason.textIllFormed); return; }", "C4 a byte string refuses by name")
+	t04Has(t, surface, "if (live && !TableFixed.textOk(TableFixed.textUtf8, b, at + 4, v.labelLength)) { r.refuse(TableFixed.Reason.textIllFormed); return; }", "C4 a byte string refuses by name")
 }
 
 // ---- java/R24 --------------------------------------------------------------

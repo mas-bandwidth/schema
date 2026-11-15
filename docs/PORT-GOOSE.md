@@ -73,7 +73,7 @@ keyword, a scalar type name, `std`, `main` or the runtime's namespace
 | a type `T` | `T`, a nested struct, inline | `T { .. }` |
 | a union `U` (§4.8) | `struct U { Type: UType, <Arm>: <arm value>... }`; `type UType = u8;` with `UTypeNone`, arms from 1, `UTypeMax`, `EnumNameUType` | `Type = 0`, every payload arm pre-allocated; a payload-free arm has no slot |
 | `string(N)`, `bytes(N)` | `u8[N]` and `<Name>Length: i32` beside it (SPEC §4.7) | the default's bytes in place, length set |
-| `[N]T`, `[E]T` (enum-keyed: key k at index k) | `T[N]` inline | each element at its default |
+| `[N]T`, `[E]T` (enum-keyed: key k at slot k-1, nothing for None; `schema_rt::table_keyed(slots, key)` indexes by key and refuses None and past `E.Max` in every build, docs/PORTING.md M5) | `T[N]` inline | each element at its default |
 | `[..N]T`, `[A..N]T` | `T[N]` and `<Name>Count: i32` beside it | the count born at A (SPEC §4.6) |
 | `const` | a typed global `let` at its storage, folded to its literal, the schema spelling kept in a trailing comment | — |
 | `reserved`, `align` | no storage | — |
@@ -108,7 +108,7 @@ of them index.
 | `?T` (§2.3) | the value, and `<Name>Present: bool` beside it | the value at its zero, `Present = false` |
 | `[]T` (§2.9) and text lists (§2.13) | a slice `T[:]` | empty |
 | `[..N]*T`, `[N]*T` | `T?[N]`, null-filled, and the count where counted | nulls |
-| `map[K]V` (§2.8) | `<Entry>[:]`, a slice of the generated `<Table><Field>Entry` `{ Key, Value }` struct, which the save walk sorts by key | empty |
+| `map[K]V` (§2.8) | `<Entry>[:]`, a slice of the generated `<Table><Field>Entry` `{ Key, Value }` struct, which every writer (save, text, cook) orders by key whatever order it holds them in (docs/PORTING.md M19) | empty |
 | a union with table arms (§2.6) | as a packet union, in the table module | `Type = 0` |
 | `\| required`, `\| deprecated`, `was`, `json = "…"`, `forms`, `integrity` | no storage: descriptor facts and generation facts | — |
 

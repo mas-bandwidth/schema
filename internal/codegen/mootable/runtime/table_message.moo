@@ -29,6 +29,7 @@
 
 local S = require("./schema_tables")
 local V = require("./table_values")
+local L = require("./table_load")
 local Fl = require("./serialize_float")
 
 local Int64 = V.Int64
@@ -37,6 +38,7 @@ local Uint64 = V.Uint64
 local MS = {}
 
 local BATCH_MAX = 256
+local SKIP_MAX_DEPTH = 128 -- ir.TableBinaryMaxDepth (docs/SPEC-TABLES.md message_skip_depth)
 local DEFAULT_MAX_ENTRIES = 4096 -- ir.TableVocabularyMaxEntries
 local DEFAULT_MAX_BYTES = 65536 -- ir.TableVocabularyMaxBytes
 local LIST_MAX = 4294967295 -- ir.TableMessageListMax
@@ -396,8 +398,16 @@ end
 
 local readShape: any
 
-readShape = function(b: buffer, at: number, e: number, kind: number): (any, number?)
+-- THE ONE NESTING BOUND (docs/SPEC-TABLES.md §4): the announcement is a form-1
+-- file, its shape nests no deeper than 128 levels, and a shape past it is
+-- damage rather than a deeper walk.
+local SHAPE_MAX_DEPTH = 128
+
+readShape = function(b: buffer, at: number, e: number, kind: number, level: number): (any, number?)
 	local s: any = { packing = 0, bits = 0, base = nil, min = 0, max = 0, elem = 0, inner = nil }
+	if level > SHAPE_MAX_DEPTH then
+		return s, nil
+	end
 	if integerKind(kind) or fixedKind(kind) or kind == 10 then
 		if at >= e then
 			return s, nil
@@ -488,7 +498,7 @@ readShape = function(b: buffer, at: number, e: number, kind: number): (any, numb
 		if not knownKind(s.elem) then
 			return s, nil
 		end
-		local inner, next = readShape(b, at, e, s.elem)
+		local inner, next = readShape(b, at, e, s.elem, level + 1)
 		if next == nil then
 			return s, nil
 		end
@@ -574,6 +584,14 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 	local ids = table.create(lo)
 	for i = 0, lo - 1 do
 		ids[i + 1] = buffer.readstring(data, start + i * 8, 8)
+	end
+	-- THE ANNOUNCEMENT IS A FILE (§3.3): every wire-alone condition the file
+	-- form holds applies to its body before anything is read, the unknown
+	-- fields it may gain included — skipped is not unread (§4, §6.5).
+	local wireFail, wireNonFinite = L.wireCheckAnnouncement(data, 1, start, ids)
+	if wireFail ~= nil or wireNonFinite then
+		report.damaged = true
+		return false
 	end
 	-- the body's extent: a terminated body must end exactly at the id table
 	local at = 1
@@ -695,7 +713,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 				return false
 			end
 		end
-		local shape, next = readShape(wb, p + 9, we, kind)
+		local shape, next = readShape(wb, p + 9, we, kind, 0)
 		if next == nil then
 			report.damaged = true
 			return false
@@ -1416,7 +1434,10 @@ local function skipRun(r: any, n: number, width: number): boolean
 	return skipBits(r, n * width)
 end
 
-local function skipBody(t: any): boolean
+local function skipBody(t: any, depth: number): boolean
+	if depth > SKIP_MAX_DEPTH then
+		return false
+	end
 	while true do
 		local ref, ok = reference(t)
 		if not ok then
@@ -1426,13 +1447,17 @@ local function skipBody(t: any): boolean
 			return true
 		end
 		local e = entryAt(t, ref)
-		if e == nil or not skipEntry(t, e.kind, e.shape) then
+		if e == nil or not skipEntry(t, e.kind, e.shape, depth) then
 			return false
 		end
 	end
 end
 
-skipEntry = function(t: any, kind: number, shape: any): boolean
+skipEntry = function(t: any, kind: number, shape: any, depth: number?): boolean
+	depth = depth or 0
+	if depth > SKIP_MAX_DEPTH then
+		return false
+	end
 	local r = t.r
 	if kind == 0 or kind == 32 then
 		return true
@@ -1457,16 +1482,22 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 		if arm == nil then
 			return false
 		end
-		return skipEntry(t, arm.kind, arm.shape)
+		return skipEntry(t, arm.kind, arm.shape, depth + 1)
 	elseif kind == 13 then
-		return skipBody(t)
+		return skipBody(t, depth + 1)
 	elseif kind == 17 then
 		local _, ok = index(t)
 		return ok
 	elseif kind == 12 then
 		local n, ok = get(r, bitsReq(0, shape.max))
-		if not ok or not ralign(r) then
+		if not ok or not ralign(r) or not has(r, n * 8) then
 			return false
+		end
+		-- ILL-FORMED TEXT IS DAMAGE ON THE SKIP PATH TOO (§3.3, §4): a string
+		-- this reader does not keep is held to the content rule a named read
+		-- holds it to (decodeText), as the Go engine's skip holds it
+		if not V.utf8(r.b, r.base + r.off // 8, n) then
+			return dmal(t)
 		end
 		return skipBits(r, n * 8)
 	elseif kind == 31 then
@@ -1494,6 +1525,11 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 				n += shape.min
 			end
 		end
+		-- THE COUNT'S BITS CAN SPELL MORE THAN max - min, so a count above the
+		-- announced maximum refuses here as it does at a named field
+		if n > shape.max then
+			return refuseRead(t, "count_over_bound")
+		end
 		if aligns(kind, shape) and not ralign(r) then
 			return false
 		end
@@ -1510,7 +1546,7 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 					return false
 				end
 			end
-			if not skipEntry(t, shape.elem, inner) then
+			if not skipEntry(t, shape.elem, inner, depth + 1) then
 				return false
 			end
 			if r.off == at then
@@ -1620,7 +1656,8 @@ local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, b
 end
 
 -- one float32 at the announced shape: a quantized index dequantized, or the
--- raw bits (refused when not finite); landed in fd (widened into f64, or
+-- raw bits; refused when not finite, whatever the packing (a dequantized
+-- value is a float read like any other); landed in fd (widened into f64, or
 -- refused out_of_range outside fd's range, with -0 as +0)
 local function decodeFloat32(t: any, fd: any, shape: any, named: any): (any, boolean)
 	local bits: number
@@ -1636,14 +1673,14 @@ local function decodeFloat32(t: any, fd: any, shape: any, named: any): (any, boo
 		if not ok then
 			return nil, dmal(t)
 		end
-		if not V.finite32(raw) then
-			t.report.nonFinite += 1
-			if t.report.nonFiniteField == nil then
-				t.report.nonFiniteField = ownerName(named)
-			end
-			return fd.def, true
-		end
 		bits = raw
+	end
+	if not V.finite32(bits) then
+		t.report.nonFinite += 1
+		if t.report.nonFiniteField == nil then
+			t.report.nonFiniteField = ownerName(named)
+		end
+		return fd.def, true
 	end
 	if fd.f32 == false then
 		local lo, hi = V.f32to64(bits)
@@ -1933,7 +1970,7 @@ decodeArm = function(t: any, fd: any): (any, boolean)
 	end
 	if tag == 0 then
 		t.report.unknown += 1
-		return u, skipEntry(t, entry.kind, entry.shape)
+		return u, skipEntry(t, entry.kind, entry.shape, 0)
 	end
 	local arm = un.arms[tag]
 	local mine = mineEntry(slotOf(un, tag))
@@ -1977,7 +2014,7 @@ decodeBody = function(t: any, d: any, v: any): boolean
 		local hit = byId[entry.id]
 		if hit == nil then
 			t.report.unknown += 1
-			if not skipEntry(t, entry.kind, entry.shape) then
+			if not skipEntry(t, entry.kind, entry.shape, 0) then
 				return dmal(t)
 			end
 			continue

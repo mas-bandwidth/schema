@@ -189,8 +189,8 @@ namespace Blockdemo
             return PaddedRowLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long PaddedRowMeasureMessages(PaddedRow[] values) { return TableWire.MessageSave(values, PaddedRowTableType(), Span<byte>.Empty, true); }
-        public static long PaddedRowSaveMessages(PaddedRow[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, PaddedRowTableType(), bytes, false); }
+        public static long PaddedRowMeasureMessages(PaddedRow[] values) { long wrote = TableWire.MessageSave(values, PaddedRowTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (PaddedRow v in values) { System.Diagnostics.Debug.Assert(PaddedRowFixedWriteAdmits(v)); } } return wrote; }
+        public static long PaddedRowSaveMessages(PaddedRow[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, PaddedRowTableType(), bytes, false); if (wrote >= 0) { foreach (PaddedRow v in values) { System.Diagnostics.Debug.Assert(PaddedRowFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict PaddedRowLoadMessages(PaddedRow[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, PaddedRowTableType(), bytes, vocabulary, report, out count); }
 
         public static long PaddedRowCookMeasure(PaddedRow value) { return TableWire.Cook(value, PaddedRowTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -323,8 +323,8 @@ namespace Blockdemo
             return PaddedFrameLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long PaddedFrameMeasureMessages(PaddedFrame[] values) { return TableWire.MessageSave(values, PaddedFrameTableType(), Span<byte>.Empty, true); }
-        public static long PaddedFrameSaveMessages(PaddedFrame[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, PaddedFrameTableType(), bytes, false); }
+        public static long PaddedFrameMeasureMessages(PaddedFrame[] values) { long wrote = TableWire.MessageSave(values, PaddedFrameTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (PaddedFrame v in values) { System.Diagnostics.Debug.Assert(PaddedFrameFixedWriteAdmits(v)); } } return wrote; }
+        public static long PaddedFrameSaveMessages(PaddedFrame[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, PaddedFrameTableType(), bytes, false); if (wrote >= 0) { foreach (PaddedFrame v in values) { System.Diagnostics.Debug.Assert(PaddedFrameFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict PaddedFrameLoadMessages(PaddedFrame[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, PaddedFrameTableType(), bytes, vocabulary, report, out count); }
 
         public static long PaddedFrameCookMeasure(PaddedFrame value) { return TableWire.Cook(value, PaddedFrameTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -349,6 +349,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -392,6 +393,7 @@ namespace Blockdemo
                 info.RootElemSlots = 64;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -522,6 +524,26 @@ namespace Blockdemo
             }
         }
 
+        // PaddedRow's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void PaddedRowFixedWriteCheckBody(PaddedRow value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Label != null && value.LabelLength >= 0 && value.LabelLength <= value.Label.Length && !TableWire.TextValid(value.Label.AsSpan(0, value.LabelLength))) { clamped++; }
+        }
+
+        // PaddedFrame's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void PaddedFrameFixedWriteCheckBody(PaddedFrame value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Rows != null)
+            {
+                for (int i = 0; i < value.RowsCount && i < value.Rows.Length; ++i)
+                {
+                    PaddedRowFixedWriteCheckBody(value.Rows[i], ref clamped);
+                }
+            }
+        }
+
         // PaddedRow's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
         // <Owner>.<field>, or null.
         public static string PaddedRowFixedFiniteBody(PaddedRow value)
@@ -560,6 +582,15 @@ namespace Blockdemo
             PaddedRowFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this PaddedRow
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool PaddedRowFixedWriteAdmits(PaddedRow value)
+        {
+            int bad = 0;
+            PaddedRowFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- PaddedRow, the fixed form ----
@@ -871,6 +902,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             PaddedRowFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -962,6 +994,10 @@ namespace Blockdemo
             long need = PaddedRowFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (PaddedRowFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(PaddedRowFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PaddedRowFixedHash);
@@ -1090,7 +1126,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -1191,6 +1227,15 @@ namespace Blockdemo
             PaddedFrameFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this PaddedFrame
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool PaddedFrameFixedWriteAdmits(PaddedFrame value)
+        {
+            int bad = 0;
+            PaddedFrameFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- PaddedFrame, the fixed form ----
@@ -4049,6 +4094,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             PaddedFrameFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -4906,6 +4952,10 @@ namespace Blockdemo
             long need = PaddedFrameFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (PaddedFrameFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(PaddedFrameFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PaddedFrameFixedHash);
@@ -5034,7 +5084,7 @@ namespace Blockdemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;

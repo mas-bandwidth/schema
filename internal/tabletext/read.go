@@ -126,19 +126,30 @@ func (in *reader) space() {
 		// whitespace is, and a lone slash is not JSON.
 		if c == '/' && in.pos+1 < len(in.text) && in.text[in.pos+1] == '/' {
 			in.pos += 2
+			start := in.pos
 			for in.pos < len(in.text) && in.text[in.pos] != '\n' {
 				in.pos++
+			}
+			if !utf8.Valid(in.text[start:in.pos]) || bytes.IndexByte(in.text[start:in.pos], 0) >= 0 {
+				in.bad = true
+				return
 			}
 			continue
 		}
 		if c == '/' && in.pos+1 < len(in.text) && in.text[in.pos+1] == '*' {
-			end := bytes.Index(in.text[in.pos+2:], []byte("*/"))
+			start := in.pos + 2
+			end := bytes.Index(in.text[start:], []byte("*/"))
 			if end < 0 {
 				in.bad = true
 				in.pos = len(in.text)
 				return
 			}
-			in.pos += 2 + end + 2
+			comment := in.text[start : start+end]
+			if !utf8.Valid(comment) || bytes.IndexByte(comment, 0) >= 0 {
+				in.bad = true
+				return
+			}
+			in.pos = start + end + 2
 			continue
 		}
 		if c == '/' {
@@ -224,7 +235,27 @@ func Shape(f *ir.Field) byte {
 	case f.Type.Kind == ir.TBool:
 		return 'b'
 	}
+	return jsonScalarShape(f)
+}
+
+// jsonScalarShape is a number-or-string field's shape: 'n' for a JSON number,
+// and 'N' for a wide integer, which reads as a string OR a number
+// (docs/SPEC-TABLES.md §16.2). shapeMatches knows the two spellings 'N' takes.
+func jsonScalarShape(f *ir.Field) byte {
+	if TableKindWideInteger(ir.TableScalarKind(f)) {
+		return 'N'
+	}
 	return 'n'
+}
+
+// shapeMatches reports whether a value of the given shape satisfies the shape
+// a declaration takes. A wide integer declares 'N' and takes a string or a
+// number; every other shape is exact.
+func shapeMatches(want, got byte) bool {
+	if want == got {
+		return true
+	}
+	return want == 'N' && (got == 's' || got == 'n')
 }
 
 // ElementShape is the same classifier one level down, for an array's elements.
@@ -246,7 +277,35 @@ func ElementShape(f *ir.Field) byte {
 	case f.Type.Kind == ir.TBool:
 		return 'b'
 	}
-	return 'n'
+	return jsonScalarShape(f)
+}
+
+// integerToken reports whether text is the digits-and-optional-minus spelling
+// of an integer — an optional `-`, then digits with no leading zero, and not
+// `-0` — the one spelling an integer field takes (docs/SPEC-TABLES.md §16.2):
+// no fraction, no exponent, no plus, no negative zero.
+func integerToken(text string) bool {
+	i := 0
+	negative := false
+	if i < len(text) && text[i] == '-' {
+		negative = true
+		i++
+	}
+	if i >= len(text) {
+		return false
+	}
+	if text[i] == '0' {
+		return !negative && i+1 == len(text)
+	}
+	if text[i] < '1' || text[i] > '9' {
+		return false
+	}
+	for ; i < len(text); i++ {
+		if text[i] < '0' || text[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func (in *reader) literal(word string) bool {
@@ -405,14 +464,43 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 	}
 }
 
+// zeroMode is what a string scan does with a U+0000 it decodes
+// (docs/SPEC-TABLES.md §16.3).
+type zeroMode int
+
+const (
+	// zeroNone is a string the walk only COMPARES: an enum, flag or union
+	// name, a base64 body, a timestamp. A U+0000 there is not the placed-text
+	// rule; the value's own row decides.
+	zeroNone zeroMode = iota
+	// zeroStored is a string the walk PLACES in text storage: a string(N) or
+	// *string value, a text-list element, a map key. A U+0000 refuses the read
+	// and names the field that held it.
+	zeroStored
+	// zeroSkipped is an object key or a string the walk only SKIPS: the value
+	// of an unknown key. On the table walk it is held to the placed-text rule
+	// and a U+0000 refuses the read; the JSON LAYER (§16.12) parses a whole
+	// value with no table and is not the table walk, so a U+0000 there stays.
+	zeroSkipped
+)
+
 // scanString reads one JSON string, appending ONE CODE POINT AT A TIME — an
 // escape's encoding, or a UTF-8 sequence read whole. capacity < 0 is
 // unbounded; the returned bool is whether the scan succeeded, and over whether
 // the string is longer than capacity, which the caller refuses.
-// scanString is for a string the walk only COMPARES or SKIPS — an object key,
-// an enum, flag or union name, a skipped value — and stores nothing.
+// scanString is for a string the walk only COMPARES — an enum, flag or union
+// name, a base64 body, a timestamp — and stores nothing.
 func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
-	return in.scanText(capacity, false)
+	return in.scanText(capacity, zeroNone)
+}
+
+// scanKey reads an object key or a string the walk only SKIPS, and holds it to
+// the U+0000 rule a placed string is held to (docs/SPEC-TABLES.md §16.2,
+// §16.3): a skipped value and every object key are held to the text rules of a
+// placed value, so a key or skipped string that decodes to U+0000 refuses the
+// read. No field holds it, so the refusal is plain malformed.
+func (in *reader) scanKey(capacity int) (out []byte, clamped bool, ok bool) {
+	return in.scanText(capacity, zeroSkipped)
 }
 
 // scanStored scans a string the walk PLACES in text storage: a string(N) or
@@ -425,10 +513,10 @@ func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
 // \u0000 escape can produce one; a raw control byte is already not JSON. The
 // generated Go walk's scanText holds the same rule.
 func (in *reader) scanStored(capacity int) (out []byte, clamped bool, ok bool) {
-	return in.scanText(capacity, true)
+	return in.scanText(capacity, zeroStored)
 }
 
-func (in *reader) scanText(capacity int, store bool) (out []byte, clamped bool, ok bool) {
+func (in *reader) scanText(capacity int, zero zeroMode) (out []byte, clamped bool, ok bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return nil, false, false
@@ -442,8 +530,11 @@ func (in *reader) scanText(capacity int, store bool) (out []byte, clamped bool, 
 		if done {
 			break
 		}
-		if store && len(unit) == 1 && unit[0] == 0 {
-			in.zero = true // §16.3: a zero bound for text storage
+		if len(unit) == 1 && unit[0] == 0 &&
+			(zero == zeroStored || (zero == zeroSkipped && in.m != nil)) {
+			if zero == zeroStored {
+				in.zero = true // §16.3: a zero bound for text storage
+			}
 			in.bad = true
 			return nil, false, false
 		}
@@ -543,7 +634,7 @@ func (in *reader) skipValue(depth int) bool {
 	case '[':
 		return in.skipContainer(']', depth)
 	case '"':
-		_, _, ok := in.scanString(0)
+		_, _, ok := in.scanKey(0)
 		return ok
 	case 't':
 		return in.literal("true")
@@ -589,9 +680,12 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 			// not hold, and the numbering has to survive the drop (§16.7).
 			// Anywhere but first, the prefix is the reserved key out of place
 			// — in a pointered root; a fixed root skips the value whole.
-			key, _, ok := in.scanString(maxJsonKey)
+			key, tooLong, ok := in.scanKey(maxJsonKey)
 			if !ok {
 				return false
+			}
+			if tooLong {
+				return in.fail("length_over_bound: JSON key")
 			}
 			if in.peek() != ':' {
 				in.bad = true
@@ -700,7 +794,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 				return false
 			}
 			var ok, tooLong bool
-			key, tooLong, ok = in.scanString(maxJsonKey)
+			key, tooLong, ok = in.scanKey(maxJsonKey)
 			if !ok {
 				return false
 			}
@@ -752,7 +846,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 				}
 				in.m.reset(fv)
 			default:
-				if shape != Shape(fv.Def) {
+				if !shapeMatches(Shape(fv.Def), shape) {
 					// the wrong JSON type for the kind: skipped, never coerced
 					return in.fail("kind_mismatch: " + fv.Def.Name)
 				} else if !in.readField(fv, depth) {
@@ -941,7 +1035,7 @@ func (in *reader) readPointerCell(cell *Cell, st *ir.Struct, depth int) bool {
 		in.bad = true
 		return false
 	}
-	key, tooLong, ok := in.scanString(maxJsonKey)
+	key, tooLong, ok := in.scanKey(maxJsonKey)
 	if !ok {
 		return false
 	}
@@ -1103,6 +1197,21 @@ func (in *reader) readBase64(fv *Field) bool {
 	if malformed {
 		return in.fail("base64_damaged: " + fv.Def.Name)
 	}
+	// JSON bytes use the same canonical spelling as the writer: padded
+	// standard base64 with zero pad bits (§16.2). The walk above deliberately
+	// accepts decodable unpadded input, so distinguish it from damaged input.
+	canonical := symbols%4 == 0
+	switch pad {
+	case 1:
+		last := strings.IndexByte(alphabet, raw[len(raw)-2])
+		canonical = last >= 0 && last&0x03 == 0
+	case 2:
+		last := strings.IndexByte(alphabet, raw[len(raw)-3])
+		canonical = last >= 0 && last&0x0f == 0
+	}
+	if !canonical {
+		return in.fail("base64_not_canonical: " + fv.Def.Name)
+	}
 	var out []byte
 	var accumulator uint32
 	held := 0
@@ -1188,7 +1297,7 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 			}
 			fv.Elems[placed] = Cell{}
 			placed++
-		case in.valueShape() != shape:
+		case !shapeMatches(shape, in.valueShape()):
 			return in.fail("kind_mismatch: " + f.Name)
 		default:
 			if !in.readScalar(&fv.Elems[placed], f, depth+1) {
@@ -1343,7 +1452,7 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		key, tooLong, ok := in.scanString(maxJsonKey)
+		key, tooLong, ok := in.scanKey(maxJsonKey)
 		if !ok {
 			return false
 		}
@@ -1372,7 +1481,7 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 			if !in.skipValue(depth + 1) {
 				return false
 			}
-		case in.valueShape() != shape:
+		case !shapeMatches(shape, in.valueShape()):
 			return in.fail("kind_mismatch: " + f.Name)
 		default:
 			if !in.readScalar(&fv.Elems[slot], f, depth+1) {
@@ -1412,9 +1521,12 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 		return in.readTable(cell.Tab, depth+1)
 	}
 	if e := EnumOf(f); e != nil {
-		name, _, ok := in.scanString(maxJsonKey)
+		name, tooLong, ok := in.scanString(maxJsonKey)
 		if !ok {
 			return false
+		}
+		if tooLong {
+			return in.fail("length_over_bound: JSON key")
 		}
 		if v := EnumValue(e, string(name)); v >= 0 {
 			if VariantDeprecated(e, v) {
@@ -1455,17 +1567,45 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 		cell.B = false
 		return true
 	}
+	kind := ir.TableScalarKind(f)
+	if kind == ir.TableKindF32 || kind == ir.TableKindF64 {
+		token, _, ok := in.scanNumber()
+		if !ok {
+			in.bad = true
+			return false
+		}
+		return in.placeFloat(cell, f, token, kind == ir.TableKindF32)
+	}
+	if TableKindWideInteger(kind) {
+		// a wide integer reads as a string OR a number (§16.2); the string
+		// holds the same digits the number does
+		if in.valueShape() == 's' {
+			text, _, ok := in.scanString(-1)
+			if !ok {
+				return false
+			}
+			return in.placeWideInteger(cell, f, string(text), kind)
+		}
+		token, _, ok := in.scanNumber()
+		if !ok {
+			in.bad = true
+			return false
+		}
+		return in.placeWideInteger(cell, f, token, kind)
+	}
+	if ir.TableKindWide(kind) {
+		// a fixed-point kind 32 bits or narrower: a JSON number only
+		token, _, ok := in.scanNumber()
+		if !ok {
+			in.bad = true
+			return false
+		}
+		return in.placeWide(cell, f, token, kind)
+	}
 	token, integral, ok := in.scanNumber()
 	if !ok {
 		in.bad = true
 		return false
-	}
-	kind := ir.TableScalarKind(f)
-	if kind == ir.TableKindF32 || kind == ir.TableKindF64 {
-		return in.placeFloat(cell, f, token, kind == ir.TableKindF32)
-	}
-	if ir.TableKindWide(kind) {
-		return in.placeWide(cell, f, token, kind)
 	}
 	if kind == ir.TableKindU16 || kind == ir.TableKindU32 || kind == ir.TableKindU64 ||
 		kind == ir.TableKindI8 || kind == ir.TableKindI16 || kind == ir.TableKindI32 || kind == ir.TableKindI64 ||
@@ -1474,6 +1614,19 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 	}
 	in.bad = true
 	return false
+}
+
+// placeWideInteger converts a wide integer's value — a string's digits or a
+// number token — into storage (docs/SPEC-TABLES.md §16.2). I64/U64 land in the
+// 64-bit lane, I128/U128 and the wide fixed-point kinds in the wide lane; the
+// pure integers hold the integer-token rule — digits and an optional minus, no
+// fraction, no exponent, no negative zero — and the fixed-point kinds keep
+// their exact decimal, the range tested on the exact value in both.
+func (in *reader) placeWideInteger(cell *Cell, f *ir.Field, token string, kind int) bool {
+	if kind == ir.TableKindI64 || kind == ir.TableKindU64 {
+		return in.placeInteger(cell, f, token, true, kind)
+	}
+	return in.placeWide(cell, f, token, kind)
 }
 
 // readTimestamp places §16.2's timestamp row: one strict RFC 3339 §5.6
@@ -1623,15 +1776,18 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 	return true
 }
 
-// placeInteger converts a number token into an integer field. JSON HAS ONE
-// NUMBER TYPE, so an integer field takes any token whose VALUE is integral,
-// however it was spelled — 2, 2.0 and 1e3 are all the integers this walk
-// places — and only a genuinely fractional value is the wrong shape for it
-// (docs/SPEC-TABLES.md §16.2).
+// placeInteger converts a number token into an integer field. AN INTEGER
+// FIELD TAKES AN INTEGER TOKEN ONLY (docs/SPEC-TABLES.md §16.2): digits with
+// an optional minus, no fraction, no exponent, no negative zero — the value
+// never passes through a double, and its range is tested on the exact value.
 func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, integral bool, kind int) bool {
+	if !integral || !integerToken(token) {
+		// a fraction, an exponent or -0 is the wrong shape for an integer field
+		return in.fail("kind_mismatch: " + f.Name)
+	}
 	signed := kind >= ir.TableKindI8 && kind <= ir.TableKindI64
-	number := interpretInteger(token, integral)
-	if !number.finite || number.fractional {
+	number := interpretInteger(token, true)
+	if !number.finite {
 		return in.fail("kind_mismatch: " + f.Name)
 	}
 	if number.saturated {
@@ -1678,9 +1834,12 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 		in.pos++
 		return true
 	}
-	key, _, ok := in.scanString(maxJsonKey)
+	key, tooLong, ok := in.scanKey(maxJsonKey)
 	if !ok {
 		return false
+	}
+	if tooLong {
+		return in.fail("length_over_bound: JSON key")
 	}
 	if in.peek() != ':' {
 		in.bad = true
@@ -1740,7 +1899,7 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 			}
 			cell.U = uint64(tag)
 			cell.Arm = fv
-		case shape != Shape(arm.F):
+		case !shapeMatches(Shape(arm.F), shape):
 			return in.fail("kind_mismatch: " + un.Name)
 		default:
 			if !in.readField(fv, depth+1) {
@@ -1783,9 +1942,12 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 		if c != '"' {
 			return in.fail("kind_mismatch: " + fl.Name)
 		} else {
-			name, _, ok := in.scanString(maxJsonKey)
+			name, tooLong, ok := in.scanString(maxJsonKey)
 			if !ok {
 				return false
+			}
+			if tooLong {
+				return in.fail("length_over_bound: JSON key")
 			}
 			found := false
 			for bit, v := range fl.Variants {
@@ -1825,24 +1987,23 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 // outside what the reader can hold (§4).
 // ---- ONE CHECKED NUMERIC INTERPRETATION (docs/SPEC-TABLES.md §16.2) ----
 //
-// JSON HAS ONE NUMBER TYPE, so every integer target reads a token the same way
-// and the VALUE decides rather than the spelling: 2, 2.0 and 1e3 are the
-// integers 2, 2 and 1000. What comes out of a token is a SIGN, a MAGNITUDE and
-// a STATUS, and nothing on the way is cast through a type that cannot hold what
-// it is handed. A uint64 magnitude past MaxInt64 is a magnitude and never a
-// negative, and a float64 is consulted only for a spelling the digit path
-// cannot read exactly.
+// AN INTEGER FIELD TAKES AN INTEGER TOKEN ONLY — digits with an optional minus,
+// no fraction, no exponent, no negative zero — so what comes out of a token is
+// a SIGN, a MAGNITUDE and a STATUS, read digit by digit and never cast through
+// a type that cannot hold what it is handed. A uint64 magnitude past MaxInt64
+// is a magnitude and never a negative.
 //
 // TWO POLICIES SIT ON TOP OF THE ONE VALUE and neither reinterprets the token:
-// an ordinary FIELD clamps to its domain and counts, and a MAP KEY rejects the
-// whole entry, because a key is an identity and a clamped one is two entries
-// merged. That difference is the only difference between them.
+// an ordinary FIELD reads the digits exactly and refuses outside its range, and
+// a MAP KEY rejects the whole entry, because a key is an identity and a clamped
+// one is two entries merged. That difference is the only difference between
+// them.
 //
-// THE KEY READS ITS TOKEN EXACTLY AND A FIELD READS IT THROUGH THE FLOAT64, and
-// that is the one place the two interpretations part. A key is an IDENTITY, so
+// THE KEY READS ITS TOKEN EXACTLY AND A FIELD READS IT EXACTLY TOO, and that is
+// the one path both interpretations share. A key is an IDENTITY, so
 // two spellings a 53-bit mantissa cannot tell apart are two keys and the key
 // path carries interpretIntegerExact below. A field's value is a quantity under
-// a clamp, and its interpretation is the one the C, Go and Rust ports read the
+// a range, and its interpretation is the one the C, Go and Rust ports read the
 // same texts with, so it lives here and reads as they read.
 type jsonInteger struct {
 	magnitude  uint64 // |value|, exact for every integral token 64 bits hold
@@ -2074,7 +2235,7 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	case shape == 'z' && TakesNull(fv.Def):
 		// `null` is the absence, not a value (docs/SPEC-TABLES.md §16.2)
 		ok = in.literal("null")
-	case shape != Shape(fv.Def):
+	case !shapeMatches(Shape(fv.Def), shape):
 		ok = in.fail("kind_mismatch: " + fv.Def.Name)
 	default:
 		ok = in.readField(fv, 0)
@@ -2108,7 +2269,7 @@ func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bo
 	switch {
 	case fv.Def.IsTextList():
 		ok = in.readTextListElement(fv, slot, 0)
-	case in.valueShape() != ElementShape(fv.Def):
+	case !shapeMatches(ElementShape(fv.Def), in.valueShape()):
 		ok = in.fail("kind_mismatch: " + fv.Def.Name)
 	default:
 		ok = in.readScalar(&fv.Elems[slot], fv.Def, 0)
@@ -2162,14 +2323,18 @@ func (in *reader) readTextListElement(fv *Field, slot int, depth int) bool {
 	return true
 }
 
-// placeWide converts a number token into a wide kind's raw storage
-// (docs/SPEC-TABLES.md §16.2): a 128-bit integer takes any token whose value
-// is integral, a fixed field any token whose value is EXACTLY representable
-// in its Q I.F — a finer fraction is the wrong shape for the field, a kind
-// mismatch, never rounded, the rule SPEC.md §4.6 gives a fixed default. A
-// magnitude past the storage, or outside the declared range, refuses
-// `out_of_range`.
+// placeWide converts a number token (or a wide integer's string content) into
+// a wide kind's raw storage (docs/SPEC-TABLES.md §16.2): a 128-bit integer
+// takes an integer token — digits and an optional minus, no fraction, no
+// exponent, no negative zero — and a fixed field any token whose value is
+// EXACTLY representable in its Q I.F — a finer fraction is the wrong shape for
+// the field, a kind mismatch, never rounded, the rule SPEC.md §4.6 gives a
+// fixed default. A magnitude past the storage, or outside the declared range,
+// refuses `out_of_range`.
 func (in *reader) placeWide(cell *Cell, f *ir.Field, token string, kind int) bool {
+	if (kind == ir.TableKindI128 || kind == ir.TableKindU128) && !integerToken(token) {
+		return in.fail("kind_mismatch: " + f.Name)
+	}
 	raw, exact, saturated := ParseWide(token, kind, f.Type.FracBits)
 	if !exact {
 		return in.fail("kind_mismatch: " + f.Name)
@@ -2292,7 +2457,7 @@ func (in *reader) readMapValue(fv *Field, depth int) bool {
 		in.m.reset(fv)
 		return true
 	}
-	if in.valueShape() != Shape(fv.Def) {
+	if !shapeMatches(Shape(fv.Def), in.valueShape()) {
 		return in.fail("kind_mismatch: " + fv.Def.Name)
 	}
 	if !in.readField(fv, depth) {
@@ -2316,11 +2481,12 @@ const (
 )
 
 // placeMapKey writes the object's key into the entry's `key` field: the bytes
-// for a `string(N)`, and for an integer key the ONE interpretation every integer
-// target takes, so "2.0" and "1e3" are the integers 2 and 1000 and "-0" is zero.
-// The KEY's policy over that value is REJECTION and not clamping: a fractional
-// value, or one outside the key kind's range, drops the whole entry, because a
-// key is an identity and a clamped one is two entries merged.
+// for a `string(N)`, and for an integer key the integer-token spelling an
+// integer field takes — digits with an optional minus, no fraction, no
+// exponent, no negative zero (§16.2). The KEY's policy over that value is
+// REJECTION and not clamping: a fractional or exponent spelling, -0, or a value
+// outside the key kind's range drops the whole entry, because a key is an
+// identity and a clamped one is two entries merged.
 //
 // THE KEY IS THE SPELLING AND NOTHING AROUND IT. The number walk steps over
 // leading whitespace and comments, which is right BETWEEN tokens and wrong
@@ -2343,6 +2509,9 @@ func (in *reader) placeMapKey(entry *Instance, keyField *ir.Field, key []byte) m
 	_, ok := probe.walkNumber()
 	if !ok || probe.pos != len(key) {
 		return mapKeyMalformed // not a JSON number at all, or not only one
+	}
+	if !integerToken(string(key)) {
+		return mapKeyMismatch // a fraction, an exponent or -0: not the integer spelling
 	}
 	number := interpretIntegerExact(string(key))
 	if number.fractional || number.saturated {

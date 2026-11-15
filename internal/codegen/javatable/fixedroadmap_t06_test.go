@@ -101,7 +101,7 @@ func t06C14(t *testing.T) {
 	if strings.Contains(scatter, "i < 4") {
 		t.Errorf("C14: the bounds walk still takes the declared bound, not the live count")
 	}
-	t06Has(t, scatter, "if (n < 0) { n = 0; r.refuse(TableFixed.Reason.countOverBound); } else if (n > 4) { n = 4; r.refuse(TableFixed.Reason.countOverBound); }",
+	t06Has(t, scatter, "if (n < 0) { n = 0; if (live) { r.refuse(TableFixed.Reason.countOverBound); } } else if (n > 4) { n = 4; if (live) { r.refuse(TableFixed.Reason.countOverBound); } }",
 		"C14 a count outside this reader's own bound refuses the load")
 }
 
@@ -146,7 +146,7 @@ func t06W4(t *testing.T) {
 // whole-record copy that would overwrite a range the plan lands.
 func t06W9(t *testing.T) {
 	load := string(t06Files(t, t06Flat)["TFixed.java"])
-	t06Has(t, load, "final int holeN = TableFixed.holes(entries, made, cover, hole);",
+	t06Has(t, load, "final int holeN = pre.count;",
 		"W9 the prefill covers the plan's hole list")
 	t06Has(t, load, "for (int h = 0; h < holeN; h++) {",
 		"W9 the prefill runs over the hole list")

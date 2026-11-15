@@ -1743,7 +1743,7 @@ tables-dart-wire-fuzz-smoke: build/conformance-harness build/conformance-dart
 	$(MAKE) tables-dart-wire-fuzz SEED=$(SEED) N=$(DART_FUZZ_SMOKE_N)
 
 tables-dart-wire-fuzz: build/conformance-harness build/conformance-dart
-	SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" sh test/slowgate/proof tables-dart-wire-fuzz 'TestDartRetainingRosterAllRoots TestDartBuilderRefusalAndRetentionVectors' -timeout=0 -count=1 ./test/conformance/harness -run '^TestDart(RetainingRosterAllRoots|BuilderRefusalAndRetentionVectors)$$'
+	SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" sh test/slowgate/proof tables-dart-wire-fuzz 'TestDartRetainingRosterAllRoots TestDartBuilderRefusalAndRetentionVectors TestDartReservedNodeTypeVectors' -timeout=0 -count=1 ./test/conformance/harness -run '^TestDart(RetainingRosterAllRoots|BuilderRefusalAndRetentionVectors|ReservedNodeTypeVectors)$$'
 	./build/conformance-harness wire-fuzz --builder --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
 
 # Its control: the emitter's counted-list `widened` count is removed
@@ -1797,8 +1797,9 @@ conformance-dart-text-boundary: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control-text-boundary positive "$(DART)"
 
 conformance-negative-control-dart-text-boundary: conformance-dart-text-boundary
-	sh test/conformance/dart/negative-control-text-boundary replacement "$(DART)"
-	sh test/conformance/dart/negative-control-text-boundary reader "$(DART)"
+	sh test/conformance/dart/negative-control-text-boundary replacement "$(DART)" & r=$$!; \
+	sh test/conformance/dart/negative-control-text-boundary reader "$(DART)" || s=1; \
+	wait $$r || s=1; exit $${s:-0}
 
 test-dart: conformance-dart-text-boundary
 
@@ -1865,3 +1866,47 @@ write-refusal-storage-release-dart-negative-control: bin/schema $(STORAGE_RELEAS
 		  cat $(STORAGE_RELEASE_DART)-negative/log; exit 1; }
 	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_DART)-negative/log
 	@echo "negative control: removing the Dart storage guard turns the release gate RED"
+
+# THE PACKET END CHECK (SPEC §5, packet-canonical-end): the generated public
+# read runs the end check once, after the top-level object, refusing a whole
+# byte left over and non-zero unused bits in the final byte. The driver reads
+# the shared vectors under testdata/wire/packet-end with the generated
+# one-packet read: exact accepted as 3, trailing refused, padding refused. The
+# control removes the emitted end check and requires the trailing and padding
+# verdicts to go red while the exact packet stays accepted.
+build/packet-end/dart/.stamp: bin/schema test/packet-end/End.schema
+	./bin/schema generate --lang dart --out build/packet-end/dart test/packet-end/End.schema
+	@touch $@
+
+.PHONY: packet-end-dart packet-end-dart-negative-control
+packet-end-dart: build/packet-end/dart/.stamp
+	$(DART) analyze build/packet-end/dart test/packet-end/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-end/dart test/packet-end/dart
+	$(DART) --enable-asserts test/packet-end/dart/main.dart testdata/wire/packet-end
+	$(DART) compile exe -o build/packet-end/dart/checker test/packet-end/dart/main.dart >/dev/null
+	./build/packet-end/dart/checker testdata/wire/packet-end
+
+packet-end-dart-negative-control: packet-end-dart
+	@rm -rf build/packet-end/dart-negative && mkdir -p build/packet-end/dart-negative
+	go run ./tools/sabotage -name packet-end-dart-read -out build/packet-end/dart-negative/functions.gotext internal/codegen/dart/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/dart/functions.go":"%s/build/packet-end/dart-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-end/dart-negative/overlay.json
+	go run -overlay=build/packet-end/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-end/dart-negative/generated test/packet-end/End.schema
+	@sed 's|../../../build/packet-end/dart/|$(CURDIR)/build/packet-end/dart-negative/generated/|' test/packet-end/dart/main.dart > build/packet-end/dart-negative/main.dart
+	@if $(DART) --enable-asserts build/packet-end/dart-negative/main.dart testdata/wire/packet-end > build/packet-end/dart-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the packet end check is removed and the driver stayed green'; \
+		cat build/packet-end/dart-negative/log; exit 1; \
+	fi
+	@grep -Fq 'FAILED: packet-end trailing accepted' build/packet-end/dart-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the trailing byte was not the failure'; \
+		  cat build/packet-end/dart-negative/log; exit 1; }
+	@grep -Fq 'FAILED: packet-end padding accepted' build/packet-end/dart-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the final-byte padding was not the failure'; \
+		  cat build/packet-end/dart-negative/log; exit 1; }
+	@if grep -F 'FAILED: ' build/packet-end/dart-negative/log | grep -Fvq -e 'FAILED: packet-end trailing accepted' -e 'FAILED: packet-end padding accepted'; then \
+		echo 'NEGATIVE CONTROL FAILED: a check other than the two end-check verdicts went red'; \
+		cat build/packet-end/dart-negative/log; exit 1; \
+	fi
+	@grep -m1 'FAILED: packet-end trailing accepted' build/packet-end/dart-negative/log
+	@echo 'negative control: with no end check, the trailing byte and the set final-byte bits are accepted'
+
+test-dart: packet-end-dart packet-end-dart-negative-control

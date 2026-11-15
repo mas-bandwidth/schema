@@ -1753,7 +1753,7 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( f.packing == 0 ) { return true; }
         if ( f.packing == 1 && kind != 10 )
         {
-            if ( !TableMessageLeb( in, size, at, v ) || (int64_t) v > TableMessageKindBits( kind ) ) { return false; }
+            if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) TableMessageKindBits( kind ) ) { return false; }
             f.value_bits = (int64_t) v;
             if ( kind == 18 || kind == 19 || TableMessageFixedKind( kind ) )
             {
@@ -3149,10 +3149,89 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
         }
         default:
         {
+            // A FLOAT AND A RANGED ELEMENT carry the condition a named read
+            // applies, so they are held by the field's own skip at the
+            // element's shape
+            if ( entry.elem_kind == 10 || entry.elem_kind == 11 || entry.elem_packing == 1 )
+            {
+                TableMessageEntry element;
+                element.kind = entry.elem_kind;
+                element.packing = entry.elem_packing;
+                element.value_bits = entry.elem_value_bits;
+                element.base_lo = entry.elem_base_lo;
+                element.base_hi = entry.elem_base_hi;
+                element.qcount = entry.elem_qcount;
+                return TableMessageSkip( r, vocabulary, index_bits, element, depth );
+            }
             const int64_t elem = entry.elem_value_bits;
             return elem >= 0 && r.skip( elem );
         }
     }
+}
+
+// TableMessageSignedKind is a kind whose domain is two's complement.
+inline bool TableMessageSignedKind( uint8_t kind )
+{
+    return ( kind >= 2 && kind <= 5 ) || kind == 18 || ( kind >= 20 && kind <= 24 );
+}
+
+// TableMessageSkipRanged steps over a RANGED value and holds base plus offset
+// to the kind's own domain, the bound a named read holds it to: the offset's
+// bits can spell a value past the sender's range (§3.3). The base and the
+// offset are added exactly as the named read adds them. The arithmetic is on
+// 64-bit words, since this runtime carries no 128-bit type of its own.
+inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t width, int64_t base_lo, int64_t base_hi )
+{
+    uint64_t lo = 0, hi = 0;
+    if ( width < 0 || !r.get( lo, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi, width - 64 ) ) ) { return false; }
+    const bool is_signed = TableMessageSignedKind( kind );
+    const int64_t domain = TableMessageKindBits( kind );
+    if ( domain == 128 )
+    {
+        // the room above the base is top minus base, exact at 128 bits
+        // because no base lies above the top of its own domain
+        const uint64_t top_hi = is_signed ? uint64_t( INT64_MAX ) : UINT64_MAX;
+        const uint64_t room_lo = UINT64_MAX - (uint64_t) base_lo;
+        const uint64_t room_hi = top_hi - (uint64_t) base_hi;
+        return hi < room_hi || ( hi == room_hi && lo <= room_lo );
+    }
+    // AT SIXTY-FOUR BITS OR FEWER the offset is one word and so is the base,
+    // sign-extended for a signed kind, and the sum is held to both ends
+    if ( !is_signed )
+    {
+        const uint64_t top = domain == 64 ? UINT64_MAX : ( uint64_t( 1 ) << domain ) - 1;
+        const uint64_t base = (uint64_t) base_lo;
+        return base <= top && lo <= top - base;
+    }
+    const int64_t top = domain == 64 ? INT64_MAX : (int64_t) ( ( uint64_t( 1 ) << ( domain - 1 ) ) - 1 );
+    const int64_t bottom = -top - 1;
+    if ( base_lo > top || lo > (uint64_t) top - (uint64_t) base_lo ) { return false; }
+    return base_lo >= bottom || lo >= (uint64_t) bottom - (uint64_t) base_lo;
+}
+
+// THE SKIP PATH'S SEEN SET is a fixed bitmap over an id's FIRST vocabulary
+// slot, so a skip allocates nothing and the depth cap bounds the walk. An ID
+// is the wire's own name (§3.2, §3.3), not the slot that happened to carry
+// it: one name may be announced at two shapes, and naming it twice is a
+// repeat whichever slot it rode. The bitmap covers every slot a 64 KiB
+// announcement can carry; a slot past it is damage, never silently untracked.
+static const int64_t kTableMessageSeenBits = 65536;
+
+// TableMessageSeenOnce records one id of a body or one key of a keyed array
+// and answers false on a repeat, whether or not this reader can name the field
+// (§3.2, §3.3).
+inline bool TableMessageSeenOnce( uint64_t * seen, const TableVocabulary & vocabulary, uint64_t ref, uint64_t id )
+{
+    uint64_t slot = ref;
+    for ( uint64_t i = 1; i < ref; i++ )
+    {
+        if ( TableVocabularyEntryAt( vocabulary, i ).id == id ) { slot = i; break; }
+    }
+    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return false; }
+    const uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
+    if ( ( seen[slot >> 6] & bit ) != 0 ) { return false; }
+    seen[slot >> 6] |= bit;
+    return true;
 }
 
 // TableMessageElementRunBits is the bits ONE element of an array or a keyed
@@ -3160,7 +3239,7 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
 // is one multiplication, and -1 where the element's width is its own
 // content's. A ZERO is a real answer, and it is why this exists: a ranged
 // element whose min equals its max rides no bits at all (§3.3).
-inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, const TableMessageEntry & entry )
+inline int64_t TableMessageElementRunBits( const TableMessageEntry & entry )
 {
     int64_t elem = 0;
     switch ( entry.elem_kind )
@@ -3177,7 +3256,13 @@ inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, c
         default: elem = entry.elem_value_bits; break;
     }
     if ( elem < 0 ) { return -1; }
-    if ( entry.kind == 16 ) { elem += vocabulary.ref_bits; } // a keyed slot's own key reference
+    // a keyed slot resolves its own key reference, a zero-bit slot as well
+    if ( entry.kind == 16 ) { return -1; }
+    if ( elem == 0 ) { return 0; }
+    // a float, a ranged value and a quantized value carry a condition a named
+    // read applies, so the element is walked rather than multiplied
+    if ( entry.elem_kind == 10 || entry.elem_kind == 11 ) { return -1; }
+    if ( entry.elem_packing == 1 || entry.elem_packing == 2 ) { return -1; }
     return elem;
 }
 
@@ -3216,6 +3301,9 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         {
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
+            if ( n > (uint64_t) ( ( r.bits - r.offset ) / 8 ) ) { return false; }
+            const uint8_t * text = r.buffer + ( r.offset >> 3 );
+            if ( !TableUtf8Valid( text, n ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
         case 31:
@@ -3225,6 +3313,25 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             uint64_t n = 0;
             if ( !r.align() || !r.get( n, 32 ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
+        }
+        case 10:
+        {
+            if ( entry.packing == 2 )
+            {
+                uint64_t index = 0;
+                if ( !r.get( index, entry.value_bits ) ) { return false; }
+                if ( index > (uint64_t) entry.qcount ) { return false; } // above the step count
+                return true;
+            }
+            uint64_t raw = 0;
+            if ( !r.get( raw, 32 ) ) { return false; }
+            return TableBitsFinite32( (uint32_t) raw );
+        }
+        case 11:
+        {
+            uint64_t raw = 0;
+            if ( !r.get( raw, 64 ) ) { return false; }
+            return TableBitsFinite64( raw );
         }
         case 14:
         case 16:
@@ -3238,33 +3345,54 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
                 if ( !r.get( raw, width ) ) { return false; }
                 n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
             }
+            if ( n > (uint64_t) entry.max ) { return false; } // a count above its announced maximum
             if ( entry.kind == 14 && entry.elem_kind == 6 && !r.align() ) { return false; }
             // A RUN OF FIXED-WIDTH ELEMENTS IS ONE MULTIPLICATION (§3.3), and
             // only an element whose width is its own content's is walked
-            const int64_t run = TableMessageElementRunBits( vocabulary, entry );
+            const int64_t run = TableMessageElementRunBits( entry );
             if ( run >= 0 ) { return TableMessageSkipRun( r, n, run ); }
+            // A STRUCTURAL ELEMENT NESTS ONE LEVEL DEEPER; a fixed-width one
+            // does not, so the depth cap counts what §4 says it counts.
+            const bool nested = entry.elem_kind == 13 || entry.elem_kind == 14 || entry.elem_kind == 15 ||
+                entry.elem_kind == 16 || entry.elem_kind == 17 || entry.elem_kind == 30;
+            uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
             for ( uint64_t i = 0; i < n; i++ )
             {
-                if ( entry.kind == 16 && !r.skip( vocabulary.ref_bits ) ) { return false; }
-                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; }
+                if ( entry.kind == 16 )
+                {
+                    uint64_t key_ref = 0;
+                    TableMessageEntry key_entry;
+                    if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
+                    if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
+                    if ( !TableMessageSeenOnce( seen, vocabulary, key_ref, key_entry.id ) ) { return false; } // one key twice
+                }
+                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, nested ? depth + 1 : depth ) ) { return false; }
             }
             return true;
         }
     }
     const int64_t width = entry.value_bits;
+    if ( entry.packing == 1 && ( TableMessageIntegerKind( entry.kind ) || TableMessageFixedKind( entry.kind ) ) )
+    {
+        return TableMessageSkipRanged( r, entry.kind, width, entry.base_lo, entry.base_hi );
+    }
     return width >= 0 && r.skip( width );
 }
 
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth )
 {
     if ( depth > 128 ) { return false; }
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
         if ( ref == 0 ) { return true; }
         if ( ref > (uint64_t) vocabulary.count ) { return false; }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, TableVocabularyEntryAt( vocabulary, ref ), depth ) ) { return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        if ( TableMessageReserved( entry.id ) ) { return false; }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
+        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
 }
 
@@ -3609,6 +3737,13 @@ struct TableFixedEntry
     // length one and two). Zero count is "the two inline lanes only".
     uint32_t guard_count = 0;
     uint32_t guard_index = 0;
+    // elem IS A COPY ENTRY'S ELEMENT WIDTH IN BYTES (1, 2, 4 or 8; a 128-bit
+    // value rides as two 8-byte lanes). The wire is little-endian on every
+    // host (§3.4), so on a big-endian host a copy must reverse each element
+    // rather than land the wire bytes in host order. Zero is a raw byte copy,
+    // which is every non-copy op and every byte-sized element. It sits last
+    // so existing positional initializers keep their meaning.
+    uint8_t elem = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -3674,6 +3809,26 @@ inline uint64_t TableFixedGet64( const uint8_t * b )
     for ( int i = 0; i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
     return v;
 }
+// A LITTLE-ENDIAN LOAD OF 1..8 BYTES, zero-extended. The widen, ordinal and
+// const ops read their source through this, never through a memcpy into a
+// native word, which would read the wire in host order.
+inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
+{
+    uint64_t v = 0;
+    for ( uint32_t i = 0; i < size && i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
+    return v;
+}
+// THIS BUILD'S HOST ORDER, for the fixed form only. The wire is
+// little-endian on every host, so only a store into native storage consults
+// it. SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile
+// the big-endian path so a test can hold its byte image.
+#if defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN )
+constexpr bool TableFixedBigEndianHost = true;
+#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+constexpr bool TableFixedBigEndianHost = true;
+#else
+constexpr bool TableFixedBigEndianHost = false;
+#endif
 
 // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
 // byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
@@ -3776,6 +3931,66 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
     memcpy( d, s, n );
 }
 
+// A COPY FROM THE WIRE INTO NATIVE STORAGE. On a little-endian host the bulk
+// copy above IS the wire image and stays one copy. On a big-endian host each
+// element of elem bytes is reversed, so the value lands in this host's order
+// and not in the wire's. An elem of 0 or 1, or a size that is not a whole
+// number of elements, is a raw byte copy.
+inline void TableFixedCopyLe( uint8_t * dst, const uint8_t * src, uint32_t size, uint8_t elem )
+{
+    if ( TableFixedBigEndianHost && ( elem == 2 || elem == 4 || elem == 8 ) && size % elem == 0 )
+    {
+        for ( uint32_t i = 0; i < size; i += elem )
+        {
+            for ( uint8_t j = 0; j < elem; ++j ) { dst[i + j] = src[i + elem - 1 - j]; }
+        }
+        return;
+    }
+    TableFixedCopyRun( dst, src, size );
+}
+
+// A STORE OF ONE PLAN OP'S VALUE INTO NATIVE STORAGE. On a little-endian host
+// the destination width's own word IS the value and stays one copy; on a
+// big-endian host the value's bytes are written most-significant first, so the
+// native word holds the value and a forced build holds the same byte image the
+// copy path writes.
+inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
+{
+    if ( TableFixedBigEndianHost )
+    {
+        for ( uint32_t i = 0; i < size && i < 8; ++i ) { dst[i] = (uint8_t) ( v >> ( 8 * ( size - 1 - i ) ) ); }
+        return;
+    }
+    switch ( size )
+    {
+        case 1:
+        {
+            uint8_t t = (uint8_t) v;
+            memcpy( dst, &t, 1 );
+            break;
+        }
+        case 2:
+        {
+            uint16_t t = (uint16_t) v;
+            memcpy( dst, &t, 2 );
+            break;
+        }
+        case 4:
+        {
+            uint32_t t = (uint32_t) v;
+            memcpy( dst, &t, 4 );
+            break;
+        }
+        case 8:
+        {
+            uint64_t t = v;
+            memcpy( dst, &t, 8 );
+            break;
+        }
+        default: break;
+    }
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -3789,7 +4004,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
     {
         case kTableFixedCopy:
         {
-            TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
+            TableFixedCopyLe( dst + p.dst, src + p.src, p.size, p.elem );
             break;
         }
         case kTableFixedBool:
@@ -3833,7 +4048,9 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
-            TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
+            // text is bytes, so an elem of 1: a raw copy on either host, through
+            // the one wire-to-storage copy the bulk op takes too
+            TableFixedCopyLe( dst + p.aux, src + p.src + 4, p.size, 1 );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
@@ -3850,7 +4067,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
@@ -3862,13 +4079,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // tests THIS reader's own top value — which a remapped 0 never
             // trips, so the two never count the one event twice.
             else if ( raw != 0 ) { oor_count++; }
-            memcpy( dst + p.dst, &v, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, v, p.dstsize );
             break;
         }
         case kTableFixedWiden:
         {
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             if ( p.sign != 0 )
             {
                 // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
@@ -3877,14 +4094,19 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            memcpy( dst + p.dst, &raw, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, raw, p.dstsize );
             widened++;
             break;
         }
         case kTableFixedWidenF:
         {
+            // f32 INTO f64 (docs/FIXED-FORM-ALGORITHM.md §4's float rung): the
+            // bits are read little-endian, then the hardware cast.
             float f = 0.0f;
-            memcpy( &f, src + p.src, 4 );
+            {
+                const uint32_t bits = TableFixedGet32( src + p.src );
+                memcpy( &f, &bits, 4 );
+            }
             const double d = (double) f;
             memcpy( dst + p.dst, &d, 8 );
             widened++;
@@ -3896,13 +4118,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // bytes, and a memcpy of p.size out of the four-byte aux lane
             // reads the member beside it (§4.5, §5.8 row 7).
             const uint64_t lands = p.aux;
-            memcpy( dst + p.dst, &lands, p.size );
+            TableFixedStoreNative( dst + p.dst, lands, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
             // a tag past that set lands None (already written) and COUNTS.
             if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
             {
                 uint64_t raw = 0;
-                memcpy( &raw, src + p.src, p.size );
+                raw = TableFixedGetLe( src + p.src, p.size );
                 if ( raw > (uint64_t) p.dstsize ) { oor_count++; }
             }
             break;
@@ -3918,10 +4140,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // the payload copy above laid the wire's bytes down; when the flag
             // is 0 those bytes are slack and never a value, so the reader
             // overwrites them with the caller's own Reset image. Aux is the
-            // payload's storage offset and Size its storage bytes.
+            // payload's storage offset and Size its storage bytes. A plain
+            // memcpy and not the run mover: the mover's 32-byte moves let
+            // GCC's array-bounds pass form offsets past a small Reset image
+            // on a size branch no entry of this op reaches, and an absent
+            // payload is the cold path.
             const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
             dst[p.dst] = flag;
-            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }
             break;
         }
         default: break;
@@ -5129,6 +5355,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size;
                 e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
+                e.elem = (uint8_t) ( me.size == 16 ? 8 : me.size );
                 TableFixedPush( c, e );
             }
             else if ( te.size < me.size && me.size <= 8 )
@@ -5190,7 +5417,7 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
             plan[out - 1].guard == plan[i].guard && plan[out - 1].arg == plan[i].arg &&
             plan[out - 1].argw == plan[i].argw &&
             plan[out - 1].guard2 == plan[i].guard2 && plan[out - 1].arg2 == plan[i].arg2 &&
-            plan[out - 1].argw2 == plan[i].argw2 &&
+            plan[out - 1].argw2 == plan[i].argw2 && plan[out - 1].elem == plan[i].elem &&
             plan[out - 1].src + plan[out - 1].size == plan[i].src &&
             plan[out - 1].dst + plan[out - 1].size == plan[i].dst )
         {
@@ -7269,6 +7496,7 @@ inline bool MixedEntitySaveMessageBody( TableBitWriter & w, const MixedEntity & 
 inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, MixedEntity & value )
 {
     MixedEntityReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -7297,6 +7525,11 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x23fcfd6678e36712ull: // entity_id
@@ -8669,6 +8902,7 @@ inline bool MixedStatSaveMessageBody( TableBitWriter & w, const MixedStat & valu
 inline bool MixedStatLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, MixedStat & value )
 {
     MixedStatReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -8697,6 +8931,11 @@ inline bool MixedStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x80ab75f0866dbf65ull: // stat_id
@@ -9403,6 +9642,7 @@ inline bool MixedHitEventSaveMessageBody( TableBitWriter & w, const MixedHitEven
 inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, MixedHitEvent & value )
 {
     MixedHitEventReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -9431,6 +9671,11 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xb7bc9ac015a25050ull: // target_id
@@ -10158,6 +10403,7 @@ inline bool MixedChatEventSaveMessageBody( TableBitWriter & w, const MixedChatEv
 inline bool MixedChatEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, MixedChatEvent & value )
 {
     MixedChatEventReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -10186,6 +10432,11 @@ inline bool MixedChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xa5013e9ad5caeda4ull: // channel
@@ -10806,6 +11057,7 @@ inline bool MixedPickupEventSaveMessageBody( TableBitWriter & w, const MixedPick
 inline bool MixedPickupEventLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, MixedPickupEvent & value )
 {
     MixedPickupEventReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -10834,6 +11086,11 @@ inline bool MixedPickupEventLoadMessageBody( TableBitReader & r, const TableVoca
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x9e7fd06d864fbd56ull: // item_id
@@ -13496,6 +13753,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
 inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, BenchMixed & value )
 {
     BenchMixedReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -13524,6 +13782,11 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xaa38aca481f528a8ull: // sequence
@@ -15513,6 +15776,29 @@ TABLE_FIXED_INLINE bool MixedEntityFixedInRange( const MixedEntity & value )
     return bad == 0;
 }
 
+// MixedEntity's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool MixedEntityFixedWriteAdmits( const MixedEntity & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(12) width clamp
+    bad |= (int) ( value.entity_id > 4095ull );
+    bad |= (int) ( value.pos_x < -16383 ) | (int) ( value.pos_x > 16383 );
+    bad |= (int) ( value.pos_y < -16383 ) | (int) ( value.pos_y > 16383 );
+    bad |= (int) ( value.pos_z < -16383 ) | (int) ( value.pos_z > 16383 );
+    // bits(9) width clamp
+    bad |= (int) ( value.yaw > 511ull );
+    // bits(9) width clamp
+    bad |= (int) ( value.pitch > 511ull );
+    bad |= (int) ( value.vel_x < -2048 ) | (int) ( value.vel_x > 2047 );
+    bad |= (int) ( value.vel_y < -2048 ) | (int) ( value.vel_y > 2047 );
+    bad |= (int) ( value.vel_z < -2048 ) | (int) ( value.vel_z > 2047 );
+    bad |= (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
+    bad |= (int) ( (uint64_t) value.weapon > 15u );
+    return bad == 0;
+}
+
 // MixedEntity's read-side bounds.
 inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -15557,6 +15843,18 @@ TABLE_FIXED_INLINE bool MixedStatFixedInRange( const MixedStat & value )
     return bad == 0;
 }
 
+// MixedStat's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool MixedStatFixedWriteAdmits( const MixedStat & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(8) width clamp
+    bad |= (int) ( value.stat_id > 255ull );
+    bad |= (int) ( value.delta < -512 ) | (int) ( value.delta > 511 );
+    return bad == 0;
+}
+
 // MixedStat's read-side bounds.
 inline void MixedStatFixedClampBody( MixedStat & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -15573,6 +15871,19 @@ inline void MixedStatFixedClampBody( MixedStat & value, int32_t & TABLE_CLAMP_RE
 // MixedHitEvent's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool MixedHitEventFixedInRange( const MixedHitEvent & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(12) width clamp
+    bad |= (int) ( value.target_id > 4095ull );
+    bad |= (int) ( value.damage < 0 ) | (int) ( value.damage > 4095 );
+    bad |= (int) ( value.hit_kind < 0 ) | (int) ( value.hit_kind > 7 );
+    return bad == 0;
+}
+
+// MixedHitEvent's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool MixedHitEventFixedWriteAdmits( const MixedHitEvent & value )
 {
     (void) value;
     int bad = 0;
@@ -15610,6 +15921,18 @@ TABLE_FIXED_INLINE bool MixedChatEventFixedInRange( const MixedChatEvent & value
     return bad == 0;
 }
 
+// MixedChatEvent's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool MixedChatEventFixedWriteAdmits( const MixedChatEvent & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.channel < 0 ) | (int) ( value.channel > 3 );
+    // bits(12) width clamp
+    bad |= (int) ( value.speaker > 4095ull );
+    return bad == 0;
+}
+
 // MixedChatEvent's read-side bounds.
 inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -15626,6 +15949,18 @@ inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & TABL
 // MixedPickupEvent's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool MixedPickupEventFixedInRange( const MixedPickupEvent & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(10) width clamp
+    bad |= (int) ( value.item_id > 1023ull );
+    bad |= (int) ( value.amount < 0 ) | (int) ( value.amount > 255 );
+    return bad == 0;
+}
+
+// MixedPickupEvent's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool MixedPickupEventFixedWriteAdmits( const MixedPickupEvent & value )
 {
     (void) value;
     int bad = 0;
@@ -15693,6 +16028,57 @@ TABLE_FIXED_INLINE bool BenchMixedFixedInRange( const BenchMixed & value )
     bad |= (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
     bad |= (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
     bad |= (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
+    bad |= (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
+    bad |= (int) ( value.ping > 64000 );
+    // bits(24) width clamp
+    bad |= (int) ( value.crc_hint > 16777215ull );
+    bad |= (int) ( value.extra < 0 ) | (int) ( value.extra > 255 );
+    bad |= (int) ( value.idle_ticks < 0 ) | (int) ( value.idle_ticks > 15 );
+    return bad == 0;
+}
+
+// BenchMixed's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool BenchMixedFixedWriteAdmits( const BenchMixed & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(16) width clamp
+    bad |= (int) ( value.sequence > 65535ull );
+    bad |= (int) ( value.ack_sequence < 0 ) | (int) ( value.ack_sequence > 65535 );
+    bad |= (int) ( value.world_time < -1000000000000ll ) | (int) ( value.world_time > 1000000000000ll );
+    // bits(48) width clamp
+    bad |= (int) ( value.frame_tick > 281474976710655ull );
+    bad |= (int) ( value.server_time < 0 ) | (int) ( value.server_time > 16776960 );
+    for ( int64_t i = 0; i < ( value.entities_count >= 0 && value.entities_count <= 8 ? (int64_t) value.entities_count : 0 ); ++i )
+    {
+        bad |= (int) !MixedEntityFixedWriteAdmits( value.entities[i] );
+    }
+    for ( int64_t i = 0; i < ( value.stats_count >= 0 && value.stats_count <= 80 ? (int64_t) value.stats_count : 0 ); ++i )
+    {
+        bad |= (int) !MixedStatFixedWriteAdmits( value.stats[i] );
+    }
+    bad |= (int) ( (uint64_t) value.game_event.type > 3u );
+    switch ( value.game_event.type )
+    {
+        case MixedEventType::Hit:
+        {
+            bad |= (int) !MixedHitEventFixedWriteAdmits( value.game_event.hit );
+            break;
+        }
+        case MixedEventType::Chat:
+        {
+            bad |= (int) !MixedChatEventFixedWriteAdmits( value.game_event.chat );
+            break;
+        }
+        case MixedEventType::Pickup:
+        {
+            bad |= (int) !MixedPickupEventFixedWriteAdmits( value.game_event.pickup );
+            break;
+        }
+        default: break;
+    }
+    bad |= (int) ( value.player_name_length >= 0 && value.player_name_length <= 15 && !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) );
     bad |= (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
     bad |= (int) ( value.ping > 64000 );
     // bits(24) width clamp

@@ -51,8 +51,8 @@ struct RetainStore {
     ids: u64[>..<]&,        // the retained ids as the save walk interned them
 }
 
-// THE WALK'S NESTING CAP: 64 nested bodies (§6.6).
-let RetainDepthCap: i64 = 64;
+// THE WALK'S NESTING CAP: §4's binary bound, 128 framed levels (§6.6).
+let RetainDepthCap: i64 = 128;
 
 // ---- the capture (load side) ----
 
@@ -126,7 +126,16 @@ recursive fn cap_payload(c: LoadCtx&, k: Cap&, kind: u8, depth: i64) {
         let arm = c.data[k.off];
         k.off += 1;
         c.retain.bytes.push(arm);
-        cap_framed(c, k, arm, depth);
+        // §4 counts a union whose arm is structural as two levels: the union,
+        // then the body it frames. A union whose arm is another union adds the
+        // union level only; a scalar or None arm adds none.
+        if arm == 15 {
+            cap_frame(c, k, arm, depth + 1);
+        } else if arm == KindTable || arm == KindArray || arm == 16 {
+            cap_framed(c, k, arm, depth + 1);
+        } else {
+            cap_frame(c, k, arm, depth);
+        }
         return;
     }
     if kind == KindTable || kind == KindArray || kind == 16 {
@@ -136,10 +145,10 @@ recursive fn cap_payload(c: LoadCtx&, k: Cap&, kind: u8, depth: i64) {
     cap_copy(c, k, kind);
 }
 
-// cap_framed reads one LENGTH and resolves the content it frames, writing the
-// content's own eight-byte length AFTER it (one pass): a nested L past its
-// parent drops the record.
-recursive fn cap_framed(c: LoadCtx&, k: Cap&, kind: u8, depth: i64) {
+// cap_frame reads one LENGTH and resolves the content it frames at `depth`,
+// the content's own level (§4), writing the content's own eight-byte length
+// AFTER it (one pass): a nested L past its parent drops the record.
+recursive fn cap_frame(c: LoadCtx&, k: Cap&, kind: u8, depth: i64) {
     let n = cap_leb(c, k);
     if k.bad { return; }
     if n > (k.end - k.off) as! u64 { k.bad = true; return; }
@@ -147,13 +156,19 @@ recursive fn cap_framed(c: LoadCtx&, k: Cap&, kind: u8, depth: i64) {
     k.off = sub.end;
     let at = c.retain.bytes.len;
     cap_u64(c, 0);
-    cap_content(c, sub, kind, depth + 1);
+    cap_content(c, sub, kind, depth);
     if sub.bad { k.bad = true; return; }
     var len = (c.retain.bytes.len - at - 8) as! u64;
     for i in 8 {
         c.retain.bytes[at + i] = (len & 0xFF) as! u8;
         len = len >> 8;
     }
+}
+
+// cap_framed frames a structural payload whose content sits one level below
+// the body that holds it (§4).
+recursive fn cap_framed(c: LoadCtx&, k: Cap&, kind: u8, depth: i64) {
+    cap_frame(c, k, kind, depth + 1);
 }
 
 // cap_content resolves a content already framed by a length, and must
@@ -468,8 +483,9 @@ fn save_table_retain(unit: LoadUnit, root: const u8[:], data: const u8[:], vals:
     var order: i64[>..<] = [];
     var index: i64[>..<] = [];
     var open: bool[>..<] = [];
+    var sorted: i64[>..<] = [];
     let at = out.len;
-    var c = SaveCtx { data: data, unit: unit, vals: vals, nodes: nodes, out: out, ids: ids, order: order, index: index, open: open, root_tab: -1, refusal: 0, retain: store, retaining: true, retain_lost: 0 };
+    var c = SaveCtx { data: data, unit: unit, vals: vals, nodes: nodes, out: out, ids: ids, order: order, index: index, open: open, sorted: sorted, root_tab: -1, refusal: 0, retain: store, retaining: true, retain_lost: 0 };
     for d, i in unit.tables { if d.name == root { c.root_tab = i; } }
     if c.root_tab < 0 { return SaveRefuseUnknownRoot; }
     let refusal = save_into(c, root_val);

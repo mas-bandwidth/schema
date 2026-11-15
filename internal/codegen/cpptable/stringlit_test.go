@@ -202,7 +202,7 @@ func lexCppStringLiterals(src string) ([]string, []error) {
 			}
 		case c == '/' && i+1 < len(src) && src[i+1] == '*':
 			i += 2
-			for i+1 < len(src) && !(src[i] == '*' && src[i+1] == '/') {
+			for i+1 < len(src) && (src[i] != '*' || src[i+1] != '/') {
 				i++
 			}
 			if i+1 < len(src) {
@@ -238,7 +238,7 @@ func lexCppStringLiterals(src string) ([]string, []error) {
 			raw := src[start:i]
 			value, err := decodeCppString(raw)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("%v: %s", err, raw))
+				errs = append(errs, fmt.Errorf("%w: %s", err, raw))
 				continue
 			}
 			out = append(out, string(value))
