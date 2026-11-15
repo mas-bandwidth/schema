@@ -60,7 +60,8 @@ const (
 	// (§3.4): the variable form's measure walk and save header are gone at a fixed root, and a root with no file form refuses its save (§3.4)
 	// +14: the JSON walk reads a bytes body as canonical base64 only (§16.8): padded, pad bits zero
 	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
-	goOneTableLineBudget = 10102
+	// +3: the cook writes a counted array's slots past the live count as zero (fixed-dead-bytes-are-zero, #3424)
+	goOneTableLineBudget = 10105
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -103,7 +104,8 @@ const (
 	// -153: the same, across every fixed root in the examples (WideBlob has no file form; a fixed Measure checks the value as its Save does)
 	// +14: the JSON walk reads a bytes body as canonical base64 only (§16.8): padded, pad bits zero
 	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
-	goExamplesLineBudget = 60093
+	// +3: the cook writes a counted array's slots past the live count as zero (fixed-dead-bytes-are-zero, #3424)
+	goExamplesLineBudget = 60096
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

@@ -116,7 +116,8 @@ func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,li
   width:=f.CookElemSize;for i := range used {v:=tableJSONGetRaw(unsafe.Add(p,int64(i)*int64(width)),width);w.put(dest+int64(i)*int64(width),v,width)};return true
  }
  if f.IsArray {count=f.ArrayBound;if !f.Counted{used=count}}
- for i:=int32(0);i<count;i++ {if !w.value(unsafe.Add(p,int64(i)*int64(f.ElemSize)),f,dest+int64(i)*int64(f.CookElemSize),live&&i<used){return false}};return true
+ for i:=int32(0);i<count;i++ {if !w.value(unsafe.Add(p,int64(i)*int64(f.ElemSize)),f,dest+int64(i)*int64(f.CookElemSize),live&&i<used){return false}}
+ if used<count&&w.buffer!=nil {clear(w.buffer[dest+int64(used)*int64(f.CookElemSize):dest+int64(count)*int64(f.CookElemSize)])};return true // a slot past the live count is checked, then cooked as zero (docs/rulings.json fixed-dead-bytes-are-zero)
 }
 func(w *tableCookWriter) value(p unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool {
  if f.Pointer{return w.reference((*int64)(p),at)}

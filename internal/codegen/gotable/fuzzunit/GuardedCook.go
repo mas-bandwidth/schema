@@ -774,7 +774,10 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 			return false
 		}
 	}
-	return true
+	if used < count && w.buffer != nil {
+		clear(w.buffer[dest+int64(used)*int64(f.CookElemSize) : dest+int64(count)*int64(f.CookElemSize)])
+	}
+	return true // a slot past the live count is checked, then cooked as zero (mas-bandwidth/schema docs/rulings.json fixed-dead-bytes-are-zero)
 }
 func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
 	if f.Pointer {
