@@ -76,8 +76,8 @@ func skippedValueVectors(t *testing.T, form string) map[string][]byte {
 }
 
 func TestJsSkippedValueIsValidated(t *testing.T) {
-	slowtest.Gate(t, "node (it runs the generated modules)")
 	t.Parallel()
+	slowtest.Gate(t, "node (it runs the generated modules)")
 
 	reader := loadUnitPaths(t, []string{repoPath("test/skipped-value/reader")})
 
