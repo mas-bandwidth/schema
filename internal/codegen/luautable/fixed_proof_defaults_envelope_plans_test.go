@@ -492,9 +492,8 @@ func luauGroupDProgram(g *luauGroupDGeneratedUnit, c luauGroupDCase) string {
 	b.WriteString(c.build)
 	fmt.Fprintf(&b, `local d = T.%[1]sDescriptor
 local fixed = { hash = T.%[1]sFixedHash, recordBytes = T.%[1]sFixedRecordBytes, layout = T.%[1]sFixedLayout }
-local emptyOut = F.save(d, fixed, {})
 local out = F.save(d, fixed, values)
-local m0 = buffer.len(emptyOut)
+local m0 = 24 + #fixed.layout * 17 + (if d.integrity ~= nil and d.integrity ~= "" then 4 else 0)
 local mn = m0 + #values * (8 + fixed.recordBytes)
 print(string.format("@m %%d %%d %%d %%d", fixed.recordBytes, m0, mn, buffer.len(out)))
 print("@x " .. hex(out))
