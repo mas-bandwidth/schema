@@ -6002,7 +6002,10 @@ static SCHEMA_UNUSED int schema_tabledemo_effect_wire_load_( tabledemo_table_rea
             value->type = TABLEDEMO_EFFECT_TYPE_DEBUFF;
             break;
         }
-        default: r->report->unknown++; break;
+        default:
+            r->report->unknown++;
+            if ( !tabledemo_table_skip_framed( arm, kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), kind == 13 || kind == 14 || kind == 15 || kind == 16 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            break;
     }
     return 1;
 }
@@ -13050,9 +13053,13 @@ static SCHEMA_UNUSED int schema_tabledemo_effect_wire_load__retain( tabledemo_ta
             value->type = TABLEDEMO_EFFECT_TYPE_DEBUFF;
             break;
         }
-        default: r->report->unknown++;
-        r->report->retain_lost += retention.retain != NULL;
-        break;
+        default:
+            r->report->unknown++;
+            r->report->retain_lost += retention.retain != NULL;
+            if ( !tabledemo_table_skip_framed( arm, kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), kind == 13 || kind == 14 || kind == 15 || kind == 16 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return 0;
+            }
+            break;
     }
     return 1;
 }
