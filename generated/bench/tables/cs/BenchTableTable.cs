@@ -9482,7 +9482,7 @@ namespace Benchtable
             if (value.WorldTime < -1000000000000L || value.WorldTime > 1000000000000L) { clamped++; }
             // bits(48) width clamp
             if (value.FrameTick > 281474976710655ul) { clamped++; }
-            if (value.ServerTime < 0.0f || value.ServerTime > 65535.0f) { clamped++; }
+            if (value.ServerTime < 0.0f || value.ServerTime > 65535.0f) { clamped++; } else if (value.ServerTime == 0) { value.ServerTime = 0.0f; }
             if (value.Entities != null)
             {
                 for (int i = 0; i < value.EntitiesCount && i < value.Entities.Length; ++i)
@@ -9520,11 +9520,11 @@ namespace Benchtable
                     default: break;
                 }
             }
-            if (value.AimX < -1.0f || value.AimX > 1.0f) { clamped++; }
-            if (value.AimY < -1.0f || value.AimY > 1.0f) { clamped++; }
-            if (value.AimZ < -1.0f || value.AimZ > 1.0f) { clamped++; }
+            if (value.AimX < -1.0f || value.AimX > 1.0f) { clamped++; } else if (value.AimX == 0) { value.AimX = 0.0f; }
+            if (value.AimY < -1.0f || value.AimY > 1.0f) { clamped++; } else if (value.AimY == 0) { value.AimY = 0.0f; }
+            if (value.AimZ < -1.0f || value.AimZ > 1.0f) { clamped++; } else if (value.AimZ == 0) { value.AimZ = 0.0f; }
             if (value.Flux < -1000000000000000000L || value.Flux > 1000000000000000000L) { clamped++; }
-            if (value.Ping < 0.0f || value.Ping > 250.0f) { clamped++; }
+            if (value.Ping < 0.0f || value.Ping > 250.0f) { clamped++; } else if (value.Ping == 0) { value.Ping = 0.0f; }
             // bits(24) width clamp
             if (value.CrcHint > 16777215) { clamped++; }
             if (value.Extra < 0 || value.Extra > 255) { clamped++; }

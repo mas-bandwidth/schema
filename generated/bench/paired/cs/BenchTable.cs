@@ -9415,9 +9415,9 @@ namespace Bench
                     default: break;
                 }
             }
-            if (value.AimX < -1.0f || value.AimX > 1.0f) { clamped++; }
-            if (value.AimY < -1.0f || value.AimY > 1.0f) { clamped++; }
-            if (value.AimZ < -1.0f || value.AimZ > 1.0f) { clamped++; }
+            if (value.AimX < -1.0f || value.AimX > 1.0f) { clamped++; } else if (value.AimX == 0) { value.AimX = 0.0f; }
+            if (value.AimY < -1.0f || value.AimY > 1.0f) { clamped++; } else if (value.AimY == 0) { value.AimY = 0.0f; }
+            if (value.AimZ < -1.0f || value.AimZ > 1.0f) { clamped++; } else if (value.AimZ == 0) { value.AimZ = 0.0f; }
             if (((System.Int128)value.Flux) < unchecked((Int128)(((UInt128)0xfffffff000000000ul << 64) | 0x0ul)) || ((System.Int128)value.Flux) > unchecked((Int128)(((UInt128)0x1000000000ul << 64) | 0x0ul))) { clamped++; }
             if (value.Ping > 64000) { clamped++; }
             // bits(24) width clamp
