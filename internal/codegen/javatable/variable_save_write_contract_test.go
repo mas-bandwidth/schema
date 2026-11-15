@@ -106,8 +106,25 @@ func TestJavaVariableSaveWriteContract(t *testing.T) {
 		// a cycle through pointers is refused with them
 		"r6-tag-over": refusedAlways, "r6-tag-last": lawful,
 		"r7-nan": refusedAlways, "r7-infinity": refusedAlways, "r7-finite": lawful,
-		// row 10: a compressed float off its range, on a required field
+		// row 10: a compressed float off its range, refused in every build on
+		// every shape: required, plain and optional scalars, an array
+		// element, a map value, a union arm's payload, and through a pointer
 		"r10-over": refusedAlways, "r10-under": refusedAlways, "r10-edge": lawful,
+		"r10-scalar-over": refusedAlways, "r10-scalar-under": refusedAlways, "r10-scalar-edge": lawful,
+		"r10-optional-over": refusedAlways, "r10-optional-edge": lawful,
+		"r10-element-over": refusedAlways, "r10-element-edge": lawful,
+		"r10-map-value-over": refusedAlways, "r10-map-value-edge": lawful,
+		"r10-arm-over": refusedAlways, "r10-arm-edge": lawful,
+		"r10-pointer-over": refusedAlways, "r10-pointer-edge": lawful,
+		// a table through a pointer answers rows 1-5 and 8 by the debug assert
+		// before the graph's every-build refusals do; a required ranged
+		// integer and a text list's element past N are both refused by the
+		// graph too, so release answers null and debug answers the assert
+		"r1-required-over": refusedDebug, "r1-required-edge": lawful,
+		"r1-pointer-required-over": refusedDebug, "r1-pointer-required-edge": lawful,
+		"r4-pointer-element-over": refusedDebug, "r4-pointer-element-edge": lawful,
+		// a cycle ends the contract walk: the assert still answers its value
+		"r4-cycle-element-over": refusedDebug,
 		"cycle": refusedAlways,
 	}
 	for _, build := range []struct {
@@ -165,6 +182,7 @@ union Arm
 {
     text  string(16)
     count int32 | min = -5, max = 5
+    scale float32 | min = 0, max = 10, resolution = 0.01
 }
 
 table Doc
@@ -183,6 +201,11 @@ table Doc
     next   *Doc
     ratio  float32
     level  float32 | min = 0, max = 100, resolution = 0.01, required
+    spread float32 | min = 0, max = 10, resolution = 0.01
+    maybe  ?float32 | min = 0, max = 10, resolution = 0.01
+    spans  []float32 | min = 0, max = 10, resolution = 0.01
+    gauges map[string(8)]float32 | min = 0, max = 10, resolution = 0.01
+    strict int32 | min = -5, max = 5, required
 }
 `
 
@@ -215,6 +238,13 @@ public final class WriteContract {
 
     static DocKeyedEntryVariable.Value entry(String key, int value) {
         DocKeyedEntryVariable.Value e = new DocKeyedEntryVariable.Value();
+        e.key = key;
+        e.value = value;
+        return e;
+    }
+
+    static DocGaugesEntryVariable.Value gauge(String key, float value) {
+        DocGaugesEntryVariable.Value e = new DocGaugesEntryVariable.Value();
         e.key = key;
         e.value = value;
         return e;
@@ -292,7 +322,7 @@ public final class WriteContract {
         check("r8-arm-zero", v -> { v.arm.tag = 1; v.arm.text = "a\u0000b"; }, b -> false);
         check("r8-inline-zero", v -> v.inner.name = "a\u0000b", b -> false);
         // row 6
-        check("r6-tag-over", v -> v.arm.tag = 3, b -> false);
+        check("r6-tag-over", v -> v.arm.tag = 4, b -> false);
         check("r6-tag-last", v -> { v.arm.tag = 2; v.arm.count = -5; },
             b -> b.arm.tag == 2 && b.arm.count == -5);
         // row 7
@@ -303,6 +333,35 @@ public final class WriteContract {
         check("r10-over", v -> v.level = 100.5f, b -> false);
         check("r10-under", v -> v.level = -0.5f, b -> false);
         check("r10-edge", v -> v.level = 100f, b -> b.level == 100f);
+        check("r10-scalar-over", v -> v.spread = 10.5f, b -> false);
+        check("r10-scalar-under", v -> v.spread = -0.5f, b -> false);
+        check("r10-scalar-edge", v -> v.spread = 10f, b -> b.spread == 10f);
+        check("r10-optional-over", v -> { v.maybePresent = true; v.maybe = 10.5f; }, b -> false);
+        check("r10-optional-edge", v -> { v.maybePresent = true; v.maybe = 10f; },
+            b -> b.maybePresent && b.maybe == 10f);
+        check("r10-element-over", v -> { v.spans.add(1f); v.spans.add(10.5f); }, b -> false);
+        check("r10-element-edge", v -> { v.spans.add(1f); v.spans.add(10f); },
+            b -> b.spans.size() == 2 && b.spans.get(1) == 10f);
+        check("r10-map-value-over", v -> v.gauges.add(gauge("k", 10.5f)), b -> false);
+        check("r10-map-value-edge", v -> v.gauges.add(gauge("k", 10f)),
+            b -> b.gauges.size() == 1 && b.gauges.get(0).value == 10f);
+        check("r10-arm-over", v -> { v.arm.tag = 3; v.arm.scale = 10.5f; }, b -> false);
+        check("r10-arm-edge", v -> { v.arm.tag = 3; v.arm.scale = 10f; },
+            b -> b.arm.tag == 3 && b.arm.scale == 10f);
+        check("r10-pointer-over", v -> { v.next = new DocVariable.Value(); v.next.spread = 10.5f; }, b -> false);
+        check("r10-pointer-edge", v -> { v.next = new DocVariable.Value(); v.next.spread = 10f; },
+            b -> b.next != null && b.next.spread == 10f);
+        // a table reached through a pointer is held to rows 1-5 and 8 before
+        // the graph walk's own every-build refusals answer for it
+        check("r1-required-over", v -> v.strict = 6, b -> false);
+        check("r1-required-edge", v -> v.strict = 5, b -> b.strict == 5);
+        check("r1-pointer-required-over", v -> { v.next = new DocVariable.Value(); v.next.strict = 6; }, b -> false);
+        check("r1-pointer-required-edge", v -> { v.next = new DocVariable.Value(); v.next.strict = 5; },
+            b -> b.next != null && b.next.strict == 5);
+        check("r4-pointer-element-over", v -> { v.next = new DocVariable.Value(); v.next.names.add(text(repeat(17))); }, b -> false);
+        check("r4-pointer-element-edge", v -> { v.next = new DocVariable.Value(); v.next.names.add(text(repeat(16))); },
+            b -> b.next != null && b.next.names.size() == 1 && b.next.names.get(0).value.equals(repeat(16)));
+        check("r4-cycle-element-over", v -> { v.next = v; v.names.add(text(repeat(17))); }, b -> false);
         // a cycle through pointers
         check("cycle", v -> v.next = v, b -> false);
     }
