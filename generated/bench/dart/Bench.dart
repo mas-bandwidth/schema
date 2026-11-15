@@ -2252,6 +2252,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   {
     final x = Schema.fround(value.aimX);
     assert(x.isFinite);
+    assert(x >= -1.0 && x <= 1.0); // SPEC §5.1 row 10
     var n = Schema.fround(Schema.fround(x + 1.0) / 2.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -2272,6 +2273,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   {
     final x = Schema.fround(value.aimY);
     assert(x.isFinite);
+    assert(x >= -1.0 && x <= 1.0); // SPEC §5.1 row 10
     var n = Schema.fround(Schema.fround(x + 1.0) / 2.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -2292,6 +2294,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   {
     final x = Schema.fround(value.aimZ);
     assert(x.isFinite);
+    assert(x >= -1.0 && x <= 1.0); // SPEC §5.1 row 10
     var n = Schema.fround(Schema.fround(x + 1.0) / 2.0);
     if (!(n >= 0.0)) {
       n = 0.0;
