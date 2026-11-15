@@ -1336,6 +1336,7 @@ end
 local decodeBody: any
 local skipEntry: any
 local decodeArm: any
+local readFloat32Bits: any
 
 -- THE ONE READ (docs/SPEC-TABLES.md §3.3, §4, §6.5): a kind mismatch, a value
 -- outside the reader's range and a count or a length past its bound REFUSE the
@@ -1417,6 +1418,7 @@ local function skipRun(r: any, n: number, width: number): boolean
 end
 
 local function skipBody(t: any): boolean
+	local seen: { [string]: boolean } = {}
 	while true do
 		local ref, ok = reference(t)
 		if not ok then
@@ -1426,7 +1428,11 @@ local function skipBody(t: any): boolean
 			return true
 		end
 		local e = entryAt(t, ref)
-		if e == nil or not skipEntry(t, e.kind, e.shape) then
+		if e == nil or reserved(e.id) or seen[e.id] then
+			return dmal(t)
+		end
+		seen[e.id] = true
+		if not skipEntry(t, e.kind, e.shape) then
 			return false
 		end
 	end
@@ -1475,6 +1481,25 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 			return dmal(t)
 		end
 		return skipBits(r, n * 8)
+	elseif kind == 10 then
+		local bits, ok = readFloat32Bits(t, shape)
+		if not ok then
+			return false
+		end
+		if not V.finite32(bits) then
+			return dmal(t)
+		end
+		return true
+	elseif kind == 11 then
+		local lo, ok1 = get(r, 32)
+		local hi, ok2 = get(r, 32)
+		if not ok1 or not ok2 then
+			return false
+		end
+		if not V.finite64(lo, hi) then
+			return dmal(t)
+		end
+		return true
 	elseif kind == 31 then
 		if not ralign(r) then
 			return false
@@ -1513,13 +1538,22 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 		if run >= 0 then
 			return skipRun(r, n, run)
 		end
+		local seen: { [string]: boolean } = {}
 		for i = 1, n do
 			local at = r.off
 			if kind == 16 then
-				local _, ok = reference(t)
+				local ref, ok = reference(t)
 				if not ok then
 					return false
 				end
+				local key = nameAt(t, ref)
+				if key == nil then
+					return false
+				end
+				if seen[key.id] then
+					return dmal(t)
+				end
+				seen[key.id] = true
 			end
 			if not skipEntry(t, shape.elem, inner) then
 				return false
@@ -1630,25 +1664,35 @@ local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, b
 	return V.toStorage(fd, raw), true
 end
 
--- one float32 at the announced shape: a quantized index dequantized, or the
--- raw bits; refused when not finite, whatever the packing (a dequantized
--- value is a float read like any other); landed in fd (widened into f64, or
--- refused out_of_range outside fd's range, with -0 as +0)
-local function decodeFloat32(t: any, fd: any, shape: any, named: any): (any, boolean)
+-- readFloat32Bits reads one f32 at the announced shape: a quantized index
+-- held to its count, or the raw 32 bits (SPEC.md §4.3, §3.3)
+readFloat32Bits = function(t: any, shape: any): (number, boolean)
 	local bits: number
 	if shape.packing == 2 then
 		local index, ok = get(t.r, shape.bits)
 		if not ok or shape.count == nil or index > shape.count then
-			return nil, dmal(t)
+			return 0, dmal(t)
 		end
 		local normalized = Fl.fdiv(Fl.fromUint(index), Fl.fromUint(shape.count))
 		bits = Fl.fadd(Fl.fmul(normalized, shape.delta), shape.qmin)
 	else
 		local raw, ok = get(t.r, 32)
 		if not ok then
-			return nil, dmal(t)
+			return 0, dmal(t)
 		end
 		bits = raw
+	end
+	return bits, true
+end
+
+-- one float32 at the announced shape: a quantized index dequantized, or the
+-- raw bits; refused when not finite, whatever the packing (a dequantized
+-- value is a float read like any other); landed in fd (widened into f64, or
+-- refused out_of_range outside fd's range, with -0 as +0)
+local function decodeFloat32(t: any, fd: any, shape: any, named: any): (any, boolean)
+	local bits, ok = readFloat32Bits(t, shape)
+	if not ok then
+		return nil, false
 	end
 	if not V.finite32(bits) then
 		t.report.nonFinite += 1
