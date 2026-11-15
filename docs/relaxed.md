@@ -153,13 +153,8 @@ listed case that passes fails the leg until its line is removed.
   `tables-tool-cook-differential` too). Real fix: every cook writer zeroes
   the dead slots.
   The same slug relaxes the ten cook-write cases (the five rows, both orders)
-<<<<<<< HEAD
   of the conformance legs cpp, cs, dart, elixir, goose, lobster, luau,
-  moo and squirrel in `test/conformance/relaxed.txt`: each still writes
-=======
-  of the conformance legs cpp, cs, dart, go, elixir, goose, lobster, luau
-  and moo in `test/conformance/relaxed.txt`: each still writes
->>>>>>> 7d5ff2626cbd11cb7242a0386f3bc1e3e1d2894a
+  moo in `test/conformance/relaxed.txt`: each still writes
   the element defaults into dead counted slots (CI full 43656719730). C, JS
   (its ten cases pass and are gated again, 2026-11-15), Go and the tool are
   right. WIP: none.
