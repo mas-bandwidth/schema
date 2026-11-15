@@ -2220,8 +2220,11 @@ Where the leg reports it, `Read` reports bits consumed. Framing several
 objects in one buffer is not several `Read<T>` calls: use a top-level type
 whose fields are the objects, or the leg's bit-offset entry where it has one
 (§6.1), and the one end check runs once, after the last. The Dart `read<T>`
-and the JavaScript `Read<T>Flat` return a boolean only; they do not report
-bits consumed today. That is an open question for the owner, not changed here.
+and the JavaScript `Read<T>Flat` return a boolean only. Dart reads do not
+report bits consumed today. That is an open question for the owner, not
+changed here. Beside `Read<T>Flat`, `Read<T>FlatBits` returns the bits
+consumed on success and refuses as `Read<T>Flat` does; it is the framing
+entry and does not run the end-of-packet check.
 
 **Writes check what the declaration does not admit in every packet target, by the leg's own mechanism (§5.1).** A language verifies correctness the way that language verifies
 correctness: a debug-only assert where that is the language's idiom, a refusal
