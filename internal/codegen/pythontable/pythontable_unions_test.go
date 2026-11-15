@@ -222,11 +222,11 @@ func TestPythonVtUnionsNegativeControl(t *testing.T) {
 	}
 	const path = "unions/_schema/kind_union.py"
 	text := string(sabotaged[path])
-	const anchor = "w.varint(len(body))"
+	const anchor = "w.varint(len(payload))"
 	if !strings.Contains(text, anchor) {
 		t.Fatalf("the negative control's anchor %q is absent from %s", anchor, path)
 	}
-	sabotaged[path] = []byte(strings.Replace(text, anchor, "w.varint(len(body) + 1)", 1))
+	sabotaged[path] = []byte(strings.Replace(text, anchor, "w.varint(len(payload) + 1)", 1))
 	dir := t.TempDir()
 	writeTree(t, dir, sabotaged)
 	if err := os.WriteFile(filepath.Join(dir, "canonical.bin"), canonical, 0o644); err != nil {
