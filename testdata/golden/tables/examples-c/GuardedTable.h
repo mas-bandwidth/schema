@@ -4775,6 +4775,7 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip_body(tabledemo_table_messa
  int64_t ref;
   if(!tabledemo_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
+  if(entry->id>=UINT64_C(0xfffffffffffffffd))return 0;
   /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
      reference is bounded where the file form bounds it, so the bitset fits. */
   ref=entry-r->vocabulary->entries+1;
@@ -4811,7 +4812,7 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip(tabledemo_table_message_re
  /* a node reference: no fixed body holds one */
  case 15:
   if(!tabledemo_table_message_ref(r,&entry,0))return 0;
-  return entry==NULL || (entry->kind!=0 && tabledemo_table_message_skip_deeper(r,entry));
+  return entry==NULL || (entry->id<UINT64_C(0xfffffffffffffffd) && entry->kind!=0 && tabledemo_table_message_skip_deeper(r,entry));
  case 12:
   /* A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its length
      is inside the announced bound and its bytes are well-formed UTF-8 with no
