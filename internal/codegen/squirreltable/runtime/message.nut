@@ -19,6 +19,28 @@ local equalBytes = function(a, b) {
   return true;
 };
 
+// A SQUIRREL STRING IS IMMUTABLE: `a + b` copies both operands, so a per-byte
+// append copies the prefix each step. The validated bytes are joined pairwise
+// from one-byte strings, which copies O(n log n) bytes rather than O(n^2).
+local TEXT_BYTE = array(256);
+for (local i = 0; i < 256; i++) TEXT_BYTE[i] = format("%c", i);
+
+local joinText = null;
+joinText = function(b, lo, hi) {
+  local span = hi - lo;
+  if (span <= 4) {
+    if (span == 4) return (TEXT_BYTE[b[lo] & 0xff] + TEXT_BYTE[b[lo + 1] & 0xff]) +
+                          (TEXT_BYTE[b[lo + 2] & 0xff] + TEXT_BYTE[b[lo + 3] & 0xff]);
+    if (span == 3) return TEXT_BYTE[b[lo] & 0xff] + TEXT_BYTE[b[lo + 1] & 0xff] +
+                          TEXT_BYTE[b[lo + 2] & 0xff];
+    if (span == 2) return TEXT_BYTE[b[lo] & 0xff] + TEXT_BYTE[b[lo + 1] & 0xff];
+    if (span == 1) return TEXT_BYTE[b[lo] & 0xff];
+    return "";
+  }
+  local mid = lo + (span >> 1);
+  return joinText(b, lo, mid) + joinText(b, mid, hi);
+};
+
 local readU32 = function(b, at) {
   return (b[at]&0xff)|((b[at+1]&0xff)<<8)|((b[at+2]&0xff)<<16)|((b[at+3]&0xff)<<24);
 };
@@ -27,17 +49,75 @@ local readU64 = function(b, at) {
   local hi = (b[at+4]&0xff) | ((b[at+5]&0xff)<<8) | ((b[at+6]&0xff)<<16) | ((b[at+7]&0xff)<<24);
   return lo | (hi << 32);
 };
+// LEB128 on the announcement's bytes (docs/SPEC-TABLES.md §3): canonical,
+// seven value bits a byte, at most ten bytes, and the tenth byte carries only
+// the sixty-fourth value bit. The value is kept in all sixty-four bits, so a
+// value at or above 2^63 is negative in the signed local and every caller
+// below refuses it wherever it is out of range.
 local readLeb = function(b, state) {
   local value = 0, shift = 0, start = state.at;
   for (local i=0; i<10; i++) {
     if (state.at >= state.end) { state.bad=true; state.at=start; return 0; }
     local x=b[state.at]&0xff; state.at++;
     if (i==9 && x>1) { state.bad=true; state.at=start; return 0; }
-    if (i<9) value = value | ((x&0x7f)<<shift);
+    value = value | ((x&0x7f)<<shift);
     if ((x&0x80)==0) { if(i>0 && x==0){state.bad=true;state.at=start;return 0;} return value; }
     shift += 7;
   }
   state.bad=true; state.at=start; return 0;
+};
+// THE 128-BIT VALUE IS TWO 64-BIT LANES [lo, hi], the low half first
+// (docs/PORT-SQUIRREL.md, 64-BIT AND 128-BIT INTEGERS): these are the wrapping
+// lane operations the message form needs, composed from 32-bit halves so no
+// SQInteger sum overflows.
+local MIN64 = 0x8000000000000000;
+local ucmp64 = function(x, y) {
+  local ax = x ^ MIN64, ay = y ^ MIN64;
+  if (ax < ay) return -1;
+  if (ax > ay) return 1;
+  return 0;
+};
+local sub64 = function(a, b) {
+  local lo = (a & 0xffffffff) - (b & 0xffffffff);
+  local borrow = lo < 0 ? 1 : 0;
+  local hi = ((a >>> 32) - (b >>> 32) - borrow) & 0xffffffff;
+  return (hi << 32) | (lo & 0xffffffff);
+};
+local add64 = function(a, b) {
+  local lo = (a & 0xffffffff) + (b & 0xffffffff);
+  local hi = ((a >>> 32) + (b >>> 32) + (lo >>> 32)) & 0xffffffff;
+  return (hi << 32) | (lo & 0xffffffff);
+};
+local u128sub = function(a, b) {
+  local lo = sub64(a[0], b[0]);
+  local br = ucmp64(a[0], b[0]) < 0 ? 1 : 0;
+  return [lo, sub64(sub64(a[1], b[1]), br)];
+};
+local u128add = function(a, b) {
+  local lo = add64(a[0], b[0]);
+  local carry = ucmp64(a[0], lo) > 0 ? 1 : 0;
+  return [lo, add64(add64(a[1], b[1]), carry)];
+};
+local u128cmp = function(a, b) {
+  local h = ucmp64(a[1], b[1]);
+  if (h != 0) return h;
+  return ucmp64(a[0], b[0]);
+};
+local i128cmp = function(a, b) {
+  if (a[1] < b[1]) return -1;
+  if (a[1] > b[1]) return 1;
+  return ucmp64(a[0], b[0]);
+};
+local bitLen64 = function(x) {
+  if (x == 0) return 0;
+  if (x < 0) return 64;
+  local n = 0;
+  while (x > 0) { n++; x = x >>> 1; }
+  return n;
+};
+local bitLen128 = function(x) {
+  if (x[1] != 0) return 64 + bitLen64(x[1]);
+  return bitLen64(x[0]);
 };
 local messageNarrowF32, messageWidenF32, f32;
 local parseShape;
@@ -50,7 +130,7 @@ parseShape = function(b, state, kind) {
     if(state.at>=state.end){state.bad=true;return s;}
     s.Packing=b[state.at]&0xff;state.at++;
     if(s.Packing==0)return s;
-    if(s.Packing==1&&kind!=10){local bits=readLeb(b,state);if(state.bad||bits>s.Bits){state.bad=true;return s;}s.Bits=bits;if(kind>=18){if(state.at+16>state.end){state.bad=true;return s;}s.Base=readU64(b,state.at);state.at+=16;}else{local raw=readLeb(b,state);if(state.bad)return s;s.Base=(kind>=2&&kind<=5)?((raw>>1)^(-(raw&1))):raw;}return s;}
+    if(s.Packing==1&&kind!=10){local bits=readLeb(b,state);if(state.bad||bits<0||bits>s.Bits){state.bad=true;return s;}s.Bits=bits;if(kind>=18){if(state.at+16>state.end){state.bad=true;return s;}if(kind==18||kind==19||kind==24||kind==29)s.Base=[readU64(b,state.at),readU64(b,state.at+8)];else s.Base=readU64(b,state.at);state.at+=16;}else{local raw=readLeb(b,state);if(state.bad)return s;s.Base=(kind>=2&&kind<=5)?((raw>>>1)^(-(raw&1))):raw;}return s;}
     if(s.Packing==2&&kind==10){
       if(state.at+12>state.end){state.bad=true;return s;}
       local lo=messageWidenF32(readU32(b,state.at)),hi=messageWidenF32(readU32(b,state.at+4)),res=messageWidenF32(readU32(b,state.at+8));state.at+=12;
@@ -67,8 +147,8 @@ parseShape = function(b, state, kind) {
     state.bad=true;return s;
   }
   if(kind==11)return s;
-  if(kind==12){s.Max=readLeb(b,state);if(state.bad||s.Max>2147483647){state.bad=true;return s;}s.Bits=0;local m=s.Max;while(m>0){s.Bits++;m=m>>1;}return s;}
-  if(kind==14||kind==16){if(kind==14)s.Min=readLeb(b,state);s.Max=readLeb(b,state);if(state.bad||s.Max>4294967295||s.Min>s.Max||state.at>=state.end){state.bad=true;return s;}s.Bits=0;local m=s.Max-s.Min;while(m>0){s.Bits++;m=m>>1;}s.ElemKind=b[state.at]&0xff;state.at++;if(s.ElemKind>32||s.ElemKind==12){state.bad=true;return s;}s.Element=parseShape(b,state,s.ElemKind);return s;}
+  if(kind==12){s.Max=readLeb(b,state);if(state.bad||s.Max<0||s.Max>2147483647){state.bad=true;return s;}s.Bits=0;local m=s.Max;while(m>0){s.Bits++;m=m>>1;}return s;}
+  if(kind==14||kind==16){if(kind==14)s.Min=readLeb(b,state);s.Max=readLeb(b,state);if(state.bad||s.Min<0||s.Max<0||s.Max>4294967295||s.Min>s.Max||state.at>=state.end){state.bad=true;return s;}s.Bits=0;local m=s.Max-s.Min;while(m>0){s.Bits++;m=m>>1;}s.ElemKind=b[state.at]&0xff;state.at++;if(s.ElemKind>32||s.ElemKind==12){state.bad=true;return s;}s.Element=parseShape(b,state,s.ElemKind);return s;}
   if(kind==0||kind==13||kind==15||kind==17||kind==30||kind==31||kind==32){return s;}
   state.bad=true;return s;
 };
@@ -98,7 +178,7 @@ skipFileKind = function(b,state,kind) {
   switch(kind){case 1:case 2:case 6:case 20:case 25:width=1;break;case 3:case 7:case 21:case 26:width=2;break;case 4:case 8:case 10:case 22:case 27:width=4;break;case 5:case 9:case 11:case 23:case 28:width=8;break;case 18:case 19:case 24:case 29:width=16;break;}
   if(width>0){if(state.at+width>state.end){state.bad=true;return;}state.at+=width;return;}
   if(kind==17 || kind==30){readLeb(b,state);return;}
-  if(kind==12 || kind==13 || kind==14 || kind==16 || kind==31 || kind==32){local n=readLeb(b,state);if(state.bad||n>state.end-state.at){state.bad=true;return;}state.at+=n;return;}
+  if(kind==12 || kind==13 || kind==14 || kind==16 || kind==31 || kind==32){local n=readLeb(b,state);if(state.bad||n<0||n>state.end-state.at){state.bad=true;return;}state.at+=n;return;}
   if(kind==15){local tag=readLeb(b,state);if(state.bad||tag==0)return;if(state.at>=state.end){state.bad=true;return;}local arm=b[state.at]&0xff;state.at++;skipFileKind(b,state,arm);return;}
   state.bad=true;
 };
@@ -130,15 +210,15 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
   local state={b=bytes,at=1,end=bodyEnd,bad=false}, versionCount=0, wordsCount=0, words=null, build=0;
   for(;;){
     local ref=readLeb(bytes,state);if(state.bad){break;}if(ref==0)break;
-    if(ref>ids.len()||state.at>=state.end){state.bad=true;break;}
+    if(ref<0||ref>ids.len()||state.at>=state.end){state.bad=true;break;}
     local id=ids[ref-1],kind=bytes[state.at]&0xff;state.at++;
     if(id==0xfffffffffffffffe){if(kind!=9||state.at+8>state.end){state.bad=true;break;}build=readU64(bytes,state.at);state.at+=8;versionCount++;}
     else if(id==0xfffffffffffffffd){
       if(kind!=14){state.bad=true;break;}
-      local n=readLeb(bytes,state);if(state.bad||n>state.end-state.at){state.bad=true;break;}
+      local n=readLeb(bytes,state);if(state.bad||n<0||n>state.end-state.at){state.bad=true;break;}
       local fieldEnd=state.at+n;
       if(state.at>=fieldEnd||(bytes[state.at]&0xff)!=6){state.bad=true;break;}state.at++;
-      local wn=readLeb(bytes,state);if(state.bad||wn>fieldEnd-state.at||state.at+wn!=fieldEnd){state.bad=true;break;}
+      local wn=readLeb(bytes,state);if(state.bad||wn<0||wn>fieldEnd-state.at||state.at+wn!=fieldEnd){state.bad=true;break;}
       if(wn>maxBytes)return refuseAnnouncement(v,report,"vocabulary_too_large");
       words=blob(wn);for(local j=0;j<wn;j++)words[j]=bytes[state.at+j]&0xff;
       state.at=fieldEnd;wordsCount++;
@@ -169,9 +249,22 @@ local newWriter = function(buffer, measuring) {
   return { b = buffer, bits = 0, measuring = measuring, bad = false,
     owner = null, field = null, reason = null };
 };
-local put = function(w, value, n) {
-  if (n < 0 || n > 64) { w.bad = true; return; }
+local put, get;
+put = function(w, value, n) {
+  if (n < 0 || n > 128) { w.bad = true; return; }
   if (n == 0) return;
+  if (n > 64) {
+    // A 128-BIT VALUE IS ITS TWO 64-BIT LANES, low half first
+    if (typeof value != "array") { w.bad = true; return; }
+    put(w, value[0], 64);
+    put(w, value[1], n - 64);
+    return;
+  }
+  if (typeof value == "array") {
+    // A RANGED 128-BIT OFFSET THAT FITS 64 BITS STILL ARRIVES AS THE PAIR
+    if (value[1] != 0) { w.bad = true; return; }
+    value = value[0];
+  }
   local start = w.bits; w.bits += n;
   if (w.measuring) return;
   if (w.bits > w.b.len() * 8) { w.bad = true; return; }
@@ -182,8 +275,14 @@ local put = function(w, value, n) {
     else w.b[at] = (w.b[at] & (~mask)) & 0xff;
   }
 };
-local get = function(r, n) {
-  if (n < 0 || n > 64 || r.bits + n > r.b.len() * 8) { r.bad = true; return 0; }
+get = function(r, n) {
+  if (n < 0 || n > 128 || r.bits + n > r.b.len() * 8) { r.bad = true; return n > 64 ? [0, 0] : 0; }
+  if (n > 64) {
+    // A 128-BIT VALUE IS ITS TWO 64-BIT LANES, low half first
+    local lo = get(r, 64);
+    local hi = get(r, n - 64);
+    return [lo, hi];
+  }
   local value = 0;
   for (local i = 0; i < n; i++) {
     local at = (r.bits + i) / 8, bit = (r.bits + i) % 8;
@@ -270,6 +369,44 @@ local messageTextOk = function(b, at, n) {
   }
   return true;
 };
+// A WRITE REFUSES A VALUE ITS DECLARATION DOES NOT ADMIT (docs/SPEC.md §5.1;
+// Squirrel has no assert, so in every build): invalid_value: <Owner>.<field>,
+// never a mask, a clamp or a substitute, and nothing raised
+local refuseValue = function(w) {
+  local where = (w.owner == null ? "" : w.owner + ".") + (w.field == null ? "" : w.field);
+  w.reason = "invalid_value: " + where; w.bad = true;
+};
+local isNumber = function(x) { local t = typeof x; return t == "integer" || t == "float"; };
+local isRecord = function(x) { local t = typeof x; return t == "instance" || t == "table"; };
+// an integer within its declared range (a uint64 compares unsigned) and
+// within the width its storage carries (bits(N)'s N, else its kind's bytes)
+local intAdmits = function(fd, x) {
+  if (fd.width > 8) {
+    // A 128-BIT VALUE IS ITS TWO 64-BIT INTEGER LANES, low half first, and a
+    // ranged one compares over the pair (signed or unsigned as declared)
+    if (typeof x != "array" || x.len() != 2 || typeof x[0] != "integer" || typeof x[1] != "integer") {
+      return false;
+    }
+    if (typeof fd.lo == "array" && typeof fd.hi == "array") {
+      local cmp = fd.signed ? i128cmp : u128cmp;
+      if (cmp(x, fd.lo) < 0 || cmp(x, fd.hi) > 0) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (typeof x != "integer") return false;
+  if (fd.lo != null && fd.hi != null) {
+    if (fd.kind == 9) {
+      local MIN = 0x8000000000000000;
+      if ((x ^ MIN) < (fd.lo ^ MIN) || (x ^ MIN) > (fd.hi ^ MIN)) return false;
+    } else if (x < fd.lo || x > fd.hi) return false;
+  }
+  local n = fd.bits > 0 ? fd.bits : fd.width * 8;
+  if (n >= 64) return true;
+  if (fd.signed) return x >= -(1 << (n - 1)) && x < (1 << (n - 1));
+  return x >= 0 && x < (1 << n);
+};
 local reservedId = function(id) {
   return id == 0xfffffffffffffffd || id == 0xfffffffffffffffe || id == 0xffffffffffffffff;
 };
@@ -339,45 +476,58 @@ local findSlot = function(T, id) {
 local numberBits = function(fd) {
   if (fd.shape == "bool") return 1;
   if (fd.shape == "flags") return fd.flagbits;
-  if (fd.lo != null && fd.hi != null) return bitCount(fd.hi - fd.lo);
+  if (fd.lo != null && fd.hi != null) {
+    if (typeof fd.lo == "array") return bitLen128(u128sub(fd.hi, fd.lo));
+    return bitCount(fd.hi - fd.lo);
+  }
   if (fd.bits > 0) return fd.bits;
   return fd.width * 8;
 };
 local defaultValue = function(fd, value, owner) {
   if (("optional" in fd) && fd.optional) return !owner[fd.member + "Present"];
   if (fd.shape == "str") return value == fd.def;
+  // a value of the wrong type is never a default: the write refuses it
   if (fd.shape == "bytes") {
+    if (typeof value != "blob" && typeof value != "string") return false;
     if (value.len() != fd.def.len()) return false;
     for (local i = 0; i < value.len(); i++) if (value[i] != fd.def[i]) return false;
     return true;
   }
   if (fd.shape == "arr") {
+    if (typeof value != "array") return false;
     if ((("list" in fd) && fd.list) || (("counted" in fd) && fd.counted)) return value.len() == 0;
     if (fd.elem.shape == "tab" || fd.elem.shape == "union") return false;
     // a float element compares its BITS (docs/SPEC-TABLES.md §3.3): a -0
     // element under a +0 default rides the array
     if (fd.elem.shape == "float") {
       foreach (x in value) {
+        if (!isNumber(x)) return false;
         if (fd.elem.f32) { if (messageNarrowF32(x.tofloat()) != messageNarrowF32(fd.elem.def.tofloat())) return false; }
         else if (castf2i(x.tofloat()) != castf2i(fd.elem.def.tofloat())) return false;
       }
       return true;
     }
-    for (local i = 0; i < value.len(); i++) if (value[i] != fd.elem.def) return false;
+    for (local i = 0; i < value.len(); i++) {
+      if (typeof fd.elem.def == "integer" && typeof value[i] != "integer") return false;
+      if (value[i] != fd.elem.def) return false;
+    }
     return true;
   }
-  if (fd.shape == "union") return value.Type == 0;
+  if (fd.shape == "union") return isRecord(value) && ("Type" in value) && value.Type == 0;
   if (fd.shape == "ptr" || fd.shape == "sblob" || fd.shape == "bblob") return value == null;
   if (fd.shape == "tab") return false;
   // ELISION COMPARES A FLOAT'S BITS (docs/SPEC-TABLES.md §3.3): -0 under a +0
   // default rides, and a float32 compares at float32
   if (fd.shape == "float") {
+    if (!isNumber(value)) return false;
     // a COMPRESSED float compares by value at float32, as the engine's
     // cellIsDefault does: its -0 is +0 (§3.3), so it elides as +0 does
     if (fd.f32 && fd.fmin != null) return f32(value) == f32(fd.def);
     if (fd.f32) return messageNarrowF32(value.tofloat()) == messageNarrowF32(fd.def.tofloat());
     return castf2i(value.tofloat()) == castf2i(fd.def.tofloat());
   }
+  // an integer default is never matched by a float: the write refuses it
+  if (typeof fd.def == "integer" && typeof value != "integer") return false;
   return value == fd.def;
 };
 
@@ -390,10 +540,16 @@ local readBatch;
 
 local writeScalar = function(T, w, fd, value) {
   local kind = fd.kind, bits = numberBits(fd);
-  if (kind == 1) { put(w, value ? 1 : 0, 1); return; }
+  if (kind == 1) {
+    if (typeof value != "bool") { refuseValue(w); return; }
+    put(w, value ? 1 : 0, 1); return;
+  }
   if (fd.shape == "enum") {
-    local ref = 0;
-    if (value != null) foreach (p in fd.variants) {
+    // null and None are no variant (reference 0); any other name is a
+    // variant's or refused
+    if (value != null && typeof value != "string") { refuseValue(w); return; }
+    local ref = 0, named = value == null || value == "None";
+    if (!named) foreach (p in fd.variants) {
       if (p[0] == value) {
         if (p.len() > 2 && p[2]) {
           // A STRICT WRITE REFUSES A VALUE HOLDING A DEPRECATED VARIANT
@@ -402,20 +558,25 @@ local writeScalar = function(T, w, fd, value) {
           w.reason = "invalid_value: " + where + " names the deprecated variant " + value;
           w.bad = true; return;
         }
-        ref = findSlot(T, p[1]);
+        ref = findSlot(T, p[1]); named = true;
         break;
       }
     }
+    if (!named) { refuseValue(w); return; }
     put(w, ref, T.TableMessageRefBitsHere); return;
   }
   if (fd.shape == "float") {
     // A NaN OR AN INFINITY IS REFUSED BEFORE THE QUANTIZER RUNS, never
     // oor (docs/SPEC-TABLES.md §3.3), and a float32 must stay finite at
     // float32: the write refuses, non_finite_float: <Owner>.<field>
+    if (!isNumber(value)) { refuseValue(w); return; }
     value = value.tofloat();
     local finite = fd.f32 ? (messageNarrowF32(value) & 0x7f800000) != 0x7f800000
                           : (castf2i(value) & 0x7ff0000000000000) != 0x7ff0000000000000;
     if (!finite) { w.reason = "non_finite_float: " + fd.nf; w.bad = true; return; }
+    // a finite value off a compressed or ranged float's declared range is
+    // refused before the quantizer runs (docs/SPEC-TABLES.md §3.3)
+    if (fd.fmin != null && (value < fd.fmin || value > fd.fmax)) { refuseValue(w); return; }
     if (fd.f32 && fd.qcount > 0) {
       // ir.TableMessageQuantize, BIT FOR BIT: every operation rounds to
       // float32 as Go's explicit conversions do; a float32 add, subtract,
@@ -431,8 +592,12 @@ local writeScalar = function(T, w, fd, value) {
     else put(w, castf2i(value), 64);
     return;
   }
+  if (fd.shape == "int" && !intAdmits(fd, value)) { refuseValue(w); return; }
   local raw = value;
-  if (fd.shape == "int" && fd.lo != null) raw = value - fd.lo;
+  if (fd.shape == "int" && fd.lo != null) {
+    if (typeof fd.lo == "array") raw = u128sub(value, fd.lo);
+    else raw = value - fd.lo;
+  }
   put(w, raw, bits);
 };
 
@@ -469,17 +634,45 @@ local readScalar = function(r, T, v, fd, shape) {
   }
   local bits = shape.Bits, x = get(r, bits);
   if (r.bad) return 0;
-  if (shape.Packing == 1) x += shape.Base;
+  local wideField = fd.width == 16;
+  // A RANGED 128-BIT OFFSET THAT FITS 64 BITS STILL ARRIVES AS THE PAIR
+  if (wideField && typeof x != "array") x = [x, 0];
+  if (shape.Packing == 1) {
+    if (typeof shape.Base == "array") {
+      if (typeof x != "array") x = [x, 0];
+      x = u128add(x, shape.Base);
+    } else if (typeof x == "array") {
+      // a narrower writer's base is one lane; carry it into the low half
+      x = u128add(x, [shape.Base, (fd.signed && shape.Base < 0) ? 0xffffffffffffffff : 0]);
+    } else x += shape.Base;
+  }
   else {
     if (shape.Kind>=2 && shape.Kind<=5) {local sw=8<<(shape.Kind-2);if(sw<64 && (x&(1<<(sw-1)))!=0)x-=(1<<sw);}
   }
+  // A NARROWER WRITER WIDENED INTO A 128-BIT DECLARATION is extended to the
+  // declaration's signedness, exactly as the Go engine's sixteen-byte widening
+  if (wideField && typeof x != "array") x = [x, (fd.signed && x < 0) ? 0xffffffffffffffff : 0];
   // A VALUE OUTSIDE THE READER'S RANGE REFUSES out_of_range (docs/SPEC-TABLES.md
   // §3.3, §6.5): never a clamp
   if (fd.shape == "int" && fd.lo != null && fd.hi != null) {
-    if (fd.kind == 9) {
+    if (typeof fd.lo == "array") {
+      local cmp = fd.signed ? i128cmp : u128cmp;
+      if (cmp(x, fd.lo) < 0 || cmp(x, fd.hi) > 0) { refuseRead(r, "out_of_range"); return [0, 0]; }
+    } else if (fd.kind == 9) {
       local MIN = 0x8000000000000000;
       if ((x ^ MIN) < (fd.lo ^ MIN) || (x ^ MIN) > (fd.hi ^ MIN)) { refuseRead(r, "out_of_range"); return 0; }
     } else if (x < fd.lo || x > fd.hi) { refuseRead(r, "out_of_range"); return 0; }
+  }
+  // A plain integer has the domain of its declared kind even when the
+  // announcing writer supplies a wider ranged packing (§3.3). The sender's
+  // base and offset cannot widen the receiver's storage type.
+  if (fd.shape == "int") {
+    if ((fd.kind == 2 && (x < -128 || x > 127)) ||
+        (fd.kind == 3 && (x < -32768 || x > 32767)) ||
+        (fd.kind == 4 && (x < -2147483648 || x > 2147483647)) ||
+        (fd.kind == 6 && (x < 0 || x > 255)) ||
+        (fd.kind == 7 && (x < 0 || x > 65535)) ||
+        (fd.kind == 8 && (x < 0 || x > 4294967295)) ) { refuseRead(r, "out_of_range"); return 0; }
   }
   // bits(N) holds N bits: a value past them is outside the reader's range
   if (fd.shape == "int" && fd.bits > 0 && fd.bits < 64 && (x < 0 || x > (1 << fd.bits) - 1)) { refuseRead(r, "out_of_range"); return 0; }
@@ -489,17 +682,27 @@ local readScalar = function(r, T, v, fd, shape) {
 writePayload = function(T, w, fd, value, depth) {
   if (depth > 128) { w.bad = true; return; }
   if (fd.shape == "str") {
-    local n = value.len(); if (n > fd.bound) { w.bad = true; return; } put(w, n, bitCount(fd.bound)); alignWrite(w);
-    for (local i = 0; i < n; i++) put(w, value[i] & 0xff, 8); return;
+    // TEXT IS WELL-FORMED UTF-8 WITH NO ZERO BYTE (§5.1 row 8), the rule
+    // the reader holds it to
+    if (typeof value != "string") { refuseValue(w); return; }
+    local n = value.len(); if (n > fd.bound) { w.bad = true; return; }
+    local octets = array(n); for (local i = 0; i < n; i++) octets[i] = value[i] & 0xff;
+    if (!messageTextOk(octets, 0, n)) { refuseValue(w); return; }
+    put(w, n, bitCount(fd.bound)); alignWrite(w);
+    for (local i = 0; i < n; i++) put(w, octets[i], 8); return;
   }
   if (fd.shape == "bytes") {
+    if (typeof value != "blob" && typeof value != "string") { refuseValue(w); return; }
     local n = value.len(); if (n > fd.bound) { w.bad = true; return; } put(w, n, bitCount(fd.bound)); alignWrite(w);
     for (local i = 0; i < n; i++) put(w, value[i] & 0xff, 8); return;
   }
   if (fd.shape == "tab") { writeBody(T, w, T.Descriptors[fd.table], value, depth + 1); return; }
   if (fd.shape == "union") {
+    // a tag is 0 (no arm) or an arm's
+    if (!isRecord(value) || !("Type" in value) || typeof value.Type != "integer") { refuseValue(w); return; }
     local ud = T[fd.table + "Descriptor"], arm = null;
     foreach (a in ud.arms) if (a.tag == value.Type) arm = a;
+    if (arm == null && value.Type != 0) { refuseValue(w); return; }
     if (arm == null) { put(w, 0, T.TableMessageRefBitsHere); return; }
     local ref = findSlot(T, arm.id); put(w, ref, T.TableMessageRefBitsHere);
     if (arm.payload != null) writePayload(T, w, arm.payload, value[arm.member], depth + 1);
@@ -507,6 +710,7 @@ writePayload = function(T, w, fd, value, depth) {
   }
   if (fd.shape == "arr") {
     // §3.3: kind 14 bytes count/alignment/raw octets; kind 16 count then key/element pairs.
+    if (typeof value != "array") { refuseValue(w); return; }
     local n = value.len();
     if (n < fd.min || n > fd.bound) { w.bad = true; return; }
     local keyed = (fd.keyvariants != null), present = 0;
@@ -556,7 +760,7 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     local at=r.bits/8;
     if(!messageTextOk(r.b,at,n)){r.bad=true;return;}
     if(n>fd.bound){refuseRead(r,"length_over_bound");return;}
-    local s="";for(local i=0;i<n;i++)s+=format("%c",r.b[at+i]);r.bits+=n*8;
+    local s=joinText(r.b,at,at+n);r.bits+=n*8;
     owner[member]=s;return;
   }
   if (fd.shape == "bytes") {
@@ -614,6 +818,7 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
 
 writeBody = function(T, w, d, value, depth) {
   if(depth>128){w.bad=true;return;}
+  if(!isRecord(value)){refuseValue(w);return;}
   w.owner = d.name;
   foreach(fd in d.fields){
     if(!(fd.member in value))continue;
@@ -667,9 +872,13 @@ local writeBatch = function(T, root, values, out, measuring, report) {
   if(values.len()>256)return refuse(report,"batch_too_large");
   local d=T.Descriptors[root];
   if(d==null||!d.fixed)return refuse(report,"message_form_plain_table:"+root);
-  local w=newWriter(out,measuring);put(w,2,8);put(w,values.len()-1,8);
-
-  foreach(v in values){writeBody(T,w,d,v,0);if(w.bad){if(report!=null){report.bodyDamaged<-true;report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}}
+  // EVERY VALUE IS JUDGED BEFORE THE FIRST BIT IS PUT (docs/SPEC.md §5.1): a
+  // save walks the batch as its measure does first, so a refusal writes nothing
+  local w=null;
+  foreach(m in (measuring?[true]:[true,false])){
+    w=newWriter(m?null:out,m);put(w,2,8);put(w,values.len()-1,8);
+    foreach(v in values){writeBody(T,w,d,v,0);if(w.bad){if(report!=null){report.bodyDamaged<-true;report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}}
+  }
   local pad=(-w.bits)&7;put(w,0,pad);
   if(w.bad){if(report!=null){report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}
   return (w.bits+7)/8;

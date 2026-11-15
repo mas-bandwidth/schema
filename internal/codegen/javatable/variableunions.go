@@ -77,9 +77,11 @@ func unionMembers(un *ir.Union) []string {
 func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 	st := variableUnionStruct(un)
 	mem := unionMembers(un)
+	_, graphIndex := variableGraphTypes(u)
 	var b strings.Builder
 	b.WriteString("import java.nio.charset.StandardCharsets;\nimport java.util.ArrayList;\nimport java.util.List;\n")
 	fmt.Fprintf(&b, "public final class %sVariable {private %sVariable(){}\n", un.Name, un.Name)
+	fmt.Fprintf(&b, "    static final int GRAPH_KIND = %d;\n", graphIndex[un.Name])
 	writeVariableMapHelpers(&b, u, st)
 	writeVariableKeyedHelpers(&b, u, st)
 	b.WriteString("    public static final class Value {public int tag;\n")
@@ -94,17 +96,36 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		}
 	}
 	b.WriteString("    }\n")
-	b.WriteString("    static boolean buildGraph(TableVariable.NodeGraph g,Value v){if(v==null)return false;switch(v.tag){case 0:return true;\n")
+	b.WriteString("    static boolean graphEnter(TableVariable.NodeGraph g, Value v) {\n")
+	b.WriteString("        if (v == null) { return false; }\n")
+	b.WriteString("        switch (v.tag) {\n")
+	b.WriteString("            case 0: return true;\n")
 	for i, arm := range un.Variants {
-		fmt.Fprintf(&b, "        case %d:{\n", i+1)
+		fmt.Fprintf(&b, "            case %d: {\n", i+1)
+		if !arm.Void() {
+			b.WriteString("                g.push(v, GRAPH_KIND, 0, 0, null);\n")
+		}
+		b.WriteString("                return true;\n")
+		b.WriteString("            }\n")
+	}
+	b.WriteString("            default: return false;\n")
+	b.WriteString("        }\n")
+	b.WriteString("    }\n")
+	b.WriteString("    static boolean graphField(TableVariable.NodeGraph g, Value v, int field, int index) {\n")
+	b.WriteString("        switch (v.tag) {\n")
+	for i, arm := range un.Variants {
+		fmt.Fprintf(&b, "            case %d: {\n", i+1)
 		if !arm.Void() {
 			one := *arm.F
 			one.Name = mem[i]
-			writeVariableGraphField(&b, &one)
+			writeVariableGraphFieldStep(&b, st, &one, 0)
 		}
-		b.WriteString("        return true;}\n")
+		b.WriteString("                return true;\n")
+		b.WriteString("            }\n")
 	}
-	b.WriteString("        default:return false;}}\n")
+	b.WriteString("            default: return true;\n")
+	b.WriteString("        }\n")
+	b.WriteString("    }\n")
 	b.WriteString("    static void resolveNodes(Value v,TableVariable.NodeTable nt,Object root,long rootTypeId,TableVariable.Report report){if(v==null)return;switch(v.tag){\n")
 	for i, arm := range un.Variants {
 		if !arm.Void() {

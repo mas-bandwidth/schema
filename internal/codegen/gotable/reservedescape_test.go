@@ -73,6 +73,34 @@ fixed table func {
 const reservedRoundTripTest = `package probe
 import("bytes"; "encoding/json"; "testing";"encoding/base64")
 
+func rootForm1Measure(value *func_) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !func_SaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func rootForm1Save(value *func_, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !func_SaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func func_Form1(value *func_, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -98,6 +126,18 @@ func func_Form1(value *func_, data []byte, report *TableReport) bool {
 		return false
 	}
 	return true
+}
+
+func rootForm1Text(value *func_) (string, error) {
+	n := rootForm1Measure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	b := make([]byte, n)
+	if rootForm1Save(value, b) != n {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(b), nil
 }
 
 func func_Form1Text(text string, report *TableReport) (*func_, error) {
@@ -151,16 +191,16 @@ func TestReservedRoundTrip(t *testing.T) {
  var v func_
  fill(&v)
  // binary
- n := func_Measure(&v)
+ n := rootForm1Measure(&v)
  if n <= 0 { t.Fatalf("measure %d", n) }
  wire := make([]byte, n)
- if func_Save(&v, wire) != n { t.Fatal("save") }
+ if rootForm1Save(&v, wire) != n { t.Fatal("save") }
  var got func_
  var r TableReport
  if !func_Form1(&got, wire, &r) || r.Err() != nil { t.Fatalf("load %+v", r) }
  same(t, "binary", &v, &got)
  // base64
- text, err := func_SaveText(&v)
+ text, err := rootForm1Text(&v)
  if err != nil { t.Fatalf("SaveText %v", err) }
  back, err := func_Form1Text(text, nil)
  if err != nil { t.Fatalf("LoadText %v", err) }

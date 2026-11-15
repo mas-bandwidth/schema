@@ -203,8 +203,6 @@ build/tables-generated/vnum/VNEW_uint_widenBlock.h
 build/tables-generated/vnum/VNEW_uint_widenTable.h
 build/tables-generated/vnum/VNEW_unknown_censusBlock.h
 build/tables-generated/vnum/VNEW_unknown_censusTable.h
-build/tables-generated/vnum/VNEW_wstring_growBlock.h
-build/tables-generated/vnum/VNEW_wstring_growTable.h
 build/tables-generated/vnum/VOLD_array_bounded_growBlock.h
 build/tables-generated/vnum/VOLD_array_bounded_growTable.h
 build/tables-generated/vnum/VOLD_array_elem_widenBlock.h
@@ -245,8 +243,6 @@ build/tables-generated/vnum/VOLD_uint_widenBlock.h
 build/tables-generated/vnum/VOLD_uint_widenTable.h
 build/tables-generated/vnum/VOLD_unknown_censusBlock.h
 build/tables-generated/vnum/VOLD_unknown_censusTable.h
-build/tables-generated/vnum/VOLD_wstring_growBlock.h
-build/tables-generated/vnum/VOLD_wstring_growTable.h
 build/tables-generated/vocab/VocabBlock.h
 build/tables-generated/vocab/VocabTable.h
 build/tables-generated/vocab9/Vocab9Block.h
@@ -275,12 +271,6 @@ build/tables-generated/w1/W1Block.h
 build/tables-generated/w1/W1Table.h
 build/tables-generated/w2/W2Block.h
 build/tables-generated/w2/W2Table.h
-build/tables-generated/wide/CaptionBlock.h
-build/tables-generated/wide/CaptionTable.h
-build/tables-generated/wide/WideView.cpp
-build/wide-generated/CaptionBlock.h
-build/wide-generated/CaptionTable.h
-build/wide-generated/WideView.cpp
 generated/bench/paired/cpp/BenchTable.h
 generated/bench/paired/cpp/FixedTableTable.h
 generated/bench/tables/cpp/BenchTableBlock.h

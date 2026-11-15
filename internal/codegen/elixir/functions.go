@@ -1287,7 +1287,7 @@ func (g *gen) claimHelper(name string, f *ir.Field) bool {
 	if prev, ok := g.helperPairs[name]; ok {
 		if prev != pair {
 			if g.err == nil {
-				g.err = fmt.Errorf("Elixir loop helper %s is claimed by both %s.%s and %s.%s", name, prev.owner, prev.field, pair.owner, pair.field)
+				g.err = fmt.Errorf("elixir loop helper %s is claimed by both %s.%s and %s.%s", name, prev.owner, prev.field, pair.owner, pair.field)
 			}
 			return false
 		}

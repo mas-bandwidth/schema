@@ -1488,7 +1488,8 @@ namespace Blockdemo
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
                 if (f.Kind == 12 && !f.TextList)
                 {
-                    if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value, f)))) { return false; }
+                    // the text writer WRITES a zero byte, spelled \u0000 (§16.3);
+                    // WriteString refuses ill-formed UTF-8 itself (§16.14 W0)
                     WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
                     return true;
                 }
@@ -2050,7 +2051,23 @@ namespace Blockdemo
             {
                 input.Bad = true;
                 input.Report.Reason = reason + ": " + (input.TextField ?? "<root>");
+                // A NAMED REFUSAL IS THE PUBLIC VERDICT (docs/SPEC-TABLES.md §16.2): a
+                // changed kind, an out-of-range value, a count or length past its
+                // bound, or text that cannot be stored refuses the load. The rest of
+                // the walk's failures are damage.
+                if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero")
+                {
+                    input.Report.Refused = true;
+                }
                 return false;
+            }
+            // THE REPORT CARRIES THE READ'S ANSWER (docs/SPEC-TABLES.md §16.2): a
+            // refusal names itself, damage names itself, and a read is Ok. The return
+            // value is the same answer, so a caller reading either one agrees.
+            static bool TextVerdict(ref In input, TableWire.Verdict verdict)
+            {
+                input.Report.Verdict = verdict;
+                return verdict == TableWire.Verdict.Ok;
             }
             // A decoded string body for the base64 and timestamp readers
             // (docs/SPEC-TABLES.md §16.2): the JSON layer decides FIRST, so a raw byte
@@ -2342,6 +2359,10 @@ namespace Blockdemo
                 input.Pos++; // the opening bracket
                 bool first = true;
                 Span<byte> key = stackalloc byte[MaxKey];
+                // a skipped object's keys are held to the layer's rule too: a repeated
+                // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
+                // §16.12), the objects this walk skips included
+                System.Collections.Generic.HashSet<string> keys = null;
                 for (; ; )
                 {
                     byte c = Peek(text, ref input);
@@ -2352,6 +2373,8 @@ namespace Blockdemo
                         if (!ScanString(text, ref input, key, true, out int used)) { return false; }
                         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                         input.Pos++;
+                        keys ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+                        if (!keys.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, used)))) { return RefuseText(ref input, "duplicate"); }
                         if (used > 0 && key[0] == '&' && input.Labels != null)
                         {
                             if (!first || !Same(key.Slice(0, used), "&node") || !ScanLabel(text, ref input, out ulong label)) { input.Bad = true; return false; }
@@ -2546,6 +2569,8 @@ namespace Blockdemo
                             {
                                 if (Same(name.Slice(0, nameLength), f.EnumName((ulong)bit)))
                                 {
+                                    // A KNOWN FLAGS NAME TWICE IS A REPEATED KEY (§16.2)
+                                    if ((bits & (1ul << bit)) != 0) { return RefuseText(ref input, "duplicate"); }
                                     bits |= 1ul << bit;
                                     found = true;
                                     break;
@@ -3062,16 +3087,16 @@ namespace Blockdemo
                     Space(text, ref input);
                     if (input.Pos != text.Length) { input.Bad = true; }
                 }
-                if (input.Report.Refused) { info.Reset(value); return false; }
+                if (input.Report.Refused) { info.Reset(value); return TextVerdict(ref input, TableWire.Verdict.Refused); }
                 if (input.Bad || !ok)
                 {
                     // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing
                     // the walk placed before the damage is handed back.
                     input.Report.Damaged = true;
                     info.Reset(value);
-                    return false;
+                    return TextVerdict(ref input, TableWire.Verdict.Damaged);
                 }
-                return true;
+                return TextVerdict(ref input, TableWire.Verdict.Ok);
             }
 
             public static long Write(object value, TableTypeInfo info, Span<byte> buffer, bool measuring)
@@ -3462,6 +3487,9 @@ namespace Blockdemo
                         while (off < t.Length)
                         {
                             if (!Leb(t, ref off, out ulong reference) || reference == 0 || reference > (ulong)(Ids.Length / 8)) { Damage(); return; }
+                            // A RESERVED ID IS NO RECORD'S TYPE (§3.1, §3.3): the three ids
+                            // the language holds back are damage outside their own transport
+                            if (Read64(Ids, (int)(reference - 1) * 8) >= ulong.MaxValue - 2) { Damage(); return; }
                             if (!Leb(t, ref off, out ulong length) || length > (ulong)(t.Length - off)) { Damage(); return; }
                             off += (int)length; records++;
                         }
@@ -4478,15 +4506,61 @@ namespace Blockdemo
             // depth is the unknown-skip walk (docs/SPEC-TABLES.md message_skip_depth).
             // Callers that omit it start at 0. A nested body, a union arm and a walked
             // element pass depth + 1. depth > 128 is malformed; 128 itself still skips.
+            // A SKIPPED PAYLOAD IS HELD TO THE RULES A NAMED READ APPLIES (§3.3, §4):
+            // a nested body's reserved or repeated id, a keyed slot's key, text content,
+            // a float's finiteness and a quantized index, a count past its maximum and a
+            // ranged value past its kind's domain are all refused on the skip path too.
             static bool MessageSkipBody(ref BitReader r, MessageRead d, int depth = 0)
             {
                 if (depth > 128) { return false; }
+                Span<ulong> few = stackalloc ulong[16];
+                int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
                 for (; ; )
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry e)) { return false; }
                     if (reference == 0) { return true; }
+                    if (Reserved(e.Id) || !SeenOnce(few, ref count, ref more, e.Id)) { return false; }
                     if (!MessageSkip(ref r, d, e.Kind, e.Shape, depth)) { return false; }
                 }
+            }
+            // SeenOnce records one id of a body or one key of a keyed array and
+            // answers false on a repeat: an id twice in one body, or a key twice in
+            // one array, is damage whether this reader can name it or not (§3.2, §3.3).
+            // The first ids sit in the caller's stack; a long body spills to a set.
+            static bool SeenOnce(Span<ulong> few, ref int count, ref System.Collections.Generic.HashSet<ulong> more, ulong id)
+            {
+                for (int i = 0; i < count && i < few.Length; i++) { if (few[i] == id) { return false; } }
+                if (count < few.Length) { few[count++] = id; return true; }
+                more ??= new System.Collections.Generic.HashSet<ulong>();
+                count++; return more.Add(id);
+            }
+            // RangedHolds reconstructs a ranged offset from the sender's base and holds
+            // it to its kind's own domain: the offset's bits can spell a value past it.
+            static bool RangedHolds(byte kind, UInt128 baseRaw, UInt128 offset)
+            {
+                int w = Width(kind) * 8;
+                if (w == 0) { return true; }
+                bool signed = Signed(kind);
+                Int128 b = kind >= 18 || signed ? unchecked((Int128)baseRaw) : (Int128)(ulong)baseRaw;
+                if (w == 128)
+                {
+                    if (signed) { return offset <= unchecked((UInt128)Int128.MaxValue - (UInt128)b); }
+                    return b >= 0 ? offset <= UInt128.MaxValue - (UInt128)b : offset >= unchecked((UInt128)0 - (UInt128)b);
+                }
+                // the offset is under 2^64 here, so the sum leaves Int128 only past every bound
+                Int128 v = unchecked(b + (Int128)offset);
+                if (v < b) { return false; }
+                Int128 lo = signed ? -((Int128)1 << (w - 1)) : 0;
+                Int128 hi = signed ? ((Int128)1 << (w - 1)) - 1 : ((Int128)1 << w) - 1;
+                return v >= lo && v <= hi;
+            }
+            // a non-finite float under an entry this reader does not declare refuses
+            // the batch as a named one does; no reader field names it
+            static void NonFiniteSkipped(TableReport report)
+            {
+                if (report.NonFiniteFloat != null) { return; }
+                report.NonFiniteFloat = "";
+                report.NonFiniteReason = "non_finite_float";
             }
             static bool MessageSkip(ref BitReader r, MessageRead d, byte kind, TableMessageShape shape, int depth = 0)
             {
@@ -4503,26 +4577,65 @@ namespace Blockdemo
                     case 13: return MessageSkipBody(ref r, d, depth + 1);
                     case 17: return false; // a node reference: no fixed body holds one
                     case 12:
-                        if (!r.Get(BitCount(shape.Max), out UInt128 length) || kind == 12 && !r.Align()) { return false; }
-                        return r.Skip((long)length * (kind == 12 ? 8 : 16));
+                        if (!r.Get(BitCount(shape.Max), out UInt128 length) || !r.Align() || length > (ulong)((r.End - r.At) / 8)) { return false; }
+                        if (!TextValid(r.Bytes.Slice((int)(r.At / 8), (int)length))) { return false; }
+                        r.At += (long)length * 8; return true;
                     case 31:
                         return r.Align() && r.Get(32, out UInt128 opaque) && r.Skip((long)opaque * 8);
                     case 14:
                     case 16:
                         ulong min = kind == 16 ? 0 : shape.Min;
-                        if (!r.Get(BitCount(shape.Max - min), out UInt128 raw) || kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
+                        if (!r.Get(BitCount(shape.Max - min), out UInt128 raw)) { return false; }
                         ulong n = (ulong)raw + min;
-                        if (Width(shape.Elem) != 0 || shape.Elem == 0 || shape.Elem == 32)
-                        { return r.Skip((long)n * (ValueBits(shape.Elem, shape.Inner) + (kind == 16 ? d.Vocabulary.RefBits : 0))); }
+                        if (n > shape.Max) { return Fail(d.Report, "count_over_bound"); }
+                        if (kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
+                        // A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC; a float and a
+                        // ranged or quantized element carry a value condition and are
+                        // walked, as is every keyed slot, whose key resolves
+                        int run = -1;
+                        if (kind == 14 && (shape.Elem == 0 || shape.Elem == 32)) { run = 0; }
+                        else if (kind == 14 && shape.Elem != 13 && shape.Elem != 15 && shape.Elem != 17 && shape.Elem != 30)
+                        {
+                            int w = ValueBits(shape.Elem, shape.Inner);
+                            if (w == 0 || w > 0 && shape.Elem != 10 && shape.Elem != 11 && (shape.Inner == null || shape.Inner.Packing == 0)) { run = w; }
+                        }
+                        if (run >= 0) { return run == 0 || n <= (ulong)(long.MaxValue / run) && r.Skip((long)n * run); }
+                        bool nested = shape.Elem == 13 || shape.Elem == 14 || shape.Elem == 15 || shape.Elem == 16 || shape.Elem == 17 || shape.Elem == 30;
+                        Span<ulong> few = stackalloc ulong[16];
+                        int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
                         for (ulong i = 0; i < n; i++)
                         {
-                            if (kind == 16 && !r.Get(d.Vocabulary.RefBits, out _)) { return false; }
-                            if (shape.Elem == 13 || shape.Elem == 15 || shape.Elem == 17 || shape.Elem == 30)
-                            { if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, depth + 1)) { return false; } }
-                            else { int bits = ValueBits(shape.Elem, shape.Inner); if (bits < 0 || !r.Skip(bits)) { return false; } }
+                            long at = r.At;
+                            if (kind == 16 && (!MessageName(ref r, d, out _, out TableMessageEntry key) || !SeenOnce(few, ref count, ref more, key.Id))) { return false; }
+                            if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, nested ? depth + 1 : depth)) { return false; }
+                            // an element that consumed no bits is the rest of the run
+                            // too: a remaining count the bits left cannot back is damage
+                            if (r.At == at) { return n - i - 1 <= (ulong)(r.End - r.At); }
                         }
                         return true;
-                    default: return MessageKind(kind) && r.Skip(ValueBits(kind, shape));
+                    case 10:
+                        if (shape.Packing == 2)
+                        {
+                            if (!r.Get(shape.Bits, out UInt128 index) || index > shape.Steps) { return false; }
+                            float normalized = (float)(uint)index / shape.Steps;
+                            if (NonFiniteBits(10, TableFloatToBits(normalized * shape.Delta + shape.QMin))) { NonFiniteSkipped(d.Report); }
+                            return true;
+                        }
+                        if (!r.Get(32, out UInt128 f32)) { return false; }
+                        if (NonFiniteBits(10, (ulong)f32)) { NonFiniteSkipped(d.Report); }
+                        return true;
+                    case 11:
+                        if (!r.Get(64, out UInt128 f64)) { return false; }
+                        if (NonFiniteBits(11, (ulong)f64)) { NonFiniteSkipped(d.Report); }
+                        return true;
+                    default:
+                        if (!MessageKind(kind)) { return false; }
+                        if (MessageNumber(kind) && shape.Packing == 1)
+                        {
+                            if (!r.Get(shape.Bits, out UInt128 offset)) { return false; }
+                            return RangedHolds(kind, shape.Base, offset) || Fail(d.Report, "out_of_range");
+                        }
+                        return r.Skip(ValueBits(kind, shape));
                 }
             }
             static bool MessageCompatible(TableMessageEntry entry, TableFieldInfo f, out bool widened)
@@ -4535,11 +4648,13 @@ namespace Blockdemo
             {
                 if (depth > 128) { return false; }
                 if (value != null) { type.Reset(value); }
+                Span<ulong> few = stackalloc ulong[16];
+                int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
                 for (; ; )
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
                     if (reference == 0) { return true; }
-                    if (Reserved(entry.Id)) { return false; }
+                    if (Reserved(entry.Id) || !SeenOnce(few, ref count, ref more, entry.Id)) { return false; }
                     TableFieldInfo field = FindField(type, entry.Id);
                     if (field == null)
                     { d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
@@ -4576,9 +4691,11 @@ namespace Blockdemo
                     ulong n = (ulong)raw + shape.Min;
                     if (f.KeyId != null)
                     {
+                        Span<ulong> few = stackalloc ulong[16];
+                        int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
                         for (ulong i = 0; i < n; i++)
                         {
-                            if (!MessageName(ref r, d, out _, out TableMessageEntry key)) { return false; }
+                            if (!MessageName(ref r, d, out _, out TableMessageEntry key) || !SeenOnce(few, ref count, ref more, key.Id)) { return false; }
                             int slot = FindVariant(f, key.Id, true);
                             if (slot == 0) { d.Report.Unknown++; }
                             if (!MessageReadElement(ref r, d, value, f, slot - 1, shape.Elem, shape.Inner, slot != 0, depth)) { return false; }
@@ -6558,7 +6675,14 @@ namespace Blockdemo
                             // OWN guard and ordinal — unguarded at top level, guarded
                             // under an outer arm — which is one rule and not two
                             // (§5.9 #13).
-                            c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, 0));
+                            //
+                            // IT ALSO HOLDS THE WRITER'S ARM SET (§4.6): DstSize carries
+                            // THE WRITER'S ARM COUNT and Meta the writer's tag width, and
+                            // the run refuses a raw tag past that count out_of_range, so
+                            // the compiled plan refuses what the identity plan's bounds
+                            // pass refuses. A count past a byte carries 0: no check.
+                            byte their_arms = (te.Children >= 1u && te.Children <= 255u) ? (byte)te.Children : (byte)0;
+                            c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, their_arms, meta: c.ArgW));
                             int my_arm = mi + 1;
                             for (uint k = 0; k < me.Children; ++k)
                             {
@@ -6977,9 +7101,10 @@ namespace Blockdemo
                 if (e.Op == Const)
                 {
                     // a constant reads no source at all, EXCEPT the union's None
-                    // const, which reads the writer's raw tag to count a clamp
-                    // past DstSize arms — it has a source reach.
-                    end = (e.Aux == 0 && e.DstSize != 0) ? e.Src + e.Size : 0u;
+                    // const, which reads the writer's raw tag, at the writer's tag
+                    // width in Meta, to refuse a tag past DstSize arms — it has a
+                    // source reach.
+                    end = (e.Aux == 0 && e.DstSize != 0) ? e.Src + ArgWidth(e.Meta) : 0u;
                 }
                 else if (e.Op == Count)
                 {
@@ -7256,6 +7381,10 @@ namespace Blockdemo
                             }
                         case Const:
                             {
+                                // THE UNION'S None CONST HOLDS THE WRITER'S ARM SET
+                                // (§4.6): a raw tag past DstSize arms names nothing the
+                                // writer wrote, and the load refuses it out_of_range.
+                                if (p.Aux == 0 && p.DstSize != 0 && TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                                 if (slots[(int)p.Dst].SetRaw != null)
                                 {
                                     slots[(int)p.Dst].SetRaw(dst, p.Aux);

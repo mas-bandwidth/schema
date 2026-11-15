@@ -144,7 +144,10 @@ func cppMessageStrictRun(t *testing.T, undermine func(map[string][]byte)) ([]byt
 	if cxx == "" {
 		cxx = "c++"
 	}
-	args := []string{"-std=c++17", "-O1", "-I" + dir, filepath.Join(dir, "probe.cpp")}
+	// -DNDEBUG: the probe saves an out-of-range value to forge the message the
+	// strict read must refuse, and the C++ writer asserts the write contract
+	// in debug builds only (an assert leg, docs/SPEC.md §5.1).
+	args := []string{"-std=c++17", "-O1", "-DNDEBUG", "-I" + dir, filepath.Join(dir, "probe.cpp")}
 	args = append(args, sources...)
 	args = append(args, "-o", filepath.Join(dir, "probe"))
 	build := exec.Command(cxx, args...)

@@ -511,7 +511,7 @@ enum Key
     Beta
 }
 
-table Keyed
+table KeyedSlots
 {
     values [Key]int32 | required
 }
@@ -534,25 +534,25 @@ table RequiredEmpty
 int main( void )
 {
     /* 1. Required enum-keyed array at all-zero still writes the keyed header (count 0). */
-    KeyedBuilder kb;
-    assert( keyed_builder_init( &kb ) == 1 );
-    Keyed * k = keyed_builder_root( &kb );
-    assert( keyed_builder_lock( &kb ) == 1 );
+    KeyedSlotsBuilder kb;
+    assert( keyed_slots_builder_init( &kb ) == 1 );
+    KeyedSlots * k = keyed_slots_builder_root( &kb );
+    assert( keyed_slots_builder_lock( &kb ) == 1 );
 
     uint8_t kwire[128];
     (void) k;
-    int64_t klen = keyed_save( NULL, (const Keyed *) kb.region, kwire, sizeof( kwire ) );
-    assert( klen == keyed_measure( NULL, (const Keyed *) kb.region ) );
+    int64_t klen = keyed_slots_save( NULL, (const KeyedSlots *) kb.region, kwire, sizeof( kwire ) );
+    assert( klen == keyed_slots_measure( NULL, (const KeyedSlots *) kb.region ) );
     assert( klen == 23 );
-    const uint8_t want_keyed_prefix[] = { 0x01, 0x01, 0x10, 0x02, 0x04, 0x00, 0x00 };
-    const uint8_t want_keyed_suffix[] = { 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-    assert( memcmp( kwire, want_keyed_prefix, sizeof( want_keyed_prefix ) ) == 0 );
-    assert( memcmp( kwire + 15, want_keyed_suffix, sizeof( want_keyed_suffix ) ) == 0 );
-    keyed_builder_shutdown( &kb );
+    const uint8_t want_keyed_slots_prefix[] = { 0x01, 0x01, 0x10, 0x02, 0x04, 0x00, 0x00 };
+    const uint8_t want_keyed_slots_suffix[] = { 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    assert( memcmp( kwire, want_keyed_slots_prefix, sizeof( want_keyed_slots_prefix ) ) == 0 );
+    assert( memcmp( kwire + 15, want_keyed_slots_suffix, sizeof( want_keyed_slots_suffix ) ) == 0 );
+    keyed_slots_builder_shutdown( &kb );
 
     SCHEMA_C_ALIGN16 uint8_t region[512];
     TableReport rep;
-    const Keyed * kgot = keyed_load( region, sizeof( region ), kwire, klen, &rep );
+    const KeyedSlots * kgot = keyed_slots_load( region, sizeof( region ), kwire, klen, &rep );
     assert( kgot != NULL );
     assert( rep.missing_required == 0 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_OK );
 

@@ -231,7 +231,7 @@ int main(void) {
         printf("value moved %%08x lead %%u trail %%u\n", bits.u, back[0].lead, back[0].trail);
         return 1;
     }
-    if (r.clamped != 0) { printf("clamped %%d\n", r.clamped); return 1; }
+    if (r.refused || r.refuse_reason != 0) { printf("refused %%d refuse_reason %%d\n", r.refused, r.refuse_reason); return 1; }
     return 0;
 }
 `, file)
