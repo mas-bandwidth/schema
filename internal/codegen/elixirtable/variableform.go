@@ -3803,8 +3803,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if count <= 0 do
       {}
     else
-      (for n <- 2..(count + 1), do: Map.get(nodes, n))
-      |> List.to_tuple()
+      values = for n <- 2..(count + 1), do: Map.get(nodes, n)
+      List.to_tuple(values)
     end
   end
 

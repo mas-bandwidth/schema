@@ -421,8 +421,9 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     {slot, [%{id: id, key: {id, slot}, kind: :blob, string: f.blob == :string, value: v} | acc]}
   end
 
-  defp cook_collect_field(%{t: :pointer, cook_type_id: id, elem: elem}, n, acc) when is_integer(n),
-    do: {n, cook_push(acc, id, elem, n)}
+  defp cook_collect_field(%{t: :pointer, cook_type_id: id, elem: elem}, n, acc)
+       when is_integer(n),
+       do: {n, cook_push(acc, id, elem, n)}
 
   defp cook_collect_field(%{t: :table, elem: elem}, v, acc) when is_map(v),
     do: cook_collect(Map.fetch!(@tables, elem), v, acc)
@@ -469,8 +470,9 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   defp cook_collect_elem(%{elem_kind: 13, elem: elem}, e, acc) when is_map(e),
     do: cook_collect(Map.fetch!(@tables, elem), e, acc)
 
-  defp cook_collect_elem(%{elem_kind: 17, elem_cook_id: id, elem: elem}, n, acc) when is_integer(n),
-    do: {n, cook_push(acc, id, elem, n)}
+  defp cook_collect_elem(%{elem_kind: 17, elem_cook_id: id, elem: elem}, n, acc)
+       when is_integer(n),
+       do: {n, cook_push(acc, id, elem, n)}
 
   defp cook_collect_elem(%{elem_kind: 15, elem: union}, e, acc),
     do: cook_collect_arm(union, e, acc)
