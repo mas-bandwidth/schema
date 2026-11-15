@@ -194,9 +194,13 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 			{Name: "alive", Type: ir.FieldType{Kind: ir.TBool}},
 		}}},
 		{"union", &ir.Union{Name: "Event"}},
+<<<<<<< HEAD
 		{"const item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ConstItem{Value: big.NewInt(1), Bits: 8}}}},
 		{"reserved item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ReservedItem{Bits: 5}}}},
 		{"align item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.AlignItem{}}}},
+=======
+		{"uint128", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}}}},
+>>>>>>> 8deaa618d7f061f082484a48403b071096abc0ed
 		{"fixed", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", HasIntRange: true, IntMin: big.NewInt(-100), IntMax: big.NewInt(100),
 			Type: ir.FieldType{Kind: ir.TFixed, Signed: true, Width: 32, IntBits: 16, FracBits: 16}}}}},
 		{"float32", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat32}}}}},
@@ -217,7 +221,6 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 		{"bits", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "small", Type: ir.FieldType{Kind: ir.TBits, Width: 9}}}}, "uses bits"},
 		{"string", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TString, Size: 8}}}}, "uses string"},
 		{"bytes", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TBytes, Size: 8}}}}, "uses bytes"},
-		{"int128", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}}}, "uses int128"},
 		{"array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses array"},
 	}
 	for _, c := range refused {

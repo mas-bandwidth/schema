@@ -289,8 +289,9 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
-  the kinds this cut carries. A later card adds its module and one registration
+  `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_table.py` and
+  `kind_pointer.py` register the kinds this cut carries. A later card adds its
+  module and one registration
   line, never an edit to the body walk. `kind_unsupported.py` is the named
   placeholder for a construct whose descriptor exists but whose codec has not
   landed; a read or write that reaches it refuses by name.
@@ -307,11 +308,19 @@ generated class per table and per map entry, each with its descriptor
   `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
+- **Maps are dicts, written sorted.** A `map[K]V` is a `dict` born empty; the
+  save writes its entries in ascending key order (text by its UTF-8 bytes,
+  integers by value), and the read refuses a descending or a repeated key as
+  `Refused("wire_damaged")`, because no conforming writer emits either. A
+  request that does not arrive in that order is not a map this leg accepts;
+  the whole read refuses and returns nothing. `kind_map.py` owns the entry
+  framing, the sort and the order check.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
-  `kind_unsupported.py` until their cards land.
+  by-value tables, `*T` pointers to tables and `map[K]V` for the base key and
+  value kinds, for both the fixed and the variable class. `*bytes`, `*string`,
+  `?T`, `[]T`, `[E]T`, `?map[K]V` and unions with table arms have descriptors
+  in this cut and refuse by name through `kind_unsupported.py` until their
+  cards land.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.
@@ -337,6 +346,37 @@ generated load is 2% slower on 3.15.2 and 4% faster on 3.11.18. Save and load
 together, the generated pair is 2% faster on 3.15.2 and 11% faster on 3.11.18,
 so the pair is kept. `TestPythonTableCoreShapeBench` re-measures it and holds
 both shapes to the same value.
+
+### Maps bench
+
+A table that holds a map is variable, so it never takes the straight-line
+pair: its load and save are the descriptor walk. Inside the walk the map's
+save has two shapes. The first builds an entry object per key and walks it
+through `write_body`; the second writes each entry body straight from the key
+and the value, the same bytes (the key, then the value, each elided at its
+default, then the end mark) without the object. `TestPythonMapShapeBench`
+(internal/codegen/pythontable) times both on a 64-entry `map[uint32]int32`
+and a 16-entry `map[uint16]*Node`, and the load of each, under both pins.
+Each figure is the minimum of five rounds of 2,000 iterations after warm-up,
+taken over six sittings, in microseconds per operation. They were measured on
+a shared fleet bench whose load average stood between 67 and 112 on 16 cores,
+so single sittings swing by up to 2x; the minima are the figures to compare:
+
+| operation | 3.15.2 | 3.11.18 |
+|---|---:|---:|
+| scalar map save, direct entry bodies (kept) | 141.1 | 135.9 |
+| scalar map save, entry objects | 162.0 | 155.2 |
+| pointer map save, direct entry bodies (kept) | 73.1 | 67.5 |
+| pointer map save, entry objects | 75.6 | 75.8 |
+| scalar map load | 184.3 | 202.0 |
+| pointer map load | 82.7 | 88.2 |
+
+The direct save is 13% faster on the scalar map under 3.15.2 and 12% under
+3.11.18, and 3% and 11% faster on the pointer map, whose time goes mostly to
+the node table; in 21 of the 24 comparisons across both pins it was the faster
+of the two. `kind_map.py` writes the direct shape. The load reads each entry
+through `read_body`, which holds the unknown-field skip, the repeated-field
+and kind checks and the pointer fix-up in one place, so it has one shape.
 
 ## IDENTIFIERS
 
@@ -471,6 +511,7 @@ the core stands against the P4 row; the rules of this page are unchanged.
   with their name tables, a class per type and per union with every field
   born at its default, `__eq__` by value (a float's bits included) and a
   readable `__repr__`. The codec carries `bool`, `int8` to `uint64` (bare or
+<<<<<<< HEAD
   ranged), enums, flags, types by value, unions, `if`/`else` branches, and the
   storage-less wire constructs `const`, `reserved` and `align`. The branch and
   the three storage-less items are each their own emitter file, registered in
@@ -480,6 +521,25 @@ the core stands against the P4 row; the rules of this page are unchanged.
   refused at generate time by its kind, naming P4 the packet wire. The class
   surface knows how to birth and compare those kinds already; only their wire
   emitters are still to come.
+=======
+  ranged), raw `uint128` and ranged `int128`, enums, flags, types by value,
+  unions, and `if`/`else` branches. A field or item of any other kind
+  (`bits`, `fixed`, `float32`, `float64`, `string`, `bytes`, an array,
+  `const`, `reserved` or `align`) is refused at generate time by its kind,
+  naming P4 the packet wire. The class surface knows how to birth and
+  compare those kinds already; only their wire emitters are still to come.
+- **The 128-bit integers are the core's own shape.** `uint128` is one
+  `serialize_uint128` call (128 bits, low 64-bit half first) and `int128`,
+  always ranged, goes through the same ranged call the 64-bit kinds use,
+  picked by the range (`serialize_int`, `serialize_int64` or
+  `serialize_int128`, the same bytes wherever a narrower call fits). The
+  write holds the value to its declared range in every build. There is no
+  second code shape to measure: the emitter adds no hot path the core's
+  straight-line form does not already have. With no C++-pinned golden that
+  uses only these kinds and the core's (every examples128 golden declares
+  `fixed` too), TestPythonPacketInt128 holds them to the generated Go unit
+  over serialize.go on fixture schemas of its own.
+>>>>>>> 8deaa618d7f061f082484a48403b071096abc0ed
 - **The implicit enum zero is `None_`.** Python will not let a class body
   assign to `None`, so the zero every leg spells `None` is spelled `None_`
   in generated code. The name tables keep the schema spelling `"None"`, and
