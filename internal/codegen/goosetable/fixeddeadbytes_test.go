@@ -249,7 +249,7 @@ fixed table ByArm
 func testNestedAbsentRecordOptional(t *testing.T) {
 	u := parseCheckUnit(t, nestedAbsentSchema)
 	ns := goose.Namespace(u)
-	holder := fixedStructByName(t, u, "Holder")
+	holder := fixedRootStruct(t, u, "Holder")
 	extra := ir.TableFixedFieldBytes(holder.Fields[0])
 	pick := fixedRootStruct(t, u, "ByArm").Fields[0].Type.Ref.(*ir.Union)
 	arm := ir.TableFixedUnionTagBytes(pick)
@@ -354,16 +354,6 @@ func testNestedAbsentRecordOptional(t *testing.T) {
 				m.root, m.file, got[m.file])
 		}
 	}
-}
-
-// fixedStructByName is the unit's struct name.
-func fixedStructByName(t *testing.T, u *ir.Unit, name string) *ir.Struct {
-	t.Helper()
-	st, ok := u.Structs[name]
-	if !ok {
-		t.Fatalf("the unit has no struct %s", name)
-	}
-	return st
 }
 
 // absentExtraSpan is the file offset of Cfg.extra's present flag in the one
