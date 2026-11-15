@@ -1081,9 +1081,10 @@ def message_body(m:MessageRead, rec:Record) -> bool:
         if f.present != "":
             sl.present = true
         // A FIELD WRITTEN AT THE DEFAULT THE WRITER ELIDES IS NON-CANONICAL
-        // (§3.3 (a)): the reader knows that default only where it names the
-        // field under the same announced shape at the same build version.
-        if v.build_version == message_facts.build_version and message_same_encoding(e, mine) and f.s != "union" and f.s != "tab" and load_field_elides(f, sl):
+        // (§3.3 (a)): a changed default is refused by the lineage check, so
+        // every lawful writer's default for a field this reader names under
+        // the same announced shape is the reader's own, at any build version.
+        if message_same_encoding(e, mine) and f.s != "union" and f.s != "tab" and load_field_elides(f, sl):
             return message_refuse(rep, "wire_damaged")
         if widened:
             rep.widened++
@@ -1145,14 +1146,6 @@ def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadRe
         let rec = new_record(d)
         push(batch, rec)
         if not message_body(m, rec):
-            for(batch) value: release(value)
-            truncate(batch, 0)
-            return 0, false
-        // A BODY THAT OMITS EVERY FIELD ITS OWN ANNOUNCEMENT DECLARES IS
-        // NON-CANONICAL (§3.3, §4): a body with no field reference at all is
-        // not the one a conforming writer emits for a record with fields.
-        if m.body_fields == 0 and length(rec.fields) > 0:
-            message_refuse(rep, "wire_damaged")
             for(batch) value: release(value)
             truncate(batch, 0)
             return 0, false
