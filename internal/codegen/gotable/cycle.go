@@ -80,8 +80,8 @@ func tableCycleCheckReason(base unsafe.Pointer,root *TableTypeInfo,a *TableArena
  bad:=false
  step:=func(i int,slot func(*TableRef,*TableFieldInfo)bool,mark func(uint64))bool{
   if dir[i].Offset&wire==0{return each(i,slot)}
-  if i==0{var c tableWireCheck;c.ids=len(r.Ids)/8;c.nodes=uint64(len(dir)-1);c.mark=mark;r.Offset=0;_,ok:=c.body(r,true);return ok&&!bad}
-  id,b:=body(i);return tableWireRecordCheck(id,b,len(r.Ids)/8,uint64(len(dir)-1),mark)==TableRefuseOk&&!bad
+  if i==0{var c tableWireCheck;c.ids=uint64(len(r.Ids))/8;c.nodes=uint64(len(dir)-1);c.mark=mark;r.Offset=0;_,ok:=c.body(r,true);return ok&&!bad}
+  id,b:=body(i);return tableWireRecordCheck(id,b,uint64(len(r.Ids))/8,uint64(len(dir)-1),mark)==TableRefuseOk&&!bad
  }
  in:=func(index uint64)bool{
   e:=&dir[index-1];if e.Offset>>48==0||uint32(e.TypeID)==math.MaxUint32{return false};e.TypeID++;return true

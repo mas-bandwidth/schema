@@ -129,8 +129,9 @@ const tableNativeSource = `
         }
         for (int i = 0; i < count; i++)
         {
-            // a cooked float is finite (docs/SPEC-TABLES.md §3.3): a NaN or an infinity refuses the cook
-            if ((f.Kind == 10 || f.Kind == 11) && i < live && NonFiniteBits(f.Kind, f.GetRaw(value, i))) { return false; }
+            // a cooked float is finite (docs/SPEC-TABLES.md §3.3): a debug
+            // assert, as every write check on this leg is (docs/SPEC.md §5.1)
+            System.Diagnostics.Debug.Assert(!((f.Kind == 10 || f.Kind == 11) && i < live && NonFiniteBits(f.Kind, f.GetRaw(value, i))));
             long element = at + (long)i * f.NativeElementSize, before = extent;
             if (!NativeElement(ref w, element, value, f, i, extentAt, ref extent)) { return false; }
             if (!f.Dynamic && f.Counted && i >= live && extent != before) { return false; }
@@ -153,7 +154,7 @@ const tableNativeSource = `
         if (f.Kind == 15)
         {
             object union = f.GetChild(value, index); ulong tag = f.Arms.GetTag(union);
-            if (tag > (ulong)f.EnumMax) { return false; }
+            System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
             w.Put(at, tag, f.Arms.NativeTagSize);
             TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
             return arm == null || NativeField(ref w, at + f.Arms.NativeArmOffset, union, arm, extentAt, ref extent);
@@ -220,7 +221,7 @@ const tableNativeSource = `
             else if (f.Kind == 15)
             {
                 object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
-                if (tag > (ulong)f.EnumMax) { return false; }
+                System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
                 TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
                 if (arm != null && !NativeExtentSize(union, arm, ref at)) { return false; }
             }

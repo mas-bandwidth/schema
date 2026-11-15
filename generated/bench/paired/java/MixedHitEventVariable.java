@@ -1028,7 +1028,7 @@ public final class MixedHitEventVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xfffL);
+                        long placed = in.integer(false, false, 0L, 0xfffL);
                         if (!in.rejected) {
                             v.targetId = (int) placed;
                         }
@@ -1049,7 +1049,7 @@ public final class MixedHitEventVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 4095);
+                        long placed = in.integer(true, false, 0, 4095);
                         if (!in.rejected) {
                             v.damage = (int) placed;
                         }
@@ -1070,7 +1070,7 @@ public final class MixedHitEventVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 7);
+                        long placed = in.integer(true, false, 0, 7);
                         if (!in.rejected) {
                             v.hitKind = (int) placed;
                         }

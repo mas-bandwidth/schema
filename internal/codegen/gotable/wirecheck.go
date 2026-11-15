@@ -21,7 +21,7 @@ const tableBinaryMaxDepth = 128
 
 type tableWireCheck struct {
  depth int32
- ids int
+ ids uint64
  nodes uint64
  gen uint32
  reason TableRefuseReason
@@ -58,7 +58,7 @@ func (c *tableWireCheck) body(r TableReader, root bool) (int64, bool) {
   ref,ok:=probe.Leb()
   if !ok { return 0,c.fail(TableRefuseWireDamaged) }
   if ref==0 { break }
-  if ref>uint64(c.ids) || !probe.Has(1) { return 0,c.fail(TableRefuseWireDamaged) }
+  if ref>c.ids || !probe.Has(1) { return 0,c.fail(TableRefuseWireDamaged) }
   if c.stamp[ref]==gen { return 0,c.fail(TableRefuseWireDamaged) }
   c.stamp[ref]=gen
   if !probe.Skip(probe.Get8()) { return 0,c.fail(TableRefuseWireDamaged) }
@@ -99,7 +99,7 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
   if c.mark!=nil { c.mark(index) }
  case 30:
   ref,ok:=r.Leb()
-  if !ok || ref>uint64(c.ids) { return 0,c.fail(TableRefuseWireDamaged) }
+  if !ok || ref>c.ids { return 0,c.fail(TableRefuseWireDamaged) }
  case 15:
   return c.union(r)
  case 12, 13, 14, 16, 31, 32:
@@ -154,7 +154,7 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
  // a count past the int32 storage cap refuses by its own name (§2.9), and one
  // the body cannot cover (an element is a byte at least) is damage
  if count>math.MaxInt32 { return 0,c.fail(TableRefuseCountOverExtentCap) }
- if count>uint64(len(sub.Buffer))-uint64(sub.Offset) { return 0,c.fail(TableRefuseWireDamaged) }
+ if sub.Offset<0 || count>uint64(len(sub.Buffer))-uint64(sub.Offset) { return 0,c.fail(TableRefuseWireDamaged) }
  if !keyed {
   for range count {
    at,ok:=c.value(sub,kind)
@@ -168,7 +168,7 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
  probe:=sub
  for range count {
   key,ok:=probe.Leb()
-  if !ok || key==0 || key>uint64(c.ids) { return 0,c.fail(TableRefuseWireDamaged) }
+  if !ok || key==0 || key>c.ids { return 0,c.fail(TableRefuseWireDamaged) }
   if c.stamp[key]==gen { return 0,c.fail(TableRefuseWireDamaged) }
   c.stamp[key]=gen
   if _,ok:=probe.Body(); !ok { return 0,c.fail(TableRefuseWireDamaged) }
@@ -185,7 +185,7 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 // arm's kind and its L-framed payload.
 func (c *tableWireCheck) union(r TableReader) (int64, bool) {
  ref,ok:=r.Leb()
- if !ok || ref>uint64(c.ids) { return 0,c.fail(TableRefuseWireDamaged) }
+ if !ok || ref>c.ids { return 0,c.fail(TableRefuseWireDamaged) }
  if ref==0 { return r.Offset,true }
  if !r.Has(1) { return 0,c.fail(TableRefuseWireDamaged) }
  kind:=r.Get8()
@@ -206,7 +206,7 @@ func (c *tableWireCheck) union(r TableReader) (int64, bool) {
 // every condition the wire alone decides (docs/SPEC-TABLES.md §4, §6.5).
 func tableWireSkipValue(r *TableReader, kind uint8) bool {
  var c tableWireCheck
- c.ids=len(r.Ids)/8
+ c.ids=uint64(len(r.Ids))/8
  c.depth=r.Depth
  c.nodes=0 // tableWireSkipNodes
  at,ok:=c.value(*r,kind)
@@ -216,7 +216,7 @@ func tableWireSkipValue(r *TableReader, kind uint8) bool {
 }
 func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
  var c tableWireCheck
- c.ids=len(r.Ids)/8
+ c.ids=uint64(len(r.Ids))/8
  c.depth=r.Depth; if arm && (kind==13||kind==14||kind==16) { c.depth-- }
  c.nodes=0 // tableWireSkipNodes
  if !c.framed(*r,kind) { r.Report.Refuse(c.failed(),""); return false }; return true
@@ -227,7 +227,7 @@ func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
 // does name (docs/SPEC-TABLES.md §4, §6.5). A blob record is its bytes in every
 // reader's walk (§2.5, §3.1), its text held by the storage scan. nodes bounds
 // every pointer index; mark, when not nil, names a reachable record for the graph.
-func tableWireRecordCheck(id uint64, body TableReader, ids int, nodes uint64, mark func(uint64)) TableRefuseReason {
+func tableWireRecordCheck(id uint64, body TableReader, ids uint64, nodes uint64, mark func(uint64)) TableRefuseReason {
  c:=tableWireCheck{ids:ids,nodes:nodes,mark:mark}
  if id==tableWireBytesID || id==tableWireStringID { return TableRefuseOk }
  end,ok:=c.body(body,false)
