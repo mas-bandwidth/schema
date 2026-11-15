@@ -408,9 +408,7 @@ int main(void) {
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, exePath)
-	cmd.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
-	return cmd.CombinedOutput()
+	return exec.CommandContext(ctx, exePath).CombinedOutput()
 }
 
 const cppBomBoundarySchema = `package countcheck

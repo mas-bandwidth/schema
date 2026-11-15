@@ -128,13 +128,13 @@ func TestCPPJsonFlagsNameOnce(t *testing.T) {
 		fmt.Fprintf(&body, `
     {
         static const uint8_t text[] = { %s };
-        ProfileConfig value;
+        %s value;
         TableReport report;
-        bool ok = ProfileConfigFromJson( value, (const char *) text, (int64_t) sizeof(text), &report );
+        bool ok = %sFromJson( value, (const char *) text, (int64_t) sizeof(text), &report );
         printf("FLAGS_CASE %s: %%s\n", ok ? "read" : "refused");
         CHECK(ok == %s, "%s verdict");
     }
-`, cppBytes(src), row.name, want, row.name)
+`, cppBytes(src), root, root, row.name, want, row.name)
 	}
 	body.WriteString("    if ( failures != 0 ) return 1;\n")
 	out, err := runCPPCountRefusalProbe(t, u, body.String())
