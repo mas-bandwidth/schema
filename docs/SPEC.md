@@ -2398,7 +2398,7 @@ active, a writer never produces bytes its own reader refuses.
 | Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises; 8 and 10 not yet held |
 | Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 11 every build, held by `packet-write-bareint-squirrel` (a negative `uint64` is the same 64 bits as one in the width, docs/PORT-SQUIRREL.md); 8 and 10 not yet held |
 | MOO | 1–8 every build | 1–8 every build | 1–8 every build; 10 not yet held |
-| Goose | 1–8 every build | 1–8 every build | 1–7 and 10 every build; 8 not yet held |
+| Goose | 1–8 every build | 1–8 every build | 1–8 and 10 every build |
 | Lobster | 1–8 every build (`SaveChecked`) | 1–8 every build | 1–6 debug; 7 traps; 10 debug |
 
 **The text writer** (§16) refuses a zero byte or a zero unit by row 8, as the
