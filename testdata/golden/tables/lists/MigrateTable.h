@@ -1554,7 +1554,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -11535,7 +11535,7 @@ inline bool UnitLoadMessages( Unit * values, int64_t * count, const TableVocabul
 inline int64_t BoundedMeasureBody( TableIds & ids, const Bounded & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.items_count < 0 || value.items_count > 8 ) { return -1; } // storage invariant
+    schema_assert( value.items_count >= 0 && value.items_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.items_count > 0 )
     {
         const uint64_t ref_items = ids.ref_at( 15, 0x3e7884bf4f412c6full );
@@ -11563,7 +11563,7 @@ inline int64_t BoundedMeasure( const Bounded & value )
 
 LISTDEMO_TABLE_INLINE bool BoundedSaveBody( TableWriter & w, TableIds & ids, const Bounded & value )
 {
-    if ( value.items_count < 0 || value.items_count > 8 ) { return false; } // storage invariant
+    schema_assert( value.items_count >= 0 && value.items_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.items_count > 0 )
     {
         const uint64_t ref_items = ids.ref_at( 15, 0x3e7884bf4f412c6full );
@@ -11917,7 +11917,7 @@ inline bool BoundedLoad( Bounded & value, const uint8_t * buffer, int64_t bytes,
 inline int64_t BoundedMeasureMessageBody( int64_t at, const Bounded & value )
 {
     int64_t bits = 0;
-    if ( value.items_count < 0 || value.items_count > 8 ) { return -1; } // storage invariant
+    schema_assert( value.items_count >= 0 && value.items_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.items_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -11944,7 +11944,7 @@ inline int64_t BoundedMeasureMessageBody( int64_t at, const Bounded & value )
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool BoundedSaveMessageBody( TableBitWriter & w, const Bounded & value )
 {
-    if ( value.items_count < 0 || value.items_count > 8 ) { return false; } // storage invariant
+    schema_assert( value.items_count >= 0 && value.items_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.items_count > 0 )
     {
         w.put( 1, kTableMessageRefBitsHere );
@@ -14849,7 +14849,7 @@ LISTDEMO_TABLE_INLINE bool UnitLoadBodyRetain( TableReader & r, Unit & value, Ta
 inline int64_t BoundedMeasureBodyRetain( TableRetainIds & ids, const Bounded & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.items_count < 0 || value.items_count > 8 ) { return -1; } // storage invariant
+    schema_assert( value.items_count >= 0 && value.items_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.items_count > 0 )
     {
         const uint64_t ref_items = ids.ref_at( 15, 0x3e7884bf4f412c6full );
@@ -14870,7 +14870,7 @@ inline int64_t BoundedMeasureBodyRetain( TableRetainIds & ids, const Bounded & v
 
 LISTDEMO_TABLE_INLINE bool BoundedSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Bounded & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.items_count < 0 || value.items_count > 8 ) { return false; } // storage invariant
+    schema_assert( value.items_count >= 0 && value.items_count <= 8 ); // storage invariant, debug only (§5.1)
     if ( value.items_count > 0 )
     {
         const uint64_t ref_items = ids.ref_at( 15, 0x3e7884bf4f412c6full );

@@ -99,8 +99,17 @@ func (c *emitCtx) finish() string {
 
 // fieldKind is the registry key of a field, or "" when no emitter carries it.
 func fieldKind(f *ir.Field) string {
-	if f.Array != ir.ArrayNone || f.Type.Pointer {
+	if f.Type.Pointer {
 		return ""
+	}
+	if f.Array != ir.ArrayNone {
+		if (f.Array != ir.ArrayFixed && f.Array != ir.ArrayCounted) || f.KeyEnum != "" {
+			return ""
+		}
+		if fieldKind(arrayElem(f)) == "" {
+			return ""
+		}
+		return "array"
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -108,6 +117,9 @@ func fieldKind(f *ir.Field) string {
 	case ir.TInt:
 		if f.Type.Width <= 64 {
 			return "int"
+		}
+		if f.Type.Width == 128 {
+			return "int128"
 		}
 		return ""
 	case ir.TFloat32:
@@ -133,11 +145,18 @@ func fieldKind(f *ir.Field) string {
 
 // blockingKind names what a field is when the codec does not carry it.
 func blockingKind(f *ir.Field) string {
-	if f.Array != ir.ArrayNone {
-		return "array"
-	}
 	if f.Type.Pointer {
 		return "pointer"
+	}
+	switch {
+	case f.Array == ir.ArrayList:
+		return "list"
+	case f.Array != ir.ArrayNone && f.KeyEnum != "":
+		return "keyed array"
+	case f.Array != ir.ArrayNone:
+		// an array is carried whenever its element is, so the element's kind
+		// is what blocks it
+		return blockingKind(arrayElem(f))
 	}
 	switch f.Type.Kind {
 	case ir.TInt:
@@ -744,7 +763,7 @@ func wireItemsBits(m *pyModule, items []ir.Item, seen map[string]bool) int64 {
 
 func (m *pyModule) fieldBits(f *ir.Field, seen map[string]bool) int64 {
 	if f.Array != ir.ArrayNone {
-		return 0
+		return m.arrayBits(f, seen)
 	}
 	switch f.Type.Kind {
 	case ir.TBool:

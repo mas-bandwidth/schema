@@ -516,16 +516,26 @@ jobs:
           fi
       - name: go mod tidy
         run: go mod tidy -diff
-      - name: go vet
-        run: go vet ./...
       # MODERNIZE (issue #1424). The full `lint` job runs this on a branch push
       # but a pull request into fixed-table-form skips it, because that job is
       # gated behind the `full-ci` label; `lint-fast` has no such gate and runs
       # on every pull-request push, so it carries the check here instead. The
       # pin below is the one ci-full.yml carries — the version gopls's own
       # module tags — and is bumped by hand in both files together.
+      # THE FLEET'S MODERNIZE BINARY, never `go run`: building the tool from
+      # the module cache was the step's whole cost and ran past the two-minute
+      # cap on a busy runner (PR 3954, main at d7008bdfbd94); the installed
+      # v0.23.0 binary analyses the whole tree in seconds. A runner without it
+      # is a loud red that names the tool, never a skip.
       - name: modernize
-        run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 ./...
+        run: |
+          export PATH="$HOME/sdk/bin:$PATH"
+          bin=$(command -v modernize || true)
+          if [ -z "$bin" ] || ! readlink -f "$bin" | grep 'modernize-0\.23\.0/' >/dev/null; then
+            echo "::error::tool missing: modernize 0.23.0 (the fleet install is ~/sdk/bin/modernize -> ~/sdk/modernize-0.23.0/modernize; found: ${bin:-nothing})"
+            exit 1
+          fi
+          modernize ./...
       # THE SLOW-GATE SCAN (schema#988, G5). internal/slowtest.Gate skips a test
       # that shells out to a toolchain unless SCHEMA_SLOW=1 is set, and a skipped
       # test exits 0 — so a make target running a bare `go test` on such a
@@ -542,6 +552,27 @@ jobs:
         run: go test ./internal/ci/
       - name: bench scripts parse
         run: bash -n bench/run.sh
+
+  # GO VET, a job of its own beside lint-fast: in one job with modernize the
+  # two whole-tree type-checks ran one after the other, and vet alone took
+  # 110 s on a loaded runner (run 43756632584), so modernize was cancelled at
+  # the two-minute cap. Side by side each has the cap to itself.
+  vet:
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: go vet
+        run: go vet ./...
 
   # THE TOUCHED LANGUAGE'S GENERATED-CODE LINT, one row per language `plan`
   # selected (its `lints` output). These are the fast halves of three lens
@@ -839,7 +870,8 @@ jobs:
           set -euo pipefail
           case "$TARGET" in
             tables-go-fixedform) make tables-go-fixedform ;;
-            conformance-go-rows) make conformance-go-rows ;;
+            conformance-go-rows-a) make conformance-go-rows-a ;;
+            conformance-go-rows-b) make conformance-go-rows-b ;;
             *) echo "::error::go-test-touched has no make row '$TARGET'"; exit 1 ;;
           esac
 

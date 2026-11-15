@@ -31,7 +31,6 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
 	unit := luarun.LoadUnit(t, filepath.Join(repo, "test", "tables", "DeadBytes.schema"))
 
 	for _, vec := range fixedvector.DeadBytes {
-		vec := vec
 		t.Run(vec.Name, func(t *testing.T) {
 			t.Parallel()
 			g := luaEvoGen(t, unit, nil)
