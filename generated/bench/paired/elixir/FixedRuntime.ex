@@ -111,9 +111,14 @@ defmodule Bench.FixedRuntime do
   A RAGGED TAIL IS NOT THIS STEP'S TO NAME: step 9 runs first and answers
   `malformed`, so a `rest` that is not a whole number of records passes
   through here untouched and the split reports it.
+
+  A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (step 9): a header and a layout
+  followed by no record is `:truncated`, because a batch of none holds no
+  value to read.
   """
   def batch_within(rest, record_bytes, capacity) do
     cond do
+      rest == 0 -> {:error, :truncated}
       record_bytes <= 0 -> :ok
       rem(rest, record_bytes) != 0 -> :ok
       div(rest, record_bytes) > capacity -> {:error, :batch_too_large}

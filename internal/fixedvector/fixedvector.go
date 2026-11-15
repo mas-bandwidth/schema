@@ -46,12 +46,16 @@ const RangeWidenU64Hostile = "hostile_range_widen_u64.bin"
 // that field. The file is named for what it holds.
 const NegativeZeroFile = "negative_zero.bin"
 
-// Vector names one writer's-range vector: its corpus file, a Name that tells
-// it from the others (a leg's subtest), the versioning row whose pair it reads
-// (VOLD_<Row> in the lineage of the reader VNEW_<Row>), and the fixed root
-// both declare.
+// Vector names one shared vector: its corpus file, a Name that tells it from
+// the others (a leg's subtest), and the fixed root it holds. A writer's-range
+// vector names the versioning row whose pair it reads (VOLD_<Row> in the
+// lineage of the reader VNEW_<Row>). A deprecated-field vector is read under
+// its own layout: it names the test/tables schema that declares the root
+// (Schema, without .schema) and the deprecated root field it holds off its
+// declared default (Field).
 type Vector struct {
 	File, Name, Row, Root string
+	Schema, Field         string
 }
 
 // WriterRange is every writer's-range vector (docs/FIXED-FORM-ALGORITHM.md
@@ -66,6 +70,32 @@ var WriterRange = []Vector{
 // (docs/SPEC-TABLES.md §3.3), the list each leg runs.
 var NegativeZero = []Vector{
 	{File: NegativeZeroFile, Name: "negative_zero", Root: "NegZero"},
+}
+
+// The deprecated-field vectors (docs/SPEC-TABLES.md §3.4, §21.2, §22.6;
+// docs/rulings.json fixed-deprecated-field-is-carried): one file per shape of
+// a `| deprecated` field of test/tables/FD1.schema's FdRoot, each record
+// holding a lawful value in that field that is NOT its declared default, and
+// ordinary values elsewhere. A deprecated field in the fixed form is carried,
+// so each file reads, lands the STORED value (the manifest's `expect=`), and
+// saves back byte for byte.
+const (
+	DeprecatedScalar   = "deprecated_scalar.bin"   // old_count int32 = 4: holds 99
+	DeprecatedString   = "deprecated_string.bin"   // old_tag string(8) = "abc": holds "hi"
+	DeprecatedArray    = "deprecated_array.bin"    // old_marks [..3]uint16: holds a count of 2
+	DeprecatedOptional = "deprecated_optional.bin" // old_bonus ?uint16: present
+	DeprecatedNested   = "deprecated_nested.bin"   // old_spot Spot (5, 6): holds (50, 60)
+	DeprecatedUnion    = "deprecated_union.bin"    // old_pick Pick: the spot arm, off its defaults
+)
+
+// DeprecatedField is every deprecated-field vector, the list each leg runs.
+var DeprecatedField = []Vector{
+	{File: DeprecatedScalar, Name: "deprecated_scalar", Root: "FdRoot", Schema: "FD1", Field: "old_count"},
+	{File: DeprecatedString, Name: "deprecated_string", Root: "FdRoot", Schema: "FD1", Field: "old_tag"},
+	{File: DeprecatedArray, Name: "deprecated_array", Root: "FdRoot", Schema: "FD1", Field: "old_marks"},
+	{File: DeprecatedOptional, Name: "deprecated_optional", Root: "FdRoot", Schema: "FD1", Field: "old_bonus"},
+	{File: DeprecatedNested, Name: "deprecated_nested", Root: "FdRoot", Schema: "FD1", Field: "old_spot"},
+	{File: DeprecatedUnion, Name: "deprecated_union", Root: "FdRoot", Schema: "FD1", Field: "old_pick"},
 }
 
 // DeadVector names one dead-byte vector (docs/FIXED-FORM-ALGORITHM.md §3.1,
@@ -113,7 +143,8 @@ var DeadBytes = []DeadVector{
 
 // Expect is one vector's answer: Refused when the reference refused the whole
 // load (the line carries no `expect=`), else the landed integer values by
-// manifest path (`r0.v`, `r0.vals[2]`) in the manifest's order. Clamped is
+// manifest path (`r0.v`, `r0.vals[2]`) in the manifest's order, and the landed
+// text values (`r0.old_tag`, quoted in the manifest) in Texts. Clamped is
 // the retired clamp's count, zero on every line the one read dumps; it stays
 // only until every leg's range-widen test asserts Refused.
 type Expect struct {
@@ -121,6 +152,7 @@ type Expect struct {
 	Refused bool
 	Values  map[string]int64
 	Paths   []string
+	Texts   map[string]string
 	Clamped int64
 	// ForgedPath and ForgedAt are the manifest's `forged=<path>@<byte>=...`:
 	// the one cell the vector damaged and its absolute byte offset in the file.
@@ -173,9 +205,9 @@ func (e Expect) Int(path string) (int64, error) {
 }
 
 // Read returns file's answer from its line in corpus/manifest.txt: Refused
-// when the line carries no `expect=`, else the `expect=` values. A vector
-// line names the cell it forged; a writer's file the rule lands carries an
-// `expect=` and no forge.
+// when the line carries no `expect=`, else the `expect=` values. A forged
+// vector's line carries `forged=`; a line with no `forged=` is a vector only
+// when it carries `expect=` (a deprecated-field vector, read as written).
 func Read(corpus, file string) (Expect, error) {
 	f, err := os.Open(filepath.Join(corpus, "manifest.txt"))
 	if err != nil {
@@ -204,11 +236,14 @@ func Read(corpus, file string) (Expect, error) {
 		if !named {
 			continue
 		}
-		e := Expect{File: file, Refused: true, Values: map[string]int64{}}
+		e := Expect{File: file, Refused: true, Values: map[string]int64{}, Texts: map[string]string{}}
 		if expect != "" {
 			var err error
 			if e, err = parse(file, expect); err != nil {
 				return Expect{}, err
+			}
+			if forged == "" {
+				return e, nil
 			}
 		}
 		if forged != "" {
@@ -229,11 +264,23 @@ func Read(corpus, file string) (Expect, error) {
 }
 
 func parse(file, expect string) (Expect, error) {
-	e := Expect{File: file, Values: map[string]int64{}}
-	for pair := range strings.SplitSeq(expect, ",") {
+	e := Expect{File: file, Values: map[string]int64{}, Texts: map[string]string{}}
+	pairs, err := splitPairs(expect)
+	if err != nil {
+		return Expect{}, fmt.Errorf("fixedvector: %s's expect= %w", file, err)
+	}
+	for _, pair := range pairs {
 		k, v, ok := strings.Cut(pair, "=")
 		if !ok {
 			return Expect{}, fmt.Errorf("fixedvector: %s's expect= has a pair with no value: %q", file, pair)
+		}
+		if strings.HasPrefix(v, `"`) {
+			text, err := unquote(v)
+			if err != nil {
+				return Expect{}, fmt.Errorf("fixedvector: %s's expect= %s %w", file, k, err)
+			}
+			e.Texts[k] = text
+			continue
 		}
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
@@ -247,6 +294,66 @@ func parse(file, expect string) (Expect, error) {
 		e.Paths = append(e.Paths, k)
 	}
 	return e, nil
+}
+
+// splitPairs splits a manifest value list at its commas, keeping a comma the
+// dumper escaped inside a quoted text (`\,`) in its pair.
+func splitPairs(list string) ([]string, error) {
+	var out []string
+	start, quoted := 0, false
+	for i := 0; i < len(list); i++ {
+		switch c := list[i]; {
+		case c == '\\' && quoted:
+			i++
+		case c == '"':
+			quoted = !quoted
+		case c == ',' && !quoted:
+			out = append(out, list[start:i])
+			start = i + 1
+		}
+	}
+	if quoted {
+		return nil, fmt.Errorf("has an unterminated text: %q", list[start:])
+	}
+	return append(out, list[start:]), nil
+}
+
+// unquote reads the dumper's quoted text: `\"`, `\\` and `\,` stand for the
+// character, `\uXXXX` for one byte outside printable ASCII.
+func unquote(v string) (string, error) {
+	if len(v) < 2 || !strings.HasSuffix(v, `"`) {
+		return "", fmt.Errorf("is not a quoted text: %q", v)
+	}
+	body := v[1 : len(v)-1]
+	var b strings.Builder
+	for i := 0; i < len(body); i++ {
+		c := body[i]
+		if c != '\\' {
+			b.WriteByte(c)
+			continue
+		}
+		if i+1 >= len(body) {
+			return "", fmt.Errorf("ends in an escape: %q", v)
+		}
+		i++
+		switch body[i] {
+		case '"', '\\', ',':
+			b.WriteByte(body[i])
+		case 'u':
+			if i+5 > len(body) {
+				return "", fmt.Errorf("has a short \\u escape: %q", v)
+			}
+			n, err := strconv.ParseUint(body[i+1:i+5], 16, 8)
+			if err != nil {
+				return "", fmt.Errorf("has a \\u escape that is not one byte: %q", v)
+			}
+			b.WriteByte(byte(n))
+			i += 4
+		default:
+			return "", fmt.Errorf("has an unknown escape: %q", v)
+		}
+	}
+	return b.String(), nil
 }
 
 // parseForged splits `<path>@<byte>=<value>` into the path and the byte.
