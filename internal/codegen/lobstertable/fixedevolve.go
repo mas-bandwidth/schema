@@ -583,9 +583,8 @@ func scatterElement(g *lobster.Gen, f *ir.Field, expr, base string, off, stride 
 			scatterUnion(g, r, expr, at, off, ind)
 			return
 		case *ir.Enum:
-			g.TypeRef(r.Name, false)
 			w := r.StorageBits / 8
-			g.Pf("%s%s = %s(%s(data, %s))\n", ind, expr, r.Name, readInt(w, false), at)
+			g.Pf("%s%s = %s(%s(data, %s))\n", ind, expr, enumConversion(g, r.Name), readInt(w, false), at)
 			return
 		case *ir.Flags:
 			g.TypeRef(r.Name, false)

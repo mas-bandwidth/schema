@@ -1270,25 +1270,6 @@ def TableEntityFixedPut(b·:string, at·:int, v·:TableEntity) -> string:
     b· = write_int8_le(b·, at· + 50, if v·.Firing: 1 else: 0)
     return b·
 
-// TableEntityFixedGet reads one record body at at (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableEntityFixedGet(data·:string, at·:int) -> TableEntity:
-    let v· = NewTableEntity()
-    v·.EntityId = read_uint32_le(data·, at· + 0)
-    v·.PosX = read_int32_le(data·, at· + 4)
-    v·.PosY = read_int32_le(data·, at· + 8)
-    v·.PosZ = read_int32_le(data·, at· + 12)
-    v·.Yaw = read_uint32_le(data·, at· + 16)
-    v·.Pitch = read_uint32_le(data·, at· + 20)
-    v·.VelX = read_int32_le(data·, at· + 24)
-    v·.VelY = read_int32_le(data·, at· + 28)
-    v·.VelZ = read_int32_le(data·, at· + 32)
-    v·.Health = read_int32_le(data·, at· + 36)
-    v·.Weapon = TableWeapon(read_uint8_le(data·, at· + 40))
-    v·.Damage = read_uint64_le(data·, at· + 41)
-    v·.Moving = read_uint8_le(data·, at· + 49) != 0
-    v·.Firing = read_uint8_le(data·, at· + 50) != 0
-    return v·
-
 // TableEntityFixedSave writes values as a form-3 file: the header (TableEntity, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
@@ -1300,27 +1281,6 @@ def TableEntityFixedSave(values·:[TableEntity]) -> string:
     var body· = ""
     for(values·) v·: body· += schema_rt.fixed_record(TableEntityFixedHash, TableEntityFixedPut(schema_rt.zeros(51), 0, v·))
     return schema_rt.fixed_file(TableEntityFixedLayoutBytes(), TableEntityFixedHash, body·, length(values·))
-
-// TableEntityFixedDecode reads a TRUSTED form-3 file of TableEntity records written by this
-// build's own layout (TableEntity, §2), asserting the header and every record
-// hash, and that at least one record follows the layout (§22.6). It is
-// not a read of untrusted data: TableEntityFixedLoad is the strict read
-// (docs/SPEC-TABLES.md §6.5).
-def TableEntityFixedDecode(data·:string) -> [TableEntity]:
-    let layout· = TableEntityFixedLayoutBytes()
-    assert read_uint8_le(data·, 0) == 3
-    assert read_uint64_le(data·, 8) == TableEntityFixedHash
-    assert read_uint32_le(data·, 16) == length(layout·)
-    let start· = 20 + length(layout·)
-    assert length(data·) > start·
-    let stride· = 8 + 51
-    let out·:[TableEntity] = []
-    var at· = start·
-    while at· < length(data·):
-        assert read_uint64_le(data·, at·) == TableEntityFixedHash
-        push(out·, TableEntityFixedGet(data·, at· + 8))
-        at· += stride·
-    return out·
 
 // TableStatFixedLayoutBytes is the writer's layout, exactly as it rides (TableStat,
 // docs/FIXED-FORM-ALGORITHM.md §1): a u32 entry count then 17-byte entries.
@@ -1394,13 +1354,6 @@ def TableStatFixedPut(b·:string, at·:int, v·:TableStat) -> string:
     b· = write_int32_le(b·, at· + 4, v·.Delta)
     return b·
 
-// TableStatFixedGet reads one record body at at (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableStatFixedGet(data·:string, at·:int) -> TableStat:
-    let v· = NewTableStat()
-    v·.StatId = read_uint32_le(data·, at· + 0)
-    v·.Delta = read_int32_le(data·, at· + 4)
-    return v·
-
 // TableStatFixedSave writes values as a form-3 file: the header (TableStat, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
@@ -1412,27 +1365,6 @@ def TableStatFixedSave(values·:[TableStat]) -> string:
     var body· = ""
     for(values·) v·: body· += schema_rt.fixed_record(TableStatFixedHash, TableStatFixedPut(schema_rt.zeros(8), 0, v·))
     return schema_rt.fixed_file(TableStatFixedLayoutBytes(), TableStatFixedHash, body·, length(values·))
-
-// TableStatFixedDecode reads a TRUSTED form-3 file of TableStat records written by this
-// build's own layout (TableStat, §2), asserting the header and every record
-// hash, and that at least one record follows the layout (§22.6). It is
-// not a read of untrusted data: TableStatFixedLoad is the strict read
-// (docs/SPEC-TABLES.md §6.5).
-def TableStatFixedDecode(data·:string) -> [TableStat]:
-    let layout· = TableStatFixedLayoutBytes()
-    assert read_uint8_le(data·, 0) == 3
-    assert read_uint64_le(data·, 8) == TableStatFixedHash
-    assert read_uint32_le(data·, 16) == length(layout·)
-    let start· = 20 + length(layout·)
-    assert length(data·) > start·
-    let stride· = 8 + 8
-    let out·:[TableStat] = []
-    var at· = start·
-    while at· < length(data·):
-        assert read_uint64_le(data·, at·) == TableStatFixedHash
-        push(out·, TableStatFixedGet(data·, at· + 8))
-        at· += stride·
-    return out·
 
 // TableMixedFixedLayoutBytes is the writer's layout, exactly as it rides (TableMixed,
 // docs/FIXED-FORM-ALGORITHM.md §1): a u32 entry count then 17-byte entries.
@@ -2769,55 +2701,6 @@ def TableMixedFixedPut(b·:string, at·:int, v·:TableMixed) -> string:
     b· = write_int32_le(b·, at· + 1220, v·.IdleTicks)
     return b·
 
-// TableMixedFixedGet reads one record body at at (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableMixedFixedGet(data·:string, at·:int) -> TableMixed:
-    let v· = NewTableMixed()
-    v·.ProtocolMagic = read_uint16_le(data·, at· + 0)
-    v·.Sequence = read_uint32_le(data·, at· + 2)
-    v·.AckSequence = read_int32_le(data·, at· + 6)
-    v·.AckBits = read_uint32_le(data·, at· + 10)
-    v·.SessionId = read_uint64_le(data·, at· + 14)
-    v·.ClientId = read_uint32_le(data·, at· + 22)
-    v·.Nonce = read_uint64_le(data·, at· + 26)
-    v·.WorldTime = read_int64_le(data·, at· + 34)
-    v·.FrameTick = read_uint64_le(data·, at· + 42)
-    v·.ServerTime = read_float32_le(data·, at· + 50)
-    v·.EntitiesCount = read_int32_le(data·, at· + 54)
-    for(v·.EntitiesCount) i_Entities_54·:
-        v·.Entities[i_Entities_54·] = TableEntityFixedGet(data·, at· + 58 + i_Entities_54· * 51)
-    v·.StatsCount = read_int32_le(data·, at· + 466)
-    for(v·.StatsCount) i_Stats_466·:
-        v·.Stats[i_Stats_466·] = TableStatFixedGet(data·, at· + 470 + i_Stats_466· * 8)
-    v·.GameEvent.Type = TableEventType(read_uint8_le(data·, at· + 1110))
-    if int(v·.GameEvent.Type) == 1:
-        v·.GameEvent.Hit = TableHitEventFixedGet(data·, at· + 1110 + 1)
-    if int(v·.GameEvent.Type) == 2:
-        v·.GameEvent.Chat = TableChatEventFixedGet(data·, at· + 1110 + 1)
-    if int(v·.GameEvent.Type) == 3:
-        v·.GameEvent.Pickup = TablePickupEventFixedGet(data·, at· + 1110 + 1)
-    v·.Loadout = substring(data·, at· + 1124, 4)
-    v·.PlayerNameLength = read_int32_le(data·, at· + 1128)
-    var fbuf_PlayerName_1128· = schema_rt.zeros(15)
-    for(v·.PlayerNameLength * 1) j_PlayerName_1128·: fbuf_PlayerName_1128· = write_int8_le(fbuf_PlayerName_1128·, j_PlayerName_1128·, read_uint8_le(data·, at· + 1128 + 4 + j_PlayerName_1128·))
-    v·.PlayerName = fbuf_PlayerName_1128·
-    v·.PayloadLength = read_int32_le(data·, at· + 1147)
-    var fbuf_Payload_1147· = schema_rt.zeros(16)
-    for(v·.PayloadLength * 1) j_Payload_1147·: fbuf_Payload_1147· = write_int8_le(fbuf_Payload_1147·, j_Payload_1147·, read_uint8_le(data·, at· + 1147 + 4 + j_Payload_1147·))
-    v·.Payload = fbuf_Payload_1147·
-    v·.AimX = read_float32_le(data·, at· + 1167)
-    v·.AimY = read_float32_le(data·, at· + 1171)
-    v·.AimZ = read_float32_le(data·, at· + 1175)
-    v·.Recoil = read_float32_le(data·, at· + 1179)
-    v·.Drift = read_float64_le(data·, at· + 1183)
-    v·.WideKey = read_uint64_le(data·, at· + 1191)
-    v·.Flux = read_int64_le(data·, at· + 1199)
-    v·.Ping = read_float32_le(data·, at· + 1207)
-    v·.CrcHint = read_uint32_le(data·, at· + 1211)
-    v·.HasExtra = read_uint8_le(data·, at· + 1215) != 0
-    v·.Extra = read_int32_le(data·, at· + 1216)
-    v·.IdleTicks = read_int32_le(data·, at· + 1220)
-    return v·
-
 // TableMixedFixedSave writes values as a form-3 file: the header (TableMixed, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
@@ -2832,27 +2715,6 @@ def TableMixedFixedSave(values·:[TableMixed]) -> string:
     var body· = ""
     for(values·) v·: body· += schema_rt.fixed_record(TableMixedFixedHash, TableMixedFixedPut(schema_rt.zeros(1224), 0, v·))
     return schema_rt.fixed_file(TableMixedFixedLayoutBytes(), TableMixedFixedHash, body·, length(values·))
-
-// TableMixedFixedDecode reads a TRUSTED form-3 file of TableMixed records written by this
-// build's own layout (TableMixed, §2), asserting the header and every record
-// hash, and that at least one record follows the layout (§22.6). It is
-// not a read of untrusted data: TableMixedFixedLoad is the strict read
-// (docs/SPEC-TABLES.md §6.5).
-def TableMixedFixedDecode(data·:string) -> [TableMixed]:
-    let layout· = TableMixedFixedLayoutBytes()
-    assert read_uint8_le(data·, 0) == 3
-    assert read_uint64_le(data·, 8) == TableMixedFixedHash
-    assert read_uint32_le(data·, 16) == length(layout·)
-    let start· = 20 + length(layout·)
-    assert length(data·) > start·
-    let stride· = 8 + 1224
-    let out·:[TableMixed] = []
-    var at· = start·
-    while at· < length(data·):
-        assert read_uint64_le(data·, at·) == TableMixedFixedHash
-        push(out·, TableMixedFixedGet(data·, at· + 8))
-        at· += stride·
-    return out·
 
 // TableHitEventFixedLayoutBytes is the writer's layout, exactly as it rides (TableHitEvent,
 // docs/FIXED-FORM-ALGORITHM.md §1): a u32 entry count then 17-byte entries.
@@ -2962,15 +2824,6 @@ def TableHitEventFixedPut(b·:string, at·:int, v·:TableHitEvent) -> string:
     b· = write_int8_le(b·, at· + 12, if v·.Crit: 1 else: 0)
     return b·
 
-// TableHitEventFixedGet reads one record body at at (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableHitEventFixedGet(data·:string, at·:int) -> TableHitEvent:
-    let v· = NewTableHitEvent()
-    v·.TargetId = read_uint32_le(data·, at· + 0)
-    v·.Damage = read_int32_le(data·, at· + 4)
-    v·.HitKind = read_int32_le(data·, at· + 8)
-    v·.Crit = read_uint8_le(data·, at· + 12) != 0
-    return v·
-
 // TableHitEventFixedSave writes values as a form-3 file: the header (TableHitEvent, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
@@ -2982,27 +2835,6 @@ def TableHitEventFixedSave(values·:[TableHitEvent]) -> string:
     var body· = ""
     for(values·) v·: body· += schema_rt.fixed_record(TableHitEventFixedHash, TableHitEventFixedPut(schema_rt.zeros(13), 0, v·))
     return schema_rt.fixed_file(TableHitEventFixedLayoutBytes(), TableHitEventFixedHash, body·, length(values·))
-
-// TableHitEventFixedDecode reads a TRUSTED form-3 file of TableHitEvent records written by this
-// build's own layout (TableHitEvent, §2), asserting the header and every record
-// hash, and that at least one record follows the layout (§22.6). It is
-// not a read of untrusted data: TableHitEventFixedLoad is the strict read
-// (docs/SPEC-TABLES.md §6.5).
-def TableHitEventFixedDecode(data·:string) -> [TableHitEvent]:
-    let layout· = TableHitEventFixedLayoutBytes()
-    assert read_uint8_le(data·, 0) == 3
-    assert read_uint64_le(data·, 8) == TableHitEventFixedHash
-    assert read_uint32_le(data·, 16) == length(layout·)
-    let start· = 20 + length(layout·)
-    assert length(data·) > start·
-    let stride· = 8 + 13
-    let out·:[TableHitEvent] = []
-    var at· = start·
-    while at· < length(data·):
-        assert read_uint64_le(data·, at·) == TableHitEventFixedHash
-        push(out·, TableHitEventFixedGet(data·, at· + 8))
-        at· += stride·
-    return out·
 
 // TableChatEventFixedLayoutBytes is the writer's layout, exactly as it rides (TableChatEvent,
 // docs/FIXED-FORM-ALGORITHM.md §1): a u32 entry count then 17-byte entries.
@@ -3076,13 +2908,6 @@ def TableChatEventFixedPut(b·:string, at·:int, v·:TableChatEvent) -> string:
     b· = write_int32_le(b·, at· + 4, v·.Speaker)
     return b·
 
-// TableChatEventFixedGet reads one record body at at (docs/FIXED-FORM-ALGORITHM.md §3).
-def TableChatEventFixedGet(data·:string, at·:int) -> TableChatEvent:
-    let v· = NewTableChatEvent()
-    v·.Channel = read_int32_le(data·, at· + 0)
-    v·.Speaker = read_uint32_le(data·, at· + 4)
-    return v·
-
 // TableChatEventFixedSave writes values as a form-3 file: the header (TableChatEvent, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
@@ -3094,27 +2919,6 @@ def TableChatEventFixedSave(values·:[TableChatEvent]) -> string:
     var body· = ""
     for(values·) v·: body· += schema_rt.fixed_record(TableChatEventFixedHash, TableChatEventFixedPut(schema_rt.zeros(8), 0, v·))
     return schema_rt.fixed_file(TableChatEventFixedLayoutBytes(), TableChatEventFixedHash, body·, length(values·))
-
-// TableChatEventFixedDecode reads a TRUSTED form-3 file of TableChatEvent records written by this
-// build's own layout (TableChatEvent, §2), asserting the header and every record
-// hash, and that at least one record follows the layout (§22.6). It is
-// not a read of untrusted data: TableChatEventFixedLoad is the strict read
-// (docs/SPEC-TABLES.md §6.5).
-def TableChatEventFixedDecode(data·:string) -> [TableChatEvent]:
-    let layout· = TableChatEventFixedLayoutBytes()
-    assert read_uint8_le(data·, 0) == 3
-    assert read_uint64_le(data·, 8) == TableChatEventFixedHash
-    assert read_uint32_le(data·, 16) == length(layout·)
-    let start· = 20 + length(layout·)
-    assert length(data·) > start·
-    let stride· = 8 + 8
-    let out·:[TableChatEvent] = []
-    var at· = start·
-    while at· < length(data·):
-        assert read_uint64_le(data·, at·) == TableChatEventFixedHash
-        push(out·, TableChatEventFixedGet(data·, at· + 8))
-        at· += stride·
-    return out·
 
 // TablePickupEventFixedLayoutBytes is the writer's layout, exactly as it rides (TablePickupEvent,
 // docs/FIXED-FORM-ALGORITHM.md §1): a u32 entry count then 17-byte entries.
@@ -3188,13 +2992,6 @@ def TablePickupEventFixedPut(b·:string, at·:int, v·:TablePickupEvent) -> stri
     b· = write_int32_le(b·, at· + 4, v·.Amount)
     return b·
 
-// TablePickupEventFixedGet reads one record body at at (docs/FIXED-FORM-ALGORITHM.md §3).
-def TablePickupEventFixedGet(data·:string, at·:int) -> TablePickupEvent:
-    let v· = NewTablePickupEvent()
-    v·.ItemId = read_uint32_le(data·, at· + 0)
-    v·.Amount = read_int32_le(data·, at· + 4)
-    return v·
-
 // TablePickupEventFixedSave writes values as a form-3 file: the header (TablePickupEvent, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
@@ -3206,27 +3003,6 @@ def TablePickupEventFixedSave(values·:[TablePickupEvent]) -> string:
     var body· = ""
     for(values·) v·: body· += schema_rt.fixed_record(TablePickupEventFixedHash, TablePickupEventFixedPut(schema_rt.zeros(8), 0, v·))
     return schema_rt.fixed_file(TablePickupEventFixedLayoutBytes(), TablePickupEventFixedHash, body·, length(values·))
-
-// TablePickupEventFixedDecode reads a TRUSTED form-3 file of TablePickupEvent records written by this
-// build's own layout (TablePickupEvent, §2), asserting the header and every record
-// hash, and that at least one record follows the layout (§22.6). It is
-// not a read of untrusted data: TablePickupEventFixedLoad is the strict read
-// (docs/SPEC-TABLES.md §6.5).
-def TablePickupEventFixedDecode(data·:string) -> [TablePickupEvent]:
-    let layout· = TablePickupEventFixedLayoutBytes()
-    assert read_uint8_le(data·, 0) == 3
-    assert read_uint64_le(data·, 8) == TablePickupEventFixedHash
-    assert read_uint32_le(data·, 16) == length(layout·)
-    let start· = 20 + length(layout·)
-    assert length(data·) > start·
-    let stride· = 8 + 8
-    let out·:[TablePickupEvent] = []
-    var at· = start·
-    while at· < length(data·):
-        assert read_uint64_le(data·, at·) == TablePickupEventFixedHash
-        push(out·, TablePickupEventFixedGet(data·, at· + 8))
-        at· += stride·
-    return out·
 
 // TableEntityReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
 def TableEntityReset(v·:TableEntity):
@@ -3274,7 +3050,7 @@ def TableEntityFixedScatter(data·:string, at·:int, v·:TableEntity):
     v·.VelY = read_int32_le(data·, at· + 28)
     v·.VelZ = read_int32_le(data·, at· + 32)
     v·.Health = read_int32_le(data·, at· + 36)
-    v·.Weapon = TableWeapon(read_uint8_le(data·, at· + 40))
+    v·.Weapon = benchtable.TableWeapon(read_uint8_le(data·, at· + 40))
     v·.Damage = read_uint64_le(data·, at· + 41)
     v·.Moving = read_uint8_le(data·, at· + 49) != 0
     v·.Firing = read_uint8_le(data·, at· + 50) != 0
@@ -4971,7 +4747,7 @@ class TableEntityFixedRecordCodec : schema_rt.FixedRecordCodec
         row·.Health = bridge_10·.cell.i
         let bridge_11· = rec·.fields[10]
         if bridge_11·.fd.id != 0xa0b610205f2c6e01: return "", "invalid_value"
-        row·.Weapon = TableWeapon(bridge_11·.cell.i)
+        row·.Weapon = benchtable.TableWeapon(bridge_11·.cell.i)
         let bridge_12· = rec·.fields[11]
         if bridge_12·.fd.id != 0x7f6308be8ab37fc0: return "", "invalid_value"
         row·.Damage = bridge_12·.cell.i
@@ -5224,7 +5000,7 @@ class TableMixedFixedRecordCodec : schema_rt.FixedRecordCodec
             row·.Entities[bridge_12·].Health = bridge_23·.cell.i
             let bridge_24· = bridge_13·.fields[10]
             if bridge_24·.fd.id != 0xa0b610205f2c6e01: return "", "invalid_value"
-            row·.Entities[bridge_12·].Weapon = TableWeapon(bridge_24·.cell.i)
+            row·.Entities[bridge_12·].Weapon = benchtable.TableWeapon(bridge_24·.cell.i)
             let bridge_25· = bridge_13·.fields[11]
             if bridge_25·.fd.id != 0x7f6308be8ab37fc0: return "", "invalid_value"
             row·.Entities[bridge_12·].Damage = bridge_25·.cell.i
