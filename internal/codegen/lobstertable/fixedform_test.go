@@ -148,9 +148,17 @@ def read_in() -> string:
     let f = read_file("in.bin")
     if f: return f
     return ""
-let values = %s.%sFixedDecode(read_in())
-hex(%s.%sFixedSave(values))
-`, base, lobsterrun.HexProbe, u.Package, rootName, u.Package, rootName)
+let data = read_in()
+let back:[%[3]s.%[4]s] = []
+for(length(data) / (8 + %[3]s.%[4]sFixedRecordBytes) + 1): push(back, %[3]s.New%[4]s())
+let plan:[schema_rt.TableFixedEntry] = []
+for(%[3]s.%[4]sFixedPlanMax): push(plan, schema_rt.TableFixedEntry {})
+let n = %[3]s.%[4]sFixedLoad(back, data, plan, schema_rt.TableReport {})
+if n < 0:
+    hex("")
+else:
+    hex(%[3]s.%[4]sFixedSave(slice(back, 0, n)))
+`, base, lobsterrun.HexProbe, u.Package, rootName)
 	if err := os.WriteFile(filepath.Join(dir, "main.lobster"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
 	}
