@@ -13,11 +13,17 @@
 #include <stdlib.h> /* the text form: exact number conversion */
 #include <locale.h> /* the text form: the runtime's decimal point */
 
+#include <assert.h> /* the text writer's zero-byte refusal, in a debug build */
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---- json walk: begin ----
 
    The TEXT form (docs/SPEC-TABLES.md §16): one table, one text, one walk over the
    reflection descriptors (§8). Reading fills ONE caller-owned instance and
-   allocates nothing beyond it; writing targets a caller buffer with the
+   allocates nothing beyond it but the key set of an object of many keys;
+   writing targets a caller buffer with the
    wire's measure/write symmetry. Everything AROUND this — which file goes
    with which instance, what key an instance is filed under, how instances
    link into a root table's collections — is a packer's opinion and stays
@@ -25,8 +31,8 @@
 
    The dialect: trailing commas are accepted on read (the authoring files
    this exists for carry them) and never written; comments are not JSON and
-   are refused; unknown keys are skipped and counted; a repeated key is
-   last-wins and counted; a key present with the wrong JSON type is skipped
+   are refused; unknown keys are skipped and counted; a repeated key, in
+   any object of the text, refuses the read; a key present with the wrong JSON type is skipped
    and counted, never coerced. */
 
 #define BENCH_K_TABLE_JSON_MAX_DEPTH 128
@@ -137,8 +143,16 @@ typedef struct bench_table_json_wide_t
 } bench_table_json_wide_t;
 
 static SCHEMA_UNUSED int bench_table_json_kind_wide( uint8_t kind ) { return kind >= 18 && kind <= 29; }
-static SCHEMA_UNUSED int bench_table_json_kind_wide_signed( uint8_t kind ) { return kind == 18 || ( kind >= 20 && kind <= 24 ); }
+static SCHEMA_UNUSED int bench_table_json_kind_wide_signed( uint8_t kind ) { return kind == 5 || kind == 18 || ( kind >= 20 && kind <= 24 ); }
 static SCHEMA_UNUSED int bench_table_json_kind_fixed( uint8_t kind ) { return kind >= 20 && kind <= 29; }
+/* the integer-shaped kinds whose storage is wider than 32 bits: int64, uint64,
+   int128, uint128, and the 64- and 128-bit fixed-point kinds. These are the
+   kinds the JSON form writes as a STRING of decimal digits (§16.2). */
+static SCHEMA_UNUSED int bench_table_json_kind_wide_integer( uint8_t kind )
+{
+    return kind == 5 || kind == 9 || kind == 18 || kind == 19 ||
+           kind == 23 || kind == 24 || kind == 28 || kind == 29;
+}
 
 static SCHEMA_UNUSED int bench_table_json_wide_zero( bench_table_json_wide_t v ) { return v.lo == 0 && v.hi == 0; }
 static SCHEMA_UNUSED int bench_table_json_wide_negative( bench_table_json_wide_t v ) { return ( v.hi >> 63 ) != 0; }
@@ -357,6 +371,22 @@ static SCHEMA_UNUSED char bench_table_json_element_shape( const bench_table_fiel
     return 'n';
 }
 
+/* A wide integer declares the number shape and READS a string or a number
+   (§16.2); every other shape is exact. */
+static SCHEMA_UNUSED int bench_table_json_shape_accepts( const bench_table_field_info_t * f, char got )
+{
+    char want = bench_table_json_shape( f );
+    if ( got == want ) { return 1; }
+    return want == 'n' && got == 's' && bench_table_json_kind_wide_integer( f->kind );
+}
+
+static SCHEMA_UNUSED int bench_table_json_element_shape_accepts( const bench_table_field_info_t * f, char got )
+{
+    char want = bench_table_json_element_shape( f );
+    if ( got == want ) { return 1; }
+    return want == 'n' && got == 's' && bench_table_json_kind_wide_integer( f->kind );
+}
+
 /* A guarded group rides only when its guard reads true — the wire's own
    elision (§4), carried into the text so a text and a wire written from one
    instance say the same thing. The guard is spelled as its branch condition
@@ -532,6 +562,11 @@ static SCHEMA_UNUSED void bench_table_json_write_string( bench_table_json_out_t 
     for ( i = 0; i < length; i++ )
     {
         unsigned char c = (unsigned char) s[i];
+        /* A zero byte is not text for this writer either (docs/SPEC-TABLES.md
+           §16.3, §16.14 W0): no read stores U+0000, so a program-built value
+           holding one is off the write contract (docs/SPEC.md §5.1 row 8).
+           C is an assert leg, so the refusal is a debug assert. */
+        schema_assert( c != 0 );
         switch ( c )
         {
             case '"':  bench_table_json_raw( out, "\\\"", 2 ); break;
@@ -603,7 +638,7 @@ static SCHEMA_UNUSED void bench_table_json_write_signed( bench_table_json_out_t 
    readable. Non-finite values have no JSON spelling at all, and the writer
    REFUSES rather than losing one silently — the same rule measure and save
    already apply to an enum value no variant names (§5). */
-static SCHEMA_UNUSED void bench_table_json_write_wide( bench_table_json_out_t * out, const void * storage, const bench_table_field_info_t * f )
+static SCHEMA_UNUSED void bench_table_json_write_wide_digits( bench_table_json_out_t * out, const void * storage, const bench_table_field_info_t * f )
 {
     int is_signed = bench_table_json_kind_wide_signed( f->kind );
     bench_table_json_wide_t v = bench_table_json_wide_load( storage, f->elem_size, is_signed );
@@ -646,6 +681,20 @@ static SCHEMA_UNUSED void bench_table_json_write_wide( bench_table_json_out_t * 
         if ( frac < 64 ) { fraction.hi = 0; fraction.lo &= ( (uint64_t) ( 1 ) << frac ) - 1; }
         else { fraction.hi &= ( (uint64_t) ( 1 ) << ( frac - 64 ) ) - 1; }
     }
+}
+
+/* a kind wider than 32 bits is a STRING of decimal digits (§16.2); one of 32
+   bits and under is a bare number. */
+static SCHEMA_UNUSED void bench_table_json_write_wide( bench_table_json_out_t * out, const void * storage, const bench_table_field_info_t * f )
+{
+    if ( !bench_table_json_kind_wide_integer( f->kind ) )
+    {
+        bench_table_json_write_wide_digits( out, storage, f );
+        return;
+    }
+    bench_table_json_put( out, '"' );
+    bench_table_json_write_wide_digits( out, storage, f );
+    bench_table_json_put( out, '"' );
 }
 
 
@@ -878,7 +927,7 @@ static SCHEMA_UNUSED int bench_table_json_write_scalar( bench_table_json_out_t *
         bench_table_json_put( out, ']' );
         return 1;
     }
-    if ( bench_table_json_kind_wide( f->kind ) ) { bench_table_json_write_wide( out, storage, f ); return 1; }
+    if ( bench_table_json_kind_wide( f->kind ) || bench_table_json_kind_wide_integer( f->kind ) ) { bench_table_json_write_wide( out, storage, f ); return 1; }
     switch ( f->kind )
     {
         case 1:
@@ -1038,17 +1087,40 @@ typedef struct bench_table_json_in_t
     void * graph;
 } bench_table_json_in_t;
 
+/* A COMMENT IS TEXT (docs/SPEC-TABLES.md §16.2, §16.3): the bytes inside a line
+   or block comment are well-formed UTF-8 and hold no NUL. A comment carrying an
+   ill-formed sequence or a zero byte is not JSON and refuses the read, exactly
+   as a byte at a string site does. Linear in the comment's length. */
+static SCHEMA_UNUSED int bench_table_json_comment_text( const char * s, int64_t length )
+{
+    int64_t i = 0;
+    while ( i < length )
+    {
+        unsigned char c = (unsigned char) s[i];
+        int32_t width = 0;
+        int64_t left = length - i;
+        if ( c == 0 ) { return 0; }
+        if ( c < 0x80 ) { i++; continue; }
+        if ( bench_table_json_utf8( s + i, left > 4 ? 4 : (int32_t) left, &width ) < 0 ) { return 0; }
+        i += width;
+    }
+    return 1;
+}
+
 static SCHEMA_UNUSED void bench_table_json_space( bench_table_json_in_t * in )
 {
     while ( in->pos < in->size )
     {
         char c = in->text[in->pos];
         if ( c == ' ' || c == '\t' || c == '\n' || c == '\r' ) { in->pos++; continue; }
-        /* SPEC-TABLES 16.2: comments are whitespace on read. */
+        /* SPEC-TABLES 16.2: comments are whitespace on read, and their bytes are text. */
         if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '/' )
         {
+            int64_t start;
             in->pos += 2;
+            start = in->pos;
             while ( in->pos < in->size && in->text[in->pos] != '\n' ) { in->pos++; }
+            if ( !bench_table_json_comment_text( in->text + start, in->pos - start ) ) { in->bad = 1; return; }
             continue;
         }
         if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '*' )
@@ -1056,6 +1128,7 @@ static SCHEMA_UNUSED void bench_table_json_space( bench_table_json_in_t * in )
             int64_t at = in->pos + 2;
             while ( at + 1 < in->size && !(in->text[at] == '*' && in->text[at + 1] == '/') ) { at++; }
             if ( at + 1 >= in->size ) { in->bad = 1; in->pos = in->size; return; }
+            if ( !bench_table_json_comment_text( in->text + in->pos + 2, at - ( in->pos + 2 ) ) ) { in->bad = 1; return; }
             in->pos = at + 2;
             continue;
         }
@@ -1486,6 +1559,24 @@ static SCHEMA_UNUSED int bench_table_json_scan_number( bench_table_json_in_t * i
     return 1;
 }
 
+/* AN INTEGER TOKEN (§16.2): an optional minus, then digits with no leading
+   zero, and not -0. A fraction, an exponent, a plus and a negative zero are
+   each the wrong shape for an integer field, never coerced. */
+static SCHEMA_UNUSED int bench_table_json_integer_token( const char * text, int64_t length )
+{
+    int64_t i = 0;
+    int negative = 0;
+    if ( i < length && text[i] == '-' ) { negative = 1; i++; }
+    if ( i >= length ) { return 0; }
+    if ( text[i] == '0' ) { return !negative && i + 1 == length; }
+    if ( text[i] < '1' || text[i] > '9' ) { return 0; }
+    for ( ; i < length; i++ )
+    {
+        if ( text[i] < '0' || text[i] > '9' ) { return 0; }
+    }
+    return 1;
+}
+
 /* the token's exact double, through the runtime's own converter — which
    speaks the LOCALE's decimal point, so the token crosses back over that
    character on its way in. A token too long to copy whole is handed over as
@@ -1612,9 +1703,110 @@ static SCHEMA_UNUSED int bench_table_json_skipped_ampersand( bench_table_json_in
 { (void)key; in->bad = 1; return 0; }
 #endif
 
+/* THE KEYS OF ONE OBJECT (docs/SPEC-TABLES.md §16.2): a repeated key refuses
+   the read, in every object of the text, whatever the key names — a field, a
+   key no field has, a key inside a value the walk only skips. Every object
+   walked keeps every key it decodes, as the key's place in the text and the
+   hash of its decoded bytes, in an open-addressed set: on the stack for an
+   object of a few keys and on the heap past that, so the set is as large as
+   the object's own keys and never limited by the table's width. Two keys are
+   the same key when their DECODED bytes are, so an escape spells the same key
+   as the character it names. */
+#define BENCH_K_TABLE_JSON_KEYS_LOCAL 16
+
+#ifndef schema_allocate
+#define schema_allocate(bytes) calloc(1,(size_t)(bytes))
+#endif
+#ifndef schema_release
+#define schema_release(pointer) free(pointer)
+#endif
+
+typedef struct bench_table_json_key_t
+{
+    int64_t at;    /* one past the key's opening quote in the text; 0 is an empty slot */
+    uint64_t hash; /* of the key's decoded bytes */
+} bench_table_json_key_t;
+
+typedef struct bench_table_json_keys_t
+{
+    bench_table_json_key_t * slots;
+    int64_t capacity; /* a power of two */
+    int64_t count;
+    bench_table_json_key_t local[BENCH_K_TABLE_JSON_KEYS_LOCAL];
+} bench_table_json_keys_t;
+
+static SCHEMA_UNUSED void bench_table_json_keys_init( bench_table_json_keys_t * keys )
+{
+    memset( keys->local, 0, sizeof( keys->local ) );
+    keys->slots = keys->local;
+    keys->capacity = BENCH_K_TABLE_JSON_KEYS_LOCAL;
+    keys->count = 0;
+}
+
+static SCHEMA_UNUSED void bench_table_json_keys_free( bench_table_json_keys_t * keys )
+{
+    if ( keys->slots != keys->local ) { schema_release( keys->slots ); }
+    keys->slots = keys->local;
+}
+
+/* the key a slot holds, decoded again from the text, against this one */
+static SCHEMA_UNUSED int bench_table_json_key_equal( const bench_table_json_in_t * in, int64_t at, const char * key, int32_t length )
+{
+    bench_table_json_in_t scan = *in;
+    bench_table_report_t scratch;
+    char held[BENCH_K_TABLE_JSON_MAX_KEY];
+    int32_t held_length = 0;
+    memset( &scratch, 0, sizeof( scratch ) );
+    scan.report = &scratch;
+    scan.pos = at - 1;
+    if ( !bench_table_json_scan_text( &scan, held, BENCH_K_TABLE_JSON_MAX_KEY - 1, &held_length ) ) { return 0; }
+    return held_length == length && memcmp( held, key, (size_t) length ) == 0;
+}
+
+/* 1: the key is new to its object and now held; 0: the object already holds
+   it; -1: the set could not grow, and the walk stops (in->bad). quote is the
+   key's opening quote in the text. */
+static SCHEMA_UNUSED int bench_table_json_keys_add( bench_table_json_in_t * in, bench_table_json_keys_t * keys, int64_t quote, const char * key, int32_t length )
+{
+    uint64_t hash = 1469598103934665603ULL;
+    int64_t mask;
+    int64_t i;
+    int32_t k;
+    for ( k = 0; k < length; k++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[k] ) * 1099511628211ULL; }
+    if ( ( keys->count + 1 ) * 2 > keys->capacity )
+    {
+        const int64_t capacity = keys->capacity * 2;
+        bench_table_json_key_t * grown;
+        int64_t j;
+        if ( (uint64_t) capacity > SIZE_MAX / sizeof( bench_table_json_key_t ) ) { in->bad = 1; return -1; }
+        grown = (bench_table_json_key_t *) schema_allocate( capacity * (int64_t) sizeof( bench_table_json_key_t ) );
+        if ( grown == NULL ) { in->bad = 1; return -1; }
+        memset( grown, 0, (size_t) capacity * sizeof( bench_table_json_key_t ) );
+        for ( j = 0; j < keys->capacity; j++ )
+        {
+            if ( keys->slots[j].at == 0 ) { continue; }
+            i = (int64_t) ( keys->slots[j].hash & (uint64_t) ( capacity - 1 ) );
+            while ( grown[i].at != 0 ) { i = ( i + 1 ) & ( capacity - 1 ); }
+            grown[i] = keys->slots[j];
+        }
+        bench_table_json_keys_free( keys );
+        keys->slots = grown;
+        keys->capacity = capacity;
+    }
+    mask = keys->capacity - 1;
+    for ( i = (int64_t) ( hash & (uint64_t) mask ); keys->slots[i].at != 0; i = ( i + 1 ) & mask )
+    {
+        if ( keys->slots[i].hash == hash && bench_table_json_key_equal( in, keys->slots[i].at, key, length ) ) { return 0; }
+    }
+    keys->slots[i].at = quote + 1;
+    keys->slots[i].hash = hash;
+    keys->count++;
+    return 1;
+}
+
 static SCHEMA_UNUSED int bench_table_json_skip_value( bench_table_json_in_t * in, int32_t depth );
 
-static SCHEMA_UNUSED int bench_table_json_skip_container( bench_table_json_in_t * in, char close, int32_t depth )
+static SCHEMA_UNUSED int bench_table_json_skip_members( bench_table_json_in_t * in, char close, int32_t depth, bench_table_json_keys_t * keys )
 {
     /* a skipped object's keys are held to the layer's rule too: a zero in one
        refuses the read, and a repeated key refuses in every object (§16.2,
@@ -1635,6 +1827,8 @@ static SCHEMA_UNUSED int bench_table_json_skip_container( bench_table_json_in_t 
         {
             char key[BENCH_K_TABLE_JSON_MAX_KEY];
             int32_t length = 0;
+            const int64_t quote = in->pos;
+            int added;
             uint64_t hash = 1469598103934665603ULL;
             int32_t k;
             if ( !bench_table_json_scan_text(in,key,BENCH_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
@@ -1647,6 +1841,9 @@ static SCHEMA_UNUSED int bench_table_json_skip_container( bench_table_json_in_t 
             if ( seen_count < 64 ) { seen[seen_count++] = hash; }
             if ( bench_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
+            added = bench_table_json_keys_add( in, keys, quote, key, length );
+            if ( added < 0 ) { return 0; }
+            if ( added == 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; }
             if ( key[0] == '&' && in->graph != NULL ) { if ( !first ) { in->bad = 1; return 0; } if ( !bench_table_json_skipped_ampersand(in,key) ) { return 0; } consumed = 1; }
         }
         first = 0;
@@ -1657,6 +1854,17 @@ static SCHEMA_UNUSED int bench_table_json_skip_container( bench_table_json_in_t 
         in->bad = 1;
         return 0;
     }
+}
+
+static SCHEMA_UNUSED int bench_table_json_skip_container( bench_table_json_in_t * in, char close, int32_t depth )
+{
+    bench_table_json_keys_t keys;
+    int ok;
+    if ( close != '}' ) { return bench_table_json_skip_members( in, close, depth, NULL ); }
+    bench_table_json_keys_init( &keys );
+    ok = bench_table_json_skip_members( in, close, depth, &keys );
+    bench_table_json_keys_free( &keys );
+    return ok;
 }
 
 static SCHEMA_UNUSED int bench_table_json_skip_value( bench_table_json_in_t * in, int32_t depth )
@@ -1687,7 +1895,7 @@ static SCHEMA_UNUSED int bench_table_json_skip_value( bench_table_json_in_t * in
 }
 
 static SCHEMA_UNUSED int bench_table_json_read_table( bench_table_json_in_t * in, void * base, const bench_table_type_info_t * info, int32_t depth );
-static SCHEMA_UNUSED int bench_table_json_read_table_keys( bench_table_json_in_t * in, void * base, const bench_table_type_info_t * info, int32_t depth, const char * first_key );
+static SCHEMA_UNUSED int bench_table_json_read_table_keys( bench_table_json_in_t * in, void * base, const bench_table_type_info_t * info, int32_t depth, const char * first_key, int32_t first_length, int64_t first_quote );
 
 typedef struct bench_table_json_integer_t
 {
@@ -1800,6 +2008,13 @@ static SCHEMA_UNUSED int bench_table_json_read_wide( bench_table_json_in_t * in,
     int frac = f->frac_bits;
     int64_t i = 0;
     int negative = 0;
+    /* a 128-bit INTEGER takes an integer token only (§16.2); a fixed-point
+       kind keeps its exact decimal spelling */
+    if ( !bench_table_json_kind_fixed( f->kind ) && !bench_table_json_integer_token( token, length ) )
+    {
+        in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
+        return 1;
+    }
     if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { negative = token[i] == '-'; i++; }
     const char * int_digits = token + i;
     int64_t int_len = 0;
@@ -2123,6 +2338,7 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
     const char * token = NULL;
     int64_t length = 0;
     int integral = 0;
+    char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
     if ( f->text_list != 0 ) { return schema_bench_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {
@@ -2162,7 +2378,7 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
             void * payload = (uint8_t *) storage + arms->arms[tag].offset;
             const bench_table_field_info_t * arm = arms->arms[tag].field;
             char want = arm != NULL ? bench_table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
-            if ( bench_table_json_value_shape( in ) != want && !(arm != NULL && arm->kind == 17 && !arm->is_array && bench_table_json_value_shape(in) == 'z') ) {
+            if ( !( arm != NULL ? bench_table_json_shape_accepts( arm, bench_table_json_value_shape( in ) ) : bench_table_json_value_shape( in ) == want ) && !(arm != NULL && arm->kind == 17 && !arm->is_array && bench_table_json_value_shape(in) == 'z') ) {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !bench_table_json_skip_value( in, depth+1 ) ) { return 0; }
             } else {
@@ -2271,7 +2487,17 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
         bench_table_json_set_raw( storage, f->elem_size, (uint64_t) nanos );
         return 1;
     }
-    if ( !bench_table_json_scan_number( in, &token, &length, &integral ) )
+    if ( bench_table_json_kind_wide_integer( f->kind ) && bench_table_json_peek( in ) == '"' )
+    {
+        /* a wide integer reads as a string OR a number, the same digits (§16.2) */
+        int32_t text_length = 0;
+        if ( !bench_table_json_scan_text( in, textbuf, (int32_t) sizeof( textbuf ) - 1, &text_length ) ) { return 0; }
+        if ( in->report->refused ) { return 1; }
+        token = textbuf;
+        length = text_length;
+        integral = 1;
+    }
+    else if ( !bench_table_json_scan_number( in, &token, &length, &integral ) )
     {
         in->bad = 1;
         return 0;
@@ -2314,14 +2540,17 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
         }
         return 1;
     }
-    // AN ORDINARY FIELD'S POLICY over the one interpreted value: it CLAMPS to
-    // its domain and counts. JSON has one number type, so 2.0 IS the integer 2
-    // and 1e3 IS 1000. A library that round-trips numbers through a double
-    // emits them that way, and this walker's own float writer emits 1e+21. Only
-    // a genuinely fractional value is the wrong shape for the kind.
+    // EVERY INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (§16.2): digits with an
+    // optional minus, no fraction, no exponent, not -0. The value never passes
+    // through a double and its range is tested on the exact value.
+    if ( !bench_table_json_integer_token( token, length ) )
+    {
+        in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
+        return 1;
+    }
     const int is_signed = f->kind >= 2 && f->kind <= 5;
-    const bench_table_json_integer_t number = bench_table_json_interpret( token, length, integral );
-    if ( !number.finite || number.fractional )
+    const bench_table_json_integer_t number = bench_table_json_interpret( token, length, 1 );
+    if ( !number.finite )
     {
         in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
         return 1;
@@ -2329,8 +2558,19 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
     if ( number.saturated ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } // past what sixty-four bits hold
     // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
-    // The comparison is on the value's OWN scale, correctly signed past
-    // INT64_MAX, where the storage's bit pattern is not a number to compare.
+    // A 64-bit integer's range is compared on the exact 128-bit lanes: a value
+    // at or above 2^53 is never rounded through a double on its way to a bound.
+    if ( f->wide != NULL && ( f->kind == 5 || f->kind == 9 ) )
+    {
+        bench_table_json_wide_t v = { number.magnitude, 0 };
+        bench_table_json_wide_t lo = { f->wide->lo[0], f->wide->lo[1] };
+        bench_table_json_wide_t hi = { f->wide->hi[0], f->wide->hi[1] };
+        if ( number.negative ) { v = bench_table_json_wide_neg( v ); }
+        if ( bench_table_json_wide_compare( v, lo, is_signed ) < 0 ) { v = lo; in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
+        else if ( bench_table_json_wide_compare( v, hi, is_signed ) > 0 ) { v = hi; in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
+        bench_table_json_set_raw( storage, f->elem_size, v.lo );
+        return 1;
+    }
     bench_table_json_integer_t bounded = number;
     if ( f->has_range )
     {
@@ -2398,7 +2638,6 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
            omits keeps them and a repeated field key cannot leave an earlier
            occurrence's slots standing */
         int32_t i;
-        char shape;
         uint64_t seen[8];
         if ( bench_table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
         in->pos++;
@@ -2408,7 +2647,6 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
             if ( f->kind == 13 ) { f->table->reset( slot ); }
             else { memset( slot, 0, (size_t) f->elem_size ); }
         }
-        shape = bench_table_json_element_shape( f );
         /* A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a repeated
            key like any other, last-wins and counted (§16.2). Tracked the way
            a table's own field keys are — a bounded, allocation-free bitmask;
@@ -2464,7 +2702,7 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
                 in->report->unknown++;
                 if ( !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( bench_table_json_value_shape( in ) != shape && !(f->kind == 17 && bench_table_json_value_shape(in) == 'z') )
+            else if ( !bench_table_json_element_shape_accepts( f, bench_table_json_value_shape( in ) ) && !(f->kind == 17 && bench_table_json_value_shape(in) == 'z') )
             {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
@@ -2491,7 +2729,6 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
            this occurrence's elements are placed — the re-establishment a nested
            table and a union arm already get. */
         int32_t placed = 0;
-        char shape;
         if ( bench_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
         int64_t spent = 0;
@@ -2510,7 +2747,6 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
             memset( storage, 0, (size_t) f->array_bound * (size_t) f->elem_size );
         }
         bench_table_json_set_count( base, f, 0 );
-        shape = bench_table_json_element_shape( f );
         for ( ;; )
         {
             char c = bench_table_json_peek( in );
@@ -2530,7 +2766,7 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE;
                 if ( !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( bench_table_json_value_shape( in ) != shape && !( ( f->kind == 17 || f->text_list == 2 ) && bench_table_json_value_shape(in) == 'z') )
+            else if ( !bench_table_json_element_shape_accepts( f, bench_table_json_value_shape( in ) ) && !( ( f->kind == 17 || f->text_list == 2 ) && bench_table_json_value_shape(in) == 'z') )
             {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
@@ -2565,7 +2801,7 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
 }
 
 /* ONE table object: keys are field keys, unknown ones are skipped and
-   counted, a repeated key is last-wins and counted. The instance is already
+   counted, a repeated key refuses the read. The instance is already
    at its declared defaults when this is entered, so a key the text never
    mentions keeps the default an absent field takes on the wire (§4). */
 static SCHEMA_UNUSED int schema_bench_table_json_require_seen_( bench_table_json_in_t * in, const void * base, const bench_table_type_info_t * info, const uint64_t * seen )
@@ -2585,10 +2821,11 @@ static SCHEMA_UNUSED int schema_bench_table_json_require_seen_( bench_table_json
     return 1;
 }
 
-static SCHEMA_UNUSED int bench_table_json_read_table_keys( bench_table_json_in_t * in, void * base, const bench_table_type_info_t * info, int32_t depth, const char * first_key )
+static SCHEMA_UNUSED int bench_table_json_read_table_members( bench_table_json_in_t * in, void * base, const bench_table_type_info_t * info, int32_t depth, const char * first_key, int32_t first_length, int64_t first_quote, bench_table_json_keys_t * keys )
 {
-    /* repeated tracking, bounded and allocation-free: a table with more
-       fields than this still reads, its repeats simply stop being counted */
+    /* the fields seen, bounded and allocation-free, for the required check;
+       a repeated key, of any field or of none and at any width, is refused
+       through the key set (keys) */
     uint64_t seen[8];
     memset( seen, 0, sizeof( seen ) );
     for ( ;; )
@@ -2596,18 +2833,25 @@ static SCHEMA_UNUSED int bench_table_json_read_table_keys( bench_table_json_in_t
         char c = 0;
         char key[BENCH_K_TABLE_JSON_MAX_KEY];
         int32_t key_length = 0;
+        int64_t quote = first_quote;
         int32_t index = -1;
         int32_t i;
-        if ( first_key != NULL ) { memcpy(key,first_key,strlen(first_key)+1); first_key = NULL; }
+        if ( first_key != NULL ) { memcpy(key,first_key,(size_t)first_length); key[first_length] = 0; key_length = first_length; first_key = NULL; }
         else
         {
             c = bench_table_json_peek(in);
             if ( c == '}' ) { in->pos++; return schema_bench_table_json_require_seen_( in, base, info, seen ); }
             if ( c == 0 ) { in->bad = 1; return 0; }
+            quote = in->pos;
             if ( !bench_table_json_scan_text(in,key,BENCH_K_TABLE_JSON_MAX_KEY-1,&key_length) ) { return 0; }
             key[key_length] = 0;
             if ( bench_table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
+        }
+        {
+            const int added = bench_table_json_keys_add( in, keys, quote, key, key_length );
+            if ( added < 0 ) { return 0; }
+            if ( added == 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; }
         }
         for ( i = 0; i < info->num_fields; i++ )
         {
@@ -2656,7 +2900,7 @@ static SCHEMA_UNUSED int bench_table_json_read_table_keys( bench_table_json_in_t
             }
             else
             {
-                if ( got != bench_table_json_shape( f ) && !(f->kind == 17 && !f->is_array && got == 'z') )
+                if ( !bench_table_json_shape_accepts( f, got ) && !(f->kind == 17 && !f->is_array && got == 'z') )
                 {
                     /* the wrong JSON type for the kind: skipped, never coerced */
                     in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -2680,6 +2924,18 @@ static SCHEMA_UNUSED int bench_table_json_read_table_keys( bench_table_json_in_t
     }
 }
 
+/* first_key, when the caller decoded the object's first key already: its
+   decoded bytes, their length and its opening quote in the text */
+static SCHEMA_UNUSED int bench_table_json_read_table_keys( bench_table_json_in_t * in, void * base, const bench_table_type_info_t * info, int32_t depth, const char * first_key, int32_t first_length, int64_t first_quote )
+{
+    bench_table_json_keys_t keys;
+    int ok;
+    bench_table_json_keys_init( &keys );
+    ok = bench_table_json_read_table_members( in, base, info, depth, first_key, first_length, first_quote, &keys );
+    bench_table_json_keys_free( &keys );
+    return ok;
+}
+
 /* ---- the two entry points the per-table wrappers name ---- */
 
 static SCHEMA_UNUSED int bench_table_json_read_table( bench_table_json_in_t * in, void * base, const bench_table_type_info_t * info, int32_t depth )
@@ -2692,7 +2948,7 @@ static SCHEMA_UNUSED int bench_table_json_read_table( bench_table_json_in_t * in
     }
     if ( bench_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
     in->pos++;
-    return bench_table_json_read_table_keys(in,base,info,depth,NULL);
+    return bench_table_json_read_table_keys(in,base,info,depth,NULL,0,-1);
 }
 
 static SCHEMA_UNUSED int bench_table_json_read( void * value, const bench_table_type_info_t * info, const char * text, int64_t bytes, bench_table_report_t * report )
@@ -2832,6 +3088,9 @@ static const bench_table_field_info_t schema_bench_mixed_pickup_event_fields_[] 
 
 const bench_table_type_info_t schema_bench_mixed_pickup_event_info_ = { "MixedPickupEvent", (uint32_t) sizeof( bench_mixed_pickup_event_t ), 2, schema_bench_mixed_pickup_event_fields_, schema_bench_mixed_pickup_event_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL, 0 };
 
+static const bench_table_wide_range_t schema_bench_bench_mixed_nonce_range_ = { { 0ull, 0ull }, { 18446744073709551615ull, 0ull } };
+static const bench_table_wide_range_t schema_bench_bench_mixed_world_time_range_ = { { 18446743073709551616ull, 18446744073709551615ull }, { 1000000000000ull, 0ull } };
+static const bench_table_wide_range_t schema_bench_bench_mixed_frame_tick_range_ = { { 0ull, 0ull }, { 281474976710655ull, 0ull } };
 static const bench_table_wide_range_t schema_bench_bench_mixed_server_time_range_ = { { 0ull, 0ull }, { 16776960ull, 0ull } };
 static const bench_table_variant_info_t schema_bench_bench_mixed_game_event_variants_[] = {
     { "None", 0 },
@@ -2855,9 +3114,9 @@ static const bench_table_field_info_t schema_bench_bench_mixed_fields_[] = {
     { "ack_bits", "ack_bits", "bits(32)", 0x9bae0da8b829ee03ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, ack_bits ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->ack_bits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "session_id", "session_id", "uint64", 0xb7d7b5650a590b05ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, session_id ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->session_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "client_id", "client_id", "uint32", 0x6d7b98e2d095967eull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, client_id ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->client_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "nonce", "nonce", "uint64", 0x73a94c71d60dc0d8ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, nonce ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->nonce ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, world_time ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->world_time ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+12, 1e+12, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, frame_tick ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->frame_tick ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "nonce", "nonce", "uint64", 0x73a94c71d60dc0d8ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, nonce ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->nonce ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, &schema_bench_bench_mixed_nonce_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, world_time ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->world_time ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+12, 1e+12, &schema_bench_bench_mixed_world_time_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, frame_tick ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->frame_tick ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, &schema_bench_bench_mixed_frame_tick_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "server_time", "server_time", "fixed(24, 8)", 0x3c460475f9be69c6ull, 22, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, server_time ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->server_time ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, &schema_bench_bench_mixed_server_time_range_, 8, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "entities", "entities", "MixedEntity", 0x935d0fb07bb3822aull, 13, 1, 1, 0, 0, 8, (uint32_t) offsetof( bench_bench_mixed_t, entities ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->entities[0] ), (uint32_t) offsetof( bench_bench_mixed_t, entities_count ), 0xffffffffu, &schema_bench_mixed_entity_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "stats", "stats", "MixedStat", 0xee639cad45b1994cull, 13, 1, 1, 0, 0, 80, (uint32_t) offsetof( bench_bench_mixed_t, stats ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->stats[0] ), (uint32_t) offsetof( bench_bench_mixed_t, stats_count ), 0xffffffffu, &schema_bench_mixed_stat_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },

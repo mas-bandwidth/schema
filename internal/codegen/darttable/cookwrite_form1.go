@@ -203,16 +203,19 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 	pieces := ir.FieldPieces(g.unit, f, offset)
 	if f.Type.Optional {
 		// §2.3 on the cooked storage: the presence bool is the LAST piece, and
-		// the value's pieces are written whole either way, as the reference's
-		// region writer writes them
+		// the value's pieces are written only when present — an absent
+		// optional's payload is dead bytes, zero on write (docs/SPEC-TABLES.md
+		// §7.2; docs/rulings.json fixed-dead-bytes-are-zero)
 		owner := expr
 		if i := lastDot(expr); i >= 0 {
 			owner = expr[:i]
 		}
 		g.pf("%sout?.setUint8(at + %d, %s.%s ? 1 : 0);\n", ind, pieces[len(pieces)-1].Offset, owner, hasMember(f))
+		g.pf("%sif (%s.%s) {\n", ind, owner, hasMember(f))
 		inner := *f
 		inner.Type.Optional = false
-		g.emitCookForm1Field(&inner, offset, expr, ind)
+		g.emitCookForm1Field(&inner, offset, expr, ind+"  ")
+		g.pf("%s}\n", ind)
 		return
 	}
 	if f.KeyEnum != "" || f.Array == ir.ArrayFixed {

@@ -126,11 +126,12 @@
     {
       "name": "base-packet-2",
       "when": "pull-request",
-      "why": "second slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): C and Go packet-defaults and Go packet-finite controls. Measured 33 s of control time on run 42556155793 and 37 s on loaded run 42554833739 over 3 controls.",
+      "why": "second slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): C and Go packet-defaults, Go packet-finite and the C packet-end read controls. Measured 33 s of control time on run 42556155793 and 37 s on loaded run 42554833739 over 3 controls; the C packet-end read control joins the same group.",
       "targets": [
         "packet-defaults-c-negative-control",
         "packet-defaults-go-negative-control",
-        "packet-finite-go-negative-control"
+        "packet-finite-go-negative-control",
+        "packet-end-c-negative-control"
       ]
     },
     {
@@ -229,11 +230,12 @@
     {
       "name": "lua-packet",
       "when": "pull-request",
-      "why": "the Lua port's four packet families (constructor defaults, finite-float, UTF-8 read validation and wide pairing) on the pinned PUC-Rio 5.4.8, each one small compile off the generated tree. Split from the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 12 s of control time over the 4 packet controls.",
+      "why": "the Lua port's five packet families (constructor defaults, finite-float, UTF-8 read validation, wide pairing and the packet end check) on the pinned PUC-Rio 5.4.8, each one small compile off the generated tree. Split from the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 12 s of control time over the 4 packet controls before the packet-end control joined.",
       "targets": [
         "packet-finite-lua-negative-control",
         "packet-utf8-lua-negative-control",
-        "packet-defaults-lua-negative-control"
+        "packet-defaults-lua-negative-control",
+        "packet-end-lua-negative-control"
       ],
       "lua": "5.4.8"
     },
@@ -1035,6 +1037,15 @@
       "python": "pin"
     },
     {
+      "name": "python-table-core",
+      "when": "pull-request",
+      "why": "the table core's form-byte control (make/python.mk): the generated runtime's form byte is moved in a copy, and the pinned-interpreter probe must go red naming message_form_as_file. It is also a prerequisite of test-python, so the leg runs it beside the table tests; this row is the one the negative-control matrix schedules, on the pins .github/actions/python restores.",
+      "targets": [
+        "python-table-core-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",
@@ -1197,6 +1208,15 @@
       "why": "the C# packet finite-float read rule: float-finite and double-finite each deleted in serialize.cs, each required to red exactly its own vectors. One build of test/cs under the SerializeConformanceControls switch and two deleted-rule runs; split from the old cs-packet group when that seven-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
       "targets": [
         "packet-finite-cs-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-packet-end",
+      "when": "pull-request",
+      "why": "the C# packet read-termination rule (docs/SPEC.md §5): one overlay rebuild of the emitter without the public read's end call, one regenerated End unit, and the shared packet-end vectors required to refuse the trailing byte and the final-byte padding while the exact packet stays accepted.",
+      "targets": [
+        "packet-end-cs-negative-control"
       ],
       "dotnet": "pin"
     },
@@ -1634,6 +1654,7 @@
         "packet-arm-defaults-js-flat-negative-control",
         "packet-arm-defaults-js-runtime-negative-control",
         "packet-defaults-js-negative-control",
+        "packet-end-js-negative-control",
         "packet-utf8-js-negative-control"
       ],
       "node": "26"
@@ -1864,7 +1885,8 @@
         "cards-dart-conformance-hash-negative-control",
         "cards-dart-conformance-negative-control",
         "packet-arm-defaults-dart-negative-control",
-        "packet-defaults-dart-negative-control"
+        "packet-defaults-dart-negative-control",
+        "packet-end-dart-negative-control"
       ],
       "dart": "3.13.2"
     },
@@ -1952,6 +1974,7 @@
       "targets": [
         "packet-arm-defaults-java-negative-control",
         "packet-defaults-java-negative-control",
+        "packet-end-java-negative-control",
         "packet-utf8-java-negative-control"
       ],
       "java": "21"
@@ -2414,9 +2437,10 @@
     {
       "name": "goose-packet",
       "when": "pull-request",
-      "why": "the Goose packet wire's controls (make/goose-packet.mk): UTF-8 and wide pairing against the C++ readers' bit-flip verdicts, the constructor-bytes defaults control and the finite-float control per direction. Each builds the compiler through one overlay and runs the pinned Goose compiler (make dist-goose); about 6 s of control time on the studio. Its own group so the fixed-form group stays as it was.",
+      "why": "the Goose packet wire's controls (make/goose-packet.mk): UTF-8 and wide pairing against the C++ readers' bit-flip verdicts, the constructor-bytes defaults control, the finite-float control per direction and the end-check control. Each builds the compiler through one overlay and runs the pinned Goose compiler (make dist-goose); about 6 s of control time on the studio. Its own group so the fixed-form group stays as it was.",
       "targets": [
         "packet-defaults-goose-negative-control",
+        "packet-end-goose-negative-control",
         "packet-finite-goose-negative-control",
         "packet-utf8-goose-negative-control"
       ]
