@@ -99,7 +99,7 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-java`: str-zero-escape-unknown-key only, in the conformance leg and in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-js`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-lobster`: str-zero-escape-unknown-key, jref_zero_byte, and str-zero-escape-unknown-key in the port's hostile-corpus run (carried finding); the JSON read refuses unpadded Base64 and set pad bits.
-  - `relax/hostile-rows-lua`: both hostile rows, jref_zero_byte.
+  - `relax/hostile-rows-lua`: str-zero-escape-unknown-key and jref_zero_byte (its JSON read refuses unpadded Base64 and set pad bits).
   - `relax/hostile-rows-luau`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-moo`: both hostile rows.
   - `relax/hostile-rows-rust`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).

@@ -1369,6 +1369,7 @@ local function read_base64(inp, bound, report)
   local out = {}
   local acc, held = 0, 0
   local over_bound, bad = false, false
+  local digits, pads = 0, 0
   while true do
     if inp.p > #inp.t then
       inp.bad = true
@@ -1377,11 +1378,15 @@ local function read_base64(inp, bound, report)
     local ch = inp.t:sub(inp.p, inp.p)
     inp.p = inp.p + 1
     if ch == '"' then break end
-    if ch ~= "=" and not bad then
+    if ch == "=" then
+      pads = pads + 1
+    elseif not bad then
       local at = BASE64:find(ch, 1, true)
-      if at == nil then
+      if at == nil or pads > 0 then
+        -- a byte outside the alphabet, or a digit after padding
         bad = true
       else
+        digits = digits + 1
         acc = ((acc << 6) | (at - 1)) & 0xffffff
         held = held + 6
         if held >= 8 then
@@ -1395,9 +1400,22 @@ local function read_base64(inp, bound, report)
       end
     end
   end
+  -- §16.2, §16.8: the body is CANONICAL base64, the exact text write_base64
+  -- writes for its bytes: padded to a whole quantum and the pad bits (the
+  -- `held` low bits of the last digit) zero. A body that does not decode at
+  -- all (a lone digit in the last quantum, more padding than the quantum
+  -- takes) is kind_mismatch; one that decodes but is spelled otherwise
+  -- (unpadded, a pad bit set) refuses the read.
+  local want_pads = (4 - digits % 4) % 4
+  if digits % 4 == 1 or (pads ~= 0 and pads ~= want_pads) then bad = true end
   if bad then
     report.kindChanged = report.kindChanged + 1
     return false
+  end
+  if pads ~= want_pads or acc & ((1 << held) - 1) ~= 0 then
+    report.Reason = "base64_not_canonical"
+    inp.bad = true
+    return nil
   end
   if over_bound then report.outOfRange = report.outOfRange + 1 end
   return table.concat(out)
