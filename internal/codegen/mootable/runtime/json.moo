@@ -1475,6 +1475,7 @@ type Reader = {
 	pos: number,
 	bad: boolean,
 	zero: boolean,
+	table: boolean,
 	report: Report,
 	graph: { [any]: { open: boolean, node: any, t: string? } }?,
 }
@@ -1687,11 +1688,13 @@ local function scanUnit(r: Reader): (string?, boolean)
 	return unit, false
 end
 
--- scanText(r, capacity, store): one JSON string, ONE CODE POINT AT A TIME, so
--- a string longer than capacity (bytes; < 0 unbounded) is bounded at a code
--- point boundary; store says the text lands in text storage, where a zero
--- refuses the read (§16.3). Returns the text, whether it exceeded capacity, and ok.
-local function scanText(r: Reader, capacity: number, store: boolean): (string, boolean, boolean)
+-- scanText(r, capacity, store, skip): one JSON string, ONE CODE POINT AT A
+-- TIME, so a string longer than capacity (bytes; < 0 unbounded) is bounded at
+-- a code point boundary; store says the text lands in text storage, where a
+-- zero refuses the read (§16.3), and skip says it is a key or a skipped value,
+-- which the same text rule refuses (§4, §16.3). Returns the text, whether it
+-- exceeded capacity, and ok.
+local function scanText(r: Reader, capacity: number, store: boolean, skip: boolean): (string, boolean, boolean)
 	if peek(r) ~= 34 then
 		r.bad = true
 		return "", false, false
@@ -1731,8 +1734,10 @@ local function scanText(r: Reader, capacity: number, store: boolean): (string, b
 		if unit == nil then
 			return "", false, false
 		end
-		if store and unit == "\0" then
-			r.zero = true -- §16.3: a zero bound for text storage
+		if (store or (skip and r.table)) and unit == "\0" then
+			if store then
+				r.zero = true -- §16.3: a zero bound for text storage
+			end
 			r.bad = true
 			return "", false, false
 		end
@@ -1747,19 +1752,28 @@ local function scanText(r: Reader, capacity: number, store: boolean): (string, b
 end
 
 local function scanString(r: Reader, capacity: number): (string, boolean, boolean)
-	return scanText(r, capacity, false)
+	return scanText(r, capacity, false, false)
+end
+
+-- scanKey reads an object key or a string the walk only SKIPS, and holds it to
+-- the U+0000 rule a placed string is held to (§4, §16.3): a skipped value and
+-- every object key are held to the text rules of a placed value.
+local function scanKey(r: Reader, capacity: number): (string, boolean, boolean)
+	return scanText(r, capacity, false, true)
 end
 
 local function scanStored(r: Reader, capacity: number): (string, boolean, boolean)
-	return scanText(r, capacity, true)
+	return scanText(r, capacity, true, false)
 end
 
 -- scanName: ONE schema-name string — a field key, an enum variant name, a
 -- flags element, a union arm key, an `&node` key, or a key inside a skipped
 -- object. §16.2 caps it at 255 bytes after decoding, and a longer one refuses
--- the whole read. Map keys and string values are data and stay on scan.
+-- the whole read. Every one of them is an object key, so it is held to the
+-- U+0000 rule a placed value is held to (§4, §16.3). Map keys and string
+-- values are data and stay on scan.
 local function scanName(r: Reader): (string, boolean)
-	local s, over, ok = scanText(r, MAX_KEY, false)
+	local s, over, ok = scanText(r, MAX_KEY, false, true)
 	if not ok then
 		return "", false
 	end
@@ -1949,7 +1963,7 @@ skipValue = function(r: Reader, depth: number): boolean
 	elseif c == 91 then
 		return skipContainer(r, 93, depth)
 	elseif c == 34 then
-		local _, _, ok = scanString(r, 0)
+		local _, _, ok = scanKey(r, 0)
 		return ok
 	elseif c == 116 then
 		return literal(r, "true")
@@ -1973,7 +1987,7 @@ end
 -- the end, under the reader's caps. JSONTestSuite holds it to the standard.
 function J.jsonLayerAccepts(text: string): boolean
 	local report: any = { reason = nil }
-	local r: Reader = { t = text, n = #text, pos = 1, bad = false, zero = false, report = report, graph = nil }
+	local r: Reader = { t = text, n = #text, pos = 1, bad = false, zero = false, table = false, report = report, graph = nil }
 	if string.sub(text, 1, 3) == "\239\187\191" then
 		r.pos = 4
 	end
@@ -3139,7 +3153,7 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 				entry[kd.slot] = name
 			else
 				-- THE KEY IS THE SPELLING AND NOTHING AROUND IT
-				local probe: Reader = { t = name, n = #name, pos = 1, bad = false, zero = false, report = r.report, graph = nil }
+				local probe: Reader = { t = name, n = #name, pos = 1, bad = false, zero = false, table = false, report = r.report, graph = nil }
 				space(probe)
 				local numberOk = false
 				if probe.pos == 1 then
@@ -3445,7 +3459,7 @@ function J.fromJson(d: any, rec: any, text: any, report: any?): boolean
 	local rep: any = report or {}
 	resetReport(rep)
 	local t: string = if type(text) == "buffer" then buffer.tostring(text) else text
-	local r: Reader = { t = t, n = #t, pos = 1, bad = false, zero = false, report = rep, graph = if d.variable then {} else nil }
+	local r: Reader = { t = t, n = #t, pos = 1, bad = false, zero = false, table = true, report = rep, graph = if d.variable then {} else nil }
 	-- a leading byte-order mark, and nowhere else (§16.12)
 	if string.sub(t, 1, 3) == "\239\187\191" then
 		r.pos = 4
