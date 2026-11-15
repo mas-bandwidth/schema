@@ -2086,10 +2086,10 @@ test-c: tables-c-discard
 # (table_cycle_acyclic, internal/codegen/ctable/graph.go), using temporary
 # 1-based directory indices during construction and resolving offsets once
 # acyclicity holds. The first control drops the cycle verdict in a copy of
-# graph.go so a cyclic graph loads, and TestPointerNamingAnOpenNodeIsRefusedC
-# must go red on it: the region and builder reads refuse the probe's wire by
-# the reachability rule too, so the control's red line is the retaining read,
-# the one leg the cycle verdict alone gates. The linear control stacks a node
+# graph.go so a cyclic graph loads, and TestCyclicWireIsRefusedC must go red on
+# its every-node-reached case: every read enforces the reachability rule, which
+# refuses each other cycle case (a redirected slot orphans a node), so that
+# case is the one the cycle verdict alone gates. The linear control stacks a node
 # at every slot naming it rather than the last, and
 # TestDiamondChainLoadsLinearC must go red on it.
 C_CYCLE_NC := build/c-cycle-nc
@@ -2106,23 +2106,23 @@ tables-c-cycle-negative-control:
 	@rm -rf $(C_CYCLE_NC) && mkdir -p $(C_CYCLE_NC)
 	@n=$$(grep -F -c 'if ( !c.broken && c.processed == c.vertices )' internal/codegen/ctable/graph.go); \
 		if [ "$$n" != "1" ]; then echo "NEGATIVE CONTROL: the C cycle verdict appears $$n times, expected exactly 1"; exit 1; fi
-	@m=$$(grep -F -c 'cycle: the retaining load handed back a cyclic graph' internal/codegen/ctable/discard_test.go); \
-		if [ "$$m" != "1" ]; then echo "NEGATIVE CONTROL: the cycle gate's retaining refusal appears $$m times, expected exactly 1"; exit 1; fi
+	@m=$$(grep -F -c 'cycle: a cycle with every node reached loaded' internal/codegen/ctable/discard_test.go); \
+		if [ "$$m" != "1" ]; then echo "NEGATIVE CONTROL: the cycle gate's every-node-reached case appears $$m times, expected exactly 1"; exit 1; fi
 	@sed -e 's#if ( !c.broken && c.processed == c.vertices )#if ( !c.broken ) /* NEGATIVE CONTROL: the cycle verdict is gone */#' \
 		internal/codegen/ctable/graph.go > $(C_CYCLE_NC)/graph.go.txt
 	@cmp -s internal/codegen/ctable/graph.go $(C_CYCLE_NC)/graph.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C cycle sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/ctable/graph.go":"%s/$(C_CYCLE_NC)/graph.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(C_CYCLE_NC)/overlay.json
-	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(C_CYCLE_NC)/overlay.json -run '^TestPointerNamingAnOpenNodeIsRefusedC$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(C_CYCLE_NC)/overlay.json -run '^TestCyclicWireIsRefusedC$$' \
 			./internal/codegen/ctable > $(C_CYCLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the C cycle verdict is gone and the gate stayed green"; \
 		cat $(C_CYCLE_NC)/log; exit 1; \
 	fi
-	@grep -q "cycle: the retaining load handed back a cyclic graph" $(C_CYCLE_NC)/log || \
+	@grep -q "cycle: a cycle with every node reached loaded" $(C_CYCLE_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(C_CYCLE_NC)/log; exit 1; }
-	@grep -m1 "cyclic graph" $(C_CYCLE_NC)/log
+	@grep -m1 "every node reached loaded" $(C_CYCLE_NC)/log
 	@echo "negative control: removing the C cycle verdict turns the cycle gate RED"
 tables-c-cycle-linear-negative-control:
 	@rm -rf $(C_CYCLE_LINEAR_NC) && mkdir -p $(C_CYCLE_LINEAR_NC)
