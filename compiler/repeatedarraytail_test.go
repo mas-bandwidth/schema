@@ -48,8 +48,11 @@ static const uint8_t wire[]={%s};
 		if err != nil {
 			t.Fatal(err)
 		}
+		// the strict walk runs before decode in the measure too (33ce0a092),
+		// so the measure may be where the damage is named; either way the
+		// wire is refused as wire_damaged and never loads
 		referenceCompileRun(t, files, common+`using namespace armdemo;
-int main(){TableReport report;int64_t n=HandLoadMeasure(wire,sizeof(wire));CHECK(n>0);uint8_t * region=(uint8_t*)malloc(n);const Hand * r=HandLoad(region,n,wire,sizeof(wire),&report);free(region);CHECK(!r);CHECK(report.damaged&&report.refuse_reason==wire_damaged);HandBuilder b;TableReport built;CHECK(!HandLoadBuilder(b,wire,sizeof(wire),&built));CHECK(built.damaged&&built.refuse_reason==wire_damaged);return 0;}`)
+int main(){TableReport report;TableRefuseReason measured=(TableRefuseReason)0;int64_t n=HandLoadMeasure(wire,sizeof(wire),NULL,&measured);if(n<=0){CHECK(measured==wire_damaged);}else{uint8_t * region=(uint8_t*)malloc(n);const Hand * r=HandLoad(region,n,wire,sizeof(wire),&report);free(region);CHECK(!r);CHECK(report.damaged&&report.refuse_reason==wire_damaged);}HandBuilder b;TableReport built;CHECK(!HandLoadBuilder(b,wire,sizeof(wire),&built));CHECK(built.damaged&&built.refuse_reason==wire_damaged);return 0;}`)
 	})
 	t.Run("c", func(t *testing.T) {
 		runCTableWireProbe(t, u, common+`

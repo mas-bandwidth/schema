@@ -406,7 +406,9 @@ int main(void) {
 
 // Integer JSON conversion keeps a magnitude unsigned until its domain is
 // established. Large unsigned tokens and negative exponents must never pass
-// through an out-of-range float-to-integer conversion or wrap to zero.
+// through an out-of-range float-to-integer conversion or wrap to zero. An
+// exponent is not an integer token at all (§16.2, 040dccb0f), so -1e30 is
+// refused as kind_mismatch before any conversion.
 func TestCTableWireJsonIntegerDomain(t *testing.T) {
 	u := unitFromSource(t, `package probe
 fixed table Root {
@@ -428,7 +430,7 @@ int main(void) {
  CHECK(value.small == 0 && value.bounded == 0 && value.debt == 0);
  memset(&report,0,sizeof(report));
  CHECK(!root_from_json(&value,second,(int64_t)strlen(second),&report));
- CHECK(report.refused && report.refuse_reason==SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+ CHECK(report.refused && report.refuse_reason==SCHEMA_TABLE_REFUSE_KIND_MISMATCH);
  CHECK(value.small == 0 && value.bounded == 0 && value.debt == 0);
  return 0;
 }
