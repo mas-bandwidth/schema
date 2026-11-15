@@ -1093,7 +1093,9 @@ func Parse(path string, data []byte) (*Unit, error) {
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", where, err)
 			}
-			cur.Lineage = append(cur.Lineage, l)
+			if cur.Lineage, err = appendLineage(cur.Name, cur.Lineage, l); err != nil {
+				return nil, fmt.Errorf("%s: %w", where, err)
+			}
 		case fields[0] == "field":
 			if cur == nil {
 				return nil, fmt.Errorf("%s: a field line before any record line", where)

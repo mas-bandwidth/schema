@@ -539,6 +539,8 @@ function TableVariableNodeTableScan(bytes, table, end, report) {
 
 // ---- the text form's string (docs/SPEC-TABLES.md §16.3; tabletext writeString)
 
+// A zero byte and a lone surrogate are not text: the writer refuses them by
+// this leg's own value (null) rather than spelling a text its reader refuses.
 function TableVariableJsonString(s) {
   let out = '"';
   for (let i = 0; i < s.length; i++) {
@@ -547,7 +549,7 @@ function TableVariableJsonString(s) {
       const lo = s.charCodeAt(i + 1);
       if (lo >= 0xdc00 && lo <= 0xdfff) { out += s[i] + s[i + 1]; i++; continue; }
     }
-    if (c >= 0xd800 && c <= 0xdfff) { throw new RangeError("TableVariableNotText"); }
+    if (c === 0 || (c >= 0xd800 && c <= 0xdfff)) { throw new RangeError("TableVariableNotText"); }
     switch (c) {
       case 0x22: out += '\\"'; break;
       case 0x5c: out += '\\\\'; break;
@@ -1069,11 +1071,32 @@ func (g *variableGen) elemDesc(f *ir.Field) string {
 	return fmt.Sprintf("{ s: \"int\", js: %q, %s }", integerJSONShape(f), intProps(f))
 }
 
+// integerJSONShape is the JSON value a shape check expects: an integer wider
+// than 32 bits reads as a string OR a number (§16.2), so it carries "N", and
+// every other integer or a timestamp is exact.
 func integerJSONShape(f *ir.Field) string {
 	if f.Type.Timestamp {
 		return "s"
 	}
+	if intIsWide(f) {
+		return "N"
+	}
 	return "n"
+}
+
+// intIsWide reports whether an integer-shaped field's storage is wider than 32
+// bits — int64, uint64, int128, uint128, and the 64- and 128-bit fixed-point
+// kinds — the kinds the JSON form writes as a string of digits (§16.2,
+// docs/rulings.json json-wide-integers-are-strings).
+func intIsWide(f *ir.Field) bool {
+	switch ir.TableWireScalarKind(f) {
+	case ir.TableKindI64, ir.TableKindU64,
+		ir.TableKindFixed64, ir.TableKindUFixed64,
+		ir.TableKindI128, ir.TableKindU128,
+		ir.TableKindFixed128, ir.TableKindUFixed128:
+		return true
+	}
+	return false
 }
 
 // Array-root tables keep their array shape when held by value, including

@@ -84,8 +84,10 @@ func testDefaultArmInitialization() {
 		rs := serialize.NewReadStream(oracle)
 		err := example.ReadDefaultChoice(rs, &out)
 		checkErr(err, "read independent DefaultChoice oracle")
-		consumedOK := rs.BitsProcessed() == 7
-		check(consumedOK, "DefaultChoice consumes exactly 7 bits")
+		// Seven bits of value, then the end check reads the final byte's zero
+		// padding: the one-packet read consumes the whole byte.
+		consumedOK := rs.BitsProcessed() == 8
+		check(consumedOK, "DefaultChoice consumes its 7 bits and the final byte's padding")
 		selectedOK := out.Type == example.DefaultChoiceTypeFirst && out.First.EntriesCount == 0 && out.First.Marker == 5
 		check(selectedOK, "DefaultChoice selects First and reads count zero, marker five")
 		// The control's backing-default marker requires a successful oracle decode.
@@ -612,19 +614,31 @@ func main() {
 		var rTrioFirst example.TrioFirst
 		var rStraddle example.TrioStraddle
 
-		rs := serialize.NewReadStream(ws.Data())
-		checkErr(example.ReadVec2(rs, &rVec2), "read Vec2")
-		checkErr(example.ReadSpanF64(rs, &rSpanF64), "read SpanF64")
-		checkErr(example.ReadSpanU64(rs, &rSpanU64), "read SpanU64")
-		checkErr(example.ReadSpanI64(rs, &rSpanI64), "read SpanI64")
-		checkErr(example.ReadSpanOne(rs, &rSpanOne), "read SpanOne")
-		checkErr(example.ReadSpanChunk(rs, &rSpanChunk), "read SpanChunk")
-		checkErr(example.ReadSpanTail(rs, &rSpanTail), "read SpanTail")
-		checkErr(example.ReadSpanTwice(rs, &rSpanTwice), "read SpanTwice")
-		checkErr(example.ReadTrio(rs, &rTrio), "read Trio")
-		checkErr(example.ReadTrioSole(rs, &rTrioSole), "read TrioSole")
-		checkErr(example.ReadTrioFirst(rs, &rTrioFirst), "read TrioFirst")
-		checkErr(example.ReadTrioStraddle(rs, &rStraddle), "read TrioStraddle")
+		// Every shape is a whole number of bytes, so the stream is the twelve
+		// packets back to back: each is read as its own packet, which ends
+		// exactly at its last byte.
+		data := ws.Data()
+		off := 0
+		packet := func(name string, bits int, r func(*serialize.ReadStream) error) {
+			n := bits / 8
+			buf := make([]byte, n, n+8) // read allocations extend past the data
+			copy(buf, data[off:off+n])
+			checkErr(r(serialize.NewReadStream(buf)), "read "+name)
+			off += n
+		}
+		packet("Vec2", 128, func(rs *serialize.ReadStream) error { return example.ReadVec2(rs, &rVec2) })
+		packet("SpanF64", 128, func(rs *serialize.ReadStream) error { return example.ReadSpanF64(rs, &rSpanF64) })
+		packet("SpanU64", 128, func(rs *serialize.ReadStream) error { return example.ReadSpanU64(rs, &rSpanU64) })
+		packet("SpanI64", 128, func(rs *serialize.ReadStream) error { return example.ReadSpanI64(rs, &rSpanI64) })
+		packet("SpanOne", 64, func(rs *serialize.ReadStream) error { return example.ReadSpanOne(rs, &rSpanOne) })
+		packet("SpanChunk", 64, func(rs *serialize.ReadStream) error { return example.ReadSpanChunk(rs, &rSpanChunk) })
+		packet("SpanTail", 160, func(rs *serialize.ReadStream) error { return example.ReadSpanTail(rs, &rSpanTail) })
+		packet("SpanTwice", 256, func(rs *serialize.ReadStream) error { return example.ReadSpanTwice(rs, &rSpanTwice) })
+		packet("Trio", 64, func(rs *serialize.ReadStream) error { return example.ReadTrio(rs, &rTrio) })
+		packet("TrioSole", 64, func(rs *serialize.ReadStream) error { return example.ReadTrioSole(rs, &rTrioSole) })
+		packet("TrioFirst", 80, func(rs *serialize.ReadStream) error { return example.ReadTrioFirst(rs, &rTrioFirst) })
+		packet("TrioStraddle", 408, func(rs *serialize.ReadStream) error { return example.ReadTrioStraddle(rs, &rStraddle) })
+		check(off == len(data), "the twelve degenerate packets fill the stream")
 
 		check(rVec2 == vec2, "Vec2 round-trips")
 		check(rSpanF64 == spanF64, "SpanF64 round-trips")

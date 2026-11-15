@@ -16,6 +16,10 @@ func init() {
 		old: "case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:\n\t\treturn ByteString(f.DefBytes)",
 		new: "case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:\n\t\treturn `\"\"` // SABOTAGED",
 	}}
+	sabotages["packet-write-cfloat-lua-range"] = []edit{{
+		old: `  if type(v.X) ~= "number" or v.X ~= v.X or v.X < 0.0 or v.X > 10.0 then return false end`,
+		new: `  -- SABOTAGED: the compressed-float range check is absent`,
+	}}
 	sabotages["packet-end-lua-end-check"] = []edit{
 		{
 			old: `	m.Printf("-- Read%s reads one packet: the type wire (SPEC §4.3, §6.1), then the\n", d.Name)

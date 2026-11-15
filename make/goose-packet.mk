@@ -150,3 +150,24 @@ packet-end-goose-negative-control: packet-end-goose
 	@echo 'packet end Goose negative control: the removed end call accepts trailing bytes and set padding'
 
 test-goose: packet-end-goose packet-end-goose-negative-control
+
+# ---- packet compressed float write range ----
+.PHONY: packet-write-cfloat-goose packet-write-cfloat-goose-negative-control
+packet-write-cfloat-goose: goose-packet-ready
+	@rm -rf build/packet-write-cfloat/goose && mkdir -p build/packet-write-cfloat/goose
+	./build/schema-goose generate --lang goose --out build/packet-write-cfloat/goose test/packet-write-cfloat/CFloat.schema
+	cp test/goose/driverlib.goose test/packet-write-cfloat/goose/main.goose build/packet-write-cfloat/goose/
+	go run ./test/packet-write-cfloat/goose/cases.go test/packet-write-cfloat/cases.txt > build/packet-write-cfloat/goose/cases
+	$(GOOSE) run build/packet-write-cfloat/goose/main.goose < build/packet-write-cfloat/goose/cases
+
+packet-write-cfloat-goose-negative-control: packet-write-cfloat-goose
+	$(call goose-packet-sabotaged,build/packet-write-cfloat/goose-negative,packet-write-cfloat-goose,internal/codegen/goose/write.go)
+	@rm -rf build/packet-write-cfloat/goose-negative/generated && mkdir -p build/packet-write-cfloat/goose-negative/generated
+	./build/packet-write-cfloat/goose-negative/schema generate --lang goose --out build/packet-write-cfloat/goose-negative/generated test/packet-write-cfloat/CFloat.schema
+	cp test/goose/driverlib.goose test/packet-write-cfloat/goose/main.goose build/packet-write-cfloat/goose-negative/generated/
+	@if $(GOOSE) run build/packet-write-cfloat/goose-negative/generated/main.goose < build/packet-write-cfloat/goose/cases > build/packet-write-cfloat/goose-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: range check removal passed'; exit 1; fi
+	@grep -Fq 'FAILED: above-max: writer accepted a refused value' build/packet-write-cfloat/goose-negative/log || { cat build/packet-write-cfloat/goose-negative/log; exit 1; }
+	@echo 'packet compressed float Goose negative control: removed range check accepts above-max'
+
+test-goose: packet-write-cfloat-goose packet-write-cfloat-goose-negative-control

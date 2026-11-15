@@ -229,7 +229,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 func withoutArrayRoots(source string) string {
 	for _, block := range []string{
 		`  defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
-    validate_record(desc, value, true)
+    validate_record(desc, value)
     json_field(field, Map.get(value, field.name, field.default), depth)
   end
 
@@ -1736,6 +1736,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           :error ->
             {:unknown, bytes}
 
+          id when id in [@node_id, @build_version_id, @message_vocab_id] ->
+            # A RESERVED ID IN A RECORD'S TYPE POSITION is malformed, because
+            # the three ids the language holds back ride only in their own transport
+            # (§3.1, §3.3), so the record names no type and the whole load is
+            # discarded
+            :malformed
+
           @string_id ->
             # a *string blob this reader can name is its UTF-8 bytes; a record
             # whose content is not text is malformed, and the root that reaches
@@ -2402,6 +2409,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {_len, <<elem_kind, count_rest::binary>>} ->
         case leb(count_rest) do
           {n, elems} ->
+            # THE ELEMENT KIND IS CLOSED (docs/SPEC-TABLES.md §3, §4): judged
+            # under any count before the declaration, so a kind off the array
+            # list is damage rather than a mismatch.
+            if not array_element_kind?(elem_kind), do: throw(:wire_damaged)
+
             # a narrower scalar element kind widens and counts once
             # (docs/SPEC-TABLES.md §2.9, §4). Any other disagreement skips
             # the field and counts a kind mismatch.
@@ -2732,6 +2744,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # length-framed slot is then decoded at that incoming width (§3.2, §4).
   defp keyed_reader(f, kind, report) do
     cond do
+      not keyed_element_kind?(kind) ->
+        {:mismatch, throw(:wire_damaged)}
+
       kind == f.elem_kind ->
         {:ok, f, report}
 
@@ -3126,22 +3141,20 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp field_active?(_f, _desc, _value), do: true
 
-  # zero_ok is THE TEXT WRITER'S CHECK (docs/SPEC-TABLES.md §16.3, docs/SPEC.md
-  # §5.1): well-formed text, a zero byte included, which the text spells
-  # \u0000. The binary writers refuse a zero byte, because their readers do.
-  defp validate_record(desc, value), do: validate_record(desc, value, false)
-
-  defp validate_record(desc, value, zero_ok) do
+  # A WRITER'S TEXT CHECK (docs/SPEC-TABLES.md §16.3, docs/SPEC.md §5.1 row 8):
+  # well-formed text with no zero byte. The text writer refuses a zero too,
+  # because its reader refuses the \u0000 text a writer would otherwise spell.
+  defp validate_record(desc, value) do
     Enum.each(desc.fields, fn f ->
       if Map.get(f, :text_list, false) and field_active?(f, desc, value) do
-        validate_text_list(f, Map.get(value, f.name, f.default), zero_ok)
+        validate_text_list(f, Map.get(value, f.name, f.default))
       end
 
       if Map.get(f, :unbounded, false) and field_active?(f, desc, value) do
         text = Map.get(value, f.name, f.default)
 
         unless Map.get(f, :optional, false) and text == nil do
-          if not is_binary(text) or not text_valid?(text, zero_ok), do: throw(:invalid_value)
+          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
         end
       end
 
@@ -3149,7 +3162,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         text = Map.get(value, f.name, f.default)
 
         unless Map.get(f, :optional, false) and text == nil do
-          if not is_binary(text) or not text_valid?(text, zero_ok), do: throw(:invalid_value)
+          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
         end
       end
 
@@ -3493,7 +3506,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if String.valid?(prefix), do: prefix, else: utf8_prefix(prefix, byte_size(prefix) - 1)
   end
 
-  defp validate_text_list(f, elements, zero_ok) do
+  defp validate_text_list(f, elements) do
     if not is_list(elements), do: throw(:invalid_value)
     bound = Map.get(f, :array_bound, 0)
     if bound > 0 and length(elements) > bound, do: throw(:invalid_value)
@@ -3504,7 +3517,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       value = Map.get(element, "value", default)
 
       if not (f.text_optional and value == nil) do
-        if not is_binary(value) or not text_valid?(value, zero_ok) or
+        if not is_binary(value) or not utf8_valid?(value) or
              (not Map.get(f, :text_unbounded, false) and byte_size(value) > f.text_size),
            do: throw(:invalid_value)
       end
@@ -3535,9 +3548,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp utf8_valid?(raw) do
     String.valid?(raw) and :binary.match(raw, <<0>>) == :nomatch
   end
-
-  defp text_valid?(raw, true), do: String.valid?(raw)
-  defp text_valid?(raw, false), do: utf8_valid?(raw)
 
   # ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----
   #
@@ -3762,12 +3772,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
-    validate_record(desc, value, true)
+    validate_record(desc, value)
     json_field(field, Map.get(value, field.name, field.default), depth)
   end
 
   defp json_object(desc, value, depth, label) do
-    validate_record(desc, value, true)
+    validate_record(desc, value)
     value = Map.merge(defaults(desc), value)
 
     # an absent optional writes no key: presence is the key (§2.3, §16.2)
@@ -3863,7 +3873,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     entry_desc = Map.fetch!(@tables, f.elem)
     value_field = entry_desc.fields |> Enum.at(1)
     pairs = map_entries(f, values)
-    Enum.each(pairs, &validate_record(entry_desc, &1, true))
+    Enum.each(pairs, &validate_record(entry_desc, &1))
 
     if pairs == [] do
       "{}"
@@ -3958,8 +3968,17 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_field(%{timestamp: _}, v, _depth), do: ["\"", timestamp_text(v), "\""]
-  defp json_field(%{t: :int, frac: frac}, v, _depth), do: fixed_text(v, frac)
-  defp json_field(%{t: :int}, v, _depth), do: Integer.to_string(v)
+
+  defp json_field(%{t: :int, frac: frac} = f, v, _depth) do
+    text = fixed_text(v, frac)
+    if json_wide_int?(f), do: ["\"", text, "\""], else: text
+  end
+
+  defp json_field(%{t: :int} = f, v, _depth) do
+    text = Integer.to_string(v)
+    if json_wide_int?(f), do: ["\"", text, "\""], else: text
+  end
+
   defp json_field(%{t: :float} = f, v, _depth), do: json_float(v, f.width)
   defp json_field(%{t: :bool}, v, _depth), do: if(v, do: "true", else: "false")
 
@@ -3990,7 +4009,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_list_elem(%{elem_kind: 1}, e, _depth), do: if(e, do: "true", else: "false")
 
   defp json_list_elem(%{elem_kind: kind}, e, _depth)
-       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19], do: Integer.to_string(e)
+       when kind in [5, 9, 18, 19], do: ["\"", Integer.to_string(e), "\""]
+
+  defp json_list_elem(%{elem_kind: kind}, e, _depth)
+       when kind in [2, 3, 4, 6, 7, 8], do: Integer.to_string(e)
+
+  defp json_list_elem(%{elem_kind: kind, elem_frac: frac}, e, _depth)
+       when kind in [23, 24, 28, 29], do: ["\"", fixed_text(e, frac), "\""]
 
   defp json_list_elem(%{elem_kind: kind, elem_frac: frac}, e, _depth) when kind in 20..29,
     do: fixed_text(e, frac)
@@ -4255,14 +4280,43 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     fixed_digits(rem(ten, scale), scale, [<<div(ten, scale) + ?0>> | acc])
   end
 
+  # A kind's storage is wider than 32 bits — int64, uint64, int128, uint128,
+  # and the 64- and 128-bit fixed kinds — so its JSON form is a STRING of
+  # decimal digits (docs/SPEC-TABLES.md §16.2, §16.14 W10 and W11).
+  defp json_wide_int?(%{width: width}) when is_integer(width) and width > 4, do: true
+  defp json_wide_int?(_f), do: false
+
+  # json_integer_text reads a wide integer's string content: digits with an
+  # optional minus, no fraction, no exponent and not -0. The value is exact —
+  # never through a double — and any other spelling is :error (§16.2 Numbers).
+  defp json_integer_text(text) do
+    case json_number(text) do
+      {:ok, value, ""} when is_integer(value) -> {:ok, value}
+      _ -> :error
+    end
+  end
+
+  # json_fixed_text reads a wide fixed kind's string content as the same exact
+  # decimal token a JSON number carries (docs/SPEC-TABLES.md §16.2): a token
+  # finer than 2^-F is :error, never rounded.
+  defp json_fixed_text(text, frac) do
+    case json_number(text) do
+      {:ok, value, ""} when is_integer(value) -> fixed_raw(value, frac)
+      {:ok, {:decimal, _} = token, ""} -> fixed_raw(token, frac)
+      _ -> :error
+    end
+  end
+
   # json_escape spells one string's bytes the way RFC 8259 requires, so a text
   # this writer emits is readable by any conforming parser (§16.3): the escapes
-  # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the other controls, and a
-  # well-formed multibyte UTF-8 sequence rides raw. A byte that opens no
-  # well-formed sequence is not text: no read puts it into storage, so a
-  # program did, and the whole write REFUSES (invalid_value, §16.14 W0) with
-  # nothing replaced. A wide string is held as UTF-8, so an unpaired surrogate
-  # (its generalized encoding, ED A0 80 for D800) refuses here too.
+  # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the controls from 0x01
+  # through 0x1F, and a well-formed multibyte UTF-8 sequence rides raw. A zero
+  # byte is not text for this writer either: its reader refuses the \u0000 text
+  # a writer would otherwise spell, so the whole write REFUSES (invalid_value,
+  # §16.14 W0) with nothing replaced. A byte that opens no well-formed sequence
+  # is not text: no read puts it into storage, so a program did, and the whole
+  # write refuses the same way. A wide string is held as UTF-8, so an unpaired
+  # surrogate (its generalized encoding, ED A0 80 for D800) refuses here too.
   defp json_escape(bin), do: json_escape(bin, [])
 
   defp json_escape(<<>>, acc), do: IO.iodata_to_binary(Enum.reverse(acc))
@@ -4277,6 +4331,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_escape(<<c, rest::binary>>, acc) do
     esc =
       case c do
+        0 -> throw(:invalid_value)
         ?" -> "\\\""
         ?\\ -> "\\\\"
         ?\b -> "\\b"
@@ -4311,6 +4366,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {value, seen, report} =
       Enum.reduce(pairs, {%{}, MapSet.new(), empty_report()}, fn {k, raw},
                                                                  {value, seen, report} ->
+        if byte_size(k) > 255 do
+          Process.put(:elixir_json_bad, true)
+          throw(:wire_damaged)
+        end
+
         if Map.get(report, :missing_required, 0) > 0 or
              Process.get(:elixir_json_bad, false) do
           {value, seen, report}
@@ -4372,29 +4432,75 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       Process.put(:elixir_json_defs, Map.put_new(defs, label, :dropped))
     end
 
-    Enum.each(rest, fn {_k, v} -> json_skip_value(v) end)
+    Enum.each(rest, fn {k, v} ->
+      json_skip_key(k)
+      json_skip_value(v)
+    end)
   end
 
   defp json_skip_value({:obj, pairs}) do
-    Enum.each(pairs, fn {_k, v} -> json_skip_value(v) end)
+    Enum.each(pairs, fn {k, v} ->
+      json_skip_key(k)
+      json_skip_value(v)
+    end)
   end
 
   defp json_skip_value(items) when is_list(items) do
     Enum.each(items, &json_skip_value/1)
   end
 
+  # A STRING THE READ ONLY SKIPS IS HELD TO THE PLACED VALUE'S TEXT RULE
+  # (§16.2, §16.3): one that decodes to U+0000 refuses the read, as a placed
+  # string does.
+  defp json_skip_value(bin) when is_binary(bin) do
+    if :binary.match(bin, <<0>>) == :nomatch, do: :ok, else: throw(:wire_damaged)
+  end
+
   defp json_skip_value(_other), do: :ok
+
+  # a skipped object's keys are schema names too: the 255-byte cap reaches
+  # every object, the dropped one included (docs/SPEC-TABLES.md §16.2).
+  defp json_skip_key(k) do
+    if byte_size(k) > 255 do
+      Process.put(:elixir_json_bad, true)
+      throw(:wire_damaged)
+    end
+  end
 
   # a JSON number with a fraction or an exponent arrives as its decimal text
   # (json_number below): a fixed-point field reads that text exactly (§3,
   # §4.12), every other field reads it as the double it spells (§16.2).
-  # Wide integers accept integral decimal/exponent tokens without a double.
-  defp json_read_field(%{t: :int, width: 16} = f, {:decimal, _} = raw, report)
-       when not is_map_key(f, :frac) do
-    case fixed_raw(raw, 0) do
-      {:ok, value} -> clamp_json_int(value, f, report)
-      :error -> {:skip, throw(:wire_damaged)}
+  # A wide integer reads its STRING form with the same rule as its number form
+  # (docs/SPEC-TABLES.md §16.2): the digits and an optional minus, no fraction,
+  # no exponent, not -0. A narrow integer is a number only, so a string there
+  # is the wrong shape. A fixed kind wider than 32 bits reads its exact decimal
+  # string, and one of 32 bits or under stays a number.
+  defp json_read_field(%{t: :int} = f, raw, report)
+       when is_binary(raw) and not is_map_key(f, :timestamp) and not is_map_key(f, :flags) do
+    cond do
+      not json_wide_int?(f) ->
+        json_skip_value(raw)
+        {:skip, throw(:wire_damaged)}
+
+      Map.has_key?(f, :frac) ->
+        case json_fixed_text(raw, f.frac) do
+          {:ok, value} -> clamp_json_int(value, f, report)
+          :error -> {:skip, throw(:wire_damaged)}
+        end
+
+      true ->
+        case json_integer_text(raw) do
+          {:ok, value} -> clamp_json_int(value, f, report)
+          :error -> {:skip, throw(:wire_damaged)}
+        end
     end
+  end
+
+  # an integer field takes an INTEGER token only: a fraction, an exponent or
+  # -0 is the wrong shape and refuses (docs/SPEC-TABLES.md §16.2, Numbers).
+  defp json_read_field(%{t: :int} = f, {:decimal, _}, _report)
+       when not is_map_key(f, :frac) do
+    {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_field(%{t: :float, width: 4} = f, {:decimal, _} = raw, report) do
@@ -4425,6 +4531,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_read_field(%{t: :enum} = f, raw, report) when is_binary(raw) do
+    if byte_size(raw) > 255 do
+      Process.put(:elixir_json_bad, true)
+      throw(:wire_damaged)
+    end
+
     # "None" is the reserved nil spelling (docs/SPEC-TABLES.md §16; the Go
     # reference internal/tabletext/value.go EnumValue): it reads the nil variant
     # exactly as value 0 does on the wire, and is never an unknown name.
@@ -4457,6 +4568,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         if Process.get(:elixir_json_bad, false) do
           {acc, seen, report}
         else
+          if byte_size(name) > 255 do
+            Process.put(:elixir_json_bad, true)
+            throw(:wire_damaged)
+          end
+
           # A KEYED OBJECT'S KEYS ARE KEYS: any key named twice refuses the
           # whole read, a known variant, an unknown one or "None" alike
           # (internal/tabletext/read.go readKeyed, docs/SPEC-TABLES.md §16.2).
@@ -4490,6 +4606,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     Enum.reduce(raw, {0, report}, fn n, {mask, report} ->
       if not is_binary(n) do
         json_skip_value(n)
+        throw(:wire_damaged)
+      end
+
+      if byte_size(n) > 255 do
+        Process.put(:elixir_json_bad, true)
         throw(:wire_damaged)
       end
 
@@ -4780,18 +4901,17 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       true ->
         case json_number(key) do
-          {:ok, raw, ""} ->
-            case fixed_raw(raw, 0) do
-              {:ok, value} ->
-                {lo, hi} = int_domain_bounds(field)
+          {:ok, value, ""} when is_integer(value) ->
+            {lo, hi} = int_domain_bounds(field)
 
-                if value >= lo and value <= hi,
-                  do: {:ok, Integer.to_string(value)},
-                  else: throw(:wire_damaged)
+            if value >= lo and value <= hi,
+              do: {:ok, Integer.to_string(value)},
+              else: throw(:wire_damaged)
 
-              :error ->
-                throw(:wire_damaged)
-            end
+          {:ok, _, ""} ->
+            # a fraction, an exponent, -0 or a magnitude past 128 bits: not
+            # the integer spelling a key takes (docs/SPEC-TABLES.md §2.8, §16.2)
+            throw(:wire_damaged)
 
           _ ->
             :malformed
@@ -4885,15 +5005,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {0, (1 <<< bits) - 1}
   end
 
-  # json_decode_base64 reads §16.2's bytes spelling: standard base64, padded
-  # or unpadded (docs/SPEC-TABLES.md §16.2).
-  defp json_decode_base64(""), do: {:ok, <<>>}
-
+  # json_decode_base64 reads §16.2's bytes spelling: CANONICAL base64, the
+  # standard alphabet, padded, pad bits zero, exactly the writer's text
+  # (docs/SPEC-TABLES.md §16.2, §16.8). Any other spelling that decodes
+  # refuses the read.
   defp json_decode_base64(raw) do
-    if String.contains?(raw, "=") do
-      Base.decode64(raw)
-    else
-      Base.decode64(raw, padding: false)
+    case Base.decode64(raw) do
+      {:ok, bytes} -> if Base.encode64(bytes) == raw, do: {:ok, bytes}, else: :error
+      :error -> :error
     end
   end
 
@@ -4948,7 +5067,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # json_read_list_elem reads one unbounded array's element by its element kind
   # (docs/SPEC-TABLES.md §2.9, §16.7), folding the element's report into the list's.
-  # an integer element reads -0 as the 0 it is (json_number keeps the token)
   defp json_read_list_elem(%{text_list: true, text_optional: true}, nil, report),
     do: {%{"value" => nil}, report}
 
@@ -4968,17 +5086,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {%{"value" => value}, throw(:wire_damaged)}
   end
 
-  defp json_read_list_elem(%{elem_kind: kind}, {:decimal, "-0"}, report)
+  # an integer element takes an INTEGER token only: a fraction, an exponent or
+  # -0 is the wrong shape and refuses (docs/SPEC-TABLES.md §16.2, Numbers).
+  defp json_read_list_elem(%{elem_kind: kind}, {:decimal, _}, _report)
        when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19],
-       do: {0, report}
-
-  defp json_read_list_elem(%{elem_kind: kind} = f, {:decimal, _} = e, report)
-       when kind in [18, 19] do
-    case fixed_raw(e, 0) do
-      {:ok, value} -> json_clamp_elem(value, f, report)
-      :error -> {:skip, throw(:wire_damaged)}
-    end
-  end
+       do: {:skip, throw(:wire_damaged)}
 
   defp json_read_list_elem(%{elem_kind: 10}, {:decimal, _} = e, report) do
     case json_decimal_f32(e) do
@@ -4989,6 +5101,24 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp json_read_list_elem(f, {:decimal, _} = e, report) when not is_map_key(f, :elem_frac),
     do: json_read_list_elem(f, json_decimal_float(e), report)
+
+  # a wide integer element reads its STRING form with the integer-token rule;
+  # a wide fixed element reads its exact decimal string (docs/SPEC-TABLES.md §16.2)
+  defp json_read_list_elem(%{elem_kind: kind} = f, e, report)
+       when is_binary(e) and kind in [5, 9, 18, 19] and not is_map_key(f, :elem_flags) do
+    case json_integer_text(e) do
+      {:ok, value} -> json_clamp_elem(value, f, report)
+      :error -> {:skip, throw(:wire_damaged)}
+    end
+  end
+
+  defp json_read_list_elem(%{elem_kind: kind, elem_frac: frac} = f, e, report)
+       when is_binary(e) and kind in [23, 24, 28, 29] do
+    case json_fixed_text(e, frac) do
+      {:ok, value} -> json_clamp_elem(value, f, report)
+      :error -> {:skip, throw(:wire_damaged)}
+    end
+  end
 
   defp json_read_list_elem(%{elem_kind: 13} = f, raw, report),
     do: json_read_field(%{t: :table, elem: f.elem}, raw, report)
@@ -5010,6 +5140,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_read_list_elem(%{elem_kind: 30} = f, e, report) when is_binary(e) do
+    if byte_size(e) > 255 do
+      Process.put(:elixir_json_bad, true)
+      throw(:wire_damaged)
+    end
+
     case e do
       "None" ->
         {nil, report}
@@ -5072,6 +5207,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_read_arm(_union, {:obj, []}, report), do: {nil, report}
 
   defp json_read_arm(union, {:obj, [{name, input}]}, report) do
+    if byte_size(name) > 255 do
+      Process.put(:elixir_json_bad, true)
+      throw(:wire_damaged)
+    end
+
     un = Map.fetch!(@unions, union)
 
     case Map.fetch(un.by_name, name) do
@@ -5240,6 +5380,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       <<"\"", rest::binary>> ->
         with {:ok, key, r1} <- json_string(rest, []),
+             :ok <- json_key_ok(key),
              <<":", r2::binary>> <- json_skip(r1),
              false <- MapSet.member?(seen, key),
              {:ok, val, r3} <- json_object_val(key, acc, r2, depth + 1) do
@@ -5257,6 +5398,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       _ ->
         :error
     end
+  end
+
+  # EVERY OBJECT KEY IS HELD TO THE PLACED VALUE'S TEXT RULE (§16.2, §16.3):
+  # one that decodes to U+0000 refuses the read, whether the reader names the
+  # field or skips it.
+  defp json_key_ok(key) do
+    if :binary.match(key, <<0>>) == :nomatch, do: :ok, else: :error
   end
 
   # json_object_val reads one member's value; in a variable-class document
