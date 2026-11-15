@@ -198,11 +198,11 @@ WRITE(T, w, value):
 
 An empty body writes nothing: presence is the payload (SPEC §4.6). A write of trusted in-range
 values always produces the bytes. Buffer overrun is caller error (`ASSERT`). Out-of-range values,
-a count past its bound, a length past `N`, a union tag past `Max`, and an interior 0x00 in a
-`string` on write are **writer contracts**: `ASSERT` in debug, gone in release wherever
-the language has that idiom, every-build only in Go and Elixir (SPEC §5). What a release build
-writes from a broken contract is defined but unspecified. **No write-side check is a substitute
-for the reader.**
+a bare integer outside its declared width (row 11), a count past its bound, a length past `N`, a
+union tag past `Max`, and an interior 0x00 in a `string` on write are **writer contracts**: a
+debug assert in C, C++, C#, Rust, Java and Dart, and a refusal in every build in Go, JavaScript,
+Elixir, Lua, Luau, Squirrel, MOO and Goose (SPEC §5.1). What a release build writes from a broken
+contract is defined but unspecified. **No write-side check is a substitute for the reader.**
 
 ### 2.1 bits_required
 
@@ -258,7 +258,7 @@ PUT_RANGED(w, value, min, max):
 |---|---|
 | `bool` | `PUT_BITS(w, 0 or 1, 1)` |
 | `bits(N)` | `PUT_VALUE(w, value, N)`, N in [1,64] |
-| bare `intN` / `uintN` | `N` raw bits. Signed width `< 64`: cast to the **same-width unsigned** first, then `PUT_VALUE` — a signed value converted to u64 sign-extends and the high bits corrupt the stream |
+| bare `intN` / `uintN` | `N` raw bits. Signed width `< 64`: cast to the **same-width unsigned** first, then `PUT_VALUE` — a signed value converted to u64 sign-extends and the high bits corrupt the stream. A value outside the declared width, where the target's value type is wider than the wire, is a writer contract (SPEC §5.1 row 11), checked by the leg's mechanism before the low `N` bits ride; a value that fits is its same-width two's-complement (signed) or unsigned pattern |
 | ranged `intN` / `uintN` | `PUT_RANGED` |
 | `uint128` (bare) | 128 raw bits, low 64-bit half first (`PUT_VALUE` of the low 64, then the high 64) |
 | `int128 \| min, max` | `PUT_RANGED` over the 128-bit range; where the range fits 64 bits or fewer the bytes are identical to `int64` over the same bounds. Bare `int128` and ranged `uint128` do not compile |

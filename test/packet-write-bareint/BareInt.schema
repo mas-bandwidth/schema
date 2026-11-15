@@ -1,0 +1,18 @@
+package bareint
+
+// SPEC §5.1 row 11 on the packet Write: a bare integer is written at its
+// declared width. A value outside that width, where the target's value type
+// is wider than the wire, is checked by the leg's mechanism (a debug assert
+// in an assert leg, a refusal in every build elsewhere); a value that fits
+// rides as its same-width two's-complement (signed) or unsigned pattern.
+// The shared cases in cases.txt are what the port cards run.
+type BareInt {
+    i8 int8
+    i16 int16
+    i32 int32
+    i64 int64
+    u8 uint8
+    u16 uint16
+    u32 uint32
+    u64 uint64
+}

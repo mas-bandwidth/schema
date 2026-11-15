@@ -2299,6 +2299,7 @@ a caller can hold that the declaration does not admit:
 | 8 | ill-formed text: a `string` that is not UTF-8 or holds a zero byte | refused |
 | 9 | a `flags` value with a bit no variant names | a FILE read KEEPS the bit (SPEC-TABLES §4.1); the text writer refuses it, and the message form refuses it above its declared width |
 | 10 | a compressed or ranged float off its range | refused (recommended name `invalid_value` on write; `out_of_range` on read) |
+| 11 | a bare `intN`/`uintN` value outside its declared width, where the target's value type is wider than the wire | not a wire value: only the declared `N` bits ride, and the reader materializes an `N`-bit value the declaration admits |
 
 **The mechanism is the language's own, and it decides the build.** A language
 whose established idiom is a debug-only assert checks in its debug build and
@@ -2318,7 +2319,7 @@ check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal
 | C++ | `schema_assert` (tables), `serialize_assert` (packets) | debug: `NDEBUG` removes it | the assert; a routed `schema_assert` handler sees it first |
 | C | `schema_assert`, `serialize_assert` | debug: `NDEBUG` removes it | as C++ |
 | C# | `Debug.Assert`, `[Conditional("DEBUG")]` | debug: a Release build removes it | the assert (a `TraceListener` sees it) |
-| Rust | `debug_assert!` | debug: `debug-assertions = false` removes it | a panic. An out-of-set enum or union tag cannot be built: both are native enums |
+| Rust | `debug_assert!` | debug: `debug-assertions = false` removes it | a panic. An out-of-set enum or union tag cannot be built: both are native enums. A bare integer outside its declared width cannot be built either: its storage is exactly that width |
 | Java | `assert`, one `checkWrite` predicate per type | debug: active under `-ea` | `AssertionError` |
 | Dart | `assert` | debug: active under `--enable-asserts`, gone in AOT | `AssertionError` |
 | Go | none | every build | `-1` and `TableRefuseInvalidValue` (`invalid_value`) from the `...Reason` twin; packets return `serialize.ErrValueOutOfRange` |
@@ -2381,6 +2382,19 @@ build of an assert leg is required to refuse it, and no gate may require one.
 `FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
 reader refuses one as `text_ill_formed`: in the build where its check is
 active, a writer never produces bytes its own reader refuses.
+
+**Row 11 is the bare integer's declared width.** A bare `intN`/`uintN` value
+is an `N`-bit value. Where a target's value type is exactly the declared width
+(C, C++, C#, Rust, and Java's signed types) a value outside it cannot be
+built, so there is nothing to check; the Rust idiom row records that. Where
+the storage is wider (Java's unsigned `uint8`/`uint16` in `int` and `uint32`
+in `long`, Dart's `int`, and the dynamic targets), a caller can hold a value
+outside the width, and it is a writer contract like every other: a debug
+assert in C, C++, C#, Rust, Java and Dart, and a refusal in every build in Go,
+JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose. The wire carries the
+declared width either way: a value that fits rides as its same-width
+two's-complement pattern when signed, or its unsigned pattern otherwise, and
+the reader materializes an `N`-bit value the declaration admits.
 
 | leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–8 and 10) |
 |---|---|---|---|

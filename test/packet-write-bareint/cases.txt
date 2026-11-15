@@ -1,0 +1,26 @@
+# Shared packet bare-integer width cases (SPEC §5.1 row 11).
+# Each line is <name> <value> <verdict>, one case per line.
+# "written" means the value fits the declared width and rides as its
+# same-width two's-complement (signed) or unsigned pattern.
+# "refused" means: by the debug build's assert in an assert leg, by the
+# writer's refusal in every build in an every-build leg. Where the target's
+# value type is exactly the declared width the refused value cannot be built,
+# so that leg has nothing to check.
+i8-min    -128                  written
+i8-max    127                   written
+i8-low    -129                  refused
+i8-high   128                   refused
+i16-min   -32768                written
+i16-max   32767                 written
+i16-high  32768                 refused
+i32-max   2147483647            written
+i32-high  2147483648            refused
+i64-min   -9223372036854775808  written
+i64-high  9223372036854775808   refused
+u8-max    255                   written
+u8-high   256                   refused
+u8-low    -1                    refused
+u16-high  65536                 refused
+u32-high  4294967296            refused
+u64-max   18446744073709551615  written
+u64-high  18446744073709551616  refused
