@@ -879,6 +879,10 @@ function F.save(T, name, values)
   local f = T.Fixed[name]
   if f == nil then error("fixed: no fixed descriptor for table " .. tostring(name)) end
   values = values or {}
+  -- A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/FIXED-FORM-ALGORITHM.md
+  -- §5.3 step 9, docs/SPEC-TABLES.md §22.6): an empty batch is refused, by
+  -- the leg's refusal value, before a byte is written.
+  if #values == 0 then return nil, "invalid_value" end
   local parts = { f.header }
   local hPrefix = f.hashPrefix
   for i = 1, #values do
@@ -943,7 +947,10 @@ local function load_impl(T, name, buf, strict, cap)
   end
   local recSize = entry ~= nil and entry.record or (8 + rootSize)
   local rest = #buf - 20 - layoutLen
-  if recSize <= 8 or rest % recSize ~= 0 then error("truncated", 0) end
+  -- A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, SPEC-TABLES
+  -- §22.6): a header and a layout with no record behind them is refused,
+  -- never read as a batch of none.
+  if recSize <= 8 or rest <= 0 or rest % recSize ~= 0 then error("truncated", 0) end
   local nRec = rest // recSize
   -- THE CAPACITY IS THE CALLER'S ARGUMENT, AND ITS DEFAULT IS 4,096: an
   -- omitted (or nil) capacity is the default, never an unbounded read, while
