@@ -123,7 +123,7 @@ end
 	}
 
 	got := map[int]string{}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		if line == "" {
 			continue
 		}
@@ -182,7 +182,7 @@ print("distinct " .. load(inputs.ann_distinct, inputs.msg_distinct))
 	}
 	wantDup := map[string]string{"same": "refused", "distinct": "read"}
 	gotDup := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(dupOut), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(dupOut), "\n") {
 		var name, verdict string
 		if _, err := fmt.Sscanf(line, "%s %s", &name, &verdict); err != nil {
 			t.Fatalf("the duplicate-id probe answered %q: %v", line, err)
@@ -241,7 +241,7 @@ func luaNestedBodyMessage(entries int) []byte {
 type luaBits struct{ bits []bool }
 
 func (b *luaBits) put(v uint64, n int) {
-	for i := 0; i < n; i++ {
+	for i := range n {
 		b.bits = append(b.bits, (v>>uint(i))&1 != 0)
 	}
 }
