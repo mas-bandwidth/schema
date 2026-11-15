@@ -651,8 +651,17 @@ defmodule Example.Wire do
   @spec read_probe_header(binary(), non_neg_integer()) :: {:ok, Example.ProbeHeader.t()} | :error
   def read_probe_header(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_header_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -847,8 +856,17 @@ defmodule Example.Wire do
   @spec read_probe_bits(binary(), non_neg_integer()) :: {:ok, Example.ProbeBits.t()} | :error
   def read_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_bits_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1088,8 +1106,17 @@ defmodule Example.Wire do
   @spec read_probe_sample(binary(), non_neg_integer()) :: {:ok, Example.ProbeSample.t()} | :error
   def read_probe_sample(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_sample_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1170,8 +1197,17 @@ defmodule Example.Wire do
   @spec read_probe_ring(binary(), non_neg_integer()) :: {:ok, Example.ProbeRing.t()} | :error
   def read_probe_ring(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_ring_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1271,8 +1307,17 @@ defmodule Example.Wire do
   @spec read_probe_slab(binary(), non_neg_integer()) :: {:ok, Example.ProbeSlab.t()} | :error
   def read_probe_slab(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_slab_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1448,8 +1493,17 @@ defmodule Example.Wire do
   @spec read_probe_shape(binary(), non_neg_integer()) :: {:ok, Example.ProbeShape.t()} | :error
   def read_probe_shape(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_shape_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1767,8 +1821,17 @@ defmodule Example.Wire do
           {:ok, Example.ProbeCollider.t()} | :error
   def read_probe_collider(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_collider_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1857,8 +1920,17 @@ defmodule Example.Wire do
   @spec read_probe_config(binary(), non_neg_integer()) :: {:ok, Example.ProbeConfig.t()} | :error
   def read_probe_config(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_config_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1969,8 +2041,17 @@ defmodule Example.Wire do
   @spec read_probe_array(binary(), non_neg_integer()) :: {:ok, Example.ProbeArray.t()} | :error
   def read_probe_array(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_array_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -2045,8 +2126,17 @@ defmodule Example.Wire do
   @spec read_heartbeat(binary(), non_neg_integer()) :: {:ok, Example.Heartbeat.t()} | :error
   def read_heartbeat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_heartbeat_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -2189,8 +2279,17 @@ defmodule Example.Wire do
   @spec read_test(binary(), non_neg_integer()) :: {:ok, Example.Test.t()} | :error
   def read_test(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_test_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -2289,8 +2388,17 @@ defmodule Example.Wire do
   @spec read_block(binary(), non_neg_integer()) :: {:ok, Example.Block.t()} | :error
   def read_block(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_block_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -2393,8 +2501,17 @@ defmodule Example.Wire do
   @spec read_chat(binary(), non_neg_integer()) :: {:ok, Example.Chat.t()} | :error
   def read_chat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_chat_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -2602,8 +2719,17 @@ defmodule Example.Wire do
   @spec read_probe_report(binary(), non_neg_integer()) :: {:ok, Example.ProbeReport.t()} | :error
   def read_probe_report(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_report_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -3093,8 +3219,17 @@ defmodule Example.Wire do
   @spec read_test_data(binary(), non_neg_integer()) :: {:ok, Example.TestData.t()} | :error
   def read_test_data(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_test_data_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -3186,8 +3321,17 @@ defmodule Example.Wire do
           {:ok, Example.CompressedProbe.t()} | :error
   def read_compressed_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_compressed_probe_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 

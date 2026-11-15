@@ -264,8 +264,17 @@ defmodule Example.Degenerate do
   @spec read_vec2(binary(), non_neg_integer()) :: {:ok, Example.Vec2.t()} | :error
   def read_vec2(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_vec2_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -349,8 +358,17 @@ defmodule Example.Degenerate do
   @spec read_span_f64(binary(), non_neg_integer()) :: {:ok, Example.SpanF64.t()} | :error
   def read_span_f64(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_f64_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -434,8 +452,17 @@ defmodule Example.Degenerate do
   @spec read_span_u64(binary(), non_neg_integer()) :: {:ok, Example.SpanU64.t()} | :error
   def read_span_u64(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_u64_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -519,8 +546,17 @@ defmodule Example.Degenerate do
   @spec read_span_i64(binary(), non_neg_integer()) :: {:ok, Example.SpanI64.t()} | :error
   def read_span_i64(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_i64_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -604,8 +640,17 @@ defmodule Example.Degenerate do
   @spec read_span_one(binary(), non_neg_integer()) :: {:ok, Example.SpanOne.t()} | :error
   def read_span_one(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_one_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -689,8 +734,17 @@ defmodule Example.Degenerate do
   @spec read_span_chunk(binary(), non_neg_integer()) :: {:ok, Example.SpanChunk.t()} | :error
   def read_span_chunk(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_chunk_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -786,8 +840,17 @@ defmodule Example.Degenerate do
   @spec read_span_tail(binary(), non_neg_integer()) :: {:ok, Example.SpanTail.t()} | :error
   def read_span_tail(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_tail_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -882,8 +945,17 @@ defmodule Example.Degenerate do
   @spec read_span_twice(binary(), non_neg_integer()) :: {:ok, Example.SpanTwice.t()} | :error
   def read_span_twice(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_twice_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1002,8 +1074,17 @@ defmodule Example.Degenerate do
   @spec read_trio(binary(), non_neg_integer()) :: {:ok, Example.Trio.t()} | :error
   def read_trio(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_trio_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1123,8 +1204,17 @@ defmodule Example.Degenerate do
   @spec read_trio_sole(binary(), non_neg_integer()) :: {:ok, Example.TrioSole.t()} | :error
   def read_trio_sole(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_trio_sole_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1207,8 +1297,17 @@ defmodule Example.Degenerate do
   @spec read_vec3_sole(binary(), non_neg_integer()) :: {:ok, Example.Vec3Sole.t()} | :error
   def read_vec3_sole(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_vec3_sole_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1342,8 +1441,17 @@ defmodule Example.Degenerate do
   @spec read_trio_first(binary(), non_neg_integer()) :: {:ok, Example.TrioFirst.t()} | :error
   def read_trio_first(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_trio_first_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1621,8 +1729,17 @@ defmodule Example.Degenerate do
           {:ok, Example.TrioStraddle.t()} | :error
   def read_trio_straddle(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_trio_straddle_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 

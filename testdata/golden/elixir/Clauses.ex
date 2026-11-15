@@ -359,8 +359,17 @@ defmodule Example.Clauses do
   @spec read_w13(binary(), non_neg_integer()) :: {:ok, Example.W13.t()} | :error
   def read_w13(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w13_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -453,8 +462,17 @@ defmodule Example.Clauses do
   @spec read_w17(binary(), non_neg_integer()) :: {:ok, Example.W17.t()} | :error
   def read_w17(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w17_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -547,8 +565,17 @@ defmodule Example.Clauses do
   @spec read_w26(binary(), non_neg_integer()) :: {:ok, Example.W26.t()} | :error
   def read_w26(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w26_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -641,8 +668,17 @@ defmodule Example.Clauses do
   @spec read_w1(binary(), non_neg_integer()) :: {:ok, Example.W1.t()} | :error
   def read_w1(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w1_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -733,8 +769,17 @@ defmodule Example.Clauses do
   @spec read_w52(binary(), non_neg_integer()) :: {:ok, Example.W52.t()} | :error
   def read_w52(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w52_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -825,8 +870,17 @@ defmodule Example.Clauses do
   @spec read_w50(binary(), non_neg_integer()) :: {:ok, Example.W50.t()} | :error
   def read_w50(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w50_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -910,8 +964,17 @@ defmodule Example.Clauses do
   @spec read_f13(binary(), non_neg_integer()) :: {:ok, Example.F13.t()} | :error
   def read_f13(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_f13_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1016,8 +1079,17 @@ defmodule Example.Clauses do
   @spec read_tri3(binary(), non_neg_integer()) :: {:ok, Example.Tri3.t()} | :error
   def read_tri3(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_tri3_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1110,8 +1182,17 @@ defmodule Example.Clauses do
   @spec read_arr_tri3(binary(), non_neg_integer()) :: {:ok, Example.ArrTri3.t()} | :error
   def read_arr_tri3(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arr_tri3_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1218,8 +1299,17 @@ defmodule Example.Clauses do
   @spec read_eleven(binary(), non_neg_integer()) :: {:ok, Example.Eleven.t()} | :error
   def read_eleven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_eleven_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1303,8 +1393,17 @@ defmodule Example.Clauses do
   @spec read_arr_eleven(binary(), non_neg_integer()) :: {:ok, Example.ArrEleven.t()} | :error
   def read_arr_eleven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arr_eleven_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1379,8 +1478,17 @@ defmodule Example.Clauses do
   @spec read_empty_a(binary(), non_neg_integer()) :: {:ok, Example.EmptyA.t()} | :error
   def read_empty_a(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_empty_a_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1455,8 +1563,17 @@ defmodule Example.Clauses do
   @spec read_empty_b(binary(), non_neg_integer()) :: {:ok, Example.EmptyB.t()} | :error
   def read_empty_b(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_empty_b_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1581,8 +1698,17 @@ defmodule Example.Clauses do
   @spec read_empty_union(binary(), non_neg_integer()) :: {:ok, Example.EmptyUnion.t()} | :error
   def read_empty_union(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_empty_union_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1732,8 +1858,17 @@ defmodule Example.Clauses do
           {:ok, Example.HoldsEmptyUnion.t()} | :error
   def read_holds_empty_union(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_holds_empty_union_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1904,8 +2039,17 @@ defmodule Example.Clauses do
   @spec read_strs(binary(), non_neg_integer()) :: {:ok, Example.Strs.t()} | :error
   def read_strs(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_strs_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -2036,8 +2180,17 @@ defmodule Example.Clauses do
   @spec read_arr_nested(binary(), non_neg_integer()) :: {:ok, Example.ArrNested.t()} | :error
   def read_arr_nested(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arr_nested_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -2129,8 +2282,17 @@ defmodule Example.Clauses do
   @spec read_sole(binary(), non_neg_integer()) :: {:ok, Example.Sole.t()} | :error
   def read_sole(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_sole_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 

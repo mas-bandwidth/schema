@@ -374,8 +374,17 @@ defmodule Example.Joins do
   @spec read_arms_agree(binary(), non_neg_integer()) :: {:ok, Example.ArmsAgree.t()} | :error
   def read_arms_agree(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arms_agree_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -538,8 +547,17 @@ defmodule Example.Joins do
           {:ok, Example.ArmsDisagree.t()} | :error
   def read_arms_disagree(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arms_disagree_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -691,8 +709,17 @@ defmodule Example.Joins do
   @spec read_arm_empty(binary(), non_neg_integer()) :: {:ok, Example.ArmEmpty.t()} | :error
   def read_arm_empty(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arm_empty_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -916,8 +943,17 @@ defmodule Example.Joins do
   @spec read_arms_nested(binary(), non_neg_integer()) :: {:ok, Example.ArmsNested.t()} | :error
   def read_arms_nested(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arms_nested_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1092,8 +1128,17 @@ defmodule Example.Joins do
   @spec read_arm_align(binary(), non_neg_integer()) :: {:ok, Example.ArmAlign.t()} | :error
   def read_arm_align(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arm_align_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1265,8 +1310,17 @@ defmodule Example.Joins do
   @spec read_arm_array(binary(), non_neg_integer()) :: {:ok, Example.ArmArray.t()} | :error
   def read_arm_array(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arm_array_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1356,8 +1410,17 @@ defmodule Example.Joins do
   @spec read_narrow(binary(), non_neg_integer()) :: {:ok, Example.Narrow.t()} | :error
   def read_narrow(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_narrow_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1454,8 +1517,17 @@ defmodule Example.Joins do
   @spec read_wide(binary(), non_neg_integer()) :: {:ok, Example.Wide.t()} | :error
   def read_wide(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_wide_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1634,8 +1706,17 @@ defmodule Example.Joins do
   @spec read_uneven(binary(), non_neg_integer()) :: {:ok, Example.Uneven.t()} | :error
   def read_uneven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_uneven_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1841,8 +1922,17 @@ defmodule Example.Joins do
   @spec read_holds_uneven(binary(), non_neg_integer()) :: {:ok, Example.HoldsUneven.t()} | :error
   def read_holds_uneven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_holds_uneven_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1968,8 +2058,17 @@ defmodule Example.Joins do
   @spec read_arr_uneven(binary(), non_neg_integer()) :: {:ok, Example.ArrUneven.t()} | :error
   def read_arr_uneven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arr_uneven_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -2205,8 +2304,17 @@ defmodule Example.Joins do
           {:ok, Example.RegainAfterAlign.t()} | :error
   def read_regain_after_align(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_regain_after_align_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
