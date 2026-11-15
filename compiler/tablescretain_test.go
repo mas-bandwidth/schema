@@ -75,7 +75,10 @@ int main(void){
 func TestCTableRetainFramedDepth(t *testing.T) {
 	t.Parallel()
 	old := unitFromSource(t, "package probe\ntable Root { next *Root }\n")
-	for _, depth := range []int{64, 65} {
+	// THE RESOLVING WALK PERMITS §4's 128 FRAMED LEVELS (docs/SPEC-TABLES.md
+	// §6.6): an unknown field nested as deep as the plain read accepts is kept,
+	// and the retaining save writes the file back byte for byte.
+	for _, depth := range []int{64, 65, 128} {
 		t.Run(fmt.Sprint(depth), func(t *testing.T) {
 			var schema, fixture strings.Builder
 			schema.WriteString("package probe\ntable Root { next *Root\nextra T0 }\n")
@@ -105,14 +108,10 @@ func TestCTableRetainFramedDepth(t *testing.T) {
 			for _, b := range wire {
 				fmt.Fprintf(&octets, "0x%02x,", b)
 			}
-			kept := 0
-			if depth == 64 {
-				kept = 1
-			}
 			runCTableWireProbe(t, old, fmt.Sprintf(`#include "ProbeTable.h"
 static const uint8_t wire[]={%s};
-int main(void){TableRetain retain={0};TableRetainId ids[256];TableReport report={0};uint8_t store[8192],out[8192];const Root * root;int64_t need=root_load_measure(wire,sizeof(wire)),bytes;uint8_t * region;if(need<0)return 1;region=(uint8_t *)malloc((size_t)need);if(!region)return 2;retain.bytes=store;retain.capacity=sizeof(store);retain.ids=ids;retain.id_capacity=256;root=root_load_retain(region,need,wire,sizeof(wire),&retain,&report);if(!root||report.refused||report.unknown!=1||report.retained!=%d||report.retain_lost!=%d)return 3;bytes=root_measure_retain(root,&retain);if(bytes<0||root_save_retain(root,&retain,out,sizeof(out),&report)!=bytes)return 4;free(region);return 0;}
-`, octets.String(), kept, 1-kept))
+int main(void){TableRetain retain={0};TableRetainId ids[256];TableReport report={0};uint8_t store[8192],out[8192];const Root * root;int64_t need=root_load_measure(wire,sizeof(wire)),bytes;uint8_t * region;if(need<0)return 1;region=(uint8_t *)malloc((size_t)need);if(!region)return 2;retain.bytes=store;retain.capacity=sizeof(store);retain.ids=ids;retain.id_capacity=256;root=root_load_retain(region,need,wire,sizeof(wire),&retain,&report);if(!root||report.refused||report.unknown!=1||report.retained!=1||report.retain_lost!=0)return 3;bytes=root_measure_retain(root,&retain);if(bytes!=(int64_t)sizeof(wire)||root_save_retain(root,&retain,out,sizeof(out),&report)!=bytes||report.retain_lost!=0||memcmp(out,wire,sizeof(wire))!=0)return 4;free(region);return 0;}
+`, octets.String()))
 		})
 	}
 }

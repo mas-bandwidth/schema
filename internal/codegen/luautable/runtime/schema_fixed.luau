@@ -467,9 +467,13 @@ local function bounds(f: any, v: any, cx: Cx): any
 			error(outOfRange(f), 0)
 		end
 	end
-	if f.bits ~= nil and f.bits > 0 and f.bits < 53 then
+	if f.bits ~= nil and f.bits > 0 and f.bits < 64 then
+		-- the top is exact at every width: an integer value's top is built as
+		-- an integer (1 << N, less one) and compared unsigned
 		local top: any = 2 ^ f.bits - 1
-		if typeof(v) == "integer" then top = integer.create(top) end
+		if typeof(v) == "integer" then
+			top = integer.sub(integer.lshift(1i, integer.create(f.bits)), 1i)
+		end
 		if lessThan(top, v, false) then error(outOfRange(f), 0) end
 	end
 	return v

@@ -73,7 +73,7 @@ public final class MixedHitEventFixed {
      */
     static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
         v.targetId = TableFixed.get32(b, at + 0);
-        if (v.targetId > 4095L) {
+        if (Integer.compareUnsigned(v.targetId, 4095) > 0) {
             v.targetId = (int) (4095L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
