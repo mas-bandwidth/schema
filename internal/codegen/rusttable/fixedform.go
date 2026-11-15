@@ -2139,12 +2139,15 @@ func (g *gen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	}
 	if f.HasFloatRange {
 		// A FLOAT RANGE IS ALWAYS BOTH ENDS: there is no storage limit to fold
-		// either of them into the way an integer's has.
+		// either of them into the way an integer's has. A compressed float's -0
+		// lands as +0, uncounted (docs/SPEC-TABLES.md §3.3,
+		// docs/rulings.json fixed-compressed-negzero).
 		suffix := "_f64"
 		if f.Type.Kind == ir.TFloat32 {
 			suffix = "_f32"
 		}
 		g.emitFixedClampSelect(lhs, fixedFloatLit(f.FMin)+suffix, fixedFloatLit(f.FMax)+suffix, true, true, ind, "")
+		g.pf("%sif %s == 0.0%s {\n%s    %s = 0.0%s;\n%s}\n", ind, lhs, suffix, ind, lhs, suffix, ind)
 		return
 	}
 	if low, high := fixedClampEnds(f); low || high {
