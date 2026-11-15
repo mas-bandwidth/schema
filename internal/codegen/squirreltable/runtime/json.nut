@@ -1741,9 +1741,12 @@ readKeys = function(T, c, r, v, depth, firstKey) {
   }
 };
 
-// a bytes(N) or *bytes body six bits at a time (read.go readBase64): '='
-// anywhere is padding, a byte outside the alphabet makes the body the wrong
-// shape (one kind mismatch), and past the bound the excess is oor.
+// a bytes(N) or *bytes body (read.go readBase64): the JSON string is decoded
+// first, then its text is held to canonical base64 — the standard alphabet,
+// padded, pad bits zero, exactly the text the writer writes (docs/SPEC-TABLES.md
+// §16.2, §16.8). A body outside the grammar is the wrong shape (one kind
+// mismatch), an unpadded body or one whose pad bits are set is refused
+// base64_not_canonical, and past the bound the excess is oor.
 // Answers [blob or null when not base64] or null where the text is not JSON.
 local b64val = function(c) {
   if (c >= 'A' && c <= 'Z') return c - 'A';
@@ -1754,19 +1757,47 @@ local b64val = function(c) {
   return -1;
 };
 local readBase64 = function(r, bound) {
-  if (peek(r) != '"') { r.bad = true; return null; }
-  r.p++;
+  local s = scanBytes(r, -1);
+  if (s == null) return null;
+  local raw = s[0];
+  local symbols = 0, pad = 0, damaged = false;
+  for (local i = 0; i < raw.len(); i++) {
+    local c = raw[i];
+    if (damaged) continue;
+    if (c == '=') { pad++; continue; }
+    if (pad > 0) { damaged = true; continue; }
+    if (b64val(c) < 0) { damaged = true; continue; }
+    symbols++;
+  }
+  if (!damaged) {
+    if (pad > 0) {
+      if (pad > 2 || (symbols + pad) % 4 != 0 || symbols % 4 < 2) damaged = true;
+    } else if (symbols % 4 == 1) {
+      damaged = true;
+    }
+  }
+  if (damaged) { r.report.mismatch++; return [null]; }
+  // the canonical spelling is padded standard base64 with zero pad bits: the
+  // bits a final quantum drops are zero, and a padded body's length is four
+  local canonical = symbols % 4 == 0;
+  if (pad == 1) {
+    local last = b64val(raw[raw.len() - 2]);
+    canonical = last >= 0 && (last & 0x03) == 0;
+  } else if (pad == 2) {
+    local last = b64val(raw[raw.len() - 3]);
+    canonical = last >= 0 && (last & 0x0f) == 0;
+  }
+  if (!canonical) {
+    if (!("reason" in r.report) || r.report.reason == null) r.report.reason <- "base64_not_canonical";
+    r.bad = true;
+    return [null];
+  }
   local out = [];
-  local acc = 0, held = 0, oor = false, bad = false;
-  for (;;) {
-    if (r.p >= r.n) { r.bad = true; return null; }
-    local c = r.t[r.p];
-    r.p++;
-    if (c == '"') break;
-    if (c == '=' || bad) continue;
-    local at = b64val(c);
-    if (at < 0) { bad = true; continue; }
-    acc = ((acc << 6) | at) & 0xffffff;
+  local acc = 0, held = 0, oor = false;
+  for (local i = 0; i < raw.len(); i++) {
+    local c = raw[i];
+    if (c == '=') break;
+    acc = ((acc << 6) | b64val(c)) & 0xffffff;
     held += 6;
     if (held >= 8) {
       held -= 8;
@@ -1774,7 +1805,6 @@ local readBase64 = function(r, bound) {
       else oor = true;
     }
   }
-  if (bad) { r.report.mismatch++; return [null]; }
   if (oor) r.report.oor++;
   return [bytesToBlob(out)];
 };
