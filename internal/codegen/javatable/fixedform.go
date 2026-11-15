@@ -1476,11 +1476,17 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	}
 	// A bits(N) CLAMPS TO 2^N − 1 (ALGORITHM §4.6): N is the declared width and
 	// the storage that holds it can be wider, so a forged value between the
-	// two lands the width's own top and counts.
+	// two lands the width's own top and counts. The comparison is UNSIGNED, a
+	// bits(N) being an unsigned kind, so a storage value with its top bit set
+	// is past the bound too.
 	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*w {
 		maxv := int64(uint64(1)<<uint(f.Type.Width) - 1)
-		g.pf("%sif (%s > %dL) { %s = %s; %s } // bits(%d) clamps to 2^N - 1\n",
-			ind, expr, maxv, expr, fixedNarrow(typ, fmt.Sprintf("%dL", maxv)), scatterRefuse(rep, walked, "outOfRange"), f.Type.Width)
+		cmp, lit := "Long.compareUnsigned", fmt.Sprintf("%dL", maxv)
+		if typ == "int" {
+			cmp, lit = "Integer.compareUnsigned", fmt.Sprintf("%d", maxv)
+		}
+		g.pf("%sif (%s(%s, %s) > 0) { %s = %s; %s } // bits(%d) clamps to 2^N - 1\n",
+			ind, cmp, expr, lit, expr, fixedNarrow(typ, fmt.Sprintf("%dL", maxv)), scatterRefuse(rep, walked, "outOfRange"), f.Type.Width)
 	}
 }
 
