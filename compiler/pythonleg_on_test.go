@@ -82,12 +82,12 @@ func TestPythonCarriesThePacketCoreThroughTheDriver(t *testing.T) {
 	if _, ok := files["game/Game.py"]; !ok {
 		t.Fatal("generate --lang python emitted no game/Game.py")
 	}
-	u, err = c.Load(writeSchemas(t, map[string]string{"Game.schema": "package game\n\ntype Probe\n{\n    name string(16)\n}\n"}))
+	u, err = c.Load(writeSchemas(t, map[string]string{"Game.schema": "package game\n\ntype Probe\n{\n    items []uint8\n}\n"}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = c.Generate(u, "python", nil)
-	if err == nil || !strings.Contains(err.Error(), "uses string, which the Python target does not carry yet") {
-		t.Fatalf("got %v, want the string field refused by name", err)
+	if err == nil || !strings.Contains(err.Error(), "uses list, which the Python target does not carry yet") {
+		t.Fatalf("got %v, want the list field refused by name", err)
 	}
 }
