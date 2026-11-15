@@ -66,6 +66,12 @@ func TestCTableReachThroughUnknownUnionAndKeyed(t *testing.T) {
 		return reachCat(reachB(4, ir.TableKindString), reachLeb(uint64(len(payload))), payload)
 	}
 	unknown := record(13, reachB(0))
+	// An unknown record's body carrying an array of element kind 32 at count
+	// 0 and an enum-keyed body of element kind 17 at count 0: both kinds are
+	// off the closed lists (docs/SPEC-TABLES.md §3, §4), so the reach walk
+	// must refuse however the record is reached.
+	unknownBadArray := record(13, reachB(11, 14, 2, 32, 0, 0))
+	unknownBadKeyed := record(13, reachB(11, 16, 2, 17, 0, 0))
 
 	cases := []struct {
 		name   string
@@ -75,7 +81,10 @@ func TestCTableReachThroughUnknownUnionAndKeyed(t *testing.T) {
 		{"graph_reach_unknown_field", file(reachCat(reachB(11, 17, 2), nodeTable(1, unknown), reachB(0))), true},
 		{"graph_reach_unknown_nested", file(reachCat(reachB(11, 13, 4, 7, 17, 2, 0), nodeTable(1, unknown), reachB(0))), true},
 		{"graph_reach_unknown_union_arm", file(reachCat(reachB(11, 15, 17, 17, 1, 2), nodeTable(1, unknown), reachB(0))), true},
-		{"graph_reach_unknown_keyed_slot", file(reachCat(reachB(11, 16, 5, 17, 1, 18, 1, 2), nodeTable(1, unknown), reachB(0))), true},
+		{"graph_reach_unknown_keyed_slot", file(reachCat(reachB(11, 16, 5, 17, 1, 18, 1, 2), nodeTable(1, unknown), reachB(0))), false},
+		{"graph_reach_unknown_table_elem_array_kind", file(reachCat(reachB(11, 14, 7, 13, 1, 4, 3, 17, 2, 0), nodeTable(1, unknownBadArray), reachB(0))), false},
+		{"graph_reach_unknown_field_array_kind", file(reachCat(reachB(11, 17, 2), nodeTable(1, unknownBadArray), reachB(0))), false},
+		{"graph_reach_unknown_field_keyed_kind", file(reachCat(reachB(11, 17, 2), nodeTable(1, unknownBadKeyed), reachB(0))), false},
 		{"graph_unknown_type_unreached", file(reachCat(nodeTable(1, unknown), reachB(0))), false},
 	}
 

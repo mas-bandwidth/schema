@@ -3611,71 +3611,74 @@ static SCHEMA_UNUSED int graphdemo_table_node_scan_whole( const graphdemo_table_
 /* A RECORD NO POINTER REACHES IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the
    naming walk below counts every kind-17 payload in the root body and in
    every record body, in fields this reader names and in fields it does not,
-   which is the wire-alone half of the reachability rule. */
-static SCHEMA_UNUSED void graphdemo_table_mark_value( graphdemo_table_reader_t * r, uint8_t kind, uint8_t * named, uint64_t records, int depth );
-static SCHEMA_UNUSED void graphdemo_table_mark_body( graphdemo_table_reader_t r, uint8_t * named, uint64_t records, int depth )
+   which is the wire-alone half of the reachability rule. It also holds the
+   closed element-kind lists (§3, §4): an array or enum-keyed body carrying a
+   kind off its list is damage under any count, a count of 0 included, so the
+   walk fails and the whole load refuses. A mark helper returns 1 when the
+   walk may continue and 0 only for that damage. */
+static SCHEMA_UNUSED int graphdemo_table_mark_value( graphdemo_table_reader_t * r, uint8_t kind, uint8_t * named, uint64_t records, int depth );
+static SCHEMA_UNUSED int graphdemo_table_mark_body( graphdemo_table_reader_t r, uint8_t * named, uint64_t records, int depth )
 {
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
-        if ( !graphdemo_table_reader_leb( &r, &ref ) || ref == 0 ) { return; }
-        if ( ref > r.id_count || !graphdemo_table_reader_has( &r, 1 ) ) { return; }
+        if ( !graphdemo_table_reader_leb( &r, &ref ) || ref == 0 ) { return 1; }
+        if ( ref > r.id_count || !graphdemo_table_reader_has( &r, 1 ) ) { return 1; }
         id = graphdemo_table_reader_id_at( &r, ref ); kind = graphdemo_table_reader_get8( &r );
-        if ( id == UINT64_MAX ) { graphdemo_table_reader_t payload; if ( !graphdemo_table_reader_span( &r, &payload ) ) { return; } continue; }
-        graphdemo_table_mark_value( &r, kind, named, records, depth );
+        if ( id == UINT64_MAX ) { graphdemo_table_reader_t payload; if ( !graphdemo_table_reader_span( &r, &payload ) ) { return 1; } continue; }
+        if ( !graphdemo_table_mark_value( &r, kind, named, records, depth ) ) { return 0; }
     }
 }
-static SCHEMA_UNUSED void graphdemo_table_mark_framed( graphdemo_table_reader_t sub, uint8_t kind, uint8_t * named, uint64_t records, int depth )
+static SCHEMA_UNUSED int graphdemo_table_mark_framed( graphdemo_table_reader_t sub, uint8_t kind, uint8_t * named, uint64_t records, int depth )
 {
     uint8_t elem_kind; uint64_t count, i;
-    if ( depth > 128 ) { return; }
+    if ( depth > 128 ) { return 1; }
     switch ( kind )
     {
-        case 13: graphdemo_table_mark_body( sub, named, records, depth ); return;
+        case 13: return graphdemo_table_mark_body( sub, named, records, depth );
         case 14: case 16:
-            if ( sub.size < 2 ) { return; }
+            if ( sub.size < 2 ) { return 1; }
             elem_kind = graphdemo_table_reader_get8( &sub );
-            if ( !graphdemo_table_reader_leb( &sub, &count ) ) { return; }
-            if ( count > 2147483647ull ) { return; }
-            if ( count > (uint64_t)( sub.size - sub.offset ) ) { return; }
+            if ( !graphdemo_table_reader_leb( &sub, &count ) ) { return 1; }
+            if ( kind == 14 ? !graphdemo_table_array_element_kind_allowed( elem_kind ) : !graphdemo_table_keyed_element_kind_allowed( elem_kind ) ) { return 0; }
+            if ( count > 2147483647ull ) { return 1; }
+            if ( count > (uint64_t)( sub.size - sub.offset ) ) { return 1; }
             for ( i = 0; i < count; i++ )
             {
                 int64_t before = sub.offset;
-                if ( kind == 14 ) { graphdemo_table_mark_value( &sub, elem_kind, named, records, depth ); }
-                else { uint64_t key; graphdemo_table_reader_t elem; if ( !graphdemo_table_reader_leb( &sub, &key ) || !graphdemo_table_reader_span( &sub, &elem ) ) { return; } graphdemo_table_mark_framed( elem, elem_kind, named, records, depth + 1 ); }
-                if ( sub.offset == before ) { return; }
+                if ( kind == 14 ) { if ( !graphdemo_table_mark_value( &sub, elem_kind, named, records, depth ) ) { return 0; } }
+                else { uint64_t key; graphdemo_table_reader_t elem; if ( !graphdemo_table_reader_leb( &sub, &key ) || !graphdemo_table_reader_span( &sub, &elem ) ) { return 1; } if ( !graphdemo_table_mark_framed( elem, elem_kind, named, records, depth + 1 ) ) { return 0; } }
+                if ( sub.offset == before ) { return 1; }
             }
-            return;
-        case 15: { graphdemo_table_reader_t rr = sub; graphdemo_table_mark_value( &rr, kind, named, records, depth ); return; }
-        case 17: graphdemo_table_mark_value( &sub, kind, named, records, depth ); return;
-        default: return;
+            return 1;
+        case 15: { graphdemo_table_reader_t rr = sub; return graphdemo_table_mark_value( &rr, kind, named, records, depth ); }
+        case 17: return graphdemo_table_mark_value( &sub, kind, named, records, depth );
+        default: return 1;
     }
 }
-static SCHEMA_UNUSED void graphdemo_table_mark_value( graphdemo_table_reader_t * r, uint8_t kind, uint8_t * named, uint64_t records, int depth )
+static SCHEMA_UNUSED int graphdemo_table_mark_value( graphdemo_table_reader_t * r, uint8_t kind, uint8_t * named, uint64_t records, int depth )
 {
     uint64_t n;
-    if ( depth > 128 ) { return; }
+    if ( depth > 128 ) { return 1; }
     switch ( kind )
     {
-        case 17: if ( graphdemo_table_reader_leb( r, &n ) && n >= 2 && n <= records + 1 ) { named[n] = 1; } return;
-        case 30: graphdemo_table_reader_leb( r, &n ); return;
+        case 17: if ( graphdemo_table_reader_leb( r, &n ) && n >= 2 && n <= records + 1 ) { named[n] = 1; } return 1;
+        case 30: graphdemo_table_reader_leb( r, &n ); return 1;
         case 15:
         {
             uint64_t ref; uint8_t arm_kind; graphdemo_table_reader_t arm;
-            if ( !graphdemo_table_reader_leb( r, &ref ) || ref == 0 || !graphdemo_table_reader_has( r, 1 ) ) { return; }
+            if ( !graphdemo_table_reader_leb( r, &ref ) || ref == 0 || !graphdemo_table_reader_has( r, 1 ) ) { return 1; }
             arm_kind = graphdemo_table_reader_get8( r );
-            if ( !graphdemo_table_reader_span( r, &arm ) ) { return; }
-            graphdemo_table_mark_framed( arm, arm_kind, named, records, depth + 1 );
-            return;
+            if ( !graphdemo_table_reader_span( r, &arm ) ) { return 1; }
+            return graphdemo_table_mark_framed( arm, arm_kind, named, records, depth + 1 );
         }
         case 13: case 14: case 16:
         {
             graphdemo_table_reader_t sub;
-            if ( !graphdemo_table_reader_span( r, &sub ) ) { return; }
-            graphdemo_table_mark_framed( sub, kind, named, records, depth + 1 );
-            return;
+            if ( !graphdemo_table_reader_span( r, &sub ) ) { return 1; }
+            return graphdemo_table_mark_framed( sub, kind, named, records, depth + 1 );
         }
-        case 12: case 31: case 32: { graphdemo_table_reader_t sub; graphdemo_table_reader_span( r, &sub ); return; }
+        case 12: case 31: case 32: { graphdemo_table_reader_t sub; graphdemo_table_reader_span( r, &sub ); return 1; }
         default:
         {
             int width = 0;
@@ -3686,11 +3689,11 @@ static SCHEMA_UNUSED void graphdemo_table_mark_value( graphdemo_table_reader_t *
                 case 4: case 8: case 10: case 22: case 27: width = 4; break;
                 case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break;
                 case 18: case 19: case 24: case 29: width = 16; break;
-                default: return;
+                default: return 1;
             }
-            if ( !graphdemo_table_reader_has( r, width ) ) { r->offset = r->size; return; }
+            if ( !graphdemo_table_reader_has( r, width ) ) { r->offset = r->size; return 1; }
             r->offset += width;
-            return;
+            return 1;
         }
     }
 }
@@ -3701,12 +3704,12 @@ static SCHEMA_UNUSED int graphdemo_table_nodes_all_named( const graphdemo_table_
     named = (uint8_t *) graphdemo_table_allocate( graphdemo_table_default_allocator(), (int64_t) records + 2 );
     if ( named == NULL ) { return 0; }
     memset( named, 0, (size_t) records + 2 );
-    { graphdemo_table_reader_t r = *root; r.offset = 0; graphdemo_table_mark_body( r, named, records, 0 ); }
+    { graphdemo_table_reader_t r = *root; r.offset = 0; if ( !graphdemo_table_mark_body( r, named, records, 0 ) ) { ok = 0; } }
     scan = graphdemo_table_node_scan_begin( root );
     while ( graphdemo_table_node_scan_next( &scan, &id, &body ) )
     {
         if ( id == UINT64_C(0x2f2ec0474f1c4fe4) || id == UINT64_C(0x704be0d8faaffc58) ) { continue; }
-        graphdemo_table_mark_body( body, named, records, 0 );
+        if ( !graphdemo_table_mark_body( body, named, records, 0 ) ) { ok = 0; }
     }
     for ( i = 2; i <= records + 1; i++ ) { if ( !named[i] ) { ok = 0; } }
     graphdemo_table_release( graphdemo_table_default_allocator(), named );
