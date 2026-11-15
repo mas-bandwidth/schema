@@ -1806,7 +1806,7 @@ RUST_BOOL_NC := build/rust-bool-byte-nc
 .PHONY: tables-rust-bool-byte-negative-control
 tables-rust-bool-byte-negative-control:
 	@mkdir -p $(RUST_BOOL_NC)
-	@sed -e 's|if b\[|if false \&\& b[|' internal/codegen/rusttable/fixedform.go > $(RUST_BOOL_NC)/fixedform.go.txt
+	@sed -e 's|if b\[\([a-z%]*\)\] > 1 && report\.slack|if false \&\& b[\1] > 1 \&\& report.slack|' internal/codegen/rusttable/fixedform.go > $(RUST_BOOL_NC)/fixedform.go.txt
 	@test "$$(diff internal/codegen/rusttable/fixedform.go $(RUST_BOOL_NC)/fixedform.go.txt | grep -c '^>')" = 2 || \
 		{ echo "NEGATIVE CONTROL: the Rust bool-byte sabotage did not patch exactly the two checks"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/fixedform.go":"%s/$(RUST_BOOL_NC)/fixedform.go.txt"}}\n' \
