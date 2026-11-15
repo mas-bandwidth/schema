@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -68,6 +69,7 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 			t.Fatal(err)
 		}
 		work := t.TempDir()
+		slowtest.Gate(t, "the Go toolchain (it runs the vector generator)")
 		run := exec.Command("go", "run", "./test/non-canonical/gen", "--out", work)
 		run.Dir = root
 		if out, err := run.CombinedOutput(); err != nil {
