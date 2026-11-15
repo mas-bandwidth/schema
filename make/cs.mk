@@ -1484,9 +1484,11 @@ write-refusal-storage-debug-cs-negative-control: bin/schema $(STORAGE_RELEASE_SC
 	@mkdir -p $(STORAGE_DEBUG_CS)-negative/generated
 	./bin/schema generate --lang cs --out $(STORAGE_DEBUG_CS)-negative/generated $(STORAGE_RELEASE_SCHEMA)
 	./bin/schema generate --lang cs --out $(STORAGE_DEBUG_CS)-negative/generated $(STORAGE_DEBUG_CS_VALUES)
-	@sed -i.bak 's/System.Diagnostics.Debug.Assert(/System.Diagnostics.Debug.Assert(true || /g' $(STORAGE_DEBUG_CS)-negative/generated/StoragereleaseTable.cs $(STORAGE_DEBUG_CS)-negative/generated/WriteChecksTable.cs
+	@sed -i.bak 's/System.Diagnostics.Debug.Assert(/System.Diagnostics.Debug.Assert(true || /g' $(STORAGE_DEBUG_CS)-negative/generated/StoragereleaseTable.cs \
+		$(STORAGE_DEBUG_CS)-negative/generated/WriteChecksTable.cs $(STORAGE_DEBUG_CS)-negative/generated/WritechecksRegion.cs
 	@grep -q 'Debug.Assert(true || ' $(STORAGE_DEBUG_CS)-negative/generated/StoragereleaseTable.cs
 	@grep -q 'Debug.Assert(true || ' $(STORAGE_DEBUG_CS)-negative/generated/WriteChecksTable.cs
+	@grep -q 'Debug.Assert(true || ' $(STORAGE_DEBUG_CS)-negative/generated/WritechecksRegion.cs
 	@if $(DOTNET) run -c Debug --nologo -v quiet --project test/conformance/cs/storage-debug/StorageDebug.csproj \
 		-p:StorageGeneratedDir=$(CURDIR)/$(STORAGE_DEBUG_CS)-negative/generated \
 		-p:SerializeDir=$(abspath $(SERIALIZE_CS)) \
