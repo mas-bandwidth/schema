@@ -63,10 +63,14 @@ function validText(bytes, length) {
 
 // ---- type ProbeHeader: the flat codec ----
 
-// WriteProbeHeaderFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold ProbeHeaderMaxBytes.
+// WriteProbeHeaderFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ProbeHeaderMaxBytes.
 export function WriteProbeHeaderFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.version) || value.version < 0 || value.version > 7) {
+    return -1;
+  }
   lo = (171 | ((value.version & 0x7) << 8) | (0 << 11));
   SC.setBigUint64(0, value.probeId, true);
   v = SC.getUint32(0, true);
@@ -109,6 +113,9 @@ export function ReadProbeHeaderFlat(view, numBits, value) {
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.probeId = bg;
+  if (((80 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -154,6 +161,12 @@ export function ReadProbeHeaderFlatBits(view, numBits, value) {
 // must hold ProbeBitsMaxBytes.
 export function WriteProbeBitsFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.small) || value.small < 0 || value.small > 511) {
+    return -1;
+  }
+  if (value.boundary < 0n || value.boundary > 8589934591n) {
+    return -1;
+  }
   lo = ((value.small & 0x1ff));
   SC.setBigUint64(0, value.boundary, true);
   v = SC.getUint32(0, true);
@@ -161,6 +174,9 @@ export function WriteProbeBitsFlat(view, value) {
   lo = v >>> 23;
   v = SC.getUint32(4, true) & 0x1;
   lo = (lo | (v << 9)) >>> 0;
+  if (value.wide < 0n || value.wide > 18446744073709551615n) {
+    return -1;
+  }
   SC.setBigUint64(0, value.wide, true);
   v = SC.getUint32(0, true);
   view.setUint32(4, (lo | (v << 10)) >>> 0, true);
@@ -169,6 +185,9 @@ export function WriteProbeBitsFlat(view, value) {
   view.setUint32(8, (lo | (v << 10)) >>> 0, true);
   lo = v >>> 22;
   if (!Number.isInteger(value.sensor) || value.sensor < 0 || value.sensor > 4294967295) {
+    return -1;
+  }
+  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
     return -1;
   }
   v = (((value.sensor) >>> 0)) >>> 0;
@@ -223,6 +242,12 @@ export function ReadProbeBitsFlat(view, numBits, value) {
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.nonce = bg;
+  if (((202 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(25) & 0xfc) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -279,6 +304,9 @@ export function WriteProbeSampleFlat(view, value) {
   lo = ((value.active ? 1 : 0));
   x = Math.fround(value.orientation);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < -180.0 || x > 180.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - -180.0) / 360.0);
@@ -460,6 +488,13 @@ export function ReadProbeSampleFlat(view, numBits, value) {
     value.samples[i0] = v;
     br += 16;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -587,6 +622,9 @@ export function ReadProbeRingFlat(view, numBits, value) {
   out = view.getUint32(0, true);
   v = (out & 0xffff) >>> 0;
   value.radius = v;
+  if (((16 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -635,6 +673,12 @@ export function ReadProbeSlabFlat(view, numBits, value) {
   value.width = v | 0;
   v = (out >>> 7) & 0xff;
   value.height = v;
+  if (((15 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(1) & 0x80) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -756,6 +800,13 @@ export function ReadProbeShapeFlat(view, numBits, value) {
       br += 15;
       break;
     }
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -1140,6 +1191,13 @@ export function ReadProbeColliderFlat(view, numBits, value) {
       }
     }
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1356,6 +1414,12 @@ export function ReadProbeConfigFlat(view, numBits, value) {
   out = view.getUint32(4, true);
   v = (out & 0xf) >>> 0;
   value.preferred = v;
+  if (((36 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(4) & 0xf0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1397,6 +1461,9 @@ export function WriteProbeArrayFlat(view, value) {
     }
     x = Math.fround(e0.orientation);
     if (!Number.isFinite(x)) {
+      return -1;
+    }
+    if (x < -180.0 || x > 180.0) {
       return -1;
     }
     n = Math.fround(Math.fround(x - -180.0) / 360.0);
@@ -1663,6 +1730,14 @@ export function ReadProbeArrayFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0xf) >>> 0;
   value.config.preferred = v;
+  br += 4;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1820,7 +1895,10 @@ export function WriteHeartbeatFlat() {
 
 // ReadHeartbeatFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
-export function ReadHeartbeatFlat() {
+export function ReadHeartbeatFlat(view, numBits) {
+  if (((0 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -1882,6 +1960,12 @@ export function ReadTestFlat(view, numBits, value) {
     return false;
   }
   value.testD = v | 0;
+  if (((46 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(5) & 0xc0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1995,6 +2079,13 @@ export function ReadBlockFlat(view, numBits, value) {
     value.data[i0] = view.getUint8(bi + i0);
   }
   br += value.dataLength * 8;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -2121,6 +2212,13 @@ export function ReadChatFlat(view, numBits, value) {
   if (!validText(value.text, value.textLength)) {
     return false;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -2175,6 +2273,9 @@ export function ReadChatFlatBits(view, numBits, value) {
 // must hold ProbeReportMaxBytes.
 export function WriteProbeReportFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.header.version) || value.header.version < 0 || value.header.version > 7) {
+    return -1;
+  }
   lo = (171 | ((value.header.version & 0x7) << 8) | (0 << 11));
   SC.setBigUint64(0, value.header.probeId, true);
   v = SC.getUint32(0, true);
@@ -2262,6 +2363,12 @@ export function ReadProbeReportFlat(view, numBits, value) {
     return false;
   }
   value.echo.testD = v | 0;
+  if (((134 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(16) & 0xc0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -2330,8 +2437,7 @@ export function ReadProbeReportFlatBits(view, numBits, value) {
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold TestDataMaxBytes.
 export function WriteTestDataFlat(view, value) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
+  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return -1;
   }
@@ -2341,7 +2447,16 @@ export function WriteTestDataFlat(view, value) {
   if (!Number.isInteger(value.c) || value.c < -100 || value.c > 150) {
     return -1;
   }
+  if (!Number.isInteger(value.d) || value.d < 0 || value.d > 255) {
+    return -1;
+  }
+  if (!Number.isInteger(value.e) || value.e < 0 || value.e > 255) {
+    return -1;
+  }
   view.setUint32(0, (((((value.a >>> 0) - 4294967196) >>> 0) & 0xff) | (((((value.b >>> 0) - 4294967196) >>> 0) & 0xff) << 8) | (((((value.c >>> 0) - 4294967196) >>> 0) & 0xff) << 16) | ((value.d & 0xff) << 24)), true);
+  if (!Number.isInteger(value.f) || value.f < 0 || value.f > 255) {
+    return -1;
+  }
   if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 16) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
@@ -2363,17 +2478,11 @@ export function WriteTestDataFlat(view, value) {
     }
   }
   x = value.floatValue;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2384,6 +2493,9 @@ export function WriteTestDataFlat(view, value) {
   }
   x = Math.fround(value.compressedFloatValue);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < 0.0 || x > 10.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
@@ -2397,6 +2509,9 @@ export function WriteTestDataFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (10 - sb);
+  }
+  if (!Number.isFinite(value.doubleValue)) { // a bare float must be finite
+    return -1;
   }
   SC.setFloat64(0, value.doubleValue, true);
   v = SC.getUint32(0, true);
@@ -2819,6 +2934,13 @@ export function ReadTestDataFlat(view, numBits, value) {
   if (!validText(value.text, value.textLength)) {
     return false;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -3085,6 +3207,9 @@ export function WriteCompressedProbeFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 10.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
@@ -3092,6 +3217,9 @@ export function WriteCompressedProbeFlat(view, value) {
   lo = v;
   x = Math.fround(value.offset);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < -5.0 || x > 5.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - -5.0) / 10.0);
@@ -3121,6 +3249,9 @@ export function ReadCompressedProbeFlat(view, numBits, value) {
     return false;
   }
   value.offset = Math.fround(Math.fround(Math.fround(Math.fround(v) / 10000.0) * 10.0) + -5.0);
+  if (((24 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 

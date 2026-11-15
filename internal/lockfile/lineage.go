@@ -320,6 +320,24 @@ func parseLineage(line, table string) (LineageEntry, error) {
 	return e, nil
 }
 
+// appendLineage is the ONE PLACE a lineage entry joins a table's history,
+// whether the history is being read off the file (Parse) or carried forward by
+// `schema lock` (mergeLineage).
+//
+// THE LOCK REFUSES TWO ENTRIES WITH ONE WIRE HASH (docs/FIXED-FORM-ALGORITHM.md
+// §5.2). LOAD's step 5 resolves a file's hash by the FIRST index that carries
+// it, so a second entry under the same hash is a layout no reader can ever
+// reach: it is refused at the moment it would be added, naming both entries.
+func appendLineage(table string, history []LineageEntry, e LineageEntry) ([]LineageEntry, error) {
+	for i, old := range history {
+		if old.Wire == e.Wire {
+			return nil, fmt.Errorf("fixed table %s: lineage entry %d and lineage entry %d carry one layout hash wire=0x%016x (entry %d: record=%d bytes=%x; entry %d: record=%d bytes=%x) — a reader resolves a file's hash by the FIRST lineage index that carries it, so the second entry would be unreadable for ever, and the lock refuses the collision (docs/FIXED-FORM-ALGORITHM.md §5.2)",
+				table, i, len(history), e.Wire, i, old.Record, old.Layout, len(history), e.Record, e.Layout)
+		}
+	}
+	return append(history, e), nil
+}
+
 // Open is how a BACKEND reads this file: it locates the unit's lock from the
 // unit's source paths and parses it. ok is false when the unit has no lock —
 // which is not an error, because a unit that has never been locked promises
@@ -415,8 +433,9 @@ func salvageLineage(locked, live *Unit) {
 // there; local iterations before a commit collapse to one entry" (§11.6).
 //
 // Nothing is ever dropped and nothing already written is rewritten, so a
-// retired entry keeps its mark and its reason.
-func mergeLineage(locked, live *Unit) {
+// retired entry keeps its mark and its reason. A live layout whose hash an
+// OLDER entry already carries is refused rather than appended ([appendLineage]).
+func mergeLineage(locked, live *Unit) error {
 	for i := range live.Tables {
 		lv := &live.Tables[i]
 		if lv.Decl != DeclFixedTable || len(lv.Lineage) != 1 {
@@ -446,9 +465,13 @@ func mergeLineage(locked, live *Unit) {
 			lv.Lineage = history
 			continue
 		}
-		history = append(history, cur)
+		history, err := appendLineage(lv.Name, history, cur)
+		if err != nil {
+			return err
+		}
 		lv.Lineage = history
 	}
+	return nil
 }
 
 // lineageWarnAt is §11.6's warning: "a warning names a lineage past thirty-two

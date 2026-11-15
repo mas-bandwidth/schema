@@ -43,14 +43,41 @@ local function run(T: any, root: string, key: string, form: number?)
 		report.duplicate .. ":" .. nn(report.duplicateField))
 end
 -- a form-3 file of n fresh records written by schema_fixed.luau's own save (§3.4),
--- with its header's layout hash flipped when asked
+-- with its header's layout hash flipped when asked. A file of no records is a
+-- one-record file with the record removed: the save itself refuses an empty
+-- batch (§22.6), so the probe forges the header-and-layout-only file instead.
 local F = require("./schema_fixed")
 local S = require("./schema_tables")
+local function crc32c(b: buffer, n: number): number
+	local crc = 0xFFFFFFFF
+	for i = 0, n - 1 do
+		crc = bit32.bxor(crc, buffer.readu8(b, i))
+		for _ = 1, 8 do
+			if bit32.band(crc, 1) ~= 0 then
+				crc = bit32.bxor(bit32.rshift(crc, 1), 0x82F63B78)
+			else
+				crc = bit32.rshift(crc, 1)
+			end
+		end
+	end
+	return bit32.bxor(crc, 0xFFFFFFFF)
+end
 local function fixedFile(T: any, root: string, key: string, n: number, flip: boolean, layout: boolean)
 	local fixed = { hash = T[root .. "FixedHash"], recordBytes = T[root .. "FixedRecordBytes"], layout = T[root .. "FixedLayout"] }
-	local values = {}
-	for i = 1, n do values[i] = S.lookup(root).new() end
-	local b = F.save(T[root .. "Descriptor"], fixed, values)
+	local d = T[root .. "Descriptor"]
+	local b
+	if n == 0 then
+		local one = F.save(d, fixed, { S.lookup(root).new() })
+		local at = 20 + buffer.readu32(one, 16)
+		local trailer = if d.integrity ~= nil and d.integrity ~= "" then 4 else 0
+		b = buffer.create(at + trailer)
+		buffer.copy(b, 0, one, 0, at)
+		if trailer > 0 then buffer.writeu32(b, at, crc32c(b, at)) end
+	else
+		local values = {}
+		for i = 1, n do values[i] = S.lookup(root).new() end
+		b = F.save(d, fixed, values)
+	end
 	if flip then buffer.writeu8(b, 8, bit32.bxor(buffer.readu8(b, 8), 1)) end
 	if layout then buffer.writeu8(b, 20, bit32.bxor(buffer.readu8(b, 20), 1)) end
 	local report: any = {}
@@ -401,10 +428,11 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 		// names a file shorter than the header truncated (§5.3, §3.4)
 		refusalCase{key: "fixed_own_reader", unit: fixedUnit, root: fixedRoot, input: "empty", form: 3, want: "truncated", field: "-"},
 		// a whole form-3 file its own save wrote reads; a strict read answers
-		// ONE root, so none or two records are the file's damage; a layout
-		// hash this reader holds no plan for is the reader's layout_unknown
+		// ONE root, so no record is the fixed reader's truncated and two are
+		// the file's damage; a layout hash this reader holds no plan for is
+		// the reader's layout_unknown
 		refusalCase{key: "fixed_one_record", unit: fixedUnit, root: fixedRoot, input: "fixed_one_record", form: -1, saved: 2, want: "ok", field: "-"},
-		refusalCase{key: "fixed_no_record", unit: fixedUnit, root: fixedRoot, input: "fixed_no_record", form: -1, saved: 1, want: "wire_damaged", field: "-"},
+		refusalCase{key: "fixed_no_record", unit: fixedUnit, root: fixedRoot, input: "fixed_no_record", form: -1, saved: 1, want: "truncated", field: "-"},
 		refusalCase{key: "fixed_two_records", unit: fixedUnit, root: fixedRoot, input: "fixed_two_records", form: -1, saved: 3, want: "wire_damaged", field: "-"},
 		refusalCase{key: "fixed_layout_unknown", unit: fixedUnit, root: fixedRoot, input: "fixed_layout_unknown", form: -1, saved: 2, flip: true, want: "layout_unknown", field: "-"},
 		refusalCase{key: "fixed_layout_malformed", unit: fixedUnit, root: fixedRoot, input: "fixed_layout_malformed", form: -1, saved: 2, layout: true, want: "layout_malformed", field: "-"},

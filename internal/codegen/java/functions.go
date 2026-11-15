@@ -420,9 +420,15 @@ func (g *gen) emitReadFunction(name string, walk func(ind string)) {
 	g.bpf("    }\n\n")
 
 	g.bpf("    // read%s decodes value from the first numBits of data — the family read\n", name)
-	g.bpf("    // verdict: false refuses the wire.\n")
+	g.bpf("    // verdict: false refuses the wire. After the top-level object the packet's\n")
+	g.bpf("    // end is checked once: a whole byte left over, or nonzero unused bits in\n")
+	g.bpf("    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).\n")
 	g.bpf("    public static boolean read%s(%s value, byte[] data, int numBits) {\n", name, name)
-	g.bpf("        return read%sBits(value, data, 0, numBits) >= 0;\n", name)
+	g.bpf("        final int end = read%sBits(value, data, 0, numBits);\n", name)
+	g.bpf("        if (end < 0) {\n            return false;\n        }\n")
+	g.bpf("        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {\n            return false;\n        }\n")
+	g.bpf("        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {\n            return false;\n        }\n")
+	g.bpf("        return true;\n")
 	g.bpf("    }\n\n")
 }
 
@@ -516,6 +522,8 @@ func (g *gen) hasCheckScalar(f *ir.Field) bool {
 	switch f.Type.Kind {
 	case ir.TString, ir.TBytes:
 		return true
+	case ir.TBits:
+		return f.Type.Width < 64
 	case ir.TFixed:
 		return true
 	case ir.TInt:
@@ -616,6 +624,11 @@ func (g *gen) emitCheckScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
 	case ir.TString, ir.TBytes:
 		g.assertRange(name+"Length", big.NewInt(0), big.NewInt(f.Type.Size), true, ind)
+	case ir.TBits:
+		if f.Type.Width < 64 {
+			max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+			g.assertRange(name, big.NewInt(0), max, true, ind)
+		}
 	case ir.TFixed:
 		rawMin, rawMax, _ := fixedRaw(f)
 		if f.Type.Width == 128 {

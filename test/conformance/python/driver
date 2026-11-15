@@ -2,19 +2,18 @@
 # THE PYTHON LEG's driver (test/conformance/README.md; docs/PORT-PYTHON.md,
 # THE HARNESS).
 #
-# The skeleton answers no surface: `list` names none, and every surface is
-# exit 2 (ABSENT). The conformance layer (P10) replaces this with
-# test/conformance/python/main.py under the pinned interpreter.
-#
-# The working directory is the repository root.
+# A driver is a command, not a binary. Every surface is handed to ONE process,
+# test/conformance/python/main.py, under a PINNED interpreter. The working
+# directory is the repository root. PYTHON is the pin make/python-toolchain.mk
+# exports; the fallback is the repository's dist build. No interpreter found on
+# PATH is ever started: an unset pin refuses rather than guessing.
 #
 # usage: driver <manifest> list
 #        driver <manifest> <surface> <outdir>
-case "$2" in
-list)
-	exit 0
-	;;
-*)
-	exit 2
-	;;
-esac
+main=test/conformance/python/main.py
+python="${PYTHON:-dist/python-3.15.2/bin/python3.15}"
+if [ ! -x "$python" ]; then
+	echo "driver: the pinned interpreter does not resolve at $python; run make dist-python (docs/PORT-PYTHON.md, THE PIN)" >&2
+	exit 1
+fi
+exec "$python" -I -B "$main" "$@"

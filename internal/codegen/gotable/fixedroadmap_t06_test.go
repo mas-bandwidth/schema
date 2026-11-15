@@ -286,7 +286,7 @@ func t06GoC1(t *testing.T) {
 	if countCase == "" {
 		t.Fatal("C1: total pre-scan is not emitted")
 	}
-	t02GoHas(t, countCase, "if v < 0 || v > int32(p.Size)", "C1 a count below zero or past the bound refuses")
+	t02GoHas(t, countCase, "if v < 0 || int64(v) < int64(p.Min) || v > int32(p.Size)", "C1 a count below zero or past the bound refuses")
 	t02GoHas(t, countCase, "return TableRefuseCountOverBound.Error()", "C1 the refusal is named count_over_bound")
 }
 
@@ -301,6 +301,6 @@ func t06GoC2(t *testing.T) {
 	if countCase == "" {
 		t.Fatal("C: total pre-scan is not emitted")
 	}
-	t02GoHas(t, countCase, "if v < 0 || v > int32(p.Size)", "C2 a count past the max refuses")
+	t02GoHas(t, countCase, "if v < 0 || int64(v) < int64(p.Min) || v > int32(p.Size)", "C2 a count past the max refuses")
 	t02GoHas(t, countCase, "return TableRefuseCountOverBound.Error()", "C2 the refusal is named count_over_bound")
 }

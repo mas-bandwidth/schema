@@ -24,7 +24,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTableFixedCheckBody, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
+import { FixedTableFixedCheckBody, FixedTableFixedCheckDead, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
@@ -495,10 +495,16 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
       report.refused = TableFixedRefusal.NoLayout; return -1;
     }
     if (identity) {
+      FixedTableFixedCheckDead(srcView, at + 8, stage);
+      if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(values, k, stage, report); }
       FixedTableFixedDecode(values[k], srcView, at + 8, stage);
       if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(values, k, stage, report); }
       at += recordBytes;
       continue;
+    }
+    if (entries === FixedTableFixedIdentity && holeN === 0) {
+      FixedTableFixedCheckDead(srcView, at + 8, stage);
+      if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(values, k, stage, report); }
     }
     for (let h = 0; h < holeN; h++) {
       const o = plan.holes[h * 2], z = plan.holes[h * 2 + 1];

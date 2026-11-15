@@ -61,6 +61,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bits( stream, uint32_t( value.f003_int ) - uint32_t( -835897 ), 21 );
     {
         float compressed_value = value.f004_cf32;
+        serialize_assert( compressed_value >= 0.0f && compressed_value <= 2000.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 20000u, 15, 2000.0f, 0.0f );
     }
     serialize_assert( int32_t( value.f005_uint ) <= int32_t( 7316 ) );
@@ -106,6 +107,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bits( stream, value.f026_bits, 9 );
     {
         float compressed_value = value.f027_cf32;
+        serialize_assert( compressed_value >= -2.0f && compressed_value <= 2.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 16u, 5, 4.0f, -2.0f );
     }
     write_bits( stream, value.f028_bits, 4 );
@@ -166,6 +168,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bits( stream, value.f060_bits, 8 );
     {
         float compressed_value = value.f061_cf32;
+        serialize_assert( compressed_value >= -90.0f && compressed_value <= 90.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 360u, 9, 180.0f, -90.0f );
     }
     serialize_assert( int32_t( value.f062_uint ) <= int32_t( 503 ) );
@@ -175,6 +178,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bits( stream, uint32_t( value.f064_uint ), 9 );
     {
         float compressed_value = value.f065_cf32;
+        serialize_assert( compressed_value >= 0.0f && compressed_value <= 30.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 60u, 6, 30.0f, 0.0f );
     }
     {
@@ -183,10 +187,12 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     }
     {
         float compressed_value = value.f067_cf32;
+        serialize_assert( compressed_value >= -100.0f && compressed_value <= 100.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 800u, 10, 200.0f, -100.0f );
     }
     {
         float compressed_value = value.f068_cf32;
+        serialize_assert( compressed_value >= 0.0f && compressed_value <= 2000.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 2000u, 11, 2000.0f, 0.0f );
     }
     write_bits( stream, value.f069_bits, 11 );
@@ -194,10 +200,12 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bits( stream, uint32_t( value.f070_uint ), 2 );
     {
         float compressed_value = value.f071_cf32;
+        serialize_assert( compressed_value >= 0.0f && compressed_value <= 10.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 500u, 9, 10.0f, 0.0f );
     }
     {
         float compressed_value = value.f072_cf32;
+        serialize_assert( compressed_value >= 0.0f && compressed_value <= 100.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 10000u, 14, 100.0f, 0.0f );
     }
     serialize_assert( int32_t( value.f073_int ) >= int32_t( -4 ) && int32_t( value.f073_int ) <= int32_t( 4 ) );

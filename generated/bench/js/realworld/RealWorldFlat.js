@@ -39,12 +39,14 @@ export const FlatReadSlack = 8;
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold RealPacketMaxBytes.
 export function WriteRealPacketFlat(view, value) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
+  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.f001Int) || value.f001Int < -805495 || value.f001Int > 805495) {
     return -1;
   }
   lo = (((((value.f001Int >>> 0) - 4294161801) >>> 0) & 0x1fffff));
+  if (!Number.isFinite(value.f002F64)) { // a bare float must be finite
+    return -1;
+  }
   SC.setFloat64(0, value.f002F64, true);
   v = SC.getUint32(0, true);
   view.setUint32(0, (lo | (v << 21)) >>> 0, true);
@@ -62,6 +64,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 2000.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 20000.0) + 0.5));
@@ -77,17 +82,11 @@ export function WriteRealPacketFlat(view, value) {
   view.setUint32(12, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
   x = value.f007F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(16, (lo | (v << 18)) >>> 0, true);
   lo = v >>> 14;
   SC.setBigUint64(0, value.f008U64, true);
@@ -102,19 +101,16 @@ export function WriteRealPacketFlat(view, value) {
   }
   lo = (lo | ((((((value.f009Int >>> 0) - 4294967274) >>> 0) & 0x3f)) << 18)) >>> 0;
   x = value.f010F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(28, (lo | (v << 24)) >>> 0, true);
   lo = v >>> 8;
+  if (!Number.isInteger(value.f011Bits) || value.f011Bits < 0 || value.f011Bits > 1023) {
+    return -1;
+  }
   v = ((value.f011Bits & 0x3ff) | ((value.f012Bool ? 1 : 0) << 10)) >>> 0;
   view.setUint32(32, (lo | (v << 24)) >>> 0, true);
   lo = v >>> 8;
@@ -122,17 +118,11 @@ export function WriteRealPacketFlat(view, value) {
   sb = 3;
   if (value.f012Bool) {
     x = value.f013F32;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -193,6 +183,9 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
+  if (!Number.isFinite(value.f019F64)) { // a bare float must be finite
+    return -1;
+  }
   SC.setFloat64(0, value.f019F64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
@@ -213,17 +206,11 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   x = value.f020F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -245,17 +232,11 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (27 - sb);
   }
   x = value.f022F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -263,6 +244,9 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (!Number.isInteger(value.f023Bits) || value.f023Bits < 0 || value.f023Bits > 33554431) {
+    return -1;
   }
   v = ((value.f023Bits & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -274,17 +258,11 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
   x = value.f024F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -294,6 +272,9 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   if (!Number.isInteger(value.f025Fixed) || value.f025Fixed < -30464 || value.f025Fixed > 30464) {
+    return -1;
+  }
+  if (!Number.isInteger(value.f026Bits) || value.f026Bits < 0 || value.f026Bits > 511) {
     return -1;
   }
   v = (((((value.f025Fixed >>> 0) - 4294936832) >>> 0) & 0xffff) | ((value.f026Bits & 0x1ff) << 16)) >>> 0;
@@ -309,6 +290,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < -2.0 || x > 2.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - -2.0) / 4.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 16.0) + 0.5));
@@ -320,6 +304,9 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
+  }
+  if (!Number.isInteger(value.f028Bits) || value.f028Bits < 0 || value.f028Bits > 15) {
+    return -1;
   }
   v = ((value.f028Bits & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -350,17 +337,11 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   x = value.f030F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -368,6 +349,9 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (!Number.isInteger(value.f031Bits) || value.f031Bits < 0 || value.f031Bits > 1) {
+    return -1;
   }
   if (!Number.isInteger(value.f032Int) || value.f032Int < -3 || value.f032Int > 3) {
     return -1;
@@ -387,7 +371,13 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (22 - sb);
   }
+  if (!Number.isInteger(value.f035Bits) || value.f035Bits < 0 || value.f035Bits > 511) {
+    return -1;
+  }
   if (!Number.isInteger(value.f036Enum) || value.f036Enum < 0 || value.f036Enum > 5) { // headroom above the wire range cannot ride
+    return -1;
+  }
+  if (!Number.isInteger(value.f039Bits) || value.f039Bits < 0 || value.f039Bits > 524287) {
     return -1;
   }
   v = (((value.f034Uint) & 0x3fff) | ((value.f035Bits & 0x1ff) << 14) | ((value.f036Enum & 0x7) << 23) | ((value.f037Bool ? 1 : 0) << 26) | ((value.f038Bool ? 1 : 0) << 27)) >>> 0;
@@ -414,6 +404,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isInteger(value.f041Int) || value.f041Int < -55 || value.f041Int > 55) {
     return -1;
   }
+  if (!Number.isInteger(value.f042Bits) || value.f042Bits < 0 || value.f042Bits > 1073741823) {
+    return -1;
+  }
   v = (((((value.f040Fixed >>> 0) - 4294946816) >>> 0) & 0xffff) | (((((value.f041Int >>> 0) - 4294967241) >>> 0) & 0x7f) << 16)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 23;
@@ -434,17 +427,11 @@ export function WriteRealPacketFlat(view, value) {
   }
   if (value.f043Bool) {
     x = value.f044F32;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -452,6 +439,9 @@ export function WriteRealPacketFlat(view, value) {
       wi += 4;
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
+    }
+    if (!Number.isInteger(value.f045Bits) || value.f045Bits < 0 || value.f045Bits > 4095) {
+      return -1;
     }
     if (!Number.isInteger(value.f046Uint) || value.f046Uint < 0 || value.f046Uint > 76063) {
       return -1;
@@ -477,6 +467,9 @@ export function WriteRealPacketFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (20 - sb);
     }
+  }
+  if (!Number.isFinite(value.f048F64)) { // a bare float must be finite
+    return -1;
   }
   SC.setFloat64(0, value.f048F64, true);
   v = SC.getUint32(0, true);
@@ -523,17 +516,11 @@ export function WriteRealPacketFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
     x = value.f053F32;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -571,17 +558,11 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   x = value.f058F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -589,6 +570,9 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (!Number.isFinite(value.f059F64)) { // a bare float must be finite
+    return -1;
   }
   SC.setFloat64(0, value.f059F64, true);
   v = SC.getUint32(0, true);
@@ -609,6 +593,9 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
+  if (!Number.isInteger(value.f060Bits) || value.f060Bits < 0 || value.f060Bits > 255) {
+    return -1;
+  }
   v = ((value.f060Bits & 0xff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
@@ -620,6 +607,9 @@ export function WriteRealPacketFlat(view, value) {
   }
   x = Math.fround(value.f061Cf32);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < -90.0 || x > 90.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - -90.0) / 180.0);
@@ -681,6 +671,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 30.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 30.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 60.0) + 0.5));
@@ -709,6 +702,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < -100.0 || x > 100.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - -100.0) / 200.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 800.0) + 0.5));
@@ -725,6 +721,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 2000.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 2000.0) + 0.5));
@@ -736,6 +735,9 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
+  }
+  if (!Number.isInteger(value.f069Bits) || value.f069Bits < 0 || value.f069Bits > 2047) {
+    return -1;
   }
   if (!Number.isInteger(value.f070Uint) || value.f070Uint < 0 || value.f070Uint > 2) {
     return -1;
@@ -753,6 +755,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isFinite(x)) {
     return -1;
   }
+  if (x < 0.0 || x > 10.0) {
+    return -1;
+  }
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 500.0) + 0.5));
@@ -767,6 +772,9 @@ export function WriteRealPacketFlat(view, value) {
   }
   x = Math.fround(value.f072Cf32);
   if (!Number.isFinite(x)) {
+    return -1;
+  }
+  if (x < 0.0 || x > 100.0) {
     return -1;
   }
   n = Math.fround(Math.fround(x - 0.0) / 100.0);
@@ -819,6 +827,9 @@ export function WriteRealPacketFlat(view, value) {
     if (!Number.isInteger(value.f077Int) || value.f077Int < -17 || value.f077Int > 17) {
       return -1;
     }
+    if (!Number.isInteger(value.f078Bits) || value.f078Bits < 0 || value.f078Bits > 511) {
+      return -1;
+    }
     if (!Number.isInteger(value.f079Uint) || value.f079Uint < 0 || value.f079Uint > 17) {
       return -1;
     }
@@ -840,6 +851,12 @@ export function WriteRealPacketFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (5 - sb);
     }
+  }
+  if (!Number.isInteger(value.f081Bits) || value.f081Bits < 0 || value.f081Bits > 536870911) {
+    return -1;
+  }
+  if (!Number.isInteger(value.f082Bits) || value.f082Bits < 0 || value.f082Bits > 33554431) {
+    return -1;
   }
   v = ((value.f080Bool ? 1 : 0) | ((value.f081Bits & 0x1fffffff) << 1)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -865,6 +882,9 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (28 - sb);
   }
+  if (!Number.isInteger(value.f085Bits) || value.f085Bits < 0 || value.f085Bits > 2097151) {
+    return -1;
+  }
   if (!Number.isInteger(value.f086Uint) || value.f086Uint < 0 || value.f086Uint > 399) {
     return -1;
   }
@@ -886,6 +906,9 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
+  if (!Number.isFinite(value.f087F64)) { // a bare float must be finite
+    return -1;
+  }
   SC.setFloat64(0, value.f087F64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
@@ -906,6 +929,9 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   if (!Number.isInteger(value.f088Int) || value.f088Int < -694 || value.f088Int > 694) {
+    return -1;
+  }
+  if (value.f089Bits < 0n || value.f089Bits > 281474976710655n) {
     return -1;
   }
   v = (((((value.f088Int >>> 0) - 4294966602) >>> 0) & 0x7ff)) >>> 0;
@@ -961,6 +987,9 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
+  if (value.f093Bits < 0n || value.f093Bits > 18446744073709551615n) {
+    return -1;
+  }
   v = ((value.f092Bool ? 1 : 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 1;
@@ -992,6 +1021,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isInteger(value.f095Fixed) || value.f095Fixed < -103350272 || value.f095Fixed > 103350272) {
     return -1;
   }
+  if (!Number.isInteger(value.f096Bits) || value.f096Bits < 0 || value.f096Bits > 262143) {
+    return -1;
+  }
   v = ((value.f094Bool ? 1 : 0) | (((((value.f095Fixed >>> 0) - 4191617024) >>> 0) & 0xfffffff) << 1)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 29;
@@ -1000,6 +1032,9 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (29 - sb);
+  }
+  if (!Number.isInteger(value.f097Bits) || value.f097Bits < 0 || value.f097Bits > 4095) {
+    return -1;
   }
   v = ((value.f096Bits & 0x3ffff) | ((value.f097Bits & 0xfff) << 18)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1917,6 +1952,14 @@ export function ReadRealPacketFlat(view, numBits, value) {
   value.f096Bits = v;
   v = (out >>> 18) & 0xfff;
   value.f097Bits = v;
+  br += 30;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 

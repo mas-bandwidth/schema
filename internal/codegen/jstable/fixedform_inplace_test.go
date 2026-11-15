@@ -72,6 +72,12 @@ func jsIdentityDoor(t *testing.T, load, root string) {
 		"      at += recordBytes;\n"+
 		"      continue;\n"+
 		"    }", root, root)
+	// A ROOT WITH DEAD BYTES ALSO CHECKS THEM ON THE FILE BEFORE THE PROJECTION
+	// (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3 step 11).
+	dead := fmt.Sprintf("if (identity) {\n"+
+		"      %sFixedCheckDead(srcView, at + 8, stage);\n"+
+		"      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", root, root) +
+		door[len("if (identity) {\n"):]
 	if !allowed {
 		if strings.Contains(load, "if (identity") {
 			t.Error("the load grew a second reader and docs/SPEC-TABLES.md §3.4 does not list javascript")
@@ -82,7 +88,9 @@ func jsIdentityDoor(t *testing.T, load, root string) {
 		t.Errorf("the in-place door must be chosen exactly once, by the identity plan with no holes: %q appears %d times", decl, n)
 	}
 	if n := strings.Count(load, door); n != 1 {
-		t.Errorf("the in-place door must be exactly §3.4's shape (project from srcView at the body, refuse as the shared path does); found %d", n)
+		if d := strings.Count(load, dead); d != 1 {
+			t.Errorf("the in-place door must be exactly §3.4's shape (project from srcView at the body, refuse as the shared path does); found %d without dead bytes and %d with them", n, d)
+		}
 	}
 	// NOTHING ELSE BRANCHES ON IDENTITY: the declaration and the door are the
 	// only two mentions in the load's code (its comments may say why).
@@ -195,8 +203,11 @@ function show(v) {
   return JSON.stringify(v, (k, x) => typeof x === "bigint" ? "n" + x.toString()
     : (typeof x === "number" && !Number.isFinite(x)) ? "f" + String(x) : x);
 }
+// THE VERDICT, never the refusal's name (docs/rulings.json
+// refusal-verdict-only): a record can be dead-byte damage and out of range at
+// once, and the first condition each path meets names it.
 function rep(r) {
-  return [r.refused, r.damaged, r.unknown, r.mismatch, r.oor, r.widened, r.repeated, r.layoutHash].map(String).join(",");
+  return [r.damaged, r.unknown, r.mismatch, r.oor, r.widened, r.repeated, r.layoutHash].map(String).join(",");
 }
 function same(a, b) { if (a.length !== b.length) return false; for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) return false; } return true; }
 // a seeded xorshift32: the same files on every run
@@ -231,12 +242,69 @@ function compare(label, bytes, n) {
 }
 
 compare("clean 64", clean, N);
-const one = clean.slice(0, bodyAt + recordBytes);
+// ONE POPULATED RECORD: every live field carries a value, so its non-zero
+// bytes are the live ones and its dead bytes are still the writer's zeros
+// (docs/FIXED-FORM-ALGORITHM.md §3.1).
+function populate(v) {
+  v.sequence = 0x1234;
+  v.ackSequence = 4321;
+  v.ackBits = 0xDEADBEEF;
+  v.sessionId = 0x0123456789ABCDEFn;
+  v.clientId = 0x11223344;
+  v.nonce = 0x00FEDCBA98765432n;
+  v.worldTime = 123456789n;
+  v.frameTick = 0x123456789ABCn;
+  v.serverTime = 1234;
+  v.entitiesCount = 8;
+  for (let i = 0; i < 8; i++) {
+    const e = v.entities[i];
+    e.entityId = i + 1;
+    e.posX = i + 1; e.posY = i + 2; e.posZ = i + 3;
+    e.yaw = i + 1; e.pitch = i + 2;
+    e.velX = i + 1; e.velY = i + 2; e.velZ = i + 3;
+    e.health = i + 10;
+    e.weapon = i & 15;
+    e.damage = BigInt(i + 1);
+    e.moving = (i & 1) === 0;
+    e.firing = (i & 2) === 0;
+  }
+  v.statsCount = 80;
+  for (let i = 0; i < 80; i++) { v.stats[i].statId = i & 0xff; v.stats[i].delta = i - 40; }
+  v.gameEvent.type = 1;
+  v.gameEvent.hit.targetId = 7;
+  v.gameEvent.hit.damage = 11;
+  v.gameEvent.hit.hitKind = 3;
+  v.gameEvent.hit.crit = true;
+  v.loadout[0] = 1; v.loadout[1] = 2; v.loadout[2] = 3; v.loadout[3] = 4;
+  for (let i = 0; i < 8; i++) { v.playerName[i] = 97 + i; }
+  v.playerNameLength = 8;
+  for (let i = 0; i < 8; i++) { v.payload[i] = 1 + i; }
+  v.payloadLength = 8;
+  v.aimX = 0.5; v.aimY = -0.5; v.aimZ = 0.25;
+  v.recoil = 1.5; v.drift = 2.5;
+  v.wideKey = 0x0123456789ABCDEF0123456789ABCDEFn;
+  v.flux = 123456789n;
+  v.ping = 123; v.crcHint = 0x123456;
+  v.hasExtra = true; v.extra = 7; v.idleTicks = 3;
+}
+const oneValue = fresh(AT, 1);
+populate(oneValue[0].value);
+const one = new Uint8Array(A.ROOTFixedMeasure(1));
+if (A.ROOTFixedSave(oneValue, 1, one) !== one.length) { fail("the populated one-record file did not save"); }
 for (let c = 0; c < 2000; c++) {
   const f = new Uint8Array(one);
   const hits = 1 + (rnd() % ((c & 1) ? 96 : 8)); // a few bytes, or many
-  for (let h = 0; h < hits; h++) {
-    f[bodyAt + 8 + (rnd() % (recordBytes - 8))] = rnd() & 0xff;
+  // THE DAMAGE TOUCHES LIVE BYTES ONLY: every dead byte in the populated image
+  // is zero (docs/FIXED-FORM-ALGORITHM.md §3.1), so a mutation that lands on a
+  // non-zero byte leaves every dead region zero and the read can still succeed;
+  // a mutation of a dead byte is refused by the dead-byte rule and would never
+  // exercise the two paths' values. A one-bit change keeps most live values in
+  // their declared range, so the damaged set still covers both verdicts.
+  for (let h = 0, tries = 0; h < hits && tries < 4096; tries++) {
+    const at = bodyAt + 8 + (rnd() % (recordBytes - 8));
+    if (one[at] === 0) { continue; }
+    f[at] = one[at] ^ 1;
+    h++;
   }
   compare("case " + c, f, 1);
 }
