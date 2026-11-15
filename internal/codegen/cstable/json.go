@@ -76,7 +76,11 @@ public static class TableJson
 {
     public const int MaxDepth = 128;
 
-    // A key longer than this cannot name a field, so it is skipped as unknown.
+    // A schema-name string is capped at 255 bytes (§16.2): a longer one is a
+    // name this form refuses, in every object and inside a skipped value.
+    public const int MaxName = 255;
+
+    // A map key's spelling buffer. A map key is data, never a schema name.
     public const int MaxKey = 256;
 
     // The working size of a numeric token's stack scratch. A longer token is
@@ -1378,7 +1382,7 @@ public static class TableJson
         if (depth > MaxDepth) { input.Bad = true; return false; }
         input.Pos++; // the opening bracket
         bool first = true;
-        Span<byte> key = stackalloc byte[MaxKey];
+        Span<byte> key = stackalloc byte[MaxName];
         // a skipped object's keys are held to the layer's rule too: a repeated
         // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
         // §16.12), the objects this walk skips included
@@ -1490,7 +1494,7 @@ public static class TableJson
             input.Pos++;
             f.Arms.SetTag(union, 0);
             if (Peek(text, ref input) == '}') { input.Pos++; return true; }
-            Span<byte> key = stackalloc byte[MaxKey];
+            Span<byte> key = stackalloc byte[MaxName];
             int keyLength;
             if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
             if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -1548,7 +1552,7 @@ public static class TableJson
         }
         if (IsEnum(f))
         {
-            Span<byte> name = stackalloc byte[MaxKey];
+            Span<byte> name = stackalloc byte[MaxName];
             int nameLength;
             if (!ScanString(text, ref input, name, true, out nameLength)) { return false; }
             for (int v = 0; v <= f.EnumMax; v++)
@@ -1570,7 +1574,7 @@ public static class TableJson
             if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
             input.Pos++;
             ulong bits = 0;
-            Span<byte> name = stackalloc byte[MaxKey];
+            Span<byte> name = stackalloc byte[MaxName];
             for (; ; )
             {
                 byte c = Peek(text, ref input);
@@ -1878,7 +1882,7 @@ public static class TableJson
             int words = (f.ArrayBound + 63) / 64;
             Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
             seen.Clear();
-            Span<byte> key = stackalloc byte[MaxKey];
+            Span<byte> key = stackalloc byte[MaxName];
             System.Collections.Generic.HashSet<string> unplaced = null;
             for (; ; )
             {
@@ -2007,7 +2011,7 @@ public static class TableJson
         int words = (info.NumFields + 63) / 64;
         Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
         seen.Clear();
-        Span<byte> key = stackalloc byte[MaxKey];
+        Span<byte> key = stackalloc byte[MaxName];
         System.Collections.Generic.HashSet<string> unknown = null;
         for (; ; )
         {
