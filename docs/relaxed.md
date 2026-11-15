@@ -88,7 +88,7 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-cpp`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings) and in the pack hostile-value gate (`Makefile`, `HOSTILE_ENGINE_RELAXED`).
   - `relax/hostile-rows-cs`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-dart`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-elixir`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-elixir`: str-zero-escape-unknown-key and jref_zero_byte, and that row in the port's hostile-corpus run (carried findings); the JSON read refuses unpadded base64 and set pad bits.
   - `relax/hostile-rows-go`: the generated Go JSON walk (not the engine)
     reads str-zero-escape-unknown-key: it does not validate a skipped value.
     Its hostile-corpus run drops that row from the staged manifest
