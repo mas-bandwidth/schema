@@ -81,6 +81,10 @@ const back = [new T(), new T(), new T()];
 const plan = TNewPlan(4096, 4096);
 for (const [flag, present] of [[1,1],[0,0]]) {
   data[at] = flag; data[at+1] = present;
+  // A NON-ZERO PAYLOAD UNDER A PRESENT BYTE OF 0 IS DEAD
+  // (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3 step 11): an absent optional's
+  // bytes are the writer's zeros, so the fixture zeroes them with the flag.
+  if (present === 0) { for (let i = 2; i < 6; i++) { data[at+i] = 0; } }
   plan.image.fill(0x5A);
   const r = new TableFixedReport();
   const n = TLoad(back, 3, data, data.length, plan, r);
@@ -259,12 +263,13 @@ for (const [off, bad] of [[20,7],[48,255],[37,2],[42,128]]) {
   refuse(data, TableFixedRefusal.WireDamaged);
 }
 {
+  // A NON-ZERO BYTE UNDER AN ABSENT PRESENT FLAG IS DEAD
+  // (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3 step 11): the whole load refuses
+  // before any value lands.
   const data = one(1), v = new DataView(data.buffer);
   v.setInt32(body+21,2147483647,true); v.setInt32(body+49,2147483647,true);
   v.setInt32(body+38,123,true); data[body+43]=9;
-  const got=load(data);
-  if (got.optPresent || got.opt.v!==7 || got.wrap.leafPresent || got.wrap.leaf.v!==7 ||
-      got.numberPresent || got.number!==0 || got.markPresent || got.mark!==0) { fail("absent poison projected: "+show(got)); }
+  refuse(data, TableFixedRefusal.WireDamaged);
 }
 for (const [input,want] of [[1000,1000],[0,0]]) {
   const data=one(1); new DataView(data.buffer).setInt32(body+16,input,true);
@@ -343,7 +348,13 @@ const at=20+new DataView(data.buffer).getUint32(16,true)+8;
 if ([1,1,1,2].some((v,i)=>data[at+4+i]!==v)) { fail("C++ optional/union fixture positions"); }
 const back=[new T()], plan=TNewPlan(4096,4096);
 for (const [outer,tag,inner,ordinal] of [[1,1,1,2],[0,9,7,9],[1,1,0,9],[1,2,7,9]]) {
-  data.set([outer,tag,inner,ordinal],at+4); plan.image.fill(0x5A);
+  data.set([outer,tag,inner,ordinal],at+4);
+  // EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3 step
+  // 11): an absent optional's whole payload, and an untaken union arm's span.
+  if (outer === 0) { for (let i = 5; i < 8; i++) { data[at+i] = 0; } }
+  else if (tag !== 1) { for (let i = 6; i < 8; i++) { data[at+i] = 0; } }
+  else if (inner === 0) { data[at+7] = 0; }
+  plan.image.fill(0x5A);
   const r=new TableFixedReport(), n=TLoad(back,1,data,data.length,plan,r), got=back[0];
   if(n!==1 || r.refused || r.damaged || r.unknown || r.mismatch || r.widened || r.repeated || r.oor) {
     fail("nested guards "+[outer,tag,inner,ordinal]+" expected clean read "+reason(r));
