@@ -225,6 +225,9 @@ func init() {
 		Name{Name: "tableTimestampTime", What: "the timestamp kind's text form and Go value"},
 		Name{Name: "tableJSONReadWide", What: "exact wide scalar text conversion"},
 		Name{Name: "tableJSONNumberToken", What: "a number token's mantissa bounded before strconv converts it (§16.2)"},
+		Name{Name: "tableJSONWideIntegerKind", What: "a kind wider than 32 bits, whose JSON form is a string of digits (§16.2)"},
+		Name{Name: "tableJSONIntegerToken", What: "an integer field takes an integer token only: no fraction, no exponent, no -0 (§16.2)"},
+		Name{Name: "tableJSONShapeMatches", What: "a JSON value's shape against the field's: exact, or a string or number for a wide integer (§16.2)"},
 		Name{Name: "tableJSONWriteWide", What: "exact wide scalar text conversion"},
 
 		Name{Name: "tableIDCapacity", What: "the form-1 wire runtime"},
@@ -428,7 +431,6 @@ func init() {
 		Name{Name: "TableFixedHashAt", What: "the fixed form's pinned header: the layout hash at offset 8 (§3)"},
 		Name{Name: "TableFixedEntry", What: "the fixed form (form 3)"},
 		Name{Name: "TableFixedDst", What: "the fixed form (form 3)"},
-		Name{Name: "tableFixedDstDeprecated", What: "the fixed form's deprecated-slot marker bit in a plan entry's Arg (docs/SPEC-TABLES.md §21.2)"},
 		Name{Name: "tableFixedCopy", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedCount", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedText", What: "the fixed form (form 3)"},

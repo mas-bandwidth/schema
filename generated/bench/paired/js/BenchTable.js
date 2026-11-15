@@ -2823,11 +2823,11 @@ export function BenchMixedFixedDecode(value, view, at, report) {
   }
   for (let i = 0; i < 16; i++) { value.payload[i] = view.getUint8(at + 1149 + i); }
   value.aimX = view.getFloat32(at + 1165, true);
-  if (value.aimX < -1 || value.aimX > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  if (value.aimX < -1 || value.aimX > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (value.aimX === 0) { value.aimX = 0; }
   value.aimY = view.getFloat32(at + 1169, true);
-  if (value.aimY < -1 || value.aimY > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  if (value.aimY < -1 || value.aimY > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (value.aimY === 0) { value.aimY = 0; }
   value.aimZ = view.getFloat32(at + 1173, true);
-  if (value.aimZ < -1 || value.aimZ > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  if (value.aimZ < -1 || value.aimZ > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (value.aimZ === 0) { value.aimZ = 0; }
   value.recoil = view.getFloat32(at + 1177, true);
   value.drift = view.getFloat64(at + 1181, true);
   value.wideKey = (view.getUint32(at + 1189 + 8, true) | view.getUint32(at + 1189 + 12, true)) === 0
@@ -3094,11 +3094,11 @@ export function FixedTableFixedDecode(value, view, at, report) {
     }
     for (let i = 0; i < 16; i++) { e1.payload[i] = view.getUint8(at + 1149 + i); }
     e1.aimX = view.getFloat32(at + 1165, true);
-    if (e1.aimX < -1 || e1.aimX > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
+    if (e1.aimX < -1 || e1.aimX > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (e1.aimX === 0) { e1.aimX = 0; }
     e1.aimY = view.getFloat32(at + 1169, true);
-    if (e1.aimY < -1 || e1.aimY > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
+    if (e1.aimY < -1 || e1.aimY > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (e1.aimY === 0) { e1.aimY = 0; }
     e1.aimZ = view.getFloat32(at + 1173, true);
-    if (e1.aimZ < -1 || e1.aimZ > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
+    if (e1.aimZ < -1 || e1.aimZ > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (e1.aimZ === 0) { e1.aimZ = 0; }
     e1.recoil = view.getFloat32(at + 1177, true);
     e1.drift = view.getFloat64(at + 1181, true);
     e1.wideKey = (view.getUint32(at + 1189 + 8, true) | view.getUint32(at + 1189 + 12, true)) === 0

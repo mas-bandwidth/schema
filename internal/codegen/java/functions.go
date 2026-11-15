@@ -622,7 +622,18 @@ func (g *gen) emitCheckElem(f *ir.Field, name, iv, ind string) {
 
 func (g *gen) emitCheckScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes:
+	case ir.TString:
+		g.assertRange(name+"Length", big.NewInt(0), big.NewInt(f.Type.Size), true, ind)
+		g.emitUTF8(name, name+"Length", ind, "return false")
+		iv := fmt.Sprintf("i%d", g.loopDepth)
+		g.loopDepth++
+		g.pf("%sfor (int %s = 0; %s < %sLength; %s++) {\n", ind, iv, iv, name, iv)
+		g.pf("%s    if (%s[%s] == 0) {\n", ind, name, iv)
+		g.pf("%s        return false; // an interior null is content the write refuses (SPEC §4.7)\n", ind)
+		g.pf("%s    }\n", ind)
+		g.pf("%s}\n", ind)
+		g.loopDepth--
+	case ir.TBytes:
 		g.assertRange(name+"Length", big.NewInt(0), big.NewInt(f.Type.Size), true, ind)
 	case ir.TBits:
 		if f.Type.Width < 64 {
@@ -666,6 +677,17 @@ func (g *gen) emitCheckScalar(f *ir.Field, name, ind string) {
 	case ir.TFloat32:
 		// compressed or bare, the value is finite (SPEC §4.3)
 		g.pf("%sassert %s - %s == 0.0f; // finite: NaN and both infinities fail this\n", ind, name, name)
+		// A compressed float is also inside [min, max] before quantizing
+		// (SPEC §5.1 row 10). This is a debug assert in checkWrite and
+		// nothing else: the release write is unchanged, and the integer
+		// clamp after rounding stays in the quantizer.
+		if f.HasFloatRange {
+			lo := f32lit(f.FMin)
+			hi := f32lit(f.FMax)
+			g.pf("%s// inside [min, max] before quantizing (SPEC §5.1 row 10)\n", ind)
+			g.pf("%sassert %s >= %sf;\n", ind, name, lo)
+			g.pf("%sassert %s <= %sf;\n", ind, name, hi)
+		}
 	case ir.TFloat64:
 		g.pf("%sassert %s - %s == 0.0; // finite: NaN and both infinities fail this\n", ind, name, name)
 	case ir.TNamed:
@@ -1007,6 +1029,9 @@ func f32lit(v float64) string {
 // with the declaration folded: normalize, clamp (which also grounds NaN),
 // quantize — native float arithmetic IS the family's float32 rounding at
 // every step (SPEC §4.3), and Java's FP semantics are strict (no fused ops).
+// The [0, 1] clamp is not the value check. SPEC §5.1 row 10 is the debug
+// assert in checkWrite, before this runs. The integer clamp after rounding
+// stays: it quantizes an in-range value once steps >= 2^23.
 func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
