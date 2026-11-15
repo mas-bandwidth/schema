@@ -1136,7 +1136,10 @@ Leg.retired(
 _ = compiled_enum_past_the_last_variant
 
 # ORDINAL 0 IS None AND IS NOT A CLAMP, which is what keeps the counter honest.
-{:ok, [z0], none_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(fe_body.(0, 0)))
+# THE ARM UNDER TAG 0 IS DEAD, so the record carries zeros there: a non-zero
+# dead byte refuses the whole load (docs/FIXED-FORM-ALGORITHM.md §5.3 step 11).
+none_body = <<0::unsigned-8, 0::unsigned-8, 0::little-signed-32, 99::little-signed-32>>
+{:ok, [z0], none_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(none_body))
 Leg.eq("None is a value and not a clamp", {z0.grade, z0.effect}, {:none, nil})
 Leg.eq("so nothing is counted", none_report.unknown, 0)
 

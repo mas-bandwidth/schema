@@ -4,7 +4,7 @@ package ci
 // hardening for the squirrel port (docs/SPEC-TABLES.md §16.9.4): hostile inputs
 // — huge counts, deep nesting, recursion, giant strings, many unknown fields —
 // must cost bounded memory and time, with nesting depth capped at 128 and
-// refused by the text_limit name. This is the fast half that rides every push:
+// refused by the text_limit name. This is the Go-unit half of the gate:
 // it holds the make target and its workflow to the contract, proves the
 // allocation counter by a planted unbounded allocation, and forces each planted
 // pattern to go red.
@@ -44,12 +44,14 @@ func squirrelrelResourceBoundsProblems(mk, wf string) []string {
 	want(mk, "giant", "the giant-string hostile shape is not named")
 	want(mk, "unknown", "the many-unknown-fields hostile shape is not named")
 	want(mk, "schema-squirrel-resource-bounds-negative-control", "the negative control is not defined")
-	// THE WORKFLOW: nightly and dispatch run the whole campaign; push and pull
-	// request run only the fast half, so the heavy run never becomes per-push CI.
+	// THE WORKFLOW: nightly and dispatch only (the owner, 2026-11-15: "I want
+	// everything that is not light moved to nightly test now." "no
+	// exceptions."); no push and no pull request starts it. The fast half and
+	// the whole campaign both run there, the campaign confined to the nightly
+	// triggers.
 	want(wf, "schedule:", "the workflow has no schedule trigger")
 	want(wf, "workflow_dispatch:", "the workflow has no dispatch trigger")
-	want(wf, "push:", "the workflow has no push trigger")
-	want(wf, "pull_request:", "the workflow has no pull-request trigger")
+	bad = append(bad, nightlyOnlyTriggerProblems(wf)...)
 	want(wf, "make schema-squirrel-resource-bounds-fast", "the workflow does not run the fast half")
 	want(wf, "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", "the whole campaign is not confined to the nightly triggers")
 	want(wf, "make schema-squirrel-resource-bounds", "the workflow does not run the whole campaign")
@@ -84,7 +86,9 @@ func TestSquirrelResourceBoundsGate(t *testing.T) {
 		{"no text_limit", strings.ReplaceAll(string(mk), "text_limit", ""), string(wf), "text_limit"},
 		{"no deep nesting", strings.ReplaceAll(string(mk), "deep nesting", ""), string(wf), "deep nesting"},
 		{"no schedule", string(mk), strings.ReplaceAll(string(wf), "schedule:", ""), "schedule"},
-		{"campaign on every push", string(mk), strings.ReplaceAll(string(wf), "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", ""), "trigger"},
+		{"campaign unguarded", string(mk), strings.ReplaceAll(string(wf), "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", ""), "trigger"},
+		{"pull request restored", string(mk), strings.Replace(string(wf), "\non:\n", "\non:\n  pull_request:\n", 1), "pull_request"},
+		{"push restored", string(mk), strings.Replace(string(wf), "\non:\n", "\non:\n  push:\n", 1), "push"},
 	}
 	for _, p := range plants {
 		bad := squirrelrelResourceBoundsProblems(p.mk, p.wf)
