@@ -35,10 +35,10 @@ public final class TableFixed {
     private TableFixed() {}
 
     /**
-     * Dead-byte checks read the record image. That image is the writer's record only on the
-     * identity plan, which copies the whole body. A compiled plan's holes are this reader's
-     * defaults, not the writer's dead bytes, so load sets this only when the file hash is this
-     * build's own.
+     * Scatter checks dead bytes after the selected plan has rebuilt the record image. The identity
+     * plan copies the writer's body; a compiled plan places its known fields at their writer
+     * offsets and prefills fields the writer did not carry. This is false only while rollback lands
+     * defaults.
      */
     static boolean checkDead;
 
