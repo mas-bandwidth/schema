@@ -969,9 +969,27 @@ local function known_kind(kind)
     or kind == 36
 end
 
+-- "What the kind can hold" is two ceilings (docs/SPEC-TABLES.md §3.3): a
+-- string's max by the int32 storage cap (SPEC.md §4.3, §6.1), and an array's
+-- and a keyed entry's min and max by the 32-bit count an unbounded array
+-- announces (§2.9). A LEB above 2^63 reads negative here, so both compare
+-- unsigned.
+local STRING_MAX = 0x7fffffff
+local LIST_MAX = 0xffffffff
+
+-- kind_bits is the width a packed kind holds: a bits above it is a hostile
+-- width, refused before it is used (§3.3).
+local function kind_bits(kind)
+  if kind >= 2 and kind <= 9 then return 8 << ((kind - 2) & 3) end
+  if kind == 18 or kind == 19 then return 128 end
+  return 8 << ((kind - 20) % 5)
+end
+
 -- read_shape steps over one announced shape and retains its width and range
 -- facts on e, which is what makes an unknown entry skippable and a moved field
--- readable on a body with no kind byte (docs/SPEC-TABLES.md §3.3).
+-- readable on a body with no kind byte (docs/SPEC-TABLES.md §3.3). A HOSTILE
+-- SHAPE IS A HOSTILE WIDTH: a bits above its kind, a min or max above its
+-- ceiling, and an array whose min exceeds its max are each refused here.
 local function read_shape(e, s, at)
   local kind = e.kind
   local function leb(from)
@@ -998,7 +1016,7 @@ local function read_shape(e, s, at)
     if packing ~= 1 then return nil end
     local bits
     bits, at = leb(at)
-    if at == nil then return nil end
+    if at == nil or math.ult(kind_bits(kind), bits) then return nil end
     e.packing = 1
     e.bits = bits
     if kind == 18 or kind == 19 then
@@ -1028,7 +1046,7 @@ local function read_shape(e, s, at)
     if packing ~= 1 then return nil end
     local bits
     bits, at = leb(at)
-    if at == nil then return nil end
+    if at == nil or math.ult(kind_bits(kind), bits) then return nil end
     if at + 15 > #s then return nil end
     e.packing = 1
     e.bits = bits
@@ -1043,15 +1061,15 @@ local function read_shape(e, s, at)
   elseif kind == 12 then
     local max
     max, at = leb(at)
-    if at == nil then return nil end
+    if at == nil or math.ult(STRING_MAX, max) then return nil end
     e.max = max
     return at
   elseif kind == 14 then
     local min, max
     min, at = leb(at)
-    if at == nil then return nil end
+    if at == nil or math.ult(LIST_MAX, min) then return nil end
     max, at = leb(at)
-    if at == nil then return nil end
+    if at == nil or math.ult(LIST_MAX, max) or min > max then return nil end
     if at > #s then return nil end
     local elem = string.byte(s, at)
     at = at + 1
@@ -1065,7 +1083,7 @@ local function read_shape(e, s, at)
   elseif kind == 16 then
     local max
     max, at = leb(at)
-    if at == nil then return nil end
+    if at == nil or math.ult(LIST_MAX, max) then return nil end
     if at > #s then return nil end
     local elem = string.byte(s, at)
     at = at + 1
