@@ -5,18 +5,18 @@ import (
 	"testing"
 )
 
-// TestWideningReasonsElixir pins docs/SPEC-TABLES.md §4 and §4.2 on the Elixir
-// variable form: an OLDER writer's NARROWER element, read through the newer
-// reader, is decoded at its own width, the value lands exactly, the report
-// counts one widening, and the report's reason says the read finished. Beside
-// it, the two reasons a load can refuse with, spelled with the reference leg's
+// TestWideningReasonsElixir pins docs/SPEC-TABLES.md §3, §4 and §4.2 on the
+// Elixir variable form: a list whose element kind narrowed but whose L still
+// holds the writer's wider slots leaves bytes inside the L after its count's
+// elements, which is damage, so the read refuses wire_damaged. Beside it, the
+// two reasons a load can refuse with, spelled with the reference leg's
 // TableRefuseReason names (internal/codegen/gotable/refusal.go): unknown_form
 // for a form byte this reader does not carry (§3) and wire_damaged for framing
-// damage, with the report's malformed flag set beside it.
+// damage.
 //
-// list_scalar_widen.bin is the corpus's older-writer witness for a list
-// element written narrower than the reader declares (reports.txt pins it at
-// 0,0,1,0,0,false,read on every leg).
+// list_scalar_widen.bin is that wire: the corpus answers it `refused` on every
+// leg (testdata/conformance/tables/reports.txt), as Go's oracle does
+// (internal/tablewire: "bytes left inside an array's L after its elements").
 func TestWideningReasonsElixir(t *testing.T) {
 	t.Parallel()
 	elixirBin := elixirBinary(t)
@@ -40,14 +40,9 @@ end
 
 bytes = File.read!(` + elixirString(wire) + `)
 
-# the older, narrower writer through the newer reader: widened, landed, a read
-{:ok, value, report} = Listdemo.Table.load("Save", bytes)
-Probe.check(value["scores"] == [10, 0, 0], "the narrow scores land exactly: #{inspect(value)}")
-Probe.check(report.widened == 1, "one widening is counted: #{inspect(report)}")
-Probe.check(Map.has_key?(report, :reason), "the report carries a reason: #{inspect(report)}")
-Probe.check(report.reason == "", "a widened read finished, so its reason is empty: #{inspect(report)}")
-Probe.check(report.unknown == 0 and true and true and true,
-  "a widening is no other event: #{inspect(report)}")
+# bytes left inside the narrowed list's L after its elements: damage
+{:error, :malformed, slack} = Listdemo.Table.load("Save", bytes)
+Probe.check(slack.reason == "wire_damaged", "list slack says wire_damaged: #{inspect(slack)}")
 
 # a form byte this reader does not carry is a refusal, never damage (§3)
 <<_form, rest::binary>> = bytes

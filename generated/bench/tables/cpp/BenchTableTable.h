@@ -3593,11 +3593,11 @@ struct TableFixedEntry
     uint32_t guard_count = 0;
     uint32_t guard_index = 0;
     // elem IS A COPY ENTRY'S ELEMENT WIDTH IN BYTES (1, 2, 4 or 8; a 128-bit
-    // value rides as two 8-byte lanes). Every integer on the wire is
-    // little-endian on every host, so on a big-endian host a copy must reverse
-    // each element rather than land the wire bytes in host order. Zero is a raw
-    // byte copy, which is every non-copy op. It sits last so existing
-    // positional initializers keep their meaning.
+    // value rides as two 8-byte lanes). The wire is little-endian on every
+    // host (§3.4), so on a big-endian host a copy must reverse each element
+    // rather than land the wire bytes in host order. Zero is a raw byte copy,
+    // which is every non-copy op and every byte-sized element. It sits last
+    // so existing positional initializers keep their meaning.
     uint8_t elem = 0;
 };
 
@@ -3673,10 +3673,10 @@ inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
     for ( uint32_t i = 0; i < size && i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
     return v;
 }
-// THIS BUILD'S HOST ORDER, for the fixed form only. The wire is little-endian
-// on every host, so only a copy into native storage consults it.
-// SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile the
-// big-endian copy path so a test can hold its byte image.
+// THIS BUILD'S HOST ORDER, for the fixed form only. The wire is
+// little-endian on every host, so only a store into native storage consults
+// it. SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile
+// the big-endian path so a test can hold its byte image.
 #if defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN )
 constexpr bool TableFixedBigEndianHost = true;
 #elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -3806,9 +3806,9 @@ inline void TableFixedCopyLe( uint8_t * dst, const uint8_t * src, uint32_t size,
 
 // A STORE OF ONE PLAN OP'S VALUE INTO NATIVE STORAGE. On a little-endian host
 // the destination width's own word IS the value and stays one copy; on a
-// big-endian host the value's bytes are written most-significant first, so
-// the native word holds the value and a forced build holds the same byte image
-// the copy path writes.
+// big-endian host the value's bytes are written most-significant first, so the
+// native word holds the value and a forced build holds the same byte image the
+// copy path writes.
 inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
 {
     if ( TableFixedBigEndianHost )
@@ -3818,10 +3818,30 @@ inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
     }
     switch ( size )
     {
-        case 1: { uint8_t t = (uint8_t) v; memcpy( dst, &t, 1 ); break; }
-        case 2: { uint16_t t = (uint16_t) v; memcpy( dst, &t, 2 ); break; }
-        case 4: { uint32_t t = (uint32_t) v; memcpy( dst, &t, 4 ); break; }
-        case 8: { uint64_t t = v; memcpy( dst, &t, 8 ); break; }
+        case 1:
+        {
+            uint8_t t = (uint8_t) v;
+            memcpy( dst, &t, 1 );
+            break;
+        }
+        case 2:
+        {
+            uint16_t t = (uint16_t) v;
+            memcpy( dst, &t, 2 );
+            break;
+        }
+        case 4:
+        {
+            uint32_t t = (uint32_t) v;
+            memcpy( dst, &t, 4 );
+            break;
+        }
+        case 8:
+        {
+            uint64_t t = v;
+            memcpy( dst, &t, 8 );
+            break;
+        }
         default: break;
     }
 }
@@ -3906,7 +3926,9 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
-            TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
+            // text is bytes, so an elem of 1: a raw copy on either host, through
+            // the one wire-to-storage copy the bulk op takes too
+            TableFixedCopyLe( dst + p.aux, src + p.src + 4, p.size, 1 );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
@@ -3956,8 +3978,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedWidenF:
         {
+            // f32 INTO f64 (docs/FIXED-FORM-ALGORITHM.md §4's float rung): the
+            // bits are read little-endian, then the hardware cast.
             float f = 0.0f;
-            { const uint32_t bits = TableFixedGet32( src + p.src ); memcpy( &f, &bits, 4 ); }
+            {
+                const uint32_t bits = TableFixedGet32( src + p.src );
+                memcpy( &f, &bits, 4 );
+            }
             const double d = (double) f;
             memcpy( dst + p.dst, &d, 8 );
             widened++;
@@ -3991,10 +4018,11 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // the payload copy above laid the wire's bytes down; when the flag
             // is 0 those bytes are slack and never a value, so the reader
             // overwrites them with the caller's own Reset image. Aux is the
-            // payload's storage offset and Size its storage bytes.
-            // THE COPY IS ONE PLAIN memcpy, not TableFixedCopyRun: it runs only
-            // for an absent payload, off the hot path, and the C twin needs the
-            // plain copy so -Warray-bounds sees no path past the defaults image.
+            // payload's storage offset and Size its storage bytes. A plain
+            // memcpy and not the run mover: the mover's 32-byte moves let
+            // GCC's array-bounds pass form offsets past a small Reset image
+            // on a size branch no entry of this op reaches, and an absent
+            // payload is the cold path.
             const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
             dst[p.dst] = flag;
             if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }
@@ -6258,6 +6286,8 @@ inline int64_t TableEntityMeasureBody( TableIds & ids, const TableEntity & value
     return bytes;
 }
 
+inline bool TableEntityFixedWriteAdmits( const TableEntity & value );
+
 inline int64_t TableEntityMeasure( const TableEntity & value )
 {
     TableIds ids;
@@ -8401,6 +8431,7 @@ inline int64_t TableEntityMeasureMessages( const TableEntity * values, int64_t c
     {
         const int64_t body = TableEntityMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( TableEntityFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -8419,6 +8450,7 @@ inline int64_t TableEntitySaveMessages( const TableEntity * values, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !TableEntitySaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( TableEntityFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TableEntityMeasureMessages( values, count, report )
@@ -8474,6 +8506,8 @@ inline int64_t TableStatMeasureBody( TableIds & ids, const TableStat & value )
     if ( value.delta != 0 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x52076675ec13a0c1ull ) ) + 1 + 4; } // delta
     return bytes;
 }
+
+inline bool TableStatFixedWriteAdmits( const TableStat & value );
 
 inline int64_t TableStatMeasure( const TableStat & value )
 {
@@ -8986,6 +9020,7 @@ inline int64_t TableStatMeasureMessages( const TableStat * values, int64_t count
     {
         const int64_t body = TableStatMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( TableStatFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -9004,6 +9039,7 @@ inline int64_t TableStatSaveMessages( const TableStat * values, int64_t count, u
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !TableStatSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( TableStatFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TableStatMeasureMessages( values, count, report )
@@ -9179,6 +9215,8 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
     if ( value.idle_ticks != 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0x78101ac0aa8cbcfeull ) ) + 1 + 4; } // idle_ticks
     return bytes;
 }
+
+inline bool TableMixedFixedWriteAdmits( const TableMixed & value );
 
 inline int64_t TableMixedMeasure( const TableMixed & value )
 {
@@ -13397,6 +13435,7 @@ inline int64_t TableMixedMeasureMessages( const TableMixed * values, int64_t cou
     {
         const int64_t body = TableMixedMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( TableMixedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -13415,6 +13454,7 @@ inline int64_t TableMixedSaveMessages( const TableMixed * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !TableMixedSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( TableMixedFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TableMixedMeasureMessages( values, count, report )
@@ -15875,6 +15915,29 @@ TABLE_FIXED_INLINE bool TableEntityFixedInRange( const TableEntity & value )
     return bad == 0;
 }
 
+// TableEntity's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool TableEntityFixedWriteAdmits( const TableEntity & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(12) width clamp
+    bad |= (int) ( value.entity_id > 4095ull );
+    bad |= (int) ( value.pos_x < -16383 ) | (int) ( value.pos_x > 16383 );
+    bad |= (int) ( value.pos_y < -16383 ) | (int) ( value.pos_y > 16383 );
+    bad |= (int) ( value.pos_z < -16383 ) | (int) ( value.pos_z > 16383 );
+    // bits(9) width clamp
+    bad |= (int) ( value.yaw > 511ull );
+    // bits(9) width clamp
+    bad |= (int) ( value.pitch > 511ull );
+    bad |= (int) ( value.vel_x < -2048 ) | (int) ( value.vel_x > 2047 );
+    bad |= (int) ( value.vel_y < -2048 ) | (int) ( value.vel_y > 2047 );
+    bad |= (int) ( value.vel_z < -2048 ) | (int) ( value.vel_z > 2047 );
+    bad |= (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
+    bad |= (int) ( (uint64_t) value.weapon > 15u );
+    return bad == 0;
+}
+
 // TableEntity's read-side bounds.
 inline void TableEntityFixedClampBody( TableEntity & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -15919,6 +15982,18 @@ TABLE_FIXED_INLINE bool TableStatFixedInRange( const TableStat & value )
     return bad == 0;
 }
 
+// TableStat's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool TableStatFixedWriteAdmits( const TableStat & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(8) width clamp
+    bad |= (int) ( value.stat_id > 255ull );
+    bad |= (int) ( value.delta < -512 ) | (int) ( value.delta > 511 );
+    return bad == 0;
+}
+
 // TableStat's read-side bounds.
 inline void TableStatFixedClampBody( TableStat & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -15935,6 +16010,19 @@ inline void TableStatFixedClampBody( TableStat & value, int32_t & TABLE_CLAMP_RE
 // TableHitEvent's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool TableHitEventFixedInRange( const TableHitEvent & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(12) width clamp
+    bad |= (int) ( value.target_id > 4095ull );
+    bad |= (int) ( value.damage < 0 ) | (int) ( value.damage > 4095 );
+    bad |= (int) ( value.hit_kind < 0 ) | (int) ( value.hit_kind > 7 );
+    return bad == 0;
+}
+
+// TableHitEvent's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool TableHitEventFixedWriteAdmits( const TableHitEvent & value )
 {
     (void) value;
     int bad = 0;
@@ -15972,6 +16060,18 @@ TABLE_FIXED_INLINE bool TableChatEventFixedInRange( const TableChatEvent & value
     return bad == 0;
 }
 
+// TableChatEvent's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool TableChatEventFixedWriteAdmits( const TableChatEvent & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.channel < 0 ) | (int) ( value.channel > 3 );
+    // bits(12) width clamp
+    bad |= (int) ( value.speaker > 4095ull );
+    return bad == 0;
+}
+
 // TableChatEvent's read-side bounds.
 inline void TableChatEventFixedClampBody( TableChatEvent & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -15988,6 +16088,18 @@ inline void TableChatEventFixedClampBody( TableChatEvent & value, int32_t & TABL
 // TablePickupEvent's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool TablePickupEventFixedInRange( const TablePickupEvent & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(10) width clamp
+    bad |= (int) ( value.item_id > 1023ull );
+    bad |= (int) ( value.amount < 0 ) | (int) ( value.amount > 255 );
+    return bad == 0;
+}
+
+// TablePickupEvent's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool TablePickupEventFixedWriteAdmits( const TablePickupEvent & value )
 {
     (void) value;
     int bad = 0;
@@ -16058,6 +16170,56 @@ TABLE_FIXED_INLINE bool TableMixedFixedInRange( const TableMixed & value )
     bad |= (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
     bad |= (int) ( value.flux < -1000000000000000000ll ) | (int) ( value.flux > 1000000000000000000ll );
     bad |= (int) ( value.ping < 0.0f ) | (int) ( value.ping > 250.0f );
+    // bits(24) width clamp
+    bad |= (int) ( value.crc_hint > 16777215ull );
+    bad |= (int) ( value.extra < 0 ) | (int) ( value.extra > 255 );
+    bad |= (int) ( value.idle_ticks < 0 ) | (int) ( value.idle_ticks > 15 );
+    return bad == 0;
+}
+
+// TableMixed's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool TableMixedFixedWriteAdmits( const TableMixed & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(16) width clamp
+    bad |= (int) ( value.sequence > 65535ull );
+    bad |= (int) ( value.ack_sequence < 0 ) | (int) ( value.ack_sequence > 65535 );
+    bad |= (int) ( value.nonce < 1ull ) | (int) ( value.nonce > 9223372036854775807ull );
+    bad |= (int) ( value.world_time < -1000000000000ll ) | (int) ( value.world_time > 1000000000000ll );
+    // bits(48) width clamp
+    bad |= (int) ( value.frame_tick > 281474976710655ull );
+    for ( int64_t i = 0; i < ( value.entities_count >= 0 && value.entities_count <= 8 ? (int64_t) value.entities_count : 0 ); ++i )
+    {
+        bad |= (int) !TableEntityFixedWriteAdmits( value.entities[i] );
+    }
+    for ( int64_t i = 0; i < ( value.stats_count >= 0 && value.stats_count <= 80 ? (int64_t) value.stats_count : 0 ); ++i )
+    {
+        bad |= (int) !TableStatFixedWriteAdmits( value.stats[i] );
+    }
+    bad |= (int) ( (uint64_t) value.game_event.type > 3u );
+    switch ( value.game_event.type )
+    {
+        case TableEventType::Hit:
+        {
+            bad |= (int) !TableHitEventFixedWriteAdmits( value.game_event.hit );
+            break;
+        }
+        case TableEventType::Chat:
+        {
+            bad |= (int) !TableChatEventFixedWriteAdmits( value.game_event.chat );
+            break;
+        }
+        case TableEventType::Pickup:
+        {
+            bad |= (int) !TablePickupEventFixedWriteAdmits( value.game_event.pickup );
+            break;
+        }
+        default: break;
+    }
+    bad |= (int) ( value.player_name_length >= 0 && value.player_name_length <= 15 && !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) );
+    bad |= (int) ( value.flux < -1000000000000000000ll ) | (int) ( value.flux > 1000000000000000000ll );
     // bits(24) width clamp
     bad |= (int) ( value.crc_hint > 16777215ull );
     bad |= (int) ( value.extra < 0 ) | (int) ( value.extra > 255 );
@@ -16446,6 +16608,10 @@ inline int64_t TableEntityFixedSave( const TableEntity * values, int64_t count, 
 {
     const int64_t need = TableEntityFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( TableEntityFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, TableEntityFixedHash );
@@ -16901,6 +17067,10 @@ inline int64_t TableStatFixedSave( const TableStat * values, int64_t count, uint
 {
     const int64_t need = TableStatFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( TableStatFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, TableStatFixedHash );
@@ -18050,6 +18220,10 @@ inline int64_t TableMixedFixedSave( const TableMixed * values, int64_t count, ui
 {
     const int64_t need = TableMixedFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( TableMixedFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, TableMixedFixedHash );

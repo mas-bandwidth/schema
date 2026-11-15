@@ -63,19 +63,34 @@ public final class MixedHitEventFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
+        scatter(b, at, v, r, true);
+    }
+
+    /**
+     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
+     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
+     * (docs/SPEC-TABLES.md §3.4).
+     */
+    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
         v.targetId = TableFixed.get32(b, at + 0);
         if (v.targetId > 4095L) {
             v.targetId = (int) (4095L);
-            r.refuse(TableFixed.Reason.outOfRange);
+            if (live) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
         } // bits(12) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < 0L) {
                 q = 0L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 4095L) {
                 q = 4095L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.damage = (int) (q);
         }
@@ -83,12 +98,21 @@ public final class MixedHitEventFixed {
             long q = TableFixed.get32(b, at + 8);
             if (q < 0L) {
                 q = 0L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 7L) {
                 q = 7L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.hitKind = (int) (q);
+        }
+        if ((b[at + 12] & 0xFF) > 1) {
+            if (live) {
+                r.refuse(TableFixed.Reason.wireDamaged);
+            }
         }
         v.crit = b[at + 12] != 0;
     }

@@ -864,7 +864,7 @@ enum
     BLOCKDEMO_K_TABLE_FIXED_WIDEN_F  = 6, /* f32 into f64, §4's float rung */
     BLOCKDEMO_K_TABLE_FIXED_PRESENT = 7, /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
     BLOCKDEMO_K_TABLE_FIXED_BOOL    = 8, /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
-    BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS = 9 /* a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (docs/SPEC-TABLES.md §3.4) */
+    BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS = 9 /* a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read) */
 };
 
 /* meta on a kTableFixedText entry */
@@ -1296,7 +1296,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_store_native( uint8_t * dst, uin
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_apply( const blockdemo_table_fixed_entry_t * p, const uint8_t * base,
                                                       const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                                       uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                                      int32_t * out_of_range, int32_t * widened, const uint8_t * defaults, int32_t * damaged )
+                                                      int32_t * out_of_range, int32_t * widened, const uint8_t * defaults )
 {
     switch ( p->op )
     {
@@ -1307,16 +1307,15 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
         }
         case BLOCKDEMO_K_TABLE_FIXED_BOOL:
         {
-            /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE, not a
-               value out of range: no writer emits one, so it is neither
-               stored verbatim nor normalised to 1
-               (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 2). The byte still
-               lands normalised here; table_fixed_run turns damaged into
-               the wire_damaged refusal and the load resets every record. */
+            /* A BOOL LANDS AS byte != 0. A BOOL OR PRESENT BYTE OTHER THAN 0
+               OR 1 IS WIRE DAMAGE, and it never reaches this loop: the load's
+               check pass refuses it wire_damaged before the first destination
+               byte is written (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 2), the
+               same pass the C++ reference runs. */
             uint8_t * d = dst + p->dst;
             const uint8_t * s = src + p->src;
             uint32_t i;
-            for ( i = 0; i < p->size; ++i ) { if ( s[i] > 1 ) { (*damaged)++; } d[i] = (uint8_t) ( s[i] != 0 ); }
+            for ( i = 0; i < p->size; ++i ) { d[i] = (uint8_t) ( s[i] != 0 ); }
             break;
         }
         case BLOCKDEMO_K_TABLE_FIXED_COUNT:
@@ -1334,7 +1333,9 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
             if ( v < 0 ) { v = 0; (*out_of_range)++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*out_of_range)++; }
             memcpy( dst + p->dst, &v, 4 );
-            blockdemo_table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
+            /* text is bytes, so an elem of 1: a raw copy on either host, through
+               the one wire-to-storage copy the bulk op takes too */
+            blockdemo_table_fixed_copy_le( dst + p->aux, src + p->src + 4, p->size, 1 );
             if ( p->meta != BLOCKDEMO_K_TABLE_FIXED_TEXT_BYTES )
             {
                 /* the used length terminates the buffer, whose storage is one
@@ -1424,18 +1425,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
         }
         case BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS:
         {
-            /* THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT
-               (docs/SPEC-TABLES.md §3.4): the payload copy above laid the
-               wire's bytes down; when the flag is 0 those bytes are dead and
-               never a value, so the reader overwrites them with the caller's
-               own reset image. aux is the payload's storage offset and size
-               its storage bytes. A flag byte past 1 is wire damage, as for a
-               bool (fix 2). THE COPY IS ONE PLAIN memcpy, not copy_run: it runs
-               only for an absent payload, off the hot path, and copy_run's
-               width branches hand the compiler a path whose size is past the
-               whole defaults image, which -Warray-bounds then names. */
+            /* THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
+               the payload copy above laid the wire's bytes down; when the flag
+               is 0 those bytes are slack and never a value, so the reader
+               overwrites them with the caller's own Reset image. Aux is the
+               payload's storage offset and Size its storage bytes. A plain
+               memcpy and not the run mover: the mover's 32-byte moves let
+               GCC's array-bounds pass form offsets past a small Reset image
+               on a size branch no entry of this op reaches, and an absent
+               payload is the cold path. */
             const uint8_t flag = (uint8_t) ( src[p->src] != 0 );
-            if ( src[p->src] > 1 ) { (*damaged)++; }
             dst[p->dst] = flag;
             if ( flag == 0 && defaults != NULL ) { memcpy( dst + p->aux, defaults + p->aux, p->size ); }
             break;
@@ -1460,7 +1459,6 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed
        and every store to a field would then reload it. */
     int32_t out_of_range = 0;
     int32_t widened = 0;
-    int32_t damaged = 0;
     int32_t i;
     /* THE ORDINAL REMAP TABLES RIDE ABOVE THE ENTRIES IN THE SAME STORAGE, so
        the plan's own base is the base an ordinal entry's aux is measured from.
@@ -1469,7 +1467,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed
        alias the plan the loop is reading. */
     for ( i = 0; i < guarded; ++i )
     {
-        blockdemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults, &damaged );
+        blockdemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults );
     }
     for ( i = guarded; i < count; ++i )
     {
@@ -1495,15 +1493,14 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed
             /* A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
                the deferred present-defaults entry must follow the guarded
                payload it overwrites, so it rides after the split although
-               it answers to no tag. Its guard lane is kTableFixedNoGuard
+               it answers to no tag. Its guard lane is SCHEMA_TABLE_FIXED_NO_GUARD
                and must never be read as an offset. */
             if ( p->guard != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
             if ( p->guard2 != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
         }
-        blockdemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults, &damaged );
+        blockdemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults );
     }
-    if ( damaged != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
-    else if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     report->widened += widened;
 }
 
@@ -2042,12 +2039,12 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_compiler_init( blockdemo_table_f
 static SCHEMA_UNUSED void blockdemo_table_fixed_push( blockdemo_table_fixed_compiler_t * c, blockdemo_table_fixed_entry_t e )
 {
     /* THE WALK RUNS TWICE and each pass keeps its own half, which is how the
-       plan comes out partitioned without a second array to partition it in. */
-    /* THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+       plan comes out partitioned without a second array to partition it in.
+       THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
        no tag: it must run AFTER the guarded payload entries it overwrites, or
        an absent optional whose payload holds a union would read the wire's
-       residue back over the defaults (docs/FIXED-FORM-ALGORITHM.md §4.4). The run loop
-       applies a guardless entry in the second half unconditionally. */
+       residue back over the defaults (§3.4). The run loop applies a guardless
+       entry in the second half unconditionally. */
     const int second_half = ( e.guard != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD ) || e.op == BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS;
     if ( second_half != c->want_guarded ) { return; }
     /* EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
@@ -2226,10 +2223,11 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_compile_entry( blockdemo_table_f
             case 35: /* the OPTIONAL wrapper: the present byte, then the payload whole */
             {
                 /* THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
-                   when it is 0, the DECLARED DEFAULTS over the payload's dead
-                   bytes (docs/SPEC-TABLES.md §3.4). The payload's storage starts
-                   at the child's own destination and runs to the present
-                   companion, which the reader's layout puts after it. */
+                   when it is 0, the DECLARED DEFAULTS over the payload's slack
+                   (§3.4: an absent optional's payload is IGNORED on read). The
+                   payload's storage starts at the child's own destination and
+                   runs to the present companion, which the reader's layout puts
+                   after it. */
                 const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
                 const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
                 blockdemo_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
@@ -3464,6 +3462,7 @@ static SCHEMA_UNUSED int64_t blockdemo_table_message_open(blockdemo_table_messag
  }
  if(buffer[0]!=2){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_NEWER_FORM;
+ report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_UNKNOWN_FORM;
  return -1;
  }
  if(v==NULL || !v->announced){report->refused=1;
@@ -4598,6 +4597,7 @@ static SCHEMA_UNUSED int blockdemo_render_ship_save_body( blockdemo_table_writer
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_ship_write_admits_( const blockdemo_render_ship_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_ship_measure( const blockdemo_render_ship_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -5069,7 +5069,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_measure_messages(const blockd
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_ship_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_ship_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_ship_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5086,7 +5090,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_save_messages(const blockdemo
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_ship_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_ship_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_ship_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5411,6 +5419,7 @@ static SCHEMA_UNUSED int blockdemo_render_turret_save_body( blockdemo_table_writ
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_turret_write_admits_( const blockdemo_render_turret_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_turret_measure( const blockdemo_render_turret_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -5875,7 +5884,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_measure_messages(const bloc
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_turret_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_turret_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_turret_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5892,7 +5905,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_save_messages(const blockde
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_turret_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_turret_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_turret_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -6192,6 +6209,7 @@ static SCHEMA_UNUSED int blockdemo_render_missile_save_body( blockdemo_table_wri
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_missile_write_admits_( const blockdemo_render_missile_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_missile_measure( const blockdemo_render_missile_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -6539,7 +6557,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_measure_messages(const blo
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_missile_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_missile_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_missile_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -6556,7 +6578,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_save_messages(const blockd
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_missile_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_missile_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_missile_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -6823,6 +6849,7 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_save_body( blockdemo_tabl
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_write_admits_( const blockdemo_render_dynamic_prop_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_measure( const blockdemo_render_dynamic_prop_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -7173,7 +7200,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_measure_messages(cons
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_dynamic_prop_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_dynamic_prop_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_dynamic_prop_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -7190,7 +7221,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_save_messages(const b
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_dynamic_prop_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_dynamic_prop_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_dynamic_prop_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -7460,6 +7495,7 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_save_body( blockdemo_table
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_write_admits_( const blockdemo_render_static_prop_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_measure( const blockdemo_render_static_prop_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -7841,7 +7877,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_measure_messages(const
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_static_prop_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_static_prop_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_static_prop_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -7858,7 +7898,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_save_messages(const bl
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_static_prop_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_static_prop_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_static_prop_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -8141,6 +8185,7 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_save_body( blockdemo_tab
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_write_admits_( const blockdemo_render_cosmetic_prop_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_measure( const blockdemo_render_cosmetic_prop_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -8543,7 +8588,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_measure_messages(con
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_cosmetic_prop_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_cosmetic_prop_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_cosmetic_prop_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -8560,7 +8609,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_save_messages(const 
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_cosmetic_prop_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_cosmetic_prop_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_cosmetic_prop_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -8845,6 +8898,7 @@ static SCHEMA_UNUSED int blockdemo_render_laser_save_body( blockdemo_table_write
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_laser_write_admits_( const blockdemo_render_laser_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_laser_measure( const blockdemo_render_laser_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -9163,7 +9217,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_measure_messages(const block
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_laser_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_laser_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_laser_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -9180,7 +9238,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_save_messages(const blockdem
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_laser_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_laser_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_laser_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -9439,6 +9501,7 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_save_body( blockdemo_table_w
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_explosion_write_admits_( const blockdemo_render_explosion_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_explosion_measure( const blockdemo_render_explosion_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -9810,7 +9873,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_measure_messages(const b
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_explosion_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_explosion_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_explosion_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -9827,7 +9894,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_save_messages(const bloc
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_explosion_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_explosion_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_explosion_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -10004,7 +10075,7 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages(blockdemo_rend
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cameras_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->cameras_count < 0 || value->cameras_count > 1 ) { return 0; }
+    schema_assert( 0 <= value->cameras_count && value->cameras_count <= 1 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->cameras_count );
     for ( i = 0; i < value->cameras_count; i++ )
@@ -10046,7 +10117,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cameras_( blockdemo_
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_ships_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->ships_count < 0 || value->ships_count > 4096 ) { return 0; }
+    schema_assert( 0 <= value->ships_count && value->ships_count <= 4096 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->ships_count );
     for ( i = 0; i < value->ships_count; i++ )
@@ -10088,7 +10159,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_ships_( blockdemo_ta
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_turrets_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->turrets_count < 0 || value->turrets_count > 1024 ) { return 0; }
+    schema_assert( 0 <= value->turrets_count && value->turrets_count <= 1024 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->turrets_count );
     for ( i = 0; i < value->turrets_count; i++ )
@@ -10130,7 +10201,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_turrets_( blockdemo_
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_missiles_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->missiles_count < 0 || value->missiles_count > 4096 ) { return 0; }
+    schema_assert( 0 <= value->missiles_count && value->missiles_count <= 4096 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->missiles_count );
     for ( i = 0; i < value->missiles_count; i++ )
@@ -10172,7 +10243,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_missiles_( blockdemo
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_dynamic_props_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->dynamic_props_count < 0 || value->dynamic_props_count > 4096 ) { return 0; }
+    schema_assert( 0 <= value->dynamic_props_count && value->dynamic_props_count <= 4096 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->dynamic_props_count );
     for ( i = 0; i < value->dynamic_props_count; i++ )
@@ -10214,7 +10285,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_dynamic_props_( bloc
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_static_props_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->static_props_count < 0 || value->static_props_count > 20000 ) { return 0; }
+    schema_assert( 0 <= value->static_props_count && value->static_props_count <= 20000 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->static_props_count );
     for ( i = 0; i < value->static_props_count; i++ )
@@ -10256,7 +10327,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_static_props_( block
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cosmetic_props_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->cosmetic_props_count < 0 || value->cosmetic_props_count > 8192 ) { return 0; }
+    schema_assert( 0 <= value->cosmetic_props_count && value->cosmetic_props_count <= 8192 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->cosmetic_props_count );
     for ( i = 0; i < value->cosmetic_props_count; i++ )
@@ -10298,7 +10369,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cosmetic_props_( blo
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_lasers_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->lasers_count < 0 || value->lasers_count > 32000 ) { return 0; }
+    schema_assert( 0 <= value->lasers_count && value->lasers_count <= 32000 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->lasers_count );
     for ( i = 0; i < value->lasers_count; i++ )
@@ -10340,7 +10411,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_lasers_( blockdemo_t
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_explosions_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->explosions_count < 0 || value->explosions_count > 32000 ) { return 0; }
+    schema_assert( 0 <= value->explosions_count && value->explosions_count <= 32000 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->explosions_count );
     for ( i = 0; i < value->explosions_count; i++ )
@@ -10391,7 +10462,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* cameras */
-        if ( value->cameras_count < 0 || value->cameras_count > 1 ) { return 0; }
+        schema_assert( 0 <= value->cameras_count && value->cameras_count <= 1 );
         if ( value->cameras_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 4, 0x0f9222d2ba7aa2a7ull, 14 );
@@ -10412,7 +10483,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* ships */
-        if ( value->ships_count < 0 || value->ships_count > 4096 ) { return 0; }
+        schema_assert( 0 <= value->ships_count && value->ships_count <= 4096 );
         if ( value->ships_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 12, 0x294a5c4913e1ad44ull, 14 );
@@ -10433,7 +10504,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* turrets */
-        if ( value->turrets_count < 0 || value->turrets_count > 1024 ) { return 0; }
+        schema_assert( 0 <= value->turrets_count && value->turrets_count <= 1024 );
         if ( value->turrets_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 38, 0x84f8260bc283608cull, 14 );
@@ -10454,7 +10525,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* missiles */
-        if ( value->missiles_count < 0 || value->missiles_count > 4096 ) { return 0; }
+        schema_assert( 0 <= value->missiles_count && value->missiles_count <= 4096 );
         if ( value->missiles_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 9, 0x1c3027194b1ba4d0ull, 14 );
@@ -10475,7 +10546,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* dynamic_props */
-        if ( value->dynamic_props_count < 0 || value->dynamic_props_count > 4096 ) { return 0; }
+        schema_assert( 0 <= value->dynamic_props_count && value->dynamic_props_count <= 4096 );
         if ( value->dynamic_props_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 19, 0x43125398a9903d27ull, 14 );
@@ -10496,7 +10567,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* static_props */
-        if ( value->static_props_count < 0 || value->static_props_count > 20000 ) { return 0; }
+        schema_assert( 0 <= value->static_props_count && value->static_props_count <= 20000 );
         if ( value->static_props_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 62, 0xc1f8d7edff7fcfd2ull, 14 );
@@ -10517,7 +10588,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* cosmetic_props */
-        if ( value->cosmetic_props_count < 0 || value->cosmetic_props_count > 8192 ) { return 0; }
+        schema_assert( 0 <= value->cosmetic_props_count && value->cosmetic_props_count <= 8192 );
         if ( value->cosmetic_props_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 14, 0x33408e39f5f480ffull, 14 );
@@ -10538,7 +10609,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* lasers */
-        if ( value->lasers_count < 0 || value->lasers_count > 32000 ) { return 0; }
+        schema_assert( 0 <= value->lasers_count && value->lasers_count <= 32000 );
         if ( value->lasers_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 74, 0xd982b77b3e92d16dull, 14 );
@@ -10559,7 +10630,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* explosions */
-        if ( value->explosions_count < 0 || value->explosions_count > 32000 ) { return 0; }
+        schema_assert( 0 <= value->explosions_count && value->explosions_count <= 32000 );
         if ( value->explosions_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 39, 0x876a8c1a85806a69ull, 14 );
@@ -11086,10 +11157,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* cameras */
- if(value->cameras_count<0 || value->cameras_count>1) return 0;
+ schema_assert( 0 <= value->cameras_count && value->cameras_count <= 1 );
  if(value->cameras_count>0) {
   blockdemo_table_bit_put(w,32,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->cameras_count<0 || value->cameras_count>1) return 0;
+  schema_assert( 0 <= value->cameras_count && value->cameras_count <= 1 );
   blockdemo_table_bit_put(w,(uint64_t)value->cameras_count-0,1);
   { int32_t i;
   for(i=0;i<value->cameras_count;i++) {
@@ -11098,10 +11169,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* ships */
- if(value->ships_count<0 || value->ships_count>4096) return 0;
+ schema_assert( 0 <= value->ships_count && value->ships_count <= 4096 );
  if(value->ships_count>0) {
   blockdemo_table_bit_put(w,33,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->ships_count<0 || value->ships_count>4096) return 0;
+  schema_assert( 0 <= value->ships_count && value->ships_count <= 4096 );
   blockdemo_table_bit_put(w,(uint64_t)value->ships_count-0,13);
   { int32_t i;
   for(i=0;i<value->ships_count;i++) {
@@ -11110,10 +11181,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* turrets */
- if(value->turrets_count<0 || value->turrets_count>1024) return 0;
+ schema_assert( 0 <= value->turrets_count && value->turrets_count <= 1024 );
  if(value->turrets_count>0) {
   blockdemo_table_bit_put(w,34,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->turrets_count<0 || value->turrets_count>1024) return 0;
+  schema_assert( 0 <= value->turrets_count && value->turrets_count <= 1024 );
   blockdemo_table_bit_put(w,(uint64_t)value->turrets_count-0,11);
   { int32_t i;
   for(i=0;i<value->turrets_count;i++) {
@@ -11122,10 +11193,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* missiles */
- if(value->missiles_count<0 || value->missiles_count>4096) return 0;
+ schema_assert( 0 <= value->missiles_count && value->missiles_count <= 4096 );
  if(value->missiles_count>0) {
   blockdemo_table_bit_put(w,35,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->missiles_count<0 || value->missiles_count>4096) return 0;
+  schema_assert( 0 <= value->missiles_count && value->missiles_count <= 4096 );
   blockdemo_table_bit_put(w,(uint64_t)value->missiles_count-0,13);
   { int32_t i;
   for(i=0;i<value->missiles_count;i++) {
@@ -11134,10 +11205,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* dynamic_props */
- if(value->dynamic_props_count<0 || value->dynamic_props_count>4096) return 0;
+ schema_assert( 0 <= value->dynamic_props_count && value->dynamic_props_count <= 4096 );
  if(value->dynamic_props_count>0) {
   blockdemo_table_bit_put(w,36,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->dynamic_props_count<0 || value->dynamic_props_count>4096) return 0;
+  schema_assert( 0 <= value->dynamic_props_count && value->dynamic_props_count <= 4096 );
   blockdemo_table_bit_put(w,(uint64_t)value->dynamic_props_count-0,13);
   { int32_t i;
   for(i=0;i<value->dynamic_props_count;i++) {
@@ -11146,10 +11217,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* static_props */
- if(value->static_props_count<0 || value->static_props_count>20000) return 0;
+ schema_assert( 0 <= value->static_props_count && value->static_props_count <= 20000 );
  if(value->static_props_count>0) {
   blockdemo_table_bit_put(w,37,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->static_props_count<0 || value->static_props_count>20000) return 0;
+  schema_assert( 0 <= value->static_props_count && value->static_props_count <= 20000 );
   blockdemo_table_bit_put(w,(uint64_t)value->static_props_count-0,15);
   { int32_t i;
   for(i=0;i<value->static_props_count;i++) {
@@ -11158,10 +11229,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* cosmetic_props */
- if(value->cosmetic_props_count<0 || value->cosmetic_props_count>8192) return 0;
+ schema_assert( 0 <= value->cosmetic_props_count && value->cosmetic_props_count <= 8192 );
  if(value->cosmetic_props_count>0) {
   blockdemo_table_bit_put(w,38,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->cosmetic_props_count<0 || value->cosmetic_props_count>8192) return 0;
+  schema_assert( 0 <= value->cosmetic_props_count && value->cosmetic_props_count <= 8192 );
   blockdemo_table_bit_put(w,(uint64_t)value->cosmetic_props_count-0,14);
   { int32_t i;
   for(i=0;i<value->cosmetic_props_count;i++) {
@@ -11170,10 +11241,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* lasers */
- if(value->lasers_count<0 || value->lasers_count>32000) return 0;
+ schema_assert( 0 <= value->lasers_count && value->lasers_count <= 32000 );
  if(value->lasers_count>0) {
   blockdemo_table_bit_put(w,39,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->lasers_count<0 || value->lasers_count>32000) return 0;
+  schema_assert( 0 <= value->lasers_count && value->lasers_count <= 32000 );
   blockdemo_table_bit_put(w,(uint64_t)value->lasers_count-0,15);
   { int32_t i;
   for(i=0;i<value->lasers_count;i++) {
@@ -11182,10 +11253,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* explosions */
- if(value->explosions_count<0 || value->explosions_count>32000) return 0;
+ schema_assert( 0 <= value->explosions_count && value->explosions_count <= 32000 );
  if(value->explosions_count>0) {
   blockdemo_table_bit_put(w,40,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->explosions_count<0 || value->explosions_count>32000) return 0;
+  schema_assert( 0 <= value->explosions_count && value->explosions_count <= 32000 );
   blockdemo_table_bit_put(w,(uint64_t)value->explosions_count-0,15);
   { int32_t i;
   for(i=0;i<value->explosions_count;i++) {
@@ -12898,6 +12969,69 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
 }
 
+/* RenderShip's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_ship_fixed_write_check_body_( const blockdemo_render_ship_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->ship_type > 3u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderTurret's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_turret_fixed_write_check_body_( const blockdemo_render_turret_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderMissile's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_missile_fixed_write_check_body_( const blockdemo_render_missile_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->missile_type > 2u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderDynamicProp's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_dynamic_prop_fixed_write_check_body_( const blockdemo_render_dynamic_prop_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->prop_type > 3u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderStaticProp's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_static_prop_fixed_write_check_body_( const blockdemo_render_static_prop_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->prop_type > 3u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderCosmeticProp's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_cosmetic_prop_fixed_write_check_body_( const blockdemo_render_cosmetic_prop_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->prop_type > 3u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderLaser's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_laser_fixed_write_check_body_( const blockdemo_render_laser_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->laser_type > 2u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderExplosion's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_explosion_fixed_write_check_body_( const blockdemo_render_explosion_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( (uint64_t) value->explosion_type > 2u ) { (*out_of_range)++; }
+    if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
 /* ---- RenderCamera, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -13145,6 +13279,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load( blockdemo_rende
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -13154,6 +13290,48 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load( blockdemo_rende
     for ( k = 0; k < count; ++k )
     {
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const blockdemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != BLOCKDEMO_K_TABLE_FIXED_BOOL && p->op != BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const blockdemo_table_fixed_guard_link_t * l = ( const blockdemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( blockdemo_table_fixed_guard_link_t ) );
+                            if ( blockdemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == BLOCKDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { blockdemo_render_camera_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_camera_reset( values + j ); } return -1; }
@@ -13174,6 +13352,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load( blockdemo_rende
     report->unknown += census_unknown;
     if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_camera_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderShip holds is
+   one its declaration admits. Every writer of RenderShip asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_ship_write_admits_( const blockdemo_render_ship_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_ship_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -13352,6 +13541,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_save( const blockdemo_r
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
     for ( k = 0; k < count; ++k )
     {
+        schema_assert( schema_blockdemo_render_ship_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
+    for ( k = 0; k < count; ++k )
+    {
         if ( !schema_blockdemo_render_ship_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
@@ -13472,6 +13665,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load( blockdemo_render_
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -13482,6 +13677,48 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load( blockdemo_render_
     {
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const blockdemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != BLOCKDEMO_K_TABLE_FIXED_BOOL && p->op != BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const blockdemo_table_fixed_guard_link_t * l = ( const blockdemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( blockdemo_table_fixed_guard_link_t ) );
+                            if ( blockdemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == BLOCKDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { blockdemo_render_ship_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_ship_reset( values + j ); } return -1; }
@@ -13513,6 +13750,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load( blockdemo_render_
     report->unknown += census_unknown;
     if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_ship_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderTurret holds is
+   one its declaration admits. Every writer of RenderTurret asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_turret_write_admits_( const blockdemo_render_turret_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_turret_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -13672,6 +13920,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_save( const blockdemo
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
     for ( k = 0; k < count; ++k )
     {
+        schema_assert( schema_blockdemo_render_turret_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
+    for ( k = 0; k < count; ++k )
+    {
         if ( !schema_blockdemo_render_turret_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
@@ -13792,6 +14044,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load( blockdemo_rende
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -13802,6 +14056,48 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load( blockdemo_rende
     {
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const blockdemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != BLOCKDEMO_K_TABLE_FIXED_BOOL && p->op != BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const blockdemo_table_fixed_guard_link_t * l = ( const blockdemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( blockdemo_table_fixed_guard_link_t ) );
+                            if ( blockdemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == BLOCKDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { blockdemo_render_turret_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_turret_reset( values + j ); } return -1; }
@@ -13833,6 +14129,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load( blockdemo_rende
     report->unknown += census_unknown;
     if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_turret_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderMissile holds is
+   one its declaration admits. Every writer of RenderMissile asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_missile_write_admits_( const blockdemo_render_missile_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_missile_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -13998,6 +14305,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_save( const blockdem
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
     for ( k = 0; k < count; ++k )
     {
+        schema_assert( schema_blockdemo_render_missile_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
+    for ( k = 0; k < count; ++k )
+    {
         if ( !schema_blockdemo_render_missile_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
@@ -14118,6 +14429,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load( blockdemo_rend
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -14128,6 +14441,48 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load( blockdemo_rend
     {
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const blockdemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != BLOCKDEMO_K_TABLE_FIXED_BOOL && p->op != BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const blockdemo_table_fixed_guard_link_t * l = ( const blockdemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( blockdemo_table_fixed_guard_link_t ) );
+                            if ( blockdemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == BLOCKDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { blockdemo_render_missile_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_missile_reset( values + j ); } return -1; }
@@ -14159,6 +14514,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load( blockdemo_rend
     report->unknown += census_unknown;
     if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_missile_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderDynamicProp holds is
+   one its declaration admits. Every writer of RenderDynamicProp asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_write_admits_( const blockdemo_render_dynamic_prop_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_dynamic_prop_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -14326,6 +14692,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_save( const blo
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
     for ( k = 0; k < count; ++k )
     {
+        schema_assert( schema_blockdemo_render_dynamic_prop_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
+    for ( k = 0; k < count; ++k )
+    {
         if ( !schema_blockdemo_render_dynamic_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
@@ -14446,6 +14816,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load( blockdemo
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -14456,6 +14828,48 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load( blockdemo
     {
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const blockdemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != BLOCKDEMO_K_TABLE_FIXED_BOOL && p->op != BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const blockdemo_table_fixed_guard_link_t * l = ( const blockdemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( blockdemo_table_fixed_guard_link_t ) );
+                            if ( blockdemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == BLOCKDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { blockdemo_render_dynamic_prop_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_dynamic_prop_reset( values + j ); } return -1; }
@@ -14487,6 +14901,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load( blockdemo
     report->unknown += census_unknown;
     if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_dynamic_prop_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderStaticProp holds is
+   one its declaration admits. Every writer of RenderStaticProp asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_write_admits_( const blockdemo_render_static_prop_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_static_prop_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -14654,6 +15079,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_save( const bloc
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
     for ( k = 0; k < count; ++k )
     {
+        schema_assert( schema_blockdemo_render_static_prop_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
+    for ( k = 0; k < count; ++k )
+    {
         if ( !schema_blockdemo_render_static_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
@@ -14774,6 +15203,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load( blockdemo_
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -14784,6 +15215,48 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load( blockdemo_
     {
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const blockdemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != BLOCKDEMO_K_TABLE_FIXED_BOOL && p->op != BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const blockdemo_table_fixed_guard_link_t * l = ( const blockdemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( blockdemo_table_fixed_guard_link_t ) );
+                            if ( blockdemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == BLOCKDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { blockdemo_render_static_prop_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_static_prop_reset( values + j ); } return -1; }
@@ -14815,6 +15288,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load( blockdemo_
     report->unknown += census_unknown;
     if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_static_prop_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderCosmeticProp holds is
+   one its declaration admits. Every writer of RenderCosmeticProp asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_write_admits_( const blockdemo_render_cosmetic_prop_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_cosmetic_prop_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -14985,6 +15469,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_save( const bl
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
     for ( k = 0; k < count; ++k )
     {
+        schema_assert( schema_blockdemo_render_cosmetic_prop_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
+    for ( k = 0; k < count; ++k )
+    {
         if ( !schema_blockdemo_render_cosmetic_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
@@ -15105,6 +15593,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load( blockdem
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -15115,6 +15605,48 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load( blockdem
     {
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const blockdemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != BLOCKDEMO_K_TABLE_FIXED_BOOL && p->op != BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const blockdemo_table_fixed_guard_link_t * l = ( const blockdemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( blockdemo_table_fixed_guard_link_t ) );
+                            if ( blockdemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == BLOCKDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { blockdemo_render_cosmetic_prop_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_cosmetic_prop_reset( values + j ); } return -1; }
@@ -15146,6 +15678,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load( blockdem
     report->unknown += census_unknown;
     if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_cosmetic_prop_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderLaser holds is
+   one its declaration admits. Every writer of RenderLaser asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_laser_write_admits_( const blockdemo_render_laser_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_laser_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -15305,6 +15848,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_save( const blockdemo_
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
     for ( k = 0; k < count; ++k )
     {
+        schema_assert( schema_blockdemo_render_laser_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
+    for ( k = 0; k < count; ++k )
+    {
         if ( !schema_blockdemo_render_laser_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
@@ -15425,6 +15972,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load( blockdemo_render
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -15435,6 +15984,48 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load( blockdemo_render
     {
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const blockdemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != BLOCKDEMO_K_TABLE_FIXED_BOOL && p->op != BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const blockdemo_table_fixed_guard_link_t * l = ( const blockdemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( blockdemo_table_fixed_guard_link_t ) );
+                            if ( blockdemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == BLOCKDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { blockdemo_render_laser_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_laser_reset( values + j ); } return -1; }
@@ -15466,6 +16057,17 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load( blockdemo_render
     report->unknown += census_unknown;
     if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { blockdemo_render_laser_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderExplosion holds is
+   one its declaration admits. Every writer of RenderExplosion asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_explosion_write_admits_( const blockdemo_render_explosion_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_explosion_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -15631,6 +16233,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_save( const blockd
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
     for ( k = 0; k < count; ++k )
     {
+        schema_assert( schema_blockdemo_render_explosion_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
+    for ( k = 0; k < count; ++k )
+    {
         if ( !schema_blockdemo_render_explosion_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
@@ -15751,6 +16357,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load( blockdemo_re
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -15761,6 +16369,48 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load( blockdemo_re
     {
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const blockdemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != BLOCKDEMO_K_TABLE_FIXED_BOOL && p->op != BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const blockdemo_table_fixed_guard_link_t * l = ( const blockdemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( blockdemo_table_fixed_guard_link_t ) );
+                            if ( blockdemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == BLOCKDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { blockdemo_render_explosion_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_explosion_reset( values + j ); } return -1; }
@@ -16393,39 +17043,39 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_body_pack_(struct blockde
     const blockdemo_render_frame_t * value=(const blockdemo_render_frame_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
     blockdemo_table_cook_put(at+0,(uint64_t)value->version,8,order);
-    { int32_t cook_i1; for(cook_i1=0;cook_i1<1;cook_i1++) {
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<value->cameras_count && cook_i1<1;cook_i1++) {
         if(!schema_blockdemo_render_camera_body_pack_(n,at+8+cook_i1*72,&value->cameras[cook_i1],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+8+72,(uint32_t)value->cameras_count,4,order);
-    { int32_t cook_i2; for(cook_i2=0;cook_i2<4096;cook_i2++) {
+    { int32_t cook_i2; for(cook_i2=0;cook_i2<value->ships_count && cook_i2<4096;cook_i2++) {
         if(!schema_blockdemo_render_ship_body_pack_(n,at+88+cook_i2*88,&value->ships[cook_i2],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+88+360448,(uint32_t)value->ships_count,4,order);
-    { int32_t cook_i3; for(cook_i3=0;cook_i3<1024;cook_i3++) {
+    { int32_t cook_i3; for(cook_i3=0;cook_i3<value->turrets_count && cook_i3<1024;cook_i3++) {
         if(!schema_blockdemo_render_turret_body_pack_(n,at+360544+cook_i3*64,&value->turrets[cook_i3],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+360544+65536,(uint32_t)value->turrets_count,4,order);
-    { int32_t cook_i4; for(cook_i4=0;cook_i4<4096;cook_i4++) {
+    { int32_t cook_i4; for(cook_i4=0;cook_i4<value->missiles_count && cook_i4<4096;cook_i4++) {
         if(!schema_blockdemo_render_missile_body_pack_(n,at+426088+cook_i4*72,&value->missiles[cook_i4],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+426088+294912,(uint32_t)value->missiles_count,4,order);
-    { int32_t cook_i5; for(cook_i5=0;cook_i5<4096;cook_i5++) {
+    { int32_t cook_i5; for(cook_i5=0;cook_i5<value->dynamic_props_count && cook_i5<4096;cook_i5++) {
         if(!schema_blockdemo_render_dynamic_prop_body_pack_(n,at+721008+cook_i5*72,&value->dynamic_props[cook_i5],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+721008+294912,(uint32_t)value->dynamic_props_count,4,order);
-    { int32_t cook_i6; for(cook_i6=0;cook_i6<20000;cook_i6++) {
+    { int32_t cook_i6; for(cook_i6=0;cook_i6<value->static_props_count && cook_i6<20000;cook_i6++) {
         if(!schema_blockdemo_render_static_prop_body_pack_(n,at+1015928+cook_i6*80,&value->static_props[cook_i6],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+1015928+1600000,(uint32_t)value->static_props_count,4,order);
-    { int32_t cook_i7; for(cook_i7=0;cook_i7<8192;cook_i7++) {
+    { int32_t cook_i7; for(cook_i7=0;cook_i7<value->cosmetic_props_count && cook_i7<8192;cook_i7++) {
         if(!schema_blockdemo_render_cosmetic_prop_body_pack_(n,at+2615936+cook_i7*80,&value->cosmetic_props[cook_i7],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+2615936+655360,(uint32_t)value->cosmetic_props_count,4,order);
-    { int32_t cook_i8; for(cook_i8=0;cook_i8<32000;cook_i8++) {
+    { int32_t cook_i8; for(cook_i8=0;cook_i8<value->lasers_count && cook_i8<32000;cook_i8++) {
         if(!schema_blockdemo_render_laser_body_pack_(n,at+3271304+cook_i8*64,&value->lasers[cook_i8],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+3271304+2048000,(uint32_t)value->lasers_count,4,order);
-    { int32_t cook_i9; for(cook_i9=0;cook_i9<32000;cook_i9++) {
+    { int32_t cook_i9; for(cook_i9=0;cook_i9<value->explosions_count && cook_i9<32000;cook_i9++) {
         if(!schema_blockdemo_render_explosion_body_pack_(n,at+5319312+cook_i9*80,&value->explosions[cook_i9],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+5319312+2560000,(uint32_t)value->explosions_count,4,order);

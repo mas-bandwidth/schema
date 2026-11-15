@@ -14,13 +14,12 @@ import (
 // resolution = 0.01`, VNEW widens to min = -2, max = 2. A compressed float
 // rides as the float32 itself (SPEC §3.4), so min/max are digest definitions
 // and the read's bounds pass is the READER's own: a forged value inside the new
-// range (`hostile_`, 1.5) lands WHOLE with clamp 0, and only a value past the
-// reader's own bound (`past_`, 5.0) clamps to 2.0 and counts clamp EXACTLY 1.
-// `old_` (0.5) is the un-forged control with clamp 0. The clamp counter is
-// asserted exactly, never >= 1, because this row catches a reader that counts
-// twice; and `hostile_` alone would not prove the pass is the reader's, since
-// deleting the emitter's bounds pass outright leaves `hostile_` green and only
-// turns `past_` red.
+// range (`hostile_`, 1.5) lands WHOLE and reads, and only a value past the
+// reader's own bound (`past_`, 5.0) refuses the whole load under the strict
+// read (docs/SPEC-TABLES.md §4: no clamp-and-count). `old_` (0.5) is the
+// un-forged control that reads. `hostile_` alone would not prove the pass is the
+// reader's, since deleting the emitter's bounds pass outright leaves `hostile_`
+// green and only turns `past_` red.
 func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
@@ -47,9 +46,9 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
             {
                 bad += ProbeLog.Fail(@NAME@, "the newer reader did not read exactly one record: n=" + n + " reason=" + r.Reason);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (r.Refused || r.Verdict != Schema.TableWire.Verdict.Ok || r.Reason != null)
             {
-                bad += ProbeLog.Fail(@NAME@, "a clean read is not a refusal: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a clean read is not a refusal: reason=" + r.Reason + " verdict=" + r.Verdict);
             }
             if (back[0].Lead != 1u || back[0].Trail != 2u)
             {
@@ -57,15 +56,15 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
             }
             if (System.BitConverter.SingleToInt32Bits(back[0].Aim) != @OLDAIM@)
             {
-                bad += ProbeLog.Fail(@NAME@, "the old writer's 0.5 did not land whole and uncounted: bits=0x" + System.BitConverter.SingleToInt32Bits(back[0].Aim).ToString("x8") + " clamped=" + r.Clamped);
+                bad += ProbeLog.Fail(@NAME@, "the old writer's 0.5 did not land whole and uncounted: bits=0x" + System.BitConverter.SingleToInt32Bits(back[0].Aim).ToString("x8"));
             }
-            if (r.Clamped != 0)
+            if (n != 1 || r.Verdict != Schema.TableWire.Verdict.Ok)
             {
-                bad += ProbeLog.Fail(@NAME@, "an in-range value counted a clamp: clamped=" + r.Clamped);
+                bad += ProbeLog.Fail(@NAME@, "an in-range value refused the read: n=" + n + " verdict=" + r.Verdict);
             }
-            if (r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0)
+            if (r.Widened != 0 || r.Unknown != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "a counter other than clamp moved: widened=" + r.Widened + " unknown=" + r.Unknown + " kind=" + r.KindMismatch + " duplicate=" + r.Duplicate + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "a counter moved: widened=" + r.Widened + " unknown=" + r.Unknown + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`},
 		{name: "cfloat_range_widen/hostile", reader: "VNEW_cfloat_range_widen",
 			older: []string{"VOLD_cfloat_range_widen"}, suffix: "h", file: "hostile_cfloat_range_widen.bin",
@@ -74,9 +73,9 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
             {
                 bad += ProbeLog.Fail(@NAME@, "the newer reader did not read exactly one record: n=" + n + " reason=" + r.Reason);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (r.Refused || r.Verdict != Schema.TableWire.Verdict.Ok || r.Reason != null)
             {
-                bad += ProbeLog.Fail(@NAME@, "a clean read is not a refusal: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a clean read is not a refusal: reason=" + r.Reason + " verdict=" + r.Verdict);
             }
             if (back[0].Lead != 1u || back[0].Trail != 2u)
             {
@@ -84,42 +83,42 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
             }
             if (System.BitConverter.SingleToInt32Bits(back[0].Aim) != @HOSTILEAIM@)
             {
-                bad += ProbeLog.Fail(@NAME@, "1.5 inside the widened range did not land whole and uncounted: bits=0x" + System.BitConverter.SingleToInt32Bits(back[0].Aim).ToString("x8") + " clamped=" + r.Clamped);
+                bad += ProbeLog.Fail(@NAME@, "1.5 inside the widened range did not land whole and uncounted: bits=0x" + System.BitConverter.SingleToInt32Bits(back[0].Aim).ToString("x8"));
             }
-            if (r.Clamped != 0)
+            if (n != 1 || r.Verdict != Schema.TableWire.Verdict.Ok)
             {
-                bad += ProbeLog.Fail(@NAME@, "a value inside the widened range counted a clamp: clamped=" + r.Clamped);
+                bad += ProbeLog.Fail(@NAME@, "a value inside the widened range refused the read: n=" + n + " verdict=" + r.Verdict);
             }
-            if (r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0)
+            if (r.Widened != 0 || r.Unknown != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "a counter other than clamp moved: widened=" + r.Widened + " unknown=" + r.Unknown + " kind=" + r.KindMismatch + " duplicate=" + r.Duplicate + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "a counter moved: widened=" + r.Widened + " unknown=" + r.Unknown + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`},
 		{name: "cfloat_range_widen/past", reader: "VNEW_cfloat_range_widen",
 			older: []string{"VOLD_cfloat_range_widen"}, suffix: "p", file: "past_cfloat_range_widen.bin",
 			body: csVersionHead + `            _ = want;
-            if (n != 1)
+            // THE STRICT READ (docs/SPEC-TABLES.md §4, docs/FIXED-FORM-ALGORITHM.md
+            // §4.6): 5.0 past the reader's own max 2.0 is never clamped; the whole
+            // load refuses and every value it wrote is back at its declared default.
+            @TABLE@ fresh = new @TABLE@();
+            if (n != -1)
             {
-                bad += ProbeLog.Fail(@NAME@, "the newer reader did not read exactly one record: n=" + n + " reason=" + r.Reason);
+                bad += ProbeLog.Fail(@NAME@, "a value past the reader's own bound must refuse the load: n=" + n);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (!r.Refused || r.Verdict != Schema.TableWire.Verdict.Refused)
             {
-                bad += ProbeLog.Fail(@NAME@, "a clean read is not a refusal: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a value past the reader's own bound is a refusal, never a clamp: refused=" + r.Refused + " verdict=" + r.Verdict);
             }
-            if (back[0].Lead != 1u || back[0].Trail != 2u)
+            if (back[0].Lead != fresh.Lead || back[0].Trail != fresh.Trail)
             {
-                bad += ProbeLog.Fail(@NAME@, "a neighbor moved: lead=" + back[0].Lead + " trail=" + back[0].Trail);
+                bad += ProbeLog.Fail(@NAME@, "a refusal left a neighbor written: lead=" + back[0].Lead + " trail=" + back[0].Trail);
             }
-            if (System.BitConverter.SingleToInt32Bits(back[0].Aim) != 0x40000000)
+            if (System.BitConverter.SingleToInt32Bits(back[0].Aim) != System.BitConverter.SingleToInt32Bits(fresh.Aim))
             {
-                bad += ProbeLog.Fail(@NAME@, "5.0 past the reader's own bound did not clamp to 2.0: bits=0x" + System.BitConverter.SingleToInt32Bits(back[0].Aim).ToString("x8") + " clamped=" + r.Clamped);
+                bad += ProbeLog.Fail(@NAME@, "5.0 past the reader's own bound landed a value: bits=0x" + System.BitConverter.SingleToInt32Bits(back[0].Aim).ToString("x8"));
             }
-            if (r.Clamped != 1)
+            if (r.Widened != 0 || r.Unknown != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "a value past the reader's own bound clamps exactly once: clamped=" + r.Clamped);
-            }
-            if (r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0)
-            {
-                bad += ProbeLog.Fail(@NAME@, "a counter other than clamp moved: widened=" + r.Widened + " unknown=" + r.Unknown + " kind=" + r.KindMismatch + " duplicate=" + r.Duplicate + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves: widened=" + r.Widened + " unknown=" + r.Unknown + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`},
 	}
 

@@ -81,7 +81,7 @@ func skipProgressBatch(slot uint64, refBits int, width int, count uint64) []byte
 	var acc uint64
 	var at int
 	put := func(v uint64, bits int) {
-		for i := 0; i < bits; i++ {
+		for i := range bits {
 			if (v>>i)&1 != 0 {
 				acc |= 1 << at
 			}

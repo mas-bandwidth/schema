@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -283,9 +282,10 @@ func disagreementHead(left []string) string {
 	return strings.Join(named, "\n") + "\n"
 }
 
-// TestCDamagedCounterAgrees holds the owed placement rule: the C leg's third
-// Apply counter and its wire_damaged refusal ahead of out_of_range are
-// stripped, and the rest of the run is compared as the reference spells it.
+// TestCDamagedCounterAgrees holds that the bool-byte strip is gone
+// (docs/FIXED-FORM-ALGORITHM.md §4.5): both legs refuse a byte other than 0
+// or 1 in the load's check pass, outside this runtime. A damaged counter
+// planted back into the C run is a real disagreement and stays in the diff.
 func TestCDamagedCounterAgrees(t *testing.T) {
 	c := `
 static SCHEMA_UNUSED void table_fixed_apply( const TableFixedEntry * p, const uint8_t * base, int32_t * out_of_range, int32_t * widened, int32_t * damaged )
@@ -313,8 +313,8 @@ inline void TableFixedRun( void )
     if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; }
 }
 `
-	if left := diffLines("fixture", canonicalize(c), canonicalize(cpp)); len(left) != 0 {
-		t.Fatalf("the C damaged counter is the reference's check-loop refusal, placed in the run:\n%s", strings.Join(left, "\n"))
+	if left := diffLines("fixture", canonicalize(c), canonicalize(cpp)); len(left) == 0 {
+		t.Fatal("a damaged counter planted back into the C run was mapped away")
 	}
 }
 
@@ -330,19 +330,30 @@ func TestCDamagedCounterWrongReasonReds(t *testing.T) {
 	}
 }
 
-// TestCDamagedRefusalStillEmitted holds what the strip cannot: the real C
-// artifact still counts a bool or present byte past 1 and still turns the
-// count into the wire_damaged refusal. A stripped line cannot red the diff,
-// so its presence is checked here.
+// TestCDamagedRefusalStillEmitted holds the closed debt on the real C
+// artifact: a bool or present byte other than 0 or 1 refuses wire_damaged in
+// the load's check pass, and the run loop does not count that byte itself.
 func TestCDamagedRefusalStillEmitted(t *testing.T) {
 	cSrc, _, root := readTwinHeaders(t)
 	cPlain, err := dequalifyC(cSrc, root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []*regexp.Regexp{reOwedBoolByte, reOwedPresentByte, reCDamagedRefusal} {
-		if !want.MatchString(cPlain) {
-			t.Fatalf("the real C artifact no longer carries %q: the wire_damaged rule the twin map strips is gone from the C leg", want)
+	for _, want := range []string{
+		"p->op != kTableFixedBool && p->op != kTableFixedPresentDefaults",
+		"( at + 8 )[p->src + b] > 1u",
+		"report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED",
+	} {
+		if !strings.Contains(cPlain, want) {
+			t.Fatalf("the real C artifact no longer carries %q: the wire_damaged check pass is gone from the C leg", want)
+		}
+	}
+	for _, gone := range []string{
+		"if ( s[i] > 1 ) { (*damaged)++; }",
+		"if ( src[p->src] > 1 ) { (*damaged)++; }",
+	} {
+		if strings.Contains(cPlain, gone) {
+			t.Fatalf("the C run still counts a damaged byte (%q): that counter was retired when the check pass took the refusal", gone)
 		}
 	}
 }

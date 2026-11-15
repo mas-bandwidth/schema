@@ -847,43 +847,22 @@ func strictCountTextScan(fn string) bool {
 var (
 	reCCounterParam = regexp.MustCompile(`int32_t \* out_of_range,\s*int32_t \* widened`)
 	reCCounterInc   = regexp.MustCompile(`\(\*out_of_range\)\+\+`)
-	reCCounterArgs  = regexp.MustCompile(`&out_of_range,\s*&widened(,\s*defaults)?\s*\)`)
+	reCCounterArgs  = regexp.MustCompile(`&out_of_range,\s*&widened(\s*[,)])`)
 	reCCounterLocal = regexp.MustCompile(`int32_t out_of_range = 0;`)
 	reCCounterTest  = regexp.MustCompile(`\(\s*out_of_range != 0\s*\)`)
 	reCCommaRefusal = regexp.MustCompile(`(\w+(?:\.|->)report(?:\.|->))refused\s*=\s*1\s*,\s*(\w+(?:\.|->)report(?:\.|->)refuse_reason)\s*=\s*`)
 	reCRefusedOne   = regexp.MustCompile(`((?:\.|->)refused)\s*=\s*1\s*;`)
-	// OWED BY THE C LEG, PLACEMENT ONLY (docs/FIXED-FORM-ALGORITHM.md §4.5
-	// and the §5.3 step 11 refusal table, the 2026-11-03 ruling, row 16): a
-	// bool or present byte other than 0 or 1 refuses wire_damaged in LOAD's
-	// check pass. Both legs give that verdict and both reset every record.
-	// C++ refuses in its load body's check loop, before the run and outside
-	// the slice this gate compares. C counts the byte in a third Apply
-	// counter, `damaged`, and the run turns it into the same refusal ahead of
-	// out_of_range. These rules strip only that counter's own spellings: the
-	// increment, the parameter, the address argument, the local and the
-	// refusal line. The verdict is held by TestCDamagedRefusalStillEmitted,
-	// because a stripped line cannot red the diff. This rule goes when the C
-	// leg refuses in its check pass too.
-	reOwedBoolByte = regexp.MustCompile(`if\s*\(\s*s\[i\] > 1\s*\)\s*\{\s*\(\*damaged\)\+\+;\s*\}`)
-	// the same count for an optional's present flag, which lands through the
-	// present-defaults entry rather than a bool entry (docs/SPEC-TABLES.md §3.4)
-	reOwedPresentByte = regexp.MustCompile(`if\s*\(\s*src\[p(?:->|\.)src\] > 1\s*\)\s*\{\s*\(\*damaged\)\+\+;\s*\}`)
-	reCDamagedParam   = regexp.MustCompile(`,\s*int32_t \* damaged\s*\)`)
-	reCDamagedArg     = regexp.MustCompile(`,\s*&damaged\s*\)`)
-	reCDamagedLocal   = regexp.MustCompile(`int32_t damaged = 0;`)
-	reCDamagedRefusal = regexp.MustCompile(`if \( damaged != 0 \) \{ report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; \}\s*else `)
+	// THE BOOL-BYTE DEBT IS CLOSED (docs/FIXED-FORM-ALGORITHM.md §4.5, the
+	// 2026-11-03 ruling, row 16): a bool or present byte other than 0 or 1
+	// refuses wire_damaged in LOAD's check pass on BOTH legs, outside this
+	// runtime, and both read loops land byte != 0. The rule that stripped the C
+	// loop's old count is DELETED, not widened.
 )
 
 func rewriteCCounter(s string) string {
-	s = reOwedBoolByte.ReplaceAllString(s, "")
-	s = reOwedPresentByte.ReplaceAllString(s, "")
-	s = reCDamagedParam.ReplaceAllString(s, " )")
-	s = reCDamagedArg.ReplaceAllString(s, " )")
-	s = reCDamagedLocal.ReplaceAllString(s, "")
-	s = reCDamagedRefusal.ReplaceAllString(s, "")
 	s = reCCounterParam.ReplaceAllString(s, "int32_t & oor_count, int32_t & widened")
 	s = reCCounterInc.ReplaceAllString(s, "oor_count++")
-	s = reCCounterArgs.ReplaceAllString(s, "oor_count, widened${1} )")
+	s = reCCounterArgs.ReplaceAllString(s, "oor_count, widened$1")
 	s = reCCounterLocal.ReplaceAllString(s, "int32_t oor_count = 0;")
 	s = reCCounterTest.ReplaceAllString(s, "( oor_count != 0 )")
 	s = reCCommaRefusal.ReplaceAllString(s, "${1}refused = true; $2 = ")

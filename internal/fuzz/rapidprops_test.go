@@ -15,10 +15,11 @@ package fuzz_test
 //	                             JSON, and the message form of a fixed root).
 //	TestPropRefusalNeverSilent   every not-ok read of a drawn wire/JSON (and its
 //	                             truncations and single-byte flips) carries a
-//	                             non-empty report, and a tolerant read that is ok
-//	                             with an all-zero report is accepted strictly.
-//	TestPropStrictTolerantAgree  on a clean Save and a clean ToJSON both reads
-//	                             accept, give the same value and report clean.
+//	                             non-empty report, and the region and builder
+//	                             wire reads give the same verdict (one read,
+//	                             docs/SPEC-TABLES.md §6.5; tla/ReadOrder.tla).
+//	TestPropStrictReadsAgree     on a clean Save and a clean ToJSON every read
+//	                             accepts, gives the same value and reports clean.
 //
 // The property is expensive (it compiles a unit per check), so it is behind
 // slowtest.Gate and the make target sets a bounded -rapid.checks. A default
@@ -218,8 +219,7 @@ func TestPropRoundTripEveryForm(t *testing.T) {
 }
 
 // TestPropRefusalNeverSilent: a refused input never comes back ok with an empty
-// report, and a tolerant read that is ok with an all-zero report is accepted by
-// the strict read too.
+// report, and the region and builder wire reads give the same verdict.
 func TestPropRefusalNeverSilent(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
@@ -235,9 +235,10 @@ func TestPropRefusalNeverSilent(t *testing.T) {
 	coverageFloor(t, "the fixed Root form", fixed)
 }
 
-// TestPropStrictTolerantAgree: on a clean Save and a clean ToJSON the strict
-// and tolerant reads both accept, give the same value and both report clean.
-func TestPropStrictTolerantAgree(t *testing.T) {
+// TestPropStrictReadsAgree: on a clean Save and a clean ToJSON the region and
+// builder wire reads, the JSON read and (for a fixed Root) the message read all
+// accept, give the same value and report clean.
+func TestPropStrictReadsAgree(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	rapidPropsGate(t)
@@ -376,7 +377,7 @@ func TestRapidPropsNegativeControl(t *testing.T) {
 
 // rapidProbeSource is the generated probe's values_test.go. It reuses the
 // helpers_test.go runGeneratedTableUnit already writes (probeFromJSON,
-// probeFromJSONTolerant, probeLoad, probeLoadTolerant).
+// probeLoad, probeLoadBuilder).
 func rapidProbeSource(hasMessage, hasFixed bool) string {
 	msgFuncs := ""
 	msgRoundTrip := ""
@@ -394,7 +395,7 @@ func rapidProbeSource(hasMessage, hasFixed bool) string {
 		if err != nil {
 			t.Fatalf("value %d: %v", i, err)
 		}
-		mj, mok, mrep := rapidMessageLoad(mbuf, &vocab, false)
+		mj, mok, mrep := rapidMessageLoad(mbuf, &vocab)
 		if !mok {
 			t.Fatalf("value %d: message strict refused: %+v", i, mrep)
 		}
@@ -415,15 +416,9 @@ func rapidProbeSource(hasMessage, hasFixed bool) string {
 			t.Fatalf("value %d: %v", i, err)
 		}
 		for _, op := range rapidDamage(mbuf) {
-			_, sok, srep := rapidMessageLoad(op, &vocab, false)
+			_, sok, srep := rapidMessageLoad(op, &vocab)
 			if !sok && srep.Err() == nil && srep == (TableReport{}) {
 				t.Fatalf("value %d: message strict refused silently:%x", i, op)
-			}
-			_, tok, trep := rapidMessageLoad(op, &vocab, true)
-			if tok && trep == (TableReport{}) {
-				if _, sok2, _ := rapidMessageLoad(op, &vocab, false); !sok2 {
-					t.Fatalf("value %d: message tolerant ok clean but strict refused: %x", i, op)
-				}
 			}
 		}
 `
@@ -517,13 +512,13 @@ func testRoundTrip(t *testing.T, vals [][]byte) {
 		if err != nil || string(gw) != string(wire) {
 			t.Fatalf("value %d: wire re-save differs: %v", i, err)
 		}
-		var trep TableReport
-		tv, tok := probeLoadTolerant(wire, &trep)
-		if !tok || tv == nil {
-			t.Fatalf("value %d: wire tolerant refused a clean Save: %+v", i, trep)
+		var brep TableReport
+		bv, bok := probeLoadBuilder(wire, &brep)
+		if !bok || bv == nil {
+			t.Fatalf("value %d: wire builder read refused a clean Save: %+v", i, brep)
 		}
-		if tj2, _ := rapidJSON(tv); tj2 != tj {
-			t.Fatalf("value %d: wire tolerant JSON differs\nwant %s\ngot  %s", i, tj, tj2)
+		if bj, _ := rapidJSON(bv); bj != tj {
+			t.Fatalf("value %d: wire builder read JSON differs\nwant %s\ngot  %s", i, tj, bj)
 		}
 		txt, err := RootSaveText(v)
 		if err != nil {
@@ -553,14 +548,6 @@ func testRoundTrip(t *testing.T, vals [][]byte) {
 		if err != nil || string(fw) != string(wire) {
 			t.Fatalf("value %d: JSON round trip wire differs: %v", i, err)
 		}
-		var tfrep TableReport
-		tfv, tok := probeFromJSONTolerant([]byte(tj), &tfrep)
-		if !tok || tfv == nil {
-			t.Fatalf("value %d: tolerant FromJSON refused canonical text: %+v", i, tfrep)
-		}
-		if tfj, _ := rapidJSON(tfv); tfj != tj {
-			t.Fatalf("value %d: tolerant JSON differs\nwant %s\ngot  %s", i, tj, tfj)
-		}
 ` + fixedRoundTrip + msgRoundTrip + `
 	}
 }
@@ -581,13 +568,15 @@ func testRefusal(t *testing.T, vals [][]byte) {
 			if !ok && rep.Err() == nil && rep == (TableReport{}) {
 				t.Fatalf("value %d: wire strict refused silently: %x", i, op)
 			}
-			var trep TableReport
-			_, tok := probeLoadTolerant(op, &trep)
-			if tok && trep == (TableReport{}) {
-				var srep TableReport
-				if sv, sok := probeLoad(op, &srep); !sok || sv == nil {
-					t.Fatalf("value %d: wire tolerant ok clean but strict refused: %x report=%+v", i, op, srep)
-				}
+			// One verdict (tla/ReadOrder.tla, OneVerdict): the builder read
+			// accepts exactly what the region read accepts.
+			var brep TableReport
+			_, bok := probeLoadBuilder(op, &brep)
+			if bok != ok {
+				t.Fatalf("value %d: wire reads disagree: Load=%v LoadBuilder=%v %x reports %+v %+v", i, ok, bok, op, rep, brep)
+			}
+			if !bok && brep.Err() == nil {
+				t.Fatalf("value %d: wire builder read refused silently: %x", i, op)
 			}
 		}
 		for _, op := range rapidDamage([]byte(tj)) {
@@ -595,14 +584,6 @@ func testRefusal(t *testing.T, vals [][]byte) {
 			_, ok := probeFromJSON(op, &rep)
 			if !ok && rep.Err() == nil && rep == (TableReport{}) {
 				t.Fatalf("value %d: JSON strict refused silently: %s", i, op)
-			}
-			var trep TableReport
-			_, tok := probeFromJSONTolerant(op, &trep)
-			if tok && trep == (TableReport{}) {
-				var srep TableReport
-				if sv, sok := probeFromJSON(op, &srep); !sok || sv == nil {
-					t.Fatalf("value %d: JSON tolerant ok clean but strict refused: %s report=%+v", i, op, srep)
-				}
 			}
 		}
 ` + msgRefusal + `
@@ -619,33 +600,30 @@ func testAgree(t *testing.T, vals [][]byte) {
 		if err != nil {
 			t.Fatalf("value %d: %v", i, err)
 		}
-		var srep, trep TableReport
+		var srep, brep TableReport
 		sv, sok := probeLoad(wire, &srep)
-		tv, tok := probeLoadTolerant(wire, &trep)
-		if !sok || !tok {
-			t.Fatalf("value %d: wire strict=%v tolerant=%v reports %+v %+v", i, sok, tok, srep, trep)
+		bv, bok := probeLoadBuilder(wire, &brep)
+		if !sok || !bok {
+			t.Fatalf("value %d: wire Load=%v LoadBuilder=%v reports %+v %+v", i, sok, bok, srep, brep)
 		}
-		if srep != (TableReport{}) || trep != (TableReport{}) {
-			t.Fatalf("value %d: wire clean reads reported %+v %+v", i, srep, trep)
+		if srep != (TableReport{}) || brep != (TableReport{}) {
+			t.Fatalf("value %d: wire clean reads reported %+v %+v", i, srep, brep)
 		}
 		sj, _ := rapidJSON(sv)
-		tj2, _ := rapidJSON(tv)
-		if sj != tj || tj2 != tj {
-			t.Fatalf("value %d: wire strict/tolerant values differ\nwant %s\nstrict %s\ntolerant %s", i, tj, sj, tj2)
+		bj, _ := rapidJSON(bv)
+		if sj != tj || bj != tj {
+			t.Fatalf("value %d: wire read values differ\nwant %s\nLoad %s\nLoadBuilder %s", i, tj, sj, bj)
 		}
-		var fsrep, ftrep TableReport
+		var fsrep TableReport
 		fv, fok := probeFromJSON([]byte(tj), &fsrep)
-		tfv, ftok := probeFromJSONTolerant([]byte(tj), &ftrep)
-		if !fok || !ftok {
-			t.Fatalf("value %d: JSON strict=%v tolerant=%v reports %+v %+v", i, fok, ftok, fsrep, ftrep)
+		if !fok {
+			t.Fatalf("value %d: JSON read refused canonical text: %+v", i, fsrep)
 		}
-		if fsrep != (TableReport{}) || ftrep != (TableReport{}) {
-			t.Fatalf("value %d: JSON clean reads reported %+v %+v", i, fsrep, ftrep)
+		if fsrep != (TableReport{}) {
+			t.Fatalf("value %d: JSON clean read reported %+v", i, fsrep)
 		}
-		fj, _ := rapidJSON(fv)
-		tfj, _ := rapidJSON(tfv)
-		if fj != tj || tfj != tj {
-			t.Fatalf("value %d: JSON strict/tolerant values differ\nwant %s\nstrict %s\ntolerant %s", i, tj, fj, tfj)
+		if fj, _ := rapidJSON(fv); fj != tj {
+			t.Fatalf("value %d: JSON read value differs\nwant %s\ngot  %s", i, tj, fj)
 		}
 ` + msgAgree + `
 	}
@@ -708,26 +686,21 @@ var rapidFixedRoundTrip = `
 `
 
 // rapidMessageAgree is spliced into testAgree only for a fixed Root: a clean
-// message read is strict and tolerant ok, both report clean, and both give the
-// same value.
+// message read accepts, reports clean and gives the same value.
 var rapidMessageAgree = `
 		mbuf, vocab, err := rapidMessage(t, v)
 		if err != nil {
 			t.Fatalf("value %d: %v", i, err)
 		}
-		mj, mok, mrep := rapidMessageLoad(mbuf, &vocab, false)
+		mj, mok, mrep := rapidMessageLoad(mbuf, &vocab)
 		if !mok {
-			t.Fatalf("value %d: message strict refused a clean message: %+v", i, mrep)
+			t.Fatalf("value %d: message read refused a clean message: %+v", i, mrep)
 		}
-		mtj, mtok, mtrep := rapidMessageLoad(mbuf, &vocab, true)
-		if !mtok {
-			t.Fatalf("value %d: message tolerant refused a clean message: %+v", i, mtrep)
+		if mrep != (TableReport{}) {
+			t.Fatalf("value %d: message clean read reported %+v", i, mrep)
 		}
-		if mrep != (TableReport{}) || mtrep != (TableReport{}) {
-			t.Fatalf("value %d: message clean reads reported %+v %+v", i, mrep, mtrep)
-		}
-		if mj != tj || mtj != tj {
-			t.Fatalf("value %d: message strict/tolerant values differ\nwant %s\nstrict %s\ntolerant %s", i, tj, mj, mtj)
+		if mj != tj {
+			t.Fatalf("value %d: message read value differs\nwant %s\ngot  %s", i, tj, mj)
 		}
 `
 
@@ -754,15 +727,10 @@ func rapidMessage(t *testing.T, v *Root) ([]byte, TableVocabulary, error) {
 	return buf, vocab, nil
 }
 
-func rapidMessageLoad(buf []byte, vocab *TableVocabulary, tolerant bool) (string, bool, TableReport) {
+func rapidMessageLoad(buf []byte, vocab *TableVocabulary) (string, bool, TableReport) {
 	got := make([]Root, 1)
 	var rep TableReport
-	var ok bool
-	if tolerant {
-		_, ok = RootLoadMessagesTolerant(got, vocab, buf, &rep)
-	} else {
-		_, ok = RootLoadMessages(got, vocab, buf, &rep)
-	}
+	_, ok := RootLoadMessages(got, vocab, buf, &rep)
 	if !ok {
 		return "", false, rep
 	}

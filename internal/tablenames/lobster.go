@@ -149,7 +149,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"shape_registry", "skip", "slot_by_id", "slot_edges", "slot_named", "strict_reason", "string_blob_id",
 		"string_shape", "sub", "sub_to", "table_of", "table_shape", "text_boundary", "text_list_shape",
 		"text_valid", "trailer", "u8", "union_cell", "union_shape", "unlink_unreached", "value_edges",
-		"widens",
+		"widens", "scalar_admitted", "int_fits",
 		"read_refuse", "read_reset", "WireCheck", "binary_max_depth", "wire_scalar", "wire_payload", "wire_content", "wire_content_at", "wire_body", "wire_graph", "wire_check",
 	},
 	"message.lobster": {
@@ -190,7 +190,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"save_live_count", "save_raw_width", "save_reasoned", "save_wide_raw", "sg_add_blob",
 		"sg_add_rec", "sg_blob_index", "sg_map_order", "sg_rec_index", "sg_visit_edges", "sg_visit_union",
 		"sg_visit_value", "sid_mark", "sid_ref", "sid_rollback", "so_bytes", "so_grow", "so_leb", "so_take",
-		"so_u32", "so_u64", "so_u8",
+		"so_u32", "so_u64", "so_u8", "wc_body", "wc_slot", "wc_value",
 	},
 	"schema_tables.lobster": {
 		"wire_crc32c", "wire_crc32c_table", "wire_integrity_body",

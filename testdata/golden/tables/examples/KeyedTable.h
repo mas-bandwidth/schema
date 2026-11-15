@@ -4332,11 +4332,11 @@ struct TableFixedEntry
     uint32_t guard_count = 0;
     uint32_t guard_index = 0;
     // elem IS A COPY ENTRY'S ELEMENT WIDTH IN BYTES (1, 2, 4 or 8; a 128-bit
-    // value rides as two 8-byte lanes). Every integer on the wire is
-    // little-endian on every host, so on a big-endian host a copy must reverse
-    // each element rather than land the wire bytes in host order. Zero is a raw
-    // byte copy, which is every non-copy op. It sits last so existing
-    // positional initializers keep their meaning.
+    // value rides as two 8-byte lanes). The wire is little-endian on every
+    // host (§3.4), so on a big-endian host a copy must reverse each element
+    // rather than land the wire bytes in host order. Zero is a raw byte copy,
+    // which is every non-copy op and every byte-sized element. It sits last
+    // so existing positional initializers keep their meaning.
     uint8_t elem = 0;
 };
 
@@ -4412,10 +4412,10 @@ inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
     for ( uint32_t i = 0; i < size && i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
     return v;
 }
-// THIS BUILD'S HOST ORDER, for the fixed form only. The wire is little-endian
-// on every host, so only a copy into native storage consults it.
-// SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile the
-// big-endian copy path so a test can hold its byte image.
+// THIS BUILD'S HOST ORDER, for the fixed form only. The wire is
+// little-endian on every host, so only a store into native storage consults
+// it. SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile
+// the big-endian path so a test can hold its byte image.
 #if defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN )
 constexpr bool TableFixedBigEndianHost = true;
 #elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -4545,9 +4545,9 @@ inline void TableFixedCopyLe( uint8_t * dst, const uint8_t * src, uint32_t size,
 
 // A STORE OF ONE PLAN OP'S VALUE INTO NATIVE STORAGE. On a little-endian host
 // the destination width's own word IS the value and stays one copy; on a
-// big-endian host the value's bytes are written most-significant first, so
-// the native word holds the value and a forced build holds the same byte image
-// the copy path writes.
+// big-endian host the value's bytes are written most-significant first, so the
+// native word holds the value and a forced build holds the same byte image the
+// copy path writes.
 inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
 {
     if ( TableFixedBigEndianHost )
@@ -4557,10 +4557,30 @@ inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
     }
     switch ( size )
     {
-        case 1: { uint8_t t = (uint8_t) v; memcpy( dst, &t, 1 ); break; }
-        case 2: { uint16_t t = (uint16_t) v; memcpy( dst, &t, 2 ); break; }
-        case 4: { uint32_t t = (uint32_t) v; memcpy( dst, &t, 4 ); break; }
-        case 8: { uint64_t t = v; memcpy( dst, &t, 8 ); break; }
+        case 1:
+        {
+            uint8_t t = (uint8_t) v;
+            memcpy( dst, &t, 1 );
+            break;
+        }
+        case 2:
+        {
+            uint16_t t = (uint16_t) v;
+            memcpy( dst, &t, 2 );
+            break;
+        }
+        case 4:
+        {
+            uint32_t t = (uint32_t) v;
+            memcpy( dst, &t, 4 );
+            break;
+        }
+        case 8:
+        {
+            uint64_t t = v;
+            memcpy( dst, &t, 8 );
+            break;
+        }
         default: break;
     }
 }
@@ -4645,7 +4665,9 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
-            TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
+            // text is bytes, so an elem of 1: a raw copy on either host, through
+            // the one wire-to-storage copy the bulk op takes too
+            TableFixedCopyLe( dst + p.aux, src + p.src + 4, p.size, 1 );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
@@ -4695,8 +4717,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedWidenF:
         {
+            // f32 INTO f64 (docs/FIXED-FORM-ALGORITHM.md §4's float rung): the
+            // bits are read little-endian, then the hardware cast.
             float f = 0.0f;
-            { const uint32_t bits = TableFixedGet32( src + p.src ); memcpy( &f, &bits, 4 ); }
+            {
+                const uint32_t bits = TableFixedGet32( src + p.src );
+                memcpy( &f, &bits, 4 );
+            }
             const double d = (double) f;
             memcpy( dst + p.dst, &d, 8 );
             widened++;
@@ -4730,10 +4757,11 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // the payload copy above laid the wire's bytes down; when the flag
             // is 0 those bytes are slack and never a value, so the reader
             // overwrites them with the caller's own Reset image. Aux is the
-            // payload's storage offset and Size its storage bytes.
-            // THE COPY IS ONE PLAIN memcpy, not TableFixedCopyRun: it runs only
-            // for an absent payload, off the hot path, and the C twin needs the
-            // plain copy so -Warray-bounds sees no path past the defaults image.
+            // payload's storage offset and Size its storage bytes. A plain
+            // memcpy and not the run mover: the mover's 32-byte moves let
+            // GCC's array-bounds pass form offsets past a small Reset image
+            // on a size branch no entry of this op reaches, and an absent
+            // payload is the cold path.
             const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
             dst[p.dst] = flag;
             if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }
@@ -9808,6 +9836,8 @@ inline int64_t TeamConfigMeasureBody( TableIds & ids, const TeamConfig & value )
     return bytes;
 }
 
+inline bool TeamConfigFixedWriteAdmits( const TeamConfig & value );
+
 inline int64_t TeamConfigMeasure( const TeamConfig & value )
 {
     TableIds ids;
@@ -10352,6 +10382,7 @@ inline int64_t TeamConfigMeasureMessages( const TeamConfig * values, int64_t cou
     {
         const int64_t body = TeamConfigMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( TeamConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -10370,6 +10401,7 @@ inline int64_t TeamConfigSaveMessages( const TeamConfig * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !TeamConfigSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( TeamConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TeamConfigMeasureMessages( values, count, report )
@@ -12458,6 +12490,8 @@ inline int64_t KeyedConfigMeasureBody( TableIds & ids, const KeyedConfig & value
     return bytes;
 }
 
+inline bool KeyedConfigFixedWriteAdmits( const KeyedConfig & value );
+
 inline int64_t KeyedConfigMeasure( const KeyedConfig & value )
 {
     TableIds ids;
@@ -13313,6 +13347,7 @@ inline int64_t KeyedConfigMeasureMessages( const KeyedConfig * values, int64_t c
     {
         const int64_t body = KeyedConfigMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( KeyedConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -13331,6 +13366,7 @@ inline int64_t KeyedConfigSaveMessages( const KeyedConfig * values, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !KeyedConfigSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( KeyedConfigFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == KeyedConfigMeasureMessages( values, count, report )
@@ -14210,6 +14246,17 @@ TABLE_FIXED_INLINE bool TeamConfigFixedInRange( const TeamConfig & value )
     return bad == 0;
 }
 
+// TeamConfig's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool TeamConfigFixedWriteAdmits( const TeamConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.spawn_count < 0 ) | (int) ( value.spawn_count > 64 );
+    bad |= (int) ( value.banner_length >= 0 && value.banner_length <= 16 && !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) );
+    return bad == 0;
+}
+
 // TeamConfig's read-side bounds.
 inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
@@ -14227,6 +14274,19 @@ inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & TABLE_CLAMP_
 // ScoreBoard's read-side bounds, CHECKED: true when every clamp below would
 // count nothing and store nothing.
 TABLE_FIXED_INLINE bool ScoreBoardFixedInRange( const ScoreBoard & value )
+{
+    (void) value;
+    int bad = 0;
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) ( value.per_team[i] < 0 ) | (int) ( value.per_team[i] > 100000 );
+    }
+    return bad == 0;
+}
+
+// ScoreBoard's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool ScoreBoardFixedWriteAdmits( const ScoreBoard & value )
 {
     (void) value;
     int bad = 0;
@@ -14261,6 +14321,20 @@ TABLE_FIXED_INLINE bool KeyedConfigFixedInRange( const KeyedConfig & value )
         bad |= (int) !TeamConfigFixedInRange( value.teams.slots[i] );
     }
     bad |= (int) !ScoreBoardFixedInRange( value.scores );
+    return bad == 0;
+}
+
+// KeyedConfig's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool KeyedConfigFixedWriteAdmits( const KeyedConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) !TeamConfigFixedWriteAdmits( value.teams.slots[i] );
+    }
+    bad |= (int) !ScoreBoardFixedWriteAdmits( value.scores );
     return bad == 0;
 }
 
@@ -14459,6 +14533,10 @@ inline int64_t TeamConfigFixedSave( const TeamConfig * values, int64_t count, ui
 {
     const int64_t need = TeamConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( TeamConfigFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, TeamConfigFixedHash );
@@ -16528,6 +16606,10 @@ inline int64_t KeyedConfigFixedSave( const KeyedConfig * values, int64_t count, 
 {
     const int64_t need = KeyedConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        schema_assert( KeyedConfigFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
+    }
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, KeyedConfigFixedHash );
