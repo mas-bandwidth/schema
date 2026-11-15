@@ -2350,25 +2350,6 @@ first byte (Go's `FixedSave`, most legs' `SaveMessages`); that is a property of
 that leg's writer, held by that leg's own tests, and no caller may depend on it
 across languages.
 
-<<<<<<< HEAD
-| leg | variable `Save` and its `Measure` |
-|---|---|
-| C++ | 1–2 and 8 debug; 3–7 every build (8 too for optional text and text-list elements); 9 unchecked; 10 every build |
-| C | 1–4 and 8 debug; 5–7 every build; 9 unchecked; 10 every build |
-| C# | 1–4 debug, except that every build still refuses a negative text-list element length (`TextFits`) and a count past its bound in the region `Save`'s node walk; 5–8 every build; 9 unchecked; 10 every build for `required` fields only |
-| Rust | 1–2 and 4 debug; 3 and 7 every build; 5–6 and 8 unrepresentable (native enums, a Rust `String`); 9 unchecked; 10 every build |
-| Java | 1–5 and 8 debug; 6–7 every build; 9 unchecked; 10 every build |
-| Dart | 1–5 and 8 debug; 6–7 every build; 10 every build for `required` fields only; 9 unchecked |
-| Go | 1–8 and 10 every build; 9 unchecked |
-| JavaScript | 1–8 and 10 every build; 9 not audited |
-| Elixir | 1–6 and 8 every build; 7 unrepresentable (a BEAM float holds no NaN or infinity); 9 unchecked; 10 every build |
-| Lua | 1–8 every build, `SaveRetain` included; 9 not audited; 10 every build |
-| Luau | 1–8 every build; 9 not audited; 10 every build |
-| Squirrel | 1–8 every build; 9 unchecked; 10 every build |
-| MOO | 1–8 every build; 9 unchecked; 10 every build |
-| Goose | 1–8 and 10 every build; 9 not audited |
-| Lobster | 1–8 and 10 every build (`save_reasoned`'s `invalid_value`; 7 its `non_finite_float`), and a map key held twice, at every record the save graph reaches; 9 unchecked |
-=======
 Each leg's variable `Save` and its `Measure`:
 
 <!-- One line per leg and writer, a blank line between every two: a change to one leg's line never touches the line next to another's. Edit your own line only; never reflow this list into a table. -->
@@ -2401,8 +2382,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **Goose**: 1–8 and 10 every build; 9 not audited
 
-- **Lobster**: 1–8 and 10 every build (`save_reasoned`'s `invalid_value`; 7 its `non_finite_float`); 9 unchecked
->>>>>>> b5f0c22106b29dd236293d292171e9ec1bdfd3b8
+- **Lobster**: 1–8 and 10 every build (`save_reasoned`'s `invalid_value`; 7 its `non_finite_float`), and a map key held twice, at every record the save graph reaches; 9 unchecked
 
 The other writers, over rows 1–8 and 10 (row 9 is not audited there: a file
 read KEEPS an appended mask bit, the text writer refuses a bit it cannot name,
