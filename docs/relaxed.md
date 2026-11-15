@@ -284,3 +284,38 @@ WIP for every proof slug: none unless named here.
 - `relax/proof-write-refusal-moo`: 5 cell(s): `surface write-refusal / moo` (19 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 16 mo...); `surface write-refusal-fixed / moo` (19 case(s) answered absent with no ruling: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_bits_wide_ok, write-refusal-fixed/fr...); `surface write-refusal-message / moo` (13 case(s) answered absent with no ruling: write-refusal-message/mref_element, write-refusal-message/mref_element_ok, write-refusal-message/...); `surface write-refusal-json / moo` (1 case(s) answered absent with no ruling: write-refusal-json/jref_zero_byte); `cases tabledemo / moo` (39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 mo...). Real fix: the leg answers the write-refusal surfaces (docs/SPEC.md §5.1: the write contract; assert legs in debug, refusing legs in every build).
 - `relax/proof-write-refusal-rust`: 5 cell(s): `surface write-refusal / rust` (7 case(s) fail: write-refusal/wref_bits_wide, write-refusal/wref_enum, write-refusal/wref_range_high and 4 more); `surface write-refusal-fixed / rust` (7 case(s) fail: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_enum, write-refusal-fixed/fref_range_high and 4 more); `surface write-refusal-message / rust` (5 case(s) fail: write-refusal-message/mref_element, write-refusal-message/mref_range_high, write-refusal-message/mref_range_low and 2 more); `surface write-refusal-json / rust` (1 case(s) answered absent with no ruling: write-refusal-json/jref_zero_byte); `cases tabledemo / rust` (14 case(s) fail: write-refusal/wref_bits_wide, write-refusal/wref_enum, write-refusal/wref_range_high and 11 more). Real fix: the leg answers the write-refusal surfaces (docs/SPEC.md §5.1: the write contract; assert legs in debug, refusing legs in every build).
 - `relax/proof-write-refusal-squirrel`: 5 cell(s): `surface write-refusal / squirrel` (19 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 16 mo...); `surface write-refusal-fixed / squirrel` (19 case(s) answered absent with no ruling: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_bits_wide_ok, write-refusal-fixed/fr...); `surface write-refusal-message / squirrel` (13 case(s) answered absent with no ruling: write-refusal-message/mref_element, write-refusal-message/mref_element_ok, write-refusal-message/...); `surface write-refusal-json / squirrel` (1 case(s) answered absent with no ruling: write-refusal-json/jref_zero_byte); `cases tabledemo / squirrel` (39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 mo...). Real fix: the leg answers the write-refusal surfaces (docs/SPEC.md §5.1: the write contract; assert legs in debug, refusing legs in every build).
+
+## 2026-11-15
+
+The maintainer's rule again: green now by tracked relaxation. These entries
+change the 2026-11-14 hostile-row slugs above; where they disagree, this
+section is the current state.
+
+- `relax/hostile-rows-lua` (added site): the Lua port's hostile-corpus unit
+  gate (`internal/ci/schema_lua_runs_hostile_corpus_test.go`,
+  `luaHostileCarriedList`, `RELAXED 2026-11-15`) carries
+  conformance-base64-unpadded and conformance-str-zero-escape-unknown-key as
+  findings at accept/-: the Lua JSON read accepts unpadded Base64
+  (json-base64-canonical) and a zero escape in a skipped value. Real fix: the
+  Lua JSON read refuses both; then the two carried rows go, with the
+  conformance lines and proof cells this slug already holds.
+- `relax/hostile-rows-c` (narrowed): the C JSON read now refuses both hostile
+  rows and the C table-base64 run passes canonical, so the json-hostile lines
+  in `test/conformance/relaxed.txt`, `-relax` in
+  `make/checks/table-base64.mk`, both carried rows in
+  `test/c-hostile/known-findings.tsv` and the `surface json-hostile / c` proof
+  cell are gone. What is left: write-refusal-json `jref_zero_byte` (the C
+  text writer writes a zero byte) in the conformance leg and the proof cells
+  `surface write-refusal-json / c` and `cases tabledemo / c`.
+- `relax/hostile-rows-cs` (narrowed): the C# JSON read refuses unpadded
+  Base64, so the base64-unpadded line, `-relax` on the C# table-base64 run
+  and the base64 row in `test/cs-hostile/known-findings.tsv` are gone. What
+  is left: json-hostile str-zero-escape-unknown-key (conformance and the
+  hostile-corpus run) and write-refusal-json `jref_zero_byte`.
+- `relax/hostile-rows-dart` (narrowed): the Dart JSON read refuses unpadded
+  Base64; its conformance line and the base64 row in
+  `test/dart-hostile/known-findings.tsv` are gone. What is left:
+  str-zero-escape-unknown-key in both.
+- `relax/hostile-rows-goose` (narrowed): the Goose JSON read refuses unpadded
+  Base64; its conformance line is gone. What is left:
+  str-zero-escape-unknown-key.
