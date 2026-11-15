@@ -108,16 +108,19 @@ for(damaged) bad:
     else:
         print("damage case " + string(case_index) + " returned " + string(n) + ": " + report.reason)
     case_index += 1
-// Inactive optional payload and counted-array slack are not values.
+// Inactive optional payload and counted-array slack are dead bytes: a
+// non-zero one refuses the whole load and leaves the batch at its defaults.
 var slack = write_int8_le(copy(wire), second + %[2]d, 0)
 slack = write_int8_le(slack, second + %[2]d + 1, 255)
 slack = write_int32_le(slack, second + %[2]d + 2, 99)
 slack = write_int8_le(slack, second + %[3]d + 4 + 8, 255)
 slack = write_int32_le(slack, second + %[3]d + 4 + 8 + 1, 99)
-if strictfixed.RowFixedLoad(back, slack, plan, report) == 2 and not back[1].OptionalPresent and back[1].LiveCount == 1:
+for(back) r: r.Seq = 123
+let dead_n = strictfixed.RowFixedLoad(back, slack, plan, report)
+if dead_n == -1 and back[0].Seq == 7 and back[1].Seq == 7 and back[2].Seq == 7:
     passed += 1
 else:
-    print("inactive storage failed: " + report.reason)
+    print("dead storage failed: " + report.reason)
 print(passed)
 `, offsets["flag"], offsets["optional"], offsets["live"], offsets["ranged"], offsets["ratio"], offsets["tier"])
 	run := func(t *testing.T, files map[string][]byte) string {

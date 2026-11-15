@@ -154,13 +154,13 @@ func t07C14(t *testing.T) {
 
 // ---- elixir/W4 --------------------------------------------------------------
 
-// t07W4 holds elixir/W4 to §3.1: slack is UNSPECIFIED on read and not a
-// refusal — a reader validates the USED UNITS only. The read binds a text
-// field's whole span, decodes the used units, and never refuses or counts the
-// bytes behind them; the writer's own `text_slack` is the only site that
-// touches the slack.
+// t07W4 holds elixir/W4 to §3.1 and the dead-byte ruling: the content rule
+// reads the USED UNITS only, and the bytes behind them are DEAD — a non-zero
+// one refuses the whole load. The read binds a text field's whole span, decodes
+// the used units, and the check pass holds the rest to zero.
 func t07W4(t *testing.T) {
 	t07Has(t, fixedRuntimeBody, "def text(used, _default, m, present) do", "W4 the read decodes the used bytes")
+	t07Has(t, fixedRuntimeBody, "defp dead_run([{:dead_text", "W4 a non-zero dead byte behind a text refuses")
 	t07Has(t, fixedRuntimeBody, "def text_slack(bytes, n) when is_binary(bytes) and byte_size(bytes) <= n,", "W4 the writer owns the slack")
 
 	out, err := Generate(unitFrom(t, t07LiveSource))

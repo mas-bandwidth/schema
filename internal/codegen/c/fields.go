@@ -69,15 +69,24 @@ func (g *gen) emitWriteScalar(f *ir.Field, expr, ind string) {
 		g.call(ind, fmt.Sprintf("serialize_write_bool( stream, %s )", expr))
 	case ir.TFloat32:
 		if f.HasFloatRange {
+			// A compressed float is finite and inside [min, max] before it is
+			// quantized (SPEC §5.1 row 10): caller misuse is a debug assert,
+			// gone under NDEBUG, and a release build writes what the caller
+			// passed. The runtime's [0, 1] clamp is not the value check, and
+			// its integer clamp after rounding is part of quantizing an
+			// in-range value (PACKET-WIRE-ALGORITHM §2.5).
+			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+			min32 := float32(f.FMin)
+			max32 := float32(f.FMax)
+			delta := max32 - min32
+			g.pf("%sserialize_assert( %s >= %s && %s <= %s );\n", ind, expr,
+				formatFloat32(min32), expr, formatFloat32(max32))
 			// The runtime's precomputed entry point: the step
 			// count, wire width and float32 range width depend only on the
 			// declaration, so ir.CompressedFloatParams derives them ONCE at
 			// generation time — the same derivation the Go fold
 			// emits from — and the quantization arithmetic
 			// keeps its one audited home in serialize.h.
-			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
-			min32 := float32(f.FMin)
-			delta := float32(f.FMax) - min32
 			g.call(ind, fmt.Sprintf("serialize_write_compressed_float_precomputed( stream, %s, %du, %d, %s, %s )",
 				expr, steps, wireBits, formatFloat32(delta), formatFloat32(min32)))
 			return
@@ -364,9 +373,9 @@ func (g *gen) emitReadScalar(f *ir.Field, expr, ind string) {
 			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &flags_value, %d )", ref.WireBits))
 			g.pf("%s    %s = (%s) flags_value;\n%s}\n", ind, expr, f.Type.Name, ind)
 		case *ir.Struct:
-			g.call(ind, fmt.Sprintf("read_%s( stream, &%s )", snake(f.Type.Name), expr))
+			g.call(ind, fmt.Sprintf("schema_read_%s_body_( stream, &%s )", snake(f.Type.Name), expr))
 		case *ir.Union:
-			g.call(ind, fmt.Sprintf("read_%s( stream, &%s )", snake(f.Type.Name), expr))
+			g.call(ind, fmt.Sprintf("schema_read_%s_body_( stream, &%s )", snake(f.Type.Name), expr))
 		default:
 			g.unsupported("field %s references %s, whose kind has no C read emission", f.Name, f.Type.Name)
 		}

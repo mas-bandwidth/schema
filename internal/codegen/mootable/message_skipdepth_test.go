@@ -3,6 +3,7 @@ package mootable_test
 import (
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"strings"
 	"testing"
 
@@ -57,7 +58,7 @@ func skipDepthBatch(levels int, ref uint64, refBits int) []byte {
 	out := []byte{ir.TableWireMessageForm}
 	acc, n := uint64(0), 0
 	put := func(v uint64, width int) {
-		for i := 0; i < width; i++ {
+		for i := range width {
 			acc |= ((v >> uint(i)) & 1) << uint(n)
 			n++
 			if n == 8 {
@@ -67,7 +68,7 @@ func skipDepthBatch(levels int, ref uint64, refBits int) []byte {
 		}
 	}
 	put(0, 8) // M - 1
-	for i := 0; i < levels; i++ {
+	for range levels {
 		put(ref, refBits)
 	}
 	for i := 0; i < levels+1; i++ {
@@ -130,7 +131,7 @@ func TestMooMessageSkipWalkDepthBound(t *testing.T) {
 	inputs := skipDepthInputs(t, g.unit)
 	out := g.run(t, skipDepthProbe(g, "at128", "at129", "deep"), inputs)
 	got := map[string]string{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		f := strings.Fields(line)
 		if len(f) > 1 {
 			got[f[0]] = strings.Join(f[1:], " ")
@@ -165,9 +166,7 @@ func TestMooMessageSkipWalkDepthBoundNegativeControl(t *testing.T) {
 		t.Fatalf("the skip-depth test is in table_message.moo %d times, want 2", n)
 	}
 	files := map[string][]byte{}
-	for name, data := range g.files {
-		files[name] = data
-	}
+	maps.Copy(files, g.files)
 	files["table_message.moo"] = []byte(strings.ReplaceAll(src, anchor, "\tif false then\n\t\treturn false\n\tend\n"))
 	patched := writeUnit(t, g.unit, files)
 	out := patched.run(t, skipDepthProbe(patched, "at129"), inputs)
