@@ -2489,7 +2489,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: no value encoder: it carries encoded bodies
 
-  - packet `Write`: 1–6 and 8 every build; 7 raises; 10 not yet held
+  - packet `Write`: 1–6, 8 and 10 every build; 7 raises
 
 - **Squirrel**
 
