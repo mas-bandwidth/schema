@@ -1631,7 +1631,8 @@ local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, b
 end
 
 -- one float32 at the announced shape: a quantized index dequantized, or the
--- raw bits (refused when not finite); landed in fd (widened into f64, or
+-- raw bits; refused when not finite, whatever the packing (a dequantized
+-- value is a float read like any other); landed in fd (widened into f64, or
 -- refused out_of_range outside fd's range, with -0 as +0)
 local function decodeFloat32(t: any, fd: any, shape: any, named: any): (any, boolean)
 	local bits: number
@@ -1647,14 +1648,14 @@ local function decodeFloat32(t: any, fd: any, shape: any, named: any): (any, boo
 		if not ok then
 			return nil, dmal(t)
 		end
-		if not V.finite32(raw) then
-			t.report.nonFinite += 1
-			if t.report.nonFiniteField == nil then
-				t.report.nonFiniteField = ownerName(named)
-			end
-			return fd.def, true
-		end
 		bits = raw
+	end
+	if not V.finite32(bits) then
+		t.report.nonFinite += 1
+		if t.report.nonFiniteField == nil then
+			t.report.nonFiniteField = ownerName(named)
+		end
+		return fd.def, true
 	end
 	if fd.f32 == false then
 		local lo, hi = V.f32to64(bits)

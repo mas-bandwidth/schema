@@ -334,10 +334,23 @@ func (s *scan) field(at int64, f *ir.Field) error {
 	case f.KeyEnum != "", f.Array == ir.ArrayFixed:
 		return s.slots(value.Offset, f, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
-		if err := s.slots(value.Offset, f, f.ArrayBound); err != nil {
+		if err := s.companion(pieces[1].Offset, f.ArrayBound, "used count"); err != nil {
 			return err
 		}
-		return s.companion(pieces[1].Offset, f.ArrayBound, "used count")
+		used := int64(int32(s.ord.Uint32(s.buf[pieces[1].Offset:])))
+		if err := s.slots(value.Offset, f, used); err != nil {
+			return err
+		}
+		step := elementBytes(s.m.Unit, f)
+		for i := used; i < f.ArrayBound; i++ {
+			slot := value.Offset + i*step
+			for at := slot; at < slot+step; at++ {
+				if s.buf[at] != 0 {
+					return fmt.Errorf("the dead slot %d at offset %d holds 0x%02x at offset %d, past the used count %d: a counted array's slots past its count are zero", i, slot, s.buf[at], at, used)
+				}
+			}
+		}
+		return nil
 	case f.Array == ir.ArrayList:
 		return s.list(value.Offset, f)
 	}
