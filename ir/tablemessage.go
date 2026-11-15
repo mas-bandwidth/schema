@@ -201,7 +201,7 @@ func DecodeShape(in []byte, kind uint8) (TableMessageShape, int, bool) {
 				if at+16 > len(in) {
 					return s, 0, false
 				}
-				s.Base = wideBaseFrom(in[at : at+16])
+				s.Base = wideBaseFrom(in[at:at+16], TableKindSigned(int(kind)))
 				at += 16
 			case TableKindSigned(int(kind)):
 				z, ok := leb()
@@ -215,6 +215,9 @@ func DecodeShape(in []byte, kind uint8) (TableMessageShape, int, bool) {
 					return s, 0, false
 				}
 				s.Base = new(big.Int).SetUint64(u)
+			}
+			if !tableMessageBaseInsideKind(kind, s) {
+				return s, 0, false // A BASE PAST THE KIND'S OWN DOMAIN is a hostile base
 			}
 		case s.Packing == TableMessageQuantized && kind == TableKindF32:
 			if at+12 > len(in) {
@@ -341,6 +344,29 @@ func TableMessageKindBits(kind uint8) int64 {
 	return int64(TableKindWidth(int(kind))) * 8
 }
 
+// tableMessageBaseInsideKind is §3.3's base rule: a ranged base and the top
+// of its range, base + 2^bits - 1, lie inside the kind's own domain. A width
+// the kind holds is not enough under a base near its edge, and the arithmetic
+// is exact because a 128-bit top does not fit a machine word.
+func tableMessageBaseInsideKind(kind uint8, s TableMessageShape) bool {
+	if s.Base == nil {
+		return true
+	}
+	width := uint(TableMessageKindBits(kind))
+	one := big.NewInt(1)
+	lo := new(big.Int)
+	hi := new(big.Int).Sub(new(big.Int).Lsh(one, width), one)
+	if TableKindSigned(int(kind)) {
+		hi.Rsh(hi, 1)
+		lo.Neg(new(big.Int).Lsh(one, width-1))
+	}
+	if s.Base.Cmp(lo) < 0 || s.Base.Cmp(hi) > 0 {
+		return false
+	}
+	top := new(big.Int).Add(s.Base, new(big.Int).Sub(new(big.Int).Lsh(one, uint(s.Bits)), one))
+	return top.Cmp(lo) >= 0 && top.Cmp(hi) <= 0
+}
+
 // ---- the compressed float's rule, in float32 and by nothing else ----
 //
 // A compressed float quantizes by SPEC.md §4.3's rule (docs/SPEC-TABLES.md
@@ -418,11 +444,11 @@ func appendWideBase(out []byte, v *big.Int) []byte {
 	return binary.LittleEndian.AppendUint64(out, hi)
 }
 
-func wideBaseFrom(in []byte) *big.Int {
+func wideBaseFrom(in []byte, signed bool) *big.Int {
 	lo := new(big.Int).SetUint64(binary.LittleEndian.Uint64(in))
 	hi := new(big.Int).SetUint64(binary.LittleEndian.Uint64(in[8:]))
 	raw := new(big.Int).Or(new(big.Int).Lsh(hi, 64), lo)
-	if raw.Bit(127) == 1 {
+	if signed && raw.Bit(127) == 1 {
 		raw.Sub(raw, new(big.Int).Lsh(big.NewInt(1), 128))
 	}
 	return raw

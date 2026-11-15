@@ -24,11 +24,12 @@ static SCHEMA_UNUSED int table_retain_out_frame(TableRetainOut * s,uint8_t kind,
 }
 static SCHEMA_UNUSED int table_retain_out_content(TableRetainOut * s,uint8_t kind,int64_t length,int32_t depth)
 {
- int64_t end;if(depth>SCHEMA_TABLE_RETAIN_WALK_MAX||length<0||length>s->size-s->at)return 0;end=s->at+length;
+ int64_t end;if(length<0||length>s->size-s->at)return 0;end=s->at+length;
+ if(kind==13||kind==14||kind==16){if(depth>=SCHEMA_TABLE_RETAIN_WALK_MAX){return 0;}depth++;}
  switch(kind){
  case 13:for(;;){uint64_t id;uint8_t k;if(end-s->at<8)return 0;id=table_retain_u64(s->input+s->at);if(!table_retain_out_ref(s))return 0;if(!id)break;if(s->at>=end)return 0;k=s->input[s->at++];if(!table_retain_out_raw(s,&k,1)||!table_retain_out_payload(s,k,depth))return 0;}break;
  case 14:case 16:{uint64_t n,i;uint8_t elem;if(s->at>=end)return 0;elem=s->input[s->at++];if(!table_retain_out_raw(s,&elem,1)||!table_retain_out_leb_read(s,&n)||!table_retain_out_leb(s,n))return 0;
- for(i=0;i<n;i++){if(kind==16){if(!table_retain_out_ref(s)||!table_retain_out_frame(s,elem,depth+1))return 0;}else if(!table_retain_out_payload(s,elem,depth))return 0;}break;}
+ for(i=0;i<n;i++){if(kind==16){if(!table_retain_out_ref(s)||!table_retain_out_frame(s,elem,depth))return 0;}else if(!table_retain_out_payload(s,elem,depth))return 0;}break;}
  case 15:case 30:if(!table_retain_out_payload(s,kind,depth))return 0;break;
  case 17:return 0;
  default:if(!table_retain_out_raw(s,s->input+s->at,length))return 0;s->at+=length;break;
@@ -40,8 +41,9 @@ static SCHEMA_UNUSED int table_retain_out_payload(TableRetainOut * s,uint8_t kin
  if(width){if(width>s->size-s->at||!table_retain_out_raw(s,s->input+s->at,width))return 0;s->at+=width;return 1;}
  switch(kind){
  case 12:case 31:case 32:if(!table_retain_out_leb_read(s,&length)||length>(uint64_t)(s->size-s->at)||!table_retain_out_leb(s,length)||!table_retain_out_raw(s,s->input+s->at,(int64_t)length))return 0;s->at+=(int64_t)length;return 1;
- case 13:case 14:case 16:return table_retain_out_frame(s,kind,depth+1);
- case 15:{uint64_t arm;uint8_t k;if(s->size-s->at<8)return 0;arm=table_retain_u64(s->input+s->at);if(!table_retain_out_ref(s))return 0;if(!arm)return 1;if(s->at>=s->size)return 0;k=s->input[s->at++];return table_retain_out_raw(s,&k,1)&&table_retain_out_frame(s,k,depth+1);}
+ case 13:case 14:case 16:return table_retain_out_frame(s,kind,depth);
+ case 15:{uint64_t arm;uint8_t k;if(s->size-s->at<8)return 0;arm=table_retain_u64(s->input+s->at);if(!table_retain_out_ref(s))return 0;if(!arm)return 1;if(s->at>=s->size)return 0;k=s->input[s->at++];
+  if(k==13||k==14||k==15||k==16){if(depth>=SCHEMA_TABLE_RETAIN_WALK_MAX){return 0;}depth++;}return table_retain_out_raw(s,&k,1)&&table_retain_out_frame(s,k,depth);}
  case 30:return table_retain_out_ref(s);
  default:return 0;
  }

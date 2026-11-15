@@ -1787,7 +1787,7 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( f.packing == 0 ) { return true; }
         if ( f.packing == 1 && kind != 10 )
         {
-            if ( !TableMessageLeb( in, size, at, v ) || (int64_t) v > TableMessageKindBits( kind ) ) { return false; }
+            if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) TableMessageKindBits( kind ) ) { return false; }
             f.value_bits = (int64_t) v;
             if ( kind == 18 || kind == 19 || TableMessageFixedKind( kind ) )
             {
@@ -21597,6 +21597,7 @@ inline int64_t UserFixedSave( const User * values, int64_t count, uint8_t * buff
 {
     const int64_t need = UserFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( UserFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -21788,7 +21789,7 @@ inline int64_t UserFixedLoadWalk( User * values, int64_t capacity, const uint8_t
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -22054,6 +22055,7 @@ inline int64_t ScriptFixedSave( const Script * values, int64_t count, uint8_t * 
 {
     const int64_t need = ScriptFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( ScriptFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -22245,7 +22247,7 @@ inline int64_t ScriptFixedLoadWalk( Script * values, int64_t capacity, const uin
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -22504,6 +22506,7 @@ inline int64_t SelectionFixedSave( const Selection * values, int64_t count, uint
 {
     const int64_t need = SelectionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, SelectionFixedHash );
@@ -22691,7 +22694,7 @@ inline int64_t SelectionFixedLoadWalk( Selection * values, int64_t capacity, con
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -23112,6 +23115,7 @@ inline int64_t InsertTextFixedSave( const InsertText * values, int64_t count, ui
 {
     const int64_t need = InsertTextFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( InsertTextFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -23303,7 +23307,7 @@ inline int64_t InsertTextFixedLoadWalk( InsertText * values, int64_t capacity, c
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -23564,6 +23568,7 @@ inline int64_t RemoveTextFixedSave( const RemoveText * values, int64_t count, ui
 {
     const int64_t need = RemoveTextFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RemoveTextFixedHash );
@@ -23751,7 +23756,7 @@ inline int64_t RemoveTextFixedLoadWalk( RemoveText * values, int64_t capacity, c
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -24297,6 +24302,7 @@ inline int64_t EditFixedSave( const Edit * values, int64_t count, uint8_t * buff
 {
     const int64_t need = EditFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( EditFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -24488,7 +24494,7 @@ inline int64_t EditFixedLoadWalk( Edit * values, int64_t capacity, const uint8_t
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -24779,6 +24785,7 @@ inline int64_t OpenDocumentFixedSave( const OpenDocument * values, int64_t count
 {
     const int64_t need = OpenDocumentFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( OpenDocumentFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -24970,7 +24977,7 @@ inline int64_t OpenDocumentFixedLoadWalk( OpenDocument * values, int64_t capacit
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -25236,6 +25243,7 @@ inline int64_t SaveDocumentFixedSave( const SaveDocument * values, int64_t count
 {
     const int64_t need = SaveDocumentFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( SaveDocumentFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -25427,7 +25435,7 @@ inline int64_t SaveDocumentFixedLoadWalk( SaveDocument * values, int64_t capacit
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -26595,6 +26603,7 @@ inline int64_t TransactionFixedSave( const Transaction * values, int64_t count, 
 {
     const int64_t need = TransactionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( TransactionFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -26786,7 +26795,7 @@ inline int64_t TransactionFixedLoadWalk( Transaction * values, int64_t capacity,
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -29954,6 +29963,7 @@ inline int64_t ToolMessageFixedSave( const ToolMessage * values, int64_t count, 
 {
     const int64_t need = ToolMessageFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     for ( int64_t k = 0; k < count; ++k )
     {
         schema_assert( ToolMessageFixedWriteAdmits( values[k] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -30145,7 +30155,7 @@ inline int64_t ToolMessageFixedLoadWalk( ToolMessage * values, int64_t capacity,
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;

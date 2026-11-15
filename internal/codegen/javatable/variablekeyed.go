@@ -202,7 +202,7 @@ func writeJsonKeyedValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 func readJsonKeyedValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, depth string) {
 	m := varMember(f)
 	one := variableElement(f)
-	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;}in.p++;for(int i=0;i<%d;i++)v.%s.set(i,%s);boolean[] seen=new boolean[%d];java.util.Set<String> skipped=null;while(in.peek()!='}'){String slotName=in.scanString();if(in.bad)return;if(in.peek()!=':'){in.bad=true;return;}in.p++;int slot=-1;\n", f.ArrayBound, m, variableDefault(one), f.ArrayBound)
+	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;}in.p++;for(int i=0;i<%d;i++)v.%s.set(i,%s);boolean[] seen=new boolean[%d];java.util.Set<String> skipped=null;while(in.peek()!='}'){String slotName=in.scanName();if(in.bad)return;if(in.peek()!=':'){in.bad=true;return;}in.p++;int slot=-1;\n", f.ArrayBound, m, variableDefault(one), f.ArrayBound)
 	for i, name := range f.KeyEnumRef.Variants {
 		fmt.Fprintf(b, "                if(%q.equals(slotName))slot=%d;\n", name, i)
 	}

@@ -130,7 +130,7 @@ namespace Example
         {
             Debug.Assert(value.EntriesCount >= 0 && value.EntriesCount <= 2, "value.EntriesCount out of range [0, 2]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.EntriesCount);
+                uint offsetValue = unchecked((uint)(value.EntriesCount));
                 if (!batch.SerializeBits(ref offsetValue, 2))
                 {
                     return false;
@@ -145,7 +145,7 @@ namespace Example
             }
             Debug.Assert(value.Marker <= 7, "value.Marker out of range [0, 7]");
             {
-                uint offsetValue = (uint)(value.Marker);
+                uint offsetValue = unchecked((uint)(value.Marker));
                 if (!batch.SerializeBits(ref offsetValue, 3))
                 {
                     return false;
@@ -366,7 +366,7 @@ namespace Example
             }
             Debug.Assert(value.DataLength >= 0 && value.DataLength <= 2, "value.DataLength out of range [0, 2]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.DataLength);
+                uint offsetValue = unchecked((uint)(value.DataLength));
                 if (!stream.SerializeBits(ref offsetValue, 2))
                 {
                     return false;
