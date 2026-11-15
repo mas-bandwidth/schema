@@ -2149,6 +2149,7 @@ namespace Blockdemo
                 info.RootElemSlots = 256;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2194,6 +2195,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2235,6 +2237,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2281,6 +2284,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2325,6 +2329,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2367,6 +2372,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2409,6 +2415,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2451,6 +2458,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2494,6 +2502,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2535,6 +2544,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2577,6 +2587,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -2615,6 +2626,7 @@ namespace Blockdemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0xbf050ec6de1ec3e0ul: return PaddedFrameTableType(); case 0x1d3a1648d6207581ul: return PaddedRowTableType(); case 0x11c6b29d15f30306ul: return RenderCameraTableType(); case 0x5ff5bdbae776636ful: return RenderCosmeticPropTableType(); case 0xcca6d00e1bb40147ul: return RenderDynamicPropTableType(); case 0x0cc738b585c9e5f8ul: return RenderExplosionTableType(); case 0x9b2749fb3fc30f4eul: return RenderFrameTableType(); case 0xb0947dbe6c23d994ul: return RenderLaserTableType(); case 0x93dab31114da135bul: return RenderMissileTableType(); case 0x5b00edd93fad6007ul: return RenderShipTableType(); case 0xc19ad62b865276feul: return RenderStaticPropTableType(); case 0x4034181fa408c29ful: return RenderTurretTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {

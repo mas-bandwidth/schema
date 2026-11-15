@@ -9,6 +9,7 @@ const tableVariableWireSource = `
         public TableTypeInfo Type;
         public ulong TypeId;
         public byte BlobKind;
+        public bool Declared;
         public int Offset, Length;
         public long NativeOffset;
         public byte Mark; // the cycle check's mark: 0 unvisited, 1 open, 2 closed
@@ -40,7 +41,15 @@ const tableVariableWireSource = `
             }
             if (index - 2 >= (ulong)Nodes.Count) { Damage(report); return null; }
             Node node = Nodes[(int)(index - 2)];
-            if (node.Value == null) { return null; }
+            if (node.Value == null)
+            {
+                // A record whose type this reader DECLARES is not a type it
+                // cannot place: naming it from a pointer slot is a wrong-type
+                // target and damage (docs/SPEC-TABLES.md §3.1). A newer
+                // writer's type stays lawful: the pointer reads null.
+                if (node.Declared) { Fail(report, "kind_mismatch"); }
+                return null;
+            }
             if (node.TypeId != f.PointerTypeId) { Fail(report, "kind_mismatch"); return null; }
             if (f.BlobKind != 0)
             {
@@ -258,8 +267,12 @@ const tableVariableWireSource = `
         TableTypeInfo[] placeable = type.PointerTypes();
         foreach (Node node in graph.Nodes)
         {
-            if (type.BytesEdge && node.TypeId == 0x2f2ec0474f1c4fe4ul) { node.BlobKind = 14; }
-            if (type.StringEdge && node.TypeId == 0x704be0d8faaffc58ul) { node.BlobKind = 12; }
+            // The RESERVED blob ids are types this reader names whether or not
+            // a *bytes/*string edge sits below this root (docs/SPEC-TABLES.md
+            // §3.1): a blob under a *T slot, or a table under a blob slot, is
+            // the wrong-type target the pointer resolution refuses.
+            if (node.TypeId == 0x2f2ec0474f1c4fe4ul) { node.BlobKind = 14; }
+            if (node.TypeId == 0x704be0d8faaffc58ul) { node.BlobKind = 12; }
             if (node.BlobKind != 0)
             {
                 ReadOnlySpan<byte> data = payload.Buffer.Slice(node.Offset, node.Length);
@@ -268,7 +281,11 @@ const tableVariableWireSource = `
             }
             foreach (TableTypeInfo candidate in placeable)
             { if (candidate.Id == node.TypeId) { node.Type = candidate; break; } }
-            if (node.Type == null) { report.Unknown++; continue; }
+            if (node.Type == null)
+            {
+                node.Declared = type.DeclaredType(node.TypeId) != null;
+                report.Unknown++; continue;
+            }
             node.Value = node.Type.Create();
         }
         foreach (Node node in graph.Nodes)

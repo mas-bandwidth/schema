@@ -253,6 +253,11 @@ namespace Bench
         internal int RootElemSlots;
         public Func<TableTypeInfo[]> PointerTypes;
         public Func<ulong, TableTypeInfo> PointerType;
+        // DeclaredType names every table this reader DECLARES, whether or not a
+        // pointer below this root can place it (docs/SPEC-TABLES.md §3.1): a node
+        // record of a declared type that is not the pointer slot's target is
+        // damage, while a type this reader does not declare stays unknown.
+        internal Func<ulong, TableTypeInfo> DeclaredType;
         public bool BytesEdge, StringEdge;
         public string Name;         // schema type name
         public ulong Id;            // full wire identity of the table name
@@ -3611,6 +3616,7 @@ namespace Bench
                 public TableTypeInfo Type;
                 public ulong TypeId;
                 public byte BlobKind;
+                public bool Declared;
                 public int Offset, Length;
                 public long NativeOffset;
                 public byte Mark; // the cycle check's mark: 0 unvisited, 1 open, 2 closed
@@ -3642,7 +3648,15 @@ namespace Bench
                     }
                     if (index - 2 >= (ulong)Nodes.Count) { Damage(report); return null; }
                     Node node = Nodes[(int)(index - 2)];
-                    if (node.Value == null) { return null; }
+                    if (node.Value == null)
+                    {
+                        // A record whose type this reader DECLARES is not a type it
+                        // cannot place: naming it from a pointer slot is a wrong-type
+                        // target and damage (docs/SPEC-TABLES.md §3.1). A newer
+                        // writer's type stays lawful: the pointer reads null.
+                        if (node.Declared) { Fail(report, "kind_mismatch"); }
+                        return null;
+                    }
                     if (node.TypeId != f.PointerTypeId) { Fail(report, "kind_mismatch"); return null; }
                     if (f.BlobKind != 0)
                     {
@@ -3860,8 +3874,12 @@ namespace Bench
                 TableTypeInfo[] placeable = type.PointerTypes();
                 foreach (Node node in graph.Nodes)
                 {
-                    if (type.BytesEdge && node.TypeId == 0x2f2ec0474f1c4fe4ul) { node.BlobKind = 14; }
-                    if (type.StringEdge && node.TypeId == 0x704be0d8faaffc58ul) { node.BlobKind = 12; }
+                    // The RESERVED blob ids are types this reader names whether or not
+                    // a *bytes/*string edge sits below this root (docs/SPEC-TABLES.md
+                    // §3.1): a blob under a *T slot, or a table under a blob slot, is
+                    // the wrong-type target the pointer resolution refuses.
+                    if (node.TypeId == 0x2f2ec0474f1c4fe4ul) { node.BlobKind = 14; }
+                    if (node.TypeId == 0x704be0d8faaffc58ul) { node.BlobKind = 12; }
                     if (node.BlobKind != 0)
                     {
                         ReadOnlySpan<byte> data = payload.Buffer.Slice(node.Offset, node.Length);
@@ -3870,7 +3888,11 @@ namespace Bench
                     }
                     foreach (TableTypeInfo candidate in placeable)
                     { if (candidate.Id == node.TypeId) { node.Type = candidate; break; } }
-                    if (node.Type == null) { report.Unknown++; continue; }
+                    if (node.Type == null)
+                    {
+                        node.Declared = type.DeclaredType(node.TypeId) != null;
+                        report.Unknown++; continue;
+                    }
                     node.Value = node.Type.Create();
                 }
                 foreach (Node node in graph.Nodes)
@@ -3898,18 +3920,34 @@ namespace Bench
             }
 
             static long Align(long value, int alignment) { return (value + alignment - 1) & -(long)alignment; }
+            // ExtentTargets is the node table's record types by index: 1 is the root,
+            // 2 and up the records. A zero entry is a type this reader cannot name, so
+            // a pointer naming it is lawful and reads null; any other must be the
+            // pointer slot's own target type (docs/SPEC-TABLES.md §3.1).
+            struct ExtentTargets
+            {
+                public ulong[] Ids;
+                public bool Wrong(ulong index, TableFieldInfo f)
+                {
+                    if (Ids == null || index == 0 || index >= (ulong)Ids.Length) { return false; }
+                    ulong id = Ids[(int)index];
+                    return id != 0 && id != f.PointerTypeId;
+                }
+            }
             static bool ExtentBody(Reader r, TableTypeInfo type, ref long at, ref string reason)
+            { return ExtentBody(r, type, ref at, ref reason, default); }
+            static bool ExtentBody(Reader r, TableTypeInfo type, ref long at, ref string reason, ExtentTargets targets)
             {
                 while (r.Ref(out ulong reference, out ulong id) && reference != 0 && r.Has(1))
                 {
                     byte kind = r.Byte(); TableFieldInfo field = FindField(type, id);
                     if (field != null && Kind(field) != kind) { field = null; }
                     if (field == null) { if (!r.Skip(kind)) { break; } continue; }
-                    if (!ExtentField(ref r, field, true, ref at, ref reason)) { return false; }
+                    if (!ExtentField(ref r, field, true, ref at, ref reason, targets)) { return false; }
                 }
                 return true;
             }
-            static bool ExtentField(ref Reader r, TableFieldInfo f, bool framed, ref long at, ref string reason)
+            static bool ExtentField(ref Reader r, TableFieldInfo f, bool framed, ref long at, ref string reason, ExtentTargets targets)
             {
                 if (f.Unbounded) { Reader text = r; if (framed && !r.Slice(out text)) { r.Offset = r.Buffer.Length; return true; } if (text.Buffer.Length > 0) { at = Align(at, 8) + Align(9L + text.Buffer.Length, 8); } if (!framed) { r.Offset = r.Buffer.Length; } return true; }
                 if (f.IsArray)
@@ -3936,12 +3974,19 @@ namespace Bench
                         {
                             Reader element = source;
                             if (f.KeyId == null && !a.Slice(out element)) { break; }
-                            if (!ExtentBody(element, f.Table, ref at, ref reason)) { return false; }
+                            if (!ExtentBody(element, f.Table, ref at, ref reason, targets)) { return false; }
                         }
                         else if (f.Kind == 15)
                         {
-                            if (f.KeyId != null) { if (!ExtentUnion(ref source, f, ref at, ref reason)) { return false; } }
-                            else if (!ExtentUnion(ref a, f, ref at, ref reason)) { return false; }
+                            if (f.KeyId != null) { if (!ExtentUnion(ref source, f, ref at, ref reason, targets)) { return false; } }
+                            else if (!ExtentUnion(ref a, f, ref at, ref reason, targets)) { return false; }
+                        }
+                        else if (f.Kind == 17)
+                        {
+                            Reader p = f.KeyId != null ? source : a;
+                            if (!p.Var(out ulong index)) { break; }
+                            if (f.KeyId == null) { a = p; }
+                            if (targets.Wrong(index, f)) { reason = "kind_mismatch"; return false; }
                         }
                         else { break; }
                     }
@@ -3952,15 +3997,20 @@ namespace Bench
                 {
                     Reader body = r;
                     if (framed && !r.Slice(out body)) { r.Offset = r.Buffer.Length; return true; }
-                    return ExtentBody(body, f.Table, ref at, ref reason);
+                    return ExtentBody(body, f.Table, ref at, ref reason, targets);
                 }
-                if (f.Kind == 15) { return ExtentUnion(ref r, f, ref at, ref reason); }
+                if (f.Kind == 15) { return ExtentUnion(ref r, f, ref at, ref reason, targets); }
+                if (f.Kind == 17)
+                {
+                    Reader p = r;
+                    if (p.Var(out ulong index) && targets.Wrong(index, f)) { reason = "kind_mismatch"; return false; }
+                }
                 // A value the skip cannot honour ENDS the record's scan, as the reference scan's
                 // does: the reader goes to its end rather than resuming at the bytes after it.
                 if (!framed || !r.Skip(f.Kind)) { r.Offset = r.Buffer.Length; }
                 return true;
             }
-            static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason)
+            static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason, ExtentTargets targets)
             {
                 // A frame that does not parse ENDS the record's scan, as the reference
                 // scan's does (internal/tablewire/extent.go): the reader goes to its
@@ -3976,7 +4026,7 @@ namespace Bench
                 if (tag == 0) { return true; }
                 TableFieldInfo arm = f.Arms.Arms[tag].Field;
                 if (arm == null) { return true; }
-                return ExtentField(ref body, arm, false, ref at, ref reason);
+                return ExtentField(ref body, arm, false, ref at, ref reason, targets);
             }
             // Locate the winning node table and validate its framing with no objects or
             // node list. The returned reader starts at the first record, after count.
@@ -4032,22 +4082,41 @@ namespace Bench
                 // and the two apart ones keep their names (docs/SPEC-TABLES.md §6.5).
                 if (whole != WireWhole) { reason = whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"; return -1; }
                 long extent = 0;
-                if (!ExtentBody(root, type, ref extent, ref reason)) { return -1; }
-                long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
-                if (!NodeFrames(root, out Reader payload, out int nodes)) { return size + 16; }
-                Reader scan = payload;
-                for (int i = 0; i < nodes; i++)
+                bool framed = NodeFrames(root, out Reader payload, out int nodes);
+                ulong[] targets = null;
+                try
                 {
-                    scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
-                    if ((type.BytesEdge && id == BytesTypeId) || (type.StringEdge && id == StringTypeId))
-                    { size += Align(8L + body.Buffer.Length + (id == StringTypeId ? 1 : 0), type.RegionAlign); continue; }
-                    TableTypeInfo candidate = type.PointerType(id);
-                    if (candidate == null) { continue; }
-                    extent = 0;
-                    if (!ExtentBody(body, candidate, ref extent, ref reason)) { return -1; }
-                    size += Align(Align(candidate.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
+                    ExtentTargets targetIds = default;
+                    if (framed)
+                    {
+                        targets = System.Buffers.ArrayPool<ulong>.Shared.Rent(nodes + 2);
+                        targets[0] = 0; targets[1] = type.Id;
+                        Reader map = payload;
+                        for (int i = 0; i < nodes; i++)
+                        {
+                            map.Ref(out _, out ulong id); map.Slice(out _);
+                            targets[i + 2] = id == BytesTypeId || id == StringTypeId || type.DeclaredType(id) != null ? id : 0;
+                        }
+                        targetIds.Ids = targets;
+                    }
+                    if (!ExtentBody(root, type, ref extent, ref reason, targetIds)) { return -1; }
+                    long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
+                    if (!framed) { return size + 16; }
+                    Reader scan = payload;
+                    for (int i = 0; i < nodes; i++)
+                    {
+                        scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
+                        if (id == BytesTypeId || id == StringTypeId)
+                        { size += Align(8L + body.Buffer.Length + (id == StringTypeId ? 1 : 0), type.RegionAlign); continue; }
+                        TableTypeInfo candidate = type.PointerType(id);
+                        if (candidate == null) { continue; }
+                        extent = 0;
+                        if (!ExtentBody(body, candidate, ref extent, ref reason, targetIds)) { return -1; }
+                        size += Align(Align(candidate.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
+                    }
+                    return size + (nodes + 1L) * 16;
                 }
-                return size + (nodes + 1L) * 16;
+                finally { if (targets != null) { System.Buffers.ArrayPool<ulong>.Shared.Return(targets); } }
             }
 
             struct MapKey
@@ -8350,6 +8419,7 @@ namespace Bench
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x85df369cdca746b3ul: return FixedTableTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -8399,6 +8469,7 @@ namespace Bench
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x85df369cdca746b3ul: return FixedTableTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -8436,6 +8507,7 @@ namespace Bench
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x85df369cdca746b3ul: return FixedTableTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -8475,6 +8547,7 @@ namespace Bench
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x85df369cdca746b3ul: return FixedTableTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -8512,6 +8585,7 @@ namespace Bench
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x85df369cdca746b3ul: return FixedTableTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -8549,6 +8623,7 @@ namespace Bench
                 info.RootElemSlots = 88;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x85df369cdca746b3ul: return FixedTableTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
