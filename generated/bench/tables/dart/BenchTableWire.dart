@@ -6121,6 +6121,37 @@ List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
   return null;
 }
 
+// _jsonName holds a SCHEMA-NAME STRING to its 255-byte cap (docs/SPEC-TABLES.md
+// §16.2): an object key naming a field, an enum variant name, a flags element,
+// a union arm key and an &node name, in every object and inside a skipped
+// value. The cap never reaches a map key or a string value.
+bool _jsonName(String name, TableTextReport r) {
+  if (utf8.encode(name).length > 255) {
+    r.refuse('length_over_bound');
+    return false;
+  }
+  return true;
+}
+
+// _jsonSkipNames walks a value the read skips and holds every object key in it
+// to the same 255-byte cap (§16.2): an unknown key's value is still an object
+// whose keys are schema names, however deep it sits.
+void _jsonSkipNames(dynamic val, TableTextReport r) {
+  final entries = _jsonEntries(val);
+  if (entries != null) {
+    for (final entry in entries) {
+      _jsonName(entry.key, r);
+      _jsonSkipNames(entry.value, r);
+    }
+    return;
+  }
+  if (val is List) {
+    for (final item in val) {
+      _jsonSkipNames(item, r);
+    }
+  }
+}
+
 // _jsonDecodeExact is JSON decoding that keeps every number's token
 // (docs/SPEC-TABLES.md §16.2): an integer token an int holds is an int, and
 // every other number is a _JNum.
@@ -6517,10 +6548,12 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   // key's repeat is caught by slot (§2.8: a repeated key is damage)
   Set<String>? unknownSeen;
   for (final entry in entries) {
+    if (!_jsonName(entry.key, r)) return out;
     final slot = slots[entry.key];
     if (slot == null) {
       if (!(unknownSeen ??= <String>{}).add(entry.key)) r.refuse('text_damaged');
       r.unknown++;
+      _jsonSkipNames(entry.value, r);
       continue;
     }
     if (!seen.add(slot)) r.refuse('text_damaged');
@@ -6679,6 +6712,7 @@ String tableWeaponName(int v) {
 
 TableWeapon tableWeaponFromName(dynamic val, TableTextReport r, [TableWeapon? def]) {
   if (val is! String) { r.refuse('kind_mismatch'); return def ?? TableWeapon.none; }
+  if (!_jsonName(val, r)) return def ?? TableWeapon.none;
   switch (val) {
     case "None": return TableWeapon.none;
     case "Fists": return TableWeapon.fists;
@@ -6722,6 +6756,7 @@ int _tableDamageFromJson(dynamic val, TableTextReport r, [int def = 0]) {
   if (val is! List) { r.refuse('kind_mismatch'); return def; }
   var bits = 0;
   for (final item in val) {
+    if (item is String && !_jsonName(item, r)) return def;
     switch (item) {
       case "Bleeding": if (bits & 1 != 0) { r.refuse('text_damaged'); return def; } bits |= 1;
       case "Burning": if (bits & 2 != 0) { r.refuse('text_damaged'); return def; } bits |= 2;
@@ -6779,6 +6814,7 @@ TableEvent _tableEventFromJson(dynamic val, TableTextReport r, _Share sh, [Table
   final v = TableEvent();
   if (entries.isEmpty) return v;
   if (entries.length != 1) throw const FormatException('union has two keys');
+  if (!_jsonName(entries.first.key, r)) return v;
   final item = entries.first.value;
   switch (entries.first.key) {
     case "hit":
@@ -6804,6 +6840,7 @@ TableEvent _tableEventFromJson(dynamic val, TableTextReport r, _Share sh, [Table
       }
     default:
       r.unknown++;
+      _jsonSkipNames(item, r);
   }
   return v;
 }
@@ -6990,6 +7027,7 @@ void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _S
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -7053,6 +7091,7 @@ void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _S
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
+        _jsonSkipNames(val, r);
     }
   }
 }
@@ -7093,6 +7132,7 @@ void tableStatFromJsonFields(TableStat v, dynamic obj, TableTextReport r, _Share
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -7108,6 +7148,7 @@ void tableStatFromJsonFields(TableStat v, dynamic obj, TableTextReport r, _Share
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
+        _jsonSkipNames(val, r);
     }
   }
 }
@@ -7160,6 +7201,7 @@ void tableHitEventFromJsonFields(TableHitEvent v, dynamic obj, TableTextReport r
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -7183,6 +7225,7 @@ void tableHitEventFromJsonFields(TableHitEvent v, dynamic obj, TableTextReport r
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
+        _jsonSkipNames(val, r);
     }
   }
 }
@@ -7223,6 +7266,7 @@ void tableChatEventFromJsonFields(TableChatEvent v, dynamic obj, TableTextReport
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -7238,6 +7282,7 @@ void tableChatEventFromJsonFields(TableChatEvent v, dynamic obj, TableTextReport
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
+        _jsonSkipNames(val, r);
     }
   }
 }
@@ -7278,6 +7323,7 @@ void tablePickupEventFromJsonFields(TablePickupEvent v, dynamic obj, TableTextRe
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -7293,6 +7339,7 @@ void tablePickupEventFromJsonFields(TablePickupEvent v, dynamic obj, TableTextRe
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
+        _jsonSkipNames(val, r);
     }
   }
 }
@@ -7531,6 +7578,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -7674,6 +7722,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
+        _jsonSkipNames(val, r);
     }
   }
 }
