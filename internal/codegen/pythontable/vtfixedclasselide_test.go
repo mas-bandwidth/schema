@@ -402,7 +402,7 @@ func TestPythonVtFixedClassElisionNegativeControl(t *testing.T) {
 		// the old equality elision: a table holding a fixed array of tables elides
 		{"equality_elision", "vtel/_schema/kind_table.py", "if len(body) <= 1:", "if value == descriptor.new_by_name(fd.target):", "vt_elide_fixed_array_rides"},
 		// a plain float judged by == elides -0.0 under a 0.0 default
-		{"neg_zero", "vtel/_schema/descriptor.py", "return _float32_bits(value) == _float32_bits(fd.default)", "return bool(value == fd.default)", "vt_elide_neg_zero"},
+		{"neg_zero", "vtel/_schema/descriptor.py", "return struct.pack(\"<f\", value) == struct.pack(\"<f\", fd.default)", "return bool(value == fd.default)", "vt_elide_neg_zero"},
 		// the ids an elided body interned are kept: two levels deep is red
 		{"two_deep", "vtel/_schema/kind_table.py", "for interned in ctx.ids[mark:]:\n                del ctx.refs[interned]\n            del ctx.ids[mark:]", "pass", "vt_elide_two_deep_inner_default"},
 		// a NaN is let through on write
@@ -410,9 +410,9 @@ func TestPythonVtFixedClassElisionNegativeControl(t *testing.T) {
 		// the range is held on the unrounded value
 		{"cr_round", "vtel/_schema/kind_float.py", "stored = _unpack(fd, _pack(fd, value))", "stored = value", "vt_elide_cr_round_write"},
 		// a deprecated variant reads as its ordinal
-		{"deprecated_read", "vtel/_schema/kind_enum.py", "if index + 1 in fd.retired:", "if False:", "vt_elide_deprecated_read"},
+		{"deprecated_read", "vtel/_schema/kind_enum.py", "if ordinal in fd.deprecated:", "if False:", "vt_elide_deprecated_read"},
 		// a deprecated variant is written
-		{"deprecated_write", "vtel/_schema/kind_enum.py", "if value in fd.retired:", "if False:", "vt_elide_deprecated_write"},
+		{"deprecated_write", "vtel/_schema/kind_enum.py", "if value in fd.deprecated:", "if False:", "vt_elide_deprecated_write"},
 		// a subclass is accepted
 		{"subclass", "vtel/_schema/save.py", "if target is None or type(current) is not target:\n                raise InvalidValue(where, f\"not a {field.target}\")", "if target is None or not isinstance(current, target):\n                raise InvalidValue(where, f\"not a {field.target}\")", "vt_elide_subclass"},
 		// equality by value lets -0.0 equal 0.0

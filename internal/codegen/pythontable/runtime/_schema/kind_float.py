@@ -49,6 +49,9 @@ class _Float:
             raise InvalidValue(path, f"{value} is outside [{fd.fmin}, {fd.fmax}]")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
+        return self.read_element(r, fd, ctx)
+
+    def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         value = _unpack(fd, r.take(_WIDTH[fd.codec]))
         if not math.isfinite(value):
             raise Refused("non_finite_float", f"{fd.name} is not a finite float")
@@ -62,9 +65,9 @@ class _Float:
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
-        self.write_value(w, fd, value, ctx)
+        self.write_element(w, fd, value, ctx)
 
-    def write_value(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+    def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         if fd.float_range and value == 0.0:
             value = 0.0
         w.raw(_pack(fd, value))

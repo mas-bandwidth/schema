@@ -6,8 +6,8 @@
 // The runtime lives under the generated package's _schema directory, one
 // module per field kind beside one dispatch table (runtime/_schema/kinds.py),
 // so a later card adds a kind module and one registration line rather than
-// editing the body walk. A field whose type is a packet type is refused by
-// name until the packet layer carries it.
+// editing the body walk. A field whose type is a packet type is carried by
+// value through the packet core's hosted classes (see Generate).
 package pythontable
 
 import (
@@ -34,6 +34,18 @@ var runtimeFS embed.FS
 // Generate returns the generated package's files for a unit that declares at
 // least one table. A table-free unit generates nothing here; the packet layer
 // owns its files.
+//
+// A table field, array element, union arm or map value whose type is a packet
+// type is carried by value on the form-1 table wire through the packet core's
+// own generated classes and their serialize-runtime codec (docs/PORT-PYTHON.md,
+// THE TABLE FRAME): the packet classes are emitted into the same per-file
+// module, the table runtime walks them as kind-13 bodies, and each one a table
+// reaches carries the table descriptor that names it; a map value of the type
+// rides as its map entry's value field.
+// Every packet type and packet union of the unit is emitted, reached by a
+// table or not, so nothing the unit declares is dropped. A packet type whose
+// own fields use a packet kind the packet wire does not carry yet is refused
+// by name, naming the kind and the packet card, never the whole unit silently.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
@@ -41,40 +53,35 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := python.CheckNames(u); err != nil {
 		return nil, err
 	}
-	if err := refusePacketValues(u); err != nil {
+	if err := refuseUncarriedPacketKinds(u); err != nil {
 		return nil, err
 	}
 	out := map[string][]byte{}
-	tablesByFile, unionsByFile := tableFiles(u)
-	bases := make([]string, 0, len(tablesByFile)+len(unionsByFile))
-	seenBase := map[string]bool{}
-	for base := range tablesByFile {
-		seenBase[base] = true
+	plans := filePlans(u)
+	for _, plan := range plans {
+		out[path.Join(u.Package, plan.base+".py")] = []byte(emitModule(u, plan))
 	}
-	for base := range unionsByFile {
-		seenBase[base] = true
-	}
-	filesByBase := map[string]*ir.File{}
-	for _, f := range u.Files {
-		filesByBase[f.Base] = f
-		if len(valueDecls(f)) > 0 {
-			seenBase[f.Base] = true
-		}
-	}
-	for base := range seenBase {
-		bases = append(bases, base)
-	}
-	sort.Strings(bases)
-	for _, base := range bases {
-		out[path.Join(u.Package, base+".py")] = []byte(emitModule(u, base, filesByBase[base], tablesByFile[base], unionsByFile[base]))
-	}
-	out[path.Join(u.Package, "__init__.py")] = []byte(packageInit(u, bases, filesByBase, tablesByFile, unionsByFile))
+	out[path.Join(u.Package, "__init__.py")] = []byte(packageInit(u, plans))
 	out[path.Join(u.Package, "py.typed")] = []byte{}
 	runtime, err := Runtime()
 	if err != nil {
 		return nil, err
 	}
 	for rel, data := range runtime {
+		out[path.Join(u.Package, rel)] = data
+	}
+	// The hosted packet classes carry the packet core's own codec, so the
+	// table package ships the packet runtime's serialize.py beside its table
+	// runtime. The table runtime's __init__ owns the errors and the shared
+	// value checks, so the packet __init__ is not emitted twice.
+	packetRuntime, err := python.Runtime()
+	if err != nil {
+		return nil, err
+	}
+	for rel, data := range packetRuntime {
+		if rel == path.Join(python.RuntimeDir, "__init__.py") {
+			continue
+		}
 		out[path.Join(u.Package, rel)] = data
 	}
 	return out, nil
@@ -98,87 +105,219 @@ func Runtime() (map[string][]byte, error) {
 	return out, err
 }
 
-// refusePacketValues refuses the first packet type the table closure reaches,
-// by name, until the packet layer lands (docs/PORT-PYTHON.md, THE CARD MAP:
-// P4). A reference is followed however it is spelled: a field, a pointer or
-// array element, a map entry, or a union arm.
-func refusePacketValues(u *ir.Unit) error {
+// closureUnions is the set of table-closure unions: every union a table
+// reaches through a field or an arm, transitively (ir.TableClosure names the
+// structs; a union is the other direction of the same walk).
+func closureUnions(u *ir.Unit) map[string]bool {
+	out := map[string]bool{}
 	seenStruct := map[string]bool{}
 	seenUnion := map[string]bool{}
-	var visitStruct func(name string) error
-	var visitUnion func(un *ir.Union) error
-	visitField := func(owner string, f *ir.Field) error {
-		if f == nil {
-			return nil
+	var walkStruct func(name string)
+	var walkUnion func(un *ir.Union)
+	walkUnion = func(un *ir.Union) {
+		if un == nil || seenUnion[un.Name] {
+			return
 		}
-		if f.MapEntry != nil {
-			if err := visitStruct(f.MapEntry.Name); err != nil {
-				return err
+		seenUnion[un.Name] = true
+		out[un.Name] = true
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := v.F.Type.Ref.(type) {
+			case *ir.Struct:
+				walkStruct(ref.Name)
+			case *ir.Union:
+				walkUnion(ref)
 			}
 		}
-		if f.Type.Kind != ir.TNamed {
-			return nil
-		}
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Struct:
-			if !ref.IsTable {
-				return fmt.Errorf("python: %s.%s names the packet type %s, and the Python target does not carry packet types yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)", owner, f.Name, ref.Name)
-			}
-			return visitStruct(ref.Name)
-		case *ir.Union:
-			return visitUnion(ref)
-		}
-		return nil
 	}
-	visitStruct = func(name string) error {
+	walkStruct = func(name string) {
 		if seenStruct[name] {
-			return nil
+			return
 		}
 		seenStruct[name] = true
 		st := closureMember(u, name)
 		if st == nil {
-			return nil
+			return
 		}
 		for _, f := range st.Fields {
-			if err := visitField(st.Name, f); err != nil {
-				return err
+			if f.IsMap() {
+				walkStruct(f.MapEntry.Name)
+				continue
+			}
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Struct:
+				walkStruct(ref.Name)
+			case *ir.Union:
+				walkUnion(ref)
 			}
 		}
-		return nil
 	}
-	visitUnion = func(un *ir.Union) error {
-		if seenUnion[un.Name] {
-			return nil
-		}
-		seenUnion[un.Name] = true
-		for _, v := range un.Variants {
-			if err := visitField(un.Name, v.F); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	names := make([]string, 0, len(ir.TableClosure(u)))
-	for name := range ir.TableClosure(u) {
+	names := make([]string, 0, len(u.Tables))
+	for name := range u.Tables {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if err := visitStruct(name); err != nil {
-			return err
+		walkStruct(name)
+	}
+	return out
+}
+
+// filePlan is one schema file's generated module: the closure's tables and
+// table-side unions it declares, and every packet type and packet union it
+// declares (hosted from the packet core), whether a table reaches it or not.
+// Only the ones a table closure reaches carry a table descriptor.
+type filePlan struct {
+	base         string
+	tables       []*ir.Struct
+	unions       []*ir.Union
+	packets      []*ir.Struct
+	packetUnions []*ir.Union
+}
+
+// filePlans groups everything one generated module holds by the schema file
+// that declares it.
+//
+// A packet type or packet union no table reaches is still the unit's
+// declaration: it is hosted exactly as the packet leg emits it for a
+// packet-only unit, so nothing the unit declares is dropped.
+func filePlans(u *ir.Unit) []*filePlan {
+	tablesByFile, unionsByFile := tableFiles(u)
+	byBase := map[string]*filePlan{}
+	get := func(base string) *filePlan {
+		plan := byBase[base]
+		if plan == nil {
+			plan = &filePlan{base: base}
+			byBase[base] = plan
+		}
+		return plan
+	}
+	for base, tables := range tablesByFile {
+		get(base).tables = tables
+	}
+	for base, unions := range unionsByFile {
+		get(base).unions = unions
+	}
+	for _, f := range u.Files {
+		if len(valueDecls(f)) > 0 {
+			// a file's constants, enums and flags sets are hosted and
+			// re-exported even when it declares no table or packet type
+			get(f.Base)
+		}
+		for _, d := range f.Decls {
+			switch d := d.(type) {
+			case *ir.Struct:
+				if !d.IsTable {
+					plan := get(f.Base)
+					plan.packets = append(plan.packets, d)
+				}
+			case *ir.Union:
+				plan := get(f.Base)
+				plan.packetUnions = append(plan.packetUnions, d)
+			}
 		}
 	}
-	unionNames := make([]string, 0, len(u.TableUnions))
-	for name := range u.TableUnions {
+	plans := make([]*filePlan, 0, len(byBase))
+	for _, plan := range byBase {
+		plans = append(plans, plan)
+	}
+	sort.Slice(plans, func(i, j int) bool { return plans[i].base < plans[j].base })
+	return plans
+}
+
+func fileFor(u *ir.Unit, base string) *ir.File {
+	for _, f := range u.Files {
+		if f.Base == base {
+			return f
+		}
+	}
+	return &ir.File{Base: base}
+}
+
+// refuseUncarriedPacketKinds refuses the first packet type or packet union the
+// unit declares, reached by a table or not, whose own fields use a packet kind
+// the packet wire does not carry yet (docs/PORT-PYTHON.md, THE TABLE FRAME).
+// Every one of them is hosted, so every one is held to the check. The refusal
+// names the type, the field and the kind, and the packet card that carries it.
+func refuseUncarriedPacketKinds(u *ir.Unit) error {
+	names := make([]string, 0, len(u.Structs))
+	for name := range u.Structs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		st := u.Structs[name]
+		if st == nil || st.IsTable {
+			continue
+		}
+		if field, kind, ok := packetBlockerStruct(st); ok {
+			return packetKindRefusal(st.Name, field, kind)
+		}
+	}
+	unionNames := make([]string, 0, len(u.Unions))
+	for name := range u.Unions {
 		unionNames = append(unionNames, name)
 	}
 	sort.Strings(unionNames)
 	for _, name := range unionNames {
-		if err := visitUnion(u.TableUnions[name]); err != nil {
-			return err
+		for _, v := range u.Unions[name].Variants {
+			if v.Void() {
+				continue
+			}
+			if python.FieldKind(v.F) == "" {
+				return packetKindRefusal(u.Unions[name].Name, v.Name, python.BlockingKind(v.F))
+			}
 		}
 	}
 	return nil
+}
+
+func packetKindRefusal(owner, field, kind string) error {
+	subject := owner
+	if field != "" {
+		subject += "." + field
+	}
+	return fmt.Errorf("python: %s uses the packet kind %s, which the Python packet wire does not carry yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)", subject, kind)
+}
+
+func packetBlockerStruct(st *ir.Struct) (field, kind string, ok bool) {
+	items := st.Items
+	if len(items) == 0 {
+		for _, f := range st.Fields {
+			items = append(items, &ir.FieldItem{F: f})
+		}
+	}
+	return packetBlockerItems(items)
+}
+
+func packetBlockerItems(items []ir.Item) (field, kind string, ok bool) {
+	for _, item := range items {
+		switch item := item.(type) {
+		case *ir.FieldItem:
+			if python.FieldKind(item.F) == "" {
+				return item.F.Name, python.BlockingKind(item.F), true
+			}
+		case *ir.Branch:
+			if f, k, found := packetBlockerItems(item.Then); found {
+				return f, k, true
+			}
+			if f, k, found := packetBlockerItems(item.Else); found {
+				return f, k, true
+			}
+		case *ir.ConstItem:
+			return "", "const", true
+		case *ir.ReservedItem:
+			return "", "reserved", true
+		case *ir.AlignItem:
+			return "", "align", true
+		}
+	}
+	return "", "", false
 }
 
 func closureMember(u *ir.Unit, name string) *ir.Struct {
@@ -202,12 +341,6 @@ func tableFiles(u *ir.Unit) (map[string][]*ir.Struct, map[string][]*ir.Union) {
 			tables[f.Base] = append(tables[f.Base], st)
 			seenTable[st.Name] = true
 		}
-		for _, d := range f.Decls {
-			if st, ok := d.(*ir.Struct); ok && ir.TableClosure(u)[st.Name] {
-				tables[f.Base] = append(tables[f.Base], st)
-				seenTable[st.Name] = true
-			}
-		}
 		for _, un := range f.TableUnions {
 			unions[f.Base] = append(unions[f.Base], un)
 			seenUnion[un.Name] = true
@@ -223,7 +356,7 @@ func tableFiles(u *ir.Unit) (map[string][]*ir.Struct, map[string][]*ir.Union) {
 		if seenTable[name] {
 			continue
 		}
-		if st := closureMember(u, name); st != nil {
+		if st := closureMember(u, name); st != nil && st.IsTable {
 			tableOrphans = append(tableOrphans, st)
 		}
 	}
@@ -255,23 +388,96 @@ func moduleBase(u *ir.Unit) string {
 	return strings.ToUpper(u.Package[:1]) + u.Package[1:] + "Tables"
 }
 
-func emitModule(u *ir.Unit, base string, file *ir.File, tables []*ir.Struct, unions []*ir.Union) string {
-	sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
-	sort.Slice(unions, func(i, j int) bool { return unions[i].Name < unions[j].Name })
+func emitModule(u *ir.Unit, plan *filePlan) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", base)
-	fmt.Fprintf(&b, "\"\"\"%s.schema: the generated table classes and their descriptors.\"\"\"\n\n", base)
+	fmt.Fprintf(&b, "# Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", plan.base)
+	fmt.Fprintf(&b, "\"\"\"%s.schema: the generated packet and table classes and their descriptors.\"\"\"\n\n", plan.base)
 	b.WriteString("from __future__ import annotations\n\n")
-	b.WriteString("from typing import ClassVar, Final, Self\n\n")
-	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
-	b.WriteString("from ._schema import _float32_bits_eq as _s_float32_bits_eq, _float64_bits_eq as _s_float64_bits_eq\n")
-	b.WriteString("from ._schema import kinds as _s_kinds\n")
-	b.WriteString("from ._schema.descriptor import ArmDesc, FieldDesc, TableDesc, UnionDesc, new_by_name, new_union_by_name, register, register_union\n")
-	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _skip, buffer_view, load_table\n")
-	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _validate as _validate_value, _check_root as _s_check_root, measure_table, save_table\n\n\n")
-	for _, d := range valueDecls(file) {
-		emitValueDecl(&b, d)
+
+	// Every packet-side declaration of the file is hosted, reached by a table
+	// or not: File.Decls holds no table and no table union, so the packet
+	// core emits each one exactly as it does for a packet-only unit.
+	host := python.NewHost(u, fileFor(u, plan.base))
+	host.Emit(func(d ir.Decl) bool {
+		st, ok := d.(*ir.Struct)
+		return !ok || !st.IsTable
+	})
+	imports := host.Imports()
+
+	typing := map[string]bool{"ClassVar": true, "Self": true}
+	for _, name := range imports.Typing {
+		typing[name] = true
 	}
+	fmt.Fprintf(&b, "from typing import %s\n\n", strings.Join(sortedSet(typing), ", "))
+	for _, base := range python.SortedSiblingBases(imports.Siblings) {
+		fmt.Fprintf(&b, "from . import %s as %s\n", base, imports.Siblings[base])
+	}
+	if len(imports.Siblings) > 0 {
+		b.WriteString("\n")
+	}
+	schema := map[string]string{
+		"InvalidValue": "InvalidValue",
+		"LoadReport":   "LoadReport",
+		"Refused":      "Refused",
+	}
+	for _, name := range imports.Schema {
+		// The packet core's shared value checks are private in the table
+		// runtime, whose public surface stays the names tablenames.Python
+		// registers; the hosted caller aliases them to the packet codec's
+		// spelling.
+		if local, ok := hostedAlias(name); ok {
+			schema[name] = local + " as " + name
+			continue
+		}
+		schema[name] = name
+	}
+	importsList := make([]string, 0, len(schema))
+	for _, name := range sortedSet2(schema) {
+		importsList = append(importsList, schema[name])
+	}
+	fmt.Fprintf(&b, "from ._schema import %s\n", strings.Join(importsList, ", "))
+	b.WriteString("from ._schema import _float32_bits_eq as _s_float32_bits_eq, _float64_bits_eq as _s_float64_bits_eq\n")
+	if len(imports.Serialize) > 0 {
+		fmt.Fprintf(&b, "from ._schema.serialize import %s\n", strings.Join(imports.Serialize, ", "))
+	}
+	b.WriteString("from ._schema import kinds as _s_kinds\n")
+	b.WriteString("from ._schema.descriptor import ArmDesc, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
+	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
+	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _validate as _validate_value, _check_root as _s_check_root, measure_table, save_table\n\n\n")
+
+	if body := host.Body(); body != "" {
+		b.WriteString(body)
+		b.WriteString("\n")
+	}
+
+	// The packet classes' own table descriptors and registrations come before
+	// the table classes, so a table descriptor whose default names a packet
+	// class meets it registered. Only a packet type or union a table reaches
+	// carries one: the rest is the packet core's alone.
+	closure := ir.TableClosure(u)
+	closureUn := closureUnions(u)
+	packets := append([]*ir.Struct(nil), plan.packets...)
+	sort.Slice(packets, func(i, j int) bool { return packets[i].Name < packets[j].Name })
+	for _, st := range packets {
+		if !closure[st.Name] {
+			continue
+		}
+		emitTableDescriptor(&b, u, st, true)
+	}
+	packetUnions := append([]*ir.Union(nil), plan.packetUnions...)
+	sort.Slice(packetUnions, func(i, j int) bool { return packetUnions[i].Name < packetUnions[j].Name })
+	for _, un := range packetUnions {
+		if !closureUn[un.Name] {
+			continue
+		}
+		emitUnionDescriptor(&b, un)
+		fmt.Fprintf(&b, "register_union(%s)\n\n\n", un.Name)
+	}
+
+	tables := append([]*ir.Struct(nil), plan.tables...)
+	sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
+	unions := append([]*ir.Union(nil), plan.unions...)
+	sort.Slice(unions, func(i, j int) bool { return unions[i].Name < unions[j].Name })
 	for _, st := range tables {
 		for _, f := range st.Fields {
 			if f.KeyEnum != "" {
@@ -286,6 +492,34 @@ func emitModule(u *ir.Unit, base string, file *ir.File, tables []*ir.Struct, uni
 		emitTable(&b, u, st)
 	}
 	return b.String()
+}
+
+// hostedAlias is the private spelling, in the table runtime, of a shared value
+// check the hosted packet codec calls by its packet-runtime name.
+func hostedAlias(name string) (string, bool) {
+	switch name {
+	case "validate_int", "validate_bool", "validate_float32", "validate_float64", "validate_compressed_float", "wire_input", "float32_bits_eq", "float64_bits_eq":
+		return "_" + name, true
+	}
+	return "", false
+}
+
+func sortedSet2(set map[string]string) []string {
+	out := make([]string, 0, len(set))
+	for name := range set {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sortedSet(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for name := range set {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
@@ -351,18 +585,37 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	}
 	b.WriteString("\n    def measure(self) -> int:\n")
 	b.WriteString("        return measure_table(self)\n\n\n")
+	emitTableDescriptor(b, u, st, false)
+	if scalarOnly(st) {
+		emitStraightLine(b, st)
+	}
+	b.WriteString("\n")
+}
+
+// emitTableDescriptor emits one generated class's table descriptor: the facts
+// a generic walk reads (docs/SPEC-TABLES.md §8.1). valueClass is a packet type
+// hosted from the packet core: it registers by name, because a packet type by
+// value never rides the node table's type ids, and its class is the packet
+// core's.
+func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueClass bool) {
+	name := st.Name
+	variable := false
+	if !valueClass {
+		variable = ir.VariableTables(u)[name]
+	}
 	fmt.Fprintf(b, "%s.descriptor = TableDesc(\n", name)
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(name))
 	fmt.Fprintf(b, "    type_id=%s,\n", hex64(ir.TableWireId(st.WireName())))
-	fmt.Fprintf(b, "    variable=%s,\n", pyBool(ir.VariableTables(u)[name]))
+	fmt.Fprintf(b, "    variable=%s,\n", pyBool(variable))
 	fmt.Fprintf(b, "    fields=(\n")
 	for ordinal, f := range st.Fields {
 		lo, hi := intRange(f)
+		codec := descriptorCodec(f, valueClass)
 		fmt.Fprintf(b, "        FieldDesc(\n")
 		fmt.Fprintf(b, "            name=%s,\n", strconv.Quote(f.Name))
 		fmt.Fprintf(b, "            field_id=%s,\n", hex64(ir.TableFieldWireId(f)))
 		fmt.Fprintf(b, "            kind=%d,\n", ir.TableWireFieldKind(f))
-		fmt.Fprintf(b, "            codec=%s,\n", strconv.Quote(codecOf(f)))
+		fmt.Fprintf(b, "            codec=%s,\n", strconv.Quote(codec))
 		fmt.Fprintf(b, "            ordinal=%d,\n", ordinal)
 		fmt.Fprintf(b, "            lo=%s,\n", lo)
 		fmt.Fprintf(b, "            hi=%s,\n", hi)
@@ -375,64 +628,55 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "            pointer=%s,\n", pyBool(f.Type.Pointer))
 		fmt.Fprintf(b, "            optional=%s,\n", pyBool(f.Type.Optional))
 		fmt.Fprintf(b, "            array=%s,\n", pyBool(f.Array != ir.ArrayNone))
-		fmt.Fprintf(b, "            bound=%d,\n", fieldBound(f))
+		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
-		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
-		fmt.Fprintf(b, "            elem=%s,\n", elemDescriptor(f))
-		fmt.Fprintf(b, "            variants=%s,\n", fieldVariants(f))
-		fmt.Fprintf(b, "            f32=%s,\n", pyBool(f.Type.Kind == ir.TFloat32))
-		fmt.Fprintf(b, "            fmin=%s,\n", floatBound(f, f.FMin))
-		fmt.Fprintf(b, "            fmax=%s,\n", floatBound(f, f.FMax))
-		fmt.Fprintf(b, "            float_range=%s,\n", pyBool(compressedFloat(f)))
-		fmt.Fprintf(b, "            array_kind=%s,\n", strconv.Quote(arrayKind(f)))
+		fmt.Fprintf(b, "            array_kind=%d,\n", int(f.Array))
 		fmt.Fprintf(b, "            array_min=%d,\n", f.ArrayMin)
-		fmt.Fprintf(b, "            retired=%s,\n", fieldRetired(f))
+		fmt.Fprintf(b, "            elem_kind=%d,\n", ir.TableWireElemKind(f))
+		elemCodec := ""
+		if codec == "array" {
+			elemCodec = arrayElemCodec(f)
+		}
+		fmt.Fprintf(b, "            elem_codec=%s,\n", strconv.Quote(elemCodec))
+		fmt.Fprintf(b, "            size=%d,\n", fieldSize(f))
+		fmt.Fprintf(b, "            variant_ids=%s,\n", variantIds(f))
+		if dep := deprecatedOrdinals(f); dep != "" {
+			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
+		}
+		fmt.Fprintf(b, "            default=%s,\n", defaultFor(f, codec))
+		if isFloat(f) {
+			fmt.Fprintf(b, "            f32=%s,\n", pyBool(f.Type.Kind == ir.TFloat32))
+			fmt.Fprintf(b, "            fmin=%s,\n", floatBound(f, f.FMin))
+			fmt.Fprintf(b, "            fmax=%s,\n", floatBound(f, f.FMax))
+			fmt.Fprintf(b, "            float_range=%s,\n", pyBool(compressedFloat(f)))
+		}
+		if codec == "keyed" {
+			emitKeyedDesc(b, f)
+		}
 		fmt.Fprintf(b, "        ),\n")
 	}
 	b.WriteString("    ),\n")
 	b.WriteString(")\n")
-	if scalarOnly(st) {
-		emitStraightLine(b, st)
+	if valueClass {
+		fmt.Fprintf(b, "_register_value(%s)\n\n\n", name)
+	} else {
+		fmt.Fprintf(b, "register(%s)\n", name)
 	}
-	fmt.Fprintf(b, "register(%s)\n\n\n", name)
 }
 
-// equalExpr compares one field by value, a float by its bits (so -0.0 and 0.0
-// differ, as their wire bytes do; docs/PORT-PYTHON.md, Classes) and a plain
-// array element by element so a float element is compared by bits too. It is
-// the packet surface's rule (internal/codegen/python, equalExpr).
-func equalExpr(a, b string, f *ir.Field) string {
-	if f.Type.Pointer || f.Type.Optional || f.IsMap() || f.KeyEnum != "" {
-		return a + " == " + b
-	}
-	if f.Array != ir.ArrayNone {
-		elem := *f
-		elem.Array = ir.ArrayNone
-		inner := equalExpr("_s_x", "_s_y", &elem)
-		if inner == "_s_x == _s_y" {
-			return a + " == " + b
-		}
-		return fmt.Sprintf("len(%s) == len(%s) and all(%s for _s_x, _s_y in zip(%s, %s))", a, b, inner, a, b)
-	}
-	switch f.Type.Kind {
-	case ir.TFloat32:
-		return fmt.Sprintf("_s_float32_bits_eq(%s, %s)", a, b)
-	case ir.TFloat64:
-		return fmt.Sprintf("_s_float64_bits_eq(%s, %s)", a, b)
-	}
-	return a + " == " + b
-}
-
-// scalarOnly reports whether every field is a bool or an integer the generated
-// straight-line shape can bind directly. A pointer, container or union keeps
-// the descriptor walk.
+// scalarOnly reports whether every field is a scalar the generated
+// straight-line shape can bind directly: a bool, an integer (a flags mask
+// included), a string, a bytes or an enum. A by-value table, a pointer, a
+// container or a union keeps the descriptor walk. The string, bytes and enum
+// kinds joined the set when the evolution kinds' shape bench measured the pair
+// faster (docs/PORT-PYTHON.md, THE TABLE FRAME, Bench).
 func scalarOnly(st *ir.Struct) bool {
 	for _, f := range st.Fields {
 		if f.Type.Pointer || f.Type.Optional || f.IsMap() || f.Array != ir.ArrayNone || f.KeyEnum != "" {
 			return false
 		}
 		switch codecOf(f) {
-		case "bool", "int":
+		case "bool", "int", "string", "bytes", "enum":
 		default:
 			return false
 		}
@@ -441,7 +685,7 @@ func scalarOnly(st *ir.Struct) bool {
 }
 
 // emitStraightLine emits the straight-line shape for a table whose fields are
-// all bools and integers (docs/PORT-PYTHON.md, THE TABLE FRAME; D1): the field
+// all scalars (scalarOnly; docs/PORT-PYTHON.md, THE TABLE FRAME; D1): the field
 // walk is unrolled with each field descriptor bound to a local, against the
 // runtime's descriptor walk over the same wire. The bench keeps the faster.
 func emitStraightLine(b *strings.Builder, st *ir.Struct) {
@@ -482,26 +726,24 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("            break\n")
 	b.WriteString("        field_id = reader.id_at(reference)\n")
 	b.WriteString("        kind = reader.byte()\n")
+	b.WriteString("        if field_id in seen:\n")
+	b.WriteString("            raise Refused(\"wire_damaged\", \"a body carries one field twice\")\n")
+	b.WriteString("        seen.add(field_id)\n")
 	for i, f := range st.Fields {
 		if i == 0 {
 			fmt.Fprintf(b, "        if field_id == fields[%d].field_id:\n", i)
 		} else {
 			fmt.Fprintf(b, "        elif field_id == fields[%d].field_id:\n", i)
 		}
-		b.WriteString("            if field_id in seen:\n")
-		b.WriteString("                raise Refused(\"wire_damaged\", \"a body carries one field twice\")\n")
-		b.WriteString("            seen.add(field_id)\n")
 		fmt.Fprintf(b, "            if kind != fields[%d].kind:\n", i)
 		fmt.Fprintf(b, "                raise Refused(\"kind_mismatch\", f\"{obj.descriptor.name}.{fields[%d].name} rides under kind {kind}, not {fields[%d].kind}\")\n", i, i)
 		fmt.Fprintf(b, "            obj.%s = _s_kinds._REGISTRY[fields[%d].codec].read(reader, fields[%d], ctx)\n", f.Name, i, i)
 	}
 	if len(st.Fields) > 0 {
 		b.WriteString("        else:\n")
-		b.WriteString("            _skip(reader, kind)\n")
-		b.WriteString("            ctx.unknown += 1\n")
+		b.WriteString("            _unknown_field(reader, field_id, kind, ctx, True)\n")
 	} else {
-		b.WriteString("        _skip(reader, kind)\n")
-		b.WriteString("        ctx.unknown += 1\n")
+		b.WriteString("        _unknown_field(reader, field_id, kind, ctx, True)\n")
 	}
 	b.WriteString("    if reader.pos != reader.end:\n")
 	b.WriteString("        raise Refused(\"wire_damaged\", \"bytes between the root terminator and the id table\")\n")
@@ -546,8 +788,8 @@ func emitKeyedClass(b *strings.Builder, st *ir.Struct, f *ir.Field) {
 	fmt.Fprintf(b, "        if key is None or key < 1 or key > %d:\n", count)
 	b.WriteString("            raise KeyError(key)\n")
 	b.WriteString("        return self._values[key - 1]\n\n")
-	b.WriteString("    def __setitem__(self, key: int, value: object) -> None:\n")
-	fmt.Fprintf(b, "        if key < 1 or key > %d:\n", count)
+	b.WriteString("    def __setitem__(self, key: int | None, value: object) -> None:\n")
+	fmt.Fprintf(b, "        if key is None or key < 1 or key > %d:\n", count)
 	b.WriteString("            raise KeyError(key)\n")
 	b.WriteString("        self._values[key - 1] = value\n\n")
 	b.WriteString("    def __eq__(self, other: object) -> bool:\n")
@@ -607,6 +849,14 @@ func emitUnion(b *strings.Builder, un *ir.Union) {
 		}
 	}
 	fmt.Fprintf(b, "        return f\"%s(%s)\"\n\n", un.Name, strings.Join(reprParts, ", "))
+	emitUnionDescriptor(b, un)
+	fmt.Fprintf(b, "register_union(%s)\n\n\n", un.Name)
+}
+
+// emitUnionDescriptor emits one generated union's descriptor: its arms in
+// declaration order (docs/SPEC-TABLES.md §8.1). It is shared by the table-side
+// union class and the packet union the packet core hosts.
+func emitUnionDescriptor(b *strings.Builder, un *ir.Union) {
 	fmt.Fprintf(b, "%s.descriptor = UnionDesc(\n", un.Name)
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(un.Name))
 	b.WriteString("    arms=(\n")
@@ -615,7 +865,7 @@ func emitUnion(b *strings.Builder, un *ir.Union) {
 		if v.WasName != "" {
 			wire = v.WasName
 		}
-		kind := 0
+		kind := ir.TableKindNoPayload
 		target := ""
 		pointer := false
 		if v.F != nil {
@@ -633,54 +883,56 @@ func emitUnion(b *strings.Builder, un *ir.Union) {
 	}
 	b.WriteString("    ),\n")
 	b.WriteString(")\n")
-	fmt.Fprintf(b, "register_union(%s)\n\n\n", un.Name)
 }
 
-func packageInit(u *ir.Unit, bases []string, filesByBase map[string]*ir.File, byFile map[string][]*ir.Struct, unionsByFile map[string][]*ir.Union) string {
+func packageInit(u *ir.Unit, plans []*filePlan) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Code generated by the schema compiler from the unit %s. DO NOT EDIT.\n", u.Package)
 	fmt.Fprintf(&b, "\"\"\"The schema unit %s.\"\"\"\n\n", u.Package)
 	b.WriteString("from typing import Final\n\n")
 	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
-	b.WriteString("from ._schema import _float32_bits_eq as _s_float32_bits_eq, _float64_bits_eq as _s_float64_bits_eq\n")
 	names := []string{"BUILD_VERSION", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
-	for _, base := range bases {
-		fmt.Fprintf(&b, "from . import %s\n", base)
-		names = append(names, base)
-		tables := append([]*ir.Struct(nil), byFile[base]...)
-		sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
-		if len(tables) > 0 {
-			classes := make([]string, 0, len(tables))
-			for _, st := range tables {
-				classes = append(classes, st.Name)
-				names = append(names, st.Name)
-				for _, f := range st.Fields {
-					if f.KeyEnum != "" {
-						keyed := keyedClassName(st.Name, f)
-						classes = append(classes, keyed)
-						names = append(names, keyed)
-					}
+	for _, plan := range plans {
+		fmt.Fprintf(&b, "from . import %s\n", plan.base)
+		names = append(names, plan.base)
+		classes := make([]string, 0, len(plan.tables)+len(plan.packets))
+		for _, st := range append(append([]*ir.Struct(nil), plan.tables...), plan.packets...) {
+			classes = append(classes, st.Name)
+			names = append(names, st.Name)
+			for _, f := range st.Fields {
+				if f.KeyEnum != "" {
+					keyed := keyedClassName(st.Name, f)
+					classes = append(classes, keyed)
+					names = append(names, keyed)
 				}
 			}
-			fmt.Fprintf(&b, "from .%s import %s\n", base, strings.Join(classes, ", "))
 		}
-		if len(unionsByFile[base]) > 0 {
-			unions := append([]*ir.Union(nil), unionsByFile[base]...)
-			sort.Slice(unions, func(i, j int) bool { return unions[i].Name < unions[j].Name })
-			classes := make([]string, 0, len(unions))
-			for _, un := range unions {
-				classes = append(classes, un.Name)
-				names = append(names, un.Name)
-			}
-			fmt.Fprintf(&b, "from .%s import %s\n", base, strings.Join(classes, ", "))
+		if len(classes) > 0 {
+			sort.Strings(classes)
+			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(classes, ", "))
 		}
-		if decls := valueDecls(filesByBase[base]); len(decls) > 0 {
+		unions := make([]string, 0, len(plan.unions)+len(plan.packetUnions))
+		for _, un := range plan.unions {
+			unions = append(unions, un.Name)
+			names = append(names, un.Name)
+		}
+		for _, un := range plan.packetUnions {
+			unions = append(unions, un.Name, un.Name+"Type")
+			names = append(names, un.Name, un.Name+"Type")
+		}
+		if len(unions) > 0 {
+			sort.Strings(unions)
+			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(unions, ", "))
+		}
+		// the file's constants, enums and flags sets, which the packet host
+		// emits into the module, ride beside its classes
+		if decls := valueDecls(fileFor(u, plan.base)); len(decls) > 0 {
 			values := make([]string, 0, len(decls))
 			for _, d := range decls {
 				values = append(values, valueDeclName(d))
 				names = append(names, valueDeclName(d))
 			}
-			fmt.Fprintf(&b, "from .%s import %s\n", base, strings.Join(values, ", "))
+			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(values, ", "))
 		}
 	}
 	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n", u.ProtocolId)
@@ -695,12 +947,87 @@ func packageInit(u *ir.Unit, bases []string, filesByBase map[string]*ir.File, by
 	return b.String()
 }
 
+// emitKeyedDesc emits an enum-keyed array's element descriptor and its key
+// variants' wire ids in slot order (docs/SPEC-TABLES.md §2.4, §3.2): slot i
+// holds the variant whose value is i + 1, and a slot past the named variants
+// carries 0, a key no variant names, which a write refuses.
+func emitKeyedDesc(b *strings.Builder, f *ir.Field) {
+	codec := keyedElemCodec(f)
+	lo, hi := intRange(f)
+	fmt.Fprintf(b, "            elem=FieldDesc(\n")
+	fmt.Fprintf(b, "                name=%s,\n", strconv.Quote(f.Name))
+	fmt.Fprintf(b, "                field_id=0,\n")
+	fmt.Fprintf(b, "                kind=%d,\n", ir.TableWireElemKind(f))
+	fmt.Fprintf(b, "                codec=%s,\n", strconv.Quote(codec))
+	fmt.Fprintf(b, "                lo=%s,\n", lo)
+	fmt.Fprintf(b, "                hi=%s,\n", hi)
+	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
+	fmt.Fprintf(b, "                default=%s,\n", defaultFor(f, codec))
+	fmt.Fprintf(b, "            ),\n")
+	keys := make([]string, 0, f.ArrayBound)
+	for i := 0; i < int(f.ArrayBound); i++ {
+		id := uint64(0)
+		if i < len(f.KeyEnumRef.Variants) {
+			id = ir.TableWireId(f.KeyEnumRef.VariantWireName(i))
+		}
+		keys = append(keys, hex64(id))
+	}
+	if len(keys) == 1 {
+		fmt.Fprintf(b, "            keys=(%s,),\n", keys[0])
+	} else {
+		fmt.Fprintf(b, "            keys=(%s),\n", strings.Join(keys, ", "))
+	}
+}
+
+// keyedElemCodec is the codec of an enum-keyed array's element, or "" for an
+// element the keyed kind does not carry yet: bool, the integer and
+// fixed-point kinds, and tables by value.
+func keyedElemCodec(f *ir.Field) string {
+	switch f.Type.Kind {
+	case ir.TBool:
+		return "bool"
+	case ir.TInt, ir.TFixed:
+		return "int"
+	case ir.TNamed:
+		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
+			return "table"
+		}
+	}
+	return ""
+}
+
 func codecOf(f *ir.Field) string {
-	if f.Type.Pointer {
-		if f.Array != ir.ArrayNone || f.Type.Blob() {
+	if f.KeyEnum != "" && f.KeyEnumRef != nil && !f.Type.Pointer && !f.Type.Optional && !f.IsMap() && keyedElemCodec(f) != "" {
+		return "keyed"
+	}
+	if f.Array != ir.ArrayNone && !f.IsMap() && f.KeyEnum == "" && !f.Type.Optional {
+		// An unbounded array carries every element kind elementCodecOf names.
+		// A fixed or counted array carries a declared type by value: a
+		// kind-14 body of kind-13 elements, the nested body the field form
+		// rides (a packet type by value in an array, docs/PORT-PYTHON.md).
+		element := arrayElemCodec(f)
+		if element == "unsupported" {
 			return "unsupported"
 		}
-		if _, ok := f.Type.Ref.(*ir.Struct); ok {
+		if f.Array == ir.ArrayList || element == "table" {
+			return "array"
+		}
+		// a fixed or counted array of a fixed-class scalar: the same kind-14
+		// body, each element through its own kind module
+		switch element {
+		case "bool", "int", "float32", "float64", "string", "enum":
+			return "array"
+		}
+		return "unsupported"
+	}
+	if f.Type.Pointer {
+		if f.Type.Blob() {
+			if f.Type.Kind == ir.TString {
+				return "string_blob"
+			}
+			return "bytes_blob"
+		}
+		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
 			return "pointer"
 		}
 		return "unsupported"
@@ -711,25 +1038,7 @@ func codecOf(f *ir.Field) string {
 		}
 		return "map"
 	}
-	if f.KeyEnum != "" || f.Type.Optional || f.IsTextList() {
-		return "unsupported"
-	}
-	if f.Array != ir.ArrayNone {
-		if f.Array == ir.ArrayList {
-			return "unsupported"
-		}
-		switch scalarCodec(f) {
-		case "bool", "int", "float32", "float64", "string", "enum", "table":
-			return "array"
-		}
-		return "unsupported"
-	}
-	return scalarCodec(f)
-}
-
-// scalarCodec names the codec of one value, without the array wrapper.
-func scalarCodec(f *ir.Field) string {
-	if f.Type.Pointer {
+	if f.KeyEnum != "" || f.Type.Optional || f.Array != ir.ArrayNone {
 		return "unsupported"
 	}
 	switch f.Type.Kind {
@@ -746,30 +1055,86 @@ func scalarCodec(f *ir.Field) string {
 	case ir.TBytes:
 		return "bytes"
 	case ir.TNamed:
-		switch ref := f.Type.Ref.(type) {
+		switch f.Type.Ref.(type) {
+		case *ir.Struct:
+			// a table or a packet type by value: both ride a kind-13 body
+			return "table"
+		case *ir.Union:
+			return "union"
 		case *ir.Enum:
 			return "enum"
 		case *ir.Flags:
+			// a flags mask rides as a u64 and holds an int; its declared
+			// default is the mask the declaration names.
 			return "int"
-		case *ir.Struct:
-			if ref.IsTable {
-				return "table"
-			}
 		}
 	}
 	return "unsupported"
 }
 
-// arrayKind is the descriptor's array class: "fixed" for [N]T, "counted" for
-// [A..N]T and [..N]T, and "" on a field that is not an array.
-func arrayKind(f *ir.Field) string {
-	switch f.Array {
-	case ir.ArrayFixed:
-		return "fixed"
-	case ir.ArrayCounted:
-		return "counted"
+// elementCodecOf is the codec one array element rides through. An element is an
+// array element and not a field, so a construct an element spelling does not
+// admit is never reached here; a []*T element is the pointer-array layer's and
+// stays unsupported until that card lands.
+func elementCodecOf(f *ir.Field) string {
+	if f.Type.Pointer {
+		return "unsupported"
 	}
-	return ""
+	switch f.Type.Kind {
+	case ir.TBool:
+		return "bool"
+	case ir.TInt, ir.TFixed, ir.TBits:
+		return "int"
+	case ir.TNamed:
+		if _, ok := f.Type.Ref.(*ir.Struct); ok {
+			// a table or a packet type by value: both ride a kind-13 body
+			return "table"
+		}
+	}
+	return "unsupported"
+}
+
+// arrayElemCodec is the codec an array field's element rides through: an
+// unbounded array's is elementCodecOf's, and a fixed [N]T or counted [..N]T
+// array also carries the fixed class's floats, strings, enums and flags masks.
+func arrayElemCodec(f *ir.Field) string {
+	element := elementCodecOf(f)
+	if f.Array == ir.ArrayList || element != "unsupported" || f.Type.Pointer {
+		return element
+	}
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
+	case ir.TString:
+		return "string"
+	case ir.TNamed:
+		switch f.Type.Ref.(type) {
+		case *ir.Enum:
+			return "enum"
+		case *ir.Flags:
+			return "int"
+		}
+	}
+	return "unsupported"
+}
+
+// descriptorCodec is the codec a field's descriptor names. A packet type by
+// value is the packet-types card's construct: its float fields stay refused by
+// name in the table runtime (kind_unsupported.py) until that card carries them,
+// so only a table's own fields ride the float kinds.
+func descriptorCodec(f *ir.Field, valueClass bool) string {
+	codec := codecOf(f)
+	if valueClass && isFloat(f) && codec != "unsupported" {
+		return "unsupported"
+	}
+	return codec
+}
+
+// isFloat reports a float32 or float64 field, or an array of them.
+func isFloat(f *ir.Field) bool {
+	return f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64
 }
 
 // compressedFloat reports a float32 with a declared min, max and resolution.
@@ -785,103 +1150,38 @@ func floatBound(f *ir.Field, v float64) string {
 	return pyFloatLiteral(v)
 }
 
-// fieldVariants is a scalar enum's (name, wire id) pairs, and () otherwise.
-func fieldVariants(f *ir.Field) string {
-	if f.Array != ir.ArrayNone || f.Type.Kind != ir.TNamed {
-		return "()"
-	}
-	if ref, ok := f.Type.Ref.(*ir.Enum); ok {
-		return enumVariants(ref)
-	}
-	return "()"
-}
-
-// fieldRetired is a scalar enum's ordinals marked `| deprecated`
-// (docs/SPEC-TABLES.md §2.15), and () otherwise.
-func fieldRetired(f *ir.Field) string {
-	if f.Array != ir.ArrayNone || f.Type.Kind != ir.TNamed {
-		return "()"
-	}
-	ref, ok := f.Type.Ref.(*ir.Enum)
-	if !ok {
-		return "()"
-	}
-	var parts []string
-	for i, retired := range ref.VariantDeprecated {
-		if retired {
-			parts = append(parts, strconv.Itoa(i+1))
-		}
-	}
-	switch len(parts) {
-	case 0:
-		return "()"
-	case 1:
-		return "(" + parts[0] + ",)"
-	}
-	return "(" + strings.Join(parts, ", ") + ")"
-}
-
-func enumVariants(ref *ir.Enum) string {
-	parts := make([]string, 0, len(ref.Variants))
-	for i := range ref.Variants {
-		parts = append(parts, fmt.Sprintf("(%s, %s)", strconv.Quote(ref.Variants[i]), hex64(ir.TableWireId(ref.VariantWireName(i)))))
-	}
-	if len(parts) == 1 {
-		return "(" + parts[0] + ",)"
-	}
-	return "(" + strings.Join(parts, ", ") + ")"
-}
-
-// elemDescriptor is an array field's element descriptor, and None on every
-// other field: the same facts a scalar field carries, at the element's zero.
-func elemDescriptor(f *ir.Field) string {
-	if f.Array == ir.ArrayNone || codecOf(f) != "array" {
-		return "None"
-	}
-	e := *f
-	e.Array = ir.ArrayNone
-	e.ArrayBound = 0
-	e.ArrayMin = 0
-	e.KeyEnum = ""
-	e.KeyEnumRef = nil
-	e.Type.Optional = false
-	lo, hi := intRange(&e)
-	// A table element is born by kind_array (a fresh object per slot), so its
-	// descriptor names no default object: one built at import would need its
-	// class registered first, and modules register in name order.
-	elemDefault := zeroValue(&e)
-	if scalarCodec(&e) == "table" {
-		elemDefault = "None"
-	}
-	return fmt.Sprintf("FieldDesc(name=%s, field_id=0, kind=%d, codec=%s, lo=%s, hi=%s, target=%s, bound=%d, default=%s, variants=%s, f32=%s, fmin=%s, fmax=%s, float_range=%s, retired=%s)",
-		strconv.Quote(e.Name), ir.TableWireElemKind(f), strconv.Quote(scalarCodec(&e)), lo, hi,
-		strconv.Quote(targetName(&e)), elemBound(&e), elemDefault, fieldVariants(&e),
-		pyBool(e.Type.Kind == ir.TFloat32), floatBound(&e, e.FMin), floatBound(&e, e.FMax), pyBool(compressedFloat(&e)),
-		fieldRetired(&e))
-}
-
-func elemBound(f *ir.Field) int64 {
-	if f.Type.Kind == ir.TString {
-		return f.Type.Size
-	}
-	return 0
-}
-
-// fieldBound is a string's or byte buffer's capacity, an array's declared
-// extent, and 0 on every other field.
-func fieldBound(f *ir.Field) int64 {
-	if f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
-		return f.Type.Size
-	}
-	return f.ArrayBound
-}
-
 func pyFloatLiteral(v float64) string {
 	s := strconv.FormatFloat(v, 'g', -1, 64)
 	if !strings.ContainsAny(s, ".eE") {
 		s += ".0"
 	}
 	return s
+}
+
+// equalExpr compares one field by value, a float by its bits (so -0.0 and 0.0
+// differ, as their wire bytes do; docs/PORT-PYTHON.md, Classes) and a plain
+// array element by element so a float element is compared by bits too. It is
+// the packet surface's rule (internal/codegen/python, equalExpr).
+func equalExpr(a, b string, f *ir.Field) string {
+	if f.Type.Pointer || f.Type.Optional || f.IsMap() || f.KeyEnum != "" {
+		return a + " == " + b
+	}
+	if f.Array != ir.ArrayNone {
+		elem := *f
+		elem.Array = ir.ArrayNone
+		inner := equalExpr("_s_x", "_s_y", &elem)
+		if inner == "_s_x == _s_y" {
+			return a + " == " + b
+		}
+		return fmt.Sprintf("len(%s) == len(%s) and all(%s for _s_x, _s_y in zip(%s, %s))", a, b, inner, a, b)
+	}
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		return fmt.Sprintf("_s_float32_bits_eq(%s, %s)", a, b)
+	case ir.TFloat64:
+		return fmt.Sprintf("_s_float64_bits_eq(%s, %s)", a, b)
+	}
+	return a + " == " + b
 }
 
 func targetName(f *ir.Field) string {
@@ -898,7 +1198,16 @@ func targetName(f *ir.Field) string {
 }
 
 func pythonType(st *ir.Struct, f *ir.Field) string {
-	if f.Type.Pointer || f.Type.Optional {
+	if f.Type.Pointer {
+		if f.Type.Blob() {
+			if f.Type.Kind == ir.TString {
+				return "str | None"
+			}
+			return "bytes | bytearray | memoryview | None"
+		}
+		return "object | None"
+	}
+	if f.Type.Optional {
 		return "object | None"
 	}
 	if f.IsMap() {
@@ -966,112 +1275,155 @@ func defaultExpr(owner string, f *ir.Field) string {
 }
 
 // elementDefault is one array element at its own zero value: an element
-// carries no container shape and no specified default (SPEC §4.6).
+// carries no container shape of the field that holds it.
 func elementDefault(owner string, f *ir.Field) string {
 	if f.Type.Pointer || f.Type.Optional {
 		return "None"
 	}
-	return zeroValue(f)
+	return valueDefault(f)
 }
 
-// valueDefault is a field's declared default, or its zero value (SPEC §5).
 func valueDefault(f *ir.Field) string {
-	if !f.HasDefault {
-		return zeroValue(f)
-	}
 	switch f.Type.Kind {
 	case ir.TBool:
-		return pyBool(f.DefBool)
+		return pyBool(f.HasDefault && f.DefBool)
 	case ir.TInt, ir.TFixed, ir.TBits:
-		if f.DefInt != nil {
+		if f.HasDefault && f.DefInt != nil {
 			return f.DefInt.String()
 		}
 		return "0"
-	case ir.TFloat32:
-		return pyFloatLiteral(float64(float32(f.DefFloat)))
-	case ir.TFloat64:
-		return pyFloatLiteral(f.DefFloat)
+	case ir.TFloat32, ir.TFloat64:
+		return floatDefault(f)
 	case ir.TString:
 		return strconv.Quote(string(f.DefBytes))
 	case ir.TBytes:
 		return "b" + goBytesLiteral(f.DefBytes)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
-		case *ir.Enum:
-			return enumDefaultValue(f, ref)
-		case *ir.Flags:
-			if f.DefInt != nil {
-				return f.DefInt.String()
-			}
-			return "0"
 		case *ir.Struct:
+			// a table or a packet type by value is its generated class
 			return fmt.Sprintf("new_by_name(%q)", ref.Name)
 		case *ir.Union:
 			return fmt.Sprintf("new_union_by_name(%q)", ref.Name)
-		}
-	}
-	return zeroValue(f)
-}
-
-// zeroValue is the SPEC §5 zero of a field's value, ignoring a specified
-// default: what an array element is born with.
-func zeroValue(f *ir.Field) string {
-	if f.Type.Pointer || f.Type.Optional {
-		return "None"
-	}
-	if f.IsMap() {
-		return "{}"
-	}
-	switch f.Type.Kind {
-	case ir.TBool:
-		return "False"
-	case ir.TInt, ir.TFixed, ir.TBits:
-		return "0"
-	case ir.TFloat32, ir.TFloat64:
-		return "0.0"
-	case ir.TString:
-		return "\"\""
-	case ir.TBytes:
-		return "b\"\""
-	case ir.TNamed:
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Struct:
-			if ref.IsTable {
-				return fmt.Sprintf("new_by_name(%q)", ref.Name)
+		case *ir.Enum:
+			return strconv.FormatInt(enumDefaultValue(f), 10)
+		case *ir.Flags:
+			if f.HasDefault && f.DefInt != nil {
+				return f.DefInt.String()
 			}
 			return "0"
-		case *ir.Union:
-			return fmt.Sprintf("new_union_by_name(%q)", ref.Name)
 		}
 		return "0"
 	}
 	return "None"
 }
 
-// enumDefaultValue is a defaulted variant's ordinal; the implicit None is 0.
-func enumDefaultValue(f *ir.Field, ref *ir.Enum) string {
-	if f.DefVariant == "" || f.DefVariant == "None" {
-		return "0"
+// enumDefaultValue is the ordinal a fresh enum field carries (SPEC §4.2): the
+// defaulted variant's number, or the implicit None at zero.
+func enumDefaultValue(f *ir.Field) int64 {
+	ref, ok := f.Type.Ref.(*ir.Enum)
+	if !ok || !f.HasDefault || f.DefVariant == "" || f.DefVariant == "None" {
+		return 0
 	}
 	for i, name := range ref.Variants {
 		if name == f.DefVariant {
-			return strconv.Itoa(i + 1)
+			return int64(i + 1)
 		}
 	}
-	return "0"
+	return 0
+}
+
+// variantIds is an enum field's wire ids by ordinal: entry k-1 is the hash of
+// variant k's wire name, so a variant renamed under `was` keeps its id.
+func variantIds(f *ir.Field) string {
+	ref, ok := f.Type.Ref.(*ir.Enum)
+	if !ok {
+		return "()"
+	}
+	ids := make([]string, 0, len(ref.Variants))
+	for i := range ref.Variants {
+		ids = append(ids, hex64(ir.TableWireId(ref.VariantWireName(i))))
+	}
+	if len(ids) == 1 {
+		return "(" + ids[0] + ",)"
+	}
+	return "(" + strings.Join(ids, ", ") + ")"
+}
+
+// deprecatedOrdinals is an enum field's deprecated variants by ordinal, as a
+// Python tuple, or "" when the enum deprecates none (docs/SPEC-TABLES.md
+// §2.15): a read of one yields the field's declared default, and a write of one
+// is refused.
+func deprecatedOrdinals(f *ir.Field) string {
+	ref, ok := f.Type.Ref.(*ir.Enum)
+	if !ok {
+		return ""
+	}
+	var ords []string
+	for i := range ref.Variants {
+		if i < len(ref.VariantTags) && slices.Contains(ref.VariantTags[i], "deprecated") {
+			ords = append(ords, strconv.Itoa(i+1))
+		}
+	}
+	switch len(ords) {
+	case 0:
+		return ""
+	case 1:
+		return "(" + ords[0] + ",)"
+	}
+	return "(" + strings.Join(ords, ", ") + ")"
+}
+
+// fieldSize is a string or bytes field's declared byte bound, and 0 for every
+// field that declares none or is not a byte buffer.
+func fieldSize(f *ir.Field) int64 {
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes:
+		return f.Type.Size
+	}
+	return 0
 }
 
 func descriptorDefault(f *ir.Field) string {
-	if codecOf(f) == "map" {
+	return defaultFor(f, codecOf(f))
+}
+
+// defaultFor is the descriptor default of a field, or of a container's
+// element, carried under codec.
+func defaultFor(f *ir.Field, codec string) string {
+	switch codec {
+	case "bool":
+		return pyBool(f.HasDefault && f.DefBool)
+	case "int":
+		if f.HasDefault && f.DefInt != nil {
+			return f.DefInt.String()
+		}
+		return "0"
+	case "string":
+		return strconv.Quote(string(f.DefBytes))
+	case "bytes":
+		return "b" + goBytesLiteral(f.DefBytes)
+	case "map":
 		return "{}"
+	case "enum":
+		return strconv.FormatInt(enumDefaultValue(f), 10)
+	case "float32", "float64":
+		return floatDefault(f)
 	}
-	if f.Type.Pointer || f.Type.Optional || f.IsMap() || f.Array != ir.ArrayNone {
-		return "None"
+	return "None"
+}
+
+// floatDefault is a float field's declared default as a Python float literal:
+// a float32's is the float32 value the wire carries, so the elision compare
+// meets the bits a writer stores.
+func floatDefault(f *ir.Field) string {
+	if !f.HasDefault {
+		return "0.0"
 	}
-	if codecOf(f) == "table" {
-		return "None"
+	if f.Type.Kind == ir.TFloat32 {
+		return pyFloatLiteral(float64(float32(f.DefFloat)))
 	}
-	return valueDefault(f)
+	return pyFloatLiteral(f.DefFloat)
 }
 
 func intRange(f *ir.Field) (lo, hi string) {
@@ -1087,8 +1439,13 @@ func intRange(f *ir.Field) (lo, hi string) {
 	case ir.TBits:
 		return "0", new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1)).String()
 	case ir.TNamed:
-		if ref, ok := f.Type.Ref.(*ir.Enum); ok {
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			// the value is the variant's ordinal, 0 for the implicit None
 			return "0", strconv.FormatInt(ref.Max, 10)
+		case *ir.Flags:
+			// a file carries a mask whole, so its width is the u64's own
+			return "0", new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1)).String()
 		}
 	}
 	return widthRange(f.Type.Width, f.Type.Signed)

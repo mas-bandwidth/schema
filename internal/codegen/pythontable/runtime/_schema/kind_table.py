@@ -27,6 +27,9 @@ class _Table:
             raise InvalidValue(path, f"not a {fd.target}")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
+        return self.read_element(r, fd, ctx)
+
+    def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         from .load import read_body
 
         length = r.varint()
@@ -38,14 +41,17 @@ class _Table:
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         from .save import write_body
 
+        # The field's id is numbered before its body's, so the id table is in
+        # the pre-order the Go engine writes.
+        #
         # AN ALL-DEFAULT NESTED TABLE ELIDES BY ITS BODY, as the engine
         # elides it (internal/tablewire/encode.go, kind 13; SPEC-TABLES §3):
-        # the field's id is interned first, the body is built, and when the
-        # body is its terminator alone the field is dropped and every id it
-        # interned is undone, so an elided field costs nothing in the id
-        # table either. Each field inside decided its own elision against its
-        # DECLARED default (floats by bit pattern, compressed floats by
-        # value), so the body, not an equality, is the answer.
+        # the body is built, and when it is its terminator alone the field is
+        # dropped and every id it interned is undone, so an elided field costs
+        # nothing in the id table either. Each field inside decided its own
+        # elision against its DECLARED default (floats by bit pattern,
+        # compressed floats by value), so the body, not an equality, is the
+        # answer.
         mark = len(ctx.ids)
         reference = ctx.idref(fd.field_id)
         body = bytearray()
@@ -60,7 +66,7 @@ class _Table:
         w.varint(len(body))
         w.raw(body)
 
-    def write_value(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+    def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         from .save import write_body
 
         body = bytearray()

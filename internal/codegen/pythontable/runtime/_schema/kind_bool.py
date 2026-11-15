@@ -13,6 +13,9 @@ class _Bool:
             raise InvalidValue(path, "not a bool")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
+        return self.read_element(r, fd, ctx)
+
+    def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         raw = r.byte()
         if raw > 1:
             raise Refused("wire_damaged", "a bool payload is not 0 or 1")
@@ -21,9 +24,9 @@ class _Bool:
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
-        self.write_value(w, fd, value, ctx)
+        self.write_element(w, fd, value, ctx)
 
-    def write_value(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+    def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         w.byte(1 if value else 0)
 
 

@@ -290,14 +290,13 @@ generated class per table and per map entry, each with its descriptor
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
   each `_schema/kind_<kind>.py` beside it registers a kind this cut carries
-  (`kind_bool.py`, `kind_int.py`, `kind_float.py`, `kind_enum.py`,
-  `kind_string.py`, `kind_bytes.py`, `kind_array.py`, `kind_map.py`,
-  `kind_table.py` and `kind_pointer.py`; the directory is the list). A later
-  card adds its module and one registration line in it, never an edit to the
-  body walk; `kinds.py` imports every `kind_*.py` itself, so no other file
-  names a new module. `kind_unsupported.py` is the named placeholder for a
-  construct whose descriptor exists but whose codec has not landed; a read or
-  write that reaches it refuses by name.
+  (today `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_table.py` and
+  `kind_pointer.py`; the directory is the list). A later card adds its module
+  and one registration line in it, never an edit to the body walk; `kinds.py`
+  imports every `kind_*.py` itself, so no other file names a new module.
+  `kind_unsupported.py` is the named placeholder for a construct whose
+  descriptor exists but whose codec has not landed; a read or write that
+  reaches it refuses by name.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
@@ -306,10 +305,7 @@ generated class per table and per map entry, each with its descriptor
 - **The shape is measured.** A table whose fields are all bools and integers
   gets the straight-line generated save/load pair, unrolled with each field
   descriptor bound to a local; every table, and every construct a later card
-  adds, keeps the descriptor walk over `_schema/kinds.py`. The fixed-class
-  kind card adds no second shape: its kinds (floats, enums, text, buffers and
-  arrays) keep the descriptor walk, and the measured straight-line pair above
-  stays the scalar hot path. The two shapes run
+  adds, keeps the descriptor walk over `_schema/kinds.py`. The two shapes run
   on the same table, under both pinned interpreters, in
   `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
   straight-line pair is kept: its save is faster on both pins, and its load is
@@ -323,72 +319,34 @@ generated class per table and per map entry, each with its descriptor
 
   - the full-width integers (8 to 128 bits): carried
 
-  - bits: carried
-
-  - ranged integers: carried
-
-  - plain and compressed floats (finite only): carried
-
-  - enums: carried
-
-  - flags masks: carried
-
-  - strings: carried
-
-  - byte buffers: carried
+  - bits, ranged integers, floats, enums, flags, strings, byte buffers and
+    fixed `[N]T` and counted `[..N]T` arrays of them: carried
+    ([the fixed class](port-python/table-fixed-class.md))
 
   - by-value tables: carried
 
   - `*T` pointers to tables: carried
 
-  - fixed `[N]T` and counted `[..N]T` arrays of those kinds: carried
+  - `*bytes`: carried ([the table blobs](port-python/table-blobs.md))
 
-  - `map[K]V` for the base key and value kinds: carried
-    ([the table maps](port-python/table-maps.md))
-
-  - `*bytes`: refused
-
-  - `*string`: refused
+  - `*string`: carried ([the table blobs](port-python/table-blobs.md))
 
   - `?T`: refused
 
-  - `[]T`: refused
+  - `[]T`: carried ([the table unbounded arrays](port-python/table-unbounded.md))
 
-  - `[E]T`: refused
+  - `[E]T`: carried ([the table keyed arrays](port-python/table-keyed.md))
+
+  - `map[K]V` for the base key and value kinds: carried
+    ([the table maps](port-python/table-maps.md))
 
   - `?map[K]V`: refused
 
   - unions with table arms: refused
 
-  - text lists: refused
-
-  - pointer arrays: refused
-
-  A compressed float rides as its float32 bits on this form, held to its
-  declared range on read and write (a write checks the float32 the wire will
-  carry, not the unrounded value), and lands `-0` as `+0`.
-- **A by-value table elides by its body.** The writer interns the field's id,
-  builds the nested body with every field inside judged against its declared
-  default (a plain float by bit pattern, a compressed float by value), and
-  drops the field and every id it interned when the body is its terminator
-  alone, as the engine does (internal/tablewire/encode.go, kind 13). No value
-  compare decides it, so a user `__eq__` cannot; a by-value table, a table
-  array element, a pointer target and the root must be exactly the generated
-  class, so a subclass is refused with `InvalidValue`.
-- **A deprecated enum variant is retired in place** (SPEC-TABLES §2.15): the
-  descriptor carries its ordinal, a read of it lands the field's declared
-  default (an array element's `None`) and counts nothing, and a write of it
-  raises `InvalidValue`.
-- **Constants, enums and flags ride beside the tables.** A table unit's
-  modules carry the file's constants as `Final` values and its enums and
-  flags sets as the packet surface's classes, and `__init__.py` re-exports
-  them.
-- **The build version is beside the protocol id.** Each generated package's
-  `__init__.py` carries `BUILD_VERSION`, SPEC-TABLES §20's compiler-settled id,
-  as a literal beside `PROTOCOL_ID`; the table wire never writes it.
-- **A packet-typed field is refused by name.** A table field whose type is a
-  packet `type` reaches `refusePacketValues` and is refused naming the field
-  and the type, until P4 carries packet types into tables.
+- **A packet-typed field is carried by value.** A packet `type` in a table
+  field, array element, map value or union arm is carried
+  ([the table packet types](port-python/table-packet-types.md)).
 - **The compiler keeps the shared carry checks.** Before table dispatch it
   refuses constructs outside the registered carry set, just as the packet
   target does. The table emitter can describe future codec layers directly;
@@ -411,21 +369,6 @@ generated load is 2% slower on 3.15.2 and 4% faster on 3.11.18. Save and load
 together, the generated pair is 2% faster on 3.15.2 and 11% faster on 3.11.18,
 so the pair is kept. `TestPythonTableCoreShapeBench` re-measures it and holds
 both shapes to the same value.
-
-Both saves now first check that the root is exactly its generated class (a
-subclass could carry another descriptor). Re-measured on a SHARED fleet bench
-under other load, so the figures are slower than the table above throughout
-and compare only with each other; the left of each pair is the runtime
-before the check, the right after it, on the same host minutes apart:
-
-| operation | 3.15.2 generated | 3.15.2 descriptor | 3.11.18 generated | 3.11.18 descriptor |
-|---|---:|---:|---:|---:|
-| save | 19,541 / 20,480 | 21,508 / 23,281 | 18,990 / 19,733 | 20,555 / 21,206 |
-| load | 21,538 / 22,086 | 22,729 / 23,014 | 24,440 / 24,646 | 24,726 / 23,960 |
-
-The check costs the save under 5% on this host (the loads, which it does not
-touch, moved by up to 3% in the same runs, which is the noise), and the
-generated save stays the faster shape on both pins, so the pair is kept.
 
 ## IDENTIFIERS
 

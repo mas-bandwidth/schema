@@ -15,7 +15,7 @@
 # generates into temp directories and runs the generated package under both
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
-.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-table-maps-negative-control python-table-fixed-class-negative-control
+.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-table-maps-negative-control
 test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
@@ -94,13 +94,6 @@ python-table-core-negative-control:
 # pinned probe must go red under each.
 python-table-maps-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonVtMapsNegativeControl' ./internal/codegen/pythontable/ -count=1
-
-# The fixed-class kind card's negative control: one array body's count is
-# moved in a copy of the emitted runtime, and the pinned probe must go red by
-# name (vt_fixed_class_roundtrip), so the gate covers the array codec this
-# card adds.
-python-table-fixed-class-negative-control:
-	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonVtFixedClassNegativeControl' ./internal/codegen/pythontable/ -count=1
 
 generated/bench/tables/python/.stamp: ;
 

@@ -66,11 +66,13 @@ def supported(cls):
         for field in descriptor.fields:
             if not carried(field):
                 return False
-            # An array's element is a field of its own: an unsupported
-            # element or a child table behind it decides too.
-            elem = getattr(field, "elem", None)
-            if elem is not None and not carried(elem):
-                return False
+            # An array's element (and a keyed array's slot) is a field of its
+            # own: an unsupported element or a child table behind it decides
+            # too.
+            for name in ("element", "elem"):
+                elem = getattr(field, name, None)
+                if elem is not None and not carried(elem):
+                    return False
         return True
 
     def carried(field):

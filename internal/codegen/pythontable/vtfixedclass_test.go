@@ -238,11 +238,11 @@ func TestPythonVtFixedClassNegativeControl(t *testing.T) {
 	if !ok {
 		t.Fatalf("the runtime carries no %s", path)
 	}
-	const anchor = "bw.varint(count)"
+	const anchor = "writer.varint(len(value))"
 	if !strings.Contains(string(text), anchor) {
 		t.Fatalf("the negative control's anchor %q is absent from %s", anchor, path)
 	}
-	sabotaged[path] = []byte(strings.Replace(string(text), anchor, "bw.varint(count + 1)", 1))
+	sabotaged[path] = []byte(strings.Replace(string(text), anchor, "writer.varint(len(value) + 1)", 1))
 	dir := t.TempDir()
 	writeTree(t, dir, sabotaged)
 	_, stderr, runErr := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", map[string][]byte{

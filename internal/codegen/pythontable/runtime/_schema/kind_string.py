@@ -1,8 +1,9 @@
 """The string field kind (docs/SPEC-TABLES.md §3, kind 12).
 
-Text is UTF-8 on the wire, encoded and decoded strictly, bounded by N BYTES
-and never carrying a zero byte. A lone surrogate and a NUL are refused on
-write; ill-formed text is damage on read.
+A string rides as its own length and its UTF-8 bytes. The declared size is a
+byte bound, not a character bound; a value at its declared default is elided by
+the field walk before this module is reached, so an old writer's absent field
+reads back as that default.
 """
 
 from typing import Any
@@ -12,39 +13,49 @@ from . import kinds
 from .descriptor import FieldDesc
 
 
+def _encoded(fd: FieldDesc, value: Any, path: str) -> bytes:
+    if type(value) is not str:
+        raise InvalidValue(path, "not a str")
+    try:
+        raw = value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise InvalidValue(path, "ill-formed UTF-8 text") from None
+    if b"\x00" in raw:
+        raise InvalidValue(path, "ill-formed UTF-8 text (a zero byte)")
+    if fd.size > 0 and len(raw) > fd.size:
+        raise InvalidValue(path, f"length {len(raw)} is past its bound {fd.size}")
+    return raw
+
+
 class _String:
     def validate(self, fd: FieldDesc, value: Any, path: str) -> None:
-        if type(value) is not str:
-            raise InvalidValue(path, "not a string")
-        try:
-            payload = value.encode("utf-8")
-        except UnicodeEncodeError:
-            raise InvalidValue(path, "ill-formed UTF-8 text") from None
-        if b"\x00" in payload:
-            raise InvalidValue(path, "text carries a zero byte")
-        if len(payload) > fd.bound:
-            raise InvalidValue(path, f"{len(payload)} bytes is past the bound {fd.bound}")
+        _encoded(fd, value, path)
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
-        payload = bytes(r.take(r.varint()))
-        if len(payload) > fd.bound:
-            raise Refused("length_over_bound", f"{len(payload)} bytes is past the bound {fd.bound}")
+        return self.read_element(r, fd, ctx)
+
+    def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
+        length = r.varint()
+        payload = bytes(r.take(length))
         if b"\x00" in payload:
-            raise Refused("wire_damaged", "text carries a zero byte")
+            raise Refused("wire_damaged", "ill-formed text")
         try:
-            return payload.decode("utf-8")
+            text = payload.decode("utf-8")
         except UnicodeDecodeError:
-            raise Refused("wire_damaged", "ill-formed UTF-8 text") from None
+            raise Refused("wire_damaged", "ill-formed text") from None
+        if fd.size > 0 and length > fd.size:
+            raise Refused("length_over_bound", f"length {length} is past its bound {fd.size}")
+        return text
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
-        self.write_value(w, fd, value, ctx)
+        self.write_element(w, fd, value, ctx)
 
-    def write_value(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
-        payload = value.encode("utf-8")
-        w.varint(len(payload))
-        w.raw(payload)
+    def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        encoded = value.encode("utf-8")
+        w.varint(len(encoded))
+        w.raw(encoded)
 
 
 kinds.register("string", _String())

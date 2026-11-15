@@ -2,12 +2,9 @@
 
 A field's descriptor names what a generic walk needs: its schema name, its
 table-wire id and kind, the codec that carries it, its declared range, and the
-table (or union) whose value it holds. An ARRAY carries its element's own
-descriptor under ``elem``, and an ENUM carries its variant names and wire ids
-and the ordinals of its variants marked ``| deprecated`` under ``retired``.
-A table's descriptor holds its own type id and its fields by declaration order
-and by wire id. The values are DATA, built once at import, so the codec
-modules only ever read them.
+table (or union) whose value it holds. A table's descriptor holds its own type
+id and its fields by declaration order and by wire id. The values are DATA,
+built once at import, so the codec modules only ever read them.
 """
 
 from __future__ import annotations
@@ -15,9 +12,30 @@ from __future__ import annotations
 import struct
 from typing import Any
 
+# An array element is born at its kind's zero: an element carries no
+# specified default (docs/SPEC-TABLES.md §4.6).
+_ELEMENT_ZERO: dict[str, Any] = {
+    "bool": False,
+    "int": 0,
+    "enum": 0,
+    "float32": 0.0,
+    "float64": 0.0,
+    "string": "",
+}
+
 
 class FieldDesc:
-    """One field of a generated table (docs/SPEC-TABLES.md §8.1)."""
+    """One field of a generated table (docs/SPEC-TABLES.md §8.1).
+
+    A container field names its element in elem, a descriptor of its own
+    (its wire kind, codec, range, target and default); an enum-keyed array
+    also carries keys, the key variants' wire ids in slot order, so slot i
+    holds the variant whose value is i + 1 (§2.4, §3.2).
+
+    A float field carries f32 (a float32 rather than a float64), and a
+    COMPRESSED float32 (a declared min, max and resolution) carries
+    float_range with its range in fmin and fmax.
+    """
 
     __slots__ = (
         "name",
@@ -33,17 +51,22 @@ class FieldDesc:
         "optional",
         "array",
         "bound",
+        "size",
         "key_enum",
+        "array_kind",
+        "array_min",
+        "elem_kind",
+        "variant_ids",
+        "deprecated",
         "default",
+        "elem_codec",
+        "element",
         "elem",
-        "variants",
-        "retired",
+        "keys",
         "f32",
         "fmin",
         "fmax",
         "float_range",
-        "array_kind",
-        "array_min",
     )
 
     name: str
@@ -59,17 +82,22 @@ class FieldDesc:
     optional: bool
     array: bool
     bound: int
+    size: int
     key_enum: str
+    array_kind: int
+    array_min: int
+    elem_kind: int
+    variant_ids: tuple[int, ...]
+    deprecated: frozenset[int]
     default: Any
-    elem: FieldDesc | None
-    variants: tuple[tuple[str, int], ...]
-    retired: frozenset[int]
+    elem_codec: str
+    element: FieldDesc | None
+    elem: "FieldDesc | None"
+    keys: tuple[int, ...]
     f32: bool
     fmin: float
     fmax: float
     float_range: bool
-    array_kind: str
-    array_min: int
 
     def __init__(
         self,
@@ -86,17 +114,21 @@ class FieldDesc:
         optional: bool = False,
         array: bool = False,
         bound: int = 0,
+        size: int = 0,
         key_enum: str = "",
+        array_kind: int = 0,
+        array_min: int = 0,
+        elem_kind: int = 0,
+        variant_ids: tuple[int, ...] = (),
+        deprecated: tuple[int, ...] = (),
         default: Any = None,
-        elem: FieldDesc | None = None,
-        variants: tuple[tuple[str, int], ...] = (),
-        retired: tuple[int, ...] = (),
+        elem_codec: str = "",
+        elem: "FieldDesc | None" = None,
+        keys: tuple[int, ...] = (),
         f32: bool = False,
         fmin: float = 0.0,
         fmax: float = 0.0,
         float_range: bool = False,
-        array_kind: str = "",
-        array_min: int = 0,
     ) -> None:
         self.name = name
         self.field_id = field_id
@@ -111,30 +143,54 @@ class FieldDesc:
         self.optional = optional
         self.array = array
         self.bound = bound
+        self.size = size
         self.key_enum = key_enum
+        self.array_kind = array_kind
+        self.array_min = array_min
+        self.elem_kind = elem_kind
+        self.variant_ids = variant_ids
+        # the ordinals of the variants marked `| deprecated` (§2.15)
+        self.deprecated = frozenset(deprecated)
         self.default = default
-        self.elem = elem
-        self.variants = variants
-        self.retired = frozenset(retired)
+        self.elem_codec = elem_codec
         self.f32 = f32
         self.fmin = fmin
         self.fmax = fmax
         self.float_range = float_range
-        self.array_kind = array_kind
-        self.array_min = array_min
+        self.element = (
+            FieldDesc(
+                name=name,
+                field_id=0,
+                kind=elem_kind,
+                codec=elem_codec,
+                lo=lo,
+                hi=hi,
+                target=target,
+                pointer=pointer,
+                size=size,
+                variant_ids=variant_ids,
+                deprecated=tuple(deprecated),
+                default=_ELEMENT_ZERO.get(elem_codec),
+                f32=f32,
+                fmin=fmin,
+                fmax=fmax,
+                float_range=float_range,
+            )
+            if codec == "array" and elem_codec
+            else None
+        )
+        self.elem = elem
+        self.keys = keys
 
     def is_default(self, value: Any) -> bool:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""
         if self.pointer or self.optional:
             return value is None
-        if self.codec == "array":
-            return _array_is_default(self, value)
+        if self.codec in ("bool", "int", "enum", "string", "unsupported"):
+            return bool(value == self.default)
         if self.codec == "bytes":
-            return _bytes_equal(value, self.default)
-        if self.codec == "string":
-            return bool(value == self.default)
-        if self.codec in ("bool", "int", "enum", "unsupported"):
-            return bool(value == self.default)
+            raw = _as_bytes(value)
+            return raw is not None and bool(raw == self.default)
         if self.codec == "float32":
             return _float32_is_default(self, value)
         if self.codec == "float64":
@@ -147,70 +203,64 @@ class FieldDesc:
             # is its terminator alone (kind_table.py). No value compare, and
             # so no __eq__, takes part.
             return False
+        if self.codec == "union":
+            # None is the absence of the field, and a union whose arm is None
+            # (type 0) is the same value on the wire (docs/SPEC-TABLES.md §2.6)
+            return value is None or value.type == 0
+        if self.codec == "array":
+            return _array_is_default(self, value)
         return bool(value == self.default)
 
 
-def _bytes_equal(value: Any, default: Any) -> bool:
-    try:
-        return bytes(value) == bytes(default)
-    except (TypeError, ValueError):
-        return False
+def _array_is_default(fd: FieldDesc, value: Any) -> bool:
+    """Whether a positional array of a declared type elides (docs/SPEC-TABLES.md §3).
 
-
-def _float32_bits(value: float) -> bytes:
-    return struct.pack("<f", value)
-
-
-def _float64_bits(value: float) -> bytes:
-    return struct.pack("<d", value)
+    A fixed array of a declared type writes every element, because position is
+    identity there; a fixed array of any other element elides when every
+    element is at its zero, parity with the reader's prefill; a counted or
+    unbounded one elides only when it is empty, exactly as the engine's writer
+    does.
+    """
+    if fd.array_kind == 1:  # [N]T
+        element = fd.element
+        if fd.elem_kind == 13 or element is None:
+            return False
+        return all(element.is_default(item) for item in value)
+    return len(value) == 0
 
 
 def _float32_is_default(fd: FieldDesc, value: Any) -> bool:
+    """A float32 at its default: by its float32 bits, so -0.0 is not 0.0; a
+    compressed float by its float32 value, because its -0 is +0 (§3.3)."""
     if type(value) is not float:
         return False
     if fd.float_range:
-        return float(struct.unpack("<f", _float32_bits(value))[0]) == float(
-            struct.unpack("<f", _float32_bits(fd.default))[0]
+        return float(struct.unpack("<f", struct.pack("<f", value))[0]) == float(
+            struct.unpack("<f", struct.pack("<f", fd.default))[0]
         )
-    return _float32_bits(value) == _float32_bits(fd.default)
+    return struct.pack("<f", value) == struct.pack("<f", fd.default)
 
 
 def _float64_is_default(fd: FieldDesc, value: Any) -> bool:
+    """A float64 at its default, by its bits."""
     if type(value) is not float:
         return False
     if fd.float_range:
         return bool(value == fd.default)
-    return _float64_bits(value) == _float64_bits(fd.default)
+    return struct.pack("<d", value) == struct.pack("<d", fd.default)
 
 
-def _elem_is_default(fd: FieldDesc, value: Any) -> bool:
-    if fd.codec == "table":
-        return False
-    if fd.codec == "bytes":
-        return _bytes_equal(value, fd.default)
-    if fd.codec == "string":
-        return bool(value == fd.default)
-    if fd.codec in ("bool", "int", "enum"):
-        return bool(value == fd.default)
-    if fd.codec == "float32":
-        return _float32_is_default(fd, value)
-    if fd.codec == "float64":
-        return _float64_is_default(fd, value)
-    return False
-
-
-def _array_is_default(fd: FieldDesc, value: Any) -> bool:
-    if not isinstance(value, list):
-        return False
-    if fd.array_kind != "fixed":
-        return len(value) == 0
-    elem = fd.elem
-    if elem is None:
-        return False
-    for item in value:
-        if not _elem_is_default(elem, item):
-            return False
-    return True
+def _as_bytes(value: Any) -> bytes | None:
+    """The bytes a caller's byte value holds, or None when it is not one."""
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, memoryview):
+        if value.format != "B":
+            return None
+        return value.tobytes()
+    return None
 
 
 class TableDesc:
@@ -303,6 +353,20 @@ def by_id(type_id: int) -> type[Any] | None:
 
 def by_name(name: str) -> type[Any] | None:
     return _REGISTRY_BY_NAME.get(name)
+
+
+def _register_value(cls: type[Any]) -> None:
+    """Register a hosted packet class by name only.
+
+    A packet type by value never rides the node table's type ids, so it takes
+    no id slot; it is reachable by name from the descriptor that carries it.
+    """
+    descriptor: TableDesc = cls.descriptor
+    _REGISTRY_BY_NAME[descriptor.name] = cls
+
+
+def _union_by_name(name: str) -> type[Any] | None:
+    return _REGISTRY_UNION_BY_NAME.get(name)
 
 
 def register_union(cls: type[Any]) -> None:

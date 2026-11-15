@@ -84,7 +84,17 @@ class _Map:
             body = sub.take(n)
             entry = entry_cls()
             before = len(ctx.pending)
+            blobs_before = len(ctx.blob_pending)
             read_body(body, entry, ctx)
+            if value_field.codec == "string_blob" or value_field.codec == "bytes_blob":
+                # `map[K]*bytes` and `map[K]*string` are not carried yet: an
+                # entry that holds its value refuses by name, as
+                # kind_unsupported.py refused it before the buffers landed.
+                for owner, _, _ in ctx.blob_pending[blobs_before:]:
+                    if owner is entry:
+                        from .kind_unsupported import _RULE
+
+                        raise Refused("unsupported_kind", _RULE)
             key = getattr(entry, key_field.name)
             if landed and _compare(fd, last, key) >= 0:
                 raise Refused(
@@ -95,9 +105,9 @@ class _Map:
             landed = True
             if value_field.codec == "pointer":
                 for i in range(before, len(ctx.pending)):
-                    owner, name, index = ctx.pending[i]
-                    if owner is entry and name == value_field.name:
-                        ctx.pending[i] = (out, key, index)
+                    owner, slot, index = ctx.pending[i]
+                    if owner is entry and slot.name == value_field.name:
+                        ctx.pending[i] = (out, (key, slot), index)
             out[key] = getattr(entry, value_field.name)
         if sub.pos != sub.end:
             raise Refused(
@@ -107,11 +117,6 @@ class _Map:
         return out
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
-        w.varint(ctx.idref(fd.field_id))
-        w.byte(fd.kind)
-        self.write_value(w, fd, value, ctx)
-
-    def write_value(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         # Each entry body is written straight from the key and the value, the
         # bytes write_body gives an entry object (its two fields in order, each
         # elided at its default, then the end mark) without building one: the
@@ -123,6 +128,7 @@ class _Map:
         value_codec = kinds._REGISTRY[value_field.codec]
         key_default = key_field.is_default
         value_default = value_field.is_default
+        field_ref = ctx.idref(fd.field_id)
         keys = _sorted_keys(fd, value)
         body = bytearray()
         body_writer = Writer(body)
@@ -139,6 +145,8 @@ class _Map:
             entry_writer.byte(0)
             body_writer.varint(len(entry_body))
             body_writer.raw(entry_body)
+        w.varint(field_ref)
+        w.byte(fd.kind)
         w.varint(len(body))
         w.raw(body)
 
