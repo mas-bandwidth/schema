@@ -681,17 +681,21 @@ namespace Bench
             }
             static void WriteWide(ref Out o, UInt128 raw, TableFieldInfo f)
             {
+                // a wide kind is a STRING of decimal digits (§16.14 W10, W11); a
+                // 32-bit fixed kind stays a bare number
+                bool quoted = TableWideJson(f);
+                if (quoted) { o.Put((byte)'"'); }
                 if (f.WideSigned && unchecked((Int128)raw) < 0) { o.Put((byte)'-'); raw = unchecked(0 - raw); }
                 int frac = f.FracBits;
                 UInt128 whole = raw >> frac;
                 Span<char> digits = stackalloc char[40];
                 whole.TryFormat(digits, out int used);
                 for (int i = 0; i < used; i++) { o.Put((byte)digits[i]); }
-                if (f.Kind < 20 || f.Kind > 29) { return; }
+                if (f.Kind < 20 || f.Kind > 29) { if (quoted) { o.Put((byte)'"'); } return; }
                 o.Put((byte)'.');
                 UInt128 mask = ((UInt128)1 << frac) - 1;
                 UInt128 fraction = raw & mask;
-                if (fraction == 0) { o.Put((byte)'0'); return; }
+                if (fraction == 0) { o.Put((byte)'0'); if (quoted) { o.Put((byte)'"'); } return; }
                 while (fraction != 0)
                 {
                     UInt128 low = (UInt128)unchecked((ulong)fraction) * 10;
@@ -702,6 +706,7 @@ namespace Bench
                     if (frac > 64) { digit |= (ulong)carry << (128 - frac); }
                     o.Put((byte)('0' + (int)digit)); fraction &= mask;
                 }
+                if (quoted) { o.Put((byte)'"'); }
             }
             static bool ReadWide(ReadOnlySpan<char> token, ref In input, object owner, TableFieldInfo f, int index)
             {
@@ -826,6 +831,47 @@ namespace Bench
                 return f.VariantId != null && f.Arms == null;
             }
 
+            // THE WIDE KINDS' JSON FORM (docs/SPEC-TABLES.md §16.2, §16.14 W10): an
+            // integer-shaped kind whose storage is wider than 32 bits is written as a
+            // STRING of decimal digits and reads as a string or a number — int64,
+            // uint64, int128, uint128, and the 64- and 128-bit fixed-point kinds.
+            static bool TableWideJson(TableFieldInfo f)
+            {
+                return f.Kind == 5 || f.Kind == 9 || f.Kind == 18 || f.Kind == 19 ||
+                       f.Kind == 23 || f.Kind == 24 || f.Kind == 28 || f.Kind == 29;
+            }
+
+            // the pure integer kinds, 128-bit included; a fixed-point kind is not one
+            static bool TableIntegerKind(TableFieldInfo f)
+            {
+                return f.Kind >= 2 && f.Kind <= 9 || f.Kind == 18 || f.Kind == 19;
+            }
+
+            // AN INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (docs/SPEC-TABLES.md §16.2):
+            // digits with an optional minus, no leading zero, no fraction, no exponent,
+            // and not -0. The value never passes through a double.
+            static bool TableIntegerToken(ReadOnlySpan<char> text)
+            {
+                int i = 0;
+                bool negative = false;
+                if (i < text.Length && text[i] == '-') { negative = true; i++; }
+                if (i >= text.Length) { return false; }
+                if (text[i] == '0') { return !negative && i + 1 == text.Length; }
+                if (text[i] < '1' || text[i] > '9') { return false; }
+                for (; i < text.Length; i++)
+                {
+                    if (text[i] < '0' || text[i] > '9') { return false; }
+                }
+                return true;
+            }
+
+            // a wide integer declares 'N' and takes a string or a number; every other
+            // shape is exact
+            static bool TableShapeMatches(char want, char got)
+            {
+                return want == got || (want == 'N' && (got == 's' || got == 'n'));
+            }
+
             static char Shape(TableFieldInfo f)
             {
                 if (f.Map) { return 'o'; }
@@ -841,6 +887,7 @@ namespace Bench
                 if (IsEnum(f)) { return 's'; }
                 if (IsFlags(f)) { return 'a'; }
                 if (f.Kind == 1) { return 'b'; }
+                if (TableWideJson(f)) { return 'N'; }
                 return 'n';
             }
 
@@ -855,6 +902,7 @@ namespace Bench
                 if (IsEnum(f)) { return 's'; }
                 if (IsFlags(f)) { return 'a'; }
                 if (f.Kind == 1) { return 'b'; }
+                if (TableWideJson(f)) { return 'N'; }
                 return 'n';
             }
 
@@ -1356,8 +1404,14 @@ namespace Bench
                     case 2:
                     case 3:
                     case 4:
-                    case 5:
                         WriteSigned(ref o, unchecked((long)f.GetRaw(owner, index)));
+                        return true;
+                    case 5:
+                        // int64 is wider than 32 bits: a STRING of decimal digits (§16.14 W10)
+                        o.Put((byte)'"'); WriteSigned(ref o, unchecked((long)f.GetRaw(owner, index))); o.Put((byte)'"');
+                        return true;
+                    case 9:
+                        o.Put((byte)'"'); WriteUnsigned(ref o, f.GetRaw(owner, index)); o.Put((byte)'"');
                         return true;
                     default:
                         WriteUnsigned(ref o, f.GetRaw(owner, index));
@@ -1694,7 +1748,12 @@ namespace Bench
                         ReadOnlySpan<byte> token = actual;
                         Space(token, ref probe);
                         if (probe.Pos != 0 || !ReadScalar(token, ref probe, entry, key, 0, depth) || probe.Pos != used || probe.Bad)
-                        { input.Bad = true; return false; }
+                        {
+                            // a key that is not the key kind's integer spelling is a
+                            // NAMED refusal (docs/SPEC-TABLES.md §16.2), not damage
+                            if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
+                            input.Bad = true; return false;
+                        }
                         if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
                     }
                     if (drop) { if (!SkipValue(text, ref input, depth)) { return false; } }
@@ -1712,7 +1771,7 @@ namespace Bench
                             // A key names a present optional value even when the
                             // value's shape is wrong; the new entry keeps its default.
                             if (field.Optional) { field.SetPresent(entry, true); }
-                            if (shape != Shape(field))
+                            if (!TableShapeMatches(Shape(field), shape))
                             {
                                 return RefuseText(ref input, "kind_mismatch");
                             }
@@ -2485,7 +2544,7 @@ namespace Bench
                         TableUnionArmInfo arm = f.Arms.Arms[tag];
                         TableFieldInfo payload = arm.Field;
                         char wanted = payload == null ? 'z' : Shape(payload);
-                        if (ValueShape(text, ref input) != wanted && !(payload != null && payload.Kind == 17 && !payload.IsArray && ValueShape(text, ref input) == 'z'))
+                        if (!TableShapeMatches(wanted, ValueShape(text, ref input)) && !(payload != null && payload.Kind == 17 && !payload.IsArray && ValueShape(text, ref input) == 'z'))
                         {
                             return RefuseText(ref input, "kind_mismatch");
                         }
@@ -2590,6 +2649,19 @@ namespace Bench
                     f.SetRaw(owner, index, 0);
                     return true;
                 }
+                if (TableWideJson(f) && Peek(text, ref input) == '"')
+                {
+                    // a wide integer reads as a string OR a number (§16.2); the string
+                    // holds the same digits, judged by the same integer-token rule
+                    if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
+                    Span<char> wideToken = stackalloc char[MaxNumber];
+                    if (body.Length <= wideToken.Length)
+                    {
+                        for (int i = 0; i < body.Length; i++) { wideToken[i] = (char)body[i]; }
+                        return ReadNumber(wideToken.Slice(0, body.Length), true, ref input, owner, f, index);
+                    }
+                    return ReadNumber(System.Text.Encoding.ASCII.GetString(body), true, ref input, owner, f, index);
+                }
                 Span<char> scratch = stackalloc char[MaxNumber];
                 int length;
                 bool tokenIntegral;
@@ -2609,6 +2681,10 @@ namespace Bench
             // how many bytes spelled it (§16.2 Numbers).
             static bool ReadNumber(ReadOnlySpan<char> token, bool tokenIntegral, ref In input, object owner, TableFieldInfo f, int index)
             {
+                // THE INTEGER TOKEN RULE: an integer field takes an integer token only
+                // — no fraction, no exponent, not -0 — and its range is tested on the
+                // exact value, never through a double (§16.2).
+                if (TableIntegerKind(f) && !TableIntegerToken(token)) { return RefuseText(ref input, "kind_mismatch"); }
                 if (f.GetWide != null) { return ReadWide(token, ref input, owner, f, index); }
                 if (f.Kind == 10 || f.Kind == 11)
                 {
@@ -2907,7 +2983,7 @@ namespace Bench
                             input.Report.Unknown++;
                             if (!SkipValue(text, ref input, depth + 1)) { return false; }
                         }
-                        else if (ValueShape(text, ref input) != shape)
+                        else if (!TableShapeMatches(shape, ValueShape(text, ref input)))
                         {
                             return RefuseText(ref input, "kind_mismatch");
                         }
@@ -2946,7 +3022,7 @@ namespace Bench
                         {
                             return RefuseText(ref input, "count_over_bound");
                         }
-                        else if (ValueShape(text, ref input) != shape && !((f.Kind == 17 || f.TextList && f.Table.Fields[0].Optional) && ValueShape(text, ref input) == 'z'))
+                        else if (!TableShapeMatches(shape, ValueShape(text, ref input)) && !((f.Kind == 17 || f.TextList && f.Table.Fields[0].Optional) && ValueShape(text, ref input) == 'z'))
                         {
                             return RefuseText(ref input, "kind_mismatch");
                         }
@@ -3058,7 +3134,7 @@ namespace Bench
                         }
                         else
                         {
-                            if (got != Shape(f))
+                            if (!TableShapeMatches(Shape(f), got))
                             {
                                 // the wrong JSON type for the kind: skipped, never
                                 // coerced
