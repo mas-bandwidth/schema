@@ -224,6 +224,7 @@ func init() {
 		Name{Name: "tableTimestampNanos", What: "the timestamp kind's text form and Go value"},
 		Name{Name: "tableTimestampTime", What: "the timestamp kind's text form and Go value"},
 		Name{Name: "tableJSONReadWide", What: "exact wide scalar text conversion"},
+		Name{Name: "tableJSONNumberToken", What: "a number token's mantissa bounded before strconv converts it (§16.2)"},
 		Name{Name: "tableJSONWriteWide", What: "exact wide scalar text conversion"},
 
 		Name{Name: "tableIDCapacity", What: "the form-1 wire runtime"},

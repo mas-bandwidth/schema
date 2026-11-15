@@ -223,7 +223,7 @@ func TestCppTableSaveMeasureCacheBytes(t *testing.T) {
 	// PINNING: the pin is taken from the emitter that had no cache.
 	if os.Getenv("SCHEMA_UPDATE_SAVECACHE_GOLDEN") != "1" {
 		header := string(files["ProbeTable.h"])
-		for _, want := range []string{"int64_t elem_cache[ 64 ]", "int64_t elem_cache[ 4 ]", "elem_cache[ elem_i ]"} {
+		for _, want := range []string{"int64_t elem_cache[64]", "int64_t elem_cache[4]", "elem_cache[elem_i]"} {
 			if !strings.Contains(header, want) {
 				t.Fatalf("the generated save path does not carry %q — this test would prove nothing", want)
 			}

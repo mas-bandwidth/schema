@@ -947,6 +947,36 @@ countNode = function(T, c, node, g) {
   return true;
 };
 
+// THE WRITE CONTRACT (docs/SPEC.md §5.1, rows 1, 2 and 10): Squirrel refuses
+// in every build, so the text writer refuses a value its declaration does not
+// admit before that value's text is written, as Save does: an integer or a
+// fixed-point raw value off its declared range, a bits(N) value past N bits,
+// and a compressed float off its range (compared at the width it is written).
+local intAdmitted = function(d, val) {
+  if (wideKind(d.kind)) {
+    if (d.lo == null) return true;
+    local v = wideOf(d, val);
+    local lo = typeof d.lo == "array" ? svFromPair(d.lo, d.signed) : svFromInt(d.lo, d.signed);
+    local hi = typeof d.hi == "array" ? svFromPair(d.hi, d.signed) : svFromInt(d.hi, d.signed);
+    return svCmp(v, lo) >= 0 && svCmp(v, hi) <= 0;
+  }
+  if (d.lo != null) {
+    if (d.signed) {
+      if (val < d.lo || val > d.hi) return false;
+    } else if (ult(val, d.lo) || ult(d.hi, val)) {
+      return false;
+    }
+  }
+  if (d.bits > 0 && d.bits < 64 && ult((1 << d.bits) - 1, val)) return false;
+  return true;
+};
+local floatAdmitted = function(d, val) {
+  if (!has(d, "fmin")) return true;
+  local x = val.tofloat();
+  if (d.f32) x = widenF32(narrowF32(x, 0)[0]);
+  return x >= d.fmin && x <= d.fmax;
+};
+
 local writeValue, writeFields, writePointer, writeField, writeScalar, writeMap;
 
 // one instance's object, every field in declaration order, defaults included,
@@ -1011,6 +1041,16 @@ writeMap = function(T, d, val, depth, g, out) {
   local kd = d.mapkey, vd = d.mapvalue;
   local n = val == null ? 0 : val.len();
   if (n == 0) { out.append("{}"); return true; }
+  // every key is admitted before any text is written: a string key within
+  // its string(N), an integer key within its declaration (§5.1 rows 1, 4)
+  foreach (ent in val) {
+    local k = ent[kd.member];
+    if (kd.shape == "str") {
+      if (typeof k != "string" || k.len() > kd.bound) return false;
+    } else if (!intAdmitted(kd, k)) {
+      return false;
+    }
+  }
   local order = [];
   for (local i = 0; i < n; i++) order.append(i);
   local src = val;
@@ -1037,7 +1077,14 @@ writeMap = function(T, d, val, depth, g, out) {
 // `?string` elements as null. The storage is the generated element record;
 // textlist 1 is the plain spelling and 2 the optional one.
 local writeTextArray = function(T, d, val, depth, out) {
+  // Counted arrays hold their declared minimum through maximum; a fixed
+  // bound applies to the other bounded arrays (docs/SPEC.md §5.1 row 3).
+  // Text-list elements also refuse a text past their string(N) (row 4).
   local n = writeCount(d, val);
+  if (d.counted && n < d.min) return false;
+  if (!d.list && val != null && val.len() > d.bound) return false;
+  local bound = null;
+  foreach (fd in tableDesc(T, d.elem.table).fields) if (fd.member == "Value") bound = fd.bound;
   if (n == 0) { out.append("[]"); return true; }
   // A TEXT LIST'S TOTAL (§2.13): ToJson refuses a value whose elements hold
   // more bytes in all than the declared total, an absent element counting zero
@@ -1056,6 +1103,7 @@ local writeTextArray = function(T, d, val, depth, out) {
     out.append(indent(depth + 1));
     local rec = elemAt(T, d.elem, val, i);
     if (d.textlist == 2 && (rec == null || !rec.ValuePresent)) { out.append("null"); continue; }
+    if (rec != null && bound != null && rec.Value.len() > bound) return false;
     local s = jsonString(rec == null ? "" : rec.Value);
     if (s == null) return false;
     out.append(s);
@@ -1078,12 +1126,16 @@ writeField = function(T, d, val, depth, g, out) {
       out.append(b64Text(val));
       return true;
     case "str": {
+      if (val.len() > d.bound) return false; // past string(N) (§5.1 row 4)
       local s = jsonString(val);
       if (s == null) return false;
       out.append(s);
       return true;
     }
-    case "bytes": out.append(b64Text(val)); return true;
+    case "bytes":
+      if (val.len() > d.bound) return false; // past bytes(N) (§5.1 row 4)
+      out.append(b64Text(val));
+      return true;
     case "map": return writeMap(T, d, val, depth, g, out);
     case "arr": {
       if (d.textlist != 0) return writeTextArray(T, d, val, depth, out);
@@ -1102,7 +1154,11 @@ writeField = function(T, d, val, depth, g, out) {
         out.append(indent(depth) + "}");
         return true;
       }
+      // Counted arrays hold their declared minimum through maximum; a fixed
+      // bound applies to the other bounded arrays (docs/SPEC.md §5.1 row 3).
       local n = writeCount(d, val);
+      if (d.counted && n < d.min) return false;
+      if (!d.list && val != null && val.len() > d.bound) return false;
       if (n == 0) { out.append("[]"); return true; }
       out.append("[");
       for (local i = 0; i < n; i++) {
@@ -1110,6 +1166,7 @@ writeField = function(T, d, val, depth, g, out) {
         out.append(indent(depth + 1));
         local x = elemAt(T, e, val, i);
         if (e.shape == "str") {
+          if (x.len() > e.bound) return false; // past string(N) (§5.1 row 4)
           local s = jsonString(x);
           if (s == null) return false;
           out.append(s);
@@ -1186,14 +1243,21 @@ writeScalar = function(T, d, val, depth, g, out) {
       out.append(indent(depth) + "]");
       return true;
     }
-    case "bool": out.append(val ? "true" : "false"); return true;
+    case "bool":
+      if (typeof val != "bool") return false; // only a bool is a bool's value
+      out.append(val ? "true" : "false");
+      return true;
     case "float": {
+      // only a number is a float's value, refused before it is converted
+      if (typeof val != "float" && typeof val != "integer") return false;
       local t = floatText(val, d.f32);
       if (t == null) return false; // a non-finite float (§16.3)
+      if (!floatAdmitted(d, val)) return false;
       out.append(t);
       return true;
     }
     case "str": {
+      if (val.len() > d.bound) return false; // past string(N) (§5.1 row 4)
       local s = jsonString(val);
       if (s == null) return false;
       out.append(s);
@@ -1201,6 +1265,7 @@ writeScalar = function(T, d, val, depth, g, out) {
     }
   }
   if (d.kind == 36) { out.append(jsonString(timestampText(val))); return true; }
+  if (!intAdmitted(d, val)) return false;
   if (wideKind(d.kind)) {
     out.append(formatWide(wideOf(d, val), d.kind, has(d, "frac") ? d.frac : 0));
     return true;
@@ -1246,6 +1311,13 @@ local newIn = function(text, report, graph) {
     t = b;
   }
   return { t = t, n = t.len(), p = 0, bad = false, report = report, graph = graph };
+};
+
+// A leading UTF-8 byte-order mark is skipped and the rest reads as the text
+// after it (docs/SPEC-TABLES.md §16.2, §16.12): EF BB BF as the text's first
+// three bytes, and nowhere else. No writer emits one.
+local byteOrderMark = function(r) {
+  if (r.p == 0 && r.n >= 3 && r.t[0] == 0xef && r.t[1] == 0xbb && r.t[2] == 0xbf) r.p = 3;
 };
 
 // whitespace and comments: accepted on read, never written (§16.2); an
@@ -1915,6 +1987,7 @@ readMap = function(T, c, fd, r, v, depth) {
   local kd = fd.mapkey, vd = fd.mapvalue;
   local ed = tableDesc(T, fd.entry);
   local out = [];
+  local seen = {};
   for (;;) {
     local ch = peek(r);
     if (ch == '}') { r.p++; break; }
@@ -1973,13 +2046,12 @@ readMap = function(T, c, fd, r, v, depth) {
       }
     }
     if (valueOk) {
-      local at = -1;
-      for (local i = 0; i < out.len(); i++) {
-        if (mapKeyOrder(kd, out[i][kd.member], ent[kd.member]) == 0) { at = i; break; }
-      }
       // A REPEATED MAP KEY, judged as the reader decodes it, IS DAMAGE
-      // (decisions 5 and 11, §2.8)
-      if (at >= 0) { r.bad = true; return false; }
+      // (decisions 5 and 11, §2.8). The keys seen are held by identity, so
+      // the test is one lookup an entry rather than a scan of the entries
+      // read so far.
+      if (ent[kd.member] in seen) { r.bad = true; return false; }
+      seen[ent[kd.member]] <- true;
       out.append(ent);
     }
     ch = peek(r);
@@ -2078,16 +2150,21 @@ local interpretInteger = function(tok, integral) {
   return out;
 };
 
-// a declared bound as the double the descriptors' clamp compares, then back
-// to a magnitude (read.go integerOf, bigToFloat)
-local integerOf = function(bound) {
-  local neg = bound < 0;
-  local whole = neg ? -bound : bound;
-  local mag;
-  if (whole >= 18446744073709551616.0) mag = MAXU;
-  else if (whole >= 9223372036854775808.0) mag = (whole - 9223372036854775808.0).tointeger() | MIN;
-  else mag = whole.tointeger();
-  return { mag = mag, neg = mag == 0 ? false : neg };
+// A DECLARED BOUND AS EXACT MAGNITUDE AND SIGN (read.go integerBound): the
+// descriptor's 64 bits, never a double, so a bound at or above 2^53 keeps its
+// exact value. An unsigned bound is its 64-bit pattern.
+local boundOf = function(bound, signed) {
+  if (signed && bound < 0)
+    return { mag = bound == MIN ? MIN : -bound, neg = true };
+  return { mag = bound, neg = false };
+};
+
+// compare two sign-and-magnitude integers: -1, 0 or 1
+local compareSigned = function(aNeg, aMag, bNeg, bMag) {
+  if (aNeg != bNeg) return aNeg ? -1 : 1;
+  if (aMag == bMag) return 0;
+  local less = ult(aMag, bMag);
+  return aNeg ? (less ? 1 : -1) : (less ? -1 : 1);
 };
 
 // an integer field takes any token whose VALUE is integral; a fractional
@@ -2099,20 +2176,17 @@ local placeInteger = function(d, tok, integral, report) {
   if (!num.finite || num.fractional) { report.mismatch++; return null; }
   if (num.saturated) report.oor++;
   local mag = num.mag, neg = num.neg;
-  local lo = null, hi = null;
   if (d.lo != null && typeof d.lo == "integer") {
-    lo = d.signed ? d.lo.tofloat() : utof(d.lo);
-    hi = d.signed ? d.hi.tofloat() : utof(d.hi);
+    local lo = boundOf(d.lo, d.signed), hi = boundOf(d.hi, d.signed);
+    if (compareSigned(neg, mag, lo.neg, lo.mag) < 0) {
+      mag = lo.mag; neg = lo.neg; report.oor++;
+    } else if (compareSigned(neg, mag, hi.neg, hi.mag) > 0) {
+      mag = hi.mag; neg = hi.neg; report.oor++;
+    }
   } else if (d.bits != null && d.bits > 0 && d.bits < 64) {
-    lo = 0.0;
-    hi = utof((1 << d.bits) - 1);
-  }
-  if (lo != null) {
-    local scale = neg ? -utof(mag) : utof(mag);
-    local b = null;
-    if (scale < lo) b = integerOf(lo);
-    else if (scale > hi) b = integerOf(hi);
-    if (b != null) { mag = b.mag; neg = b.neg; report.oor++; }
+    local hi = (1 << d.bits) - 1;
+    if (neg) { mag = 0; neg = false; report.oor++; }
+    else if (ult(hi, mag)) { mag = hi; report.oor++; }
   }
   local bytes = d.width;
   if (d.bits != null && d.bits > 0) bytes = d.bits <= 32 ? 4 : 8;
@@ -2382,6 +2456,7 @@ _M.fromJsonWalk <- function(T, rootName, text, report) {
   if (!("refused" in report)) report.refused <- false;
   local c = tableDesc(T, rootName);
   local r = newIn(text, report, c.variable ? {} : null);
+  byteOrderMark(r);
   local v = c.make();
   local ok = readTable(T, c, r, v, 0);
   if (ok) {

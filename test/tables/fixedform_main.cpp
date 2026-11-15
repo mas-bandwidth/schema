@@ -959,9 +959,22 @@ static void union_text_case()
     // THE IDENTITY PLAN: the guard holds the arm ordinal, the flavour is the
     // text op's own, and the two are read out of different lanes.
     {
-        check( tblut1::UtRootFixedPlan[3].op == tblut1::kTableFixedText, "two lanes: the plan's fourth entry is the text" );
-        check( tblut1::UtRootFixedPlan[3].arg == 2, "two lanes: arg is the SECOND arm's ordinal" );
-        check( tblut1::UtRootFixedPlan[3].meta == tblut1::kTableFixedTextUtf8, "two lanes: meta is the utf8 flavour" );
+        // The text entry is found by its op, not by its index: the identity
+        // plan is split at leaf widths for a big-endian host, so where it
+        // sits moves with the copies in front of it.
+        int32_t text = -1;
+        int32_t texts = 0;
+        for ( int32_t i = 0; i < tblut1::UtRootFixedPlanCount; i++ )
+        {
+            if ( tblut1::UtRootFixedPlan[i].op == tblut1::kTableFixedText )
+            {
+                text = i;
+                texts++;
+            }
+        }
+        check( texts == 1 && text >= 0, "two lanes: the plan holds exactly one text entry" );
+        check( text >= 0 && tblut1::UtRootFixedPlan[text].arg == 2, "two lanes: arg is the SECOND arm's ordinal" );
+        check( text >= 0 && tblut1::UtRootFixedPlan[text].meta == tblut1::kTableFixedTextUtf8, "two lanes: meta is the utf8 flavour" );
 
         tblut1::UtRoot back;
         tblut1::TableReport r;
@@ -1372,7 +1385,7 @@ static void bounds_case()
         int32_t past_the_set = 0;
         for ( int32_t i = 0; i < made; ++i )
         {
-            if ( compiled[(size_t) i].op > tblfx1::kTableFixedBool ) { past_the_set++; }
+            if ( compiled[(size_t) i].op > tblfx1::kTableFixedPresentDefaults ) { past_the_set++; }
         }
         check( past_the_set == 0, "bounds, compiled-own: the ops are the whole set and none of them clamps" );
 

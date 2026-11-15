@@ -284,7 +284,7 @@ func messageStrictRows() []messageStrictRow {
 			return b.done()
 		},
 		want:    "-1 length_over_bound 0 222 333",
-		control: [2]string{"if(n>fd.bound){refuseRead(r,\"length_over_bound\");return;}\n    local s=\"\"", "local s=\"\""},
+		control: [2]string{"if(n>fd.bound){refuseRead(r,\"length_over_bound\");return;}\n    local s=joinText(r.b,at,at+n);", "local s=joinText(r.b,at,at+n);"},
 	}, {
 		name: "count_over_bound",
 		peer: func(v *messageStrictVocab) {

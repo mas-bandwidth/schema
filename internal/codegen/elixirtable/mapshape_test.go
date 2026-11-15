@@ -6,8 +6,9 @@ import (
 	"testing"
 )
 
-// SPEC-TABLES §16.2: null alone means optional absence. Any other
-// incompatible value is present-default and replaces a duplicate entry.
+// SPEC-TABLES §16.2: null alone means optional absence. Any other value of
+// the wrong shape refuses the whole read kind_mismatch, and a repeated key
+// refuses it malformed (§4: the refusal is the verdict, no counter).
 func TestElixirMapValueShapePreservesPresence(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "Elixir map value presence")
@@ -25,25 +26,31 @@ func TestElixirMapValueShapePreservesPresence(t *testing.T) {
   def check(false,what), do: raise(what)
  end
  alias Mapshape.Table, as: T
- cases=[
-  {"{\"ints\":{\"1\":null}}", "ints", nil, 0, 0},
-  {"{\"ints\":{\"1\":\"bad\"}}", "ints", 0, 1, 0},
-  {"{\"ints\":{\"1\":{}}}", "ints", 0, 1, 0},
-  {"{\"ints\":{\"1\":7,\"1\":[]}}", "ints", 0, 1, 1},
-  {"{\"words\":{\"1\":{}}}", "words", "", 1, 0},
-  {"{\"words\":{\"1\":\"live\",\"1\":7}}", "words", "", 1, 1},
-  {"{\"leaves\":{\"1\":null}}", "leaves", nil, 0, 0},
-  {"{\"leaves\":{\"1\":[]}}", "leaves", %{}, 1, 0},
-  {"{\"leaves\":{\"1\":{\"n\":9},\"1\":true}}", "leaves", %{}, 1, 1}
+ absent=[
+  {"{\"ints\":{\"1\":null}}", "ints"},
+  {"{\"leaves\":{\"1\":null}}", "leaves"}
  ]
- for {input,field,want,km,dup}<-cases do
+ for {input,field}<-absent do
   {:ok,value,r}=T.from_json("Root",input)
-  Probe.check(value[field]["1"]==want,"presence/default: "<>input)
-  Probe.check(r.kind_mismatch==km and Map.get(r,:duplicate,0)==dup and true,"report: "<>input)
+  Probe.check(Map.has_key?(value[field],"1") and value[field]["1"]==nil,"presence: "<>input)
+  Probe.check(r.reason=="" and r.unknown==0 and r.widened==0,"report: "<>input)
   {:ok,text}=T.to_json("Root",value)
   {:ok,wire}=T.save("Root",value)
   {:ok,again,_}=T.load("Root",wire)
   {:ok,^text}=T.to_json("Root",again)
+ end
+ refused=[
+  "{\"ints\":{\"1\":\"bad\"}}",
+  "{\"ints\":{\"1\":{}}}",
+  "{\"ints\":{\"1\":7,\"1\":[]}}",
+  "{\"words\":{\"1\":{}}}",
+  "{\"words\":{\"1\":\"live\",\"1\":7}}",
+  "{\"leaves\":{\"1\":[]}}",
+  "{\"leaves\":{\"1\":{\"n\":9},\"1\":true}}",
+  "{\"ints\":{\"1\":7,\"1\":8}}"
+ ]
+ for input<-refused do
+  Probe.check(match?({:error,_,_},T.from_json("Root",input)),"refused: "<>input)
  end
  IO.puts("MAP_SHAPE_OK")
  `

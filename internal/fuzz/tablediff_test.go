@@ -132,14 +132,10 @@ func probeFromJSONValue(v *Root, text []byte, rep *TableReport) bool {
 		return false
 	}
 	defer b.Shutdown()
-	ok := RootFromJSON(&b, text, rep)
-	if !ok {
-		if b.GetRoot() != nil {
-			*v = *b.GetRoot()
-		}
-		return false
-	}
-	if !b.Lock() {
+	// A refusal returns no partial value (docs/SPEC-TABLES.md §4, §6.5): the
+	// value form's contract, value at its defaults, is what the probe sees.
+	if !RootFromJSON(&b, text, rep) || !b.Lock() {
+		RootReset(v)
 		return false
 	}
 	*v = *b.AsConst()
@@ -158,8 +154,6 @@ func probeLoad(wire []byte, rep *TableReport) (*Root, bool) {
 	return v, v != nil
 }
 
-// probeLoadBuilder is the strict read's other entry point: into a builder
-// rather than a measured region.
 func probeLoadBuilder(wire []byte, rep *TableReport) (*Root, bool) {
 	n := RootLoadMeasure(wire)
 	if n < 0 {
@@ -186,7 +180,7 @@ var probeScratchBuilder RootBuilder
 func probeLoadMeasureReason(wire []byte) (int64, error) {
 	return RootLoadMeasureReason(wire)
 }
-`, hasIntegrity)
+`, hasIntegrity) + probeFileHelpersSource(false)
 	}
 	return fmt.Sprintf(`package probe
 
@@ -211,8 +205,6 @@ func probeLoad(wire []byte, rep *TableReport) (*Root, bool) {
 	return v, ok
 }
 
-// probeLoadBuilder: a plain Root has no builder, so its one load is the
-// builder entry point too.
 func probeLoadBuilder(wire []byte, rep *TableReport) (*Root, bool) {
 	return probeLoad(wire, rep)
 }
@@ -220,7 +212,45 @@ func probeLoadBuilder(wire []byte, rep *TableReport) (*Root, bool) {
 func probeLoadMeasureReason(wire []byte) (int64, error) {
 	return 0, nil
 }
-`, hasIntegrity)
+`, hasIntegrity) + probeFileHelpersSource(st != nil && st.FixedDeclared && ir.TableFixedEmitted(u, st))
+}
+
+// probeFileHelpersSource is the file round trip: Save and Load for a variable-
+// class root (form 1), FixedSave and FixedLoad for a fixed-class root, whose
+// file is form 3 and whose Load refuses form 1 as previous_form
+// (docs/SPEC-TABLES.md §3.4).
+func probeFileHelpersSource(fixedFile bool) string {
+	if fixedFile {
+		return `
+func probeFileSave(v *Root) ([]byte, bool) {
+	wire := make([]byte, RootFixedMeasure(1))
+	return wire, RootFixedSave([]Root{*v}, wire) == int64(len(wire))
+}
+
+func probeFileLoad(wire []byte, rep *TableReport) (*Root, bool) {
+	values := make([]Root, 1)
+	plan := make([]TableFixedEntry, 4096)
+	if RootFixedLoad(values, wire, plan, rep) != 1 {
+		return nil, false
+	}
+	return &values[0], true
+}
+`
+	}
+	return `
+func probeFileSave(v *Root) ([]byte, bool) {
+	m, reason := RootMeasureReason(v)
+	if m < 0 || reason != nil || RootMeasure(v) != m {
+		return nil, false
+	}
+	wire := make([]byte, m)
+	return wire, RootSave(v, wire) == m
+}
+
+func probeFileLoad(wire []byte, rep *TableReport) (*Root, bool) {
+	return probeLoad(wire, rep)
+}
+`
 }
 
 // runGeneratedTableUnit mirrors the house runGeneratedUnit pattern
@@ -498,16 +528,14 @@ func TestProbe(t *testing.T) {
 					} else if !errors.Is(serr, wantErr) {
 						record(&div, "integrity-wrong-reason %d ReadStrict got=%v want=%v %x", i, serr, wantErr, d)
 					}
-					// a form-1 file whose trailer does not match names
-					// integrity_mismatch on both entry points of the one read
 					if sok || sv != nil {
 						record(&div, "integrity-read-clean %d Load %x", i, d)
-					} else if !errors.Is(sr.Err(), wantErr) || (len(d) > 0 && d[0] == 1 && sr.Reason != "integrity_mismatch") {
+					} else if !errors.Is(sr.Err(), wantErr) || (len(d) > 0 && d[0] == 1 && sr.Verdict != TableOpenDamaged) {
 						record(&div, "integrity-wrong-reason %d Load report=%+v err=%v want=%v %x", i, sr, sr.Err(), wantErr, d)
 					}
 					if bok || bv != nil {
 						record(&div, "integrity-read-clean %d LoadBuilder %x", i, d)
-					} else if !errors.Is(br.Err(), wantErr) || (len(d) > 0 && d[0] == 1 && br.Reason != "integrity_mismatch") {
+					} else if !errors.Is(br.Err(), wantErr) || (len(d) > 0 && d[0] == 1 && br.Verdict != TableOpenDamaged) {
 						record(&div, "integrity-wrong-reason %d LoadBuilder report=%+v err=%v want=%v %x", i, br, br.Err(), wantErr, d)
 					}
 					if hasLoadMeasure {
@@ -649,9 +677,7 @@ func runSeedFull(t *testing.T, r *rand.Rand, seed int, sabotage, sabotageIntegri
 				unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: integrity trailer 0x%08x != crc32c 0x%08x", seed, i, got, want))
 				continue
 			}
-			// the engine reads the sealed file whole and checks the trailer
-			// itself (docs/SPEC-TABLES.md §2.14): handing it the body alone is a
-			// file with no trailer, refused integrity_mismatch
+			engineWire = body
 		}
 		legJSON, err := os.ReadFile(filepath.Join(dir, fmt.Sprintf("inst-%d.json", i)))
 		if err != nil {

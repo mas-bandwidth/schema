@@ -91,11 +91,11 @@ public final class DepthProbe {
 // n pointees linked by `next`.
 func nextText(n int) string {
 	var b strings.Builder
-	for i := 0; i < n; i++ {
+	for range n {
 		b.WriteString(`{"next":`)
 	}
 	b.WriteString(`{}`)
-	for i := 0; i < n; i++ {
+	for range n {
 		b.WriteByte('}')
 	}
 	return b.String()
@@ -104,11 +104,11 @@ func nextText(n int) string {
 // kidsText spells a chain of n arrays of tables under the root.
 func kidsText(n int) string {
 	var b strings.Builder
-	for i := 0; i < n; i++ {
+	for range n {
 		b.WriteString(`{"kids":[`)
 	}
 	b.WriteString(`{}`)
-	for i := 0; i < n; i++ {
+	for range n {
 		b.WriteString(`]}`)
 	}
 	return b.String()
@@ -120,7 +120,7 @@ func probeVerdicts(t *testing.T, out []byte) map[string]string {
 	t.Helper()
 	line := strings.TrimSpace(string(out))
 	got := map[string]string{}
-	for _, field := range strings.Fields(line) {
+	for field := range strings.FieldsSeq(line) {
 		if k, v, ok := strings.Cut(field, "="); ok {
 			got[k] = v
 		}
@@ -210,9 +210,9 @@ func TestJavaTextReadDepthCap(t *testing.T) {
 		text string
 		want *bool
 	}{
-		{"next-128", nextText(128), boolPtr(true)},
-		{"next-129", nextText(129), boolPtr(false)},
-		{"next-100000", nextText(100000), boolPtr(false)},
+		{"next-128", nextText(128), new(true)},
+		{"next-129", nextText(129), new(false)},
+		{"next-100000", nextText(100000), new(false)},
 		{"kids-128", kidsText(128), nil},
 		{"kids-129", kidsText(129), nil},
 		{"kids-100000", kidsText(100000), nil},
@@ -235,7 +235,7 @@ func TestJavaTextReadDepthCap(t *testing.T) {
 	goWrites := func(n int) bool {
 		rootInst := m.New(node)
 		cur := rootInst
-		for i := 0; i < n; i++ {
+		for range n {
 			child := m.New(node)
 			var next *tabletext.Field
 			for j := range cur.Fields {
@@ -267,8 +267,6 @@ func TestJavaTextReadDepthCap(t *testing.T) {
 		}
 	}
 }
-
-func boolPtr(v bool) *bool { return &v }
 
 func boolDigit(v bool) string {
 	if v {

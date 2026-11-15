@@ -15,12 +15,11 @@ package fuzz_test
 //	                             JSON, and the message form of a fixed root).
 //	TestPropRefusalNeverSilent   every not-ok read of a drawn wire/JSON (and its
 //	                             truncations and single-byte flips) carries a
-//	                             non-empty report, and the read's region and
-//	                             builder entry points reach the same verdict.
-//	TestPropEveryReadAgrees      on a clean Save and a clean ToJSON every entry
-//	                             point of the one strict read (region, builder,
-//	                             ReadStrict, FromJSON, the message form) accepts,
-//	                             gives the same value and reports clean.
+//	                             non-empty report, and the region and builder
+//	                             wire reads give the same verdict (one read,
+//	                             docs/SPEC-TABLES.md §6.5; tla/ReadOrder.tla).
+//	TestPropStrictReadsAgree     on a clean Save and a clean ToJSON every read
+//	                             accepts, gives the same value and reports clean.
 //
 // The property is expensive (it compiles a unit per check), so it is behind
 // slowtest.Gate and the make target sets a bounded -rapid.checks. A default
@@ -220,8 +219,7 @@ func TestPropRoundTripEveryForm(t *testing.T) {
 }
 
 // TestPropRefusalNeverSilent: a refused input never comes back ok with an empty
-// report, and the region and builder loads of the one strict read reach the
-// same verdict on it.
+// report, and the region and builder wire reads give the same verdict.
 func TestPropRefusalNeverSilent(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
@@ -237,9 +235,10 @@ func TestPropRefusalNeverSilent(t *testing.T) {
 	coverageFloor(t, "the fixed Root form", fixed)
 }
 
-// TestPropEveryReadAgrees: on a clean Save and a clean ToJSON every entry point
-// of the one strict read accepts, gives the same value and reports clean.
-func TestPropEveryReadAgrees(t *testing.T) {
+// TestPropStrictReadsAgree: on a clean Save and a clean ToJSON the region and
+// builder wire reads, the JSON read and (for a fixed Root) the message read all
+// accept, give the same value and report clean.
+func TestPropStrictReadsAgree(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	rapidPropsGate(t)
@@ -516,10 +515,10 @@ func testRoundTrip(t *testing.T, vals [][]byte) {
 		var brep TableReport
 		bv, bok := probeLoadBuilder(wire, &brep)
 		if !bok || bv == nil {
-			t.Fatalf("value %d: wire builder load refused a clean Save: %+v", i, brep)
+			t.Fatalf("value %d: wire builder read refused a clean Save: %+v", i, brep)
 		}
 		if bj, _ := rapidJSON(bv); bj != tj {
-			t.Fatalf("value %d: wire builder load JSON differs\nwant %s\ngot  %s", i, tj, bj)
+			t.Fatalf("value %d: wire builder read JSON differs\nwant %s\ngot  %s", i, tj, bj)
 		}
 		txt, err := RootSaveText(v)
 		if err != nil {
@@ -569,13 +568,15 @@ func testRefusal(t *testing.T, vals [][]byte) {
 			if !ok && rep.Err() == nil && rep == (TableReport{}) {
 				t.Fatalf("value %d: wire strict refused silently: %x", i, op)
 			}
+			// One verdict (tla/ReadOrder.tla, OneVerdict): the builder read
+			// accepts exactly what the region read accepts.
 			var brep TableReport
 			_, bok := probeLoadBuilder(op, &brep)
-			if !bok && brep.Err() == nil && brep == (TableReport{}) {
-				t.Fatalf("value %d: wire builder load refused silently: %x", i, op)
-			}
 			if bok != ok {
-				t.Fatalf("value %d: wire region load ok=%v but builder load ok=%v: %x reports %+v %+v", i, ok, bok, op, rep, brep)
+				t.Fatalf("value %d: wire reads disagree: Load=%v LoadBuilder=%v %x reports %+v %+v", i, ok, bok, op, rep, brep)
+			}
+			if !bok && brep.Err() == nil {
+				t.Fatalf("value %d: wire builder read refused silently: %x", i, op)
 			}
 		}
 		for _, op := range rapidDamage([]byte(tj)) {
@@ -602,26 +603,27 @@ func testAgree(t *testing.T, vals [][]byte) {
 		var srep, brep TableReport
 		sv, sok := probeLoad(wire, &srep)
 		bv, bok := probeLoadBuilder(wire, &brep)
-		rv, rerr := RootReadStrict(wire)
-		if !sok || !bok || rerr != nil || rv == nil {
-			t.Fatalf("value %d: wire region=%v builder=%v ReadStrict=%v reports %+v %+v", i, sok, bok, rerr, srep, brep)
+		if !sok || !bok {
+			t.Fatalf("value %d: wire Load=%v LoadBuilder=%v reports %+v %+v", i, sok, bok, srep, brep)
 		}
 		if srep != (TableReport{}) || brep != (TableReport{}) {
 			t.Fatalf("value %d: wire clean reads reported %+v %+v", i, srep, brep)
 		}
 		sj, _ := rapidJSON(sv)
 		bj, _ := rapidJSON(bv)
-		rj, _ := rapidJSON(rv)
-		if sj != tj || bj != tj || rj != tj {
-			t.Fatalf("value %d: wire entry points' values differ\nwant %s\nregion %s\nbuilder %s\nReadStrict %s", i, tj, sj, bj, rj)
+		if sj != tj || bj != tj {
+			t.Fatalf("value %d: wire read values differ\nwant %s\nLoad %s\nLoadBuilder %s", i, tj, sj, bj)
 		}
 		var fsrep TableReport
 		fv, fok := probeFromJSON([]byte(tj), &fsrep)
-		if !fok || fsrep != (TableReport{}) {
-			t.Fatalf("value %d: JSON clean read ok=%v reported %+v", i, fok, fsrep)
+		if !fok {
+			t.Fatalf("value %d: JSON read refused canonical text: %+v", i, fsrep)
+		}
+		if fsrep != (TableReport{}) {
+			t.Fatalf("value %d: JSON clean read reported %+v", i, fsrep)
 		}
 		if fj, _ := rapidJSON(fv); fj != tj {
-			t.Fatalf("value %d: JSON value differs\nwant %s\ngot  %s", i, tj, fj)
+			t.Fatalf("value %d: JSON read value differs\nwant %s\ngot  %s", i, tj, fj)
 		}
 ` + msgAgree + `
 	}
@@ -684,7 +686,7 @@ var rapidFixedRoundTrip = `
 `
 
 // rapidMessageAgree is spliced into testAgree only for a fixed Root: a clean
-// message reads ok, reports clean, and gives the same value as the text.
+// message read accepts, reports clean and gives the same value.
 var rapidMessageAgree = `
 		mbuf, vocab, err := rapidMessage(t, v)
 		if err != nil {
@@ -692,13 +694,13 @@ var rapidMessageAgree = `
 		}
 		mj, mok, mrep := rapidMessageLoad(mbuf, &vocab)
 		if !mok {
-			t.Fatalf("value %d: message strict refused a clean message: %+v", i, mrep)
+			t.Fatalf("value %d: message read refused a clean message: %+v", i, mrep)
 		}
 		if mrep != (TableReport{}) {
 			t.Fatalf("value %d: message clean read reported %+v", i, mrep)
 		}
 		if mj != tj {
-			t.Fatalf("value %d: message value differs\nwant %s\ngot  %s", i, tj, mj)
+			t.Fatalf("value %d: message read value differs\nwant %s\ngot  %s", i, tj, mj)
 		}
 `
 

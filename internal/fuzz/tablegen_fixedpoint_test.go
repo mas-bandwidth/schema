@@ -8,7 +8,17 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+// fixedPointProbe is one seed's generated unit and the probe that reads its
+// drawn values.
+type fixedPointProbe struct {
+	seed int
+	src  string
+	unit *ir.Unit
+	test string
+}
 
 // TestRandomTableGenFixedPoint pins the generator to valid schemas and values
 // across deterministic seeds. Each sample is read by the generated Go table
@@ -21,6 +31,7 @@ func TestRandomTableGenFixedPoint(t *testing.T) {
 	ufixedSeen := map[[2]int]bool{}
 	fractionSeen := map[string]bool{}
 	floatSeen := map[string]bool{}
+	var probes []fixedPointProbe
 	for seed := range 100 {
 		r := rand.New(rand.NewSource(int64(seed)))
 		src, model := randomSchema(r)
@@ -70,11 +81,21 @@ func TestRandomTableGenFixedPoint(t *testing.T) {
 			fractionSeen[key] = true
 		}
 		generatedTest.WriteString("}\n")
-		output, err := runGeneratedTableUnit(t, unit, generatedTest.String(), map[string]string{"NOVA_TEST_NO_HOST": "1"}, "-timeout=600s")
-		if err != nil {
-			t.Fatalf("seed %d: generated Go reader failed\n%s\n%s", seed, src, output)
-		}
+		probes = append(probes, fixedPointProbe{seed: seed, src: src, unit: unit, test: generatedTest.String()})
 	}
+	// Drawing is serial (one generator per seed, in order); the probes share
+	// nothing, so they compile and run side by side.
+	t.Run("probes", func(t *testing.T) {
+		for _, p := range probes {
+			t.Run(fmt.Sprintf("seed%d", p.seed), func(t *testing.T) {
+				t.Parallel()
+				output, err := runGeneratedTableUnit(t, p.unit, p.test, map[string]string{"NOVA_TEST_NO_HOST": "1"}, "-timeout=600s")
+				if err != nil {
+					t.Fatalf("seed %d: generated Go reader failed\n%s\n%s", p.seed, p.src, output)
+				}
+			})
+		}
+	})
 
 	for _, pair := range fixedPairs {
 		if !fixedSeen[pair] {
@@ -105,9 +126,9 @@ func TestRandomTableGenFixedPoint(t *testing.T) {
 // TestRandomTableGenFixedPointPlantClamp is the regression guard for the
 // clean-read assertion above. It plants an out-of-range whole-unit value into a
 // fixed/ufixed root leaf (declared bounds are min=0,max=1) and asserts the
-// generated reader refuses it out_of_range (the read is strict-only, §6.5) —
-// never a clean read and never a clamp. A reader that read it clean, or kept
-// a clamped value, turns this plant red.
+// generated reader surfaces it as a clamp or refusal — never a silent clean
+// read with an empty TableReport. Without the empty-report assertion a silent
+// clamp (or kind mismatch) would pass as clean; this plant goes red if one does.
 func TestRandomTableGenFixedPointPlantClamp(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs generated units)")
@@ -129,7 +150,7 @@ func TestRandomTableGenFixedPointPlantClamp(t *testing.T) {
 		planted := withFieldReplaced(base, fixedField.Name, "2")
 		var probe strings.Builder
 		probe.WriteString("package probe\nimport \"testing\"\nfunc TestClampDetected(t *testing.T) {\n")
-		fmt.Fprintf(&probe, "{ var value Root; var report TableReport; RootReset(&value); ok := RootFromJSON(&value, []byte(%q), &report); if !ok && report.Refused() && report.Refusal == TableRefuseOutOfRange { return }; t.Errorf(\"seed %%d: out-of-range %s value was not refused out_of_range: ok=%%v report=%%+v %%q\", %d, ok, report, %q) }\n", planted, fixedKey(fixedField), seed, planted)
+		fmt.Fprintf(&probe, "{ var value Root; var report TableReport; RootReset(&value); ok := RootFromJSON(&value, []byte(%q), &report); if !ok { return }; if report != (TableReport{}) { return }; t.Errorf(\"seed %%d: out-of-range %s value read clean with an empty report: %%q\", %d, %q) }\n", planted, fixedKey(fixedField), seed, planted)
 		probe.WriteString("}\n")
 		output, err := runGeneratedTableUnit(t, unit, probe.String(), map[string]string{"NOVA_TEST_NO_HOST": "1"}, "-timeout=600s")
 		if err != nil {

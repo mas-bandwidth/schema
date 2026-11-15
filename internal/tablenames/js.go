@@ -339,6 +339,13 @@ func init() {
 		Name{Name: "TableVariableNoteIndex", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableNoteKeyed", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableNotePayload", What: "the JavaScript variable-form runtime module"},
+		Name{Name: "TableVariableNoteBlobReference", What: "the JavaScript variable-form runtime module"},
+		// the save's write-side value checks, which refuse in every build (SPEC §5.1)
+		Name{Name: "TableVariableTextValid", What: "the JavaScript variable-form runtime module: the save's write checks"},
+		Name{Name: "TableVariableBlobValid", What: "the JavaScript variable-form runtime module: the save's write checks"},
+		Name{Name: "TableVariableIntegerValid", What: "the JavaScript variable-form runtime module: the save's write checks"},
+		Name{Name: "TableVariableArrayValid", What: "the JavaScript variable-form runtime module: the save's write checks"},
+		Name{Name: "TableVariableFloatValid", What: "the JavaScript variable-form runtime module: the save's write checks"},
 		Name{Name: "TableVariableNumber", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableOpen", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableReadArray", What: "the JavaScript variable-form runtime module"},
