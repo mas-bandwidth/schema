@@ -999,16 +999,22 @@ pub fn table_message_skip_ranged(r: &mut TableBitReader, kind: u8, width: i64, s
     let offset = ((hi as u128) << 64) | lo as u128;
     let bits = kind_bits(kind);
     if table_message_signed_kind(kind) {
-        let base = table_message_signed(kind, s.base_lo, s.base_hi);
-        if offset > i128::MAX as u128 {
-            return false;
-        }
-        let Some(value) = base.checked_add(offset as i128) else { return false };
+        // Narrow announcements store a sign-extended 64-bit base; wide
+        // announcements store both halves. Bias the signed domain so the
+        // full unsigned offset can be added without narrowing it to i128.
+        let base = if bits > 64 {
+            (((s.base_hi as u128) << 64) | s.base_lo as u128) as i128
+        } else {
+            s.base_lo as i64 as i128
+        };
+        let biased = (base as u128) ^ (1u128 << 127);
+        let Some(sum) = biased.checked_add(offset) else { return false };
+        let value = (sum ^ (1u128 << 127)) as i128;
         let bottom = if bits >= 128 { i128::MIN } else { -(1i128 << (bits - 1)) };
         let top = if bits >= 128 { i128::MAX } else { (1i128 << (bits - 1)) - 1 };
         value >= bottom && value <= top
     } else {
-        let base = table_message_unsigned(kind, s.base_lo, s.base_hi);
+        let base = if bits > 64 { ((s.base_hi as u128) << 64) | s.base_lo as u128 } else { s.base_lo as u128 };
         let Some(value) = base.checked_add(offset) else { return false };
         let top = if bits >= 128 { u128::MAX } else { (1u128 << bits) - 1 };
         value <= top
@@ -1100,7 +1106,8 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
             None => false,
             Some(0) => true,
             Some(reference) => match v.entry(reference).copied() {
-                Some(arm) => arm.id < 0xffff_ffff_ffff_fffd && arm.kind != 0 && table_message_skip(r, v, &arm, depth + 1),
+                Some(arm) => arm.id < 0xffff_ffff_ffff_fffd && arm.kind != 0 &&
+                    table_message_skip(r, v, &arm, depth + u32::from(matches!(arm.kind, 13 | 14 | 15 | 16))),
                 None => false,
             },
         },

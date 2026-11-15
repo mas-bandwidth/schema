@@ -207,6 +207,14 @@ fn main() {
     names.ref_bits = 2;
     names.announced = true;
 
+    skip_row("ranged-i128-wide-zero", &names, &ranged_entry(18, 128, 0, 1u64 << 63), &[(0, 64), (1u64 << 63, 64)]);
+    skip_row("ranged-i128-wide-max", &names, &ranged_entry(18, 128, 0, 1u64 << 63), &[(u64::MAX, 64), (u64::MAX, 64)]);
+    skip_row("ranged-i8-base-outside", &names, &ranged_entry(2, 0, 128, 0), &[]);
+    skip_row("ranged-u8-base-outside", &names, &ranged_entry(6, 0, 256, 0), &[]);
+    { let union = TableMessageEntry { kind: 15, ..Default::default() };
+      let mut buf = [0u8; 8]; let mut w = TableBitWriter::new(&mut buf); w.put(3, names.ref_bits); w.put(0, 32);
+      let mut r = TableBitReader::new(&buf); let ok = table_message_skip(&mut r, &names, &union, 128);
+      println!("ROW\tunion-scalar-at-depth\t{}", if ok { "read" } else { "refused" }); }
     skip_row("ranged-i8-at-max", &names, &ranged_entry(2, 8, (-100i64) as u64, 0), &[(227, 8)]);
     skip_row("ranged-i8-over-max", &names, &ranged_entry(2, 8, (-100i64) as u64, 0), &[(228, 8)]);
     skip_row("ranged-u8-at-max", &names, &ranged_entry(6, 8, 200, 0), &[(55, 8)]);
@@ -304,6 +312,11 @@ fn main() {
 // still resolve. It also holds one id announced at two slots and a lawful
 // reference past the old 4096 cap.
 var rustSkippedShapeVerdicts = map[string]string{
+	"ranged-i128-wide-zero":             "read",
+	"ranged-i128-wide-max":              "read",
+	"ranged-i8-base-outside":            "refused",
+	"ranged-u8-base-outside":            "refused",
+	"union-scalar-at-depth":             "read",
 	"ranged-i8-at-max":                  "read",
 	"ranged-i8-over-max":                "refused",
 	"ranged-u8-at-max":                  "read",
