@@ -11,6 +11,7 @@
 package cpptable
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -26,7 +27,7 @@ import (
 // with three stubs no field ever reaches, and a pointered unit answers with the
 // graph half — the builder's reader, the region's writer and the `&node` map —
 // which carries its own gate across the pointered units of the corpus.
-func tableJsonWalk(pkg string, variable bool, anyMap bool, anyList bool) string {
+func tableJsonWalk(pkg string, variable bool, anyMap bool, anyList bool, fieldSeenWords int32, slotSeenWords int32) string {
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_JSON"
 	adapters := tableJsonFixedAdapters
 	if variable {
@@ -63,6 +64,11 @@ func tableJsonWalk(pkg string, variable bool, anyMap bool, anyList bool) string 
 		"// definitions to be token-identical, and the generic-walk gate is what\n" +
 		"// proves that, byte for byte, across every generated .cpp.\n" +
 		"#ifndef " + guard + "\n#define " + guard + "\n\nnamespace " + pkg + " {\n\n" +
+		fmt.Sprintf("// A repeated key is tracked in a bitmap on the stack, sized to this unit's\n"+
+			"// widest table and widest keyed array: every field index and every slot is\n"+
+			"// counted, and an object allocates nothing (docs/SPEC-TABLES.md §16.2).\n"+
+			"static const int32_t kTableJsonFieldSeenWords = %d;\n"+
+			"static const int32_t kTableJsonSlotSeenWords = %d;\n\n", fieldSeenWords, slotSeenWords) +
 		tableJsonAdapterDeclarations +
 		tableJsonWalkSource +
 		"\n" + adapters +
@@ -2349,15 +2355,15 @@ struct TableJsonIn
 // as missing_required, in declaration order, exactly as the binary reader
 // refuses a record that omitted it. A required field inside an if guard is
 // demanded only while its guard holds: with the branch off it is absent and
-// no refusal is owed. The bounded seen bitmap is the repeated tracker; a
-// table with more than 4096 fields keeps its old reading past the window.
+// no refusal is owed. The seen bitmap is the repeated tracker, sized to every
+// field the table declares, so no index is past its window.
 inline bool TableJsonRequireSeen( TableJsonIn & in, const void * base, const TableTypeInfo * info, const uint64_t * seen )
 {
     bool missing = false;
     for ( int32_t i = 0; i < info->num_fields; i++ )
     {
         const TableFieldInfo * f = &info->fields[i];
-        if ( i >= 4096 || !f->required ) { continue; }
+        if ( !f->required ) { continue; }
         if ( f->guard[0] != 0 && !TableJsonGuardHolds( base, info, f->guard ) ) { continue; }
         if ( ( seen[i >> 6] & ( uint64_t( 1 ) << ( i & 63 ) ) ) != 0 ) { continue; }
         if ( !missing ) { in.report->missing_required_fields[0] = 0; }
@@ -4286,9 +4292,10 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         }
         char shape = TableJsonElementShape( f );
         // A variant name is a key: repeating it refuses the whole read as
-        // malformed (§16.2). Track resolved slots in a bounded, allocation-free
-        // bitmask; the key-spelling set below also catches repeats with no slot.
-        uint64_t seen[8] = {};
+        // malformed (§16.2). Track resolved slots in an allocation-free bitmask
+        // sized to every slot the array declares; the key-spelling set below
+        // also catches repeats with no slot.
+        uint64_t seen[kTableJsonSlotSeenWords] = {};
         // A repeated KEY refuses, the resolved slot or none (docs/SPEC-TABLES.md
         // §16.2): a key that names no slot -- an unknown variant, or "None" -- is
         // a repeat the second time it stands here, so the key SPELLINGS are
@@ -4357,7 +4364,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                     break;
                 }
             }
-            if ( slot >= 0 && slot < 512 )
+            if ( slot >= 0 )
             {
                 uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
                 if ( ( seen[slot >> 6] & bit ) != 0 )
@@ -4505,9 +4512,10 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
 inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key );
 
 // ONE table object: keys are field keys, unknown ones are skipped and
-// counted, a repeated key is last-wins and counted. The instance is already
-// at its declared defaults when this is entered, so a key the text never
-// mentions keeps the default an absent field takes on the wire (§4).
+// counted, and a repeated key refuses the whole read as malformed. The
+// instance is already at its declared defaults when this is entered, so a key
+// the text never mentions keeps the default an absent field takes on the wire
+// (§4).
 inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth )
 {
     if ( depth > kTableJsonMaxDepth )
@@ -4543,9 +4551,9 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
 // it before scanning the rest.
 inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key )
 {
-    // repeated tracking, bounded and allocation-free: a table with more
-    // fields than this still reads, its repeats simply stop being counted
-    uint64_t seen[64] = {};
+    // repeated tracking, allocation-free: the bitmap is sized to the unit's
+    // widest table, so every field index this table declares is tracked
+    uint64_t seen[kTableJsonFieldSeenWords] = {};
     for ( ;; )
     {
         char key[kTableJsonMaxKey];
@@ -4608,16 +4616,13 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
         else
         {
             const TableFieldInfo * f = &info->fields[index];
-            if ( index < 4096 )
+            uint64_t bit = uint64_t( 1 ) << ( index & 63 );
+            if ( ( seen[index >> 6] & bit ) != 0 )
             {
-                uint64_t bit = uint64_t( 1 ) << ( index & 63 );
-                if ( ( seen[index >> 6] & bit ) != 0 )
-                {
-                    in.report->refused = true;
-                    in.report->refuse_reason = malformed;
-                }
-                seen[index >> 6] |= bit;
+                in.report->refused = true;
+                in.report->refuse_reason = malformed;
             }
+            seen[index >> 6] |= bit;
             // PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this line
             // is the key being present, so an optional is set present
             // whatever its value — with one exception the page names: a JSON
@@ -5057,7 +5062,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
             in.bad = true;
             return false;
         } // the arena refused
-        uint64_t empty_seen[64] = {};
+        uint64_t empty_seen[kTableJsonFieldSeenWords] = {};
         return TableJsonRequireSeen( in, node, f->table, empty_seen );
     }
     if ( c == 0 )
