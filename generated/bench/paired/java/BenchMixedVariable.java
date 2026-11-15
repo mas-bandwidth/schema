@@ -2342,7 +2342,7 @@ public final class BenchMixedVariable {
             jsonReadFields(in, v, depth + 1);
             return v;
         }
-        String key = in.scanString();
+        String key = in.scanName();
         if (in.bad || key == null) return null;
         if (!"&node".equals(key)) {
             in.p = start;
@@ -2422,7 +2422,7 @@ public final class BenchMixedVariable {
                 in.p++;
                 break;
             }
-            String key = in.scanString();
+            String key = in.scanName();
             if (in.bad) {
                 return;
             }
