@@ -1,8 +1,11 @@
 // wire.go is the type wire both ways (docs/PORT-MOO.md, THE WIRE): for every
 // packet type and union, Write<Name>(stream, value) and Read<Name>(stream,
-// value) against the vendored serialize.moo streams. There is no private bit
-// writer or reader: every bit is the runtime's. The bytes are SPEC §4.3's, the
-// same ones the C++ target pins in testdata/wire/*.bin.
+// value) against the vendored serialize.moo streams. The public Read<Name> is
+// the one-packet read: Read<Name>Body, then stream:serializeEnd() once after
+// the top-level object; a nested type is read through its body, which does not
+// end (SPEC §5). There is no private bit writer or reader: every bit is the
+// runtime's. The bytes are SPEC §4.3's, the same ones the C++ target pins in
+// testdata/wire/*.bin.
 //
 // The error idiom is the §6.3 bool early-out. A value outside its declared
 // contract (a wrong storage type, an out-of-range integer, a non-finite float
@@ -408,13 +411,15 @@ func (g *gen) emitWriteUnion(d *ir.Union) error {
 // Read.
 
 func (g *gen) emitReadStruct(d *ir.Struct) error {
-	g.pf("-- Read%s reads the type wire; false refuses (stream:error() names a runtime\n", d.Name)
-	g.pf("-- refusal; a schema rule's refusal returns false unlatched).\n")
-	g.pf("function M.Read%s(stream: any, value: %s): boolean\n", d.Name, d.Name)
+	g.pf("-- Read%sBody reads the type wire; false refuses (stream:error() names a runtime\n", d.Name)
+	g.pf("-- refusal; a schema rule's refusal returns false unlatched). A nested read\n")
+	g.pf("-- stops here; the end check belongs to the public one-packet read (SPEC §5).\n")
+	g.pf("function M.Read%sBody(stream: any, value: %s): boolean\n", d.Name, d.Name)
 	if err := g.readItems(d.Items, "\t"); err != nil {
 		return err
 	}
 	g.pf("\treturn true\nend\n\n")
+	g.emitPublicRead(d.Name)
 	return nil
 }
 
@@ -550,7 +555,7 @@ func (g *gen) readScalar(val, length string, f *ir.Field, ind string) error {
 			g.call(ind, fmt.Sprintf("stream:serializeBits64(WIDE, %d)", ref.WireBits), "")
 			g.pf("%s%s = WIDE.value\n", ind, val)
 		case *ir.Struct, *ir.Union:
-			g.call(ind, fmt.Sprintf("%s.Read%s(stream, %s)", g.mod(t.Name), t.Name, val), "")
+			g.call(ind, fmt.Sprintf("%s.Read%sBody(stream, %s)", g.mod(t.Name), t.Name, val), "")
 		default:
 			return fmt.Errorf("field %s: named type %s is not carried on the packet wire", f.Name, t.Name)
 		}
@@ -656,9 +661,10 @@ func (g *gen) readFixed(val string, f *ir.Field, ind string) {
 }
 
 func (g *gen) emitReadUnion(d *ir.Union) error {
-	g.pf("-- Read%s: a tag above %d is refused; a selected arm takes fresh declared\n", d.Name, d.Max)
-	g.pf("-- defaults, then its payload (SPEC §4.8).\n")
-	g.pf("function M.Read%s(stream: any, value: %s): boolean\n", d.Name, d.Name)
+	g.pf("-- Read%sBody: a tag above %d is refused; a selected arm takes fresh declared\n", d.Name, d.Max)
+	g.pf("-- defaults, then its payload (SPEC §4.8). A nested read stops here; the end\n")
+	g.pf("-- check belongs to the public one-packet read (SPEC §5).\n")
+	g.pf("function M.Read%sBody(stream: any, value: %s): boolean\n", d.Name, d.Name)
 	g.call("\t", fmt.Sprintf("stream:serializeInt(NUM, 0, %d)", d.Max), "rejects a tag above the count (SPEC §4.8)")
 	g.pf("\tvalue.Type = NUM.value\n")
 	for i, v := range d.Variants {
@@ -674,5 +680,23 @@ func (g *gen) emitReadUnion(d *ir.Union) error {
 		g.pf("\tend\n")
 	}
 	g.pf("\treturn true\nend\n\n")
+	g.emitPublicRead(d.Name)
 	return nil
+}
+
+// emitPublicRead is the one-packet read (SPEC §5): the per-type body, then the
+// runtime's end check once, after the top-level object. The end check reads the
+// final byte's unused bits, so its position is put back on success: the read
+// reports the object's bits consumed, as the writer reports them.
+func (g *gen) emitPublicRead(name string) {
+	g.pf("-- Read%s is the one-packet read: Read%sBody, then the end check once after\n", name, name)
+	g.pf("-- the top-level object (SPEC §5); it reports the object's bits consumed.\n")
+	g.pf("function M.Read%s(stream: any, value: %s): boolean\n", name, name)
+	g.pf("\tif not M.Read%sBody(stream, value) then\n\t\treturn false\n\tend\n", name)
+	g.pf("\tlocal bits = stream:bitsProcessed()\n")
+	g.pf("\tlocal reader = stream._reader\n")
+	g.pf("\tlocal bitsRead = reader._bitsRead\n")
+	g.pf("\tif not stream:serializeEnd() then\n\t\treturn false\n\tend\n")
+	g.pf("\tstream._bits = bits\n\treader._bitsRead = bitsRead\n")
+	g.pf("\treturn true\nend\n\n")
 }

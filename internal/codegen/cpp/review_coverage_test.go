@@ -114,9 +114,9 @@ type Padding {
 	w := string(files["ShapesWire.h"])
 	for _, want := range []string{
 		"bool WritePinned( serialize::WriteStream & stream, const Pinned & value )\n{\n    (void) stream;\n    (void) value; // zero wire bits — asserts compile away under NDEBUG\n",
-		"bool ReadPinned( serialize::ReadStream & stream, Pinned & value )\n{\n    (void) stream; // zero wire bits — nothing to read, defaults prefill below\n",
+		"bool ReadPinnedBody( serialize::ReadStream & stream, Pinned & value )\n{\n    (void) stream; // zero wire bits — nothing to read, defaults prefill below\n",
 		"bool WritePadding( serialize::WriteStream & stream, const Padding & value )\n{\n    (void) value; // items only — reserved/const/align carry no storage\n",
-		"bool ReadPadding( serialize::ReadStream & stream, Padding & value )\n{\n    (void) value; // items only — reserved/const/align carry no storage\n",
+		"bool ReadPaddingBody( serialize::ReadStream & stream, Padding & value )\n{\n    (void) value; // items only — reserved/const/align carry no storage\n",
 	} {
 		if !strings.Contains(w, want) {
 			t.Errorf("ShapesWire.h: want\n%s\nin\n%s", want, w)
@@ -153,9 +153,9 @@ type Guarded {
 		t.Fatal(err)
 	}
 	w := string(files["GuardedWire.h"])
-	readAt := strings.Index(w, "bool ReadGuarded(")
+	readAt := strings.Index(w, "bool ReadGuardedBody(")
 	if readAt < 0 {
-		t.Fatal("GuardedWire.h carries no ReadGuarded")
+		t.Fatal("GuardedWire.h carries no ReadGuardedBody")
 	}
 	read := w[readAt:]
 	for _, want := range []string{
@@ -196,9 +196,9 @@ type Ranges {
 		t.Fatal(err)
 	}
 	w := string(files["RangesWire.h"])
-	writeAt, readAt := strings.Index(w, "bool WriteRanges("), strings.Index(w, "bool ReadRanges(")
+	writeAt, readAt := strings.Index(w, "bool WriteRanges("), strings.Index(w, "bool ReadRangesBody(")
 	if writeAt < 0 || readAt < writeAt {
-		t.Fatal("RangesWire.h does not carry WriteRanges before ReadRanges")
+		t.Fatal("RangesWire.h does not carry WriteRanges before ReadRangesBody")
 	}
 	write := w[writeAt:readAt]
 	read := w[readAt:]
