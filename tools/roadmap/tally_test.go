@@ -281,9 +281,28 @@ func TestLispRendererSuite(t *testing.T) {
 
 // TestRoadmapIsGeneratedFromTheData holds the committed tables to what
 // render.lisp makes of docs/roadmap.sexp and docs/roadmap-evidence/, where
-// sbcl is installed (the same check as `make roadmap-check`).
+// sbcl is installed (the same check as `make roadmap-check`). With
+// ROADMAP_DATA_ONLY set (a pull request, whose cards never commit the page;
+// tools/roadmap/roadmap.mk) it holds the data to rendering instead, into a
+// copy of the page, as `make roadmap-data-check` does.
 func TestRoadmapIsGeneratedFromTheData(t *testing.T) {
 	sbcl := sbclOrSkip(t)
+	if os.Getenv("ROADMAP_DATA_ONLY") != "" {
+		raw, err := os.ReadFile("../../ROADMAP.md")
+		if err != nil {
+			t.Fatal(err)
+		}
+		page := t.TempDir() + "/ROADMAP.md"
+		if err := os.WriteFile(page, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(sbcl, "--script", "tools/roadmap/render.lisp", "docs/roadmap.sexp", page)
+		cmd.Dir = "../.."
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("the roadmap data does not render:\n%s", string(out))
+		}
+		return
+	}
 	cmd := exec.Command(sbcl, "--script", "tools/roadmap/render.lisp", "--check", "docs/roadmap.sexp", "ROADMAP.md")
 	cmd.Dir = "../.."
 	out, err := cmd.CombinedOutput()

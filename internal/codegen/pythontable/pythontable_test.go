@@ -2,6 +2,7 @@ package pythontable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -254,9 +255,7 @@ func TestPythonTableCoreNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	sabotaged := make(map[string][]byte, len(files))
-	for name, data := range files {
-		sabotaged[name] = data
-	}
+	maps.Copy(sabotaged, files)
 	const path = "core/_schema/save.py"
 	text := string(sabotaged[path])
 	const anchor = "writer.byte(FORM)"
@@ -350,7 +349,7 @@ print("OK")
 			fmt.Fprintf(&want, "field %s %s %d %s %t %d %s %t %t %s\n", st.Name, f.Name, ir.TableWireFieldKind(f), codecOf(f), f.Array != ir.ArrayNone, f.ArrayBound, key, f.Type.Pointer, f.Type.Optional, target)
 		}
 	}
-	for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(got, "\n"), "\n") {
 		if strings.HasPrefix(line, "table ") || strings.HasPrefix(line, "field ") {
 			if !strings.Contains(want.String(), line+"\n") {
 				t.Errorf("probe line is not in the descriptor set:\n%s", line)
