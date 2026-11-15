@@ -201,7 +201,7 @@ func (c *fixedCapCounter) compileEntry(theirs *fixedCapLayout, ti int, theirAt u
 			c.push()
 		}
 		n := min(theirN, myN)
-		for i := uint32(0); i < n; i++ {
+		for i := range n {
 			c.compileEntry(
 				theirs, ti+1, fixedCapAdd(theirAt, head+i*tel.size),
 				mine, mi+1, fixedCapAdd(myAt, head+i*mel.size),

@@ -53,7 +53,7 @@ func zeroWidthAnnouncement(entries ...[]byte) []byte {
 	vocab = binary.AppendUvarint(vocab, uint64(len(vocabSub)))
 	vocab = append(vocab, vocabSub...)
 
-	body := append(version, vocab...)
+	body := append(append([]byte{}, version...), vocab...)
 	body = append(body, 0)
 
 	out := []byte{1}

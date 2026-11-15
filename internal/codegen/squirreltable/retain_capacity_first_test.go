@@ -78,7 +78,7 @@ table Root { marker int32
 		items := capacity * 4
 		var json strings.Builder
 		json.WriteString(`{"marker":7,"future":[`)
-		for i := 0; i < items; i++ {
+		for i := range items {
 			if i != 0 {
 				json.WriteByte(',')
 			}

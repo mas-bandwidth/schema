@@ -39,7 +39,7 @@ fixed table Root { items [200]Item }
 	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(root))
 	hash := ir.TableFixedLayoutHash(layout, root)
 	body := make([]byte, ir.TableFixedTypeBytes(root))
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		binary.LittleEndian.PutUint32(body[i*4:], uint32(1000+i))
 	}
 	file := make([]byte, 0, 16+4+len(layout)+8+len(body))

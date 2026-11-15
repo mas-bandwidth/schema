@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"sort"
 	"strings"
 
@@ -6475,7 +6476,7 @@ func writeVariableGraphWalk(b *strings.Builder, st *ir.Struct, graphTypes []vari
 
 	b.WriteString("    static boolean graphEnter(TableVariable.NodeGraph g, Value v) {\n")
 	b.WriteString("        if (v == null) { return true; }\n")
-	for i := len(st.Fields) - 1; i >= 0; i-- {
+	for i := range slices.Backward(st.Fields) {
 		fmt.Fprintf(b, "        g.push(v, GRAPH_KIND, %d, 0, null);\n", i)
 	}
 	b.WriteString("        return true;\n")

@@ -68,7 +68,7 @@ func (w *fieldOnceWriter) put(bit uint8) {
 }
 
 func (w *fieldOnceWriter) putZero(n int) {
-	for i := 0; i < n; i++ {
+	for range n {
 		w.put(0)
 	}
 }

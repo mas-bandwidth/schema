@@ -54,7 +54,11 @@ func TestCTableRetainRefusesWhatLoadRefuses(t *testing.T) {
 			decl:    "future [..4]float64",
 			fixture: `{"future":[1.5]}`,
 			damage: func(wire []byte) []byte {
-				binary.LittleEndian.PutUint64(wire[bytes.Index(wire, floatMarker):], 0x7ff8000000000000)
+				at := bytes.Index(wire, floatMarker)
+				if at < 0 {
+					panic("the float marker is not in the fixture's wire")
+				}
+				binary.LittleEndian.PutUint64(wire[at:], 0x7ff8000000000000)
 				return wire
 			},
 		},
@@ -121,9 +125,9 @@ func TestCTableRetainRefusesWhatLoadRefuses(t *testing.T) {
 			retained = 1
 		}
 		if accepted {
-			checks.WriteString(fmt.Sprintf(" CHECK(case_verdict(w_%d,sizeof(w_%d),%q,1,%d));\n", i, i, c.name, retained))
+			fmt.Fprintf(&checks, " CHECK(case_verdict(w_%d,sizeof(w_%d),%q,1,%d));\n", i, i, c.name, retained)
 		} else {
-			checks.WriteString(fmt.Sprintf(" CHECK(case_verdict(w_%d,sizeof(w_%d),%q,0,0));\n", i, i, c.name))
+			fmt.Fprintf(&checks, " CHECK(case_verdict(w_%d,sizeof(w_%d),%q,0,0));\n", i, i, c.name)
 		}
 		fmt.Fprintf(&wires, "static const uint8_t w_%d[]={%s};\n", i, cOctets(wire))
 	}

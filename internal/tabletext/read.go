@@ -1153,10 +1153,11 @@ func (in *reader) readBase64(fv *Field) bool {
 	// standard base64 with zero pad bits (§16.2). The walk above deliberately
 	// accepts decodable unpadded input, so distinguish it from damaged input.
 	canonical := symbols%4 == 0
-	if pad == 1 {
+	switch pad {
+	case 1:
 		last := strings.IndexByte(alphabet, raw[len(raw)-2])
 		canonical = last >= 0 && last&0x03 == 0
-	} else if pad == 2 {
+	case 2:
 		last := strings.IndexByte(alphabet, raw[len(raw)-3])
 		canonical = last >= 0 && last&0x0f == 0
 	}

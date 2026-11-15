@@ -99,11 +99,6 @@ func newBitReader(b []byte) *bitReader { return &bitReader{b: b, n: len(b) * 8} 
 
 func (r *bitReader) has(n int) bool { return n >= 0 && r.off+n <= r.n }
 
-// left is the bits still unread. It bounds what a COUNT off the wire can
-// honestly claim, so a reader sizes its storage against the stream it holds
-// rather than against a number hostile bytes chose.
-func (r *bitReader) left() int64 { return int64(r.n - r.off) }
-
 func (r *bitReader) get(n int) (uint64, bool) {
 	if n < 0 || n > 64 {
 		panic(fmt.Sprintf("tablewire: get width %d is outside [0,64]", n))

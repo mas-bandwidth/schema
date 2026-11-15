@@ -33,7 +33,7 @@ func javaLongChainWire(t *testing.T, m *tabletext.Model, n int) []byte {
 	t.Helper()
 	root := m.New(m.Lookup("Chain"))
 	cur := root
-	for i := 0; i < n; i++ {
+	for i := range n {
 		value, ok := cur.FieldByKey("value")
 		if !ok {
 			t.Fatal("Chain has no field value")

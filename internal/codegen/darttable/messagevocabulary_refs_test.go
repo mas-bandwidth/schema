@@ -62,7 +62,7 @@ func peerUnit(t *testing.T, src string) *ir.Unit {
 func peerAddedNames(t *testing.T) *ir.Unit {
 	t.Helper()
 	var extras strings.Builder
-	for i := 0; i < 25; i++ {
+	for i := range 25 {
 		fmt.Fprintf(&extras, "    extra%d uint32 = 0\n", i)
 	}
 	src := strings.Replace(peerVocabularySchema,
@@ -154,7 +154,7 @@ func refBits(u *ir.Unit) int {
 func craftRef(ref uint64, bits int) []byte {
 	out := make([]byte, 2+(bits+7)/8)
 	out[0], out[1] = 2, 0
-	for i := 0; i < bits; i++ {
+	for i := range bits {
 		if (ref>>i)&1 != 0 {
 			out[2+(i>>3)] |= 1 << (i & 7)
 		}

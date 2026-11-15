@@ -123,7 +123,7 @@ func announceFileCases(t *testing.T, u *ir.Unit) []announceFileCase {
 	// 4102 entries: the id table's maximum is 4096 (§3).
 	wideAnnIDs := append([]uint64(nil), baseIDs...)
 	wideFileIDs := make([]uint64, 0, 4102)
-	for i := 0; i < 4100; i++ {
+	for i := range 4100 {
 		wideAnnIDs = append(wideAnnIDs, 0x1000+uint64(i))
 		wideFileIDs = append(wideFileIDs, 0x2000+uint64(i))
 	}

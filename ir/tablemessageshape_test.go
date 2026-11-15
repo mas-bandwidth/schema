@@ -36,7 +36,7 @@ func TestAnnouncedListElementIsNotAList(t *testing.T) {
 		{"keyed over keyed", TableKindKeyed, keyedShape(4, TableKindKeyed, keyed)},
 	}
 	nested := array
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		nested = arrayShape(0, 4, TableKindArray, nested)
 	}
 	refused = append(refused, struct {
@@ -46,7 +46,6 @@ func TestAnnouncedListElementIsNotAList(t *testing.T) {
 	}{"a 1000-level nest", TableKindArray, nested})
 
 	for _, tc := range refused {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			entry := TableVocabularyEntry{Id: 1, Kind: tc.kind, Shape: tc.shape}
@@ -67,7 +66,6 @@ func TestAnnouncedListElementIsNotAList(t *testing.T) {
 		{"keyed over a table", TableKindKeyed, keyedShape(4, TableKindTable, table)},
 	}
 	for _, tc := range decoded {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			entry := TableVocabularyEntry{Id: 1, Kind: tc.kind, Shape: tc.shape}

@@ -16,7 +16,7 @@ import (
 // continuation bytes and a tenth carrying the value's sixty-fourth bit.
 func lebTenBytes(v uint64) []byte {
 	out := make([]byte, 0, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		b := byte(v & 0x7f)
 		v >>= 7
 		if i < 9 {
