@@ -3855,6 +3855,24 @@ class TableVariableTextIn {
   }
 }
 
+// ONE TEXT HANDED AS BYTES (docs/SPEC-TABLES.md §16.2): the read validates
+// UTF-8 itself — well-formed, no overlong form, no surrogate code point and
+// nothing above U+10FFFF — before a byte reaches the text walk. A caller's
+// error is the non-Uint8Array; data that is not UTF-8 refuses the whole read.
+function TableVariableFromJsonBytes(c, bytes, report) {
+  if (!(bytes instanceof Uint8Array)) {
+    throw new TypeError("TableVariableFromJsonBytes takes the text's bytes as a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
+  }
+  const decoded = TableVariableUtf8Decode(bytes);
+  if (!decoded.ok) {
+    report.damaged = true;
+    report.refused = 1;
+    report.reason = "string_not_utf8";
+    return null;
+  }
+  return TableVariableFromJson(c, decoded.s, report);
+}
+
 // ONE TEXT: the root's object and nothing after it. The instance holds what
 // was placed before any stop; a text that is not JSON is damaged.
 function TableVariableFromJson(c, text, report) {
@@ -5534,6 +5552,10 @@ export function FixedTableToJson(v) {
 
 export function FixedTableFromJson(text, report) {
   return TableVariableFromJson(TableVariableCodecs.FixedTable, text, report);
+}
+
+export function FixedTableFromJsonBytes(bytes, report) {
+  return TableVariableFromJsonBytes(TableVariableCodecs.FixedTable, bytes, report);
 }
 
 export function FixedTableLoadMeasure(bytes) {

@@ -1182,6 +1182,9 @@ func (g *variableGen) emitRootCodec(st *ir.Struct) {
 		g.pf("export function %sFromJson(text, report) {\n", st.Name)
 		g.pf("  return TableVariableFromJson(%s, text, report);\n", c)
 		g.pf("}\n\n")
+		g.pf("export function %sFromJsonBytes(bytes, report) {\n", st.Name)
+		g.pf("  return TableVariableFromJsonBytes(%s, bytes, report);\n", c)
+		g.pf("}\n\n")
 	}
 	g.emitRootLoadMeasure(st)
 }
@@ -1226,6 +1229,9 @@ func (g *variableGen) emitNoFileFormRoot(st *ir.Struct) {
 		g.pf("}\n\n")
 		g.pf("export function %sFromJson(text, report) {\n", st.Name)
 		g.pf("  return TableVariableFromJson(%s, text, report);\n", c)
+		g.pf("}\n\n")
+		g.pf("export function %sFromJsonBytes(bytes, report) {\n", st.Name)
+		g.pf("  return TableVariableFromJsonBytes(%s, bytes, report);\n", c)
 		g.pf("}\n\n")
 	}
 	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
