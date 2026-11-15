@@ -995,7 +995,7 @@ defmodule Bench.TableMessage do
 
   # A QUANTIZED FLOAT RIDES ITS STEP INDEX (docs/SPEC-TABLES.md §3.3,
   # SPEC.md §4.3): narrow to float32, refuse a value that overflows the width
-  # and a finite value outside [min, max] (invalid_value, never clamped), then
+  # and a finite value outside [min, max] (invalid_value, refused whole), then
   # quantize by the packet wire's rule, in float32 at every step.
   defp encode_float(%{packing: 2} = shape, value, acc) do
     case round_f32(value) do
