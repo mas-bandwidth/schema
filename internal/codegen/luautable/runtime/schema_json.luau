@@ -3128,6 +3128,10 @@ from_lua = function(desc: any, v: any, A: any, memo: any): any
           out[fd.name .. "Length"] = vlen(lv)
         elseif fd.raw.s == "bytes" then out[fd.name .. "Length"] = vlen(lv)
         elseif fd.raw.s == "arr" and fd.raw.array == "counted" then out[fd.name .. "Count"] = #lv end
+      else
+        -- an absent or null optional carries its present slot as the
+        -- constructor's false, never nil
+        out[fd.raw.present] = false
       end
     else
       out[fd.name] = conv_to_lua(fd, lv, A, memo)
