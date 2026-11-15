@@ -21,8 +21,8 @@ const BIGINT_SCRATCH = { value: 0n };
 const BOOL_SCRATCH = { value: false };
 
 // validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
-// interior null (SPEC §4.7). Every string field's read calls it; nothing
-// allocates and nothing latches.
+// interior null (SPEC §4.7). Every string field's read and write calls it;
+// nothing allocates and nothing latches.
 function validText(bytes, length) {
   for (let utf8Index = 0; utf8Index < length;) {
     const utf8Lead = bytes[utf8Index++];
@@ -1419,6 +1419,9 @@ export function WriteBenchMixed(stream, value) {
   }
   NUMBER_SCRATCH.value = value.playerNameLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
+    return false;
+  }
+  if (!validText(value.playerName, value.playerNameLength)) {
     return false;
   }
   if (!stream.serializeBytes(value.playerName.subarray(0, value.playerNameLength))) {
