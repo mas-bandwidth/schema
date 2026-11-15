@@ -7260,7 +7260,7 @@
       "status": "proven",
       "gate": "TestRegionGraphs",
       "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
-      "control": "tables-go-graph-label-negative-control (CI full / negative controls (go-proof-2))"
+      "control": "tables-go-graph-label-negative-control (CI full / negative controls (go-proof-5))"
     },
     {
       "row": "porting M14",
@@ -9651,7 +9651,7 @@
       "status": "proven",
       "gate": "cards-conformance-go",
       "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
-      "control": "cards-conformance-go-negative-control (CI full / negative controls (go-proof-2))"
+      "control": "cards-conformance-go-negative-control (CI full / negative controls (go-proof-4))"
     },
     {
       "row": "porting J6",

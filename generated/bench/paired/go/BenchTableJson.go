@@ -1373,6 +1373,16 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 			if !ok {
 				return false
 			}
+			// A schema-name string is capped at 255 bytes wherever the read
+			// meets one (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2), a skipped object's key
+			// included: a longer name refuses the whole read.
+			if decodedLen >= tableJSONMaxKey {
+				if in.report != nil {
+					in.report.Refuse(TableRefuseOutOfRange, "")
+				}
+				in.bad = true
+				return false
+			}
 			in.pos = keyStart
 			if overflow == nil && decodedLen <= int32(len(keyArena)-arenaLen) && keyCount < len(keyOff) {
 				n, ok := in.scanSkipped(keyArena[arenaLen : arenaLen+int(decodedLen)])
@@ -3007,6 +3017,12 @@ func tableJSONDropLabel(in *tableJSONIn) {
 	}
 	probe := *in
 	probe.pos++
+	keyStart := probe.pos
+	length, ok := probe.scanString(nil)
+	if !ok || length != int32(len("&node")) {
+		return
+	}
+	probe.pos = keyStart
 	var key [16]byte
 	n, ok := probe.scanKey(key[:])
 	if !ok || string(key[:n]) != "&node" || probe.peek() != ':' {

@@ -363,7 +363,7 @@ fn fixed_load_frame(b: const u8[:], layout: const u8[:], hash: u64, record_bytes
         i += 1;
     }
     let rest = b.len - FixedHeaderBytes - 4 - layout_length;
-    if record_bytes <= 8 || rest % record_bytes != 0 { return fixed_refuse(report, FixedRefuseTruncated, true); }
+    if rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 { return fixed_refuse(report, FixedRefuseTruncated, true); }
     let n = rest / record_bytes;
     if n > capacity { return fixed_refuse(report, FixedRefuseBatchTooLarge, false); }
     var at: i64 = FixedHeaderBytes + 4 + layout_length;

@@ -1750,6 +1750,16 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 			if !ok {
 				return false
 			}
+			// A schema-name string is capped at 255 bytes wherever the read
+			// meets one (docs/SPEC-TABLES.md §16.2), a skipped object's key
+			// included: a longer name refuses the whole read.
+			if decodedLen >= tableJSONMaxKey {
+				if in.report != nil {
+					in.report.Refuse(TableRefuseOutOfRange, "")
+				}
+				in.bad = true
+				return false
+			}
 			in.pos = keyStart
 			if overflow == nil && decodedLen <= int32(len(keyArena)-arenaLen) && keyCount < len(keyOff) {
 				n, ok := in.scanSkipped(keyArena[arenaLen : arenaLen+int(decodedLen)])
