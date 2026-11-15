@@ -529,6 +529,7 @@ local read_array: any
 local read_element: any
 local read_union: any
 local read_map: any
+local put: any
 
 -- an enum reference (§3, §2.15): a retired id reads its field default, not unknown; 0 is None, a reference past the id table is damage,
 -- a variant this enum cannot name reads None and counts unknown. The value is
@@ -876,7 +877,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 			else
 				x = scalar_at(payload, e or {}, ek, report)
 			end
-			if at > 0 and dst ~= nil and x ~= nil then dst[at] = x end
+			if at > 0 and dst ~= nil and x ~= nil then put(dst, at, x) end
 		end
 	end
 	r.at = endpos
@@ -1024,7 +1025,7 @@ end
 
 -- an element lands at its 1-based index; a [N]uint8 is a 0-based buffer
 -- (docs/PORT-LUAU.md, THE TYPE MAPPING)
-local function put(dst: any, i: number, x: any)
+put = function(dst: any, i: number, x: any)
 	if typeof(dst) == "buffer" then
 		buffer.writeu8(dst, i - 1, x)
 	else
