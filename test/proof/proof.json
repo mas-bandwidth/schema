@@ -1175,9 +1175,10 @@
     {
       "row": "surface json-hostile",
       "lang": "lobster",
-      "status": "relaxed",
-      "why": "1 case(s) fail: json-hostile/str-zero-escape-unknown-key",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-lobster (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
+      "job": "CI full / conformance (lobster)",
+      "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
     {
       "row": "surface json-hostile",
@@ -1190,7 +1191,7 @@
       "row": "surface json-hostile",
       "lang": "luau",
       "status": "relaxed",
-      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "why": "1 case(s) fail: json-hostile/base64-unpadded",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-luau (docs/relaxed.md)"
     },
     {
