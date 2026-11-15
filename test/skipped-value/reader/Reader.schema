@@ -1,0 +1,11 @@
+// Reader.schema — the READER unit of the skipped-value vectors
+// (docs/SPEC-TABLES.md §4, §16.3; docs/rulings.json
+// skipped-value-is-validated). It declares the one field the reader knows; the
+// NEWER writer unit declares six more, one of each shape, and a reader of this
+// unit skips every one of them and is held to what a read of each would hold.
+package skippedreader
+
+fixed table Root
+{
+    known uint8
+}

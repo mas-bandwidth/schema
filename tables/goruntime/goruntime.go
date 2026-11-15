@@ -161,10 +161,11 @@ const (
 	// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 	TableRefuseBlobShared
 	// The fixed form's own refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3,
-	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the one refusal enum: every
-	// fixed-form refusal name is a TableRefuseReason member, appended after
-	// TableRefuseBlobShared so no existing value renumbers, in §6.5's table order so
-	// names, order and spelling agree in all ports. Each member's Error() is its
+	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the reference's one refusal
+	// enum: every fixed-form refusal name is a TableRefuseReason member, appended
+	// after TableRefuseBlobShared so no existing value renumbers, in §6.5's
+	// recommended table order so a port that follows it spells them alike; the
+	// verdict, not the names, is the contract. Each member's Error() is its
 	// snake_case name, and TableReport.Err() maps a fixed report whose Reason is
 	// that name to the member, so errors.Is(err, TableRefuseLayoutUnknown) holds
 	// for a fixed load that refused. The form-byte refusals keep answering
@@ -1776,12 +1777,12 @@ func (v *TableVocabulary) Init(storage []TableMessageEntry) {
 // open body began at or before the last naming, and the levels whose bodies
 // were opened since are dropped as the entry is named again. Two slots
 // announcing one id are one entry, the first.
-func TableMessageBodyOpen(v *TableVocabulary, starts []uint64, depth int) {
+func TableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
 	v.bodyClock++
 	starts[depth] = v.bodyClock
 }
 
-func TableMessageBodyFirst(v *TableVocabulary) {
+func TableMessageSeenFirst(v *TableVocabulary) {
 	for i := range v.Count {
 		for j := range i {
 			if v.Entries[j].ID == v.Entries[i].ID {
@@ -1792,7 +1793,7 @@ func TableMessageBodyFirst(v *TableVocabulary) {
 	}
 }
 
-func TableMessageBodyRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
+func TableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
 	e := &v.Entries[ref-1]
 	if e.bodyFirst != 0 {
 		e = &v.Entries[e.bodyFirst-1]
@@ -1977,7 +1978,7 @@ func TableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64
 // readers then hold these lanes to the declared ranges, as the file read does.
 func TableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byte) bool {
 	lo, ok := r.Get(min(s.Bits, 64))
-	if !ok {
+	if !ok || s.Packing == 2 && lo > uint64(s.QCount) {
 		return false
 	}
 	hi := uint64(0)
@@ -1997,7 +1998,7 @@ func TableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byt
 		hi += s.Base[1] + carry
 	}
 	if s.Packing == 2 {
-		index := min(uint32(lo), s.QCount)
+		index := uint32(lo)
 		ratio := float32(float32(index) / float32(s.QCount))
 		scaled := float32(ratio * s.QDelta)
 		lo = uint64(math.Float32bits(float32(scaled + s.QMin)))
@@ -2078,4 +2079,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xa57cfa95232505c8
+const Version uint64 = 0x0a1bcab8f9b36714

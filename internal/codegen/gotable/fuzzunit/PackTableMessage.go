@@ -142,7 +142,7 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 	return tableMessageBodyGunnerSettings(r, value, starts[:], 0)
 }
 func tableMessageBodyGunnerSettings(r *TableMessageReader, value *GunnerSettings, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	GunnerSettingsReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -158,7 +158,7 @@ func tableMessageBodyGunnerSettings(r *TableMessageReader, value *GunnerSettings
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -481,7 +481,7 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 	return tableMessageBodyShipEntry(r, value, starts[:], 0)
 }
 func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	ShipEntryReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -497,7 +497,7 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts [
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -897,7 +897,7 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 	return tableMessageBodyGlobalSettings(r, value, starts[:], 0)
 }
 func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	GlobalSettingsReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -913,7 +913,7 @@ func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1320,7 +1320,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 	return tableMessageBodyPackConfig(r, value, starts[:], 0)
 }
 func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	PackConfigReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1336,7 +1336,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}

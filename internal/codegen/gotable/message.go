@@ -192,9 +192,9 @@ func (v *TableVocabulary) Init(storage []TableMessageEntry){*v=TableVocabulary{E
 // open body began at or before the last naming, and the levels whose bodies
 // were opened since are dropped as the entry is named again. Two slots
 // announcing one id are one entry, the first.
-func tableMessageBodyOpen(v *TableVocabulary,starts []uint64,depth int){v.bodyClock++;starts[depth]=v.bodyClock}
-func tableMessageBodyFirst(v *TableVocabulary){for i := range v.Count {for j := range i {if v.Entries[j].ID==v.Entries[i].ID{v.Entries[i].bodyFirst=uint64(j+1);break}}}}
-func tableMessageBodyRepeat(v *TableVocabulary,starts []uint64,depth int,ref uint64)bool{e:=&v.Entries[ref-1];if e.bodyFirst!=0{e=&v.Entries[e.bodyFirst-1]};at,last,below:=e.bodySeenAt>>7,int(e.bodySeenAt&127),e.bodySeenBelow;if starts[depth]<=at {if last==depth||below>>uint(depth)&1!=0{return true};below&=1<<uint(depth)-1}else{kept,hi:=0,depth;for kept<hi {mid:=(kept+hi)/2;if starts[mid]<=at{kept=mid+1}else{hi=mid}};if last<kept{below|=1<<uint(last)};below&=1<<uint(kept)-1};e.bodySeenBelow=below;e.bodySeenAt=v.bodyClock<<7|uint64(depth);return false}
+func tableMessageSeenOpen(v *TableVocabulary,starts []uint64,depth int){v.bodyClock++;starts[depth]=v.bodyClock}
+func tableMessageSeenFirst(v *TableVocabulary){for i := range v.Count {for j := range i {if v.Entries[j].ID==v.Entries[i].ID{v.Entries[i].bodyFirst=uint64(j+1);break}}}}
+func tableMessageSeenRepeat(v *TableVocabulary,starts []uint64,depth int,ref uint64)bool{e:=&v.Entries[ref-1];if e.bodyFirst!=0{e=&v.Entries[e.bodyFirst-1]};at,last,below:=e.bodySeenAt>>7,int(e.bodySeenAt&127),e.bodySeenBelow;if starts[depth]<=at {if last==depth||below>>uint(depth)&1!=0{return true};below&=1<<uint(depth)-1}else{kept,hi:=0,depth;for kept<hi {mid:=(kept+hi)/2;if starts[mid]<=at{kept=mid+1}else{hi=mid}};if last<kept{below|=1<<uint(last)};below&=1<<uint(kept)-1};e.bodySeenBelow=below;e.bodySeenAt=v.bodyClock<<7|uint64(depth);return false}
 func (v *TableVocabulary) Entry(ref uint64)(TableMessageEntry,bool){if ref==0||ref>uint64(v.Count){return TableMessageEntry{},false};return v.Entries[ref-1],true}
 func (v *TableVocabulary) Name(ref uint64)(uint64,bool){e,ok:=v.Entry(ref);return e.ID,ok&&e.Shape.Kind==0&&e.ID<0xfffffffffffffffd}
 func tableMessageNameSlot(id uint64)uint64 {for i:=range tableMessageEntries {e:=&tableMessageEntries[i];if e.ID==id&&e.Shape.Kind==0{return uint64(i+1)}};return 0}
@@ -215,7 +215,7 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  src:=TableReader{Buffer:words,Report:report};count:=int64(0);nodeSeen:=false
  for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){return tableMessageRefuse(report,"vocabulary_too_large")};began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok||e.ID==0xfffffffffffffffd||e.ID==0xfffffffffffffffe||e.ID==0xffffffffffffffff&&nodeSeen{report.Refuse(TableRefuseWireDamaged,"");return false};if e.ID==0xffffffffffffffff{nodeSeen=true};for i := range count {o:=v.Entries[i].Shape;if o.Max-o.Min==src.Offset-began&&o.Min>=0&&o.Max<=int64(len(words)) {same:=true;for j:=o.Min;j<o.Max;j++ {if words[j]!=words[began+j-o.Min]{same=false;break}};if same{report.Refuse(TableRefuseWireDamaged,"");return false}}};e.Shape.Min=began;e.Shape.Max=src.Offset;v.Entries[count]=e;count++}
  src.Offset=0;for i := range count {e,ok:=tableMessageEntryRead(&src);if !ok{report.Refuse(TableRefuseWireDamaged,"");return false};v.Entries[i]=e}
- v.Count=count;v.RefBits=tableMessageBits(uint64(count));if v.RefBits==0{v.RefBits=1};tableMessageBodyFirst(v);v.Announced=true;return true
+ v.Count=count;v.RefBits=tableMessageBits(uint64(count));if v.RefBits==0{v.RefBits=1};tableMessageSeenFirst(v);v.Announced=true;return true
 }
 // THE SHAPE IS THE DECLARED ONE, the bytes the announcement spells, and never
 // the resolved entry: a resolved quantized entry keeps §4.3's derivation and
@@ -263,7 +263,7 @@ func tableMessageSkip(r *TableBitReader,v *TableVocabulary,indexBits int64,e Tab
 func tableMessageSkipBody(r *TableBitReader,v *TableVocabulary,indexBits int64,depth int)bool {if depth>128{return false};for {ref,ok:=r.Get(v.RefBits);if !ok||ref==0{return ok};e,ok:=v.Entry(ref);if !ok||!tableMessageSkip(r,v,indexBits,e,depth){return false}}}
 // Numeric values are reconstructed at the announced storage width. Typed
 // readers then hold these lanes to the declared ranges, as the file read does.
-func tableMessageReadScalar(r *TableBitReader,s TableMessageShape,out *[16]byte)bool {lo,ok:=r.Get(min(s.Bits,64));if !ok{return false};hi:=uint64(0);if s.Bits>64 {hi,ok=r.Get(s.Bits-64);if !ok{return false}};if s.Packing==1 {sum:=lo+s.Base[0];carry:=uint64(0);if sum<lo{carry=1};lo=sum;hi+=s.Base[1]+carry};if s.Packing==2 {index:=min(uint32(lo),s.QCount);ratio:=float32(float32(index)/float32(s.QCount));scaled:=float32(ratio*s.QDelta);lo=uint64(math.Float32bits(float32(scaled+s.QMin)))};binary.LittleEndian.PutUint64(out[:],lo);binary.LittleEndian.PutUint64(out[8:],hi);return true}
+func tableMessageReadScalar(r *TableBitReader,s TableMessageShape,out *[16]byte)bool {lo,ok:=r.Get(min(s.Bits,64));if !ok||s.Packing==2&&lo>uint64(s.QCount){return false};hi:=uint64(0);if s.Bits>64 {hi,ok=r.Get(s.Bits-64);if !ok{return false}};if s.Packing==1 {sum:=lo+s.Base[0];carry:=uint64(0);if sum<lo{carry=1};lo=sum;hi+=s.Base[1]+carry};if s.Packing==2 {index:=uint32(lo);ratio:=float32(float32(index)/float32(s.QCount));scaled:=float32(ratio*s.QDelta);lo=uint64(math.Float32bits(float32(scaled+s.QMin)))};binary.LittleEndian.PutUint64(out[:],lo);binary.LittleEndian.PutUint64(out[8:],hi);return true}
 // A quantized float outside its range is a value the writer refuses
 // (docs/SPEC-TABLES.md §3.3): over counts it, and the save answers -1. So is a
 // ranged value whose offset from its base does not fit its bits, a flags bit

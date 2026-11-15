@@ -12,15 +12,15 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	// or unknown, at every nesting level: the body's open tick sits in starts,
 	// sized here at the deepest nesting this body's declaration reaches (fixed,
 	// since a by-value cycle does not compile), and the test is one look at the
-	// named entry (tableMessageBodyRepeat).
+	// named entry (tableMessageSeenRepeat).
 	nest := messageBodyNest(st, map[*ir.Struct]int{})
 	if nest > ir.TableFixedMaxDepth {
 		panic(fmt.Sprintf("message body %s nests %d deep, past the fixed form's %d", st.Name, nest, ir.TableFixedMaxDepth))
 	}
 	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {var starts [%d]uint64;return tableMessageBody%s(r,value,starts[:],0)}\n", st.Name, g.storageName(st.Name), nest+1, st.Name)
 	g.pf("func tableMessageBody%s(r *TableMessageReader,value *%s,starts []uint64,depth int)bool {\n", st.Name, g.storageName(st.Name))
-	g.pf("tableMessageBodyOpen(r.Vocabulary,starts,depth);%sReset(value);\n", st.Name)
-	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if tableMessageBodyRepeat(r.Vocabulary,starts,depth,ref){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};switch entry.ID {\n")
+	g.pf("tableMessageSeenOpen(r.Vocabulary,starts,depth);%sReset(value);\n", st.Name)
+	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if tableMessageSeenRepeat(r.Vocabulary,starts,depth,ref){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};switch entry.ID {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
 		g.pf("case 0x%016x:{\n", mine.Id)

@@ -220,7 +220,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 	return tableMessageBodyRangedSigned(r, value, starts[:], 0)
 }
 func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedSignedReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -236,7 +236,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1130,7 +1130,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 	return tableMessageBodyRangedUnsigned(r, value, starts[:], 0)
 }
 func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedUnsignedReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1146,7 +1146,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1941,7 +1941,7 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 	return tableMessageBodyRangedWidths(r, value, starts[:], 0)
 }
 func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedWidthsReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1957,7 +1957,7 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}

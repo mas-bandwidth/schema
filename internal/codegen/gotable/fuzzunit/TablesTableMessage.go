@@ -153,7 +153,7 @@ func RootConfigLoadMessageBody(r *TableMessageReader, value *RootConfig) bool {
 	return tableMessageBodyRootConfig(r, value, starts[:], 0)
 }
 func tableMessageBodyRootConfig(r *TableMessageReader, value *RootConfig, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RootConfigReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -169,7 +169,7 @@ func tableMessageBodyRootConfig(r *TableMessageReader, value *RootConfig, starts
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -478,7 +478,7 @@ func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) boo
 	return tableMessageBodyWeaponConfig(r, value, starts[:], 0)
 }
 func tableMessageBodyWeaponConfig(r *TableMessageReader, value *WeaponConfig, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	WeaponConfigReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -494,7 +494,7 @@ func tableMessageBodyWeaponConfig(r *TableMessageReader, value *WeaponConfig, st
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1002,7 +1002,7 @@ func LoadoutConfigLoadMessageBody(r *TableMessageReader, value *LoadoutConfig) b
 	return tableMessageBodyLoadoutConfig(r, value, starts[:], 0)
 }
 func tableMessageBodyLoadoutConfig(r *TableMessageReader, value *LoadoutConfig, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	LoadoutConfigReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1018,7 +1018,7 @@ func tableMessageBodyLoadoutConfig(r *TableMessageReader, value *LoadoutConfig, 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1566,7 +1566,7 @@ func ProfileConfigLoadMessageBody(r *TableMessageReader, value *ProfileConfig) b
 	return tableMessageBodyProfileConfig(r, value, starts[:], 0)
 }
 func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	ProfileConfigReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1582,7 +1582,7 @@ func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -2113,7 +2113,7 @@ func AttachmentLoadMessageBody(r *TableMessageReader, value *AttachmentRow) bool
 	return tableMessageBodyAttachment(r, value, starts[:], 0)
 }
 func tableMessageBodyAttachment(r *TableMessageReader, value *AttachmentRow, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	AttachmentReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -2129,7 +2129,7 @@ func tableMessageBodyAttachment(r *TableMessageReader, value *AttachmentRow, sta
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -2238,7 +2238,7 @@ func BuffLoadMessageBody(r *TableMessageReader, value *BuffRow) bool {
 	return tableMessageBodyBuff(r, value, starts[:], 0)
 }
 func tableMessageBodyBuff(r *TableMessageReader, value *BuffRow, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	BuffReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -2254,7 +2254,7 @@ func tableMessageBodyBuff(r *TableMessageReader, value *BuffRow, starts []uint64
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -2324,7 +2324,7 @@ func DebuffLoadMessageBody(r *TableMessageReader, value *DebuffRow) bool {
 	return tableMessageBodyDebuff(r, value, starts[:], 0)
 }
 func tableMessageBodyDebuff(r *TableMessageReader, value *DebuffRow, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	DebuffReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -2340,7 +2340,7 @@ func tableMessageBodyDebuff(r *TableMessageReader, value *DebuffRow, starts []ui
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}

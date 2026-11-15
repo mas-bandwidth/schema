@@ -96,7 +96,7 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 	return tableMessageBodyArchiveConfig(r, value, starts[:], 0)
 }
 func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	ArchiveConfigReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -112,7 +112,7 @@ func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}

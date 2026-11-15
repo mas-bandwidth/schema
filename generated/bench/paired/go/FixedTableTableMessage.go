@@ -84,7 +84,7 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 	return tableMessageBodyFixedTable(r, value, starts[:], 0)
 }
 func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	FixedTableReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -100,7 +100,7 @@ func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}

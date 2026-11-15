@@ -81,7 +81,7 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, count, ind string) {
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		g.pf("%sif(%s<0 || %s>%d) return 0;\n", ind, count, count, f.Type.Size)
+		g.writeStorageBound(count, f.Type.Size, ind)
 		bits := ir.TableMessageBitsRequired(0, e.Shape.Max)
 		if f.Type.Kind == ir.TBytes {
 			bits = ir.TableMessageCountBits(e.Shape)
@@ -99,7 +99,9 @@ func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, co
 		g.messageElement(f, e.Shape.Elem, e.Shape.Inner, expr+"[i]", ind+"  ")
 		g.pf("%s } }\n", ind)
 	case f.Array != ir.ArrayNone:
-		g.pf("%sif(%s<0 || %s>%d) return 0;\n", ind, count, count, f.ArrayBound)
+		if f.Array == ir.ArrayCounted {
+			g.writeStorageBound(count, f.ArrayBound, ind)
+		}
 		g.pf("%stable_bit_put(w,(uint64_t)%s-%d,%d);\n", ind, count, e.Shape.Min, ir.TableMessageCountBits(e.Shape))
 		if ir.TableMessageAligns(e.Kind, e.Shape) {
 			g.pf("%stable_bit_align_write(w);\n", ind)
@@ -206,11 +208,11 @@ func (g *tableGen) emitMessageSave(st *ir.Struct) {
 		switch {
 		case (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString):
 			count = expr + "_length"
-			g.pf(" if(%s<0 || %s>%d) return 0;\n", count, count, f.Type.Size)
+			g.writeStorageBound(count, f.Type.Size, " ")
 			condition = g.wireBytesDiffer(f, expr)
 		case f.Array == ir.ArrayCounted:
 			count = expr + "_count"
-			g.pf(" if(%s<0 || %s>%d) return 0;\n", count, count, f.ArrayBound)
+			g.writeStorageBound(count, f.ArrayBound, " ")
 			condition = count + ">0"
 		case f.Type.Optional:
 			condition = expr + "_present"
@@ -268,10 +270,19 @@ func (g *tableGen) emitFixedMessageSave(st *ir.Struct) {
 			}
 		}
 		g.pf(" w=table_bit_writer(%s,%s);\n", buf, cap)
+		// THE WRITE CONTRACT (docs/SPEC.md §5.1): each value the body ACCEPTED
+		// is asserted, debug only. A value the body refuses in every build (an
+		// enum ordinal, a union tag, a count or length past storage) still
+		// answers -1; the assert holds the rows it would otherwise write (a
+		// range, a bits width, ill-formed text).
+		each := fmt.Sprintf(" for(i=0;i<count;i++) if(!%s(&w,values+i)) return -1;\n", g.api(st.Name, "save_message_body"))
+		if a := g.writeAdmits(st); a != "" {
+			each = fmt.Sprintf(" for(i=0;i<count;i++) {\n  if(!%s(&w,values+i)) return -1;\n  schema_assert(%s(values+i)); /* the write contract, debug only (docs/SPEC.md §5.1) */\n }\n", g.api(st.Name, "save_message_body"), a)
+		}
 		if st.Integrity != "" {
-			g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n for(i=0;i<count;i++) if(!%s(&w,values+i)) return -1;\n table_bit_align_write(&w); return w.overflow ? -1 : schema_table_integrity_seal_(%s,w.bits/8);\n}\n", g.api(st.Name, "save_message_body"), buf)
+			g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n%s table_bit_align_write(&w); return w.overflow ? -1 : schema_table_integrity_seal_(%s,w.bits/8);\n}\n", each, buf)
 		} else {
-			g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n for(i=0;i<count;i++) if(!%s(&w,values+i)) return -1;\n table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;\n}\n", g.api(st.Name, "save_message_body"))
+			g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n%s table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;\n}\n", each)
 		}
 	}
 }

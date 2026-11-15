@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"github.com/mas-bandwidth/schema/v2/tables/goruntime"
 	"math"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -27,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xa57cfa95232505c8)
-const _ = uint64(0xa57cfa95232505c8 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x0a1bcab8f9b36714)
+const _ = uint64(0x0a1bcab8f9b36714 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -312,14 +313,14 @@ const TableMessageBatchMax = goruntime.TableMessageBatchMax
 
 func tableMessageBits(a0 uint64) int64 { return goruntime.TableMessageBits(a0) }
 
-func tableMessageBodyOpen(a0 *TableVocabulary, a1 []uint64, a2 int) {
-	goruntime.TableMessageBodyOpen(a0, a1, a2)
+func tableMessageSeenOpen(a0 *TableVocabulary, a1 []uint64, a2 int) {
+	goruntime.TableMessageSeenOpen(a0, a1, a2)
 }
 
-func tableMessageBodyFirst(a0 *TableVocabulary) { goruntime.TableMessageBodyFirst(a0) }
+func tableMessageSeenFirst(a0 *TableVocabulary) { goruntime.TableMessageSeenFirst(a0) }
 
-func tableMessageBodyRepeat(a0 *TableVocabulary, a1 []uint64, a2 int, a3 uint64) bool {
-	return goruntime.TableMessageBodyRepeat(a0, a1, a2, a3)
+func tableMessageSeenRepeat(a0 *TableVocabulary, a1 []uint64, a2 int, a3 uint64) bool {
+	return goruntime.TableMessageSeenRepeat(a0, a1, a2, a3)
 }
 
 func tableMessageRefuse(a0 *TableReport, a1 string) bool { return goruntime.TableMessageRefuse(a0, a1) }
@@ -1359,11 +1360,13 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 	}
 	start := len(data) - 8 - int(n)*8
 	r.Buffer, r.Ids = data[1:start], data[start:len(data)-8]
-	// Count is attacker-capped by (bytes-9)/8 and the 4096-entry bound. The
-	// open-addressed path runs at 8<=n<=4096 with 8192 slots and compares the
-	// stored id, not the hash. n<8 stays pairwise: 21 comparisons at 7 versus
-	// 40 KiB of slot zeroing on every open, including a two-entry trailer. The
-	// mix is C's table_writer_id.
+	// Count is attacker-capped by (bytes-9)/8 and the 4096-entry bound. At
+	// 8<=n<=4096 a sort over a fixed scratch copy compares neighbours, so
+	// the work is n log n whatever the ids are. n<8 stays pairwise: 21
+	// comparisons at 7 versus the scratch array on every open, including a
+	// two-entry trailer. The scratch copy is a fixed array, so the open still
+	// allocates nothing, and the neighbour compare keeps duplicate ids refused.
+	// The 4096-entry cap above still bounds the scratch copy.
 	if n > 1 {
 		if n < 8 {
 			for i := 0; i < len(r.Ids); i += 8 {
@@ -1375,25 +1378,22 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 				}
 			}
 		} else {
-			var seen [8192]uint64
-			var used [8192]uint8
+			var ids [4096]uint64
 			for i := range n {
-				id := binary.LittleEndian.Uint64(r.Ids[i*8:])
-				hash := id
-				hash ^= hash >> 33
-				hash *= 0xff51afd7ed558ccd
-				hash ^= hash >> 33
-				slot := uint32(hash) & 8191
-				for {
-					if used[slot] == 0 {
-						used[slot] = 1
-						seen[slot] = id
-						break
-					}
-					if seen[slot] == id {
-						return r, TableOpenDamaged
-					}
-					slot = (slot + 1) & 8191
+				ids[i] = binary.LittleEndian.Uint64(r.Ids[i*8:])
+			}
+			slices.SortFunc(ids[:n], func(a, b uint64) int {
+				if a < b {
+					return -1
+				}
+				if a > b {
+					return 1
+				}
+				return 0
+			})
+			for i := 1; i < int(n); i++ {
+				if ids[i-1] == ids[i] {
+					return r, TableOpenDamaged
 				}
 			}
 		}

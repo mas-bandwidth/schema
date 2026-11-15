@@ -52,7 +52,16 @@ public final class FixedTableFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
-        BenchMixedFixed.scatter(b, at + 0, v.value, r);
+        scatter(b, at, v, r, true);
+    }
+
+    /**
+     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
+     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
+     * (docs/SPEC-TABLES.md §3.4).
+     */
+    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
+        BenchMixedFixed.scatter(b, at + 0, v.value, r, live);
     }
 
     /** every float this value stores is finite (docs/SPEC-TABLES.md §3.3). */
@@ -235,9 +244,10 @@ public final class FixedTableFixed {
      * written, or -1 when the caller's buffer cannot hold them.
      */
     public static int save(Value[] values, int count, byte[] buffer) {
-        if (values == null || buffer == null || count < 0 || count > values.length) {
+        if (values == null || buffer == null || count < 0) {
             return -1;
         }
+        assert count <= values.length;
         final int need = measure(count);
         if (need < 0 || buffer.length < need) {
             return -1;

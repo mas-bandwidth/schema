@@ -211,11 +211,11 @@ func (v *TableVocabulary) Init(storage []TableMessageEntry) {
 // open body began at or before the last naming, and the levels whose bodies
 // were opened since are dropped as the entry is named again. Two slots
 // announcing one id are one entry, the first.
-func tableMessageBodyOpen(v *TableVocabulary, starts []uint64, depth int) {
+func tableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
 	v.bodyClock++
 	starts[depth] = v.bodyClock
 }
-func tableMessageBodyFirst(v *TableVocabulary) {
+func tableMessageSeenFirst(v *TableVocabulary) {
 	for i := range v.Count {
 		for j := range i {
 			if v.Entries[j].ID == v.Entries[i].ID {
@@ -225,7 +225,7 @@ func tableMessageBodyFirst(v *TableVocabulary) {
 		}
 	}
 }
-func tableMessageBodyRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
+func tableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
 	e := &v.Entries[ref-1]
 	if e.bodyFirst != 0 {
 		e = &v.Entries[e.bodyFirst-1]
@@ -432,7 +432,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	if v.RefBits == 0 {
 		v.RefBits = 1
 	}
-	tableMessageBodyFirst(v)
+	tableMessageSeenFirst(v)
 	v.Announced = true
 	return true
 }
@@ -690,7 +690,7 @@ func tableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64
 // readers then hold these lanes to the declared ranges, as the file read does.
 func tableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byte) bool {
 	lo, ok := r.Get(min(s.Bits, 64))
-	if !ok {
+	if !ok || s.Packing == 2 && lo > uint64(s.QCount) {
 		return false
 	}
 	hi := uint64(0)
@@ -710,7 +710,7 @@ func tableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byt
 		hi += s.Base[1] + carry
 	}
 	if s.Packing == 2 {
-		index := min(uint32(lo), s.QCount)
+		index := uint32(lo)
 		ratio := float32(float32(index) / float32(s.QCount))
 		scaled := float32(ratio * s.QDelta)
 		lo = uint64(math.Float32bits(float32(scaled + s.QMin)))
@@ -979,7 +979,7 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 	return tableMessageBodyTableEntity(r, value, starts[:], 0)
 }
 func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TableEntityReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -995,7 +995,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1621,7 +1621,7 @@ func TableStatLoadMessageBody(r *TableMessageReader, value *TableStat) bool {
 	return tableMessageBodyTableStat(r, value, starts[:], 0)
 }
 func tableMessageBodyTableStat(r *TableMessageReader, value *TableStat, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TableStatReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1637,7 +1637,7 @@ func tableMessageBodyTableStat(r *TableMessageReader, value *TableStat, starts [
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -2166,7 +2166,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 	return tableMessageBodyTableMixed(r, value, starts[:], 0)
 }
 func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TableMixedReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -2182,7 +2182,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -3429,7 +3429,7 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 	return tableMessageBodyTableHitEvent(r, value, starts[:], 0)
 }
 func tableMessageBodyTableHitEvent(r *TableMessageReader, value *TableHitEvent, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TableHitEventReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -3445,7 +3445,7 @@ func tableMessageBodyTableHitEvent(r *TableMessageReader, value *TableHitEvent, 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -3629,7 +3629,7 @@ func TableChatEventLoadMessageBody(r *TableMessageReader, value *TableChatEvent)
 	return tableMessageBodyTableChatEvent(r, value, starts[:], 0)
 }
 func tableMessageBodyTableChatEvent(r *TableMessageReader, value *TableChatEvent, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TableChatEventReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -3645,7 +3645,7 @@ func tableMessageBodyTableChatEvent(r *TableMessageReader, value *TableChatEvent
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -3758,7 +3758,7 @@ func TablePickupEventLoadMessageBody(r *TableMessageReader, value *TablePickupEv
 	return tableMessageBodyTablePickupEvent(r, value, starts[:], 0)
 }
 func tableMessageBodyTablePickupEvent(r *TableMessageReader, value *TablePickupEvent, starts []uint64, depth int) bool {
-	tableMessageBodyOpen(r.Vocabulary, starts, depth)
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TablePickupEventReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -3774,7 +3774,7 @@ func tableMessageBodyTablePickupEvent(r *TableMessageReader, value *TablePickupE
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}

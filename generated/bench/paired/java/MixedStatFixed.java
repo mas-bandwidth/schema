@@ -55,19 +55,34 @@ public final class MixedStatFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
+        scatter(b, at, v, r, true);
+    }
+
+    /**
+     * the same landing, where `live` is false inside an absent optional's payload: those bytes ride
+     * whole and the engine never walks them, so no bool or present byte there is held to 0 or 1
+     * (docs/SPEC-TABLES.md §3.4).
+     */
+    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
         v.statId = TableFixed.get32(b, at + 0);
         if (v.statId > 255L) {
             v.statId = (int) (255L);
-            r.refuse(TableFixed.Reason.outOfRange);
+            if (live) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
         } // bits(8) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < -512L) {
                 q = -512L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 511L) {
                 q = 511L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.delta = (int) (q);
         }

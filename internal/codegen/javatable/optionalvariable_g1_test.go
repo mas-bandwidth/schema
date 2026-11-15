@@ -25,7 +25,7 @@ import (
 // absent load's text; cooked, the absent load's cook, both byte orders.
 //
 // THE REVERSED WITNESS plants the old walk-every-slot behaviour back into the
-// generated Java: the variable form's buildGraph without its presence gate,
+// generated Java: the variable form's graph walk without its presence gate,
 // and the cook plan's absentRecord answering false. Each planted walk must
 // turn its row red, so a regression that descends an absent optional is
 // caught here.
@@ -46,19 +46,19 @@ func TestJavaOptionalVariableClosureG1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("java refused G1: %v", err)
 	}
-	const variableGate = "        if (v.optionalPresent) {\n" +
-		"            if (v.optional != null) {\n" +
-		"                if (!WrappedVariable.buildGraph(g, v.optional)) return false;\n" +
-		"            }\n" +
-		"        }\n"
-	const variableWalkAll = "        if (v.optional != null) {\n" +
-		"            if (!WrappedVariable.buildGraph(g, v.optional)) return false;\n" +
-		"        }\n"
+	const variableGate = "                    if (v.optionalPresent) {\n" +
+		"                        if (v.optional != null) {\n" +
+		"                            g.push(v.optional, WrappedVariable.GRAPH_KIND, -2, 0, null);\n" +
+		"                        }\n" +
+		"                    }\n"
+	const variableWalkAll = "                    if (v.optional != null) {\n" +
+		"                        g.push(v.optional, WrappedVariable.GRAPH_KIND, -2, 0, null);\n" +
+		"                    }\n"
 	const cookGate = "        return f.presentOffset >= 0\n" +
 		"                && f.storage == TableCookStorage.RECORD\n" +
 		"                && !Boolean.TRUE.equals(field(value, f.sourceName + \"Present\"));\n"
 	if !bytes.Contains(files["GuardedVariable.java"], []byte(variableGate)) {
-		t.Fatalf("GuardedVariable.buildGraph carries no presence gate:\n%s", files["GuardedVariable.java"])
+		t.Fatalf("GuardedVariable's graph walk carries no presence gate:\n%s", files["GuardedVariable.java"])
 	}
 	if !bytes.Contains(files["TableCookWrite.java"], []byte(cookGate)) {
 		t.Fatal("TableCookWrite carries no absent-record gate")
@@ -108,7 +108,7 @@ func TestJavaOptionalVariableClosureG1(t *testing.T) {
 		t.Fatalf("the Java leg over G1's absent optional (§2.3, §3.1):\n%s\nwant:\n%s", got, want)
 	}
 
-	// THE REVERSED WITNESS, the variable form: buildGraph walks every slot
+	// THE REVERSED WITNESS, the variable form: the graph walk visits every slot
 	plant := func(file, from, to string) map[string][]byte {
 		t.Helper()
 		out := make(map[string][]byte, len(files))
