@@ -53,6 +53,19 @@ func luaSkipRunArrayEntry(t *testing.T, n, bits, base int64) ir.TableVocabularyE
 	}
 }
 
+// luaSkipRunFixedEntry announces a plain U32 array with no inner packing, so
+// one element rides exactly 32 bits and a run of them is one arithmetic step.
+func luaSkipRunFixedEntry(t *testing.T, n int64) ir.TableVocabularyEntry {
+	t.Helper()
+	return ir.TableVocabularyEntry{
+		Id:   0x5a5a5a5a00000002,
+		Kind: ir.TableKindArray,
+		Shape: ir.TableMessageShape{
+			Min: n, Max: n, Elem: ir.TableKindU32,
+		},
+	}
+}
+
 // TestLuaLoadMessagesSkipCostFollowsTheWire holds docs/SPEC-TABLES.md §3.3:
 // skipping an array entry this reader cannot name costs time bounded by the
 // bits the batch carries, never by the count the announcement claims. The
@@ -76,7 +89,7 @@ func TestLuaLoadMessagesSkipCostFollowsTheWire(t *testing.T) {
 	inputs := map[string][]byte{
 		"ann_small": luaSkipRunAnnouncement(t, luaSkipRunArrayEntry(t, 1000, 0, 5)),
 		"ann_large": luaSkipRunAnnouncement(t, luaSkipRunArrayEntry(t, 4000000000, 0, 5)),
-		"ann_over":  luaSkipRunAnnouncement(t, luaSkipRunArrayEntry(t, 1000, 8, 0)),
+		"ann_over":  luaSkipRunAnnouncement(t, luaSkipRunFixedEntry(t, 1000)),
 		"ann_list":  luaSkipRunAnnouncement(t, luaSkipRunArrayEntry(t, 2, 8, 0)),
 		// form 2, one body, the unknown entry's reference, no count, the
 		// zero-width elements, the body's terminator, then the pad
