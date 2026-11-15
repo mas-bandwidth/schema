@@ -20,7 +20,6 @@ local MIN = 0x8000000000000000;
 local MAXU = 0xffffffffffffffff;
 local MAX_DEPTH = 128;  // §16.2's depth cap, carried by the writer too (§16.7)
 local MAX_KEY = 255;
-local MAX_NUMBER = 511;
 
 local tableDesc = function(T, name) { return T.Descriptors[name]; };
 local unionDesc = function(T, name) { return T[name + "Descriptor"]; };
@@ -568,6 +567,17 @@ local timestampParse = function(s) {
 
 local isKeyed = function(d) { return d.shape == "arr" && d.kind == 16; };
 
+// a wide integer reads as a string of digits or a number (docs/SPEC-TABLES.md
+// §16.2): int64, uint64, the 128-bit integers, and fixed-point storage wider
+// than 32 bits. The writer still spells one as a number.
+local jsonWideInteger = function(kind) {
+  return kind == 5 || kind == 9 || kind == 18 || kind == 19 || kind == 23 || kind == 24 || kind == 28 || kind == 29;
+};
+local shapeMatches = function(want, got) {
+  if (want == got) return true;
+  return want == 'N' && (got == 's' || got == 'n');
+};
+
 local shapeOf = function(T, d) {
   switch (d.shape) {
     case "str": case "bytes": case "sblob": case "bblob": case "enum": return 's';
@@ -578,6 +588,7 @@ local shapeOf = function(T, d) {
     case "bool": return 'b';
   }
   if (d.kind == 36) return 's';
+  if (jsonWideInteger(d.kind)) return 'N';
   return 'n';
 };
 local elemShapeOf = function(T, e) {
@@ -589,6 +600,7 @@ local elemShapeOf = function(T, e) {
     case "bool": return 'b';
   }
   if (e.kind == 36) return 's';
+  if (jsonWideInteger(e.kind)) return 'N';
   return 'n';
 };
 local takesNull = function(d) {
@@ -1554,9 +1566,9 @@ local scanHeldKey = function(r) {
 };
 
 // ONE RFC 8259 number (read.go walkNumber, scanNumber): [token, integral] or
-// null. "1-2", "+1", "01", ".5" and "3." are not JSON.
-local scanNumber = function(r, ...) {
-  local capped = vargv.len() == 0 || vargv[0];
+// null. Its length is never why a read refuses: the text's own size bounds the
+// scan. "1-2", "+1", "01", ".5" and "3." are not JSON.
+local scanNumber = function(r) {
   space(r);
   local t = r.t, n = r.n, start = r.p;
   local digit = function(i) { return i < n && t[i] >= '0' && t[i] <= '9'; };
@@ -1580,7 +1592,7 @@ local scanNumber = function(r, ...) {
     integral = false;
   }
   local len = r.p - start;
-  if (len <= 0 || (capped && len > MAX_NUMBER)) return null;
+  if (len <= 0) return null;
   local bs = [];
   for (local i = start; i < r.p; i++) bs.append(t[i]);
   return [bytesToString(bs), integral];
@@ -1636,8 +1648,8 @@ skipValue = function(r, depth) {
   if (c == 'f') return literal(r, "false");
   if (c == 'n') return literal(r, "null");
   if (c == 0) { r.bad = true; return false; }
-  // a skipped number is walked, with no length cap (read.go skipValue)
-  if (scanNumber(r, false) == null) { r.bad = true; return false; }
+  // a skipped number is walked like a placed one (read.go skipValue)
+  if (scanNumber(r) == null) { r.bad = true; return false; }
   return true;
 };
 
@@ -1745,7 +1757,7 @@ readKeys = function(T, c, r, v, depth, firstKey) {
         v[fd.member] = c.make()[fd.member];
         if (fd.optional) v[fd.member + "Present"] = false;
       } else {
-        if (shape != shapeOf(T, fd)) {
+        if (!shapeMatches(shapeOf(T, fd), shape)) {
           r.report.mismatch++;
           if (!skipValue(r, depth + 1)) return false;
         } else if (!readField(T, c, fd, r, v, depth)) {
@@ -1908,7 +1920,7 @@ readArray = function(T, c, fd, r, v, depth) {
       if (!literal(r, "null")) return false;
       out[placed] = null;
       placed++;
-    } else if (vs != shape) {
+    } else if (!shapeMatches(shape, vs)) {
       r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
       placed++;
@@ -2045,7 +2057,7 @@ readKeyed = function(T, c, fd, r, v, depth) {
     if (slot < 0) {
       r.report.unknown++;
       if (!skipValue(r, depth + 1)) return false;
-    } else if (valueShape(r) != shape) {
+    } else if (!shapeMatches(shape, valueShape(r))) {
       r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
     } else if (!readScalar(T, e, r, out, slot, depth + 1, c.name + "." + fd.name)) {
@@ -2080,10 +2092,10 @@ readMap = function(T, c, fd, r, v, depth) {
     if (ch == '}') { r.p++; break; }
     if (ch == 0) { r.bad = true; return false; }
     // A STRING KEY IS READ AT ITS OWN DECLARATION'S BOUND (§2.8): a key past
-    // its bound drops its entry as oor, never as a shorter key. An
-    // integer key's token is bounded by the number walk's own
-    // tableJsonMaxNumber, and a token past it is the wrong shape.
-    local kb = scanBytes(r, kd.shape == "str" ? -1 : MAX_NUMBER);
+    // its bound drops its entry as oor, never as a shorter key. An integer
+    // key is its whole spelling; the integer rule below decides it, and the
+    // token's length is never why.
+    local kb = scanBytes(r, -1);
     if (kb == null) return false;
     local key = bytesToString(kb[0]);
     if (peek(r) != ':') { r.bad = true; return false; }
@@ -2122,7 +2134,7 @@ readMap = function(T, c, fd, r, v, depth) {
         ent[vd.member] = fresh[vd.member];
         if (vd.optional) ent[vd.member + "Present"] = false;
         valueOk = true;
-      } else if (shape != shapeOf(T, vd)) {
+      } else if (!shapeMatches(shapeOf(T, vd), shape)) {
         r.report.mismatch++;
         if (!skipValue(r, depth + 1)) return false;
       } else if (!readField(T, ed, vd, r, ent, depth)) {
@@ -2254,12 +2266,33 @@ local compareSigned = function(aNeg, aMag, bNeg, bMag) {
   return aNeg ? (less ? 1 : -1) : (less ? -1 : 1);
 };
 
-// an integer field takes any token whose VALUE is integral; a fractional
-// value is the wrong shape. THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH,
-// the wire's order (§4, read.go placeInteger).
+// digits and an optional minus, no fraction, no exponent, no leading zero,
+// not -0 (read.go integerToken). The token's length is not part of the test.
+local integerToken = function(tok) {
+  local i = 0;
+  local neg = false;
+  if (i < tok.len() && tok[i] == '-') { neg = true; i++; }
+  if (i >= tok.len()) return false;
+  if (tok[i] == '0') return !neg && (i + 1 == tok.len());
+  if (tok[i] < '1' || tok[i] > '9') return false;
+  for (i = i + 1; i < tok.len(); i++) {
+    if (tok[i] < '0' || tok[i] > '9') return false;
+  }
+  return true;
+};
+
+// an integer field takes an INTEGER TOKEN only (docs/SPEC-TABLES.md §16.2):
+// digits with an optional minus, no fraction, no exponent, not -0. A fraction
+// or an exponent is the wrong shape however many bytes the token spans. The
+// value never passes through a double. THE DECLARED RANGE FIRST, THEN THE
+// STORAGE WIDTH, the wire's order (§4, read.go placeInteger).
 local placeInteger = function(d, tok, integral, report) {
+  if (!integerToken(tok)) {
+    report.mismatch++;
+    return null;
+  }
   local signed = d.kind >= 2 && d.kind <= 5;
-  local num = interpretInteger(tok, integral);
+  local num = interpretInteger(tok, true);
   if (!num.finite || num.fractional) { report.mismatch++; return null; }
   if (num.saturated) report.oor++;
   local mag = num.mag, neg = num.neg;
@@ -2324,6 +2357,8 @@ local placeFloat = function(d, tok, report) {
 // a magnitude past the storage saturates and counts; the declared raw range
 // clamps after it
 local placeWide = function(d, tok, report) {
+  // a 128-bit integer takes an integer token; a fixed kind keeps an exact decimal
+  if ((d.kind == 18 || d.kind == 19) && !integerToken(tok)) { report.mismatch++; return null; }
   local pw = parseWide(tok, d.kind, has(d, "frac") ? d.frac : 0);
   if (!pw[1]) { report.mismatch++; return null; }
   if (pw[2]) report.oor++;
@@ -2440,12 +2475,23 @@ readScalar = function(T, d, r, holder, key, depth, where) {
     holder[key] = ns;
     return true;
   }
-  local num = scanNumber(r);
-  if (num == null) { r.bad = true; return false; }
+  // a wide integer reads as a string of digits or a number (§16.2)
+  local tok, integral;
+  if (jsonWideInteger(d.kind) && peek(r) == '"') {
+    local s = scanBytes(r, -1);
+    if (s == null) return false;
+    tok = bytesToString(s[0]);
+    integral = true;
+  } else {
+    local num = scanNumber(r);
+    if (num == null) { r.bad = true; return false; }
+    tok = num[0];
+    integral = num[1];
+  }
   local x;
-  if (d.shape == "float") x = placeFloat(d, num[0], r.report);
-  else if (wideKind(d.kind)) x = placeWide(d, num[0], r.report);
-  else if (d.shape == "int") x = placeInteger(d, num[0], num[1], r.report);
+  if (d.shape == "float") x = placeFloat(d, tok, r.report);
+  else if (wideKind(d.kind)) x = placeWide(d, tok, r.report);
+  else if (d.shape == "int") x = placeInteger(d, tok, integral, r.report);
   else { r.bad = true; return false; }
   if (x != null) holder[key] = x;
   return true;
@@ -2500,7 +2546,7 @@ readUnion = function(T, u, r, holder, key, depth) {
       if (!literal(r, "null")) return false;
       inst.Type = arm.tag;
       inst[p.member] = fresh[p.member];
-    } else if (shape != shapeOf(T, p)) {
+    } else if (!shapeMatches(shapeOf(T, p), shape)) {
       r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
     } else {
