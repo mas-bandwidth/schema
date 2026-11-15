@@ -84,8 +84,11 @@ print("write completed")
 	if defaultTrapped && !releaseTrapped && releaseConfigured {
 		packetList = "debug-only assert"
 	}
-	if !containsWriteRefusalLeg(t, source, packetList, "Lobster") {
+	if !containsWriteRefusalLeg(t, source, packetList, "Lobster packet writes") {
 		t.Errorf("write-refusal does not place Lobster in the %q list selected by the pinned packet runs and release configuration", packetList)
+	}
+	if !containsWriteRefusalLeg(t, source, "refusal in every build", "Lobster table writes") {
+		t.Error("write-refusal does not place Lobster table writes in the every-build list")
 	}
 	if !strings.Contains(source, "table writers SaveChecked") ||
 		!strings.Contains(source, "SaveChecked") || !strings.Contains(source, "save_reasoned") {
