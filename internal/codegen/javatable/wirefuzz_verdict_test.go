@@ -67,6 +67,8 @@ const javaWireFuzzStrictRead = `                boolean ok = read > 0 && !r.dama
 // replants: it accepts a fixed root whatever the read said, so a truncated
 // zero-record file is accepted when the oracle refuses it.
 const javaWireFuzzUnstrictRead = `                r.loaded = true; // SABOTAGED strict read
+                r.damaged = false; // a tolerant read reports no refusal
+                r.refused = false;
                 r.measure = -1;
                 if (read > 0) {
                     int size = (int) fixedMeasure.invoke(null, read);

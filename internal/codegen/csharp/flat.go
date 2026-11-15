@@ -308,7 +308,7 @@ func (g *gen) flatWriteBarePiece(item *ir.FieldItem, name string) (flatPiece, bo
 	// mask; below it the value narrows through fmt32Cast and masks to width
 	expr := flatMasked("(ulong)("+fmt32Cast(f, name)+")", w)
 	if w == 64 {
-		expr = "(ulong)" + name
+		expr = "unchecked((ulong)" + name + ")"
 	}
 	return flatPiece{item: item, bits: w, expr: expr}, true
 }
@@ -369,7 +369,7 @@ func (g *gen) flatWriteRangedPiece(item *ir.FieldItem, name string) (flatPiece, 
 		offset = fmt.Sprintf("(%s)(%s) - %s", cast, name, loCast)
 	}
 	return flatPiece{item: item, bits: bits, guard: guard,
-		expr: flatMasked("(ulong)("+offset+")", bits)}, true
+		expr: flatMasked("(ulong)(unchecked("+offset+"))", bits)}, true
 }
 
 // flatWriteEnumPiece is an enum in [0, Max] with a generation-time bit count,
@@ -590,14 +590,14 @@ func (g *gen) flatReadBarePiece(item *ir.FieldItem, name string) (flatPiece, boo
 	return flatPiece{item: item, bits: w, read: func(ind, src string) {
 		switch {
 		case w == 64 && f.Type.Signed:
-			g.sf("%s%s = (long)%s;\n", ind, name, src)
+			g.sf("%s%s = unchecked((long)%s);\n", ind, name, src)
 		case w == 64:
 			g.sf("%s%s = %s;\n", ind, name, src)
 		case f.Type.Signed && w < 32:
 			// back through the same-width unsigned so the sign bit lands right
-			g.sf("%s%s = (%s)(%s)(uint)%s;\n", ind, name, csInt(f.Type.Width), csUint(f.Type.Width), src)
+			g.sf("%s%s = unchecked((%s)(%s)(uint)%s);\n", ind, name, csInt(f.Type.Width), csUint(f.Type.Width), src)
 		default:
-			g.sf("%s%s = (%s)(uint)%s;\n", ind, name, typ, src)
+			g.sf("%s%s = unchecked((%s)(uint)%s);\n", ind, name, typ, src)
 		}
 	}}, true
 }
@@ -633,7 +633,7 @@ func (g *gen) flatReadRangedPiece(item *ir.FieldItem, name string) (flatPiece, b
 			if f.IntMin.Sign() != 0 {
 				expr = fmt.Sprintf("(int)((uint)%s + unchecked((uint)(%s)))", src, lo)
 			}
-			g.sf("%s%s = (%s)(%s);\n", ind, name, typ, expr)
+			g.sf("%s%s = (%s)unchecked(%s);\n", ind, name, typ, expr)
 		}}, true
 	case "int64":
 		if !flatVacuousRange(f.IntMin, f.IntMax) {
@@ -645,7 +645,7 @@ func (g *gen) flatReadRangedPiece(item *ir.FieldItem, name string) (flatPiece, b
 			if f.IntMin.Sign() != 0 {
 				expr = fmt.Sprintf("(long)(%s + unchecked((ulong)(%s)))", src, lo)
 			}
-			g.sf("%s%s = (%s)(%s);\n", ind, name, typ, expr)
+			g.sf("%s%s = (%s)unchecked(%s);\n", ind, name, typ, expr)
 		}}, true
 	default:
 		// full-range unsigned: the emitter's own read path already refuses
