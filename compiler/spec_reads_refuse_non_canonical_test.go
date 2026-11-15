@@ -43,6 +43,7 @@ func TestSpecReadsRefuseNonCanonical(t *testing.T) {
 				"an id-table entry that is unused, or out of first-use order",
 				"an empty node table, or one out of its place",
 				"a union written with arm reference `0`",
+				// no distinct wire found for this item; open question for the owner, 2026-11-15
 				"a message body that omits a field its own announcement declares",
 			},
 			stales: []string{},
@@ -58,6 +59,7 @@ func TestSpecReadsRefuseNonCanonical(t *testing.T) {
 				"an id-table entry that is unused, or out of first-use order",
 				"an empty node table, or one out of its place",
 				"a union written with arm reference `0`",
+				// no distinct wire found for this item; open question for the owner, 2026-11-15
 				"a message body that omits a field its own announcement declares",
 				"Absent fields, unknown fields from a newer writer and widened fields stay lawful",
 				"a JSON read accepts any field order",
