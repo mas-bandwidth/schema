@@ -258,7 +258,10 @@ func fieldKinds(u *ir.Unit) string {
 // each value read, leaf by leaf, against the case's want instance. A "one" or
 // "seq" case reads its shapes off one stream; a "parts" case reads each shape
 // off its own slice, starting where the last one's bytes ended, as
-// test/go/main.go's consume does. Each line is
+// test/go/main.go's consume does. The last shape of a shared stream is read
+// through the public Read, which ends once after the top-level object; the
+// shapes before it read through the per-type body, which does not (SPEC §5).
+// Each line is
 //
 //	<name> read=<bool> leaves=<n> mismatches=<n> consumed=<bool> truncRefused=<bool>
 //
@@ -335,10 +338,11 @@ local readCase = function(c, data, bad) {
   local ok = true;
   local off = 0;
   local rs = serialize.ReadStream(data);
+  local last = c.items.len() - 1;
   foreach (i, it in c.items) {
     if (c.mode == "parts") rs = serialize.ReadStream(sliceFrom(data, off));
     local got = it.m[it.t]();
-    local r = it.m["Read" + it.t](rs, got);
+    local r = it.m["Read" + it.t + (i == last ? "" : "Body")](rs, got);
     if (r != true) ok = false;
     if (bad != null) cmp(c.name + "[" + i + "]." + it.t, got, it.v, null, bad);
     if (c.mode == "parts") off += rs.bytesProcessed();

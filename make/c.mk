@@ -2086,11 +2086,10 @@ test-c: tables-c-discard
 # (table_cycle_acyclic, internal/codegen/ctable/graph.go), using temporary
 # 1-based directory indices during construction and resolving offsets once
 # acyclicity holds. The first control drops the cycle verdict in a copy of
-# graph.go so a cyclic graph loads, and TestPointerNamingAnOpenNodeIsRefusedC
-# must go red on it: the region and builder reads refuse the probe's wire by
-# the reachability rule too, so the control's red line is the retaining read,
-# the one leg the cycle verdict alone gates. The linear control stacks a node
-# at every slot naming it rather than the last, and
+# graph.go so a cyclic graph loads, and TestCyclicWireIsRefusedC must go red on
+# it: its reachable-cycle case leaves no record for the reachability rule to
+# refuse first, so the cycle verdict alone gates it. The linear control stacks a
+# node at every slot naming it rather than the last, and
 # TestDiamondChainLoadsLinearC must go red on it.
 C_CYCLE_NC := build/c-cycle-nc
 C_CYCLE_LINEAR_NC := build/c-cycle-linear-nc
@@ -2106,23 +2105,23 @@ tables-c-cycle-negative-control:
 	@rm -rf $(C_CYCLE_NC) && mkdir -p $(C_CYCLE_NC)
 	@n=$$(grep -F -c 'if ( !c.broken && c.processed == c.vertices )' internal/codegen/ctable/graph.go); \
 		if [ "$$n" != "1" ]; then echo "NEGATIVE CONTROL: the C cycle verdict appears $$n times, expected exactly 1"; exit 1; fi
-	@m=$$(grep -F -c 'cycle: the retaining load handed back a cyclic graph' internal/codegen/ctable/discard_test.go); \
-		if [ "$$m" != "1" ]; then echo "NEGATIVE CONTROL: the cycle gate's retaining refusal appears $$m times, expected exactly 1"; exit 1; fi
+	@m=$$(grep -F -c 'cycle: a reachable cycle loaded' internal/codegen/ctable/discard_test.go); \
+		if [ "$$m" != "1" ]; then echo "NEGATIVE CONTROL: the cycle gate's reachable refusal appears $$m times, expected exactly 1"; exit 1; fi
 	@sed -e 's#if ( !c.broken && c.processed == c.vertices )#if ( !c.broken ) /* NEGATIVE CONTROL: the cycle verdict is gone */#' \
 		internal/codegen/ctable/graph.go > $(C_CYCLE_NC)/graph.go.txt
 	@cmp -s internal/codegen/ctable/graph.go $(C_CYCLE_NC)/graph.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C cycle sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/ctable/graph.go":"%s/$(C_CYCLE_NC)/graph.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(C_CYCLE_NC)/overlay.json
-	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(C_CYCLE_NC)/overlay.json -run '^TestPointerNamingAnOpenNodeIsRefusedC$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(C_CYCLE_NC)/overlay.json -run '^Test(PointerNamingAnOpenNodeIsRefusedC|CyclicWireIsRefusedC)$$' \
 			./internal/codegen/ctable > $(C_CYCLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the C cycle verdict is gone and the gate stayed green"; \
 		cat $(C_CYCLE_NC)/log; exit 1; \
 	fi
-	@grep -q "cycle: the retaining load handed back a cyclic graph" $(C_CYCLE_NC)/log || \
+	@grep -q "cycle: a reachable cycle loaded" $(C_CYCLE_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(C_CYCLE_NC)/log; exit 1; }
-	@grep -m1 "cyclic graph" $(C_CYCLE_NC)/log
+	@grep -m1 "reachable cycle" $(C_CYCLE_NC)/log
 	@echo "negative control: removing the C cycle verdict turns the cycle gate RED"
 tables-c-cycle-linear-negative-control:
 	@rm -rf $(C_CYCLE_LINEAR_NC) && mkdir -p $(C_CYCLE_LINEAR_NC)
@@ -2236,39 +2235,6 @@ conformance-negative-control-c-write-refusal-fixed: build/conformance-harness bu
 conformance-negative-control-c-write-refusal-message: build/conformance-harness build/tables-generated-c/.stamp
 	$(call conformance-negative-control-c-wref,write-refusal-message,schema_assert( 0 <= value->sku_length && value->sku_length <= 32 );,(void) 0; /* SABOTAGED: no message length check */,SABOTAGED: no message length check,write-refusal-message,message)
 
-# Packet Write holds row 8 in a C debug build, one child per shared case.
-build/packet-write-text/c/.stamp: bin/schema test/packet-write-text/c/Text.schema
-	@mkdir -p build/packet-write-text/c
-	./bin/schema generate --lang c --out build/packet-write-text/c test/packet-write-text/c/Text.schema
-	@touch $@
-
-build/packet-write-text/c/driver: build/packet-write-text/c/.stamp test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c $(SERIALIZE_C)/serialize.h
-	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-write-text/c \
-		test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c -o $@ -lm
-
-.PHONY: packet-write-text-c packet-write-text-c-negative-control
-packet-write-text-c: build/packet-write-text/c/driver
-	./build/packet-write-text/c/driver test/packet-write-text/cases.txt
-
-packet-write-text-c-negative-control: packet-write-text-c
-	@mkdir -p build/packet-write-text/c-negative
-	go run ./tools/sabotage -name packet-write-text-c-utf8-write \
-		-out build/packet-write-text/c-negative/fields.gotext internal/codegen/c/fields.go
-	@printf '{"Replace":{"%s/internal/codegen/c/fields.go":"%s/build/packet-write-text/c-negative/fields.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/packet-write-text/c-negative/overlay.json
-	go build -overlay=build/packet-write-text/c-negative/overlay.json -o build/packet-write-text/c-negative/schema ./cmd/schema
-	./build/packet-write-text/c-negative/schema generate --lang c --out build/packet-write-text/c-negative/generated test/packet-write-text/c/Text.schema
-	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-write-text/c-negative/generated \
-		test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c -o build/packet-write-text/c-negative/driver -lm
-	@if ./build/packet-write-text/c-negative/driver test/packet-write-text/cases.txt > build/packet-write-text/c-negative/log 2>&1; then \
-		echo 'NEGATIVE CONTROL FAILED: C packet Write without UTF-8 validation passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-write-text invalid-byte:' build/packet-write-text/c-negative/log || \
-		{ echo 'NEGATIVE CONTROL FAILED: C packet Write did not fail on invalid-byte'; cat build/packet-write-text/c-negative/log; exit 1; }
-	@grep -Fm1 'FAILED: packet-write-text invalid-byte:' build/packet-write-text/c-negative/log
-	@echo 'C packet Write negative control: removing UTF-8 validation fails invalid-byte'
-
-test-c: packet-write-text-c packet-write-text-c-negative-control
-
 # The packet-end corpus (docs/SPEC.md §5, "Read termination"): the generated
 # public read is the one-packet read, so exact.bin is accepted as the value 3
 # and the trailing byte and non-zero final padding are refused.
@@ -2311,3 +2277,36 @@ packet-end-c-negative-control: packet-end-c
 	@echo 'packet end C negative control: removing the end check accepts trailing data and final padding'
 
 test-c: packet-end-c packet-end-c-negative-control
+
+# Packet Write holds row 8 in a C debug build, one child per shared case.
+build/packet-write-text/c/.stamp: bin/schema test/packet-write-text/c/Text.schema
+	@mkdir -p build/packet-write-text/c
+	./bin/schema generate --lang c --out build/packet-write-text/c test/packet-write-text/c/Text.schema
+	@touch $@
+
+build/packet-write-text/c/driver: build/packet-write-text/c/.stamp test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c $(SERIALIZE_C)/serialize.h
+	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-write-text/c \
+		test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
+.PHONY: packet-write-text-c packet-write-text-c-negative-control
+packet-write-text-c: build/packet-write-text/c/driver
+	./build/packet-write-text/c/driver test/packet-write-text/cases.txt
+
+packet-write-text-c-negative-control: packet-write-text-c
+	@mkdir -p build/packet-write-text/c-negative
+	go run ./tools/sabotage -name packet-write-text-c-utf8-write \
+		-out build/packet-write-text/c-negative/fields.gotext internal/codegen/c/fields.go
+	@printf '{"Replace":{"%s/internal/codegen/c/fields.go":"%s/build/packet-write-text/c-negative/fields.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-write-text/c-negative/overlay.json
+	go build -overlay=build/packet-write-text/c-negative/overlay.json -o build/packet-write-text/c-negative/schema ./cmd/schema
+	./build/packet-write-text/c-negative/schema generate --lang c --out build/packet-write-text/c-negative/generated test/packet-write-text/c/Text.schema
+	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-write-text/c-negative/generated \
+		test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c -o build/packet-write-text/c-negative/driver -lm
+	@if ./build/packet-write-text/c-negative/driver test/packet-write-text/cases.txt > build/packet-write-text/c-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: C packet Write without UTF-8 validation passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-text invalid-byte:' build/packet-write-text/c-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: C packet Write did not fail on invalid-byte'; cat build/packet-write-text/c-negative/log; exit 1; }
+	@grep -Fm1 'FAILED: packet-write-text invalid-byte:' build/packet-write-text/c-negative/log
+	@echo 'C packet Write negative control: removing UTF-8 validation fails invalid-byte'
+
+test-c: packet-write-text-c packet-write-text-c-negative-control

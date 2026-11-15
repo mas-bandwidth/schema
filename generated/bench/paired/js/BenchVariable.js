@@ -5160,11 +5160,8 @@ export const TableCookWrite = (() => {
         if (fd.k === "rec") {
           return writeStruct(view, base + fd.at, layouts[fd.t], layouts[fd.t].make(), le, ctx);
         }
-        if (fd.k === "arr") {
-          if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, 0, true, le)) { return false; }
-          for (let i = 0; i < fd.bound; i++) {
-            if (!writeValue(view, base + fd.at + i * fd.stride, fd.elem, holeValue(fd.elem), le, ctx)) { return false; }
-          }
+        if (fd.k === "arr" && fd.countAt >= 0) {
+          if (!putWidth(view, base + fd.countAt, 4, 0, true, le)) { return false; }
         }
         return true;
       }
@@ -5223,17 +5220,6 @@ export const TableCookWrite = (() => {
         return false;
     }
   }
-  function holeValue(fd) {
-    switch (fd.k) {
-      case "bool": return false;
-      case "int": return fd.w >= 8 ? 0n : 0;
-      case "f32": case "f64": case "enum": return 0;
-      case "venum": case "ptr": case "sblob": case "bblob": return null;
-      case "union": return fd.var ? null : undefined;
-      case "rec": return layouts[fd.t].make();
-      default: return undefined;
-    }
-  }
   function writeArray(view, base, fd, parent, le, ctx) {
     const arr = parent[fd.n];
     let count;
@@ -5244,13 +5230,12 @@ export const TableCookWrite = (() => {
     } else { count = parent[fd.n + "Count"]; }
     if (!Number.isInteger(count) || count < 0 || count > fd.bound) { return false; }
     if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, count, true, le)) { return false; }
-    for (let i = 0; i < fd.bound; i++) {
-      let el;
-      if (i < count || fd.countFrom !== "len") {
-        if (arr == null || arr[i] === undefined) { return false; }
-        el = arr[i];
-      } else { el = holeValue(fd.elem); }
-      if (!writeValue(view, base + fd.at + i * fd.stride, fd.elem, el, le, ctx)) { return false; }
+    // a counted array's slots past the live count are DEAD BYTES and stay the
+    // buffer's zero (docs/SPEC-TABLES.md §7.2, §7.4; docs/rulings.json
+    // fixed-dead-bytes-are-zero), so only the live elements are written
+    for (let i = 0; i < count; i++) {
+      if (arr == null || arr[i] === undefined) { return false; }
+      if (!writeValue(view, base + fd.at + i * fd.stride, fd.elem, arr[i], le, ctx)) { return false; }
     }
     return true;
   }
