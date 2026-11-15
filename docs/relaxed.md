@@ -158,8 +158,11 @@ listed case that passes fails the leg until its line is removed.
   the C leg green and the C++ and Go cook writers red, which still write the
   defaults (measured on bench; the C++ reference behind
   `tables-tool-cook-differential` too). Files: `Makefile`
-  (`NODE_ALIGN_STALE_ROWS`). Real fix: every cook writer zeroes the dead slots,
-  the five fixtures are regenerated, and the rows go back into the control.
+  (`NODE_ALIGN_STALE_ROWS`), and internal/codegen/gotable/cookwrite_test.go,
+  whose `TestCookWriterMatchesIndependentLayout/fixed` skips (the Go writer
+  writes the defaults the tool now zeroes). The five fixtures were regenerated
+  on main by #3486. Real fix: every cook writer zeroes the dead slots, and the
+  rows go back into the control and the Go case runs again.
   WIP: none.
 
 ## CI time (the 110 s per-commit wall)
