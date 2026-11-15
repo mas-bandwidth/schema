@@ -274,7 +274,7 @@ per unit, named for the unit's package:
 |---|---|
 | `compiler/target_python.go` | the target, behind the `schema_leg_python` build tag until the packet surface has claims; the shared refusal chain, then the emitters |
 | `compiler/carries_python.go` | the carried constructs, registered once from `pythonCarried`; a later layer adds `var _ = carryPython(<construct>)` in its own file |
-| `internal/codegen/python` | the type surface's emitter (`Generate`), the identifier rules (`CheckNames`) and, from the packet layer, its codec; each field kind and each storage-less item (`item_branch.go`, `item_const.go`, `item_reserved.go`, `item_align.go`) is an emitter file registered in the core's table |
+| `internal/codegen/python` | the type surface's emitter (`Generate`), the identifier rules (`CheckNames`) and, from the packet layer, its codec; each field kind, the `if`/`else` branch and each storage-less item (`item_branch.go`, `item_const.go`, `item_reserved.go`, `item_align.go`) is an emitter file registered in the core's table |
 | `internal/codegen/python/runtime/_schema/` | the runtime, embedded and emitted verbatim: the errors, and serialize.py vendored by sha256 (`runtime/SERIALIZE_PIN`, `make vendor-serialize-python`) |
 | `internal/codegen/python/pyrun` | the test helper (THE HARNESS) |
 | `internal/codegen/pythontable` | the table surface's emitter and codec, from the table layers (P5) |
