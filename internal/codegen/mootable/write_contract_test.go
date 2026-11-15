@@ -16,6 +16,7 @@ const writerContractSchema = `package probe
 fixed table FixedRoot | forms = "wire,json"
 {
 	Range int32 = 0 | min = -5, max = 5
+	At timestamp
 	Bits bits(3) = 0
 	Compressed float32 = 0.0 | min = 0.0, max = 10.0, resolution = 0.01
 	Small uint8 = 0
@@ -28,6 +29,7 @@ fixed table FixedRoot | forms = "wire,json"
 table VariableRoot | forms = "wire,json"
 {
 	Range int32 = 0 | min = -5, max = 5
+	At timestamp
 	Bits bits(3) = 0
 	Compressed float32 = 0.0 | min = 0.0, max = 10.0, resolution = 0.01
 	Small uint8 = 0
@@ -144,6 +146,7 @@ for _, value in { -5, 5 } do
 	fv.Range, vv.Range = value, value
 	local high = value == 5
 	for _, obj in {fv, vv} do
+		obj.At = serialize.Int64.fromNumber(-1)
 		obj.Bits = if high then 7 else 0
 		obj.Compressed = if high then 0x41200000 else 0
 		obj.Small = if high then 255 else 0
@@ -152,7 +155,7 @@ for _, value in { -5, 5 } do
 		obj.BytesLength = if high then 4 else 0
 	end
 	local function matches(obj: any): boolean
-		return obj.Range == value and obj.Bits == (if high then 7 else 0) and obj.Compressed == (if high then 0x41200000 else 0) and obj.Small == (if high then 255 else 0) and obj.CountedCount == (if high then 4 else 0) and obj.Text == (if high then "12345678" else "") and obj.BytesLength == (if high then 4 else 0)
+		return obj.Range == value and serialize.Int64.cmp(obj.At, serialize.Int64.fromNumber(-1)) == 0 and obj.Bits == (if high then 7 else 0) and obj.Compressed == (if high then 0x41200000 else 0) and obj.Small == (if high then 255 else 0) and obj.CountedCount == (if high then 4 else 0) and obj.Text == (if high then "12345678" else "") and obj.BytesLength == (if high then 4 else 0)
 	end
 	local f = F.save(fixedDesc, fixedSpec, {fv})
 	local v = S.save(variableDesc, vv)

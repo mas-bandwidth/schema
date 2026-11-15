@@ -459,7 +459,7 @@ local function rawKind(fd: any, v: any): any
 	end
 	-- the other class of the same width converts only values both kinds hold
 	if kw == 8 and (Int64.is(v) or Uint64.is(v)) then
-		if v[2] >= 0x80000000 then return nil end
+		if not fd.timestamp and v[2] >= 0x80000000 then return nil end
 		return if signed then Uint64.toInt64(v) else Int64.toUint64(v)
 	end
 	if kw == 16 and (Int128.is(v) or Uint128.is(v)) then
