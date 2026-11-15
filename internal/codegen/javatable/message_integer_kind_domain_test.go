@@ -39,10 +39,36 @@ type messageIntegerKindDomainCase struct {
 }
 
 // messageIntegerKindDomainAnnouncement announces one entry as a form-1 file,
-// the announcement a sender on the other end would deliver.
+// the announcement a sender on the other end would deliver. The entry rides
+// RAW here, the shape every kind can announce; a case whose sender states a
+// range patches the resolved shape below, exactly as the engine's own test
+// fills the vocabulary it reads.
 func messageIntegerKindDomainAnnouncement(e ir.TableVocabularyEntry) []byte {
+	e.Shape = ir.TableMessageShape{}
 	vocab := e.Encode(nil)
 	return announcement(append(versionField(0x1122334455667788), vocabField(ir.TableKindU8, vocab)...))
+}
+
+// messageIntegerKindDomainPatch reports whether this case states a range the
+// announcement's resolved shape has to carry.
+func messageIntegerKindDomainPatch(c messageIntegerKindDomainCase) bool {
+	return c.shape.Packing == ir.TableMessageRanged
+}
+
+// messageIntegerKindDomainBaseLo is the low sixty-four bits of a ranged base.
+func messageIntegerKindDomainBaseLo(base *big.Int) uint64 {
+	if base == nil {
+		return 0
+	}
+	return base.Uint64()
+}
+
+// messageIntegerKindDomainBaseHi is the high sixty-four bits of a ranged base.
+func messageIntegerKindDomainBaseHi(base *big.Int) uint64 {
+	if base == nil {
+		return 0
+	}
+	return new(big.Int).Rsh(base, 64).Uint64()
 }
 
 // messageIntegerKindDomainBatch writes one body: a reference to the announced
@@ -58,12 +84,18 @@ func messageIntegerKindDomainBatch(kind uint8, shape ir.TableMessageShape, raw u
 }
 
 // messageIntegerKindDomainOracle is the engine's verdict on the same bytes.
-func messageIntegerKindDomainOracle(t *testing.T, u *ir.Unit, ann, wire []byte) (bool, int, map[string]int64) {
+func messageIntegerKindDomainOracle(t *testing.T, u *ir.Unit, ann, wire []byte, shape ir.TableMessageShape, patch bool) (bool, int, map[string]int64) {
 	t.Helper()
 	v := &tablewire.Vocabulary{}
 	var arep tabletext.Report
 	if err := v.AnnounceRead(ann, &arep); err != nil {
 		t.Fatalf("the engine refused the announcement: %v %+v", err, arep)
+	}
+	if patch {
+		// THE RESOLVED SHAPE IS THE SENDER'S, and this case states a range the
+		// announcement's placeholder did not.
+		entries := v.Entries()
+		entries[0].Shape = shape
 	}
 	m := tabletext.NewModel(u)
 	inst := m.New(m.Lookup("Probe"))
@@ -81,6 +113,20 @@ func messageIntegerKindDomainOracle(t *testing.T, u *ir.Unit, ann, wire []byte) 
 }
 
 func messageIntegerKindDomainJavaCase(c messageIntegerKindDomainCase, ann, msg []byte) string {
+	patch := ""
+	if messageIntegerKindDomainPatch(c) {
+		patch = fmt.Sprintf(`
+            final TableVocabulary.Shape patched = new TableVocabulary.Shape();
+            patched.kind = %d;
+            patched.packing = %d;
+            patched.bits = %dL;
+            patched.baseLo = 0x%xL;
+            patched.baseHi = 0x%xL;
+            vocab.entries[0].shape = patched;`,
+			c.kind, c.shape.Packing, c.shape.Bits,
+			messageIntegerKindDomainBaseLo(c.shape.Base),
+			messageIntegerKindDomainBaseHi(c.shape.Base))
+	}
 	return fmt.Sprintf(`
         {
             final byte[] ann = fromHex(%q);
@@ -89,7 +135,7 @@ func messageIntegerKindDomainJavaCase(c messageIntegerKindDomainCase, ann, msg [
             vocab.reset(4);
             final TableVocabulary.Report arep = new TableVocabulary.Report();
             final boolean announced = TableVocabulary.announceRead(vocab, ann, arep);
-            if (!announced) { fail("announcement refused"); }
+            if (!announced) { fail("announcement refused"); }%s
             final ProbeFixed.Value[] values = new ProbeFixed.Value[1];
             values[0] = new ProbeFixed.Value();
             final TableVocabulary.Report lrep = new TableVocabulary.Report();
@@ -101,7 +147,7 @@ func messageIntegerKindDomainJavaCase(c messageIntegerKindDomainCase, ann, msg [
                 + " b=" + values[0].b
                 + " c=" + ((int) values[0].c & 0xff));
         }
-`, hexOf(ann), hexOf(msg), c.id)
+`, hexOf(ann), hexOf(msg), patch, c.id)
 }
 
 func TestJavaMessageIntegerHeldToReaderKind(t *testing.T) {
@@ -164,9 +210,8 @@ func TestJavaMessageIntegerHeldToReaderKind(t *testing.T) {
 	var body strings.Builder
 	for _, tc := range cases {
 		ann := messageIntegerKindDomainAnnouncement(ir.TableVocabularyEntry{
-			Id:    ir.TableFieldWireId(tc.field),
-			Kind:  tc.kind,
-			Shape: tc.shape,
+			Id:   ir.TableFieldWireId(tc.field),
+			Kind: tc.kind,
 		})
 		msg := messageIntegerKindDomainBatch(tc.kind, tc.shape, tc.raw)
 		body.WriteString(messageIntegerKindDomainJavaCase(tc, ann, msg))
@@ -185,12 +230,11 @@ func TestJavaMessageIntegerHeldToReaderKind(t *testing.T) {
 
 	for _, tc := range cases {
 		ann := messageIntegerKindDomainAnnouncement(ir.TableVocabularyEntry{
-			Id:    ir.TableFieldWireId(tc.field),
-			Kind:  tc.kind,
-			Shape: tc.shape,
+			Id:   ir.TableFieldWireId(tc.field),
+			Kind: tc.kind,
 		})
 		msg := messageIntegerKindDomainBatch(tc.kind, tc.shape, tc.raw)
-		oracleRefused, oracleCount, oracleValues := messageIntegerKindDomainOracle(t, u, ann, msg)
+		oracleRefused, oracleCount, oracleValues := messageIntegerKindDomainOracle(t, u, ann, msg, tc.shape, messageIntegerKindDomainPatch(tc))
 		if oracleRefused != tc.refuse {
 			t.Fatalf("%s: the engine refused=%t, want %t", tc.id, oracleRefused, tc.refuse)
 		}
