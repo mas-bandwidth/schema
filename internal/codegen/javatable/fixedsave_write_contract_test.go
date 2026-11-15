@@ -298,7 +298,7 @@ func TestJavaFixedSaveWriteContract(t *testing.T) {
 			t.Fatalf("java %v: %v\n%s", flags, err, out)
 		}
 		got := map[string]string{}
-		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 			f := strings.Fields(line)
 			if len(f) != 3 || f[0] != "CASE" {
 				t.Fatalf("java %v: unexpected line %q\n%s", flags, line, out)

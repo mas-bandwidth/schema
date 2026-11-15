@@ -1875,7 +1875,8 @@ define rust_wref_control
 	@file=$(1)/generated/$(2); \
 	n=$$(grep -cF '$(3)' $$file); \
 	[ "$$n" -gt 0 ] || { echo "NEGATIVE CONTROL: the $(5) check matches no generated line in $$file"; exit 1; }; \
-	sed -i.orig 's@$(3)@$(4)@g' $$file && rm -f $$file.orig || exit 1; \
+	sed -i.orig 's@$(3)@$(4)@g' $$file && rm -f $$file.orig || { echo "NEGATIVE CONTROL: the $(5) check could not be edited"; exit 1; }; \
+	grep -qF '$(3)' $$file && { echo "NEGATIVE CONTROL: the $(5) check did not change"; exit 1; } || true; \
 	grep -qF '$(4)' $$file || { echo "NEGATIVE CONTROL: the $(5) check did not change"; exit 1; }
 	@sed -e 's|^path = "src/main.rs"|path = "../../../test/conformance/rust/src/main.rs"|' \
 		-e 's|build/tables-generated-rust/|$(1)/generated/|' \
@@ -1903,11 +1904,11 @@ endef
 # and save through the root's own form's writer, the fixed form's FixedSave
 # (testdata/conformance/tables/FORMAT.md): so the check removed is that
 # writer's finite rule, and wref_non_finite and wref_infinite go red.
-conformance-negative-control-rust-write-refusal: build/conformance-harness build/tables-generated-rust/.stamp
+conformance-negative-control-rust-write-refusal: build/conformance-harness build/tables-generated-rust/.stamp build/tables-generated-rust/tblrt1/src/lib.rs
 	$(call rust_wref_control,build/rust-conformance-wref-control,tabledemo/src/tables_fixed.rs,!root_config_fixed_finite_body(value).is_empty(),false /* SABOTAGED: a non-finite float writes */,write-refusal,wire)
 
 .PHONY: conformance-negative-control-rust-write-refusal-fixed
-conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness build/tables-generated-rust/.stamp
+conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness build/tables-generated-rust/.stamp build/tables-generated-rust/tblrt1/src/lib.rs
 	$(call rust_wref_control,build/rust-conformance-wref-fixed-control,tabledemo/src/tables_fixed.rs,value.version_note_length >= 0 && value.version_note_length <= 16,true,write-refusal-fixed,wire)
 
 .PHONY: conformance-negative-control-rust-write-refusal-message
@@ -1958,28 +1959,42 @@ packet-end-rust-negative-control: packet-end-rust
 
 test-rust: packet-end-rust packet-end-rust-negative-control
 
-PACKET_CFLOAT_RUST_DIR ?= build/packet-write-cfloat/rust
-build/packet-write-cfloat/rust/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/rust.mk
-	@mkdir -p build/packet-write-cfloat/rust/cfloat/src
-	./bin/schema generate --lang rust --out build/packet-write-cfloat/rust/cfloat/src test/packet-write-cfloat/CFloat.schema
-	@printf '[package]\nname = "packetcfloat"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/packet-write-cfloat/rust/cfloat/Cargo.toml
+# Packet Write holds row 8 (SPEC §5.1) in a Rust debug build: the driver
+# writes every shared case and catches the writer's debug_assert! panic as
+# the refusal; well-formed twins are written and read back byte-exact. A
+# release build carries no write check by design, so only debug is run.
+PACKET_WRITE_TEXT_RUST := build/packet-write-text/rust
+PACKET_WRITE_TEXT_RUST_TOML = '[package]\nname = "packetwritetext"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n'
+
+$(PACKET_WRITE_TEXT_RUST)/.stamp: bin/schema test/packet-write-text/Text.schema test/packet-write-text/rust/src/main.rs make/rust.mk
+	@rm -rf $(PACKET_WRITE_TEXT_RUST)/src
+	./bin/schema generate --lang rust --out $(PACKET_WRITE_TEXT_RUST)/src test/packet-write-text/Text.schema
+	cp test/packet-write-text/rust/src/main.rs $(PACKET_WRITE_TEXT_RUST)/src/main.rs
+	@printf $(PACKET_WRITE_TEXT_RUST_TOML) "$(CURDIR)" > $(PACKET_WRITE_TEXT_RUST)/Cargo.toml
 	@touch $@
 
-.PHONY: packet-write-cfloat-rust packet-write-cfloat-rust-negative-control
-packet-write-cfloat-rust: build/packet-write-cfloat/rust/.stamp
-	@mkdir -p $(PACKET_CFLOAT_RUST_DIR)/driver/src
-	@cp test/packet-write-cfloat/rust/src/main.rs $(PACKET_CFLOAT_RUST_DIR)/driver/src/main.rs
-	@printf '[package]\nname = "packet-write-cfloat-test"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\npacketcfloat = { path = "%s/$(PACKET_CFLOAT_RUST_DIR)/cfloat" }\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" "$(CURDIR)" > $(PACKET_CFLOAT_RUST_DIR)/driver/Cargo.toml
-	PATH="$(RUSTUP_BIN):$$PATH" cargo run --offline --quiet --manifest-path $(PACKET_CFLOAT_RUST_DIR)/driver/Cargo.toml -- test/packet-write-cfloat/cases.txt
+.PHONY: packet-write-text-rust packet-write-text-rust-negative-control
+packet-write-text-rust: $(PACKET_WRITE_TEXT_RUST)/.stamp
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path $(PACKET_WRITE_TEXT_RUST)/Cargo.toml
+	./$(PACKET_WRITE_TEXT_RUST)/target/debug/packetwritetext test/packet-write-text/cases.txt
 
-packet-write-cfloat-rust-negative-control: packet-write-cfloat-rust
-	@rm -rf build/packet-write-cfloat/rust-negative
-	@mkdir -p build/packet-write-cfloat/rust-negative
-	@cp -R build/packet-write-cfloat/rust/cfloat build/packet-write-cfloat/rust-negative/cfloat
-	@sed -i.bak '/debug_assert!.*is_finite()/d' build/packet-write-cfloat/rust-negative/cfloat/src/cfloat.rs
-	@! cmp -s build/packet-write-cfloat/rust/cfloat/src/cfloat.rs build/packet-write-cfloat/rust-negative/cfloat/src/cfloat.rs || { echo 'negative control sabotage did not apply'; exit 1; }
-	@if $(MAKE) packet-write-cfloat-rust PACKET_CFLOAT_RUST_DIR=build/packet-write-cfloat/rust-negative > build/packet-write-cfloat/rust-negative/log 2>&1; then echo 'negative control failed: packet-write-cfloat-rust passed'; exit 1; fi
-	@grep -Fq 'FAILED: above-max was written but must be refused' build/packet-write-cfloat/rust-negative/log || { cat build/packet-write-cfloat/rust-negative/log; exit 1; }
-	@echo 'packet-write-cfloat-rust negative control: removed range check is detected'
+packet-write-text-rust-negative-control: packet-write-text-rust
+	@rm -rf $(PACKET_WRITE_TEXT_RUST)-negative/src
+	@mkdir -p $(PACKET_WRITE_TEXT_RUST)-negative
+	go run ./tools/sabotage -name packet-write-text-rust-utf8-write \
+		-out $(PACKET_WRITE_TEXT_RUST)-negative/functions.gotext internal/codegen/rust/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/rust/functions.go":"%s/$(PACKET_WRITE_TEXT_RUST)-negative/functions.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(PACKET_WRITE_TEXT_RUST)-negative/overlay.json
+	go build -overlay=$(PACKET_WRITE_TEXT_RUST)-negative/overlay.json -o $(PACKET_WRITE_TEXT_RUST)-negative/schema ./cmd/schema
+	./$(PACKET_WRITE_TEXT_RUST)-negative/schema generate --lang rust --out $(PACKET_WRITE_TEXT_RUST)-negative/src test/packet-write-text/Text.schema
+	cp test/packet-write-text/rust/src/main.rs $(PACKET_WRITE_TEXT_RUST)-negative/src/main.rs
+	@printf $(PACKET_WRITE_TEXT_RUST_TOML) "$(CURDIR)" > $(PACKET_WRITE_TEXT_RUST)-negative/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path $(PACKET_WRITE_TEXT_RUST)-negative/Cargo.toml
+	@if ./$(PACKET_WRITE_TEXT_RUST)-negative/target/debug/packetwritetext test/packet-write-text/cases.txt > $(PACKET_WRITE_TEXT_RUST)-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: Rust packet Write without the UTF-8 debug assert passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-text invalid-byte:' $(PACKET_WRITE_TEXT_RUST)-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Rust packet Write did not fail on invalid-byte'; cat $(PACKET_WRITE_TEXT_RUST)-negative/log; exit 1; }
+	@grep -Fm1 'FAILED: packet-write-text invalid-byte:' $(PACKET_WRITE_TEXT_RUST)-negative/log
+	@echo 'Rust packet Write negative control: removing the UTF-8 debug assert fails invalid-byte'
 
-test-rust: packet-write-cfloat-rust packet-write-cfloat-rust-negative-control
+test-rust: packet-write-text-rust packet-write-text-rust-negative-control

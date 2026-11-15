@@ -957,6 +957,8 @@ pub const CHAT_MAX_BYTES: usize = 264;
 #[inline(always)]
 pub fn write_chat(stream: &mut WriteStream<'_>, value: &Chat) -> Result {
     debug_assert!(value.text_length >= 0 && value.text_length <= 256, "text_length out of range [0, 256]");
+    debug_assert!(!value.text[..value.text_length as usize].contains(&0), "text holds a zero byte");
+    debug_assert!(std::str::from_utf8(&value.text[..value.text_length as usize]).is_ok(), "text is not well-formed UTF-8");
     {
         let mut offset_value = value.text_length as u32;
         stream.serialize_bits(&mut offset_value, 9)?; // the length guards the slice (§6.3)
@@ -1174,6 +1176,8 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
     stream.serialize_align()?;
     stream.write_bytes(&value.fixed_bytes); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)
     debug_assert!(value.text_length >= 0 && value.text_length <= 255, "text_length out of range [0, 255]");
+    debug_assert!(!value.text[..value.text_length as usize].contains(&0), "text holds a zero byte");
+    debug_assert!(std::str::from_utf8(&value.text[..value.text_length as usize]).is_ok(), "text is not well-formed UTF-8");
     {
         let mut offset_value = value.text_length as u32;
         stream.serialize_bits(&mut offset_value, 8)?; // the length guards the slice (§6.3)
