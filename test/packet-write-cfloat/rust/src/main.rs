@@ -63,6 +63,10 @@ fn main() {
             eprintln!("FAILED: {name} read back {}, expected {expected}", output.x);
             std::process::exit(1);
         }
+        // The public read ends the packet (SPEC §5): it consumes the final
+        // byte's unused bits, so it stops at the written bits rounded up to a
+        // whole byte.
+        let bits = bits.div_ceil(8) * 8;
         if rs.bits_processed() != bits {
             eprintln!("FAILED: {name} consumed {} bits, wrote {bits}", rs.bits_processed());
             std::process::exit(1);
