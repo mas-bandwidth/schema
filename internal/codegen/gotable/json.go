@@ -810,6 +810,8 @@ func tableJSONWriteStringBody(out *tableJSONOut, s []byte) {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch c {
+		case 0:
+			out.invalid = true // text holds a zero byte (§16.14 W8)
 		case '"':
 			out.text("\\\"")
 		case '\\':
@@ -2706,6 +2708,7 @@ func tableJSONRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 }
 
 func tableJSONWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte, options TableJSONOptions) int64 {
+	if buffer != nil && tableJSONWrite(value, info, nil, options) < 0 { return -1 }
 	out := tableJSONOut{buffer: buffer, measure: buffer == nil, omit: options.OmitDefaults, compact: options.Compact}
 	if !tableJSONWriteValue(&out, value, info, 0) {
 		return -1

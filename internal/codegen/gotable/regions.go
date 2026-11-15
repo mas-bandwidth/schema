@@ -401,6 +401,7 @@ func tableRegionFromJSON(value unsafe.Pointer,info *TableTypeInfo,worker *TableW
 // there is no spelling to owe, and writing the value at each slot is the
 // amplification the standard refuses (docs/SPEC-TABLES.md §2.5, §16.7).
 func tableRegionToJSON(value unsafe.Pointer,info *TableTypeInfo,buffer []byte,options TableJSONOptions,allocator ...TableAllocator) (int64,TableRefuseReason) {
+ if buffer!=nil {if _,reason:=tableRegionToJSON(value,info,nil,options,allocator...);reason!=TableRefuseOk{return -1,reason}}
  n,ok:=tableNumber(value,info,nil,allocator...);if !ok{return -1,n.reason};defer n.Release();if n.shared{return -1,TableRefuseBlobShared};graph:=tableJSONGraph{node:func(p unsafe.Pointer)*tableJSONGraphNode{i,ok:=n.find(p);if !ok{return nil};return &n.entries[i].json}}
  for i:=range n.entries {e:=&n.entries[i];if e.info!=nil&&!tableRegionEdges(e.node,e.info,func(slot *TableRef,f *TableFieldInfo) bool {p:=tableRefAt(slot,nil);if p!=nil {graph.node(p).refs++};return true}){return -1,TableRefuseInvalidValue}}
  out:=tableJSONOut{buffer:buffer,measure:buffer==nil,graph:&graph,omit:options.OmitDefaults,compact:options.Compact};if !tableJSONWriteValue(&out,value,info,0){return -1,TableRefuseInvalidValue};out.put('\n');if out.overflow||out.invalid{return -1,TableRefuseInvalidValue};return out.offset,TableRefuseOk

@@ -401,6 +401,8 @@ func tableJSONWriteStringBody(out *tableJSONOut, s []byte) {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch c {
+		case 0:
+			out.invalid = true // text holds a zero byte (§16.14 W8)
 		case '"':
 			out.text("\\\"")
 		case '\\':
@@ -2350,6 +2352,9 @@ func tableJSONRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 }
 
 func tableJSONWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte, options TableJSONOptions) int64 {
+	if buffer != nil && tableJSONWrite(value, info, nil, options) < 0 {
+		return -1
+	}
 	out := tableJSONOut{buffer: buffer, measure: buffer == nil, omit: options.OmitDefaults, compact: options.Compact}
 	if !tableJSONWriteValue(&out, value, info, 0) {
 		return -1
@@ -3712,6 +3717,11 @@ func tableRegionFromJSON(value unsafe.Pointer, info *TableTypeInfo, worker *Tabl
 // there is no spelling to owe, and writing the value at each slot is the
 // amplification the standard refuses (mas-bandwidth/schema docs/SPEC-TABLES.md §2.5, §16.7).
 func tableRegionToJSON(value unsafe.Pointer, info *TableTypeInfo, buffer []byte, options TableJSONOptions, allocator ...TableAllocator) (int64, TableRefuseReason) {
+	if buffer != nil {
+		if _, reason := tableRegionToJSON(value, info, nil, options, allocator...); reason != TableRefuseOk {
+			return -1, reason
+		}
+	}
 	n, ok := tableNumber(value, info, nil, allocator...)
 	if !ok {
 		return -1, n.reason
