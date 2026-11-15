@@ -82,16 +82,10 @@ func TestCyclicWireIsDamageElixir(t *testing.T) {
 	if len(base) < 10 || !bytes.Equal(base[7:10], []byte{2, 17, 2}) {
 		t.Fatal("node_cycle_self root-next fixture moved")
 	}
-<<<<<<< HEAD
-	// Root next=self followed by next=null. Also clear the original node's
-	// self edge, so this fixture has only the overwritten root cycle.
-	overwritten := append(bytes.Clone(base[:7]), 2, 17, 1, 2, 17, 0)
-=======
 	// Root next=self followed by next=null: the same field id twice in one
 	// body is damage (§4), so the whole load is discarded before any cycle
 	// check runs. The original node's self edge is cleared as well.
-	overwritten := append(bytes.Clone(base[:7]), 3, 17, 1, 3, 17, 0)
->>>>>>> e957ec15d8341de4a2763f278a0873d587057b06
+	overwritten := append(bytes.Clone(base[:7]), 2, 17, 1, 2, 17, 0)
 	tail := bytes.Clone(base[10:])
 	self := []byte{2, 17, 2}
 	if bytes.Count(tail, self) != 1 {
