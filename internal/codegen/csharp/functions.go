@@ -909,6 +909,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteFoldedRange(length, "0", g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false),
 			big.NewInt(0), big.NewInt(f.Type.Size), false, true, true,
 			" // the length guards the slice (§6.3); an out-of-contract length is caller error", ind)
+		if f.Type.Kind == ir.TString {
+			g.writeAssert(ind, fmt.Sprintf("TextValid(%s)", g.prefix(name, length)),
+				fmt.Sprintf("%s holds a zero byte or is not well-formed UTF-8", name),
+				" // the used bytes hold no zero byte and are well-formed UTF-8 (SPEC §5.1 row 8)")
+		}
 		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s)", g.rv(), g.prefix(name, length)), "")
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -1175,13 +1180,6 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s)", g.rv(), g.prefix(name, length)), "")
 		if f.Type.Kind == ir.TString {
 			g.emitReadUTF8(name, length, ind)
-			// the interior-null rule is generated-code validation (SPEC §4.7);
-			// the SerializeBytes bool above already surfaced a truncated
-			// stream as the stream's own latched error, so this verdict only
-			// ever judges bytes that arrived — false, nothing latched
-			g.sf("%sfor (int i = 0; i < %s; i++)\n%s{\n", ind, length, ind)
-			g.sf("%s    if (%s[i] == 0) // an interior null is content the read refuses (SPEC §4.7)\n", ind, name)
-			g.sf("%s    {\n%s        return false;\n%s    }\n%s}\n", ind, ind, ind, ind)
 		}
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {

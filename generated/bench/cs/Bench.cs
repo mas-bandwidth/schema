@@ -11,12 +11,12 @@
 // Error tells the two apart.
 //
 // WRITE-side contracts — a value outside its declared range, a count or a
-// length outside its bound, a mask bit above the wire width, an interior
-// null in a wide string — are CALLER ERROR and ride on Debug.Assert, so
-// they compile out of a release build along with the call, exactly as
-// serialize.cs's own WriteStream does. In a shipping release build it is
-// the caller's responsibility to be correct on the write side; every check
-// the reader needs is on the read side and runs in every build.
+// length outside its bound, a mask bit above the wire width, a zero byte or
+// ill-formed UTF-8 in a string(N) — are CALLER ERROR and ride on
+// Debug.Assert, so they compile out of a release build along with the call,
+// exactly as serialize.cs's own WriteStream does. In a shipping release
+// build it is the caller's responsibility to be correct on the write side;
+// every check the reader needs is on the read side and runs in every build.
 
 using System;
 using System.Diagnostics;
@@ -266,6 +266,34 @@ namespace Bench
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
         public const ulong ProtocolId = 0xc93127c82f083edf;
+
+        // TextValid is the string(N) content rule: no zero byte and well-formed
+        // UTF-8 over the used bytes (SPEC §4.7, §5.1 row 8).
+        private static bool TextValid(ReadOnlySpan<byte> bytes)
+        {
+            for (int utf8Index = 0; utf8Index < bytes.Length;)
+            {
+                int utf8Lead = bytes[utf8Index++];
+                if (utf8Lead == 0) return false; // a zero byte is not text (SPEC §5.1 row 8)
+                if (utf8Lead < 0x80) continue;
+                int utf8Remaining, utf8Point;
+                if ((utf8Lead & 0xE0) == 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
+                else if ((utf8Lead & 0xF0) == 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
+                else if ((utf8Lead & 0xF8) == 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
+                else return false; // malformed UTF-8 lead (SPEC §4.7)
+                if (utf8Remaining > bytes.Length - utf8Index) return false;
+                for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
+                {
+                    int utf8Byte = bytes[utf8Index++];
+                    if ((utf8Byte & 0xC0) != 0x80) return false;
+                    utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
+                }
+                if (utf8Remaining == 1 && utf8Point < 0x80) return false;
+                if (utf8Remaining == 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
+                if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
+            }
+            return true;
+        }
 
         // BenchPacketMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // BenchPacketMaxBytes is rounded up to the 8-byte write-buffer granularity.
@@ -1586,6 +1614,7 @@ namespace Bench
                     return false;
                 }
             }
+            Debug.Assert(TextValid(value.PlayerName[..value.PlayerNameLength]), "value.PlayerName holds a zero byte or is not well-formed UTF-8"); // the used bytes hold no zero byte and are well-formed UTF-8 (SPEC §5.1 row 8)
             if (!stream.SerializeBytes(value.PlayerName[..value.PlayerNameLength]))
             {
                 return false;
@@ -1800,32 +1829,9 @@ namespace Bench
             {
                 return false;
             }
-            for (int utf8Index = 0; utf8Index < value.PlayerNameLength;)
+            if (!TextValid(value.PlayerName[..value.PlayerNameLength])) // a zero byte or malformed UTF-8 is content the read refuses (SPEC §4.7)
             {
-                int utf8Lead = value.PlayerName[utf8Index++];
-                if (utf8Lead < 0x80) continue;
-                int utf8Remaining, utf8Point;
-                if ((utf8Lead & 0xE0) == 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-                else if ((utf8Lead & 0xF0) == 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-                else if ((utf8Lead & 0xF8) == 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-                else return false; // malformed UTF-8 lead (SPEC §4.7)
-                if (utf8Remaining > value.PlayerNameLength - utf8Index) return false;
-                for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-                {
-                    int utf8Byte = value.PlayerName[utf8Index++];
-                    if ((utf8Byte & 0xC0) != 0x80) return false;
-                    utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-                }
-                if (utf8Remaining == 1 && utf8Point < 0x80) return false;
-                if (utf8Remaining == 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-                if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
-            }
-            for (int i = 0; i < value.PlayerNameLength; i++)
-            {
-                if (value.PlayerName[i] == 0) // an interior null is content the read refuses (SPEC §4.7)
-                {
-                    return false;
-                }
+                return false;
             }
             if (!stream.SerializeInt(ref value.PayloadLength, 0, 16)) // the length guards the slice (§6.3)
             {
