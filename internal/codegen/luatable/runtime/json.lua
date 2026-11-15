@@ -473,8 +473,14 @@ local function skip_container(inp, close, depth, graph)
       return false
     end
     if close == "}" then
-      local key, _, ok = scan_string(inp, MAX_KEY)
+      -- §16.2: a key is a schema name in every object, a skipped one
+      -- included, so one past 255 decoded bytes refuses the read
+      local key, over_bound, ok = scan_string(inp, MAX_KEY)
       if not ok then return false end
+      if over_bound then
+        inp.bad = true
+        return false
+      end
       if seen[key] then
         inp.bad = true
         return false
@@ -1607,11 +1613,10 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
       inp.bad = true
       return false
     end
-    -- §2.13.1: an UNBOUNDED map key has no length bound, so it is scanned
-    -- with none; a bounded key keeps the walker's own scratch cap and its
-    -- declared bound below.
+    -- §2.13.1, §16.2: a string map key is data, never a schema name, so it
+    -- is scanned with no cap; a bounded key meets its declared bound below.
     local keycap = MAX_KEY
-    if string_key and kf.bound == nil then keycap = -1 end
+    if string_key then keycap = -1 end
     local kraw, over_bound, ok, nul = scan_string(inp, keycap)
     if not ok then return false end
     if peek(inp) ~= ":" then
@@ -1790,8 +1795,13 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     return { tag = 0 }
   end
   local start = inp.p
-  local _, _, ok = scan_string(inp, MAX_KEY)
+  local _, over_bound, ok = scan_string(inp, MAX_KEY)
   if not ok then return nil end
+  if over_bound then
+    -- §16.2: an arm key past 255 decoded bytes refuses the read
+    inp.bad = true
+    return nil
+  end
   local name = inp.t:sub(start + 1, inp.p - 2)
   if peek(inp) ~= ":" then
     inp.bad = true
@@ -1938,8 +1948,13 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     return true
   elseif s == "enum" then
     local start = inp.p
-    local _, _, ok = scan_string(inp, MAX_KEY)
+    local _, over_bound, ok = scan_string(inp, MAX_KEY)
     if not ok then return false end
+    if over_bound then
+      -- §16.2: a variant name past 255 decoded bytes refuses, never None
+      inp.bad = true
+      return false
+    end
     local name = inp.t:sub(start + 1, inp.p - 2)
     if name == "None" then
       holder[key] = elem and false or nil
@@ -1987,20 +2002,23 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
       else
         local nm, over_bound, ok = scan_string(inp, MAX_KEY)
         if not ok then return false end
+        if over_bound then
+          -- §16.2: an element name past 255 decoded bytes refuses the read
+          inp.bad = true
+          return false
+        end
         local found = false
-        if not over_bound then
-          local names = d.variants or {}
-          for i, v in ipairs(names) do
-            if v == nm then
-              local bit = 1 << (i - 1)
-              if (bits & bit) ~= 0 then
-                inp.bad = true
-                return false
-              end
-              bits = bits | bit
-              found = true
-              break
+        local names = d.variants or {}
+        for i, v in ipairs(names) do
+          if v == nm then
+            local bit = 1 << (i - 1)
+            if (bits & bit) ~= 0 then
+              inp.bad = true
+              return false
             end
+            bits = bits | bit
+            found = true
+            break
           end
         end
         if not found then report.unknown = report.unknown + 1 end
