@@ -1,6 +1,7 @@
 package python
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -397,9 +398,7 @@ func TestPythonPacketLayoutNegativeControl(t *testing.T) {
 				t.Fatalf("the generated Layout reader has no %q:\n%s", c.old, original)
 			}
 			copied := make(map[string][]byte, len(files))
-			for rel, data := range files {
-				copied[rel] = data
-			}
+			maps.Copy(copied, files)
 			copied[module] = []byte(strings.Replace(original, c.old, c.new, 1))
 			dir := t.TempDir()
 			writeTree(t, dir, copied)
