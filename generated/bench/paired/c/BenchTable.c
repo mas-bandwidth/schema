@@ -1038,17 +1038,40 @@ typedef struct bench_table_json_in_t
     void * graph;
 } bench_table_json_in_t;
 
+/* A COMMENT IS TEXT (docs/SPEC-TABLES.md §16.2, §16.3): the bytes inside a line
+   or block comment are well-formed UTF-8 and hold no NUL. A comment carrying an
+   ill-formed sequence or a zero byte is not JSON and refuses the read, exactly
+   as a byte at a string site does. Linear in the comment's length. */
+static SCHEMA_UNUSED int bench_table_json_comment_text( const char * s, int64_t length )
+{
+    int64_t i = 0;
+    while ( i < length )
+    {
+        unsigned char c = (unsigned char) s[i];
+        int32_t width = 0;
+        int64_t left = length - i;
+        if ( c == 0 ) { return 0; }
+        if ( c < 0x80 ) { i++; continue; }
+        if ( bench_table_json_utf8( s + i, left > 4 ? 4 : (int32_t) left, &width ) < 0 ) { return 0; }
+        i += width;
+    }
+    return 1;
+}
+
 static SCHEMA_UNUSED void bench_table_json_space( bench_table_json_in_t * in )
 {
     while ( in->pos < in->size )
     {
         char c = in->text[in->pos];
         if ( c == ' ' || c == '\t' || c == '\n' || c == '\r' ) { in->pos++; continue; }
-        /* SPEC-TABLES 16.2: comments are whitespace on read. */
+        /* SPEC-TABLES 16.2: comments are whitespace on read, and their bytes are text. */
         if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '/' )
         {
+            int64_t start;
             in->pos += 2;
+            start = in->pos;
             while ( in->pos < in->size && in->text[in->pos] != '\n' ) { in->pos++; }
+            if ( !bench_table_json_comment_text( in->text + start, in->pos - start ) ) { in->bad = 1; return; }
             continue;
         }
         if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '*' )
@@ -1056,6 +1079,7 @@ static SCHEMA_UNUSED void bench_table_json_space( bench_table_json_in_t * in )
             int64_t at = in->pos + 2;
             while ( at + 1 < in->size && !(in->text[at] == '*' && in->text[at + 1] == '/') ) { at++; }
             if ( at + 1 >= in->size ) { in->bad = 1; in->pos = in->size; return; }
+            if ( !bench_table_json_comment_text( in->text + in->pos + 2, at - ( in->pos + 2 ) ) ) { in->bad = 1; return; }
             in->pos = at + 2;
             continue;
         }
