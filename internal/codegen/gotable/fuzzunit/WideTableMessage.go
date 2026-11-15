@@ -150,6 +150,9 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 	WideBlobReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -172,6 +175,11 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 		switch entry.ID {
 		case 0x39f7fcec8fcb623d:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
 					if false {
@@ -205,12 +213,21 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 					copy(value.Label[:], text)
 					value.LabelLength = int32(n)
 				}
+				if exact && !(value.LabelLength > 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xcfb8a9d063b5e9e5:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 6 {
 					if false {
@@ -239,12 +256,21 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 					copy(value.Payload[:], r.Bits.Buffer[start:start+int64(n)])
 					value.PayloadLength = int32(n)
 				}
+				if exact && !(value.PayloadLength > 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xe3b1ca6a3b48dddc:
 			{
+				if order >= 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 2
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 7 {
 					if entry.Shape.Kind == 14 && tableKindWidens(entry.Element.Kind, 7) {
@@ -291,6 +317,10 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 						}
 					}
 					value.SamplesCount = int32(n)
+				}
+				if exact && !(value.SamplesCount > 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				if widened {
 					r.Report.Widened++

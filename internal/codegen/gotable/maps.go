@@ -96,7 +96,12 @@ func (g *tableGen) emitMapRead(f *ir.Field, ind string) {
 	desc := g.mapDescriptor(f)
 	owner := g.floatOwner(f)
 	stop := damaged + ";return false"
-	g.pf("%s{sub,ok:=r.Body();if !ok||len(sub.Buffer)<2 {%s};kind:=sub.Get8();count,ok:=sub.Leb();if !ok {%s};if kind!=13 {%s};field:=%s;holder:=(*tableContainer)(unsafe.Pointer(&value.%s));if !tableContainerFill(&sub.Nodes.Carve,holder,count,%d,%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};%s};holder.Count=0;var last tableMapKey;prior:=false;widened:=false\n", ind, stop, stop, refuse("TableRefuseKindMismatch", owner, "return false"), desc, member(f), layout.Size, layout.Align, stop)
+	// an empty map field is elided by its writer (docs/SPEC-TABLES.md §2.8, §3)
+	empty := ""
+	if g.takeElides() {
+		empty = "if count==0 {" + stop + "};"
+	}
+	g.pf("%s{sub,ok:=r.Body();if !ok||len(sub.Buffer)<2 {%s};kind:=sub.Get8();count,ok:=sub.Leb();if !ok {%s};"+empty+"if kind!=13 {%s};field:=%s;holder:=(*tableContainer)(unsafe.Pointer(&value.%s));if !tableContainerFill(&sub.Nodes.Carve,holder,count,%d,%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};%s};holder.Count=0;var last tableMapKey;prior:=false;widened:=false\n", ind, stop, stop, refuse("TableRefuseKindMismatch", owner, "return false"), desc, member(f), layout.Size, layout.Align, stop)
 	g.retainDiscard("r")
 	keyReader := "elem"
 	if g.retain {

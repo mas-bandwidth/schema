@@ -25,6 +25,10 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("func %sLoadBody(r *TableReader, value *%s) bool {\n", n, g.storageName(n))
 	g.pf("\t%sReset(value)\n", n)
 	g.pf("\tvar seen [64]byte\n\tvar seenHigh map[uint64]struct{}\n")
+	// fields arrive in declaration order (canonical.go, docs/SPEC-TABLES.md §3)
+	if len(st.Fields) > 0 {
+		g.pf("\torder := -1\n")
+	}
 	if g.retain {
 		g.pf("r.Retain.discard(r.Path,false,0)\n")
 	}
@@ -92,12 +96,17 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.retainOrdinal = ordinal
 		kind := ir.TableWireFieldKind(f)
 		g.pf("\t\tcase 0x%016x: // %s\n", ir.TableFieldWireId(f), f.Name)
+		g.pf("\t\t\tif order >= %d { %s; return false }; order = %d\n", ordinal, damaged, ordinal)
+		// a field at the default its writer elides is refused (canonical.go)
+		elides := !f.Type.Optional && !f.Required
 		g.pf("\t\t\tif kind != %d {\n", kind)
 		if wireWidenable(kind) {
 			// Widening lives in the mismatch arm so a matching kind reads a
 			// constant width (docs/SPEC-TABLES.md §4).
 			g.pf("\t\t\t\tif tableKindWidens(kind, %d) {\n", kind)
+			g.elides = elides
 			g.emitReadScalar(f, "value."+member(f), "r", "kind", "\t\t\t\t\t", damaged+"; return false")
+			g.emitElidedRefusal(f, "value."+member(f), "\t\t\t\t\t")
 			if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {
 				g.pf("\t\t\t\t\tr.Report.Widened++\n")
 			}
@@ -114,7 +123,10 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		// load (docs/SPEC-TABLES.md §4); kinds 31 and 32 take the same rule.
 		g.pf("\t\t\t\t%s\n", refuse("TableRefuseKindMismatch", g.floatOwner(f), "return false"))
 		g.pf("\t\t\t}\n")
+		g.elides = elides
 		g.emitReadField(f, "\t\t\t")
+		g.elides = false
+		g.emitElidedRefusal(f, "value."+member(f), "\t\t\t")
 		if f.Type.Optional {
 			g.pf("\t\t\tvalue.%sPresent = true\n", member(f))
 		}
@@ -222,6 +234,9 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 		g.pf("%sclear(%s[:]); copy(%s[:], sub.Buffer); %sLength = int32(len(sub.Buffer))\n", ind, expr, expr, expr)
 	case kind == tkTable:
 		g.pf("%ssub, ok := r.Body(); if !ok { %s }\n", ind, stop)
+		if g.takeElides() { // an all-default nested table elides (canonical.go)
+			g.pf("%sif len(sub.Buffer) == 1 { %s }\n", ind, stop)
+		}
 		g.emitReadNested(f.Type.Name, expr, "sub", ind)
 	case kind == tkUnion:
 		g.retainDiscard("r")
@@ -247,7 +262,7 @@ func (g *tableGen) emitReadNested(typ, expr, rdr, ind string) {
 // the declared one and not a widening refuses kind_mismatch, and every byte of
 // the L is an element's.
 func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
-	expr := "value." + member(f)
+	expr, elide := "value."+member(f), g.takeElides()
 	kind, bound := ir.TableWireScalarKind(f), f.ArrayBound
 	over := "TableRefuseCountOverBound"
 	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
@@ -275,6 +290,9 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		g.retainDiscard("r")
 	}
 	if keyed {
+		if elide { // a keyed array with no slot riding elides (canonical.go)
+			g.pf("%sif count == 0 { %s }\n", i, stop)
+		}
 		g.pf("%svar keySeen [64]byte\n%svar keySeenHigh map[uint64]struct{}\n", i, i)
 		g.pf("%sfor range count {\n", i)
 		j := i + "\t"
@@ -346,6 +364,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 // reader cannot name reads None and counts unknown; an arm whose kind is not
 // the declared one and not a widening refuses kind_mismatch.
 func (g *tableGen) emitReadUnion(un *ir.Union, expr, rdr, ind string, element ...bool) {
+	elide := g.takeElides()
 	arm := g.nextWireWriter()
 	stop := damaged + ";return false"
 	g.pf("%s{\n", ind)
@@ -354,6 +373,11 @@ func (g *tableGen) emitReadUnion(un *ir.Union, expr, rdr, ind string, element ..
 	g.pf("%s%s := &%s\n", i, target, expr)
 	expr = target
 	g.pf("%sarmRef, ok := %s.Leb(); if !ok { %s }\n", i, rdr, stop)
+	if elide {
+		// an empty union FIELD elides, so arm reference 0 at a field is
+		// refused; a None element and a None nested arm stay lawful (§3)
+		g.pf("%sif armRef == 0 { %s }\n", i, stop)
+	}
 	g.pf("%s%s.Type = %sTypeNone\n", i, expr, un.Name)
 	g.pf("%sif armRef != 0 {\n", i)
 	i += "\t"
@@ -494,8 +518,15 @@ func (g *tableGen) emitReadArmArray(f *ir.Field, expr, rdr, ind string) {
 }
 
 func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad string) {
+	elide := g.takeElides()
 	if f.Type.Pointer {
-		g.pf("%s{index,ok:=%s.Leb();if !ok {%s};%s.Nodes.Resolve(&%s,index,0x%016x,r.Report)}\n", ind, rdr, onBad, rdr, expr, pointerTargetId(f))
+		// null elides, so an explicit null pointer at a field is refused
+		// (docs/SPEC-TABLES.md §3.1); a null slot of an array is lawful
+		null := ""
+		if elide && f.Array == ir.ArrayNone {
+			null = fmt.Sprintf("if index==0 {%s};", onBad)
+		}
+		g.pf("%s{index,ok:=%s.Leb();if !ok {%s};%s%s.Nodes.Resolve(&%s,index,0x%016x,r.Report)}\n", ind, rdr, onBad, null, rdr, expr, pointerTargetId(f))
 		return
 	}
 	kind := ir.TableWireScalarKind(f)
@@ -503,8 +534,16 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		kind = tkU8
 	}
 	if e := enumRef(f); e != nil {
+		// An enum field at its default is read off the VARIANT the wire names,
+		// not off the value landed: an unknown or a deprecated variant lands a
+		// value its writer did not elide (docs/SPEC-TABLES.md §2.15, §3).
+		def := fieldDefaultExpr(f)
+		none := fmt.Sprintf("%s = %sNone", expr, f.Type.Name)
+		if elide && def == f.Type.Name+"None" {
+			none = onBad
+		}
 		g.pf("%s{\n%s\tvariantRef, ok := %s.Leb(); if !ok { %s }\n", ind, ind, rdr, onBad)
-		g.pf("%s\tif variantRef == 0 { %s = %sNone } else {\n", ind, expr, f.Type.Name)
+		g.pf("%s\tif variantRef == 0 { %s } else {\n", ind, none)
 		g.pf("%s\t\tid, ok := %s.Resolve(variantRef); if !ok { %s }\n", ind, rdr, onBad)
 		g.pf("%s\t\tif !%s.TableEnumValue(id) { r.Report.Unknown++;", ind, expr)
 		if g.retain {
@@ -516,6 +555,9 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			// ELEMENT default inside an array, list, map or keyed array; it is
 			// never counted unknown (docs/SPEC-TABLES.md §2.15).
 			g.pf(" else if %s.TableEnumDeprecated() { %s }", expr, deprecatedLand(f, expr))
+		}
+		if elide && def != f.Type.Name+"None" {
+			g.pf(" else if %s == %s { %s }", expr, def, onBad)
 		}
 		g.pf("\n%s\t}\n%s}\n", ind, ind)
 		return

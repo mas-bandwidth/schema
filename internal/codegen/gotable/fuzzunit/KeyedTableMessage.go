@@ -128,6 +128,9 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 	TeamConfigReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -150,6 +153,11 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 		switch entry.ID {
 		case 0xceec99e2d65db674:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -180,12 +188,21 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 						value.SpawnCount = int32(v)
 					}
 				}
+				if exact && !(value.SpawnCount != 4) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xbca0dab1c7a00ccf:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
 					if false {
@@ -218,6 +235,10 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 					clear(value.Banner[:])
 					copy(value.Banner[:], text)
 					value.BannerLength = int32(n)
+				}
+				if exact && !(value.BannerLength > 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				if widened {
 					r.Report.Widened++
@@ -352,6 +373,9 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 	GunnerConfigReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -374,6 +398,11 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 		switch entry.ID {
 		case 0xb75aa3662201646a:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -406,12 +435,21 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 						}
 					}
 				}
+				if exact && !(math.Float32bits(value.Reaction) != math.Float32bits(0.2)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xa6bf719a4602b0bc:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
 					if false {
@@ -440,6 +478,10 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 						}
 						value.Tracking = b != 0
 					}
+				}
+				if exact && !(value.Tracking != false) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				if widened {
 					r.Report.Widened++
@@ -586,6 +628,9 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 	TurretConfigReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -608,6 +653,11 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 		switch entry.ID {
 		case 0x7f6308be8ab37fc0:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -640,12 +690,21 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 						}
 					}
 				}
+				if exact && !(math.Float32bits(value.Damage) != math.Float32bits(10.0)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xdc2cbe6953343d48:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -678,12 +737,21 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 						}
 					}
 				}
+				if exact && !(math.Float32bits(value.Cooldown) != math.Float32bits(0.5)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x40dbb648c0cd44aa:
 			{
+				if order >= 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 2
 				widened := false
 				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
 					if false {
@@ -885,6 +953,9 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 	HullConfigReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -907,6 +978,11 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 		switch entry.ID {
 		case 0x7f69d4b5288ba9cf:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -939,12 +1015,21 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 						}
 					}
 				}
+				if exact && !(math.Float32bits(value.Health) != math.Float32bits(100.0)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x1f3757a2ce7b0ab1:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -977,12 +1062,21 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 						}
 					}
 				}
+				if exact && !(math.Float32bits(value.Mass) != math.Float32bits(1.0)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x84f8260bc283608c:
 			{
+				if order >= 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 2
 				widened := false
 				if entry.Shape.Kind != 16 || entry.Element.Kind != 13 {
 					if false {
@@ -996,6 +1090,10 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 					base := &value.Turrets
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if exact && n == 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1264,6 +1362,9 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 	KeyedConfigReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1286,6 +1387,11 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 		switch entry.ID {
 		case 0xbaaeb048a5a8fa6d:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 16 || entry.Element.Kind != 13 {
 					if false {
@@ -1299,6 +1405,10 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 					base := &value.Teams
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if exact && n == 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1342,6 +1452,11 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 			}
 		case 0xce0ac3c25694d8ff:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 16 || entry.Element.Kind != 13 {
 					if false {
@@ -1355,6 +1470,10 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 					base := &value.Hulls
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if exact && n == 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1398,6 +1517,11 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 			}
 		case 0x01986b0b27400fb2:
 			{
+				if order >= 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 2
 				widened := false
 				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
 					if false {
@@ -1407,8 +1531,15 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 						return false
 					}
 				}
-				if !ScoreBoardLoadMessageBody(r, &value.Scores) {
-					return false
+				{
+					start := r.Bits.Offset
+					if !ScoreBoardLoadMessageBody(r, &value.Scores) {
+						return false
+					}
+					if exact && r.Bits.Offset-start == r.Vocabulary.RefBits {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -1508,6 +1639,9 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 	ScoreBoardReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1530,6 +1664,11 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 		switch entry.ID {
 		case 0xf10fad739a0e1660:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 16 || entry.Element.Kind != 4 {
 					if false {
@@ -1543,6 +1682,10 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 					base := &value.PerTeam
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if exact && n == 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}

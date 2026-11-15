@@ -282,6 +282,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 	RangedSignedReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -326,6 +327,11 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 		}
 		switch fieldID {
 		case 0x48121511bf702eb5: // i8_span
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 2 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_span")
 				return false
@@ -343,7 +349,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I8Span = int8(v)
 			}
+			if !(value.I8Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x942bfe3168090f7d: // i8_low
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 2 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_low")
 				return false
@@ -361,7 +376,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I8Low = int8(v)
 			}
+			if !(value.I8Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xd182acd105b55dd1: // i8_high
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 2 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_high")
 				return false
@@ -379,7 +403,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I8High = int8(v)
 			}
+			if !(value.I8High != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xef9ded23c8912a81: // i8_inside
+			if order >= 3 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 3
 			if kind != 2 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_inside")
 				return false
@@ -397,7 +430,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I8Inside = int8(v)
 			}
+			if !(value.I8Inside != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xb655574ea23760b4: // i16_span
+			if order >= 4 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 4
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -412,6 +454,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							return false
 						}
 						value.I16Span = int16(v)
+					}
+					if !(value.I16Span != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -432,7 +478,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I16Span = int16(v)
 			}
+			if !(value.I16Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xd217b3af8d7a2bde: // i16_low
+			if order >= 5 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 5
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -447,6 +502,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							return false
 						}
 						value.I16Low = int16(v)
+					}
+					if !(value.I16Low != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -467,7 +526,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I16Low = int16(v)
 			}
+			if !(value.I16Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x90652f70c9127900: // i16_high
+			if order >= 6 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 6
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -482,6 +550,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							return false
 						}
 						value.I16High = int16(v)
+					}
+					if !(value.I16High != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -502,7 +574,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I16High = int16(v)
 			}
+			if !(value.I16High != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x6a659d7c354db158: // i16_inside
+			if order >= 7 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 7
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -517,6 +598,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							return false
 						}
 						value.I16Inside = int16(v)
+					}
+					if !(value.I16Inside != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -537,7 +622,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I16Inside = int16(v)
 			}
+			if !(value.I16Inside != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xe693bd88532c91d6: // i32_span
+			if order >= 8 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 8
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -552,6 +646,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							return false
 						}
 						value.I32Span = int32(v)
+					}
+					if !(value.I32Span != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -572,7 +670,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I32Span = int32(v)
 			}
+			if !(value.I32Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x065ee827cf99fbb4: // i32_low
+			if order >= 9 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 9
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -587,6 +694,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							return false
 						}
 						value.I32Low = int32(v)
+					}
+					if !(value.I32Low != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -607,7 +718,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I32Low = int32(v)
 			}
+			if !(value.I32Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xc9b121c4c2a186ee: // i32_high
+			if order >= 10 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 10
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -622,6 +742,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							return false
 						}
 						value.I32High = int32(v)
+					}
+					if !(value.I32High != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -642,7 +766,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I32High = int32(v)
 			}
+			if !(value.I32High != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xd363dfa465acf27a: // i32_inside
+			if order >= 11 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 11
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -657,6 +790,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							return false
 						}
 						value.I32Inside = int32(v)
+					}
+					if !(value.I32Inside != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -677,7 +814,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I32Inside = int32(v)
 			}
+			if !(value.I32Inside != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x7549c70700c49d6f: // i64_span
+			if order >= 12 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 12
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -692,6 +838,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							return false
 						}
 						value.I64Span = int64(v)
+					}
+					if !(value.I64Span != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -712,7 +862,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I64Span = int64(v)
 			}
+			if !(value.I64Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x1cce6617419771db: // i64_low
+			if order >= 13 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 13
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -727,6 +886,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							return false
 						}
 						value.I64Low = int64(v)
+					}
+					if !(value.I64Low != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -747,7 +910,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I64Low = int64(v)
 			}
+			if !(value.I64Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x3b54fa60620b5597: // i64_high
+			if order >= 14 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 14
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -762,6 +934,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							return false
 						}
 						value.I64High = int64(v)
+					}
+					if !(value.I64High != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -782,7 +958,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I64High = int64(v)
 			}
+			if !(value.I64High != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xd308fcb98ece5d23: // i64_inside
+			if order >= 15 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 15
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -797,6 +982,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 							return false
 						}
 						value.I64Inside = int64(v)
+					}
+					if !(value.I64Inside != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -817,7 +1006,16 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 				}
 				value.I64Inside = int64(v)
 			}
+			if !(value.I64Inside != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xc70cde6b85b6197d: // edges
+			if order >= 16 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 16
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.edges")
 				return false
@@ -870,6 +1068,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+			}
+			if !(value.EdgesCount > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -1170,6 +1372,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 	RangedSignedReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -1215,6 +1418,11 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 		}
 		switch fieldID {
 		case 0x48121511bf702eb5: // i8_span
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 2 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_span")
 				return false
@@ -1232,7 +1440,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I8Span = int8(v)
 			}
+			if !(value.I8Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x942bfe3168090f7d: // i8_low
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 2 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_low")
 				return false
@@ -1250,7 +1467,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I8Low = int8(v)
 			}
+			if !(value.I8Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xd182acd105b55dd1: // i8_high
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 2 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_high")
 				return false
@@ -1268,7 +1494,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I8High = int8(v)
 			}
+			if !(value.I8High != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xef9ded23c8912a81: // i8_inside
+			if order >= 3 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 3
 			if kind != 2 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_inside")
 				return false
@@ -1286,7 +1521,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I8Inside = int8(v)
 			}
+			if !(value.I8Inside != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xb655574ea23760b4: // i16_span
+			if order >= 4 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 4
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -1301,6 +1545,10 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							return false
 						}
 						value.I16Span = int16(v)
+					}
+					if !(value.I16Span != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -1321,7 +1569,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I16Span = int16(v)
 			}
+			if !(value.I16Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xd217b3af8d7a2bde: // i16_low
+			if order >= 5 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 5
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -1336,6 +1593,10 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							return false
 						}
 						value.I16Low = int16(v)
+					}
+					if !(value.I16Low != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -1356,7 +1617,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I16Low = int16(v)
 			}
+			if !(value.I16Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x90652f70c9127900: // i16_high
+			if order >= 6 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 6
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -1371,6 +1641,10 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							return false
 						}
 						value.I16High = int16(v)
+					}
+					if !(value.I16High != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -1391,7 +1665,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I16High = int16(v)
 			}
+			if !(value.I16High != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x6a659d7c354db158: // i16_inside
+			if order >= 7 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 7
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -1406,6 +1689,10 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							return false
 						}
 						value.I16Inside = int16(v)
+					}
+					if !(value.I16Inside != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -1426,7 +1713,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I16Inside = int16(v)
 			}
+			if !(value.I16Inside != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xe693bd88532c91d6: // i32_span
+			if order >= 8 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 8
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -1441,6 +1737,10 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							return false
 						}
 						value.I32Span = int32(v)
+					}
+					if !(value.I32Span != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -1461,7 +1761,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I32Span = int32(v)
 			}
+			if !(value.I32Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x065ee827cf99fbb4: // i32_low
+			if order >= 9 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 9
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -1476,6 +1785,10 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							return false
 						}
 						value.I32Low = int32(v)
+					}
+					if !(value.I32Low != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -1496,7 +1809,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I32Low = int32(v)
 			}
+			if !(value.I32Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xc9b121c4c2a186ee: // i32_high
+			if order >= 10 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 10
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -1511,6 +1833,10 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							return false
 						}
 						value.I32High = int32(v)
+					}
+					if !(value.I32High != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -1531,7 +1857,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I32High = int32(v)
 			}
+			if !(value.I32High != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xd363dfa465acf27a: // i32_inside
+			if order >= 11 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 11
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -1546,6 +1881,10 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							return false
 						}
 						value.I32Inside = int32(v)
+					}
+					if !(value.I32Inside != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -1566,7 +1905,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I32Inside = int32(v)
 			}
+			if !(value.I32Inside != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x7549c70700c49d6f: // i64_span
+			if order >= 12 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 12
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -1581,6 +1929,10 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							return false
 						}
 						value.I64Span = int64(v)
+					}
+					if !(value.I64Span != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -1601,7 +1953,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I64Span = int64(v)
 			}
+			if !(value.I64Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x1cce6617419771db: // i64_low
+			if order >= 13 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 13
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -1616,6 +1977,10 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							return false
 						}
 						value.I64Low = int64(v)
+					}
+					if !(value.I64Low != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -1636,7 +2001,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I64Low = int64(v)
 			}
+			if !(value.I64Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x3b54fa60620b5597: // i64_high
+			if order >= 14 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 14
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -1651,6 +2025,10 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							return false
 						}
 						value.I64High = int64(v)
+					}
+					if !(value.I64High != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -1671,7 +2049,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I64High = int64(v)
 			}
+			if !(value.I64High != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xd308fcb98ece5d23: // i64_inside
+			if order >= 15 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 15
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -1686,6 +2073,10 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 							return false
 						}
 						value.I64Inside = int64(v)
+					}
+					if !(value.I64Inside != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -1706,7 +2097,16 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 				}
 				value.I64Inside = int64(v)
 			}
+			if !(value.I64Inside != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xc70cde6b85b6197d: // edges
+			if order >= 16 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 16
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.edges")
 				return false
@@ -1760,6 +2160,10 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+			}
+			if !(value.EdgesCount > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -2039,6 +2443,7 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 	RangedUnsignedReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -2083,6 +2488,11 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 		}
 		switch fieldID {
 		case 0x0f8897557f37c021: // u8_span
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_span")
 				return false
@@ -2100,7 +2510,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U8Span = uint8(v)
 			}
+			if !(value.U8Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x2e17553f8200a2a1: // u8_low
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_low")
 				return false
@@ -2118,7 +2537,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U8Low = uint8(v)
 			}
+			if !(value.U8Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xa0e5c60df9301b7d: // u8_high
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_high")
 				return false
@@ -2136,7 +2564,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U8High = uint8(v)
 			}
+			if !(value.U8High != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x1cb2c073a6f5844d: // u8_inside
+			if order >= 3 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 3
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_inside")
 				return false
@@ -2154,7 +2591,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U8Inside = uint8(v)
 			}
+			if !(value.U8Inside != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x4ca0c150b1790960: // u16_span
+			if order >= 4 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 4
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -2169,6 +2615,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							return false
 						}
 						value.U16Span = uint16(v)
+					}
+					if !(value.U16Span != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -2189,7 +2639,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U16Span = uint16(v)
 			}
+			if !(value.U16Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xf252136836b04cb2: // u16_low
+			if order >= 5 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 5
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -2204,6 +2663,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							return false
 						}
 						value.U16Low = uint16(v)
+					}
+					if !(value.U16Low != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -2224,7 +2687,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U16Low = uint16(v)
 			}
+			if !(value.U16Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x4f37e1f216e7610c: // u16_high
+			if order >= 6 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 6
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -2239,6 +2711,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							return false
 						}
 						value.U16High = uint16(v)
+					}
+					if !(value.U16High != 1) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -2259,7 +2735,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U16High = uint16(v)
 			}
+			if !(value.U16High != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xd176b605978f3304: // u16_inside
+			if order >= 7 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 7
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -2274,6 +2759,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							return false
 						}
 						value.U16Inside = uint16(v)
+					}
+					if !(value.U16Inside != 1) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -2294,7 +2783,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U16Inside = uint16(v)
 			}
+			if !(value.U16Inside != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x200b924de7479cda: // u32_span
+			if order >= 8 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 8
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -2309,6 +2807,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							return false
 						}
 						value.U32Span = uint32(v)
+					}
+					if !(value.U32Span != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -2329,7 +2831,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U32Span = uint32(v)
 			}
+			if !(value.U32Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xa53d2f2a31b5acb0: // u32_low
+			if order >= 9 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 9
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -2344,6 +2855,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							return false
 						}
 						value.U32Low = uint32(v)
+					}
+					if !(value.U32Low != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -2364,7 +2879,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U32Low = uint32(v)
 			}
+			if !(value.U32Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x9759be8ea1a4e3d2: // u32_high
+			if order >= 10 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 10
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -2379,6 +2903,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							return false
 						}
 						value.U32High = uint32(v)
+					}
+					if !(value.U32High != 1) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -2399,7 +2927,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U32High = uint32(v)
 			}
+			if !(value.U32High != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x8dc515fc082e3c0e: // u32_inside
+			if order >= 11 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 11
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -2414,6 +2951,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							return false
 						}
 						value.U32Inside = uint32(v)
+					}
+					if !(value.U32Inside != 1) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -2434,7 +2975,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U32Inside = uint32(v)
 			}
+			if !(value.U32Inside != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xbeecef11dbdf8973: // u64_span
+			if order >= 12 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 12
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -2449,6 +2999,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							return false
 						}
 						value.U64Span = uint64(v)
+					}
+					if !(value.U64Span != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -2469,7 +3023,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U64Span = uint64(v)
 			}
+			if !(value.U64Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x0117ad66e0fff227: // u64_low
+			if order >= 13 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 13
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -2484,6 +3047,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							return false
 						}
 						value.U64Low = uint64(v)
+					}
+					if !(value.U64Low != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -2504,7 +3071,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U64Low = uint64(v)
 			}
+			if !(value.U64Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xf2b45af3b50689db: // u64_high
+			if order >= 14 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 14
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -2519,6 +3095,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							return false
 						}
 						value.U64High = uint64(v)
+					}
+					if !(value.U64High != 1) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -2539,7 +3119,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U64High = uint64(v)
 			}
+			if !(value.U64High != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x713e12017eebcaf7: // u64_inside
+			if order >= 15 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 15
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -2554,6 +3143,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 							return false
 						}
 						value.U64Inside = uint64(v)
+					}
+					if !(value.U64Inside != 1) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -2574,7 +3167,16 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 				}
 				value.U64Inside = uint64(v)
 			}
+			if !(value.U64Inside != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xc341febe5aae51e5: // counts
+			if order >= 16 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 16
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.counts")
 				return false
@@ -2627,6 +3229,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+			}
+			if !(value.CountsCount > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -2927,6 +3533,7 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 	RangedUnsignedReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -2972,6 +3579,11 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 		}
 		switch fieldID {
 		case 0x0f8897557f37c021: // u8_span
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_span")
 				return false
@@ -2989,7 +3601,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U8Span = uint8(v)
 			}
+			if !(value.U8Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x2e17553f8200a2a1: // u8_low
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_low")
 				return false
@@ -3007,7 +3628,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U8Low = uint8(v)
 			}
+			if !(value.U8Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xa0e5c60df9301b7d: // u8_high
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_high")
 				return false
@@ -3025,7 +3655,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U8High = uint8(v)
 			}
+			if !(value.U8High != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x1cb2c073a6f5844d: // u8_inside
+			if order >= 3 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 3
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_inside")
 				return false
@@ -3043,7 +3682,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U8Inside = uint8(v)
 			}
+			if !(value.U8Inside != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x4ca0c150b1790960: // u16_span
+			if order >= 4 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 4
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3058,6 +3706,10 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							return false
 						}
 						value.U16Span = uint16(v)
+					}
+					if !(value.U16Span != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3078,7 +3730,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U16Span = uint16(v)
 			}
+			if !(value.U16Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xf252136836b04cb2: // u16_low
+			if order >= 5 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 5
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3093,6 +3754,10 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							return false
 						}
 						value.U16Low = uint16(v)
+					}
+					if !(value.U16Low != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3113,7 +3778,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U16Low = uint16(v)
 			}
+			if !(value.U16Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x4f37e1f216e7610c: // u16_high
+			if order >= 6 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 6
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3128,6 +3802,10 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							return false
 						}
 						value.U16High = uint16(v)
+					}
+					if !(value.U16High != 1) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3148,7 +3826,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U16High = uint16(v)
 			}
+			if !(value.U16High != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xd176b605978f3304: // u16_inside
+			if order >= 7 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 7
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3163,6 +3850,10 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							return false
 						}
 						value.U16Inside = uint16(v)
+					}
+					if !(value.U16Inside != 1) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3183,7 +3874,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U16Inside = uint16(v)
 			}
+			if !(value.U16Inside != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x200b924de7479cda: // u32_span
+			if order >= 8 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 8
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3198,6 +3898,10 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							return false
 						}
 						value.U32Span = uint32(v)
+					}
+					if !(value.U32Span != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3218,7 +3922,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U32Span = uint32(v)
 			}
+			if !(value.U32Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xa53d2f2a31b5acb0: // u32_low
+			if order >= 9 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 9
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3233,6 +3946,10 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							return false
 						}
 						value.U32Low = uint32(v)
+					}
+					if !(value.U32Low != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3253,7 +3970,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U32Low = uint32(v)
 			}
+			if !(value.U32Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x9759be8ea1a4e3d2: // u32_high
+			if order >= 10 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 10
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3268,6 +3994,10 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							return false
 						}
 						value.U32High = uint32(v)
+					}
+					if !(value.U32High != 1) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3288,7 +4018,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U32High = uint32(v)
 			}
+			if !(value.U32High != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x8dc515fc082e3c0e: // u32_inside
+			if order >= 11 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 11
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3303,6 +4042,10 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							return false
 						}
 						value.U32Inside = uint32(v)
+					}
+					if !(value.U32Inside != 1) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3323,7 +4066,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U32Inside = uint32(v)
 			}
+			if !(value.U32Inside != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xbeecef11dbdf8973: // u64_span
+			if order >= 12 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 12
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3338,6 +4090,10 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							return false
 						}
 						value.U64Span = uint64(v)
+					}
+					if !(value.U64Span != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3358,7 +4114,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U64Span = uint64(v)
 			}
+			if !(value.U64Span != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x0117ad66e0fff227: // u64_low
+			if order >= 13 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 13
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3373,6 +4138,10 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							return false
 						}
 						value.U64Low = uint64(v)
+					}
+					if !(value.U64Low != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3393,7 +4162,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U64Low = uint64(v)
 			}
+			if !(value.U64Low != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xf2b45af3b50689db: // u64_high
+			if order >= 14 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 14
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3408,6 +4186,10 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							return false
 						}
 						value.U64High = uint64(v)
+					}
+					if !(value.U64High != 1) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3428,7 +4210,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U64High = uint64(v)
 			}
+			if !(value.U64High != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x713e12017eebcaf7: // u64_inside
+			if order >= 15 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 15
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3443,6 +4234,10 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 							return false
 						}
 						value.U64Inside = uint64(v)
+					}
+					if !(value.U64Inside != 1) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3463,7 +4258,16 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 				}
 				value.U64Inside = uint64(v)
 			}
+			if !(value.U64Inside != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xc341febe5aae51e5: // counts
+			if order >= 16 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 16
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.counts")
 				return false
@@ -3517,6 +4321,10 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+			}
+			if !(value.CountsCount > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -3669,6 +4477,7 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 	RangedWidthsReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -3713,6 +4522,11 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 		}
 		switch fieldID {
 		case 0x08a60c07b54d8dc7: // b8
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedWidths.b8")
 				return false
@@ -3730,7 +4544,16 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 				}
 				value.B8 = uint32(v)
 			}
+			if !(value.B8 != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xff95701912ad97be: // b16
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3745,6 +4568,10 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 							return false
 						}
 						value.B16 = uint32(v)
+					}
+					if !(value.B16 != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3765,7 +4592,16 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 				}
 				value.B16 = uint32(v)
 			}
+			if !(value.B16 != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xff9c5c1912b39470: // b32
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3780,6 +4616,10 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 							return false
 						}
 						value.B32 = uint32(v)
+					}
+					if !(value.B32 != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3800,7 +4640,16 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 				}
 				value.B32 = uint32(v)
 			}
+			if !(value.B32 != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xff92701912ab61e7: // b64
+			if order >= 3 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 3
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3810,6 +4659,10 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 					{
 						v := r.Unsigned(kind)
 						value.B64 = uint64(v)
+					}
+					if !(value.B64 != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3825,7 +4678,16 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 				v := r.Get64()
 				value.B64 = uint64(v)
 			}
+			if !(value.B64 != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xff95741912ad9e8a: // b12
+			if order >= 4 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 4
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3840,6 +4702,10 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 							return false
 						}
 						value.B12 = uint32(v)
+					}
+					if !(value.B12 != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3860,7 +4726,16 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 				}
 				value.B12 = uint32(v)
 			}
+			if !(value.B12 != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xff8b681912a535a1: // b48
+			if order >= 5 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 5
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3875,6 +4750,10 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 							return false
 						}
 						value.B48 = uint64(v)
+					}
+					if !(value.B48 != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3894,6 +4773,10 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 					return false
 				}
 				value.B48 = uint64(v)
+			}
+			if !(value.B48 != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -4049,6 +4932,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 	RangedWidthsReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -4094,6 +4978,11 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 		}
 		switch fieldID {
 		case 0x08a60c07b54d8dc7: // b8
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RangedWidths.b8")
 				return false
@@ -4111,7 +5000,16 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 				}
 				value.B8 = uint32(v)
 			}
+			if !(value.B8 != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xff95701912ad97be: // b16
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4126,6 +5024,10 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 							return false
 						}
 						value.B16 = uint32(v)
+					}
+					if !(value.B16 != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -4146,7 +5048,16 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 				}
 				value.B16 = uint32(v)
 			}
+			if !(value.B16 != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xff9c5c1912b39470: // b32
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4161,6 +5072,10 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 							return false
 						}
 						value.B32 = uint32(v)
+					}
+					if !(value.B32 != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -4181,7 +5096,16 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 				}
 				value.B32 = uint32(v)
 			}
+			if !(value.B32 != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xff92701912ab61e7: // b64
+			if order >= 3 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 3
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4191,6 +5115,10 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 					{
 						v := r.Unsigned(kind)
 						value.B64 = uint64(v)
+					}
+					if !(value.B64 != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -4206,7 +5134,16 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 				v := r.Get64()
 				value.B64 = uint64(v)
 			}
+			if !(value.B64 != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xff95741912ad9e8a: // b12
+			if order >= 4 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 4
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4221,6 +5158,10 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 							return false
 						}
 						value.B12 = uint32(v)
+					}
+					if !(value.B12 != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -4241,7 +5182,16 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 				}
 				value.B12 = uint32(v)
 			}
+			if !(value.B12 != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xff8b681912a535a1: // b48
+			if order >= 5 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 5
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4256,6 +5206,10 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 							return false
 						}
 						value.B48 = uint64(v)
+					}
+					if !(value.B48 != 0) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -4275,6 +5229,10 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 					return false
 				}
 				value.B48 = uint64(v)
+			}
+			if !(value.B48 != 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		default:
 			r.Report.Unknown++

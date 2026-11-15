@@ -24,7 +24,7 @@ const tableIDCapacity = %d
 const tableIDBuckets = %d
 const tableWireBytesID uint64 = 0x%016x
 const tableWireStringID uint64 = 0x%016x
-`, n, buckets, ir.TableWireId("bytes"), ir.TableWireId("string")) + source + tableWireCheckSource
+`, n, buckets, ir.TableWireId("bytes"), ir.TableWireId("string")) + source + tableWireCheckSource + tableFirstUseSource
 	// A unit with a node table carries the map on its reader: a pointer inside a
 	// slot the reader cannot name still names its target, and the graph walk
 	// starts there too (docs/SPEC-TABLES.md §4, §6.5).
@@ -438,6 +438,7 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 			}
 		}
 	}
+	if !tableFirstUseHolds(r, n) { return r, TableOpenDamaged }
 	return r, TableOpenOk
 }
 

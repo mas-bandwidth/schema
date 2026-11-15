@@ -83,6 +83,7 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 	FixedTableReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -127,12 +128,21 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 		}
 		switch fieldID {
 		case 0x7ce4fd9430e80cea: // value
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 13 {
 				r.Report.Refuse(TableRefuseKindMismatch, "FixedTable.value")
 				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			if len(sub.Buffer) == 1 {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}

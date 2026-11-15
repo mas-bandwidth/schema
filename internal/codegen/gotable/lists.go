@@ -45,6 +45,10 @@ func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 	g.pf("%s{sub,ok:=r.Body();if !ok||len(sub.Buffer)<2 {%s}\n", ind, stop)
 	i := ind + "\t"
 	g.pf("%selemKind:=sub.Get8();count,ok:=sub.Leb();if !ok {%s};if elemKind!=%d&&!tableKindWidens(elemKind,%d) {%s}\n", i, stop, kind, kind, refuse("TableRefuseKindMismatch", owner, "return false"))
+	if g.takeElides() {
+		// an empty list field is elided by its writer (docs/SPEC-TABLES.md §2.9, §3)
+		g.pf("%sif count==0 {%s}\n", i, stop)
+	}
 	g.retainDiscard("r")
 	// a widened element kind counts once the count is known to land: the
 	// builder's count-cap refusal moves no counter (docs/SPEC-TABLES.md §2.9)

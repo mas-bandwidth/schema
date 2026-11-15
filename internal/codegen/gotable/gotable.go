@@ -111,6 +111,7 @@ type tableGen struct {
 	retainIndex   string
 	retainArm     bool
 	regional      bool
+	elides        bool // the field read being emitted is one its writer elides at its default
 	armOffset     *int64
 	viewPacket    map[string]int
 	viewUnions    map[string]int

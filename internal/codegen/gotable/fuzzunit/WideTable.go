@@ -186,6 +186,7 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 	WideBlobReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -230,6 +231,11 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 		}
 		switch fieldID {
 		case 0x39f7fcec8fcb623d: // label
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 12 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.label")
 				return false
@@ -246,7 +252,16 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 			clear(value.Label[:])
 			copy(value.Label[:], sub.Buffer)
 			value.LabelLength = int32(len(sub.Buffer))
+			if !(value.LabelLength > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xcfb8a9d063b5e9e5: // payload
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.payload")
 				return false
@@ -292,7 +307,16 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 					return false
 				}
 			}
+			if !(value.PayloadLength > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xe3b1ca6a3b48dddc: // samples
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.samples")
 				return false
@@ -340,6 +364,10 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+			}
+			if !(value.SamplesCount > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -558,6 +586,7 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 	WideBlobReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -603,6 +632,11 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 		}
 		switch fieldID {
 		case 0x39f7fcec8fcb623d: // label
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 12 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.label")
 				return false
@@ -619,7 +653,16 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 			clear(value.Label[:])
 			copy(value.Label[:], sub.Buffer)
 			value.LabelLength = int32(len(sub.Buffer))
+			if !(value.LabelLength > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xcfb8a9d063b5e9e5: // payload
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.payload")
 				return false
@@ -666,7 +709,16 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 					return false
 				}
 			}
+			if !(value.PayloadLength > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xe3b1ca6a3b48dddc: // samples
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.samples")
 				return false
@@ -715,6 +767,10 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+			}
+			if !(value.SamplesCount > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		default:
 			r.Report.Unknown++
