@@ -2,8 +2,10 @@
 # intN/uintN below 64 bits lives in a 64-bit Dart int, so the writer asserts
 # the value inside its declared width before the mask lands its low N bits.
 # The shared cases run on the checked twin, where every refused case must
-# fire the assert; the release twin trusts the caller by design, so it only
-# writes the lawful cases and reads them back.
+# fire the assert; the release twin trusts the caller by design, so it writes
+# the same values and requires only the lawful ones to read back. A refused
+# 64-bit case has no Dart int to stand for it: the driver names it as not
+# representable, by case, and fails on any case neither run nor named.
 build/packet-write-bareint/dart/.stamp: bin/schema test/packet-write-bareint/BareInt.schema make/dart-packet-write-bareint.mk
 	./bin/schema generate --lang dart --out build/packet-write-bareint/dart test/packet-write-bareint/BareInt.schema
 	@touch $@
@@ -35,6 +37,12 @@ packet-write-bareint-dart-negative-control: packet-write-bareint-dart
 		echo 'NEGATIVE CONTROL FAILED: a case other than an out-of-width value went red'; \
 		cat build/packet-write-bareint/dart-negative/log; exit 1; fi
 	@grep -m1 'FAILED: packet-write-bareint int8-above-max: out-of-width value was written' build/packet-write-bareint/dart-negative/log
-	@echo 'negative control: with no width check, the out-of-width cases are written and nothing else goes red'
+	@sed "/'uint64-negative':$$/{N;d;}" test/packet-write-bareint/dart/main.dart > build/packet-write-bareint/dart-negative/unnamed.dart
+	@if $(DART) --enable-asserts build/packet-write-bareint/dart-negative/unnamed.dart test/packet-write-bareint/cases.txt > build/packet-write-bareint/dart-negative/unnamed.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a case neither run nor named not representable stayed green'; \
+		cat build/packet-write-bareint/dart-negative/unnamed.log; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-bareint uint64-negative: neither run nor named not representable in Dart' build/packet-write-bareint/dart-negative/unnamed.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: uint64-negative was not the failure'; cat build/packet-write-bareint/dart-negative/unnamed.log; exit 1; }
+	@echo 'negative control: with no width check, the out-of-width cases are written and nothing else goes red; an unnamed unrun case goes red by name'
 
 test-dart: packet-write-bareint-dart packet-write-bareint-dart-negative-control

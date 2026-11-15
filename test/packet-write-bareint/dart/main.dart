@@ -1,18 +1,20 @@
 // The packet Write of a bare intN / uintN outside its declared width (SPEC
 // §5.1 row 11), the Dart leg.
 //
-// Reads the shared cases beside the schema and writes every one of them. A
-// refused case must fire the writer's debug assert (the checked twin); a
-// written case must write and read back exactly in both twins. The release
-// twin trusts the caller by design, so it does not require the assert.
+// Reads the shared cases beside the schema and writes every case a Dart
+// field can hold. A refused case must fire the writer's debug assert (the
+// checked twin); a written case must write and read back exactly in both
+// twins. The release twin trusts the caller by design: it writes the same
+// refused values and does not require the assert.
 //
-// A Dart int is 64 bits, and a uint64 is carried as its two's complement
-// bit pattern, so a 64-bit width is the storage itself: no Dart value of an
-// I64 or a U64 lies outside its width, and a refused 64-bit case has no
-// value to write. Every narrower width is held in that 64-bit int, so each
-// of its refused cases is written.
+// Every generated field here is a 64-bit Dart int, and a uint64 is held as
+// its two's complement bit pattern. A case whose value no Dart int of its
+// field stands for is not run: it must be named in notRepresentable below,
+// with why, and is printed by name. A case that is neither run nor named
+// there is a failure, and so is a named case a Dart int can hold.
 //
-// Prints OK and exits 0; every failure is one FAILED line, then exit 1.
+// Prints the counts and exits 0; every failure is one FAILED line, then
+// exit 1.
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -96,9 +98,37 @@ final legs = <String, Leg>{
   }),
 };
 
+// The shared cases no Dart int of their field stands for, by name, with
+// why. These are not run; each is printed by name, and the driver fails if
+// one of them turns out holdable or a case is neither run nor listed here.
+const notRepresentable = <String, String>{
+  'int64-above-max': '2^63 is above the largest Dart int (2^63 - 1), and an int64 field is a Dart int',
+  'uint64-above-max': '2^64 needs 65 bits, and a uint64 field is a 64-bit Dart int holding its bit pattern',
+  'uint64-negative': 'a uint64 field holds a 64-bit pattern, and the pattern of -1 is uint64-max, a lawful value',
+};
+
+final BigInt _two64 = BigInt.one << 64;
+
+// The Dart int that stands for value in a field of this leg, or null when
+// none does. A uint64 is its bit pattern, so only 0 ..= 2^64 - 1 has one;
+// every other field holds the value itself, so it needs a Dart int's range.
+int? storage(Leg leg, BigInt value) {
+  if (!leg.signed && leg.width == 64) {
+    if (value.isNegative || value >= _two64) {
+      return null;
+    }
+    return value.toSigned(64).toInt();
+  }
+  return value.isValidInt ? value.toInt() : null;
+}
+
 void main(List<String> args) {
   final lines = File(args[0]).readAsLinesSync();
-  var cases = 0;
+  var total = 0;
+  var ran = 0;
+  var refusedRan = 0;
+  var unrepresentable = 0;
+  final seen = <String>{};
   for (final line in lines) {
     final text = line.trim();
     if (text.isEmpty || text.startsWith('#')) {
@@ -106,24 +136,40 @@ void main(List<String> args) {
     }
     final fields = text.split(RegExp(r'\s+'));
     final name = fields[0];
+    total++;
+    seen.add(name);
     final leg = legs[fields[1]];
     if (leg == null) {
       check(false, 'packet-write-bareint $name: unknown type ${fields[1]}');
       continue;
     }
-    final value = BigInt.parse(fields[2]);
     final refused = fields[3] == 'refused';
-    cases++;
+    // a non-integer value is excluded by the field's Dart type (int) at
+    // compile time; it is held to the same named list as a wide one
+    final value = BigInt.tryParse(fields[2]);
+    final stored = value == null ? null : storage(leg, value);
+    final why = notRepresentable[name];
 
-    if (refused && leg.width == 64) {
-      // the storage is the width: no Dart int holds this value apart from a
-      // lawful one, so there is nothing to write
+    if (stored == null) {
+      if (why == null) {
+        check(
+          false,
+          'packet-write-bareint $name: neither run nor named not representable in Dart',
+        );
+      } else {
+        print('not representable in Dart: $name: $why');
+        unrepresentable++;
+      }
       continue;
     }
-    // the Dart storage: the value itself, or a uint64's bit pattern
-    final stored = value.toSigned(64).toInt();
-    final view = ByteData(8);
+    if (why != null) {
+      check(
+        false,
+        'packet-write-bareint $name: named not representable, but a Dart int holds it',
+      );
+    }
 
+    final view = ByteData(8);
     var fired = false;
     var written = 0;
     try {
@@ -131,8 +177,10 @@ void main(List<String> args) {
     } on AssertionError {
       fired = true;
     }
+    ran++;
 
     if (refused) {
+      refusedRan++;
       if (assertsEnabled) {
         check(
           fired,
@@ -156,11 +204,31 @@ void main(List<String> args) {
     }
   }
 
-  if (cases == 0) {
+  for (final name in notRepresentable.keys) {
+    if (!seen.contains(name)) {
+      check(
+        false,
+        'packet-write-bareint $name: named not representable, but not a shared case',
+      );
+    }
+  }
+  if (total == 0) {
     check(false, 'packet-write-bareint: no cases read');
   }
+  check(
+    ran + unrepresentable == total,
+    'packet-write-bareint: ran $ran and not representable $unrepresentable '
+    'do not add up to the $total shared cases',
+  );
   if (failed) {
     exit(1);
   }
-  print('packet-write-bareint Dart: every shared case has its verdict');
+  final refusedVerdict = assertsEnabled
+      ? 'each fired the assert'
+      : 'written unchecked: the release twin trusts the caller';
+  print(
+    'packet-write-bareint Dart: ran $ran ($refusedRan refused, '
+    '$refusedVerdict), not representable in Dart $unrepresentable, '
+    'of $total shared cases',
+  );
 }

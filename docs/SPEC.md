@@ -2449,7 +2449,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–5 and 8 debug; 6–7 every build
 
-  - packet `Write`: 1–8 and 10 debug; 11 debug, held by `packet-write-bareint-dart` (a 64-bit field cannot hold a value outside its width: the `int` itself is 64 bits)
+  - packet `Write`: 1–8 and 10 debug; 11 debug for widths below 64, held by `packet-write-bareint-dart`; a 64-bit field is a Dart `int` (a `uint64` its bit pattern), so 2^63 in an `int64`, and 2^64 or a negative in a `uint64`, has no Dart value: no 64-bit write is checked, and the test names those cases as not representable rather than running them
 
 - **Go**
 
