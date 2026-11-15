@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -248,12 +249,7 @@ func isPrivate(name string) bool {
 }
 
 func isDeclarationIdentifier(ids []*ast.Ident, id *ast.Ident) bool {
-	for _, declaration := range ids {
-		if declaration == id {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ids, id)
 }
 
 func pruneSpecs(decl *ast.GenDecl, referenced, usedIdentifiers map[string]bool) ([]ast.Spec, bool, []sourceRange) {
