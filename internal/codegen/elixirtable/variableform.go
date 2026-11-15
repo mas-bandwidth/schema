@@ -5177,17 +5177,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_skip(<<c, rest::binary>>) when c in [?\s, ?\t, ?\n, ?\r], do: json_skip(rest)
   # comments are accepted on read (docs/SPEC-TABLES.md §16.2); an
   # unclosed block comment leaves a byte behind, so the document is malformed.
+  # A comment's bytes are well-formed UTF-8 and hold no NUL, as at a string
+  # site; a comment that breaks that also leaves a byte behind.
   defp json_skip(<<"//", rest::binary>>), do: json_skip_line(rest)
   defp json_skip(<<"/*", rest::binary>>), do: json_skip_block(rest)
   defp json_skip(bin), do: bin
 
   defp json_skip_line(<<"\n", rest::binary>>), do: json_skip(rest)
-  defp json_skip_line(<<_, rest::binary>>), do: json_skip_line(rest)
+  defp json_skip_line(<<0, _::binary>>), do: <<0>>
+  defp json_skip_line(<<_::utf8, rest::binary>>), do: json_skip_line(rest)
   defp json_skip_line(<<>>), do: <<>>
+  defp json_skip_line(_), do: <<0>>
 
   defp json_skip_block(<<"*/", rest::binary>>), do: json_skip(rest)
-  defp json_skip_block(<<_, rest::binary>>), do: json_skip_block(rest)
-  defp json_skip_block(<<>>), do: <<0>>
+  defp json_skip_block(<<0, _::binary>>), do: <<0>>
+  defp json_skip_block(<<_::utf8, rest::binary>>), do: json_skip_block(rest)
+  defp json_skip_block(_), do: <<0>>
 
   defp json_object_p(bin, depth) do
     case json_skip(bin) do
