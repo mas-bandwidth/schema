@@ -1180,6 +1180,14 @@
       ]
     },
     {
+      "name": "cs-wire-fuzz-dead-bytes",
+      "when": "pull-request",
+      "why": "the C# fixed reader's dead bytes are zero (docs/rulings.json fixed-dead-bytes-are-zero): the emitted DeadZero check and the plan's dead markers, stripped out of the same artifact, and the check required to go red. A go test of internal/codegen/cstable, not a C# leg rebuild and not an interpreter.",
+      "targets": [
+        "tables-cs-wire-fuzz-dead-bytes-negative-control"
+      ]
+    },
+    {
       "name": "cs-packet-arm-defaults",
       "when": "pull-request",
       "why": "the C# arm-defaults constructor-bytes control (make/checks/packet-arm-defaults.mk): one small compile off the generated tree. Split from cs-packet-defaults when that pair was cancelled at the job's 5-minute timeout on run 42572541131 (wall 317 s).",
