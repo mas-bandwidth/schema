@@ -366,6 +366,65 @@ var pyKeyedDamages = []pyKeyedDamage{
 	}, "refused wire_damaged", "refused"},
 }
 
+const pyKeyedTableDamageSchema = "package probe\n" + pyKeyedEnum + `table Item
+{
+    w uint16
+}
+
+table R
+{
+    gear [Slot]Item
+    n    int32
+}
+`
+
+// pyKeyedUnknownTable builds a keyed field of tables (element kind 13) whose
+// one slot names a key this reader cannot name and carries the table payload
+// that body builds. The payload's own ids are used before the field's.
+func pyKeyedUnknownTable(body func(b *pyKeyedBuild) []byte) func(f uint64, k []uint64) []byte {
+	return func(f uint64, k []uint64) []byte {
+		b := &pyKeyedBuild{}
+		payload := body(b)
+		b.keyedField(f, 16, 13, 1, []pyKeyedSlot{{key: ir.TableWireId("gone"), payload: payload}}, nil)
+		return b.file()
+	}
+}
+
+// pyKeyedTableDamages hold an UNKNOWN keyed slot of tables to the engine's
+// declaration-free wire check (docs/SPEC-TABLES.md §4, skipped is not unread):
+// a well-formed payload is skipped and counted, and a damaged one refuses the
+// whole load as the engine refuses it.
+var pyKeyedTableDamages = []pyKeyedDamage{
+	{"unknown_table_slot_empty", pyKeyedUnknownTable(func(b *pyKeyedBuild) []byte {
+		return []byte{0}
+	}), "read 1", "read 1"},
+	{"unknown_table_slot_field", pyKeyedUnknownTable(func(b *pyKeyedBuild) []byte {
+		out := append(pyLeb(b.ref(ir.TableWireId("w"))), 3)
+		return append(append(out, i16(9)...), 0)
+	}), "read 1", "read 1"},
+	{"unknown_table_slot_bytes_after_terminator", pyKeyedUnknownTable(func(b *pyKeyedBuild) []byte {
+		return []byte{0, 0}
+	}), "refused wire_damaged", "refused"},
+	{"unknown_table_slot_no_terminator", pyKeyedUnknownTable(func(b *pyKeyedBuild) []byte {
+		return append(pyLeb(b.ref(ir.TableWireId("w"))), 3, 9, 0)
+	}), "refused wire_damaged", "refused"},
+	{"unknown_table_slot_field_twice", pyKeyedUnknownTable(func(b *pyKeyedBuild) []byte {
+		w := pyLeb(b.ref(ir.TableWireId("w")))
+		out := append(append([]byte{}, w...), 3, 1, 0)
+		out = append(append(out, w...), 3, 2, 0)
+		return append(out, 0)
+	}), "refused wire_damaged", "refused"},
+	{"unknown_table_slot_bool_byte", pyKeyedUnknownTable(func(b *pyKeyedBuild) []byte {
+		return append(pyLeb(b.ref(ir.TableWireId("on"))), 1, 2, 0)
+	}), "refused wire_damaged", "refused"},
+	{"unknown_table_slot_array_element_kind", pyKeyedUnknownTable(func(b *pyKeyedBuild) []byte {
+		return append(pyLeb(b.ref(ir.TableWireId("xs"))), 14, 2, 99, 0, 0)
+	}), "refused wire_damaged", "refused"},
+	{"unknown_table_slot_pointer_past_nodes", pyKeyedUnknownTable(func(b *pyKeyedBuild) []byte {
+		return append(pyLeb(b.ref(ir.TableWireId("p"))), 17, 9, 0)
+	}), "refused wire_damaged", "refused"},
+}
+
 const pyKeyedDamageProbe = `from probe import LoadReport, R, Refused
 for name in open("cases").read().split():
     report = LoadReport()
@@ -438,6 +497,44 @@ except InvalidValue as err:
     print("refuse table_type InvalidValue", err.path)
 `
 
+// pyKeyedDamageRun holds each hand-built wire at the root R of schema to the
+// Go engine's verdict first, then to the Python verdict under both pinned
+// interpreters. It answers the unit, R's keyed field id and its key ids.
+func pyKeyedDamageRun(t *testing.T, schema string, damages []pyKeyedDamage) (*ir.Unit, uint64, []uint64) {
+	t.Helper()
+	u := loadUnit(t, schema)
+	st := u.Tables["R"]
+	field := ir.TableFieldWireId(st.Fields[0])
+	en := st.Fields[0].KeyEnumRef
+	keys := make([]uint64, len(en.Variants))
+	for i := range en.Variants {
+		keys[i] = ir.TableWireId(en.VariantWireName(i))
+	}
+	inputs := map[string][]byte{}
+	names := make([]string, 0, len(damages))
+	for _, d := range damages {
+		wire := d.build(field, keys)
+		if got := pyKeyedEngineVerdict(t, u, "R", wire); got != d.engine {
+			t.Errorf("%s: the Go engine answers %s, want %s (wire %x)", d.name, got, d.engine, wire)
+		}
+		inputs[d.name] = wire
+		names = append(names, d.name)
+	}
+	sort.Strings(names)
+	inputs["cases"] = []byte(strings.Join(names, "\n"))
+	got := pyKeyedRun(t, u, pyKeyedDamageProbe, inputs, nil)
+	for _, d := range damages {
+		want := "case " + d.name + " " + d.python
+		if strings.HasPrefix(d.python, "refused") {
+			want += " 7" // a refused read leaves the caller's report as it was
+		}
+		if !strings.Contains(got, want+"\n") {
+			t.Errorf("%s: probe output lacks %q:\n%s", d.name, want, got)
+		}
+	}
+	return u, field, keys
+}
+
 // Functional (pyrun): run with SCHEMA_SLOW=1.
 func TestPythonVtKeyed(t *testing.T) {
 	t.Parallel()
@@ -449,41 +546,16 @@ func TestPythonVtKeyed(t *testing.T) {
 	})
 	t.Run("damage", func(t *testing.T) {
 		t.Parallel()
-		u := loadUnit(t, pyKeyedDamageSchema)
-		st := u.Tables["R"]
-		field := ir.TableFieldWireId(st.Fields[0])
-		en := st.Fields[0].KeyEnumRef
-		keys := make([]uint64, len(en.Variants))
-		for i := range en.Variants {
-			keys[i] = ir.TableWireId(en.VariantWireName(i))
-		}
-		inputs := map[string][]byte{}
-		names := make([]string, 0, len(pyKeyedDamages))
-		for _, d := range pyKeyedDamages {
-			wire := d.build(field, keys)
-			if got := pyKeyedEngineVerdict(t, u, "R", wire); got != d.engine {
-				t.Errorf("%s: the Go engine answers %s, want %s (wire %x)", d.name, got, d.engine, wire)
-			}
-			inputs[d.name] = wire
-			names = append(names, d.name)
-		}
-		sort.Strings(names)
-		inputs["cases"] = []byte(strings.Join(names, "\n"))
-		got := pyKeyedRun(t, u, pyKeyedDamageProbe, inputs, nil)
-		for _, d := range pyKeyedDamages {
-			want := "case " + d.name + " " + d.python
-			if strings.HasPrefix(d.python, "refused") {
-				want += " 7" // a refused read leaves the caller's report as it was
-			}
-			if !strings.Contains(got, want+"\n") {
-				t.Errorf("%s: probe output lacks %q:\n%s", d.name, want, got)
-			}
-		}
+		u, field, keys := pyKeyedDamageRun(t, pyKeyedDamageSchema, pyKeyedDamages)
 		// the canonical hand-built wire is the engine's own
 		canonical := pyKeyedDamages[0].build(field, keys)
 		if engine := pyKeyedEngineWire(t, u, "R", `{"vals":{"head":5,"feet":-7}}`); !bytes.Equal(canonical, engine) {
 			t.Errorf("the hand-built canonical wire %x is not the engine's %x", canonical, engine)
 		}
+	})
+	t.Run("damage_unknown_table_slot", func(t *testing.T) {
+		t.Parallel()
+		pyKeyedDamageRun(t, pyKeyedTableDamageSchema, pyKeyedTableDamages)
 	})
 	t.Run("write", func(t *testing.T) {
 		t.Parallel()
@@ -529,13 +601,52 @@ func TestPythonVtKeyed(t *testing.T) {
 	})
 }
 
-// TestPythonVtKeyedNegativeControl writes the keyed slots in DESCENDING
-// variant order in a copy of the runtime, and requires the construct gate to
-// go red by name: the order is the one thing a positional or reordered writer
-// gets wrong while every slot still lands on read.
+// TestPythonVtKeyedNegativeControl plants two faults, one at a time, in a copy
+// of the runtime. The first writes the keyed slots in DESCENDING variant
+// order, and the construct gate must go red by name: the order is the one
+// thing a positional or reordered writer gets wrong while every slot still
+// lands on read. The second skips an unknown keyed slot by its L alone,
+// without the wire check, and the unknown-table-slot damage gate must go red
+// on the payload with bytes after its terminator.
 //
 // Functional (pyrun): run with SCHEMA_SLOW=1.
 func TestPythonVtKeyedNegativeControl(t *testing.T) {
+	t.Parallel()
+	t.Run("descending-order", pyKeyedDescendingControl)
+	t.Run("unknown-slot-unwalked", pyKeyedUnwalkedControl)
+}
+
+// pyKeyedUnwalkedControl runs the unknown-table-slot damage probe on a copy of
+// the runtime whose unknown keyed slot is not walked, and requires the damaged
+// payload to read.
+func pyKeyedUnwalkedControl(t *testing.T) {
+	t.Parallel()
+	const path = "probe/_schema/kind_keyed.py"
+	const anchor = "_skip_content(element, elem_kind, ctx, ctx.depth)"
+	u := loadUnit(t, pyKeyedTableDamageSchema)
+	st := u.Tables["R"]
+	field := ir.TableFieldWireId(st.Fields[0])
+	var damaged pyKeyedDamage
+	for _, d := range pyKeyedTableDamages {
+		if d.name == "unknown_table_slot_bytes_after_terminator" {
+			damaged = d
+		}
+	}
+	mutate := func(t *testing.T, files map[string][]byte) {
+		src := string(files[path])
+		if strings.Count(src, anchor) != 1 {
+			t.Fatalf("%s carries %q %d times, want 1: the control would be vacuous", path, anchor, strings.Count(src, anchor))
+		}
+		files[path] = []byte(strings.Replace(src, anchor, "None", 1))
+	}
+	inputs := map[string][]byte{damaged.name: damaged.build(field, nil), "cases": []byte(damaged.name)}
+	got := pyKeyedRun(t, u, pyKeyedDamageProbe, inputs, mutate)
+	if want := "case " + damaged.name + " read 1\n"; !strings.Contains(got, want) {
+		t.Fatalf("NEGATIVE CONTROL FAILED: with the unknown slot unwalked the damaged payload did not read: %q, want %q", got, want)
+	}
+}
+
+func pyKeyedDescendingControl(t *testing.T) {
 	t.Parallel()
 	const path = "probe/_schema/kind_keyed.py"
 	const anchor = "for slot in range(len(fd.keys)):"

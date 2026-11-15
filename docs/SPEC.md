@@ -2465,7 +2465,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 10 and 11 every build on the flat and the runtime tier; 8 not yet held
+  - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 8, 10 and 11 every build on the flat and the runtime tier
 
 - **Elixir**
 
@@ -2521,7 +2521,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–8 and 10 every build
 
-  - packet `Write`: 1–6 debug; 7 traps
+  - packet `Write`: 1–6 and 10 debug; 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps
 
 **The text writer** (§16) refuses a zero byte or a zero unit by row 8, as the
 mechanism above gives it — a debug assert in an assert leg and a refusal in
