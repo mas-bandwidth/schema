@@ -184,10 +184,24 @@ int writeProbeHeader(ProbeHeader value, ByteData view) {
 }
 
 // readProbeHeader decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeHeader(ProbeHeader value, ByteData view, int numBits) {
-  return readProbeHeaderBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readProbeHeaderBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readProbeHeaderBits decodes value starting at bit bitOffset of view, reading no
@@ -363,10 +377,24 @@ int writeProbeBits(ProbeBits value, ByteData view) {
 }
 
 // readProbeBits decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeBits(ProbeBits value, ByteData view, int numBits) {
-  return readProbeBitsBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readProbeBitsBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readProbeBitsBits decodes value starting at bit bitOffset of view, reading no
@@ -641,10 +669,24 @@ int writeProbeSample(ProbeSample value, ByteData view) {
 }
 
 // readProbeSample decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeSample(ProbeSample value, ByteData view, int numBits) {
-  return readProbeSampleBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readProbeSampleBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readProbeSampleBits decodes value starting at bit bitOffset of view, reading no
@@ -857,10 +899,24 @@ int writeProbeRing(ProbeRing value, ByteData view) {
 }
 
 // readProbeRing decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeRing(ProbeRing value, ByteData view, int numBits) {
-  return readProbeRingBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readProbeRingBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readProbeRingBits decodes value starting at bit bitOffset of view, reading no
@@ -956,10 +1012,24 @@ int writeProbeSlab(ProbeSlab value, ByteData view) {
 }
 
 // readProbeSlab decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeSlab(ProbeSlab value, ByteData view, int numBits) {
-  return readProbeSlabBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readProbeSlabBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readProbeSlabBits decodes value starting at bit bitOffset of view, reading no
@@ -1093,10 +1163,24 @@ int writeProbeShape(ProbeShape value, ByteData view) {
 }
 
 // readProbeShape decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeShape(ProbeShape value, ByteData view, int numBits) {
-  return readProbeShapeBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readProbeShapeBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readProbeShapeBits decodes value starting at bit bitOffset of view, reading no
@@ -1317,10 +1401,24 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
 }
 
 // readProbeCollider decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeCollider(ProbeCollider value, ByteData view, int numBits) {
-  return readProbeColliderBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readProbeColliderBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readProbeColliderBits decodes value starting at bit bitOffset of view, reading no
@@ -1573,10 +1671,24 @@ int writeProbeConfig(ProbeConfig value, ByteData view) {
 }
 
 // readProbeConfig decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeConfig(ProbeConfig value, ByteData view, int numBits) {
-  return readProbeConfigBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readProbeConfigBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readProbeConfigBits decodes value starting at bit bitOffset of view, reading no
@@ -1810,10 +1922,24 @@ int writeProbeArray(ProbeArray value, ByteData view) {
 }
 
 // readProbeArray decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeArray(ProbeArray value, ByteData view, int numBits) {
-  return readProbeArrayBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readProbeArrayBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readProbeArrayBits decodes value starting at bit bitOffset of view, reading no
@@ -2042,10 +2168,24 @@ int writeHeartbeat(Heartbeat value, ByteData view) {
 }
 
 // readHeartbeat decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readHeartbeat(Heartbeat value, ByteData view, int numBits) {
-  return readHeartbeatBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readHeartbeatBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readHeartbeatBits decodes value starting at bit bitOffset of view, reading no
@@ -2065,6 +2205,7 @@ int readHeartbeatBits(
   if (bitOffset < 0 || bitOffset > numBits) {
     return -1; // the start lies inside the bits the caller vouches for
   }
+  var bitsRead = bitOffset;
   return 0; // empty body — presence is the payload (SPEC §4.6)
 }
 
@@ -2131,10 +2272,24 @@ int writeTest(Test value, ByteData view) {
 }
 
 // readTest decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTest(Test value, ByteData view, int numBits) {
-  return readTestBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readTestBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readTestBits decodes value starting at bit bitOffset of view, reading no
@@ -2278,10 +2433,24 @@ int writeBlock(Block value, ByteData view) {
 }
 
 // readBlock decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readBlock(Block value, ByteData view, int numBits) {
-  return readBlockBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readBlockBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readBlockBits decodes value starting at bit bitOffset of view, reading no
@@ -2432,10 +2601,24 @@ int writeChat(Chat value, ByteData view) {
 }
 
 // readChat decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readChat(Chat value, ByteData view, int numBits) {
-  return readChatBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readChatBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readChatBits decodes value starting at bit bitOffset of view, reading no
@@ -2596,10 +2779,24 @@ int writeProbeReport(ProbeReport value, ByteData view) {
 }
 
 // readProbeReport decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeReport(ProbeReport value, ByteData view, int numBits) {
-  return readProbeReportBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readProbeReportBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readProbeReportBits decodes value starting at bit bitOffset of view, reading no
@@ -3078,10 +3275,24 @@ int writeTestData(TestData value, ByteData view) {
 }
 
 // readTestData decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTestData(TestData value, ByteData view, int numBits) {
-  return readTestDataBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readTestDataBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readTestDataBits decodes value starting at bit bitOffset of view, reading no
@@ -3459,10 +3670,24 @@ int writeCompressedProbe(CompressedProbe value, ByteData view) {
 }
 
 // readCompressedProbe decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readCompressedProbe(CompressedProbe value, ByteData view, int numBits) {
-  return readCompressedProbeBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readCompressedProbeBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readCompressedProbeBits decodes value starting at bit bitOffset of view, reading no

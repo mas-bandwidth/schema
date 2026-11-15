@@ -87,10 +87,24 @@ int writeDefaultArm(DefaultArm value, ByteData view) {
 }
 
 // readDefaultArm decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultArm(DefaultArm value, ByteData view, int numBits) {
-  return readDefaultArmBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readDefaultArmBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readDefaultArmBits decodes value starting at bit bitOffset of view, reading no
@@ -301,10 +315,24 @@ int writeDefaultChoice(DefaultChoice value, ByteData view) {
 }
 
 // readDefaultChoice decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultChoice(DefaultChoice value, ByteData view, int numBits) {
-  return readDefaultChoiceBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readDefaultChoiceBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readDefaultChoiceBits decodes value starting at bit bitOffset of view, reading no
@@ -569,14 +597,28 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
 }
 
 // readDefaultChoicePacket decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultChoicePacket(
   DefaultChoicePacket value,
   ByteData view,
   int numBits,
 ) {
-  return readDefaultChoicePacketBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readDefaultChoicePacketBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readDefaultChoicePacketBits decodes value starting at bit bitOffset of view, reading no
@@ -852,10 +894,24 @@ int writeDefaultBulkArm(DefaultBulkArm value, ByteData view) {
 }
 
 // readDefaultBulkArm decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultBulkArm(DefaultBulkArm value, ByteData view, int numBits) {
-  return readDefaultBulkArmBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readDefaultBulkArmBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readDefaultBulkArmBits decodes value starting at bit bitOffset of view, reading no
@@ -1187,14 +1243,28 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
 }
 
 // readDefaultBulkChoice decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readDefaultBulkChoice(
   DefaultBulkChoice value,
   ByteData view,
   int numBits,
 ) {
-  return readDefaultBulkChoiceBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readDefaultBulkChoiceBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readDefaultBulkChoiceBits decodes value starting at bit bitOffset of view, reading no

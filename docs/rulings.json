@@ -374,6 +374,22 @@
       "supersedes": [
         "the §16.3 reading that a string the read only SKIPS — the value of an unknown key, an object key, whether it names a field or none — passes the read when it decodes to U+0000 because it \"stores nothing and is not this event\""
       ]
+    },
+    {
+      "id": "json-wide-integers-are-strings",
+      "date": "2026-11-10",
+      "quotes": [
+        "strings, because numbers can be wrong"
+      ],
+      "source": "relayed by the coordinator from the live session; ruled 2026-11-10: in the JSON form, integers wider than 32 bits are written as strings of decimal digits"
+    },
+    {
+      "id": "json-integer-token-only",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a JSON integer field takes an integer token only: no fraction, no exponent, no negative zero"
+      ],
+      "source": "the owner's standing rule that strict wins, applied by the coordinator"
     }
   ]
 }

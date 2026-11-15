@@ -452,10 +452,14 @@ func (g *gen) emitReadFunction(name, low string, items []ir.Item) {
 	body := g.fn.String()
 
 	g.bpf("// read%s decodes value from the first numBits of view — the family read\n", name)
-	g.bpf("// verdict: false rejects the wire (bounds, ranges, wire constants, padding);\n")
+	g.bpf("// verdict: false rejects the wire (bounds, ranges, wire constants, padding,\n")
+	g.bpf("// and a whole byte or unused final-byte bits left after the object);\n")
 	g.bpf("// hostile bytes never throw. No slack past the payload is required.\n")
 	g.emitSignature("bool", "read"+name, []string{name + " value", "ByteData view", "int numBits"})
-	g.bpf("  return read%sBits(value, view, numBits, 0) >= 0;\n", name)
+	g.bpf("  final bitsRead = read%sBits(value, view, numBits, 0);\n", name)
+	g.bpf("  if (bitsRead < 0) return false;\n")
+	g.emitReadEnd()
+	g.bpf("  return true;\n")
 	g.bpf("}\n\n")
 
 	g.bpf("// read%sBits decodes value starting at bit bitOffset of view, reading no\n", name)
@@ -483,7 +487,9 @@ func (g *gen) emitReadFunction(name, low string, items []ir.Item) {
 		g.bpf("      tailWord = (tailWord << 8) | view.getUint8(i);\n")
 		g.bpf("    }\n")
 		g.bpf("  }\n")
-		g.bpf("  var bitsRead = bitOffset;\n")
+	}
+	g.bpf("  var bitsRead = bitOffset;\n")
+	if g.usesRead {
 		g.bpf("  var window = 0;\n")
 	}
 	if g.needV {
@@ -502,6 +508,22 @@ func (g *gen) emitReadFunction(name, low string, items []ir.Item) {
 		g.bpf("  return 0; // empty body — presence is the payload (SPEC §4.6)\n")
 	}
 	g.bpf("}\n\n")
+}
+
+// emitReadEnd closes the public one-packet read with the packet end check
+// (SPEC §5). The framing read reports consumed bits without ending the packet.
+func (g *gen) emitReadEnd() {
+	g.bpf("  final endByte = (numBits + 7) >>> 3;\n")
+	g.bpf("  if (((bitsRead + 7) >>> 3) != endByte) {\n")
+	g.bpf("    return false; // a whole byte is left after the object (SPEC §5)\n")
+	g.bpf("  }\n")
+	g.bpf("  if (bitsRead < endByte * 8) {\n")
+	g.bpf("    final unusedBits = endByte * 8 - bitsRead;\n")
+	g.bpf("    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);\n")
+	g.bpf("    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {\n")
+	g.bpf("      return false; // non-zero unused bits in the final byte (SPEC §5)\n")
+	g.bpf("    }\n")
+	g.bpf("  }\n")
 }
 
 // emitZeroFunction emits the §5 zero form for a class — all-zero storage,

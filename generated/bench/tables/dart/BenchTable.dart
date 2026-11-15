@@ -232,10 +232,24 @@ int writeTableHitEvent(TableHitEvent value, ByteData view) {
 }
 
 // readTableHitEvent decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTableHitEvent(TableHitEvent value, ByteData view, int numBits) {
-  return readTableHitEventBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readTableHitEventBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readTableHitEventBits decodes value starting at bit bitOffset of view, reading no
@@ -340,10 +354,24 @@ int writeTableChatEvent(TableChatEvent value, ByteData view) {
 }
 
 // readTableChatEvent decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTableChatEvent(TableChatEvent value, ByteData view, int numBits) {
-  return readTableChatEventBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readTableChatEventBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readTableChatEventBits decodes value starting at bit bitOffset of view, reading no
@@ -442,10 +470,24 @@ int writeTablePickupEvent(TablePickupEvent value, ByteData view) {
 }
 
 // readTablePickupEvent decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTablePickupEvent(TablePickupEvent value, ByteData view, int numBits) {
-  return readTablePickupEventBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readTablePickupEventBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readTablePickupEventBits decodes value starting at bit bitOffset of view, reading no
@@ -594,10 +636,24 @@ int writeTableEvent(TableEvent value, ByteData view) {
 }
 
 // readTableEvent decodes value from the first numBits of view — the family read
-// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding,
+// and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTableEvent(TableEvent value, ByteData view, int numBits) {
-  return readTableEventBits(value, view, numBits, 0) >= 0;
+  final bitsRead = readTableEventBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
 }
 
 // readTableEventBits decodes value starting at bit bitOffset of view, reading no

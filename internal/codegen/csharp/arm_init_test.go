@@ -138,8 +138,10 @@ func TestUnionSelectionInitializesConstructionDefaults(t *testing.T) {
 	armInitContains(t, zero, "ZeroLeaf(ref value.Current);", "ZeroLeaf(ref value.Live[i]);", "value.LiveCount = 0;")
 	armInitExcludes(t, zero, "InitLeaf(")
 
-	read := armInitBody(t, source, "public static bool ReadChoice(")
-	armInitContains(t, read, "InitPayload(ref value.Selected);", "ReadPayload(stream, ref value.Selected)")
+	readEntry := armInitBody(t, source, "public static bool ReadChoice(")
+	armInitContains(t, readEntry, "ReadChoiceBody(stream, ref value)", "return stream.SerializeEnd();")
+	read := armInitBody(t, source, "private static bool ReadChoiceBody(")
+	armInitContains(t, read, "InitPayload(ref value.Selected);", "ReadPayloadBody(stream, ref value.Selected)")
 	armInitExcludes(t, read, "ZeroPayload(ref value.Selected)", "value.Empty")
 	// Both the normal pair and any emitted batch core share this same read
 	// closure. A call to the old reset in either form must disappear.

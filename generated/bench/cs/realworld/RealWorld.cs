@@ -948,6 +948,15 @@ namespace Realworld
 
         public static bool ReadRealPacket(ReadStream stream, ref RealPacket value)
         {
+            if (!ReadRealPacketBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadRealPacketBody(ReadStream stream, ref RealPacket value)
+        {
             if (!stream.SerializeInt(ref value.F001Int, -805495, 805495))
             {
                 return false;
