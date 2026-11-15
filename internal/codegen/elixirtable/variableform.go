@@ -4436,6 +4436,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     Enum.each(items, &json_skip_value/1)
   end
 
+  # A STRING THE READ ONLY SKIPS IS HELD TO THE PLACED VALUE'S TEXT RULE
+  # (§16.2, §16.3): one that decodes to U+0000 refuses the read, as a placed
+  # string does.
+  defp json_skip_value(bin) when is_binary(bin) do
+    if :binary.match(bin, <<0>>) == :nomatch, do: :ok, else: throw(:wire_damaged)
+  end
+
   defp json_skip_value(_other), do: :ok
 
   # a skipped object's keys are schema names too: the 255-byte cap reaches
@@ -5360,6 +5367,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       <<"\"", rest::binary>> ->
         with {:ok, key, r1} <- json_string(rest, []),
+             :ok <- json_key_ok(key),
              <<":", r2::binary>> <- json_skip(r1),
              false <- MapSet.member?(seen, key),
              {:ok, val, r3} <- json_object_val(key, acc, r2, depth + 1) do
@@ -5377,6 +5385,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       _ ->
         :error
     end
+  end
+
+  # EVERY OBJECT KEY IS HELD TO THE PLACED VALUE'S TEXT RULE (§16.2, §16.3):
+  # one that decodes to U+0000 refuses the read, whether the reader names the
+  # field or skips it.
+  defp json_key_ok(key) do
+    if :binary.match(key, <<0>>) == :nomatch, do: :ok, else: :error
   end
 
   # json_object_val reads one member's value; in a variable-class document
