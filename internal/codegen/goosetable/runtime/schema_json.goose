@@ -549,8 +549,25 @@ fn json_fail(jr: JsonIn&) -> bool {
     return false;
 }
 
+// json_comment_char advances over one code point inside a comment, refusing a
+// NUL (0x00) and an ill-formed UTF-8 sequence: the bytes inside a comment are
+// text like the rest of the input (docs/SPEC-TABLES.md §16.2).
+fn json_comment_char(jr: JsonIn&) -> bool {
+    let c = jr.text[jr.pos];
+    if c == 0 { return json_fail(jr); }
+    if c < 0x80 {
+        jr.pos += 1;
+        return true;
+    }
+    let code, w = json_utf8(jr.text, jr.pos);
+    if w < 0 || code == 0 { return json_fail(jr); }
+    jr.pos += w;
+    return true;
+}
+
 // json_space skips whitespace and comments: `//` to the end of the line or of
-// the input, `/* */` to its close; an unclosed one is malformed (§16.2).
+// the input, `/* */` to its close; an unclosed one is malformed (§16.2). A
+// comment holds only well-formed UTF-8 and no NUL, in both forms.
 fn json_space(jr: JsonIn&) {
     let t = jr.text;
     while jr.pos < t.len {
@@ -562,17 +579,24 @@ fn json_space(jr: JsonIn&) {
         if c == '/' && jr.pos + 1 < t.len {
             if t[jr.pos + 1] == '/' {
                 jr.pos += 2;
-                while jr.pos < t.len && t[jr.pos] != '\n' { jr.pos += 1; }
+                while jr.pos < t.len && t[jr.pos] != '\n' {
+                    if !json_comment_char(jr) { return; }
+                }
                 continue;
             }
             if t[jr.pos + 1] == '*' {
                 jr.pos += 2;
-                while jr.pos + 1 < t.len && !(t[jr.pos] == '*' && t[jr.pos + 1] == '/') { jr.pos += 1; }
-                if jr.pos + 1 >= t.len {
-                    jr.bad = true;
-                    return;
+                loop {
+                    if jr.pos + 1 >= t.len {
+                        jr.bad = true;
+                        return;
+                    }
+                    if t[jr.pos] == '*' && t[jr.pos + 1] == '/' {
+                        jr.pos += 2;
+                        break;
+                    }
+                    if !json_comment_char(jr) { return; }
                 }
-                jr.pos += 2;
                 continue;
             }
         }
