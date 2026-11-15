@@ -2330,7 +2330,7 @@ check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal
 | Squirrel | none | every build | `null`, the reason in `SaveReason` |
 | MOO | none | every build | `nil, { name, field }` |
 | Goose | none | every build | `SaveRefuseInvalidValue`, named by `save_refusal_name` |
-| Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | packets debug; tables every build | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason |
+| Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | debug packets; every build tables | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason |
 
 **What each writer holds today.** The numbers are the contract's rows; "debug"
 is the leg's assert, "every build" its refusal. These tables record the code as
