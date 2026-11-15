@@ -250,8 +250,10 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
       const [ref, ok] = r.Get(v.RefBits);
       if (!ok || ref === 0n) { return ok; }
       const arm = tableMessageEntry(v, ref);
-      return arm !== null && arm.Id < 0xfffffffffffffffdn && arm.Shape.Kind !== 0 &&
-        tableMessageSkip(r, v, indexBits, arm, depth + 1);
+      if (arm === null || arm.Id >= 0xfffffffffffffffdn || arm.Shape.Kind === 0) { return false; }
+      const structural = arm.Shape.Kind === 13 || arm.Shape.Kind === 14 ||
+        arm.Shape.Kind === 15 || arm.Shape.Kind === 16;
+      return tableMessageSkip(r, v, indexBits, arm, structural ? depth + 1 : depth);
     }
     case 12: {
       const [n, ok] = tableMessageCount(r, s);
@@ -283,6 +285,7 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
     case 14: case 16: {
       const [n, ok] = tableMessageCount(r, s);
       if (!ok || n > BigInt(s.Max)) { return false; }
+      if (depth >= 128) { return false; }
       if (s.Kind === 14 && e.Element.Kind === 6 && !r.Align()) { return false; }
       if (s.Kind === 14 && (e.Element.Kind === 0 || e.Element.Kind === 32)) { return true; }
       const run = tableMessageElementRunBits(s.Kind, e.Element);
