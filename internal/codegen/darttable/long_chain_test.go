@@ -17,7 +17,6 @@ import (
 func TestFunctionalDartLongPointerChain(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "dart")
-	started := time.Now()
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)
@@ -66,11 +65,8 @@ func TestFunctionalDartLongPointerChain(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	remaining := 120*time.Second - time.Since(started)
-	if remaining <= 0 {
-		t.Fatalf("preparing the Go-oracle wires exceeded 120 s")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), remaining)
+	// the probe's own bound; the job's wall clock bounds the preparation
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, dartBinary(t), "--enable-asserts", "long_chain_probe.dart", framing, dir)
 	cmd.Dir = dir

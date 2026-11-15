@@ -144,15 +144,13 @@ public final class IdProbeDriver {
         String dir = args[0];
         int n = Integer.parseInt(args[1]);
         byte[] distinct = read(dir + "/distinct.bin");
-        long start = System.nanoTime();
         for (int i = 0; i < n; i++) {
             if (!"loaded".equals(verdict(distinct))) {
                 System.out.println("distinct failed at " + i);
                 System.exit(1);
             }
         }
-        long ms = (System.nanoTime() - start) / 1000000L;
-        System.out.println("distinct loaded " + ms);
+        System.out.println("distinct loaded");
         System.out.println("repeated " + verdict(read(dir + "/repeated.bin")));
         System.out.println("over " + verdict(read(dir + "/over.bin")));
         System.out.println("collide " + verdict(read(dir + "/collide.bin")));
@@ -175,28 +173,18 @@ public final class IdProbeDriver {
 	}
 
 	got := map[string]string{}
-	distinctMillis := int64(-1)
 	for line := range strings.SplitSeq(string(out), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 2 {
-			continue
-		}
-		if fields[0] == "distinct" && fields[1] == "loaded" && len(fields) == 3 {
-			distinctMillis, err = strconv.ParseInt(fields[2], 10, 64)
-			if err != nil {
-				t.Fatalf("distinct timing %q: %v", fields[2], err)
-			}
-			got["distinct"] = "loaded"
 			continue
 		}
 		if _, named := wires[fields[0]]; named {
 			got[fields[0]] = fields[1]
 		}
 	}
-	if distinctMillis < 0 {
-		t.Fatalf("no distinct timing in output:\n%s", out)
+	if got["distinct"] != "loaded" {
+		t.Fatalf("no distinct verdict in output:\n%s", out)
 	}
-	t.Logf("%d distinct loads in %d ms", idTableProbeLoads, distinctMillis)
 
 	for name := range wires {
 		loaded := got[name] == "loaded"
