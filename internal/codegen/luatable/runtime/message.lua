@@ -248,7 +248,10 @@ local function entry_matches_field(e, f)
     end
     return e.packing == nil
   elseif f.shape == "array" then
-    return (e.max or 0) == (f.bound or 0) and (e.min or 0) == (f.min or 0) and (e.elem or 0) == (f.elem_kind or 0)
+    -- A FIXED array announces [bound, bound]; a counted one [min, bound].
+    local lo, hi = f.min or 0, f.bound or 0
+    if f.fixed then lo, hi = f.bound or 0, f.bound or 0 end
+    return (e.max or 0) == hi and (e.min or 0) == lo and (e.elem or 0) == (f.elem_kind or 0)
   elseif f.shape == "flags" then
     return (e.bits or 0) == (f.bits or 0)
   end
@@ -709,6 +712,15 @@ read_value = function(R, T, f, holder, key, ctx, e)
       return false
     end
     ctx.enumAtDefault = ve.id == variant_id(T, f, f.default)
+    -- A DEPRECATED VARIANT IS A SENTINEL, NOT A VALUE (§2.15): the reader
+    -- places the default where the writer placed a live value, so a field or
+    -- an element that holds one is not evidence of an elided default.
+    for _, v in ipairs(f.variants) do
+      if v[2] == ve.id then
+        if v.deprecated then ctx.retiredVariants = (ctx.retiredVariants or 0) + 1 end
+        break
+      end
+    end
     holder[key] = variant_name(T, f, ve.id)
     return true
   elseif s == "union" then
@@ -906,21 +918,32 @@ load_fields = function(R, T, name, value, ctx)
       -- The field's union arm is read with the field in hand, so an explicit
       -- None reference is refused here and read_value knows which read it is.
       ctx.unionField = f.shape == "union" and f or nil
+      local retiredBefore = ctx.retiredVariants or 0
       local read = read_value(R, T, f, value, f.name, ctx, e)
       ctx.unionField = nil
       if not read then return false end
+      local retired = (ctx.retiredVariants or 0) ~= retiredBefore
+      -- PRESENCE IS A WIRE FACT (§3.3): a field reference that arrives is a
+      -- present optional, whatever its payload holds, so the record says so.
+      if f.optional then
+        value[f.name .. "_present"] = true
+      end
       -- An explicit default is refused where this reader knows it exactly:
       -- the same announced shape at the same build version (§3.3 (a)). An
       -- enum's default is the VARIANT the wire names, since a deprecated
-      -- variant lands as the default while the writer wrote another value; a
-      -- nested body, an array and a union ride only when a child or an arm
-      -- rides, so a field they carry is never at the value their writer
-      -- elides.
+      -- variant lands as the default while the writer wrote another value.
+      -- A UNION's None is refused in read_value, so it is not in this arm.
+      -- A PRESENT OPTIONAL IS ALWAYS WRITTEN (§3.3), so it is never at a
+      -- default its writer elides. A COMPRESSED FLOAT rides its step index,
+      -- so a value that quantizes to the default's index is a lawful spelling
+      -- of another held value and is not compared here.
       local atDefault = false
       if f.shape == "enum" then
-        atDefault = ctx.enumAtDefault == true
-      elseif f.shape == "int" or f.shape == "flags" or f.shape == "float" or f.shape == "wide" or f.shape == "string" or f.shape == "bytes" then
-        atDefault = not rides(T, f, value[f.name])
+        atDefault = not f.optional and ctx.enumAtDefault == true
+      elseif not f.optional and f.shape ~= "union" then
+        if not retired and not (f.shape == "float" and e ~= nil and e.packing == 2) then
+          atDefault = not rides(T, f, value[f.name])
+        end
       end
       if ctx.vocab.buildVersion == T.BuildVersion and entry_matches_field(e, f) and atDefault then
         return false

@@ -242,3 +242,178 @@ if values == nil or #values == 0 then print("refused") else print("read") end
 		t.Fatalf("LoadMessages = %q, want refusal when an unknown field is out of writer order", strings.TrimSpace(out))
 	}
 }
+
+func luaOneEncodingFieldID(t *testing.T, unit *ir.Unit, name string) uint64 {
+	t.Helper()
+	search := func(st *ir.Struct) (uint64, bool) {
+		for _, f := range st.Fields {
+			if f.Name == name {
+				return ir.TableFieldWireId(f), true
+			}
+		}
+		return 0, false
+	}
+	for _, st := range unit.Tables {
+		if id, ok := search(st); ok {
+			return id
+		}
+	}
+	for _, st := range unit.Structs {
+		if id, ok := search(st); ok {
+			return id
+		}
+	}
+	t.Fatalf("schema names no field %q", name)
+	return 0
+}
+
+func luaOneEncodingSlot(t *testing.T, unit *ir.Unit, id uint64) uint64 {
+	t.Helper()
+	for i, e := range tablewire.MessageVocabulary(unit) {
+		if e.Id == id {
+			return uint64(i + 1)
+		}
+	}
+	t.Fatalf("vocabulary names no entry for id %#x", id)
+	return 0
+}
+
+func luaOneEncodingPayload(t *testing.T, spots []tablewire.BitSpot, slot uint64) int {
+	t.Helper()
+	for _, s := range spots {
+		if s.Value == slot {
+			return 8 + s.Off + s.Width
+		}
+	}
+	t.Fatalf("batch carries no reference to slot %d: %+v", slot, spots)
+	return 0
+}
+
+// TestLuaLoadMessagesOneEncodingCanonicalFields pins the elision and presence
+// rows §3.3 names beside the manifest's integer default: a bool, an array and
+// a nested body written at the value a conforming writer elides are damage, a
+// present optional is read with its presence whatever its payload holds, and a
+// compressed float's canonical index is read even where it dequantizes to the
+// declared default.
+func TestLuaLoadMessagesOneEncodingCanonicalFields(t *testing.T) {
+	t.Parallel()
+
+	type row struct {
+		name   string
+		schema string
+		value  string
+		patch  string
+		width  int
+		bits   uint64
+		probe  string
+		want   string
+	}
+	rows := []row{
+		{
+			name:   "present optional int at its default",
+			schema: "fixed table Root {\n  opt ?int32\n}\n",
+			value:  `{"opt":0}`,
+			probe:  `print(("opt=%s/%s"):format(tostring(v.opt), tostring(v.opt_present)))`,
+			want:   "opt=0/true",
+		},
+		{
+			name:   "present optional enum at its default",
+			schema: "enum Grade {\n  A\n  B\n}\nfixed table Root {\n  grade ?Grade\n}\n",
+			value:  `{"grade":"None"}`,
+			probe:  `print(("grade=%s/%s"):format(tostring(v.grade), tostring(v.grade_present)))`,
+			want:   "grade=nil/true",
+		},
+		{
+			name:   "explicit bool default",
+			schema: "fixed table Root {\n  flag bool\n}\n",
+			value:  `{"flag":true}`,
+			patch:  "flag",
+			width:  1,
+			want:   "refused",
+		},
+		{
+			name:   "explicit all-default array",
+			schema: "fixed table Root {\n  xs [4]int16\n}\n",
+			value:  `{"xs":[1,0,0,0]}`,
+			patch:  "xs",
+			width:  16,
+			want:   "refused",
+		},
+		{
+			name:   "explicit all-default nested body",
+			schema: "fixed table Root {\n  inner Inner\n}\nfixed table Inner {\n  n uint8\n}\n",
+			value:  `{"inner":{"n":1}}`,
+			patch:  "n",
+			width:  8,
+			want:   "refused",
+		},
+		{
+			name:   "compressed float at its default index",
+			schema: "fixed table Root {\n  cf float32 | min = 0.0, max = 10.0, resolution = 0.01\n}\n",
+			value:  `{"cf":0.001}`,
+			probe:  `print("cf=" .. tostring(v.cf))`,
+			want:   "cf=0.0",
+		},
+	}
+
+	for _, r := range rows {
+		t.Run(r.name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "One.schema")
+			writeFile(t, path, "package luaoneencoding\n"+r.schema)
+			unit := luarun.LoadUnit(t, path)
+			model := tabletext.NewModel(unit)
+			root := model.Lookup("Root")
+			inst := model.New(root)
+			var report tabletext.Report
+			if !model.Read(inst, []byte(r.value), &report) || !report.Silent() {
+				t.Fatalf("source %s: %+v", r.value, report)
+			}
+			batch, err := tablewire.EncodeMessages(model, []*tabletext.Instance{inst})
+			if err != nil {
+				t.Fatalf("encode canonical batch: %v", err)
+			}
+			if r.patch != "" {
+				var vocab tablewire.Vocabulary
+				var announced tabletext.Report
+				if err := vocab.AnnounceRead(tablewire.Announce(unit), &announced); err != nil {
+					t.Fatalf("read announcement: %v", err)
+				}
+				spots := tablewire.MessageSpots(model, root, batch, &vocab)
+				slot := luaOneEncodingSlot(t, unit, luaOneEncodingFieldID(t, unit, r.patch))
+				at := luaOneEncodingPayload(t, spots, slot)
+				for bit := 0; bit < r.width; bit++ {
+					msgSetBit(batch, at+bit, int(r.bits>>bit&1))
+				}
+			}
+
+			files, err := Generate(unit)
+			if err != nil {
+				t.Fatalf("Generate: %v", err)
+			}
+			probe := fmt.Sprintf(`local T = require(%q)
+local inputs = require("inputs")
+local vocab, report = {}, {}
+for i = 1, T.MessageEntries do vocab[i] = {} end
+assert(T.AnnounceRead(vocab, inputs.announce, report), "announcement refused")
+local values = T.LoadMessages("Root", vocab, inputs.batch, report)
+if values == nil or #values == 0 then
+  print("refused")
+else
+  local v = values[1]
+  %s
+end
+`, ModuleName(unit), r.probe)
+			out, stderr, err := try(t, files, probe, map[string][]byte{
+				"announce": tablewire.Announce(unit),
+				"batch":    batch,
+			})
+			if err != nil {
+				t.Fatalf("probe failed: %v\nstderr:\n%s\nstdout:\n%s", err, stderr, out)
+			}
+			if got := strings.TrimSpace(out); got != r.want {
+				t.Errorf("LoadMessages = %q, want %q (stderr %q)", got, r.want, stderr)
+			}
+		})
+	}
+}
