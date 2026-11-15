@@ -9,6 +9,7 @@ package luautable
 
 import (
 	"math/big"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
@@ -19,11 +20,7 @@ func init() {
 	Register("retainids", emitRetainIds)
 }
 
-// emitRetainIds writes the unit's wire ids into the module's registration
-// with schema_tables (S.wireIds), in ir.TableWireIds order.
-func emitRetainIds(g *luau.Gen) error {
-	ids := ir.TableWireIds(g.Unit)
-	st := g.Require(RuntimeModule)
+func idList(ids []uint64) string {
 	var b strings.Builder
 	for i, id := range ids {
 		if i%4 == 0 {
@@ -34,7 +31,25 @@ func emitRetainIds(g *luau.Gen) error {
 		b.WriteString(luau.IntegerLit(new(big.Int).SetUint64(id)))
 		b.WriteString(",")
 	}
+	return b.String()
+}
+
+// emitRetainIds writes the unit's wire ids into the module's registration
+// with schema_tables (S.wireIds), in ir.TableWireIds order, and the table node
+// type ids a pointer slot may place (S.tableIds) so a declared type the root
+// cannot place is still told apart from an unnameable one
+// (docs/SPEC-TABLES.md §3.1).
+func emitRetainIds(g *luau.Gen) error {
+	ids := ir.TableWireIds(g.Unit)
+	tableIDs := make([]uint64, 0, len(g.Unit.Tables))
+	for _, t := range g.Unit.Tables {
+		tableIDs = append(tableIDs, ir.TableWireId(t.WireName()))
+	}
+	slices.Sort(tableIDs)
+	st := g.Require(RuntimeModule)
 	g.Pf("-- the unit's wire ids, the ids this build names (docs/SPEC-TABLES.md §6.6)\n")
-	g.Pf("%s.wireIds({%s\n})\n\n", st, b.String())
+	g.Pf("%s.wireIds({%s\n})\n\n", st, idList(ids))
+	g.Pf("-- the table type ids this reader declares, whatever a root places (§3.1)\n")
+	g.Pf("%s.tableIds({%s\n})\n\n", st, idList(tableIDs))
 	return nil
 }
