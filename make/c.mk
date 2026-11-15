@@ -2316,3 +2316,36 @@ packet-end-c-negative-control: packet-end-c
 	@echo 'packet end C negative control: removing the end check accepts trailing data and final padding'
 
 test-c: packet-end-c packet-end-c-negative-control
+
+# Packet Write holds row 8 in a C debug build, one child per shared case.
+build/packet-write-text/c/.stamp: bin/schema test/packet-write-text/c/Text.schema
+	@mkdir -p build/packet-write-text/c
+	./bin/schema generate --lang c --out build/packet-write-text/c test/packet-write-text/c/Text.schema
+	@touch $@
+
+build/packet-write-text/c/driver: build/packet-write-text/c/.stamp test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c $(SERIALIZE_C)/serialize.h
+	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-write-text/c \
+		test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
+.PHONY: packet-write-text-c packet-write-text-c-negative-control
+packet-write-text-c: build/packet-write-text/c/driver
+	./build/packet-write-text/c/driver test/packet-write-text/cases.txt
+
+packet-write-text-c-negative-control: packet-write-text-c
+	@mkdir -p build/packet-write-text/c-negative
+	go run ./tools/sabotage -name packet-write-text-c-utf8-write \
+		-out build/packet-write-text/c-negative/fields.gotext internal/codegen/c/fields.go
+	@printf '{"Replace":{"%s/internal/codegen/c/fields.go":"%s/build/packet-write-text/c-negative/fields.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-write-text/c-negative/overlay.json
+	go build -overlay=build/packet-write-text/c-negative/overlay.json -o build/packet-write-text/c-negative/schema ./cmd/schema
+	./build/packet-write-text/c-negative/schema generate --lang c --out build/packet-write-text/c-negative/generated test/packet-write-text/c/Text.schema
+	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-write-text/c-negative/generated \
+		test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c -o build/packet-write-text/c-negative/driver -lm
+	@if ./build/packet-write-text/c-negative/driver test/packet-write-text/cases.txt > build/packet-write-text/c-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: C packet Write without UTF-8 validation passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-text invalid-byte:' build/packet-write-text/c-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: C packet Write did not fail on invalid-byte'; cat build/packet-write-text/c-negative/log; exit 1; }
+	@grep -Fm1 'FAILED: packet-write-text invalid-byte:' build/packet-write-text/c-negative/log
+	@echo 'C packet Write negative control: removing UTF-8 validation fails invalid-byte'
+
+test-c: packet-write-text-c packet-write-text-c-negative-control

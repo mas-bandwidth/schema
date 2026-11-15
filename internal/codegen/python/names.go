@@ -39,8 +39,8 @@ var unionMembers = wordSet(`type read write load save descriptor`)
 // (internal/check, Python's row); the keywords are held here too, so a unit
 // built in memory rather than by the checker is refused the same way. The
 // rest are the rules only the Python target has: the package, the module
-// names, dunder and helper prefixes, builtins at module level, and the
-// generated members.
+// names, the names __init__.py always exports, dunder and helper prefixes,
+// builtins at module level, and the generated members.
 func CheckNames(u *ir.Unit) error {
 	if err := checkPackage(u.Package); err != nil {
 		return err
@@ -109,6 +109,9 @@ func checkModule(base string) error {
 	}
 	if base == RuntimeDir || base == "__init__" || strings.HasPrefix(base, "__") || strings.HasPrefix(base, HelperPrefix) {
 		return fmt.Errorf("python: the schema file %s.schema becomes the module %s.py, a name the generated package reserves; rename the file", base, base)
+	}
+	if packageInitExports[base] {
+		return fmt.Errorf("python: the schema file %s.schema becomes the module %s.py, and %s is a name the package's __init__.py exports; rename the file", base, base, base)
 	}
 	return nil
 }
