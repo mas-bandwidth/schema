@@ -486,8 +486,8 @@ func TestPythonPacketText(t *testing.T) {
 
 // TestPythonPacketTextNegativeControl plants a fault in a copy of the
 // generated tree and requires the corpus gate to go red by name: once in the
-// generated reader (the string's buffer moved from N + 1 to N + 2, which
-// widens the length prefix) and once in the runtime the tree carries (the
+// generated reader (the string's buffer cut from 16 to 8, a three-bit length
+// prefix: a wider one reads the same bytes, because the align absorbs it) and once in the runtime the tree carries (the
 // strict UTF-8 decode replaced by Latin-1, which accepts every byte).
 func TestPythonPacketTextNegativeControl(t *testing.T) {
 	t.Parallel()
@@ -496,7 +496,7 @@ func TestPythonPacketTextNegativeControl(t *testing.T) {
 	plants := []struct {
 		name, file, from, to string
 	}{
-		{"reader-bound", "packettext/Narrow.py", "_s_serialize_string(_s_rs, 16)", "_s_serialize_string(_s_rs, 17)"},
+		{"reader-bound", "packettext/Narrow.py", "_s_serialize_string(_s_rs, 16)", "_s_serialize_string(_s_rs, 8)"},
 		{"runtime-utf8", "packettext/_schema/serialize/_core.py", `text = payload.decode("utf-8")`, `text = payload.decode("latin-1")`},
 	}
 	for _, plant := range plants {
