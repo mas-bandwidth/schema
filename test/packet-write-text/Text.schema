@@ -1,6 +1,6 @@
 package packetwritetext
 
-type PacketText
+type Text
 {
     text string(8)
 }

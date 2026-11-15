@@ -1,5 +1,7 @@
 /* C packet Write text contract: each case runs in a child so a debug assert
-   is observed as the refusal rather than terminating the case list. */
+   is observed as the refusal rather than terminating the case list.
+   Cases are loaded before any child starts: the child shares the open file
+   description, and an abort rewinds a buffered read. */
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,11 +68,22 @@ static int parse_hex( const char * text, unsigned char * bytes )
     return length;
 }
 
+struct loaded_case
+{
+    char name[64];
+    char verdict[32];
+    unsigned char bytes[32];
+    int length;
+};
+
 int main( int argc, char ** argv )
 {
     FILE * cases;
     char line[512];
+    struct loaded_case loaded[64];
+    int count = 0;
     int failed = 0;
+    int i;
     if ( argc != 2 ) { fprintf( stderr, "usage: %s cases.txt\n", argv[0] ); return 2; }
     cases = fopen( argv[1], "r" );
     if ( cases == NULL ) { perror( argv[1] ); return 2; }
@@ -79,8 +92,6 @@ int main( int argc, char ** argv )
         char *name, *hex, *verdict, *first;
         unsigned char bytes[32] = {0};
         int length;
-        pid_t child;
-        int wait_status;
 
         first = trim( line );
         if ( *first == 0 || *first == '#' ) { continue; }
@@ -91,37 +102,53 @@ int main( int argc, char ** argv )
         name = trim( name ); hex = trim( hex ); verdict = trim( verdict );
         length = parse_hex( hex, bytes );
         if ( length < 0 ) { fprintf( stderr, "invalid bytes for %s\n", name ); failed = 1; break; }
-
-        child = fork();
-        if ( child < 0 ) { perror( "fork" ); failed = 1; break; }
-        if ( child == 0 )
+        if ( count >= (int) ( sizeof( loaded ) / sizeof( loaded[0] ) ) || strlen( name ) >= sizeof( loaded[0].name ) || strlen( verdict ) >= sizeof( loaded[0].verdict ) )
         {
-            (void) freopen( "/dev/null", "w", stderr );
-            _exit( run_case( bytes, length ) );
+            fprintf( stderr, "invalid case row\n" );
+            failed = 1;
+            break;
         }
-        if ( waitpid( child, &wait_status, 0 ) < 0 ) { perror( "waitpid" ); failed = 1; break; }
-        if ( strcmp( verdict, "refused" ) == 0 )
-        {
-            if ( !WIFSIGNALED( wait_status ) || WTERMSIG( wait_status ) != SIGABRT )
-            {
-                fprintf( stderr, "FAILED: packet-write-text %s: expected debug assert, child status %d\n", name, wait_status );
-                failed = 1;
-            }
-        }
-        else if ( strcmp( verdict, "written" ) == 0 )
-        {
-            if ( !WIFEXITED( wait_status ) || WEXITSTATUS( wait_status ) != 0 )
-            {
-                fprintf( stderr, "FAILED: packet-write-text %s: expected byte-exact round trip, child status %d\n", name, wait_status );
-                failed = 1;
-            }
-        }
-        else { fprintf( stderr, "invalid verdict for %s\n", name ); failed = 1; }
-        if ( failed ) { break; }
+        strcpy( loaded[count].name, name );
+        strcpy( loaded[count].verdict, verdict );
+        memcpy( loaded[count].bytes, bytes, (size_t) length );
+        loaded[count].length = length;
+        count++;
     }
     if ( ferror( cases ) ) { perror( "read cases" ); failed = 1; }
     fclose( cases );
     if ( failed ) { return 1; }
+
+    for ( i = 0; i < count; i++ )
+    {
+        pid_t child;
+        int wait_status;
+
+        child = fork();
+        if ( child < 0 ) { perror( "fork" ); return 1; }
+        if ( child == 0 )
+        {
+            (void) freopen( "/dev/null", "w", stderr );
+            _exit( run_case( loaded[i].bytes, loaded[i].length ) );
+        }
+        if ( waitpid( child, &wait_status, 0 ) < 0 ) { perror( "waitpid" ); return 1; }
+        if ( strcmp( loaded[i].verdict, "refused" ) == 0 )
+        {
+            if ( !WIFSIGNALED( wait_status ) || WTERMSIG( wait_status ) != SIGABRT )
+            {
+                fprintf( stderr, "FAILED: packet-write-text %s: expected debug assert, child status %d\n", loaded[i].name, wait_status );
+                return 1;
+            }
+        }
+        else if ( strcmp( loaded[i].verdict, "written" ) == 0 )
+        {
+            if ( !WIFEXITED( wait_status ) || WEXITSTATUS( wait_status ) != 0 )
+            {
+                fprintf( stderr, "FAILED: packet-write-text %s: expected byte-exact round trip, child status %d\n", loaded[i].name, wait_status );
+                return 1;
+            }
+        }
+        else { fprintf( stderr, "invalid verdict for %s\n", loaded[i].name ); return 1; }
+    }
     puts( "packet-write-text C: all shared cases passed" );
     return 0;
 }

@@ -2237,9 +2237,9 @@ conformance-negative-control-c-write-refusal-message: build/conformance-harness 
 	$(call conformance-negative-control-c-wref,write-refusal-message,schema_assert( 0 <= value->sku_length && value->sku_length <= 32 );,(void) 0; /* SABOTAGED: no message length check */,SABOTAGED: no message length check,write-refusal-message,message)
 
 # Packet Write holds row 8 in a C debug build, one child per shared case.
-build/packet-write-text/c/.stamp: bin/schema test/packet-write-text/Text.schema
+build/packet-write-text/c/.stamp: bin/schema test/packet-write-text/c/Text.schema
 	@mkdir -p build/packet-write-text/c
-	./bin/schema generate --lang c --out build/packet-write-text/c test/packet-write-text/Text.schema
+	./bin/schema generate --lang c --out build/packet-write-text/c test/packet-write-text/c/Text.schema
 	@touch $@
 
 build/packet-write-text/c/driver: build/packet-write-text/c/.stamp test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c $(SERIALIZE_C)/serialize.h
@@ -2257,7 +2257,7 @@ packet-write-text-c-negative-control: packet-write-text-c
 	@printf '{"Replace":{"%s/internal/codegen/c/fields.go":"%s/build/packet-write-text/c-negative/fields.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-write-text/c-negative/overlay.json
 	go build -overlay=build/packet-write-text/c-negative/overlay.json -o build/packet-write-text/c-negative/schema ./cmd/schema
-	./build/packet-write-text/c-negative/schema generate --lang c --out build/packet-write-text/c-negative/generated test/packet-write-text/Text.schema
+	./build/packet-write-text/c-negative/schema generate --lang c --out build/packet-write-text/c-negative/generated test/packet-write-text/c/Text.schema
 	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-write-text/c-negative/generated \
 		test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c -o build/packet-write-text/c-negative/driver -lm
 	@if ./build/packet-write-text/c-negative/driver test/packet-write-text/cases.txt > build/packet-write-text/c-negative/log 2>&1; then \
