@@ -700,6 +700,16 @@ func (g *tableGen) writeStorageBound(expr string, bound int64, ind string) {
 // defines schema_assert. It may answer yes for a unit that emits none; it
 // never answers no for one that does.
 func unitHasWriteBound(u *ir.Unit) bool {
+	// THE FIXED SAVE REFUSES AN EMPTY BATCH with schema_assert (docs/SPEC-TABLES.md
+	// §22.6), so every unit that emits the form carries the assert hook even when
+	// a plain-scalar record declares no other write bound.
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			if ir.TableFixedEmitted(u, st) {
+				return true
+			}
+		}
+	}
 	if ir.TableFixedHasWriteCheck(u) {
 		return true
 	}
