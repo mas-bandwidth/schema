@@ -473,7 +473,7 @@ func cookOpenCases(t *testing.T, u *ir.Unit, files map[string][]byte) ([]cookOpe
 	add("reference_forward", mutate(little, func(f []byte) { le.PutUint64(f[headSlot:], uint64(h.DataLength)+8) }), "open", "bad_layout")
 	add("reference_backward", mutate(little, func(f []byte) { le.PutUint64(f[headSlot:], uint64(-headSlot)) }), "open", "bad_layout")
 	add("reference_other_type", mutate(little, func(f []byte) {
-		le.PutUint64(f[headSlot:], uint64(-(leafSlot - headSlot)))
+		le.PutUint64(f[headSlot:], uint64(leafSlot-headSlot))
 	}), "open", "bad_layout")
 
 	cases = append(cases,
