@@ -94,11 +94,18 @@ func TestSquirrelCookWriteZeroesDeadAndAbsentBytes(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
 
 	stdout := string(sqrun.Run(t, dir, "main.nut", inputs))
+	lines := map[string]string{}
+	for line := range strings.SplitSeq(strings.TrimRight(stdout, "\n"), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 {
+			lines[fields[0]+" "+fields[1]] = line
+		}
+	}
 	for _, r := range rows {
 		for _, order := range []string{"1", "2"} {
-			ok := r.instance + " " + order + " ok"
-			if !strings.Contains("\n"+stdout, "\n"+ok+"\n") {
-				t.Errorf("cook-write %s order %s is not the fixture's bytes; probe output:\n%s", r.instance, order, stdout)
+			got := lines[r.instance+" "+order]
+			if got != r.instance+" "+order+" ok" {
+				t.Errorf("cook-write %s order %s is not the fixture's bytes: %q", r.instance, order, got)
 			}
 		}
 	}
