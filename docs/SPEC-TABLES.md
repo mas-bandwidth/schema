@@ -1198,8 +1198,9 @@ each by name:
   only then, so the targets of an absent T get no index and no node record;
 - **measure** — `Measure`, `PackMeasure` and `Lock`'s sizing run that same
   gated numbering, so the targets of an absent T count no bytes, and
-  `Lock`'s pack writes an absent T at its declared defaults, every pointer
-  null, exactly as load leaves it;
+  `Lock`'s pack writes an absent T's payload as zero — the payload of an
+  absent optional is dead, and a dead byte is zero on write
+  (docs/rulings.json `fixed-dead-bytes-are-zero`) — every pointer null;
 - **load** — a field that did not ride leaves T at its declared defaults,
   every pointer null, so a loaded absent value holds no edge, and the
   region measure sizes only the nodes the wire carries;
@@ -14902,15 +14903,16 @@ it does rather than a list of its own:
 
   | hook | where it fires | default | NDEBUG |
   |---|---|---|---|
-  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message | `assert`, from `<assert.h>` | removed, as `assert` is |
+  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message; the fixed form's measure count and write-side bounds (§3.4), whenever the unit has a fixed form | `assert`, from `<assert.h>` | removed, as `assert` is |
   | `schema_fatal()` | after the assert, on the path that cannot continue | `abort`, from `<stdlib.h>` | kept |
   | `schema_allocate( bytes )` | the default allocator pair: ZEROED bytes, NULL on failure | `calloc`, from `<stdlib.h>` | — |
   | `schema_release( pointer )` | the default allocator pair | `free` | — |
 
-  A unit whose closure declares no keyed array emits no assert hook and
-  no fatal hook; one that declares no pointer emits no allocator hook in its
-  `Table.h`. The block header emits the allocator hook, because
-  `TableBlockDefaultAllocator()` lands in it (§19.1). Define `schema_fatal`
+  A unit whose closure declares neither a keyed array nor a fixed form emits
+  no assert hook; one that declares no keyed array emits no fatal hook either.
+  One that declares no pointer emits no allocator hook in its `Table.h`. The
+  block header emits the allocator hook, because `TableBlockDefaultAllocator()`
+  lands in it (§19.1). Define `schema_fatal`
   and `schema_allocate` and no generated header includes `<stdlib.h>`.
 
 - **A `TableAllocator` per structure, on top of the default.** It is the
