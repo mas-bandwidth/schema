@@ -202,6 +202,9 @@ const TableHitEventMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteTableHitEvent(stream *serialize.WriteStream, value *TableHitEvent) error {
+	if value.TargetID > 4095 { // a value above the bits(12) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	if value.Damage < 0 || value.Damage > 4095 {
 		return serialize.ErrValueOutOfRange
 	}
@@ -264,6 +267,9 @@ func WriteTableChatEvent(stream *serialize.WriteStream, value *TableChatEvent) e
 	if value.Channel < 0 || value.Channel > 3 {
 		return serialize.ErrValueOutOfRange
 	}
+	if value.Speaker > 4095 { // a value above the bits(12) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Channel) & 0x3
 	f1 := uint64(value.Speaker) & 0xfff
 	w0 := uint32(f0 | f1<<2)
@@ -308,6 +314,9 @@ const TablePickupEventMaxBytes = 8
 // cannot carry) or the stream's error; the size written is
 // stream.BitsProcessed().
 func WriteTablePickupEvent(stream *serialize.WriteStream, value *TablePickupEvent) error {
+	if value.ItemID > 1023 { // a value above the bits(10) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	if value.Amount < 0 || value.Amount > 255 {
 		return serialize.ErrValueOutOfRange
 	}

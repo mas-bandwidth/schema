@@ -13,9 +13,9 @@
 // writing packets (asserts) in release build. Removing them is the whole
 // point. ... checks are *DEBUG ONLY*". The count is a writer contract like any
 // other scalar range — it is caught by an assert in debug and gone in release,
-// in every target whose language HAS that idiom. Go and Elixir have none, so
-// they keep the every-build refusal their languages make native, and so does
-// Lua, whose assert() is an ordinary call no build strips.
+// in every target whose language HAS that idiom. Go, Elixir and JavaScript have
+// none, so they keep the every-build refusal their languages make native, and
+// so does Lua, whose assert() is an ordinary call no build strips.
 //
 // Two claims are pinned here, one per test, so a regression in either is named
 // on its own:
@@ -98,6 +98,13 @@ var refusesEveryBuild = map[string][]string{
 	// build-removable check, so the writer returns the refusal kind, Go's form
 	// (internal/codegen/goose/write.go)
 	"goose": {"if value.WindowCount < 2 || value.WindowCount > 8 { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
+	// JavaScript has no build-removable assert, so the stream writer and the
+	// one flat writer both refuse in every build (SPEC §5.1); there is no
+	// production fork and no build switch.
+	"js": {
+		"if (!Number.isInteger(value.windowCount) || value.windowCount < 2 || value.windowCount > 8) { // the count guards the loop (§6.3)",
+		"if (!Number.isInteger(value.windowCount) || value.windowCount < 2 || value.windowCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)",
+	},
 	// Lua's assert is a function call that no build removes, so the writer
 	// refuses (returns false) in every build, as Go's does.
 	"lua": {"v.WindowCount < 2 or v.WindowCount > 8 then return false end"},
@@ -117,9 +124,7 @@ var assertsInDebug = map[string][]string{
 	"java": {"assert value.windowCount >= 2;", "assert value.windowCount <= 8;"},
 	// --runtime-no-asserts removes a Lobster assert from the build
 	"lobster": {"assert v.WindowCount >= 2 and v.WindowCount <= 8"},
-	// js is not here: its debug-only idiom is not an assert statement but the
-	// PRODUCTION/checked fork of the flat writer, checked separately below.
-	"rust": {`debug_assert!(value.window_count >= 2 && value.window_count <= 8, "window_count out of range [2, 8]");`},
+	"rust":    {`debug_assert!(value.window_count >= 2 && value.window_count <= 8, "window_count out of range [2, 8]");`},
 }
 
 // packetWriterOwed is each target whose type surface is emitted but whose
@@ -167,6 +172,7 @@ var assertToken = map[string][]string{
 	"elixir": nil,         // the BEAM has no compile-out assert, so the raise is always on
 	"go":     nil,         // the runtime returns an error, in every build
 	"goose":  {"assert("}, // the writer returns the refusal kind; an assert would abort, never compile out
+	"js":     nil,         // no assert idiom and no build switch; the writer refuses in every build
 	"lua":    nil,         // assert() is always on; the writer returns false in every build
 	"moo":    nil,         // assert() is always on; the writer returns false in every build
 }
@@ -185,23 +191,6 @@ func generatedText(t *testing.T, src, target string) string {
 		all.WriteByte('\n')
 	}
 	return all.String()
-}
-
-// jsFlatWriter slices one named function out of the JavaScript flat codec.
-// JavaScript's debug-only idiom is the emitted fork, not a statement: the
-// checked writer holds the contract and the production writer holds none, and
-// `PRODUCTION ? production : checked` picks between them at import time.
-func jsFlatWriter(t *testing.T, text, fn string) string {
-	t.Helper()
-	i := strings.Index(text, "function "+fn+"(")
-	if i < 0 {
-		t.Fatalf("js: %s is not emitted; the flat writer fork is gone", fn)
-	}
-	rest := text[i+1:]
-	if before, _, ok := strings.Cut(rest, "\nfunction "); ok {
-		return before
-	}
-	return rest
 }
 
 // CLAIM 1. A [A..B] count is born at A in every target: the one wire-legal
@@ -229,19 +218,6 @@ func TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 		text := generatedText(t, countedAboveZero, target)
 
 		if writerStillOwed(t, target, text) {
-			continue
-		}
-
-		if target == "js" {
-			// the fork, not a statement: the contract lives in the checked
-			// writer and the production writer is free of it
-			const want = "value.windowCount < 2 || value.windowCount > 8"
-			if got := jsFlatWriter(t, text, "writeTFlatChecked"); !strings.Contains(got, want) {
-				t.Errorf("js: the checked flat writer does not hold the count, %q absent", want)
-			}
-			if got := jsFlatWriter(t, text, "writeTFlatProduction"); strings.Contains(got, want) {
-				t.Errorf("js: the PRODUCTION flat writer still holds the count: %q survives release", want)
-			}
 			continue
 		}
 

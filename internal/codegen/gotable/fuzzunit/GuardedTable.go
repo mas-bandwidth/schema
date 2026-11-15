@@ -754,9 +754,14 @@ func PatrolLoadBuilder(b *PatrolBuilder, wire []byte, report *TableReport) bool 
 
 // PatrolReadStrict is PatrolLoadBuilder under one call (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): its own builder, the value or the typed reason.
 func PatrolReadStrict(wire []byte) (*Patrol, error) {
+	size, err := PatrolLoadMeasureReason(wire)
+	if err == TableRefuseCountOverLength {
+		err = TableRefuseWireDamaged
+	}
+	if err != nil {
+		return nil, err
+	}
 	var b PatrolBuilder
-	size := PatrolLoadMeasure(wire)
-	size = max(size, 0)
 	if !b.initSized(size) {
 		return nil, TableRefuseAllocationFailed
 	}

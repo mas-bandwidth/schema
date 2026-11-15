@@ -227,6 +227,21 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,k2,tblk2)
 	$(call go_table_module,r1,tblr1)
 	$(call go_table_module,r2,tblr2)
+	# THE FRAMING VECTORS' VARIABLE-CLASS TWIN OF R1. The framing battery is
+	# form-1 files whose rules are the variable form's (docs/LAYERS/1-framing.md),
+	# and its fixed root tblr1 Cfg is read "through a fresh load of its unit with
+	# the root's class variable" (framingVariableUnit,
+	# test/conformance/harness/generate.go). Go's plain CfgLoad at a declared
+	# fixed root refuses form 1 as previous_form (docs/SPEC-TABLES.md §3.4), so
+	# the Go leg reads those vectors through this generation of the same
+	# declaration with `fixed` dropped: same package, fields and ids, the root's
+	# class variable. It is its own module beside build/tables-generated-go, not
+	# in it, so the per-unit gates over that tree do not count it twice.
+	@mkdir -p build/tables-r1-variable
+	sed 's/^fixed table Cfg$$/table Cfg/' test/tables/R1.schema > build/tables-r1-variable/R1.schema
+	@grep -q '^table Cfg$$' build/tables-r1-variable/R1.schema || { echo "R1 variable twin: the sed did not turn Cfg variable"; exit 1; }
+	./bin/schema generate --lang go --out build/tables-generated-go-framing/r1variable build/tables-r1-variable/R1.schema
+	$(call go_table_module_in,build/tables-generated-go-framing/r1variable,tblr1variable)
 	@touch $@
 
 # THE CARDS UNIT (schema-cards-c01): its own generated Go module plus the two
@@ -495,7 +510,13 @@ test-go: cards-test cards-example cards-wire-fuzz
 # The shared Go runtime is the default (docs/SPEC-TABLES.md §8.4), so every
 # generated table module requires this module and replaces it with the tree.
 define go_table_module
-@printf 'module %s\n\ngo 1.26\n\nrequire (\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n' $(2) > build/tables-generated-go/$(1)/go.mod
+$(call go_table_module_in,build/tables-generated-go/$(1),$(2))
+endef
+
+# the same wiring for a module directory named whole; it sits two levels under
+# build/, as every generated table module does
+define go_table_module_in
+@printf 'module %s\n\ngo 1.26\n\nrequire (\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n' $(2) > $(1)/go.mod
 endef
 
 # THE STANDALONE GATE, Go — the M4b twin of `tables-cs-standalone`,
@@ -1305,11 +1326,11 @@ GO_DISCARD_NC := build/go-discard-nc
 .PHONY: tables-go-discard-negative-control
 tables-go-discard-negative-control:
 	@rm -rf $(GO_DISCARD_NC) && mkdir -p $(GO_DISCARD_NC)
-	@sed -e 's/if recordBytes <= 8 || rest%%recordBytes != 0 {/if false {/' \
+	@sed -e 's/if recordBytes <= 8 || rest%%recordBytes != 0 || (rest == 0 && len(values) == 1) {/if false {/' \
 		-e 's/n := rest \/ recordBytes/_ = rest; n := int64(1); for len(at) < int(recordBytes) { at = append(at, 0) }/' \
 		internal/codegen/gotable/fixedform.go > $(GO_DISCARD_NC)/fixedform.go.txt
-	@cmp -s internal/codegen/gotable/fixedform.go $(GO_DISCARD_NC)/fixedform.go.txt && \
-		{ echo "NEGATIVE CONTROL: the Go fixed discard sabotage patched nothing"; exit 1; } || true
+	@grep -q 'if false {' $(GO_DISCARD_NC)/fixedform.go.txt && grep -q '_ = rest; n := int64(1)' $(GO_DISCARD_NC)/fixedform.go.txt || \
+		{ echo "NEGATIVE CONTROL: the Go fixed discard sabotage did not patch both the length guard and the record count"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/gotable/fixedform.go":"%s/$(GO_DISCARD_NC)/fixedform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/fixed.json
 	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(GO_DISCARD_NC)/fixed.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \

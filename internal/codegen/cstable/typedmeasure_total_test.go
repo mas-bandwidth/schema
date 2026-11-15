@@ -194,11 +194,11 @@ func csTypedMeasureReasons(files map[string][]byte) error {
 	for _, data := range files {
 		s := string(data)
 		if m := csMeasureEnumMembers.FindStringSubmatch(s); m != nil {
-			for _, member := range strings.Split(m[1], ",") {
+			for member := range strings.SplitSeq(m[1], ",") {
 				members[strings.TrimSpace(member)] = true
 			}
 		}
-		for _, line := range strings.Split(s, "\n") {
+		for line := range strings.SplitSeq(s, "\n") {
 			if strings.Contains(line, "reason ==") {
 				continue
 			}

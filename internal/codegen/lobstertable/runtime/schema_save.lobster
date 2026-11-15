@@ -771,6 +771,88 @@ def encode_node_table(e:SaveEncoder, w:SaveOut, g:SaveGraph) -> void:
     so_leb(w, payload.n)
     so_bytes(w, so_take(payload))
 
+// THE WRITE CONTRACT (docs/SPEC.md §5.1): the variable-form save refuses, in
+// every build, a value its declaration does not admit — rows 1-6, 8 and 10 —
+// as invalid_value, before it writes a byte. A NaN or an infinity (row 7) is
+// left to the encoder, which names it non_finite_float. The walk covers ONE
+// body and everything it holds by value; save_reasoned runs it over every
+// record the save graph reaches, so a pointer is checked once at its node.
+def wc_value(d:FieldDescriptor, kind:int, v:Value) -> bool:
+    let s = d.s
+    if s == "int" or s == "bool":
+        return scalar_admitted(d, kind, v)
+    if s == "float":
+        if (kind == 10 and not finite_f32(v.f)) or (kind == 11 and not finite_f64(v.f)):
+            return true
+        return scalar_admitted(d, kind, v)
+    if s == "enum":
+        return v.i >= 0 and v.i <= length(d.vs)
+    if s == "str":
+        return length(v.s) <= d.bound and text_valid(v.s, 0, length(v.s))
+    if s == "text":
+        return text_valid(v.s, 0, length(v.s))
+    if s == "bytes":
+        return length(v.s) <= d.bound
+    if s == "tab":
+        let t = v.tab
+        return not t or wc_body(t)
+    if s == "union":
+        if v.i == 0:
+            return true
+        let un = lookup_union(d.t)
+        assert un
+        if v.i < 0 or v.i > length(un.arms):
+            return false
+        let arm = un.arms[v.i - 1]
+        if arm.s == "tab":
+            let t = v.tab
+            return not t or wc_body(t)
+        let sl = v.arm
+        return not sl or wc_slot(sl)
+    // ptr, sblob, bblob: the referent is a node of the save graph, checked
+    // where save_reasoned meets it
+    return true
+
+// wc_slot is one field's storage: absent optionals hold nothing, a counted
+// array's count stays inside [min, bound] and inside its elements, and every
+// live element or the one value is admitted.
+def wc_slot(sl:Slot) -> bool:
+    let f = sl.fd
+    if f.present != "" and not sl.present:
+        return true
+    if f.s == "map":
+        for(sl.entries) entry:
+            let er = entry.tab
+            if er and not wc_body(er):
+                return false
+        return true
+    if f.s == "arr":
+        var n = length(sl.elems)
+        if f.array == "counted":
+            if sl.count < f.min or sl.count > f.bound or sl.count > n:
+                return false
+            n = sl.count
+        elif f.array == "list":
+            if sl.count < 0 or sl.count > n:
+                return false
+            n = sl.count
+        elif f.array == "fixed":
+            if n < f.bound:
+                return false
+            n = f.bound
+        let ed = elem_of(f)
+        for(n) i:
+            if not wc_value(ed, f.ek, sl.elems[i]):
+                return false
+        return true
+    return wc_value(f, f.k, sl.cell)
+
+def wc_body(rec:Record) -> bool:
+    for(rec.fields) sl:
+        if guard_holds(rec, sl.fd) and not wc_slot(sl):
+            return false
+    return true
+
 // save dispatches declared fixed roots to their native form-3 codec. Other
 // roots write a form-1 wire from a Record (docs/SPEC-TABLES.md §3): the FORM
 // BYTE, the ROOT BODY, the ID TABLE, in that order. A data cycle is refused
@@ -782,7 +864,8 @@ def save(rec:Record) -> string:
     return save_reasoned(rec)
 
 // save_reasoned is save with the refusal's name beside the bytes: "cycle",
-// "blob_shared", "non_finite_float" (Go's TableRefuseReason spellings), or ""
+// "blob_shared", "invalid_value" (the write contract, wc_body),
+// "non_finite_float" (Go's TableRefuseReason spellings), or ""
 // when it wrote.
 def save_reasoned(rec:Record) -> string, string:
     if rec.d.fixed:
@@ -797,6 +880,14 @@ def save_reasoned(rec:Record) -> string, string:
         return "", "cycle"
     if g.blob_shared:
         return "", "blob_shared"
+    for(g.recs) r:
+        if not wc_body(r):
+            return "", "invalid_value"
+    for(g.nodes) node:
+        // a *string referent is text (row 8)
+        let b = node.blob
+        if node.kind == 2 and b and not text_valid(b, 0, length(b)):
+            return "", "invalid_value"
     let e = SaveEncoder { ids: SaveIds {}, g: g }
     let fields = SaveOut {}
     encode_body_fields(e, fields, rec)

@@ -140,8 +140,21 @@ static partial class Program
             Blobdemo.Schema.CatalogLoadMeasure,(p,n,b,r)=>(IntPtr)Blobdemo.Schema.CatalogLoad(p,n,b,r),Blobdemo.Schema.CatalogLoadBuilder,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave);
         RegionCase<Blobdemo.Catalog,Blobdemo.TableReport>("blob_large",()=>new Blobdemo.TableReport(),r=>!r.Damaged && !r.Refused && r.Unknown==0 && r.Widened==0,
             Blobdemo.Schema.CatalogLoadMeasure,(p,n,b,r)=>(IntPtr)Blobdemo.Schema.CatalogLoad(p,n,b,r),Blobdemo.Schema.CatalogLoadBuilder,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave);
-        RegionCase<Blobdemo.Catalog,Blobdemo.TableReport>("blob_shared",()=>new Blobdemo.TableReport(),r=>!r.Damaged && !r.Refused && r.Unknown==0 && r.Widened==0,
-            Blobdemo.Schema.CatalogLoadMeasure,(p,n,b,r)=>(IntPtr)Blobdemo.Schema.CatalogLoad(p,n,b,r),Blobdemo.Schema.CatalogLoadBuilder,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave);
+        // The corpus's shared-blob wire is REFUSED BY NAME by the strict read
+        // (docs/SPEC-TABLES.md §2.5, §6.5): there is no read that keeps the one
+        // node, so its measure is the refusal and no region is produced. Every
+        // writer refuses that graph too, so there is no tolerated load whose
+        // native writer could be asked.
+        byte[] sharedBlob=ReadGolden("blob_shared");
+        Check(Blobdemo.Schema.CatalogLoadMeasure(sharedBlob,out var sharedReason)==-1 && sharedReason==Blobdemo.TableRefuseReason.blob_shared,
+            "blob_shared native region is measurable as its named refusal");
+        byte[] sharedRegion=new byte[sharedBlob.Length+64];
+        var sharedReport=new Blobdemo.TableReport();
+        fixed(byte* region=sharedRegion)
+        {
+            Check((IntPtr)Blobdemo.Schema.CatalogLoad((IntPtr)region,sharedRegion.Length,sharedBlob,sharedReport)==IntPtr.Zero &&
+                sharedReport.Refused && sharedReport.Reason=="blob_shared","blob_shared native region load refuses by name");
+        }
         RegionCase<Blobdemo.Catalog,Blobdemo.TableReport>("blob_str8",()=>new Blobdemo.TableReport(),r=>!r.Damaged && !r.Refused && r.Unknown==0 && r.Widened==0,
             Blobdemo.Schema.CatalogLoadMeasure,(p,n,b,r)=>(IntPtr)Blobdemo.Schema.CatalogLoad(p,n,b,r),Blobdemo.Schema.CatalogLoadBuilder,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave);
         RegionCase<Blobdemo.Catalog,Blobdemo.TableReport>("blob_str16",()=>new Blobdemo.TableReport(),r=>!r.Damaged && !r.Refused && r.Unknown==0 && r.Widened==0,

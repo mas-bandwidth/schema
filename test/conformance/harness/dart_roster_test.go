@@ -77,3 +77,31 @@ func TestDartBuilderRefusalAndRetentionVectors(t *testing.T) {
 		})
 	}
 }
+
+// THE HELD RESERVED-TYPE VECTORS (docs/SPEC-TABLES.md §3.1, §3.3, §5) through
+// the Dart leg: a node record whose TYPE reference resolves to one of the
+// three reserved ids refuses the whole load, in the builder read and the
+// region read alike, as the engine does
+// (TestHeldReservedTypeVectorsAnswerTheEngine).
+func TestDartReservedNodeTypeVectors(t *testing.T) {
+	driver := os.Getenv("SCHEMA_DART_ROSTER_DRIVER")
+	if driver == "" {
+		t.Skip("run make tables-dart-wire-fuzz to build the native driver")
+	}
+	t.Chdir("../../..")
+	manifest, err := ReadManifest(defaultManifest, "testdata/conformance/tables/json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"node_type_node_table_id", "node_type_build_version_id", "node_type_vocabulary_id"} {
+		for _, builder := range []bool{false, true} {
+			t.Run(name+map[bool]string{false: "/region", true: "/builder"}[builder], func(t *testing.T) {
+				opts := wireFuzzOptions{driver: driver + " wire-fuzz", builder: builder,
+					replay: framingDir + "/" + name + ".bin", unit: "graphdemo", root: "Scene"}
+				if err := wireFuzz(manifest, opts); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
