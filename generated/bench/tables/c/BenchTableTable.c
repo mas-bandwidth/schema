@@ -13,6 +13,11 @@
 #include <stdlib.h> /* the text form: exact number conversion */
 #include <locale.h> /* the text form: the runtime's decimal point */
 
+#include <assert.h> /* the text writer's zero-byte refusal, in a debug build */
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---- json walk: begin ----
 
    The TEXT form (docs/SPEC-TABLES.md §16): one table, one text, one walk over the
@@ -138,8 +143,16 @@ typedef struct benchtable_table_json_wide_t
 } benchtable_table_json_wide_t;
 
 static SCHEMA_UNUSED int benchtable_table_json_kind_wide( uint8_t kind ) { return kind >= 18 && kind <= 29; }
-static SCHEMA_UNUSED int benchtable_table_json_kind_wide_signed( uint8_t kind ) { return kind == 18 || ( kind >= 20 && kind <= 24 ); }
+static SCHEMA_UNUSED int benchtable_table_json_kind_wide_signed( uint8_t kind ) { return kind == 5 || kind == 18 || ( kind >= 20 && kind <= 24 ); }
 static SCHEMA_UNUSED int benchtable_table_json_kind_fixed( uint8_t kind ) { return kind >= 20 && kind <= 29; }
+/* the integer-shaped kinds whose storage is wider than 32 bits: int64, uint64,
+   int128, uint128, and the 64- and 128-bit fixed-point kinds. These are the
+   kinds the JSON form writes as a STRING of decimal digits (§16.2). */
+static SCHEMA_UNUSED int benchtable_table_json_kind_wide_integer( uint8_t kind )
+{
+    return kind == 5 || kind == 9 || kind == 18 || kind == 19 ||
+           kind == 23 || kind == 24 || kind == 28 || kind == 29;
+}
 
 static SCHEMA_UNUSED int benchtable_table_json_wide_zero( benchtable_table_json_wide_t v ) { return v.lo == 0 && v.hi == 0; }
 static SCHEMA_UNUSED int benchtable_table_json_wide_negative( benchtable_table_json_wide_t v ) { return ( v.hi >> 63 ) != 0; }
@@ -358,6 +371,22 @@ static SCHEMA_UNUSED char benchtable_table_json_element_shape( const benchtable_
     return 'n';
 }
 
+/* A wide integer declares the number shape and READS a string or a number
+   (§16.2); every other shape is exact. */
+static SCHEMA_UNUSED int benchtable_table_json_shape_accepts( const benchtable_table_field_info_t * f, char got )
+{
+    char want = benchtable_table_json_shape( f );
+    if ( got == want ) { return 1; }
+    return want == 'n' && got == 's' && benchtable_table_json_kind_wide_integer( f->kind );
+}
+
+static SCHEMA_UNUSED int benchtable_table_json_element_shape_accepts( const benchtable_table_field_info_t * f, char got )
+{
+    char want = benchtable_table_json_element_shape( f );
+    if ( got == want ) { return 1; }
+    return want == 'n' && got == 's' && benchtable_table_json_kind_wide_integer( f->kind );
+}
+
 /* A guarded group rides only when its guard reads true — the wire's own
    elision (§4), carried into the text so a text and a wire written from one
    instance say the same thing. The guard is spelled as its branch condition
@@ -533,6 +562,11 @@ static SCHEMA_UNUSED void benchtable_table_json_write_string( benchtable_table_j
     for ( i = 0; i < length; i++ )
     {
         unsigned char c = (unsigned char) s[i];
+        /* A zero byte is not text for this writer either (docs/SPEC-TABLES.md
+           §16.3, §16.14 W0): no read stores U+0000, so a program-built value
+           holding one is off the write contract (docs/SPEC.md §5.1 row 8).
+           C is an assert leg, so the refusal is a debug assert. */
+        schema_assert( c != 0 );
         switch ( c )
         {
             case '"':  benchtable_table_json_raw( out, "\\\"", 2 ); break;
@@ -604,7 +638,7 @@ static SCHEMA_UNUSED void benchtable_table_json_write_signed( benchtable_table_j
    readable. Non-finite values have no JSON spelling at all, and the writer
    REFUSES rather than losing one silently — the same rule measure and save
    already apply to an enum value no variant names (§5). */
-static SCHEMA_UNUSED void benchtable_table_json_write_wide( benchtable_table_json_out_t * out, const void * storage, const benchtable_table_field_info_t * f )
+static SCHEMA_UNUSED void benchtable_table_json_write_wide_digits( benchtable_table_json_out_t * out, const void * storage, const benchtable_table_field_info_t * f )
 {
     int is_signed = benchtable_table_json_kind_wide_signed( f->kind );
     benchtable_table_json_wide_t v = benchtable_table_json_wide_load( storage, f->elem_size, is_signed );
@@ -647,6 +681,20 @@ static SCHEMA_UNUSED void benchtable_table_json_write_wide( benchtable_table_jso
         if ( frac < 64 ) { fraction.hi = 0; fraction.lo &= ( (uint64_t) ( 1 ) << frac ) - 1; }
         else { fraction.hi &= ( (uint64_t) ( 1 ) << ( frac - 64 ) ) - 1; }
     }
+}
+
+/* a kind wider than 32 bits is a STRING of decimal digits (§16.2); one of 32
+   bits and under is a bare number. */
+static SCHEMA_UNUSED void benchtable_table_json_write_wide( benchtable_table_json_out_t * out, const void * storage, const benchtable_table_field_info_t * f )
+{
+    if ( !benchtable_table_json_kind_wide_integer( f->kind ) )
+    {
+        benchtable_table_json_write_wide_digits( out, storage, f );
+        return;
+    }
+    benchtable_table_json_put( out, '"' );
+    benchtable_table_json_write_wide_digits( out, storage, f );
+    benchtable_table_json_put( out, '"' );
 }
 
 
@@ -879,7 +927,7 @@ static SCHEMA_UNUSED int benchtable_table_json_write_scalar( benchtable_table_js
         benchtable_table_json_put( out, ']' );
         return 1;
     }
-    if ( benchtable_table_json_kind_wide( f->kind ) ) { benchtable_table_json_write_wide( out, storage, f ); return 1; }
+    if ( benchtable_table_json_kind_wide( f->kind ) || benchtable_table_json_kind_wide_integer( f->kind ) ) { benchtable_table_json_write_wide( out, storage, f ); return 1; }
     switch ( f->kind )
     {
         case 1:
@@ -1511,6 +1559,24 @@ static SCHEMA_UNUSED int benchtable_table_json_scan_number( benchtable_table_jso
     return 1;
 }
 
+/* AN INTEGER TOKEN (§16.2): an optional minus, then digits with no leading
+   zero, and not -0. A fraction, an exponent, a plus and a negative zero are
+   each the wrong shape for an integer field, never coerced. */
+static SCHEMA_UNUSED int benchtable_table_json_integer_token( const char * text, int64_t length )
+{
+    int64_t i = 0;
+    int negative = 0;
+    if ( i < length && text[i] == '-' ) { negative = 1; i++; }
+    if ( i >= length ) { return 0; }
+    if ( text[i] == '0' ) { return !negative && i + 1 == length; }
+    if ( text[i] < '1' || text[i] > '9' ) { return 0; }
+    for ( ; i < length; i++ )
+    {
+        if ( text[i] < '0' || text[i] > '9' ) { return 0; }
+    }
+    return 1;
+}
+
 /* the token's exact double, through the runtime's own converter — which
    speaks the LOCALE's decimal point, so the token crosses back over that
    character on its way in. A token too long to copy whole is handed over as
@@ -1942,6 +2008,13 @@ static SCHEMA_UNUSED int benchtable_table_json_read_wide( benchtable_table_json_
     int frac = f->frac_bits;
     int64_t i = 0;
     int negative = 0;
+    /* a 128-bit INTEGER takes an integer token only (§16.2); a fixed-point
+       kind keeps its exact decimal spelling */
+    if ( !benchtable_table_json_kind_fixed( f->kind ) && !benchtable_table_json_integer_token( token, length ) )
+    {
+        in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
+        return 1;
+    }
     if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { negative = token[i] == '-'; i++; }
     const char * int_digits = token + i;
     int64_t int_len = 0;
@@ -2265,6 +2338,7 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
     const char * token = NULL;
     int64_t length = 0;
     int integral = 0;
+    char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
     if ( f->text_list != 0 ) { return schema_benchtable_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {
@@ -2304,7 +2378,7 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
             void * payload = (uint8_t *) storage + arms->arms[tag].offset;
             const benchtable_table_field_info_t * arm = arms->arms[tag].field;
             char want = arm != NULL ? benchtable_table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
-            if ( benchtable_table_json_value_shape( in ) != want && !(arm != NULL && arm->kind == 17 && !arm->is_array && benchtable_table_json_value_shape(in) == 'z') ) {
+            if ( !( arm != NULL ? benchtable_table_json_shape_accepts( arm, benchtable_table_json_value_shape( in ) ) : benchtable_table_json_value_shape( in ) == want ) && !(arm != NULL && arm->kind == 17 && !arm->is_array && benchtable_table_json_value_shape(in) == 'z') ) {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !benchtable_table_json_skip_value( in, depth+1 ) ) { return 0; }
             } else {
@@ -2413,7 +2487,17 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
         benchtable_table_json_set_raw( storage, f->elem_size, (uint64_t) nanos );
         return 1;
     }
-    if ( !benchtable_table_json_scan_number( in, &token, &length, &integral ) )
+    if ( benchtable_table_json_kind_wide_integer( f->kind ) && benchtable_table_json_peek( in ) == '"' )
+    {
+        /* a wide integer reads as a string OR a number, the same digits (§16.2) */
+        int32_t text_length = 0;
+        if ( !benchtable_table_json_scan_text( in, textbuf, (int32_t) sizeof( textbuf ) - 1, &text_length ) ) { return 0; }
+        if ( in->report->refused ) { return 1; }
+        token = textbuf;
+        length = text_length;
+        integral = 1;
+    }
+    else if ( !benchtable_table_json_scan_number( in, &token, &length, &integral ) )
     {
         in->bad = 1;
         return 0;
@@ -2456,14 +2540,17 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
         }
         return 1;
     }
-    // AN ORDINARY FIELD'S POLICY over the one interpreted value: it CLAMPS to
-    // its domain and counts. JSON has one number type, so 2.0 IS the integer 2
-    // and 1e3 IS 1000. A library that round-trips numbers through a double
-    // emits them that way, and this walker's own float writer emits 1e+21. Only
-    // a genuinely fractional value is the wrong shape for the kind.
+    // EVERY INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (§16.2): digits with an
+    // optional minus, no fraction, no exponent, not -0. The value never passes
+    // through a double and its range is tested on the exact value.
+    if ( !benchtable_table_json_integer_token( token, length ) )
+    {
+        in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
+        return 1;
+    }
     const int is_signed = f->kind >= 2 && f->kind <= 5;
-    const benchtable_table_json_integer_t number = benchtable_table_json_interpret( token, length, integral );
-    if ( !number.finite || number.fractional )
+    const benchtable_table_json_integer_t number = benchtable_table_json_interpret( token, length, 1 );
+    if ( !number.finite )
     {
         in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
         return 1;
@@ -2471,8 +2558,19 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
     if ( number.saturated ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; } // past what sixty-four bits hold
     // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
-    // The comparison is on the value's OWN scale, correctly signed past
-    // INT64_MAX, where the storage's bit pattern is not a number to compare.
+    // A 64-bit integer's range is compared on the exact 128-bit lanes: a value
+    // at or above 2^53 is never rounded through a double on its way to a bound.
+    if ( f->wide != NULL && ( f->kind == 5 || f->kind == 9 ) )
+    {
+        benchtable_table_json_wide_t v = { number.magnitude, 0 };
+        benchtable_table_json_wide_t lo = { f->wide->lo[0], f->wide->lo[1] };
+        benchtable_table_json_wide_t hi = { f->wide->hi[0], f->wide->hi[1] };
+        if ( number.negative ) { v = benchtable_table_json_wide_neg( v ); }
+        if ( benchtable_table_json_wide_compare( v, lo, is_signed ) < 0 ) { v = lo; in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
+        else if ( benchtable_table_json_wide_compare( v, hi, is_signed ) > 0 ) { v = hi; in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
+        benchtable_table_json_set_raw( storage, f->elem_size, v.lo );
+        return 1;
+    }
     benchtable_table_json_integer_t bounded = number;
     if ( f->has_range )
     {
@@ -2540,7 +2638,6 @@ static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json
            omits keeps them and a repeated field key cannot leave an earlier
            occurrence's slots standing */
         int32_t i;
-        char shape;
         uint64_t seen[8];
         if ( benchtable_table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
         in->pos++;
@@ -2550,7 +2647,6 @@ static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json
             if ( f->kind == 13 ) { f->table->reset( slot ); }
             else { memset( slot, 0, (size_t) f->elem_size ); }
         }
-        shape = benchtable_table_json_element_shape( f );
         /* A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a repeated
            key like any other, last-wins and counted (§16.2). Tracked the way
            a table's own field keys are — a bounded, allocation-free bitmask;
@@ -2606,7 +2702,7 @@ static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json
                 in->report->unknown++;
                 if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( benchtable_table_json_value_shape( in ) != shape && !(f->kind == 17 && benchtable_table_json_value_shape(in) == 'z') )
+            else if ( !benchtable_table_json_element_shape_accepts( f, benchtable_table_json_value_shape( in ) ) && !(f->kind == 17 && benchtable_table_json_value_shape(in) == 'z') )
             {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
@@ -2633,7 +2729,6 @@ static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json
            this occurrence's elements are placed — the re-establishment a nested
            table and a union arm already get. */
         int32_t placed = 0;
-        char shape;
         if ( benchtable_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
         int64_t spent = 0;
@@ -2652,7 +2747,6 @@ static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json
             memset( storage, 0, (size_t) f->array_bound * (size_t) f->elem_size );
         }
         benchtable_table_json_set_count( base, f, 0 );
-        shape = benchtable_table_json_element_shape( f );
         for ( ;; )
         {
             char c = benchtable_table_json_peek( in );
@@ -2672,7 +2766,7 @@ static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
                 if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( benchtable_table_json_value_shape( in ) != shape && !( ( f->kind == 17 || f->text_list == 2 ) && benchtable_table_json_value_shape(in) == 'z') )
+            else if ( !benchtable_table_json_element_shape_accepts( f, benchtable_table_json_value_shape( in ) ) && !( ( f->kind == 17 || f->text_list == 2 ) && benchtable_table_json_value_shape(in) == 'z') )
             {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
@@ -2806,7 +2900,7 @@ static SCHEMA_UNUSED int benchtable_table_json_read_table_members( benchtable_ta
             }
             else
             {
-                if ( got != benchtable_table_json_shape( f ) && !(f->kind == 17 && !f->is_array && got == 'z') )
+                if ( !benchtable_table_json_shape_accepts( f, got ) && !(f->kind == 17 && !f->is_array && got == 'z') )
                 {
                     /* the wrong JSON type for the kind: skipped, never coerced */
                     in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
@@ -2971,6 +3065,9 @@ static const benchtable_table_field_info_t schema_benchtable_table_stat_fields_[
 
 const benchtable_table_type_info_t schema_benchtable_table_stat_info_ = { "TableStat", (uint32_t) sizeof( benchtable_table_stat_t ), 2, schema_benchtable_table_stat_fields_, schema_benchtable_table_stat_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0 };
 
+static const benchtable_table_wide_range_t schema_benchtable_table_mixed_nonce_range_ = { { 1ull, 0ull }, { 9223372036854775807ull, 0ull } };
+static const benchtable_table_wide_range_t schema_benchtable_table_mixed_world_time_range_ = { { 18446743073709551616ull, 18446744073709551615ull }, { 1000000000000ull, 0ull } };
+static const benchtable_table_wide_range_t schema_benchtable_table_mixed_frame_tick_range_ = { { 0ull, 0ull }, { 281474976710655ull, 0ull } };
 static const benchtable_table_variant_info_t schema_benchtable_table_mixed_game_event_variants_[] = {
     { "None", 0 },
     { "hit", 0x33732819300680aaull },
@@ -2984,6 +3081,7 @@ static const benchtable_table_union_arm_info_t schema_benchtable_table_mixed_gam
     { (uint32_t)offsetof( benchtable_table_event_t, as.pickup ), &schema_benchtable_table_pickup_event_info_, NULL, (uint32_t)sizeof( ((benchtable_table_event_t *)0)->as.pickup ) },
 };
 static const benchtable_table_union_info_t schema_benchtable_table_mixed_game_event_union_ = { (uint32_t) offsetof( benchtable_table_event_t, type ), (uint32_t) sizeof( ( (benchtable_table_event_t *) 0 )->type ), schema_benchtable_table_mixed_game_event_arms_ };
+static const benchtable_table_wide_range_t schema_benchtable_table_mixed_flux_range_ = { { 17446744073709551616ull, 18446744073709551615ull }, { 1000000000000000000ull, 0ull } };
 static const benchtable_table_field_info_t schema_benchtable_table_mixed_fields_[] = {
     { "protocol_magic", "protocol_magic", "uint16", 0x6a5a70d91aa115fdull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, protocol_magic ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->protocol_magic ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "sequence", "sequence", "bits(16)", 0xaa38aca481f528a8ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, sequence ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
@@ -2991,9 +3089,9 @@ static const benchtable_table_field_info_t schema_benchtable_table_mixed_fields_
     { "ack_bits", "ack_bits", "bits(32)", 0x9bae0da8b829ee03ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, ack_bits ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->ack_bits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "session_id", "session_id", "uint64", 0xb7d7b5650a590b05ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, session_id ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->session_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "client_id", "client_id", "uint32", 0x6d7b98e2d095967eull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, client_id ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->client_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "nonce", "nonce", "uint64", 0x73a94c71d60dc0d8ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, nonce ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->nonce ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, world_time ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->world_time ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+12, 1e+12, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, frame_tick ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->frame_tick ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "nonce", "nonce", "uint64", 0x73a94c71d60dc0d8ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, nonce ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->nonce ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 9.223372036854776e+18, &schema_benchtable_table_mixed_nonce_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, world_time ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->world_time ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+12, 1e+12, &schema_benchtable_table_mixed_world_time_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, frame_tick ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->frame_tick ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, &schema_benchtable_table_mixed_frame_tick_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "server_time", "server_time", "float32", 0x3c460475f9be69c6ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, server_time ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->server_time ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "entities", "entities", "TableEntity", 0x935d0fb07bb3822aull, 13, 1, 1, 0, 0, 8, (uint32_t) offsetof( benchtable_table_mixed_t, entities ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->entities[0] ), (uint32_t) offsetof( benchtable_table_mixed_t, entities_count ), 0xffffffffu, &schema_benchtable_table_entity_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "stats", "stats", "TableStat", 0xee639cad45b1994cull, 13, 1, 1, 0, 0, 80, (uint32_t) offsetof( benchtable_table_mixed_t, stats ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->stats[0] ), (uint32_t) offsetof( benchtable_table_mixed_t, stats_count ), 0xffffffffu, &schema_benchtable_table_stat_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
@@ -3007,7 +3105,7 @@ static const benchtable_table_field_info_t schema_benchtable_table_mixed_fields_
     { "recoil", "recoil", "float32", 0x9cef31fff7e2e457ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, recoil ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->recoil ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "drift", "drift", "float64", 0x5ab3f9c9341f6c04ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, drift ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->drift ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "wide_key", "wide_key", "uint64", 0xa3348580461faf16ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, wide_key ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->wide_key ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "flux", "flux", "int64", 0xd61bdd7908af2642ull, 5, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, flux ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->flux ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+18, 1e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "flux", "flux", "int64", 0xd61bdd7908af2642ull, 5, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, flux ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->flux ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+18, 1e+18, &schema_benchtable_table_mixed_flux_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "ping", "ping", "float32", 0xbf30e00dc53307a9ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, ping ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->ping ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 250.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "crc_hint", "crc_hint", "bits(24)", 0x560d6527ccd8515full, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, crc_hint ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->crc_hint ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.6777215e+07, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
     { "has_extra", "has_extra", "bool", 0xc08292176cfd8672ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, has_extra ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->has_extra ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },

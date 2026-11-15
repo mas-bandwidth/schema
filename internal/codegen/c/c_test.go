@@ -83,7 +83,11 @@ func wireBodies(t *testing.T, header string) map[string]string {
 			"marked_after_align", "marked_after_string", "unmarked_at_entry",
 			"unmarked_off_boundary", "unmarked_ranged", "unmarked_counted",
 		} {
-			open := "int " + prefix + name + "( "
+			fn := prefix + name
+			if prefix == "read_" {
+				fn = "schema_read_" + name + "_body_"
+			}
+			open := "int " + fn + "( "
 			i := strings.Index(header, open)
 			if i < 0 {
 				t.Fatalf("generated C has no %s%s function:\n%s", prefix, name, header)

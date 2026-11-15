@@ -505,3 +505,86 @@ conformance-negative-control-cpp-write-refusal-fixed: build/conformance-harness 
 .PHONY: conformance-negative-control-cpp-write-refusal-message
 conformance-negative-control-cpp-write-refusal-message: build/conformance-harness build/tables-generated/.stamp
 	$(call conformance-negative-control-cpp-wref,write-refusal-message,if ( value.sku_length < 0 || value.sku_length > 32 ) { return false; },if ( false ) { return false; } /* SABOTAGED: no message length check */,SABOTAGED: no message length check,write-refusal-message,message)
+
+# SPEC §5.1 row 10 on the packet Write: a compressed float is checked finite and
+# inside [min, max] before quantizing, by this leg's debug assert. The shared
+# cases in test/packet-write-cfloat name each refused value and each lawful
+# twin; every case runs in a child because the refusal aborts.
+PACKET_WRITE_CFLOAT_CPP_DIR := build/packet-write-cfloat/cpp
+
+$(PACKET_WRITE_CFLOAT_CPP_DIR)/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/cpp.mk
+	@mkdir -p $(PACKET_WRITE_CFLOAT_CPP_DIR)
+	./bin/schema generate --lang cpp --out $(PACKET_WRITE_CFLOAT_CPP_DIR) test/packet-write-cfloat/CFloat.schema
+	@touch $@
+
+build/schema_test_packet_write_cfloat_cpp: $(PACKET_WRITE_CFLOAT_CPP_DIR)/.stamp test/packet-write-cfloat/cpp/main.cpp $(SERIALIZE)/serialize.h make/cpp.mk
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -I$(PACKET_WRITE_CFLOAT_CPP_DIR) test/packet-write-cfloat/cpp/main.cpp -o $@
+
+.PHONY: packet-write-cfloat-cpp
+packet-write-cfloat-cpp: build/schema_test_packet_write_cfloat_cpp
+	./build/schema_test_packet_write_cfloat_cpp test/packet-write-cfloat/cases.txt
+
+PACKET_WRITE_CFLOAT_CPP_NEGATIVE := build/packet-write-cfloat/cpp-negative
+
+.PHONY: packet-write-cfloat-cpp-negative-control
+packet-write-cfloat-cpp-negative-control: packet-write-cfloat-cpp
+	@rm -rf $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE) && mkdir -p $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/generated
+	go run ./tools/sabotage -name packet-write-cfloat-cpp-range-assert \
+		-out $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/functions.gotext internal/codegen/cpp/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/functions.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/overlay.json
+	go build -overlay $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/overlay.json -o $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/schema ./cmd/schema
+	$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/schema generate --lang cpp --out $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/generated test/packet-write-cfloat/CFloat.schema
+	$(CXX) $(CXXFLAGS) -I$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/generated test/packet-write-cfloat/cpp/main.cpp -o $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/driver
+	@if ./$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/driver test/packet-write-cfloat/cases.txt > $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the compressed-float write passed without its range assert"; \
+		cat $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log; exit 1; fi
+	@grep -q '^FAILED: above-max: write was not refused (debug assert)$$' $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the C++ writer went red, but not on the range assert"; \
+		  cat $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log; exit 1; }
+	@grep -m1 '^FAILED:' $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log
+	@echo "negative control: removing the compressed-float range assert turns the C++ packet write RED"
+
+test: packet-write-cfloat-cpp
+
+# THE PACKET-END CONFORMANCE GATE (docs/SPEC.md §5, "Read termination";
+# docs/PACKET-WIRE-ALGORITHM.md §3 READ_PACKET). The generated public Read<T>
+# reads one packet: the top-level object, then the runtime's end check. The
+# shared cases under testdata/wire/packet-end hold the exact packet (accepted
+# as 3), the same packet plus one whole byte (refused), and the same value with
+# the final byte's unused bits set (refused). The negative control removes the
+# generated end call and requires the trailing byte to be accepted, which turns
+# this gate red by name.
+PACKET_END_CPP_SCHEMA := test/packet-end/End.schema
+
+build/packet-end/cpp/.stamp: bin/schema $(PACKET_END_CPP_SCHEMA) make/cpp.mk
+	@mkdir -p build/packet-end/cpp
+	./bin/schema generate --lang cpp --out build/packet-end/cpp $(PACKET_END_CPP_SCHEMA)
+	@touch $@
+
+build/schema_test_packet_end_cpp: build/packet-end/cpp/.stamp test/packet-end/cpp/main.cpp $(SERIALIZE)/serialize.h make/cpp.mk
+	$(CXX) $(CXXFLAGS) -Ibuild/packet-end/cpp test/packet-end/cpp/main.cpp -o $@
+
+.PHONY: packet-end-cpp
+packet-end-cpp: build/schema_test_packet_end_cpp
+	env -u SCHEMA_UPDATE_WIRE_GOLDENS ./build/schema_test_packet_end_cpp testdata/wire/packet-end
+
+.PHONY: packet-end-cpp-negative-control
+packet-end-cpp-negative-control: packet-end-cpp
+	@mkdir -p build/packet-end/cpp-negative
+	go run ./tools/sabotage -name packet-end-cpp-read \
+		-out build/packet-end/cpp-negative/functions.gotext internal/codegen/cpp/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/build/packet-end/cpp-negative/functions.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-end/cpp-negative/overlay.json
+	go build -overlay=build/packet-end/cpp-negative/overlay.json -o build/packet-end/cpp-negative/schema ./cmd/schema
+	./build/packet-end/cpp-negative/schema generate --lang cpp --out build/packet-end/cpp-negative/generated $(PACKET_END_CPP_SCHEMA)
+	$(CXX) $(CXXFLAGS) -Ibuild/packet-end/cpp-negative/generated test/packet-end/cpp/main.cpp -o build/packet-end/cpp-negative/checker
+	@if env -u SCHEMA_UPDATE_WIRE_GOLDENS ./build/packet-end/cpp-negative/checker testdata/wire/packet-end > build/packet-end/cpp-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the packet end check removal passed'; cat build/packet-end/cpp-negative/log; exit 1; fi
+	@grep -Fxq 'FAILED: packet end trailing: a packet with one whole trailing byte was accepted' build/packet-end/cpp-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the driver went red for another reason'; cat build/packet-end/cpp-negative/log; exit 1; }
+	@grep -Fxm1 'FAILED: packet end trailing: a packet with one whole trailing byte was accepted' build/packet-end/cpp-negative/log
+	@echo 'packet end C++ negative control: without the end call a packet with a trailing byte is accepted'
+
+test: packet-end-cpp

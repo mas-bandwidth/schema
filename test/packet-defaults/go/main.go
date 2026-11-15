@@ -83,7 +83,9 @@ func readWire[T comparable](name string, wire []byte, bits int64, initial, want 
 	if !checkErr(read(stream, &value), name+": read") {
 		return value
 	}
-	check(stream.BitsProcessed() == bits, name+": read consumed bits")
+	// The one-packet read ends with the end check, which consumes the final
+	// byte's padding: the read covers the whole packet, not only the value.
+	check(stream.BitsProcessed() == (bits+7)/8*8, name+": read consumed bits")
 	check(value == want, name+": read values and backing storage")
 	return value
 }

@@ -80,13 +80,6 @@ func (g *gen) messageModule() []byte {
 // closed by the zero reference; a field at its declared default does not ride.
 // The bodies of one batch are one continuous bit stream, padded to a byte once
 // at its end (§3.3).
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-#![allow(unused_mut)]
-#![allow(unused_assignments)]
-#![allow(unused_labels)]
-#![allow(unused_comparisons)]
-#![allow(clippy::all)]
 
 // THE ONE REPORT (§4, §3.3): the crate root exports one TableReport, the
 // variable runtime's when the unit carries that form and the message
@@ -187,30 +180,52 @@ func msgShapeLiteral(kind uint8, s ir.TableMessageShape) string {
 
 func (m *msgGen) emitSaveBody(st *ir.Struct) {
 	snake := ir.RustSnake(st.Name)
-	m.pf("/// One %s body (§3.3): each field off its declared default, then the zero\n/// reference.\n", st.Name)
-	m.pf("pub fn %s_save_message_body(w: &mut TableBitWriter, value: &%sRow) -> bool {\n", snake, st.Name)
-	m.pf("    let d = %s_message_default();\n", snake)
+	// Generate the field bodies aside, so the default image is emitted only
+	// when a ride test reads it: a body whose fields are all optional or
+	// always ride carries no unused binding.
+	body := &msgGen{u: m.u, slots: m.slots, orig: m.orig, n: m.n}
 	for _, f := range st.Fields {
 		expr := "value." + f.Name
 		ind := "        "
-		m.pf("    {\n")
+		body.pf("    {\n")
 		if f.Type.Optional {
-			m.pf("%sif %s_present {\n", ind, expr)
+			body.pf("%sif %s_present {\n", ind, expr)
 		}
-		m.storageCheck(f, expr, ind)
+		body.storageCheck(f, expr, ind)
 		rides := "true"
 		if !f.Type.Optional {
-			rides = m.rides(f, expr, "d."+f.Name, ind)
+			rides = body.rides(f, expr, "dflt."+f.Name, ind)
 		}
 		entry := ir.TableFieldEntry(f)
-		m.pf("%sif %s {\n%s    w.put(%d, TABLE_MESSAGE_REF_BITS);\n", ind, rides, ind, m.slot(entry))
-		m.writeValue(f, entry, expr, "d."+f.Name, ind+"    ")
-		m.pf("%s}\n", ind)
-		if f.Type.Optional {
-			m.pf("%s}\n", ind)
+		if rides == "true" {
+			body.pf("%sw.put(%d, TABLE_MESSAGE_REF_BITS);\n", ind, body.slot(entry))
+			body.writeValue(f, entry, expr, "dflt."+f.Name, ind)
+		} else {
+			body.pf("%sif %s {\n%s    w.put(%d, TABLE_MESSAGE_REF_BITS);\n", ind, rides, ind, body.slot(entry))
+			body.writeValue(f, entry, expr, "dflt."+f.Name, ind+"    ")
+			body.pf("%s}\n", ind)
 		}
-		m.pf("    }\n")
+		if f.Type.Optional {
+			body.pf("%s}\n", ind)
+		}
+		body.pf("    }\n")
 	}
+	m.n = body.n
+	generated := body.b.String()
+	m.pf("/// One %s body (§3.3): each field off its declared default, then the zero\n/// reference.\n", st.Name)
+	if strings.Contains(generated, "for i in 0..") {
+		// The emitted ride loop indexes the row's storage by the declared
+		// count: an iterator would turn an off-contract short row into a
+		// silent short write instead of the indexing failure the contract
+		// names.
+		m.pf("// The ride loop indexes the row's storage by the declared count: an\n// iterator would turn an off-contract short row into a silent short write.\n")
+		m.pf("#[allow(clippy::needless_range_loop)]\n")
+	}
+	m.pf("pub fn %s_save_message_body(w: &mut TableBitWriter, value: &%sRow) -> bool {\n", snake, st.Name)
+	if strings.Contains(generated, "dflt.") {
+		m.pf("    let dflt = %s_message_default();\n", snake)
+	}
+	m.pf("%s", generated)
 	m.pf("    w.put(0, TABLE_MESSAGE_REF_BITS);\n    !w.overflow\n}\n\n")
 }
 
@@ -297,6 +312,15 @@ func msgEnum(f *ir.Field) *ir.Enum {
 	return e
 }
 
+// rustCount types a count expression: a literal carries the suffix, so the
+// generated arithmetic casts no constant.
+func rustCount(count, typ string) string {
+	if count != "" && strings.IndexFunc(count, func(r rune) bool { return r < '0' || r > '9' }) < 0 {
+		return count + typ
+	}
+	return "(" + count + " as " + typ + ")"
+}
+
 // writeValue is one value by its entry's shape (gotable emitMessageValue).
 func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, dexpr, ind string) {
 	switch {
@@ -309,15 +333,17 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 			count = expr + "_length"
 		}
 		loop := count
+		typedCount := rustCount(count, "u64")
 		if f.KeyEnum != "" {
 			count = m.keyedPairs(f, expr, dexpr, ind)
+			typedCount = count
 			loop = fmt.Sprint(f.ArrayBound)
 		}
-		m.pf("%sw.put((%s as u64).wrapping_sub(%d), %d);\n", ind, count, entry.Shape.Min, ir.TableMessageCountBits(entry.Shape))
+		m.pf("%sw.put(%s.wrapping_sub(%d), %d);\n", ind, typedCount, entry.Shape.Min, ir.TableMessageCountBits(entry.Shape))
 		if ir.TableMessageAligns(entry.Kind, entry.Shape) {
 			m.pf("%sw.align();\n", ind)
 		}
-		m.pf("%sfor i in 0..(%s as usize) {\n", ind, loop)
+		m.pf("%sfor i in 0..%s {\n", ind, rustCount(loop, "usize"))
 		e := msgElement(f)
 		if f.KeyEnum != "" {
 			cond := m.rides(e, expr+"[i]", dexpr+"[i]", ind+"    ")
@@ -380,8 +406,12 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 		case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Width > 64:
 			lo = expr + ".0 as u64"
 			hi = "(" + expr + ".0 >> 64) as u64"
+		case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed && cookElemType(f) == "i64":
+			lo = expr + " as u64"
 		case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed:
 			lo = expr + " as i64 as u64"
+		case cookElemType(f) == "u64":
+			lo = expr
 		}
 		m.pf("%stable_message_write_scalar(w, &%s, %s, %s);\n", ind, msgShapeLiteral(entry.Kind, entry.Shape), lo, hi)
 	}
@@ -415,13 +445,20 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 		ind := "                "
 		m.pf("            0x%016x => {\n", mine.Id)
 		label := m.tmp("'f")
-		m.pf("%slet mut widened = false;\n%s%s: {\n", ind, ind, label)
+		widens := msgCanWiden(f, mine)
+		if widens {
+			m.pf("%slet mut widened = false;\n", ind)
+		}
+		m.pf("%s%s: {\n", ind, label)
 		m.compat(f, mine, "entry", "", label, ind+"    ")
 		m.readValue(f, "value."+f.Name, "entry", ind+"    ")
 		if f.Type.Optional {
 			m.pf("%s    value.%s_present = true;\n", ind, f.Name)
 		}
-		m.pf("%s    if widened { report.widened += 1; }\n%s}\n", ind, ind)
+		if widens {
+			m.pf("%s    if widened { report.widened += 1; }\n", ind)
+		}
+		m.pf("%s}\n", ind)
 		m.pf("            }\n")
 	}
 	m.pf("            _ => {\n                report.unknown += 1;\n                if !table_message_skip(r, v, &entry, 0) %s\n            }\n", msgBad)
@@ -430,6 +467,42 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 
 func wireWidenable(kind int) bool {
 	return kind >= 3 && kind <= 5 || kind >= 7 && kind <= 9 || kind == 11 || kind == 18 || kind == 19
+}
+
+// msgCanWiden is whether compat can set the widened flag for a field against
+// the entry it reads: the field's own kind widens, or an array's element kind
+// does (§4). When it cannot, the loader emits neither the flag nor its count,
+// so the generated module carries no state an allow would otherwise hide.
+func msgCanWiden(f *ir.Field, mine ir.TableVocabularyEntry) bool {
+	if f == nil {
+		return false
+	}
+	if mine.Kind == 14 && wireWidenable(int(mine.Shape.Elem)) {
+		return true
+	}
+	return wireWidenable(int(mine.Kind))
+}
+
+// msgFullyAssigned is whether readValue assigns the whole slot on every path,
+// so a union arm's local needs no default image for an assignment to replace.
+func msgFullyAssigned(f *ir.Field) bool {
+	if f == nil {
+		return false
+	}
+	if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+		return false
+	}
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		return false
+	}
+	return !isStructRef(f.Type) && !isUnionRef(f.Type)
+}
+
+// msgNeedsEntry is whether readValue of an array element reads the element's
+// vocabulary entry: a struct, a union and an enum decode by their own id and
+// shape, so their element entry is never named.
+func msgNeedsEntry(f *ir.Field) bool {
+	return !isStructRef(f.Type) && !isUnionRef(f.Type) && msgEnum(f) == nil
 }
 
 // compat is gotable's emitMessageCompatibility: the endpoint's kind is the field's,
@@ -511,13 +584,22 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 			mine := ir.TableArmEntry(v)
 			in := ind + "                "
 			label := m.tmp("'a")
-			m.pf("%s            0x%016x => {\n%slet mut widened = false;\n%s%s: {\n", ind, mine.Id, in, in, label)
+			widens := msgCanWiden(v.F, mine)
+			m.pf("%s            0x%016x => {\n", ind, mine.Id)
+			if widens {
+				m.pf("%slet mut widened = false;\n", in)
+			}
+			m.pf("%s%s: {\n", in, label)
 			m.compat(v.F, mine, arm, expr+".set_none()", label, in+"    ")
 			if v.Void() {
 				m.pf("%s    %s.set_%s();\n", in, expr, v.Name)
 			} else {
 				local := m.tmp("arm")
-				m.pf("%s    let mut %s: %s = Default::default();\n", in, local, unionArmRowType(un, v))
+				if msgFullyAssigned(v.F) {
+					m.pf("%s    let %s: %s;\n", in, local, unionArmRowType(un, v))
+				} else {
+					m.pf("%s    let mut %s: %s = Default::default();\n", in, local, unionArmRowType(un, v))
+				}
 				armExpr := local
 				if _, ok := unionArmCompanionType(un, v); ok {
 					armExpr = local + ".value"
@@ -527,7 +609,10 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 				m.readValue(&af, armExpr, arm, in+"    ")
 				m.pf("%s    %s.set_%s(%s);\n", in, expr, v.Name, local)
 			}
-			m.pf("%s    if widened { report.widened += 1; }\n%s}\n%s            }\n", in, in, ind)
+			if widens {
+				m.pf("%s    if widened { report.widened += 1; }\n", in)
+			}
+			m.pf("%s}\n%s            }\n", in, ind)
 		}
 		m.pf("%s            _ => {\n%s                %s.set_none();\n%s                report.unknown += 1;\n%s                if !table_message_skip(r, v, &%s, 0) %s\n%s            }\n", ind, ind, expr, ind, ind, arm, msgBad, ind)
 		m.pf("%s        }\n%s    }\n%s}\n", ind, ind, ind)
@@ -544,7 +629,11 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 		m.pf("%s            _ => { report.unknown += 1; 0 }\n%s        };\n%s    }\n%s}\n", ind, ind, ind, ind)
 	default:
 		m.pf("%s{\n", ind)
-		m.pf("%s    let Some((lo, hi)) = table_message_read_scalar(r, %s.kind, &%s.shape) else %s;\n", ind, entry, entry, msgBad)
+		hi := "hi"
+		if f.Type.Kind == ir.TBool || f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+			hi = "_hi"
+		}
+		m.pf("%s    let Some((lo, %s)) = table_message_read_scalar(r, %s.kind, &%s.shape) else %s;\n", ind, hi, entry, entry, msgBad)
 		m.convertScalar(f, expr, entry, ind+"    ")
 		m.pf("%s}\n", ind)
 	}
@@ -567,10 +656,14 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 		// announced packing. Every finite float32 widens exactly through the
 		// ordinary conversion (§4).
 		owner := floatOwnerIn(m.u, m.origOf(f))
+		mut := ""
+		if f.HasFloatRange {
+			mut = "mut "
+		}
 		if f.Type.Kind == ir.TFloat32 {
-			m.pf("%slet mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite(%q); 0.0 };\n", ind, owner)
+			m.pf("%slet %sx = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite(%q); 0.0 };\n", ind, mut, owner)
 		} else {
-			m.pf("%slet mut x = if %s.kind == 10 { if table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite(%q); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite(%q); 0.0 };\n", ind, entry, owner, owner)
+			m.pf("%slet %sx = if %s.kind == 10 { if table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite(%q); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite(%q); 0.0 };\n", ind, mut, entry, owner, owner)
 		}
 		if f.HasFloatRange {
 			var lo, hi string
@@ -587,16 +680,29 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 		return
 	}
 	signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
+	rlo, rhi, hasRange := ir.TableRawRange(f)
+	hasRange = hasRange && f.HasIntRange
+	bitsClamp := f.Type.Kind == ir.TBits && f.Type.Width < 64
+	mut := ""
+	if hasRange || bitsClamp {
+		mut = "mut "
+	}
 	if signed {
-		m.pf("%slet mut x = table_message_signed(%s.kind, lo, hi);\n", ind, entry)
+		m.pf("%slet %sx = table_message_signed(%s.kind, lo, hi);\n", ind, mut, entry)
 	} else {
-		m.pf("%slet mut x = table_message_unsigned(%s.kind, lo, hi);\n", ind, entry)
+		m.pf("%slet %sx = table_message_unsigned(%s.kind, lo, hi);\n", ind, mut, entry)
 	}
-	if rlo, rhi, ok := ir.TableRawRange(f); ok && f.HasIntRange {
-		l, h := rustBig(rlo, signed), rustBig(rhi, signed)
-		m.pf("%sif x < %s { x = %s; report.damaged = true; } else if x > %s { x = %s; report.damaged = true; }\n", ind, l, l, h, h)
+	if hasRange {
+		h := rustBig(rhi, signed)
+		if !signed && rlo.Sign() == 0 {
+			// An unsigned value is never below zero, so only the upper bound can fire.
+			m.pf("%sif x > %s { x = %s; report.damaged = true; }\n", ind, h, h)
+		} else {
+			l := rustBig(rlo, signed)
+			m.pf("%sif x < %s { x = %s; report.damaged = true; } else if x > %s { x = %s; report.damaged = true; }\n", ind, l, l, h, h)
+		}
 	}
-	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+	if bitsClamp {
 		max := uint64(1)<<f.Type.Width - 1
 		m.pf("%sif x > %d { x = %d; report.damaged = true; }\n", ind, max, max)
 	}
@@ -620,21 +726,24 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 	if f.KeyEnum == "" {
 		m.pf("%s    if %s.shape.elem == 6 && !r.align() %s\n", ind, entry, msgBad)
 	}
-	m.pf("%s    let %s = TableMessageEntry { id: 0, kind: %s.shape.elem, shape: %s.element, element: TableMessageShape::default() };\n", ind, el, entry, entry)
 	e := msgElement(f)
+	elArg := el
+	if f.KeyEnum == "" || msgNeedsEntry(e) {
+		m.pf("%s    let %s = TableMessageEntry { id: 0, kind: %s.shape.elem, shape: %s.element, element: TableMessageShape::default() };\n", ind, el, entry, entry)
+	} else {
+		elArg = entry
+	}
 	m.orig[e] = m.origOf(f)
 	if f.KeyEnum != "" {
 		// A KEYED SLOT TWICE IN ONE KEYED ARRAY IS DAMAGE (docs/SPEC-TABLES.md
 		// §3.2, §3.3): the slots this array has named are held in a fixed set.
 		m.pf("%s    let mut seen_keys = [0u64; 64];\n", ind)
-		m.pf("%s    let mut seen_key_count = 0usize;\n", ind)
 		m.pf("%s    let mut seen_key_more: Vec<u64> = Vec::new();\n", ind)
-		m.pf("%s    for _ in 0..n {\n", ind)
+		m.pf("%s    for (seen_key_count, _) in (0..n).enumerate() {\n", ind)
 		m.pf("%s        let Some(reference) = r.get(v.ref_bits) else %s;\n", ind, msgBad)
 		m.pf("%s        let Some(id) = v.name(reference) else %s;\n", ind, msgBad)
 		m.pf("%s        if seen_keys[..core::cmp::min(seen_key_count, seen_keys.len())].contains(&id) || seen_key_more.contains(&id) %s\n", ind, msgBad)
 		m.pf("%s        if seen_key_count < seen_keys.len() { seen_keys[seen_key_count] = id; } else { seen_key_more.push(id); }\n", ind)
-		m.pf("%s        seen_key_count += 1;\n", ind)
 		m.pf("%s        let key: usize = match id {", ind)
 		for i := range f.KeyEnumRef.Variants {
 			m.pf(" 0x%016x => %d,", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i+1)
@@ -642,7 +751,7 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 		m.pf(" _ => 0 };\n")
 		m.pf("%s        let mut scratch: %s = Default::default();\n", ind, elemType)
 		m.pf("%s        let p: &mut %s = if key != 0 { &mut %s[key - 1] } else { report.unknown += 1; &mut scratch };\n", ind, elemType, expr)
-		m.readValue(e, "(*p)", el, ind+"        ")
+		m.readValue(e, "(*p)", elArg, ind+"        ")
 		m.pf("%s    }\n", ind)
 	} else {
 		m.pf("%s    let keep = core::cmp::min(n, %d);\n", ind, f.ArrayBound)
@@ -652,7 +761,7 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 		m.pf("%s    for i in 0..walk {\n", ind)
 		m.pf("%s        let mut scratch: %s = Default::default();\n", ind, elemType)
 		m.pf("%s        let p: &mut %s = if i < keep { &mut %s[i as usize] } else { &mut scratch };\n", ind, elemType, expr)
-		m.readValue(e, "(*p)", el, ind+"        ")
+		m.readValue(e, "(*p)", elArg, ind+"        ")
 		m.pf("%s    }\n", ind)
 		m.pf("%s    if walk < n && !r.skip((n - walk) * width as u64) %s\n", ind, msgBad)
 		if f.Array == ir.ArrayCounted {

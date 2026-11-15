@@ -282,6 +282,62 @@ per unit, named for the unit's package:
 | `make/python-toolchain.mk`, `make/python.mk`, `make/python-*.mk` | the pin, the leg, and one fragment per gate |
 | `test/conformance/python/` | the conformance driver and `ci.json` |
 
+## THE TABLE FRAME
+
+The table core (P5/P6, cut so the other table cards run beside it) emits a
+generated class per table and per map entry, each with its descriptor
+(SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
+
+- **One module per field kind.** `_schema/kinds.py` is the dispatch table;
+  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
+  the kinds this cut carries. A later card adds its module and one registration
+  line, never an edit to the body walk. `kind_unsupported.py` is the named
+  placeholder for a construct whose descriptor exists but whose codec has not
+  landed; a read or write that reaches it refuses by name.
+- **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
+  the whole value or raise `Refused`, validate a write before writing a byte
+  and raise `InvalidValue`, write the flat node table for `*T`, and fill a
+  `LoadReport` on success only. `Measure` runs the same walk into a counting
+  sink, so measure and save agree by construction.
+- **The shape is measured.** A table whose fields are all bools and integers
+  gets the straight-line generated save/load pair, unrolled with each field
+  descriptor bound to a local; every table, and every construct a later card
+  adds, keeps the descriptor walk over `_schema/kinds.py`. The two shapes run
+  on the same table, under both pinned interpreters, in
+  `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
+  straight-line pair is kept: its save is faster on both pins, and its load is
+  faster on the floor.
+- **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
+  by-value tables and `*T` pointers to tables, for both the fixed and the
+  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
+  with table arms have descriptors in this cut and refuse by name through
+  `kind_unsupported.py` until their cards land.
+- **A packet-typed field is refused by name.** A table field whose type is a
+  packet `type` reaches `refusePacketValues` and is refused naming the field
+  and the type, until P4 carries packet types into tables.
+- **The compiler keeps the shared carry checks.** Before table dispatch it
+  refuses constructs outside the registered carry set, just as the packet
+  target does. The table emitter can describe future codec layers directly;
+  those descriptors do not claim that the compiler carries their constructs.
+
+### Bench
+
+The shape bench runs a ten-field fixed-point table (the five storage widths,
+signed and unsigned) under both pins, on the fleet host. Each figure is the
+minimum of five rounds of 10,000 iterations after warm-up, in nanoseconds per
+operation:
+
+| operation | 3.15.2 generated | 3.15.2 descriptor | 3.11.18 generated | 3.11.18 descriptor |
+|---|---:|---:|---:|---:|
+| save | 11,560 | 12,332 | 10,277 | 12,544 |
+| load | 12,700 | 12,455 | 13,590 | 14,159 |
+
+The generated save is 6% faster on 3.15.2 and 18% faster on 3.11.18; the
+generated load is 2% slower on 3.15.2 and 4% faster on 3.11.18. Save and load
+together, the generated pair is 2% faster on 3.15.2 and 11% faster on 3.11.18,
+so the pair is kept. `TestPythonTableCoreShapeBench` re-measures it and holds
+both shapes to the same value.
+
 ## IDENTIFIERS
 
 Fields keep the schema's spelling (`max_players`), and types, tables and
