@@ -1314,10 +1314,16 @@ local function put(w: Out, s: string)
 end
 
 -- writeString: one JSON string, the seven short escapes, every other control
--- byte as \u00xx; ill-formed UTF-8 is a value no text spells, and the writer
--- refuses it invalid_value rather than replacing it (docs/SPEC-TABLES.md
--- §16.3, §16.14 W0): w.err is set and toJson answers nil
+-- byte except zero as \u00xx; zero and ill-formed UTF-8 are values no text
+-- spells, and the writer refuses them invalid_value rather than replacing
+-- them (docs/SPEC-TABLES.md §16.3, §16.14 W0): w.err is set and toJson answers nil
 local function writeString(w: Out, s: string)
+	if string.find(s, "%z") ~= nil then
+		if w.err == nil then
+			w.err = "invalid_value: zero byte in a text field has no JSON spelling (docs/SPEC-TABLES.md §16.3)"
+		end
+		return
+	end
 	put(w, "\"")
 	local n = #s
 	local i = 1
