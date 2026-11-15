@@ -890,7 +890,6 @@ public final class Driver {
     }
 
     private static final String FIXED_NO_TEXT = "fixed table: the fixed form carries no text form in this leg";
-    private static final String FIXED_NO_COOK = "fixed table: the cook is fed a form 1 value, which a form 3 file does not give";
 
     // The variable form is emitted for every table the unit holds, so the
     // codec is looked up for every unit. A unit on another classpath, or a
@@ -1315,19 +1314,152 @@ public final class Driver {
         return true;
     }
 
+    // fixedCookValue reads a fixed root's form 3 file through its <Root>Fixed
+    // class and carries the one record it holds into the value the cook
+    // writer takes, a fresh <Root>Variable value: the cook is the same bytes
+    // whichever form the value was read from (docs/SPEC-TABLES.md §7.6; the
+    // Go leg cooks the value its fixed read gives). A read that refuses
+    // answers null.
+    private static Object fixedCookValue(FixedCodec fixed, CookCodec codec, byte[] wire) throws ReflectiveOperationException {
+        Object values = fixed.newValues();
+        Object report = fixed.report();
+        if (fixed.load(values, wire, report) != 1 || fixed.flag(report, "damaged") || fixed.flag(report, "refused")) {
+            return null;
+        }
+        Object value = codec.variable.valueType.getConstructor().newInstance();
+        FixedCarry.carry(java.lang.reflect.Array.get(values, 0), value);
+        return value;
+    }
+
+    // THE FIXED CARRY: convertValue the other way. It carries a fixed-form
+    // value into the variable-form value of the same table: scalars by name
+    // (the fixed union's `type` is the variable form's `tag`), a fixed buffer
+    // and its <name>Length into text or bytes, a fixed array and its
+    // <name>Count (or its whole length, for a fixed or an enum-keyed array)
+    // into a list, and a nested value recursively into a fresh variable
+    // value. It is self-contained: internal/codegen/javatable's
+    // TestJavaCookWriteFixedRoots compiles this same class beside a generated
+    // unit, so the test cooks exactly the value this driver cooks.
+    static final class FixedCarry {
+        private FixedCarry() {}
+
+        static void carry(Object from, Object to) throws ReflectiveOperationException {
+            for (java.lang.reflect.Field target : to.getClass().getFields()) {
+                if (java.lang.reflect.Modifier.isStatic(target.getModifiers())) {
+                    continue;
+                }
+                String name = target.getName();
+                java.lang.reflect.Field source = field(from.getClass(), name);
+                if (source == null && name.equals("tag")) {
+                    source = field(from.getClass(), "type");
+                }
+                if (source == null) {
+                    throw new NoSuchFieldException(from.getClass().getName() + " has no field for " + to.getClass().getName() + "." + name);
+                }
+                Object value = source.get(from);
+                Class<?> targetType = target.getType();
+                if (targetType.isPrimitive()) {
+                    target.set(to, scalar(targetType, value));
+                } else if (targetType == String.class || targetType == byte[].class || targetType == char[].class) {
+                    target.set(to, text(from, name, value, targetType));
+                } else if (java.util.List.class.isAssignableFrom(targetType)) {
+                    java.lang.reflect.Type element = ((java.lang.reflect.ParameterizedType) target.getGenericType()).getActualTypeArguments()[0];
+                    int used = used(from, name, value);
+                    java.util.List<Object> items = new java.util.ArrayList<>(used);
+                    for (int i = 0; i < used; i++) {
+                        items.add(element(java.lang.reflect.Array.get(value, i), element));
+                    }
+                    target.set(to, items);
+                } else if (value == null || targetType.isInstance(value)) {
+                    target.set(to, value);
+                } else {
+                    Object nested = targetType.getConstructor().newInstance();
+                    carry(value, nested);
+                    target.set(to, nested);
+                }
+            }
+        }
+
+        private static java.lang.reflect.Field field(Class<?> type, String name) {
+            try {
+                return type.getField(name);
+            } catch (NoSuchFieldException none) {
+                return null;
+            }
+        }
+
+        // a scalar narrowed or widened to the target's primitive type: the
+        // fixed form stores a narrow kind in its own width (a byte for a
+        // uint8), the variable form in an int, and the cook writes the slot's
+        // width either way
+        private static Object scalar(Class<?> target, Object value) {
+            Object v = value instanceof Character c ? Integer.valueOf(c.charValue()) : value;
+            if (v instanceof Number number) {
+                if (target == byte.class) { return number.byteValue(); }
+                if (target == short.class) { return number.shortValue(); }
+                if (target == int.class) { return number.intValue(); }
+                if (target == long.class) { return number.longValue(); }
+                if (target == float.class) { return number.floatValue(); }
+                if (target == double.class) { return number.doubleValue(); }
+                if (target == char.class) { return (char) number.intValue(); }
+            }
+            return value;
+        }
+
+        // the live length of a fixed field: its <name>Count or <name>Length
+        // companion, else the whole array (a fixed or an enum-keyed array)
+        private static int used(Object from, String name, Object value) throws ReflectiveOperationException {
+            java.lang.reflect.Field counted = field(from.getClass(), name + "Count");
+            if (counted != null) { return counted.getInt(from); }
+            java.lang.reflect.Field length = field(from.getClass(), name + "Length");
+            if (length != null) { return length.getInt(from); }
+            return java.lang.reflect.Array.getLength(value);
+        }
+
+        private static Object text(Object from, String name, Object value, Class<?> targetType) throws ReflectiveOperationException {
+            int used = used(from, name, value);
+            if (value instanceof byte[] bytes) {
+                byte[] live = java.util.Arrays.copyOf(bytes, used);
+                if (targetType == String.class) { return new String(live, java.nio.charset.StandardCharsets.UTF_8); }
+                if (targetType == byte[].class) { return live; }
+            }
+            if (value instanceof char[] chars) {
+                char[] live = java.util.Arrays.copyOf(chars, used);
+                if (targetType == String.class) { return new String(live); }
+                if (targetType == char[].class) { return live; }
+            }
+            throw new NoSuchFieldException("text field " + name + " holds " + (value == null ? "null" : value.getClass().getName()));
+        }
+
+        // one list element: a scalar boxed as the list's element type, or a
+        // nested value carried into a fresh element
+        private static Object element(Object item, java.lang.reflect.Type element) throws ReflectiveOperationException {
+            if (!(element instanceof Class<?> type)) {
+                throw new NoSuchFieldException("list element type " + element);
+            }
+            if (item == null || type.isInstance(item)) { return item; }
+            if (item instanceof Number || item instanceof Character) {
+                Class<?> primitive = java.lang.invoke.MethodType.methodType(type).unwrap().returnType();
+                Object boxed = scalar(primitive, item);
+                if (type.isInstance(boxed)) { return boxed; }
+            }
+            Object nested = type.getConstructor().newInstance();
+            carry(item, nested);
+            return nested;
+        }
+    } // FixedCarry
+
     private static int surfaceCookWrite(String out) throws IOException {
         for (String[] f : kind("cook-write")) {
             String[] inst = instanceNamed(f[1]);
             if (inst == null) { return failInt("missing instance " + f[1]); }
             CookCodec codec;
+            // a root declared fixed is a form 3 file, read by its <Root>Fixed
+            // class: the value that read gives is carried into the cook's
+            // value below (fixedToVariable)
+            FixedCodec fixed;
             try {
-                if (fixedCodec(inst[2], inst[3]) != null) {
-                    // the cook is fed a value read from a form 1 file, which a
-                    // fixed root's form 3 file is not
-                    spillAbsentReason(out, f[1], FIXED_NO_COOK);
-                    spillAbsentReason(out, f[1] + "-be", FIXED_NO_COOK);
-                    continue;
-                }
+                fixed = fixedCodec(inst[2], inst[3]);
                 codec = cookCodec(inst[2], inst[3]);
             }
             catch (ReflectiveOperationException broken) {
@@ -1349,9 +1481,14 @@ public final class Driver {
                 }
                 Object report = codec.variable.report();
                 boolean fromText = f.length > 2 && !f[2].equals("-");
-                Object value = fromText
-                        ? codec.variable.fromJson(Files.readAllBytes(Paths.get(f[2])), report)
-                        : codec.variable.load(Files.readAllBytes(Paths.get(inst[4])), report);
+                Object value;
+                if (fromText) {
+                    value = codec.variable.fromJson(Files.readAllBytes(Paths.get(f[2])), report);
+                } else if (fixed != null) {
+                    value = fixedCookValue(fixed, codec, Files.readAllBytes(Paths.get(inst[4])));
+                } else {
+                    value = codec.variable.load(Files.readAllBytes(Paths.get(inst[4])), report);
+                }
                 if (value == null || codec.variable.flag(report, "refused") || codec.variable.flag(report, "damaged")) {
                     return failInt(f[1] + ": cook input did not load");
                 }

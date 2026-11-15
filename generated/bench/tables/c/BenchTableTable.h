@@ -4084,7 +4084,10 @@ static SCHEMA_UNUSED int schema_benchtable_table_event_wire_load_( benchtable_ta
             value->type = BENCHTABLE_TABLE_EVENT_TYPE_PICKUP;
             break;
         }
-        default: r->report->unknown++; break;
+        default:
+            r->report->unknown++;
+            if ( !benchtable_table_skip_framed( arm, kind, 0, kind == 13 || kind == 14 || kind == 15 || kind == 16 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            break;
     }
     return 1;
 }

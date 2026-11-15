@@ -9,7 +9,9 @@
   field when no slot is present; each slot's key id is used before its
   element's ids, and an elided slot's ids are taken back, so the id table is
   the engine's byte for byte. The read places each triple by its key's id,
-  skips and counts a key it cannot name (checking a scalar slot's width), and
+  skips and counts a key it cannot name, walking that slot's element with the
+  declaration-free wire check every skipped payload gets (so a damaged table
+  slot refuses as the engine refuses it, skipped is not unread), and
   refuses a key reference of 0 or past the id table, a repeated key, an
   element kind off the keyed list, a different element kind, and any byte left
   inside a slot's or the body's L. Slot order is not judged on read: the Go
