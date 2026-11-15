@@ -68,13 +68,13 @@ var javaVarCellAnchors = map[string]struct {
 		},
 	},
 	// vt/defaults-and-table-rename/java: writeBackWire carries a variable-form
-	// read of a fixed-declared root into its form-3 value via convertValue so
+	// read of a fixed-declared root into its form-3 value via VariableCarry so
 	// cross-generation report rows write back canonical form-3 bytes.
 	"vt/defaults-and-table-rename/java": {
 		src: "test/conformance/java/src/Driver.java",
 		want: []string{
 			`private static byte[] writeBackWire(String unit, String root, VariableCodec codec, Object value) throws ReflectiveOperationException {`,
-			`convertValue(value, java.lang.reflect.Array.get(values, 0));`,
+			`VariableCarry.carry(value, java.lang.reflect.Array.get(values, 0));`,
 		},
 	},
 	// vt/maps/java: WireCheck.header refuses any array/map body shorter than

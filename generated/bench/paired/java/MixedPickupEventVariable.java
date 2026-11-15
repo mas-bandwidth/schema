@@ -981,4 +981,15 @@ public final class MixedPickupEventVariable {
             return;
         }
     }
+
+    /**
+     * carry a MixedPickupEventFixed value into this value (the text form's reader of a fixed root's
+     * value; docs/SPEC-TABLES.md §16, §3.4).
+     */
+    public static Value fromFixed(MixedPickupEventFixed.Value fixed) {
+        Value v = new Value();
+        v.itemId = fixed.itemId;
+        v.amount = fixed.amount;
+        return v;
+    }
 }

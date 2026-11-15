@@ -74,7 +74,7 @@ func unionMembers(un *ir.Union) []string {
 // An arm header is a field header plus an explicit payload extent. Only the
 // selected arm is storage identity and only it participates in node numbering
 // (SPEC-TABLES §2.6, §3, §3.1).
-func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
+func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string {
 	st := variableUnionStruct(un)
 	mem := unionMembers(un)
 	_, graphIndex := variableGraphTypes(u)
@@ -295,6 +295,9 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			}
 			b.WriteString("        report.unknown++;return 0;}\n")
 		}
+	}
+	if unitCarriesForm(u, "json") && fixed.unions[un.Name] {
+		writeFixedUnionToVariable(&b, u, un)
 	}
 	b.WriteString("}\n")
 	return b.String()
