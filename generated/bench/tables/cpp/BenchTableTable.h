@@ -3138,12 +3138,30 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
     }
 }
 
+// THE SKIP PATH'S SEEN SET is a fixed bitmap over the announced slot number,
+// so a skip allocates nothing and the depth cap bounds the walk. A slot above
+// the bitmap means more entries than this reader declared, and such a slot is
+// not tracked.
+static const int64_t kTableMessageSeenBits = kTableMessageEntriesHere > 4096 ? kTableMessageEntriesHere : 4096;
+
+// TableMessageSeenOnce records one reference of a body or one key of a keyed
+// array and answers false on a repeat, whether or not this reader can name the
+// field (§3.2, §3.3).
+inline bool TableMessageSeenOnce( uint64_t * seen, uint64_t slot )
+{
+    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return true; }
+    const uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
+    if ( ( seen[slot >> 6] & bit ) != 0 ) { return false; }
+    seen[slot >> 6] |= bit;
+    return true;
+}
+
 // TableMessageElementRunBits is the bits ONE element of an array or a keyed
 // entry occupies on the SKIP path, where nothing is resolved and a run of them
 // is one multiplication, and -1 where the element's width is its own
 // content's. A ZERO is a real answer, and it is why this exists: a ranged
 // element whose min equals its max rides no bits at all (§3.3).
-inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, const TableMessageEntry & entry )
+inline int64_t TableMessageElementRunBits( const TableMessageEntry & entry )
 {
     int64_t elem = 0;
     switch ( entry.elem_kind )
@@ -3160,7 +3178,12 @@ inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, c
         default: elem = entry.elem_value_bits; break;
     }
     if ( elem < 0 ) { return -1; }
-    if ( entry.kind == 16 ) { elem += vocabulary.ref_bits; } // a keyed slot's own key reference
+    if ( elem == 0 ) { return 0; }
+    if ( entry.kind == 16 ) { return -1; } // a keyed slot resolves its own key reference
+    // a float, a ranged value and a quantized value carry a condition a named
+    // read applies, so the element is walked rather than multiplied
+    if ( entry.elem_kind == 10 || entry.elem_kind == 11 ) { return -1; }
+    if ( entry.elem_packing == 1 || entry.elem_packing == 2 ) { return -1; }
     return elem;
 }
 
@@ -3199,6 +3222,9 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         {
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
+            if ( n > (uint64_t) ( ( r.bits - r.offset ) / 8 ) ) { return false; }
+            const uint8_t * text = r.buffer + ( r.offset >> 3 );
+            if ( !TableUtf8Valid( text, n ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
         case 31:
@@ -3208,6 +3234,25 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             uint64_t n = 0;
             if ( !r.align() || !r.get( n, 32 ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
+        }
+        case 10:
+        {
+            if ( entry.packing == 2 )
+            {
+                uint64_t index = 0;
+                if ( !r.get( index, entry.value_bits ) ) { return false; }
+                if ( index > (uint64_t) entry.qcount ) { return false; } // above the step count
+                return true;
+            }
+            uint64_t raw = 0;
+            if ( !r.get( raw, 32 ) ) { return false; }
+            return TableBitsFinite32( (uint32_t) raw );
+        }
+        case 11:
+        {
+            uint64_t raw = 0;
+            if ( !r.get( raw, 64 ) ) { return false; }
+            return TableBitsFinite64( raw );
         }
         case 14:
         case 16:
@@ -3221,15 +3266,28 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
                 if ( !r.get( raw, width ) ) { return false; }
                 n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
             }
+            if ( n > (uint64_t) entry.max ) { return false; } // a count above its announced maximum
             if ( entry.kind == 14 && entry.elem_kind == 6 && !r.align() ) { return false; }
             // A RUN OF FIXED-WIDTH ELEMENTS IS ONE MULTIPLICATION (§3.3), and
             // only an element whose width is its own content's is walked
-            const int64_t run = TableMessageElementRunBits( vocabulary, entry );
+            const int64_t run = TableMessageElementRunBits( entry );
             if ( run >= 0 ) { return TableMessageSkipRun( r, n, run ); }
+            // A STRUCTURAL ELEMENT NESTS ONE LEVEL DEEPER; a fixed-width one
+            // does not, so the depth cap counts what §4 says it counts.
+            const bool nested = entry.elem_kind == 13 || entry.elem_kind == 14 || entry.elem_kind == 15 ||
+                entry.elem_kind == 16 || entry.elem_kind == 17 || entry.elem_kind == 30;
+            uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
             for ( uint64_t i = 0; i < n; i++ )
             {
-                if ( entry.kind == 16 && !r.skip( vocabulary.ref_bits ) ) { return false; }
-                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; }
+                if ( entry.kind == 16 )
+                {
+                    uint64_t key_ref = 0;
+                    TableMessageEntry key_entry;
+                    if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
+                    if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
+                    if ( !TableMessageSeenOnce( seen, key_ref ) ) { return false; } // one key twice
+                }
+                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, nested ? depth + 1 : depth ) ) { return false; }
             }
             return true;
         }
@@ -3241,13 +3299,17 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth )
 {
     if ( depth > 128 ) { return false; }
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
         if ( ref == 0 ) { return true; }
         if ( ref > (uint64_t) vocabulary.count ) { return false; }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, TableVocabularyEntryAt( vocabulary, ref ), depth ) ) { return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        if ( TableMessageReserved( entry.id ) ) { return false; }
+        if ( !TableMessageSeenOnce( seen, ref ) ) { return false; } // one id twice
+        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
 }
 

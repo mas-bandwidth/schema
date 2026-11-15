@@ -3383,7 +3383,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
             // — in a pointered unit; a fixed unit skips the value whole.
             char key[kTableJsonMaxKey];
             int32_t key_length = 0;
-            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
             if ( TableJsonPeek( in ) != ':' )
             {
@@ -3441,7 +3441,7 @@ inline bool TableJsonSkipValue( TableJsonIn & in, int32_t depth )
     {
         case '{': return TableJsonSkipContainer( in, '}', depth );
         case '[': return TableJsonSkipContainer( in, ']', depth );
-        case '"': return TableJsonScanString( in, NULL, 0, NULL );
+        case '"': return TableJsonScanString( in, NULL, 0, NULL, NULL, true );
         case 't': return TableJsonLiteral( in, "true" );
         case 'f': return TableJsonLiteral( in, "false" );
         case 'n': return TableJsonLiteral( in, "null" );
@@ -3708,7 +3708,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         }
         char key[kTableJsonMaxKey];
         int32_t key_length = 0;
-        if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+        if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
         key[key_length] = 0;
         if ( TableJsonPeek( in ) != ':' )
         {
@@ -3831,7 +3831,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     {
         char name[kTableJsonMaxKey];
         int32_t name_length = 0;
-        if ( !TableJsonScanString( in, name, kTableJsonMaxKey - 1, &name_length ) ) { return false; }
+        if ( !TableJsonScanString( in, name, kTableJsonMaxKey - 1, &name_length, NULL, true ) ) { return false; }
         name[name_length] = 0;
         for ( int64_t v = 0; v <= f->enum_max; v++ )
         {
@@ -3879,7 +3879,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             {
                 char name[kTableJsonMaxKey];
                 int32_t name_length = 0;
-                if ( !TableJsonScanString( in, name, kTableJsonMaxKey - 1, &name_length ) ) { return false; }
+                if ( !TableJsonScanString( in, name, kTableJsonMaxKey - 1, &name_length, NULL, true ) ) { return false; }
                 name[name_length] = 0;
                 bool found = false;
                 for ( int64_t bit = 0; bit <= f->enum_max; bit++ )
@@ -4313,7 +4313,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             }
             char key[kTableJsonMaxKey];
             int32_t key_length = 0;
-            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
             {
                 bool repeated = false;
@@ -4569,7 +4569,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
                 return false;
             }
             int32_t key_length = 0;
-            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
             if ( TableJsonPeek( in ) != ':' )
             {
@@ -5067,7 +5067,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
     }
     char key[kTableJsonMaxKey];
     int32_t key_length = 0;
-    if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+    if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
     key[key_length] = 0;
     if ( TableJsonPeek( in ) != ':' )
     {
