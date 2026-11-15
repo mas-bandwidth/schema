@@ -436,10 +436,12 @@ func emitZeroField(g *Gen, f *ir.Field, path, ind string) {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.Pf("%sbuffer.fill(%s, 0, 0)\n%s%sLength = 0\n", ind, name, ind, name)
 	case f.Array != ir.ArrayNone:
-		switch f.Type.Kind {
-		case ir.TString, ir.TBytes:
+		switch {
+		case isByteElem(f.Type):
+			g.Pf("%sbuffer.fill(%s, 0, 0)\n", ind, name)
+		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			g.Pf("%sfor i = 1, %d do buffer.fill(%s[i], 0, 0); %sLength[i] = 0 end\n", ind, f.ArrayBound, name, name)
-		case ir.TNamed:
+		case f.Type.Kind == ir.TNamed:
 			switch f.Type.Ref.(type) {
 			case *ir.Struct, *ir.Union:
 				g.Pf("%sfor i = 1, %d do %s(%s[i]) end\n", ind, f.ArrayBound,

@@ -15,15 +15,18 @@ import (
 // EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/FIXED-FORM-ALGORITHM.md
 // §3.1, §4.5, §5.3; docs/SPEC-TABLES.md §3.4, §13.10; docs/rulings.json
 // fixed-dead-bytes-are-zero). The shared vectors are fixedvector.DeadBytes.
-// A file the list marks refused is refused by the generated load — the verdict
-// only, never the reason — and the caller's destination is the value it was
-// handed. A control reads and saves back byte for byte.
+// Each vector is read by both the identity reader and a newer reader carrying
+// the writer's layout in its lineage. A file the list marks refused is refused
+// by the generated load — the verdict only, never the reason — and the caller's
+// destination is the value it was handed. Identity controls save back byte for
+// byte.
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it runs the generated reader over the dead-byte corpus)")
 	corpus := corpusDir(t)
 	javac, javaBin := javaToolsRequired(t)
 	classes, pkg, root := buildDeadBytesReader(t, javac)
+	lineageClasses, lineagePkg, lineageRoot := buildDeadBytesLineageReader(t, javac)
 
 	for _, vec := range fixedvector.DeadBytes {
 		t.Run(vec.Name, func(t *testing.T) {
@@ -37,23 +40,30 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
 			}
 			file := filepath.Join(corpus, vec.File)
 			r := runDeadBytesProbe(t, javaBin, classes, pkg, root, file)
-			read := r.n == 1 && !r.refused && !r.damaged
-			if !vec.Reads {
-				if read {
-					t.Fatalf("%s: the load read the file, want a refusal", vec.File)
-				}
-				if !mapsEqual(r.before, r.value) {
-					t.Fatalf("%s: the refusal wrote the caller's destination", vec.File)
-				}
-				return
-			}
-			if !read {
-				t.Fatalf("%s: the control did not read: n=%d refused=%v damaged=%v", vec.File, r.n, r.refused, r.damaged)
-			}
-			if !r.saved {
-				t.Fatalf("%s: the control did not save back byte for byte (written=%d file=%d)", vec.File, r.written, r.file)
-			}
+			checkDeadBytesResult(t, vec, r, "identity", true)
+			r = runDeadBytesProbe(t, javaBin, lineageClasses, lineagePkg, lineageRoot, file)
+			checkDeadBytesResult(t, vec, r, "lineage", false)
 		})
+	}
+}
+
+func checkDeadBytesResult(t *testing.T, vec fixedvector.DeadVector, r deadProbeRun, reader string, saveBack bool) {
+	t.Helper()
+	read := r.n == 1 && !r.refused && !r.damaged
+	if !vec.Reads {
+		if read {
+			t.Fatalf("%s reader: %s read the file, want a refusal", reader, vec.File)
+		}
+		if !mapsEqual(r.before, r.value) {
+			t.Fatalf("%s reader: %s refusal wrote the caller's destination", reader, vec.File)
+		}
+		return
+	}
+	if !read {
+		t.Fatalf("%s reader: %s control did not read: n=%d refused=%v damaged=%v", reader, vec.File, r.n, r.refused, r.damaged)
+	}
+	if saveBack && !r.saved {
+		t.Fatalf("%s reader: %s control did not save back byte for byte (written=%d file=%d)", reader, vec.File, r.written, r.file)
 	}
 }
 
@@ -84,6 +94,51 @@ func buildDeadBytesReader(t *testing.T, javac string) (classes, pkg, root string
 	args = append(args, filepath.Join(src, "DeadProbe.java"))
 	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
+	}
+	return classes, pkg, root
+}
+
+func buildDeadBytesLineageReader(t *testing.T, javac string) (classes, pkg, root string) {
+	t.Helper()
+	old := versioningSchemaUnit(t, "DeadBytes.schema")
+	path := filepath.Join("..", "..", "..", "test", "tables", "DeadBytes.schema")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newerSrc := strings.Replace(string(src), "    pick DeadPick\n}", "    pick DeadPick\n    newer int32 = 0\n}", 1)
+	if newerSrc == string(src) {
+		t.Fatal("could not append a field to DeadRoot for the lineage reader")
+	}
+	newer := unitFrom(t, newerSrc)
+	oldEntry, ok := FixedLineageOf(old, "DeadRoot")
+	if !ok {
+		t.Fatal("no fixed DeadRoot writer layout")
+	}
+	files, err := GenerateLineage(newer, map[string][]FixedLineageEntry{"DeadRoot": {oldEntry}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg = javaPackageOf(newer)
+	root = rootOf(t, newer).Name
+	dir := t.TempDir()
+	srcDir := filepath.Join(dir, "src")
+	classes = filepath.Join(dir, "classes")
+	if err := os.MkdirAll(classes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixedJava(t, srcDir, pkg, files)
+	if err := os.WriteFile(filepath.Join(srcDir, "DeadProbe.java"), []byte(deadBytesProbe(pkg, root)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sources, err := filepath.Glob(filepath.Join(srcDir, "*", "*.java"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
+	args = append(args, filepath.Join(srcDir, "DeadProbe.java"))
+	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		t.Fatalf("javac lineage reader: %v\n%s", err, out)
 	}
 	return classes, pkg, root
 }
