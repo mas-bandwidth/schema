@@ -255,7 +255,7 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 	g.pf("    TableReport ignored; TableReader r; int32_t non_finite_before; int whole;\n    memset( &ignored, 0, sizeof( ignored ) );\n    if ( report == NULL ) { report = &ignored; }\n    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
 	g.pf("    %s( value );\n", g.api(st.Name, "reset"))
 	if st.Integrity != "" {
-		g.pf("    if ( bytes > 0 && buffer != NULL && buffer[0] == 1 && !schema_table_integrity_holds_( buffer, bytes ) ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; report->damage_reason = SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; return 0; }\n")
+		g.pf("    if ( bytes > 0 && buffer != NULL && buffer[0] == 1 && !schema_table_integrity_holds_( buffer, bytes ) ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; report->damage_reason = SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; return 0; }\n")
 		g.pf("    if ( bytes > 0 && buffer != NULL && buffer[0] == 1 ) { bytes -= 4; }\n")
 	}
 	g.pf("    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }\n")
@@ -415,12 +415,15 @@ func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
 	g.pf("%sTableReader sub;\n%sif ( !table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", ind, ind)
 	g.pf("%sif ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
 	g.pf("%sif ( sub.size >= 2 )\n%s{\n", ind, ind)
-	g.pf("%s    uint8_t elem_kind; uint64_t count, i;\n", ind)
+	g.pf("%s    uint8_t elem_kind; uint64_t count, i; uint8_t seen[512]; memset( seen, 0, sizeof( seen ) );\n", ind)
 	g.pf("%s    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
 	g.pf("%s    if ( elem_kind != %d ) { if ( !(%s) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; break; } r->report->widened++; }\n", ind, kind, wireElementWidenTest(f, kind, "elem_kind"))
 	g.pf("%s    for ( i = 0; i < count; i++ )\n%s    {\n", ind, ind)
 	g.pf("%s        uint64_t key_ref, key; int32_t slot = -1; TableReader elem;\n", ind)
-	g.pf("%s        if ( !table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || !table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
+	g.pf("%s        if ( !table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || key_ref > 4096 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
+	g.pf("%s        if ( seen[(key_ref-1)>>3] & (uint8_t)(1u << ((key_ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
+	g.pf("%s        seen[(key_ref-1)>>3] |= (uint8_t)(1u << ((key_ref-1) & 7));\n", ind)
+	g.pf("%s        if ( !table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
 	g.pf("%s        key = table_reader_id_at( &sub, key_ref );\n%s        switch ( key )\n%s        {\n", ind, ind, ind)
 	for i := range f.KeyEnumRef.Variants {
 		g.pf("%s            case 0x%016xull: slot = %d; break;\n", ind, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
@@ -441,6 +444,8 @@ func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
 		g.pf("%s        if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; %s(&%s); }\n", ind, g.api(f.Type.Name, "reset"), dst)
 	} else {
 		g.wireScalarRead(f, dst, "elem", "elem_kind", ind+"        ", "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; goto next_"+f.Name+";")
+		// The slot's L frames its element exactly (docs/SPEC-TABLES.md §4).
+		g.pf("%s        if ( elem.offset != elem.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }\n", ind)
 	}
 	if kind != tkTable {
 		g.pf("%s        next_%s: ;\n", ind, f.Name)

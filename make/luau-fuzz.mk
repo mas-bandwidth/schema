@@ -82,8 +82,10 @@ test-luau: tables-luau-wire-fuzz tables-luau-wire-fuzz-negative-control
 # THE LEG's PINNED VECTORS (test/conformance/luau/wire-fuzz-vectors.txt): every
 # Luau red the fuzzer found, each replayed through the leg and the oracle
 # exactly as found (the harness's --replay: one mutant, no enumerated or random
-# pass). Its control reverts each vector's fix in a scratch copy of the emitted
-# units and requires that vector's replay red.
+# pass). Each pins the STRICT read's verdict (docs/plans/strict-only.md). Its
+# control breaks that verdict in a scratch copy of the artifact the vector
+# covers -- the emitted units' strict read, or the driver's LoadMeasure -- and
+# requires that vector's replay red by name.
 .PHONY: tables-luau-wire-fuzz-vectors tables-luau-wire-fuzz-vectors-negative-control
 tables-luau-wire-fuzz-vectors: build/conformance-harness build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost
 	@mkdir -p build/wire-fuzz

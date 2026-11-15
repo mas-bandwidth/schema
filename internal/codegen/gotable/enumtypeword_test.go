@@ -50,6 +50,34 @@ fixed table Root {
 const enumTypeWordProbe = `package probe
 import("testing";"bytes";"encoding/base64")
 
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func rootForm1Save(value *Root, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -75,6 +103,18 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 		return false
 	}
 	return true
+}
+
+func rootForm1SaveText(value *Root) (string, error) {
+	n := rootForm1Measure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	b := make([]byte, n)
+	if rootForm1Save(value, b) != n {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(b), nil
 }
 
 func rootForm1Text(text string, report *TableReport) (*Root, error) {
@@ -116,9 +156,9 @@ func TestEnumWords(t *testing.T) {
 		var v, got Root
 		RootReset(&v)
 		v.Kind = tc.kind
-		n := RootMeasure(&v)
+		n := rootForm1Measure(&v)
 		b := make([]byte, n)
-		if RootSave(&v, b) != n {
+		if rootForm1Save(&v, b) != n {
 			t.Fatalf("save %s", tc.word)
 		}
 		var r TableReport
@@ -134,7 +174,7 @@ func TestEnumWords(t *testing.T) {
 		if !RootFromJSON(&j, a[:na], &r) || j.Kind != tc.kind {
 			t.Fatalf("json round trip %s: %+v %+v", tc.word, j, r)
 		}
-		b64, err := RootSaveText(&v)
+		b64, err := rootForm1SaveText(&v)
 		if err != nil || b64 != base64.StdEncoding.EncodeToString(b) {
 			t.Fatalf("base64 %s: %v", tc.word, err)
 		}

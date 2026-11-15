@@ -321,8 +321,16 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 	g.pf("    if (order != Endian.little && order != Endian.big) {\n")
 	g.pf("      if (report != null) report.reason = 'invalid_value';\n      return -1;\n    }\n")
 	g.pf("    // §3.1's numbering, the wire's own: node 1 is the root.\n")
-	g.pf("    final s = wire.WireState();\n    s.indexRoot(value);\n")
-	g.pf("    try {\n      wire.%sNumber(s, value, <Object>{value});\n    } on StateError {\n", dartName(n))
+	g.pf("    final s = wire.WireState();\n")
+	g.pf("    try {\n      s.numberGraph(value, (obj) {\n")
+	for _, name := range records {
+		rs := cookMember(g.unit, name)
+		if rs == nil || rs.IsMapEntry() {
+			continue
+		}
+		g.pf("        if (obj is wire.%s) { wire.%sNumber(s, obj, <Object>{}); return; }\n", rs.Name, dartName(rs.Name))
+	}
+	g.pf("        throw StateError('no node numberer for ${obj.runtimeType}');\n      });\n    } on StateError {\n")
 	g.pf("      if (report != null) report.reason = 'data_cycle';\n      return -1;\n    }\n")
 	g.pf("    final count = s.nodes.length + 1;\n")
 	g.pf("    final ids = List<int>.filled(count, 0);\n")

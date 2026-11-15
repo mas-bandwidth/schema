@@ -122,6 +122,9 @@ type tableGen struct {
 	schema    strings.Builder
 	indent    string // extra per-line indent while emitting inside a branch guard
 	loopDepth int    // fixed-form element loops open around the current emit (fixedLoopVar)
+	// fixedWriteCheck is set while the bounds walk is emitted as the WRITE
+	// check (fixedbounds.go): the same numbers, plus the text content rule.
+	fixedWriteCheck bool
 	// messageS and messageU cache the unit's message closure (messageClosure).
 	messageS, messageU map[string]bool
 }
@@ -788,10 +791,6 @@ public sealed class TableFieldInfo
     public Func<ulong, TableReport, ulong> RangeRaw;
     public Func<ulong, TableReport, ulong> RangeJsonInteger;
     public Func<ulong, bool> RequiredValidRaw;
-    // a ranged integer or bits(N) field's write-side predicate (docs/SPEC.md
-    // §5.1 rows 1-2): true when the raw value lies within its declared bound,
-    // the check the writers assert in a debug build. null on every other field.
-    public Func<ulong, bool> RangeValidRaw;
     public UInt128 DefaultWide;
     public int FracBits;
     public bool WideSigned;

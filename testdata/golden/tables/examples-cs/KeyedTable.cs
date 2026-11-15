@@ -173,7 +173,6 @@ namespace Tabledemo
         public static bool TeamConfigCollectTyped(TeamConfig v, ref TableWire.Ids ids)
         {
             TableFieldInfo[] fields = TeamConfigTableType().Fields;
-            System.Diagnostics.Debug.Assert(v.SpawnCount >= 0 && v.SpawnCount <= 64);
             if (v.SpawnCount != 4 && !ids.Add(0xceec99e2d65db674ul)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
             return true;
@@ -255,8 +254,8 @@ namespace Tabledemo
             return TeamConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long TeamConfigMeasureMessages(TeamConfig[] values) { return TableWire.MessageSave(values, TeamConfigTableType(), Span<byte>.Empty, true); }
-        public static long TeamConfigSaveMessages(TeamConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, TeamConfigTableType(), bytes, false); }
+        public static long TeamConfigMeasureMessages(TeamConfig[] values) { long wrote = TableWire.MessageSave(values, TeamConfigTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (TeamConfig v in values) { System.Diagnostics.Debug.Assert(TeamConfigFixedWriteAdmits(v)); } } return wrote; }
+        public static long TeamConfigSaveMessages(TeamConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, TeamConfigTableType(), bytes, false); if (wrote >= 0) { foreach (TeamConfig v in values) { System.Diagnostics.Debug.Assert(TeamConfigFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict TeamConfigLoadMessages(TeamConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, TeamConfigTableType(), bytes, vocabulary, report, out count); }
 
         public static long TeamConfigCookMeasure(TeamConfig value) { return TableWire.Cook(value, TeamConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -685,8 +684,8 @@ namespace Tabledemo
             return KeyedConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long KeyedConfigMeasureMessages(KeyedConfig[] values) { return TableWire.MessageSave(values, KeyedConfigTableType(), Span<byte>.Empty, true); }
-        public static long KeyedConfigSaveMessages(KeyedConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, KeyedConfigTableType(), bytes, false); }
+        public static long KeyedConfigMeasureMessages(KeyedConfig[] values) { long wrote = TableWire.MessageSave(values, KeyedConfigTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (KeyedConfig v in values) { System.Diagnostics.Debug.Assert(KeyedConfigFixedWriteAdmits(v)); } } return wrote; }
+        public static long KeyedConfigSaveMessages(KeyedConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, KeyedConfigTableType(), bytes, false); if (wrote >= 0) { foreach (KeyedConfig v in values) { System.Diagnostics.Debug.Assert(KeyedConfigFixedWriteAdmits(v)); } } return wrote; }
         public static TableWire.Verdict KeyedConfigLoadMessages(KeyedConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, KeyedConfigTableType(), bytes, vocabulary, report, out count); }
 
         public static long KeyedConfigCookMeasure(KeyedConfig value) { return TableWire.Cook(value, KeyedConfigTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
@@ -805,7 +804,7 @@ namespace Tabledemo
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "spawn_count", Json = "spawn_count", TypeName = "int32", Id = 0xceec99e2d65db674, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 64.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.TeamConfig)o).SpawnCount)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.TeamConfig)o).SpawnCount = unchecked((int)(long)r); }, MessageSlot = 92, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x40ul)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.TeamConfig)o; value.SpawnCount = 4; }, DefaultRaw = unchecked((ulong)(long)(4)), RangeJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L || v > 64L) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return raw; }, RangeValidRaw = delegate (ulong raw) { int v = unchecked((int)(long)raw); return v >= 0 && v <= 64; }, RangeRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } if (v > 64) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return unchecked((ulong)(long)(v)); } },
+                    new TableFieldInfo { Name = "spawn_count", Json = "spawn_count", TypeName = "int32", Id = 0xceec99e2d65db674, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 64.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.TeamConfig)o).SpawnCount)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.TeamConfig)o).SpawnCount = unchecked((int)(long)r); }, MessageSlot = 92, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x40ul)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.TeamConfig)o; value.SpawnCount = 4; }, DefaultRaw = unchecked((ulong)(long)(4)), RangeJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L || v > 64L) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return raw; }, RangeRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } if (v > 64) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return unchecked((ulong)(long)(v)); } },
                     new TableFieldInfo { Name = "banner", Json = "banner", TypeName = "string", Id = 0xbca0dab1c7a00ccf, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 16, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate (object o) { return ((global::Tabledemo.TeamConfig)o).Banner; }, GetCount = delegate (object o) { return ((global::Tabledemo.TeamConfig)o).BannerLength; }, SetCount = delegate (object o, int n) { ((global::Tabledemo.TeamConfig)o).BannerLength = n; }, MessageSlot = 93, Ordinal = 1, NativeOffset = 4, NativeElementSize = 17, NativeCountOffset = 24, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.TeamConfig)o; Array.Clear(value.Banner, 0, value.Banner.Length); value.BannerLength = 0; } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Tabledemo.TeamConfig)o); };
@@ -993,7 +992,7 @@ namespace Tabledemo
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "per_team", Json = "per_team", TypeName = "int32", Id = 0xf10fad739a0e1660, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)global::Tabledemo.Schema.TeamMax, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate (ulong v) { return v <= (ulong)TeamMax ? EnumNameTeam((global::Tabledemo.Team)v) : "???"; }, KeyId = delegate (ulong v) { ulong id; TableEnumId((global::Tabledemo.Team)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.ScoreBoard)o).PerTeam[i])); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.ScoreBoard)o).PerTeam[i] = unchecked((int)(long)r); }, MessageSlot = 88, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x186a0ul)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ScoreBoard)o; Array.Clear(value.PerTeam, 0, value.PerTeam.Length); }, DefaultRaw = unchecked((ulong)(long)(0)), RangeJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L || v > 100000L) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return raw; }, RangeValidRaw = delegate (ulong raw) { int v = unchecked((int)(long)raw); return v >= 0 && v <= 100000; }, RangeRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } if (v > 100000) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return unchecked((ulong)(long)(v)); } },
+                    new TableFieldInfo { Name = "per_team", Json = "per_team", TypeName = "int32", Id = 0xf10fad739a0e1660, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)global::Tabledemo.Schema.TeamMax, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate (ulong v) { return v <= (ulong)TeamMax ? EnumNameTeam((global::Tabledemo.Team)v) : "???"; }, KeyId = delegate (ulong v) { ulong id; TableEnumId((global::Tabledemo.Team)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.ScoreBoard)o).PerTeam[i])); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.ScoreBoard)o).PerTeam[i] = unchecked((int)(long)r); }, MessageSlot = 88, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x186a0ul)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ScoreBoard)o; Array.Clear(value.PerTeam, 0, value.PerTeam.Length); }, DefaultRaw = unchecked((ulong)(long)(0)), RangeJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L || v > 100000L) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return raw; }, RangeRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } if (v > 100000) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return unchecked((ulong)(long)(v)); } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Tabledemo.ScoreBoard)o); };
                 info.Doc = TableDocNone;
@@ -1126,11 +1125,9 @@ namespace Tabledemo
         public static void TeamConfigFixedWriteBody(Span<byte> b, TeamConfig value)
         {
             if (value == null) return;
-            System.Diagnostics.Debug.Assert(value.SpawnCount >= 0 && value.SpawnCount <= 64);
             BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.SpawnCount);
             int len_banner = value.Banner != null ? value.BannerLength : 0;
             System.Diagnostics.Debug.Assert(len_banner <= 16);
-            System.Diagnostics.Debug.Assert(len_banner == 0 || TableWire.TextValid(value.Banner.AsSpan(0, len_banner)));
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), len_banner);
             if (len_banner > 0) { value.Banner.AsSpan(0, len_banner).CopyTo(b.Slice(8)); }
         }
@@ -1238,6 +1235,41 @@ namespace Tabledemo
             ScoreBoardFixedClampBody(value.Scores, ref clamped);
         }
 
+        // TeamConfig's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void TeamConfigFixedWriteCheckBody(TeamConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.SpawnCount < 0 || value.SpawnCount > 64) { clamped++; }
+            if (value.Banner != null && value.BannerLength >= 0 && value.BannerLength <= value.Banner.Length && !TableWire.TextValid(value.Banner.AsSpan(0, value.BannerLength))) { clamped++; }
+        }
+
+        // ScoreBoard's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void ScoreBoardFixedWriteCheckBody(ScoreBoard value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.PerTeam != null)
+            {
+                for (int i = 0; i < 3 && i < value.PerTeam.Length; ++i)
+                {
+                    if (value.PerTeam[i] < 0 || value.PerTeam[i] > 100000) { clamped++; }
+                }
+            }
+        }
+
+        // KeyedConfig's write check (docs/SPEC.md §5.1), debug builds only.
+        public static void KeyedConfigFixedWriteCheckBody(KeyedConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Teams.Slots != null)
+            {
+                for (int i = 0; i < 3 && i < value.Teams.Slots.Length; ++i)
+                {
+                    TeamConfigFixedWriteCheckBody(value.Teams.Slots[i], ref clamped);
+                }
+            }
+            ScoreBoardFixedWriteCheckBody(value.Scores, ref clamped);
+        }
+
         // GunnerConfig's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
         // <Owner>.<field>, or null.
         public static string GunnerConfigFixedFiniteBody(GunnerConfig value)
@@ -1313,6 +1345,15 @@ namespace Tabledemo
             TeamConfigFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this TeamConfig
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool TeamConfigFixedWriteAdmits(TeamConfig value)
+        {
+            int bad = 0;
+            TeamConfigFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- TeamConfig, the fixed form ----
@@ -1564,6 +1605,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             TeamConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -1629,6 +1671,10 @@ namespace Tabledemo
         {
             long need = TeamConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(TeamConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), TeamConfigFixedHash);
@@ -1757,7 +1803,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -2087,6 +2133,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             GunnerConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -2281,7 +2328,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -2636,6 +2683,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             TurretConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -2837,7 +2885,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -3253,6 +3301,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             HullConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -3475,7 +3524,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -3575,6 +3624,15 @@ namespace Tabledemo
             KeyedConfigFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             return clamped == 0;
+        }
+
+        // THE WRITE CONTRACT (docs/SPEC.md §5.1): whether every value this KeyedConfig
+        // holds is one its declaration admits. Every writer asserts it, debug only.
+        public static bool KeyedConfigFixedWriteAdmits(KeyedConfig value)
+        {
+            int bad = 0;
+            KeyedConfigFixedWriteCheckBody(value, ref bad);
+            return bad == 0;
         }
 
         // ---- KeyedConfig, the fixed form ----
@@ -4107,6 +4165,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             KeyedConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -4266,6 +4325,10 @@ namespace Tabledemo
             long need = KeyedConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (KeyedConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k)
+            {
+                System.Diagnostics.Debug.Assert(KeyedConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
+            }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), KeyedConfigFixedHash);
@@ -4394,7 +4457,7 @@ namespace Tabledemo
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;

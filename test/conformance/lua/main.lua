@@ -36,7 +36,8 @@ local SURFACE_ORDER = {
   "wire", "message", "report", "framing", "retain", "retain-save", "json-read",
   "json-write", "json-hostile", "cook", "cook-write", "cook-foreign", "block",
   "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason",
-  "block-reason",
+  "block-reason", "write-refusal", "write-refusal-fixed",
+  "write-refusal-message", "write-refusal-json",
 }
 local SURFACES = {}
 for _, s in ipairs(SURFACE_ORDER) do SURFACES[s] = true end
@@ -914,6 +915,194 @@ local function surfaceCookWrite(all, outdir)
 end
 
 ---------------------------------------------------------------------------
+-- THE WRITE CONTRACT (docs/SPEC.md §5.1): the four write-refusal surfaces
+---------------------------------------------------------------------------
+--
+-- Each row loads the root's current-form instance by that same form
+-- (testdata/conformance/tables/FORMAT.md, `write-refusal`), sets the ONE field
+-- its path names, and writes through one writer: the root's own form's
+-- (FixedSave as a batch of one for a fixed root, Save for a variable one), the
+-- fixed form's FixedSave, SaveMessages against the connection's vocabulary,
+-- or the text writer. Lua has no assert idiom, so every writer refuses in
+-- every build (docs/SPEC.md §5.1): a nil return or a raised error is the
+-- refusal, and anything else is `wrote`.
+--
+-- THE VALUE IS SET THE WAY A CALLER SETS IT. An enum is held by its variant
+-- name, so a lawful ordinal is that variant's name and an ordinal outside the
+-- set is the bare integer, which names no variant: the writer must refuse it
+-- rather than write some other ordinal. A union is { tag = n } with its arm's
+-- payload at the arm's slot; a lawful tag takes its arm at the arm's declared
+-- defaults, and an unlawful one carries no payload. A count is the array's
+-- length, a new element a copy of element 1. A narrow text is a Lua string,
+-- which holds any bytes; a wide text its array of UTF-16 units.
+
+local function deepCopy(x)
+  if type(x) ~= "table" then return x end
+  local out = {}
+  for k, e in pairs(x) do out[k] = deepCopy(e) end
+  return out
+end
+
+local function hexBytes(text)
+  if #text % 2 ~= 0 then fail("hex " .. text .. " is not whole bytes") end
+  return (text:gsub("..", function(h) return string.char(tonumber(h, 16)) end))
+end
+
+local function wrefFloat(text)
+  if text == "nan" then return 0.0 / 0.0 end
+  if text == "inf" then return math.huge end
+  if text == "-inf" then return -math.huge end
+  return tonumber(text) + 0.0
+end
+
+-- the descriptor of field `name` in table `tname`
+local function wrefField(u, tname, name)
+  local desc = u.T.Tables[tname]
+  if desc == nil then fail("no table " .. tostring(tname)) end
+  for _, fd in ipairs(desc.fields) do
+    if fd.name == name then return fd end
+  end
+  fail("no field " .. name .. " in " .. tname)
+end
+
+-- walk `path` from the root to the owner of its last segment: answers the
+-- owning table value, the last field's descriptor, and its element index
+-- (0-based in the path, 1-based here) or nil
+local function wrefWalk(u, root, v, path)
+  local segments = {}
+  for s in path:gmatch("[^.]+") do segments[#segments + 1] = s end
+  local tname, owner = root, v
+  for i, s in ipairs(segments) do
+    local name, index = s:match("^([%a_][%w_]*)%[(%d+)%]$")
+    if name == nil then
+      name = s:match("^([%a_][%w_]*)$")
+      if name == nil then fail(path .. ": " .. s .. " is not a path segment") end
+    end
+    local fd = wrefField(u, tname, name)
+    if index ~= nil then index = math.tointeger(tonumber(index)) + 1 end
+    if i == #segments then return owner, fd, index end
+    local child = owner[name]
+    if index ~= nil then child = child[index] end
+    if type(child) ~= "table" then fail(path .. ": " .. s .. " holds no table") end
+    owner, tname = child, fd.type_name
+  end
+end
+
+-- set the one field: every value a row names is one this leg's storage holds,
+-- so no row answers `unrepresentable`
+local function wrefSet(u, root, v, path, what, text)
+  local owner, fd, index = wrefWalk(u, root, v, path)
+  local key, holder = fd.name, owner
+  if index ~= nil then
+    holder, key = owner[fd.name], index
+  end
+  local d = fd
+  if index ~= nil and fd.shape == "array" then d = fd.elem end
+  if what == "int" then
+    holder[key] = math.tointeger(tonumber(text))
+  elseif what == "float" then
+    holder[key] = wrefFloat(text)
+  elseif what == "count" then
+    local arr = holder[key] or {}
+    local n = math.tointeger(tonumber(text))
+    for i = #arr + 1, n do arr[i] = deepCopy(arr[1]) end
+    for i = #arr, n + 1, -1 do arr[i] = nil end
+    holder[key] = arr
+  elseif what == "length" then
+    holder[key] = string.rep("a", math.tointeger(tonumber(text)))
+  elseif what == "bytes" then
+    holder[key] = hexBytes(text)
+  elseif what == "units" then
+    local b = hexBytes(text)
+    local units = {}
+    for i = 1, #b, 2 do units[#units + 1] = (b:byte(i) << 8) | b:byte(i + 1) end
+    holder[key] = units
+  elseif what == "ordinal" then
+    local n = math.tointeger(tonumber(text))
+    local var = n ~= 0 and d.variants[n] or nil
+    if var ~= nil then
+      holder[key] = var[1]
+    else
+      holder[key] = n
+    end
+  elseif what == "tag" then
+    local n = math.tointeger(tonumber(text))
+    local un = u.T.Unions[d.target]
+    local arm = un.arms[n]
+    local x = { tag = n }
+    if n ~= 0 and arm ~= nil and arm.field ~= nil then
+      local af = arm.field
+      if af.shape == "table" then
+        x[arm.slot] = u.T["New" .. af.target]()
+      else
+        x[arm.slot] = af.default
+      end
+    end
+    holder[key] = x
+  else
+    fail(path .. ": " .. what .. " is not a write-refusal kind")
+  end
+end
+
+-- a writer's answer: refused on nil, false or a raised error
+local function wrefWrite(fn, ...)
+  local ok, out = pcall(fn, ...)
+  if not ok or out == nil or out == false then return "refused\n" end
+  return "wrote\n", out
+end
+
+-- FixedSave as a batch of one, into exactly the measure
+local function wrefFixedSave(u, root, v)
+  local answer, out = wrefWrite(u.T.FixedSave, root, { v })
+  if answer == "wrote\n" and #out ~= u.T.FixedMeasure(root, 1) then return "refused\n" end
+  return answer
+end
+
+local function surfaceWriteRefusal(all, outdir, surface)
+  for _, f in ipairs(kind(all, surface)) do
+    -- <surface> <case> <unit> <root> <wire> <path> <kind> <value>
+    local name, key, root, wire, path, what, text = f[2], f[3], f[4], f[5], f[6], f[7], f[8]
+    local conn
+    if surface == "write-refusal-message" then
+      conn = connectionNamed(all, key)
+      key = conn[3]
+    end
+    local u = unit(key)
+    if not u then
+      absent(outdir, name, NOT_GENERATED)
+    else
+      local v, why = strictRead(u, root, mustRead(wire))
+      if v == nil then fail(name .. ": load refused " .. wire .. " (" .. tostring(why) .. ")") end
+      wrefSet(u, root, v, path, what, text)
+      local answer
+      if surface == "write-refusal" then
+        if isFixed(u, root) then
+          answer = wrefFixedSave(u, root, v)
+        else
+          answer = wrefWrite(u.save.Save, u.T, root, v)
+        end
+      elseif surface == "write-refusal-fixed" then
+        if not isFixed(u, root) then fail(name .. ": " .. root .. " has no fixed form") end
+        answer = wrefFixedSave(u, root, v)
+      elseif surface == "write-refusal-message" then
+        answer = wrefWrite(u.T.SaveMessages, root, vocabulary(u, conn, name), { v })
+      else
+        -- the text writer writes a zero byte as \u0000 (docs/SPEC-TABLES.md
+        -- §16.3): `wrote` is the text written AND spelling it, so text that
+        -- dropped or replaced the zero is neither answer
+        local out
+        answer, out = wrefWrite(u.json.ToJson, u.T, root, v)
+        local zero = what == "bytes" and hexBytes(text):find("\0", 1, true)
+        if answer == "wrote\n" and zero and not out:find("\\u0000", 1, true) then
+          answer = "wrote without spelling the zero byte as \\u0000\n"
+        end
+      end
+      writeBytes(outdir .. "/" .. name, answer)
+    end
+  end
+end
+
+---------------------------------------------------------------------------
 -- main
 ---------------------------------------------------------------------------
 
@@ -956,5 +1145,6 @@ elseif surface == "forgery" then surfaceForgery(all, outdir, "block", false)
 elseif surface == "cook-forgery" then surfaceForgery(all, outdir, "cook", false)
 elseif surface == "cook-reason" then surfaceForgery(all, outdir, "cook", true)
 elseif surface == "block-reason" then surfaceForgery(all, outdir, "block", true)
+elseif surface:find("^write%-refusal") then surfaceWriteRefusal(all, outdir, surface)
 end
 os.exit(0)

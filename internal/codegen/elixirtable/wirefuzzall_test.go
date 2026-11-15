@@ -37,9 +37,15 @@ func TestWireFuzzAllTargetElixir(t *testing.T) {
 	recipe := makeTargetRecipe(t, text, target)
 	run := regexp.MustCompile(`\s+`).ReplaceAllString(recipe, " ")
 
-	const command = "ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N)"
+	// The ebin is a variable so the negative control can run this same recipe
+	// over a sabotaged copy; its default is the real build.
+	const command = "ELIXIR_TABLES_EBIN=$(ELIXIR_WIRE_FUZZ_ALL_EBIN) ./build/conformance-harness wire-fuzz --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N)"
 	if !strings.Contains(run, command) {
 		t.Errorf("the %s recipe does not run %q:\n%s", target, command, recipe)
+	}
+	const ebin = "ELIXIR_WIRE_FUZZ_ALL_EBIN ?= $(CURDIR)/build/elixir-tables-ebin"
+	if !strings.Contains(text, ebin) {
+		t.Errorf("make/elixir.mk does not default the gate's ebin to the real build (%q)", ebin)
 	}
 	if strings.Contains(run, "--manifest") {
 		t.Errorf("the %s recipe passes --manifest, so it fuzzes a chosen roster rather than the harness's default one:\n%s", target, recipe)

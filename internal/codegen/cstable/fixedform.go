@@ -1470,6 +1470,10 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range bodies {
 		g.emitFixedClampBodyFn(st)
 	}
+	// THE WRITE CHECK, the same walk with the text content rule (§5.1).
+	for _, st := range bodies {
+		g.emitFixedWriteCheckBodyFn(st)
+	}
 	// THE FINITE PASS, in the same order (docs/SPEC-TABLES.md §3.3): the read
 	// runs it before the bounds pass and the writer before its first byte.
 	for _, st := range bodies {
@@ -1477,6 +1481,7 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	}
 	for _, st := range roots {
 		g.emitFixedClamp(st)
+		g.emitFixedWriteAdmits(st)
 		g.emitFixedRoot(st)
 	}
 }
@@ -1543,7 +1548,6 @@ func (g *tableGen) emitFixedWritePayloadAs(owner *ir.Struct, f *ir.Field, base i
 	case f.Type.Kind == ir.TString:
 		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
 		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
-		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s == 0 || TableWire.TextValid(%s.%s.AsSpan(0, len_%s)));\n", ind, stem, val, prop, stem)
 		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
 		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
 	case f.Type.Kind == ir.TBytes:
@@ -1646,7 +1650,6 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 		case *ir.Union:
 			tagBytes := int64(ir.StorageBitsFor(r.Max) / 8)
 			g.pf("%sif (%s != null)\n%s{\n", ind, expr, ind)
-			g.pf("%s    System.Diagnostics.Debug.Assert((ulong)%s.Type <= %d);\n", ind, expr, r.Max)
 			tagType := f.Type.Name + "Type"
 			switch tagBytes {
 			case 1:
@@ -1674,7 +1677,6 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			g.pf("%s        default: break;\n%s    }\n%s}\n", ind, ind, ind)
 			return
 		case *ir.Enum:
-			g.pf("%sSystem.Diagnostics.Debug.Assert((ulong)%s <= %d);\n", ind, expr, r.Max)
 			w := int64(r.StorageBits / 8)
 			switch w {
 			case 1:
@@ -1690,7 +1692,6 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			return
 		}
 	}
-	g.writeRangeAssert(f, expr, ind)
 	w := fixedStorageBytes(f.Type)
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -1990,6 +1991,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		// §3.3), before the first output byte
 		g.pf("    for (int k = 0; k < values.Length; ++k) { if (%sFixedFiniteBody(values[k]) != null) { return -1; } }\n", name)
 	}
+	if g.fixedWriteAdmits(st) != "" {
+		g.pf("    for (int k = 0; k < values.Length; ++k)\n    {\n")
+		g.emitFixedWriteAssert(st, "values[k]", "        ")
+		g.pf("    }\n")
+	}
 	g.pf("    buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();\n")
 	g.pf("    buffer[0] = TableFixedWire.Form;\n")
 	g.pf("    BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), %sFixedHash);\n", name)
@@ -2126,7 +2132,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        writerClamp = %sFixedClampKnown[pick];\n", name)
 	}
 	g.pf("    }\n")
-	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0)\n    {\n")
+	// A ROOT READ IS ONE RECORD: handed room for exactly one value, a file of
+	// none holds no value to read, and the engine answers it truncated.
+	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0 || (rest == 0 && values.Length == 1))\n    {\n")
 	g.pf("        if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    long n = rest / record_bytes;\n")
@@ -2413,6 +2421,9 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    if (report != null) { report.Widened++; }\n")
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Const:\n                {\n")
+	// THE UNION'S None CONST HOLDS THE WRITER'S ARM SET (§4.6), the twin of
+	// TableFixedWire.Run's Const case.
+	g.pf("                    if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return \"out_of_range\"; }\n")
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, p.Aux, report);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            default: break;\n        }\n    }\n    return null;\n}\n\n")

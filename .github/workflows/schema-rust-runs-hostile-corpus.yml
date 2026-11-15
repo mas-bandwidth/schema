@@ -62,6 +62,8 @@ jobs:
           cache: false
       # the fleet's schema runners carry rust on PATH (the toolchains role)
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
         if: runner.environment == 'github-hosted'
       - name: the corpus gate (${{ matrix.profile }})
         run: make schema-rust-runs-hostile-corpus RUSTUP_BIN="$(dirname "$(command -v cargo)")" RUST_HOSTILE_PROFILES=${{ matrix.profile }} RUST_HOSTILE_JOBS="$(getconf _NPROCESSORS_ONLN)"
@@ -86,6 +88,8 @@ jobs:
           go-version-file: go.mod
           cache: false
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
         if: runner.environment == 'github-hosted'
       - name: the planted-bad-pattern control
         run: make schema-rust-runs-hostile-corpus-negative-control RUSTUP_BIN="$(dirname "$(command -v cargo)")"
