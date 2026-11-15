@@ -160,6 +160,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	// readFieldsRetain: the variable readFields, with capture in the unknown arm
 	// and the body's path threaded into list elements (§6.6).
 	fmt.Fprintf(&b, "    static void readFieldsRetain(TableVariable.Reader r, %sVariable.Value v, TableVariable.NodeTable nt, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
+	b.WriteString("        int lastOrder = -1;\n")
 	hasReq := false
 	for i, f := range st.Fields {
 		if f.Required {
@@ -202,6 +203,8 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		}
 		first = false
 		fmt.Fprintf(&b, "if (id == %sVariable.F_%s) {\n", st.Name, varMember(f))
+		fmt.Fprintf(&b, "                if (lastOrder >= %d) { report.refuse(\"non_canonical\"); return; }\n", i)
+		fmt.Fprintf(&b, "                lastOrder = %d;\n", i)
 		if f.Required {
 			fmt.Fprintf(&b, "                boolean reqMatch = (%s);\n", variableCompatibleKinds(variableWireKind(f), "kind"))
 			if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsMap() {
@@ -213,6 +216,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 			}
 		}
 		writeFieldRead(&b, u, st, f, true, i, false)
+		writeVariableCanonicalFieldCheck(&b, f, false)
 		if f.Required {
 			fmt.Fprintf(&b, "                if (!r.fail && reqMatch) { reqSeen_%d = true; }\n", i)
 		}

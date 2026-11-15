@@ -186,6 +186,7 @@ public final class FixedTableRetain {
             TableVariable.Report report,
             int[] path,
             int depth) {
+        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail) {
@@ -204,6 +205,11 @@ public final class FixedTableRetain {
             }
             int kind = r.get8();
             if (id == FixedTableVariable.F_value) {
+                if (lastOrder >= 0) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 0;
                 if (kind == 13) {
                     TableVariable.Reader br = r.body();
                     if (br != null) {

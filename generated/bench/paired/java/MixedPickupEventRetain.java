@@ -241,6 +241,7 @@ public final class MixedPickupEventRetain {
             TableVariable.Report report,
             int[] path,
             int depth) {
+        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail) {
@@ -259,6 +260,11 @@ public final class MixedPickupEventRetain {
             }
             int kind = r.get8();
             if (id == MixedPickupEventVariable.F_itemId) {
+                if (lastOrder >= 0) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 0;
                 if (kind == 7 || kind == 6) {
                     if (kind == 7) {
                         if (r.has(2)) {
@@ -284,7 +290,15 @@ public final class MixedPickupEventRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail && !report.refused && !report.damaged && (v.itemId == 0)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == MixedPickupEventVariable.F_amount) {
+                if (lastOrder >= 1) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 1;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -321,6 +335,9 @@ public final class MixedPickupEventRetain {
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
+                }
+                if (!r.fail && !report.refused && !report.damaged && (v.amount == 0)) {
+                    report.refuse("non_canonical");
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {

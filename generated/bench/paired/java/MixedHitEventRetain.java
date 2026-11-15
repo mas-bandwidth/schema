@@ -241,6 +241,7 @@ public final class MixedHitEventRetain {
             TableVariable.Report report,
             int[] path,
             int depth) {
+        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail) {
@@ -259,6 +260,11 @@ public final class MixedHitEventRetain {
             }
             int kind = r.get8();
             if (id == MixedHitEventVariable.F_targetId) {
+                if (lastOrder >= 0) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 0;
                 if (kind == 7 || kind == 6) {
                     if (kind == 7) {
                         if (r.has(2)) {
@@ -284,7 +290,15 @@ public final class MixedHitEventRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail && !report.refused && !report.damaged && (v.targetId == 0)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == MixedHitEventVariable.F_damage) {
+                if (lastOrder >= 1) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 1;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -322,7 +336,15 @@ public final class MixedHitEventRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail && !report.refused && !report.damaged && (v.damage == 0)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == MixedHitEventVariable.F_hitKind) {
+                if (lastOrder >= 2) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 2;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -360,7 +382,15 @@ public final class MixedHitEventRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail && !report.refused && !report.damaged && (v.hitKind == 0)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == MixedHitEventVariable.F_crit) {
+                if (lastOrder >= 3) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 3;
                 if (kind == 1) {
                     if (r.has(1)) {
                         int bv = r.get8();
@@ -375,6 +405,9 @@ public final class MixedHitEventRetain {
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
+                }
+                if (!r.fail && !report.refused && !report.damaged && (v.crit == false)) {
+                    report.refuse("non_canonical");
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {

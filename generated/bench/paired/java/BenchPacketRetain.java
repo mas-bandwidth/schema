@@ -241,6 +241,7 @@ public final class BenchPacketRetain {
             TableVariable.Report report,
             int[] path,
             int depth) {
+        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail) {
@@ -259,6 +260,11 @@ public final class BenchPacketRetain {
             }
             int kind = r.get8();
             if (id == BenchPacketVariable.F_a) {
+                if (lastOrder >= 0) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 0;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -296,7 +302,15 @@ public final class BenchPacketRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail && !report.refused && !report.damaged && (v.a == 0)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == BenchPacketVariable.F_b) {
+                if (lastOrder >= 1) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 1;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -334,7 +348,15 @@ public final class BenchPacketRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail && !report.refused && !report.damaged && (v.b == 0)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == BenchPacketVariable.F_c) {
+                if (lastOrder >= 2) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 2;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -372,7 +394,15 @@ public final class BenchPacketRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail && !report.refused && !report.damaged && (v.c == 0)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == BenchPacketVariable.F_bits7) {
+                if (lastOrder >= 3) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 3;
                 if (kind == 6) {
                     if (kind == 6) {
                         if (r.has(1)) {
@@ -390,7 +420,15 @@ public final class BenchPacketRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail && !report.refused && !report.damaged && (v.bits7 == 0)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == BenchPacketVariable.F_bits13) {
+                if (lastOrder >= 4) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 4;
                 if (kind == 7 || kind == 6) {
                     if (kind == 7) {
                         if (r.has(2)) {
@@ -416,7 +454,15 @@ public final class BenchPacketRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail && !report.refused && !report.damaged && (v.bits13 == 0)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == BenchPacketVariable.F_bits23) {
+                if (lastOrder >= 5) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 5;
                 if (kind == 8 || kind == 6 || kind == 7) {
                     if (kind == 8) {
                         if (r.has(4)) {
@@ -450,7 +496,15 @@ public final class BenchPacketRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail && !report.refused && !report.damaged && (v.bits23 == 0)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == BenchPacketVariable.F_flag) {
+                if (lastOrder >= 6) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 6;
                 if (kind == 1) {
                     if (r.has(1)) {
                         int bv = r.get8();
@@ -466,7 +520,15 @@ public final class BenchPacketRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail && !report.refused && !report.damaged && (v.flag == false)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == BenchPacketVariable.F_x) {
+                if (lastOrder >= 7) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 7;
                 if (kind == 10) {
                     if (r.has(4)) {
                         int fbits = r.get32();
@@ -483,7 +545,18 @@ public final class BenchPacketRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (Float.floatToRawIntBits(v.x) == 0x00000000)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == BenchPacketVariable.F_y) {
+                if (lastOrder >= 8) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 8;
                 if (kind == 10) {
                     if (r.has(4)) {
                         int fbits = r.get32();
@@ -500,7 +573,18 @@ public final class BenchPacketRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (Float.floatToRawIntBits(v.y) == 0x00000000)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == BenchPacketVariable.F_z) {
+                if (lastOrder >= 9) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 9;
                 if (kind == 10) {
                     if (r.has(4)) {
                         int fbits = r.get32();
@@ -517,7 +601,18 @@ public final class BenchPacketRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail
+                        && !report.refused
+                        && !report.damaged
+                        && (Float.floatToRawIntBits(v.z) == 0x00000000)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == BenchPacketVariable.F_big) {
+                if (lastOrder >= 10) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 10;
                 if (kind == 9 || kind == 6 || kind == 7 || kind == 8) {
                     if (kind == 9) {
                         if (r.has(8)) {
@@ -555,7 +650,15 @@ public final class BenchPacketRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail && !report.refused && !report.damaged && (v.big == 0L)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == BenchPacketVariable.F_blob) {
+                if (lastOrder >= 11) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 11;
                 if (kind == 14) {
                     TableVariable.Reader ar = r.body();
                     if (ar != null) {
@@ -589,6 +692,9 @@ public final class BenchPacketRetain {
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
+                }
+                if (!r.fail && !report.refused && !report.damaged && (v.blob.isEmpty())) {
+                    report.refuse("non_canonical");
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {

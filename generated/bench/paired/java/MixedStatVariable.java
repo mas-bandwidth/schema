@@ -328,6 +328,7 @@ public final class MixedStatVariable {
             Value v,
             TableVariable.NodeTable nt,
             TableVariable.Report report) {
+        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail) {
@@ -346,6 +347,11 @@ public final class MixedStatVariable {
             }
             int kind = r.get8();
             if (id == F_statId) {
+                if (lastOrder >= 0) {
+                    report.refuse("non_canonical");
+                    return false;
+                }
+                lastOrder = 0;
                 if (kind == 6) {
                     if (kind == 6) {
                         if (r.has(1)) {
@@ -363,7 +369,16 @@ public final class MixedStatVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail && !report.refused && !report.damaged && (v.statId == 0)) {
+                    report.refuse("non_canonical");
+                    return false;
+                }
             } else if (id == F_delta) {
+                if (lastOrder >= 1) {
+                    report.refuse("non_canonical");
+                    return false;
+                }
+                lastOrder = 1;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -400,6 +415,10 @@ public final class MixedStatVariable {
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
+                }
+                if (!r.fail && !report.refused && !report.damaged && (v.delta == 0)) {
+                    report.refuse("non_canonical");
+                    return false;
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {
@@ -677,6 +696,7 @@ public final class MixedStatVariable {
     // and answers the extent counter advanced by the maps and lists it carries.
     static long measureAt(TableVariable.Reader r, TableVariable.Report report, long at) {
         r.fail = false;
+        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail || ref == 0) {
@@ -687,6 +707,34 @@ public final class MixedStatVariable {
                 return at;
             }
             int kind = r.get8();
+            int fOrd = -1;
+            if (id == F_statId) {
+                fOrd = 0;
+                if (kind == 6 && r.off + 1 <= r.limit && (r.buf[r.off] & 0xff) == 0) {
+                    report.refuse("non_canonical");
+                    return at;
+                }
+            }
+            if (id == F_delta) {
+                fOrd = 1;
+                if (kind == 4
+                        && r.off + 4 <= r.limit
+                        && ((r.buf[r.off] & 0xff)
+                                | (r.buf[r.off + 1] & 0xff) << 8
+                                | (r.buf[r.off + 2] & 0xff) << 16
+                                | (r.buf[r.off + 3] & 0xff) << 24)
+                                == 0) {
+                    report.refuse("non_canonical");
+                    return at;
+                }
+            }
+            if (fOrd >= 0) {
+                if (fOrd <= lastOrder) {
+                    report.refuse("non_canonical");
+                    return at;
+                }
+                lastOrder = fOrd;
+            }
             r.skip(kind);
             if (r.fail) {
                 return at;

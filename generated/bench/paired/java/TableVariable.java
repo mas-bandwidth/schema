@@ -865,12 +865,17 @@ public final class TableVariable {
         final int[] rootOnlyEdgeStart = new int[2];
         int[] recStart = new int[16];
         int[] recEnd = new int[16];
+        long[] recRef = new long[16];
         boolean[] recBlob = new boolean[16];
         int[] edgeStart = new int[16];
         int[] names = new int[16];
         byte[] mark = new byte[16];
         int[] stack = new int[16];
         int[] next = new int[16];
+        // used and nextUse judge the id table's FIRST-USE ORDER and prove no
+        // entry is unused (docs/SPEC-TABLES.md §3, §4)
+        boolean[] used = new boolean[16];
+        int nextUse;
 
         WireCheck() {}
 
@@ -891,11 +896,45 @@ public final class TableVariable {
                 java.util.Arrays.fill(stamp, 0);
                 gen = 0;
             }
+            if (used.length < ids.length) {
+                used = new boolean[Math.max(ids.length, used.length * 2)];
+            } else {
+                java.util.Arrays.fill(used, false);
+            }
+            nextUse = 1;
             depth = 0;
             fail = OK;
             nonFinite = false;
             edgeCount = 0;
             at = 0;
+        }
+
+        // use marks one id-table reference in wire order. A first reference
+        // must name the next unused entry, so an id table out of first-use
+        // order is damage; a later repeat names an entry already used.
+        boolean use(long ref) {
+            if (announcement) {
+                // The announcement's own transport lists its vocabulary in one
+                // payload, so its id table is not a file body's first-use walk
+                // (§3.3).
+                return true;
+            }
+            if (ref < 1 || ref > ids.length) {
+                return damage();
+            }
+            int i = (int) ref - 1;
+            if (!used[i]) {
+                if (ref != nextUse) {
+                    return damage();
+                }
+                used[i] = true;
+                nextUse++;
+            }
+            return true;
+        }
+
+        boolean allUsed() {
+            return announcement || nextUse == ids.length + 1;
         }
 
         boolean damage() {
@@ -983,12 +1022,21 @@ public final class TableVariable {
             if (table[0] < 0) {
                 rootOnlyEdgeStart[0] = 0;
                 rootOnlyEdgeStart[1] = rootEdges;
-                return graph(rootOnlyEdgeStart, 1, null) ? (nonFinite ? NON_FINITE : OK) : fail;
+                if (!graph(rootOnlyEdgeStart, 1, null)) {
+                    return fail;
+                }
+                return allUsed() ? (nonFinite ? NON_FINITE : OK) : DAMAGED;
             }
             int off = table[0];
             int end = table[1];
             long declared = leb(off, end);
             if (at < 0) {
+                return DAMAGED;
+            }
+            // AN EMPTY NODE TABLE IS NOT THE ONE ENCODING (§3.1): a writer
+            // reaching no node writes none of them, and one reaching any writes
+            // at least one record.
+            if (declared == 0) {
                 return DAMAGED;
             }
             off = at;
@@ -1007,6 +1055,7 @@ public final class TableVariable {
                 if (n == recStart.length) {
                     recStart = java.util.Arrays.copyOf(recStart, n * 2);
                     recEnd = java.util.Arrays.copyOf(recEnd, n * 2);
+                    recRef = java.util.Arrays.copyOf(recRef, n * 2);
                     recBlob = java.util.Arrays.copyOf(recBlob, n * 2);
                 }
                 long typeId = ids[(int) ref - 1];
@@ -1019,6 +1068,7 @@ public final class TableVariable {
                 }
                 recStart[n] = at;
                 recEnd[n] = at + (int) length;
+                recRef[n] = ref;
                 recBlob[n] = typeId == BYTES_ID || typeId == STRING_ID;
                 if (typeId == STRING_ID && !textValid(buf, at, (int) length)) {
                     return DAMAGED;
@@ -1035,12 +1085,21 @@ public final class TableVariable {
             edgeStart[0] = 0;
             edgeStart[1] = rootEdges;
             for (int k = 0; k < n; k++) {
+                // THE WRITER INTERNS EACH RECORD'S TYPE ID AND THEN ITS BODY's
+                // FIELD IDS, record by record (§3.1), so the first-use walk
+                // enters them in that order too.
+                if (!use(recRef[k])) {
+                    return fail;
+                }
                 if (!recBlob[k] && !body(recStart[k], recEnd[k], false, null)) {
                     return fail;
                 }
                 edgeStart[k + 2] = edgeCount;
             }
-            return graph(edgeStart, n + 1, recBlob) ? (nonFinite ? NON_FINITE : OK) : fail;
+            if (!graph(edgeStart, n + 1, recBlob)) {
+                return fail;
+            }
+            return allUsed() ? (nonFinite ? NON_FINITE : OK) : DAMAGED;
         }
 
         // graph judges the pointer graph: node 0 is the root, node k record k
@@ -1142,11 +1201,20 @@ public final class TableVariable {
             }
             // then each payload
             p = off;
+            boolean nodeTableSeen = false;
             while (true) {
                 long ref = leb(p, end);
                 p = at;
                 if (ref == 0) {
                     return true;
+                }
+                // THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1): a writer
+                // appends it after the root's own fields, before the terminator.
+                if (nodeTableSeen) {
+                    return damage();
+                }
+                if (!use(ref)) {
+                    return false;
                 }
                 long id = ids[(int) ref - 1];
                 int kind = buf[p++] & 0xff;
@@ -1163,9 +1231,10 @@ public final class TableVariable {
                     table[0] = at;
                     table[1] = at + (int) n;
                     p = table[1];
+                    nodeTableSeen = true;
                     continue;
                 }
-                p = payload(p, end, kind);
+                p = payload(p, end, kind, true);
                 if (p < 0) {
                     return false;
                 }
@@ -1214,7 +1283,7 @@ public final class TableVariable {
         // payload walks one SELF-FRAMED payload of kind at off: what follows a
         // field's kind byte, and an array element. It answers the offset after
         // it, or -1.
-        int payload(int off, int end, int kind) {
+        int payload(int off, int end, int kind, boolean field) {
             int w = width(kind);
             if (w > 0) {
                 if (w > end - off) {
@@ -1231,6 +1300,13 @@ public final class TableVariable {
                             damage();
                             return -1;
                         }
+                        // AN EXPLICIT NULL POINTER IS NOT THE ONE ENCODING
+                        // (§3.1): a null rides as the field's absence. A null
+                        // ELEMENT of a pointer array is positional and lawful.
+                        if (field && index == 0) {
+                            damage();
+                            return -1;
+                        }
                         if (edgeCount == edges.length) {
                             edges = java.util.Arrays.copyOf(edges, Math.max(8, edgeCount * 2));
                         }
@@ -1244,10 +1320,13 @@ public final class TableVariable {
                             damage();
                             return -1;
                         }
+                        if (ref != 0 && !use(ref)) {
+                            return -1;
+                        }
                         return at;
                     }
                 case 15:
-                    return union(off, end);
+                    return union(off, end, field);
                 case 12:
                 case 13:
                 case 14:
@@ -1308,7 +1387,7 @@ public final class TableVariable {
                 case 17:
                 case 30:
                     {
-                        int to = payload(off, end, kind);
+                        int to = payload(off, end, kind, false);
                         if (to < 0) {
                             return false;
                         }
@@ -1388,7 +1467,7 @@ public final class TableVariable {
             }
             int p = at;
             for (long i = 0; i < count; i++) {
-                p = payload(p, end, kind);
+                p = payload(p, end, kind, false);
                 if (p < 0) {
                     return false;
                 }
@@ -1430,7 +1509,10 @@ public final class TableVariable {
             }
             p = first;
             for (long i = 0; i < count; i++) {
-                leb(p, end);
+                long key = leb(p, end);
+                if (at < 0 || key == 0 || key > ids.length || !use(key)) {
+                    return damage();
+                }
                 long n = leb(at, end);
                 int from = at;
                 p = from + (int) n;
@@ -1444,14 +1526,24 @@ public final class TableVariable {
         // union walks a union payload in place: the arm reference, and for a
         // set arm the arm's kind byte, its L and the content L frames. A union
         // is a level when its arm is structural (§4).
-        int union(int off, int end) {
+        int union(int off, int end, boolean field) {
             long ref = leb(off, end);
             if (at < 0 || ref > ids.length) {
                 damage();
                 return -1;
             }
             if (ref == 0) {
+                // A UNION FIELD WRITTEN WITH ARM 0 IS NOT THE ONE ENCODING
+                // (§3): its absence is its None. An array element's None is
+                // positional and lawful.
+                if (field) {
+                    damage();
+                    return -1;
+                }
                 return at;
+            }
+            if (!use(ref)) {
+                return -1;
             }
             if (at >= end) {
                 damage();
@@ -2019,6 +2111,35 @@ public final class TableVariable {
             int base = trailerBase(data, report, distinct);
             if (base < 0) {
                 return null;
+            }
+            if (distinct) {
+                // A STANDALONE MEASURE ANSWERS THE SAME VERDICT AS A LOAD: the
+                // wire-alone walk runs here, because the caller's open has not
+                // run it (§3, §4).
+                int count = (data.length - 8 - base) / 8;
+                long[] ids = new long[count];
+                for (int i = 0; i < count; i++) {
+                    ids[i] = u64(data, base + i * 8);
+                }
+                WireCheck wc = WIRE_CHECK.get();
+                wc.reset(data, ids);
+                wc.announcement = false;
+                switch (wc.file(base)) {
+                    case WireCheck.DAMAGED:
+                        report.damaged = true;
+                        return null;
+                    case WireCheck.BLOB_SHARED:
+                        report.refuse("blob_shared");
+                        return null;
+                    case WireCheck.COUNT_CAP:
+                        report.refuse("count_over_extent_cap");
+                        return null;
+                    case WireCheck.NON_FINITE:
+                        report.wireNonFinite = true;
+                        break;
+                    default:
+                        break;
+                }
             }
             Reader r = reader;
             r.buf = data;

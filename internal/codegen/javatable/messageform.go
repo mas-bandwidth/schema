@@ -2204,6 +2204,7 @@ func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
 	g.pf("    }\n\n")
 	g.pf("    private static boolean loadMessageBodyFields(TableMessage.Reader r, %s v, int seenFieldMark) {\n", valType)
 	g.pf("        reset(v);\n")
+	g.pf("        int lastField = -1;\n")
 	g.pf("        while (true) {\n")
 	g.pf("            TableVocabulary.Entry entry = r.ref();\n")
 	g.pf("            if (r.err) { r.report.damaged = true; return false; }\n")
@@ -2224,6 +2225,8 @@ func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
 				prefix = "} else if"
 			}
 			g.pf("            %s (idHi == 0x%08x && idLo == 0x%08x) {\n", prefix, uint32(hi), uint32(lo))
+			g.pf("                if (%d <= lastField) { r.report.refuse(\"non_canonical\"); return false; }\n", idx)
+			g.pf("                lastField = %d;\n", idx)
 			g.emitLoadFieldCase(f, mine, "v", "entry", 16)
 		}
 		g.pf("            } else {\n")
@@ -2233,6 +2236,33 @@ func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
 	}
 	g.pf("        }\n")
 	g.pf("    }\n\n")
+}
+
+// messageAtDefaultTest is the reader-side test for a field stored at the value
+// its writer elides (§3.3): a union field's None arm, or the scalar and string
+// default the announcement names. A nested table, array, keyed array, map or
+// byte buffer rides only when its content or presence does, so it is not a
+// fact of one scalar value here.
+func (g *messageGen) messageAtDefaultTest(f *ir.Field, expr string) string {
+	if f.Required || f.Type.Optional || f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsMap() {
+		return ""
+	}
+	if isStructType(f.Type) {
+		return ""
+	}
+	if isUnionType(f.Type) {
+		return expr + ".type == 0"
+	}
+	if f.Type.Kind == ir.TString {
+		if len(f.DefBytes) == 0 {
+			return expr + "Length == 0"
+		}
+		return "TableMessage.bytesEqual(" + expr + ", " + expr + "Length, " + javaByteArrayLiteral(f.DefBytes) + ")"
+	}
+	if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TNamed {
+		return ""
+	}
+	return "!(" + g.scalarOrUnionRidesExpr(f, expr) + ")"
 }
 
 func (g *messageGen) emitLoadFieldCase(f *ir.Field, mine ir.TableVocabularyEntry, owner, entryVar string, indent int) {
@@ -2253,6 +2283,9 @@ func (g *messageGen) emitLoadFieldCase(f *ir.Field, mine ir.TableVocabularyEntry
 	g.pf("%s}\n", ind)
 
 	g.emitLoadPayload(f, owner, entryVar, indent)
+	if test := g.messageAtDefaultTest(f, expr); test != "" {
+		g.pf("%sif (!r.report.refused && !r.report.damaged && (%s)) { r.report.refuse(\"non_canonical\"); return false; }\n", ind, test)
+	}
 	if f.Type.Optional {
 		g.pf("%s%sPresent = true;\n", ind, expr)
 	}

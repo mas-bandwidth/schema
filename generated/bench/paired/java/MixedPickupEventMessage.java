@@ -58,6 +58,7 @@ public final class MixedPickupEventMessage {
     private static boolean loadMessageBodyFields(
             TableMessage.Reader r, MixedPickupEventFixed.Value v, int seenFieldMark) {
         reset(v);
+        int lastField = -1;
         while (true) {
             TableVocabulary.Entry entry = r.ref();
             if (r.err) {
@@ -74,6 +75,11 @@ public final class MixedPickupEventMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0x9e7fd06d && idLo == 0x864fbd56) {
+                if (0 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 0;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 7 || elemKind != 0) {
@@ -96,10 +102,19 @@ public final class MixedPickupEventMessage {
                     }
                     v.itemId = (int) (v1);
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.itemId != 0))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x8113fe7e && idLo == 0xa2b16969) {
+                if (1 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 1;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 4 || elemKind != 0) {
@@ -121,6 +136,10 @@ public final class MixedPickupEventMessage {
                         return false;
                     }
                     v.amount = (int) (v2);
+                }
+                if (!r.report.refused && !r.report.damaged && (!(v.amount != 0))) {
+                    r.report.refuse("non_canonical");
+                    return false;
                 }
                 if (widened) {
                     r.report.widened++;

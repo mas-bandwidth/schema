@@ -324,6 +324,7 @@ public final class FixedTableVariable {
             Value v,
             TableVariable.NodeTable nt,
             TableVariable.Report report) {
+        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail) {
@@ -342,6 +343,11 @@ public final class FixedTableVariable {
             }
             int kind = r.get8();
             if (id == F_value) {
+                if (lastOrder >= 0) {
+                    report.refuse("non_canonical");
+                    return false;
+                }
+                lastOrder = 0;
                 if (kind == 13) {
                     TableVariable.Reader br = r.body();
                     if (br != null) {
@@ -592,6 +598,7 @@ public final class FixedTableVariable {
     // and answers the extent counter advanced by the maps and lists it carries.
     static long measureAt(TableVariable.Reader r, TableVariable.Report report, long at) {
         r.fail = false;
+        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail || ref == 0) {
@@ -602,6 +609,17 @@ public final class FixedTableVariable {
                 return at;
             }
             int kind = r.get8();
+            int fOrd = -1;
+            if (id == F_value) {
+                fOrd = 0;
+            }
+            if (fOrd >= 0) {
+                if (fOrd <= lastOrder) {
+                    report.refuse("non_canonical");
+                    return at;
+                }
+                lastOrder = fOrd;
+            }
             if (id == F_value && (kind == 13 || kind == 14 || kind == 16)) {
                 int end = r.bodyEnd();
                 if (end < 0) {

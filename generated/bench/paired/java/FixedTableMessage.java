@@ -54,6 +54,7 @@ public final class FixedTableMessage {
     private static boolean loadMessageBodyFields(
             TableMessage.Reader r, FixedTableFixed.Value v, int seenFieldMark) {
         reset(v);
+        int lastField = -1;
         while (true) {
             TableVocabulary.Entry entry = r.ref();
             if (r.err) {
@@ -70,6 +71,11 @@ public final class FixedTableMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0x7ce4fd94 && idLo == 0x30e80cea) {
+                if (0 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 0;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 13 || elemKind != 0) {

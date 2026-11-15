@@ -366,6 +366,7 @@ public final class BenchMixedMessage {
     private static boolean loadMessageBodyFields(
             TableMessage.Reader r, BenchMixedFixed.Value v, int seenFieldMark) {
         reset(v);
+        int lastField = -1;
         while (true) {
             TableVocabulary.Entry entry = r.ref();
             if (r.err) {
@@ -382,6 +383,11 @@ public final class BenchMixedMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0xaa38aca4 && idLo == 0x81f528a8) {
+                if (0 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 0;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 7 || elemKind != 0) {
@@ -404,10 +410,19 @@ public final class BenchMixedMessage {
                     }
                     v.sequence = (int) (v9);
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.sequence != 0))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x0dbe005c && idLo == 0x56697c3e) {
+                if (1 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 1;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 4 || elemKind != 0) {
@@ -430,10 +445,19 @@ public final class BenchMixedMessage {
                     }
                     v.ackSequence = (int) (v10);
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.ackSequence != 0))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x9bae0da8 && idLo == 0xb829ee03) {
+                if (2 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 2;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 8 || elemKind != 0) {
@@ -456,10 +480,19 @@ public final class BenchMixedMessage {
                     }
                     v.ackBits = (int) (v11);
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.ackBits != 0))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0xb7d7b565 && idLo == 0x0a590b05) {
+                if (3 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 3;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 9 || elemKind != 0) {
@@ -482,10 +515,19 @@ public final class BenchMixedMessage {
                     }
                     v.sessionId = v12;
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.sessionId != 0L))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x6d7b98e2 && idLo == 0xd095967e) {
+                if (4 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 4;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 8 || elemKind != 0) {
@@ -508,10 +550,19 @@ public final class BenchMixedMessage {
                     }
                     v.clientId = (int) (v13);
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.clientId != 0))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x73a94c71 && idLo == 0xd60dc0d8) {
+                if (5 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 5;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 9 || elemKind != 0) {
@@ -536,10 +587,19 @@ public final class BenchMixedMessage {
                     }
                     v.nonce = v14;
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.nonce != 0L))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x3eee6b51 && idLo == 0xbe54fc85) {
+                if (6 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 6;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 5 || elemKind != 0) {
@@ -564,10 +624,19 @@ public final class BenchMixedMessage {
                     }
                     v.worldTime = v15;
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.worldTime != 0L))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x7bbc035f && idLo == 0x7b6d0112) {
+                if (7 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 7;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 9 || elemKind != 0) {
@@ -590,10 +659,19 @@ public final class BenchMixedMessage {
                     }
                     v.frameTick = v16;
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.frameTick != 0L))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x3c460475 && idLo == 0xf9be69c6) {
+                if (8 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 8;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 22 || elemKind != 0) {
@@ -616,10 +694,19 @@ public final class BenchMixedMessage {
                     }
                     v.serverTime = (int) (v17);
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.serverTime != 0))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x935d0fb0 && idLo == 0x7bb3822a) {
+                if (9 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 9;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 14 || elemKind != 13) {
@@ -673,6 +760,11 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xee639cad && idLo == 0x45b1994c) {
+                if (10 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 10;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 14 || elemKind != 13) {
@@ -726,6 +818,11 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x2e35dc53 && idLo == 0x21aa5790) {
+                if (11 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 11;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 15 || elemKind != 0) {
@@ -852,10 +949,19 @@ public final class BenchMixedMessage {
                         }
                     }
                 }
+                if (!r.report.refused && !r.report.damaged && (v.gameEvent.type == 0)) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x5759ce75 && idLo == 0x86bbb5a3) {
+                if (12 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 12;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 14 || elemKind != 6) {
@@ -919,6 +1025,11 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x13a62f54 && idLo == 0x2cf8e86e) {
+                if (13 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 13;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 12 || elemKind != 0) {
@@ -955,10 +1066,19 @@ public final class BenchMixedMessage {
                 java.util.Arrays.fill(v.playerName, (byte) 0);
                 System.arraycopy(r.buf, start51, v.playerName, 0, kept52);
                 v.playerNameLength = kept52;
+                if (!r.report.refused && !r.report.damaged && (v.playerNameLength == 0)) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0xcfb8a9d0 && idLo == 0x63b5e9e5) {
+                if (14 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 14;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 14 || elemKind != 6) {
@@ -994,6 +1114,11 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xdbaf7be5 && idLo == 0xe24296c9) {
+                if (15 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 15;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 10 || elemKind != 0) {
@@ -1023,10 +1148,21 @@ public final class BenchMixedMessage {
                     }
                     v.aimX = v56;
                 }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && (!(Float.floatToRawIntBits(v.aimX) != Float.floatToRawIntBits(0.0f)))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0xdbaf7ae5 && idLo == 0xe2429516) {
+                if (16 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 16;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 10 || elemKind != 0) {
@@ -1056,10 +1192,21 @@ public final class BenchMixedMessage {
                     }
                     v.aimY = v57;
                 }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && (!(Float.floatToRawIntBits(v.aimY) != Float.floatToRawIntBits(0.0f)))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0xdbaf79e5 && idLo == 0xe2429363) {
+                if (17 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 17;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 10 || elemKind != 0) {
@@ -1089,10 +1236,21 @@ public final class BenchMixedMessage {
                     }
                     v.aimZ = v58;
                 }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && (!(Float.floatToRawIntBits(v.aimZ) != Float.floatToRawIntBits(0.0f)))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x9cef31ff && idLo == 0xf7e2e457) {
+                if (18 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 18;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 10 || elemKind != 0) {
@@ -1117,10 +1275,19 @@ public final class BenchMixedMessage {
                     }
                     v.recoil = v59;
                 }
+                if (!r.report.refused && !r.report.damaged && (!(Float.floatToRawIntBits(v.recoil) != Float.floatToRawIntBits(0.0f)))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x5ab3f9c9 && idLo == 0x341f6c04) {
+                if (19 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 19;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 11 || elemKind != 0) {
@@ -1145,10 +1312,19 @@ public final class BenchMixedMessage {
                     }
                     v.drift = v60;
                 }
+                if (!r.report.refused && !r.report.damaged && (!(Double.doubleToRawLongBits(v.drift) != Double.doubleToRawLongBits(0.0)))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0xa3348580 && idLo == 0x461faf16) {
+                if (20 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 20;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 19 || elemKind != 0) {
@@ -1172,10 +1348,21 @@ public final class BenchMixedMessage {
                     long lo62 = raw61[0], hi63 = raw61[1];
                     v.wideKey = new UInt128(hi63, lo62);
                 }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && (!((v.wideKey.lo != 0L || v.wideKey.hi != 0L)))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0xd61bdd79 && idLo == 0x08af2642) {
+                if (21 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 21;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 18 || elemKind != 0) {
@@ -1211,10 +1398,21 @@ public final class BenchMixedMessage {
                     }
                     v.flux = new Int128(hi66, lo65);
                 }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && (!((v.flux.lo != 0L || v.flux.hi != 0L)))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0xbf30e00d && idLo == 0xc53307a9) {
+                if (22 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 22;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 26 || elemKind != 0) {
@@ -1237,10 +1435,19 @@ public final class BenchMixedMessage {
                     }
                     v.ping = (short) (v69);
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.ping != (short) 0))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x560d6527 && idLo == 0xccd8515f) {
+                if (23 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 23;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 8 || elemKind != 0) {
@@ -1263,10 +1470,19 @@ public final class BenchMixedMessage {
                     }
                     v.crcHint = (int) (v70);
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.crcHint != 0))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0xc0829217 && idLo == 0x6cfd8672) {
+                if (24 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 24;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 1 || elemKind != 0) {
@@ -1289,10 +1505,19 @@ public final class BenchMixedMessage {
                     }
                     v.hasExtra = (v71 != 0L);
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.hasExtra != true))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0xfd29ee12 && idLo == 0xa979cb69) {
+                if (25 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 25;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 4 || elemKind != 0) {
@@ -1315,10 +1540,19 @@ public final class BenchMixedMessage {
                     }
                     v.extra = (int) (v72);
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.extra != 0))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x78101ac0 && idLo == 0xaa8cbcfe) {
+                if (26 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 26;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 4 || elemKind != 0) {
@@ -1340,6 +1574,10 @@ public final class BenchMixedMessage {
                         return false;
                     }
                     v.idleTicks = (int) (v73);
+                }
+                if (!r.report.refused && !r.report.damaged && (!(v.idleTicks != 0))) {
+                    r.report.refuse("non_canonical");
+                    return false;
                 }
                 if (widened) {
                     r.report.widened++;

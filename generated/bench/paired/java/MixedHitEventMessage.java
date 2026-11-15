@@ -74,6 +74,7 @@ public final class MixedHitEventMessage {
     private static boolean loadMessageBodyFields(
             TableMessage.Reader r, MixedHitEventFixed.Value v, int seenFieldMark) {
         reset(v);
+        int lastField = -1;
         while (true) {
             TableVocabulary.Entry entry = r.ref();
             if (r.err) {
@@ -90,6 +91,11 @@ public final class MixedHitEventMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0xb7bc9ac0 && idLo == 0x15a25050) {
+                if (0 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 0;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 7 || elemKind != 0) {
@@ -112,10 +118,19 @@ public final class MixedHitEventMessage {
                     }
                     v.targetId = (int) (v1);
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.targetId != 0))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x7f6308be && idLo == 0x8ab37fc0) {
+                if (1 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 1;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 4 || elemKind != 0) {
@@ -138,10 +153,19 @@ public final class MixedHitEventMessage {
                     }
                     v.damage = (int) (v2);
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.damage != 0))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x01fbc365 && idLo == 0xb059b925) {
+                if (2 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 2;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 4 || elemKind != 0) {
@@ -164,10 +188,19 @@ public final class MixedHitEventMessage {
                     }
                     v.hitKind = (int) (v3);
                 }
+                if (!r.report.refused && !r.report.damaged && (!(v.hitKind != 0))) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x12616790 && idLo == 0x8c9aa52d) {
+                if (3 <= lastField) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 3;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 1 || elemKind != 0) {
@@ -189,6 +222,10 @@ public final class MixedHitEventMessage {
                         return false;
                     }
                     v.crit = (v4 != 0L);
+                }
+                if (!r.report.refused && !r.report.damaged && (!(v.crit != false))) {
+                    r.report.refuse("non_canonical");
+                    return false;
                 }
                 if (widened) {
                     r.report.widened++;

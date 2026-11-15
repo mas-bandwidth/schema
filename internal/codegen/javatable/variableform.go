@@ -886,12 +886,17 @@ public final class TableVariable {
         final int[] rootOnlyEdgeStart = new int[2];
         int[] recStart = new int[16];
         int[] recEnd = new int[16];
+        long[] recRef = new long[16];
         boolean[] recBlob = new boolean[16];
         int[] edgeStart = new int[16];
         int[] names = new int[16];
         byte[] mark = new byte[16];
         int[] stack = new int[16];
         int[] next = new int[16];
+        // used and nextUse judge the id table's FIRST-USE ORDER and prove no
+        // entry is unused (docs/SPEC-TABLES.md §3, §4)
+        boolean[] used = new boolean[16];
+        int nextUse;
 
         WireCheck() {}
 
@@ -912,11 +917,45 @@ public final class TableVariable {
                 java.util.Arrays.fill(stamp, 0);
                 gen = 0;
             }
+            if (used.length < ids.length) {
+                used = new boolean[Math.max(ids.length, used.length * 2)];
+            } else {
+                java.util.Arrays.fill(used, false);
+            }
+            nextUse = 1;
             depth = 0;
             fail = OK;
             nonFinite = false;
             edgeCount = 0;
             at = 0;
+        }
+
+        // use marks one id-table reference in wire order. A first reference
+        // must name the next unused entry, so an id table out of first-use
+        // order is damage; a later repeat names an entry already used.
+        boolean use(long ref) {
+            if (announcement) {
+                // The announcement's own transport lists its vocabulary in one
+                // payload, so its id table is not a file body's first-use walk
+                // (§3.3).
+                return true;
+            }
+            if (ref < 1 || ref > ids.length) {
+                return damage();
+            }
+            int i = (int) ref - 1;
+            if (!used[i]) {
+                if (ref != nextUse) {
+                    return damage();
+                }
+                used[i] = true;
+                nextUse++;
+            }
+            return true;
+        }
+
+        boolean allUsed() {
+            return announcement || nextUse == ids.length + 1;
         }
 
         boolean damage() {
@@ -1004,12 +1043,21 @@ public final class TableVariable {
             if (table[0] < 0) {
                 rootOnlyEdgeStart[0] = 0;
                 rootOnlyEdgeStart[1] = rootEdges;
-                return graph(rootOnlyEdgeStart, 1, null) ? (nonFinite ? NON_FINITE : OK) : fail;
+                if (!graph(rootOnlyEdgeStart, 1, null)) {
+                    return fail;
+                }
+                return allUsed() ? (nonFinite ? NON_FINITE : OK) : DAMAGED;
             }
             int off = table[0];
             int end = table[1];
             long declared = leb(off, end);
             if (at < 0) {
+                return DAMAGED;
+            }
+            // AN EMPTY NODE TABLE IS NOT THE ONE ENCODING (§3.1): a writer
+            // reaching no node writes none of them, and one reaching any writes
+            // at least one record.
+            if (declared == 0) {
                 return DAMAGED;
             }
             off = at;
@@ -1028,6 +1076,7 @@ public final class TableVariable {
                 if (n == recStart.length) {
                     recStart = java.util.Arrays.copyOf(recStart, n * 2);
                     recEnd = java.util.Arrays.copyOf(recEnd, n * 2);
+                    recRef = java.util.Arrays.copyOf(recRef, n * 2);
                     recBlob = java.util.Arrays.copyOf(recBlob, n * 2);
                 }
                 long typeId = ids[(int) ref - 1];
@@ -1040,6 +1089,7 @@ public final class TableVariable {
                 }
                 recStart[n] = at;
                 recEnd[n] = at + (int) length;
+                recRef[n] = ref;
                 recBlob[n] = typeId == BYTES_ID || typeId == STRING_ID;
                 if (typeId == STRING_ID && !textValid(buf, at, (int) length)) {
                     return DAMAGED;
@@ -1056,12 +1106,21 @@ public final class TableVariable {
             edgeStart[0] = 0;
             edgeStart[1] = rootEdges;
             for (int k = 0; k < n; k++) {
+                // THE WRITER INTERNS EACH RECORD'S TYPE ID AND THEN ITS BODY's
+                // FIELD IDS, record by record (§3.1), so the first-use walk
+                // enters them in that order too.
+                if (!use(recRef[k])) {
+                    return fail;
+                }
                 if (!recBlob[k] && !body(recStart[k], recEnd[k], false, null)) {
                     return fail;
                 }
                 edgeStart[k + 2] = edgeCount;
             }
-            return graph(edgeStart, n + 1, recBlob) ? (nonFinite ? NON_FINITE : OK) : fail;
+            if (!graph(edgeStart, n + 1, recBlob)) {
+                return fail;
+            }
+            return allUsed() ? (nonFinite ? NON_FINITE : OK) : DAMAGED;
         }
 
         // graph judges the pointer graph: node 0 is the root, node k record k
@@ -1163,11 +1222,20 @@ public final class TableVariable {
             }
             // then each payload
             p = off;
+            boolean nodeTableSeen = false;
             while (true) {
                 long ref = leb(p, end);
                 p = at;
                 if (ref == 0) {
                     return true;
+                }
+                // THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1): a writer
+                // appends it after the root's own fields, before the terminator.
+                if (nodeTableSeen) {
+                    return damage();
+                }
+                if (!use(ref)) {
+                    return false;
                 }
                 long id = ids[(int) ref - 1];
                 int kind = buf[p++] & 0xff;
@@ -1184,9 +1252,10 @@ public final class TableVariable {
                     table[0] = at;
                     table[1] = at + (int) n;
                     p = table[1];
+                    nodeTableSeen = true;
                     continue;
                 }
-                p = payload(p, end, kind);
+                p = payload(p, end, kind, true);
                 if (p < 0) {
                     return false;
                 }
@@ -1235,7 +1304,7 @@ public final class TableVariable {
         // payload walks one SELF-FRAMED payload of kind at off: what follows a
         // field's kind byte, and an array element. It answers the offset after
         // it, or -1.
-        int payload(int off, int end, int kind) {
+        int payload(int off, int end, int kind, boolean field) {
             int w = width(kind);
             if (w > 0) {
                 if (w > end - off) {
@@ -1252,6 +1321,13 @@ public final class TableVariable {
                             damage();
                             return -1;
                         }
+                        // AN EXPLICIT NULL POINTER IS NOT THE ONE ENCODING
+                        // (§3.1): a null rides as the field's absence. A null
+                        // ELEMENT of a pointer array is positional and lawful.
+                        if (field && index == 0) {
+                            damage();
+                            return -1;
+                        }
                         if (edgeCount == edges.length) {
                             edges = java.util.Arrays.copyOf(edges, Math.max(8, edgeCount * 2));
                         }
@@ -1265,10 +1341,13 @@ public final class TableVariable {
                             damage();
                             return -1;
                         }
+                        if (ref != 0 && !use(ref)) {
+                            return -1;
+                        }
                         return at;
                     }
                 case 15:
-                    return union(off, end);
+                    return union(off, end, field);
                 case 12:
                 case 13:
                 case 14:
@@ -1329,7 +1408,7 @@ public final class TableVariable {
                 case 17:
                 case 30:
                     {
-                        int to = payload(off, end, kind);
+                        int to = payload(off, end, kind, false);
                         if (to < 0) {
                             return false;
                         }
@@ -1409,7 +1488,7 @@ public final class TableVariable {
             }
             int p = at;
             for (long i = 0; i < count; i++) {
-                p = payload(p, end, kind);
+                p = payload(p, end, kind, false);
                 if (p < 0) {
                     return false;
                 }
@@ -1451,7 +1530,10 @@ public final class TableVariable {
             }
             p = first;
             for (long i = 0; i < count; i++) {
-                leb(p, end);
+                long key = leb(p, end);
+                if (at < 0 || key == 0 || key > ids.length || !use(key)) {
+                    return damage();
+                }
                 long n = leb(at, end);
                 int from = at;
                 p = from + (int) n;
@@ -1465,14 +1547,24 @@ public final class TableVariable {
         // union walks a union payload in place: the arm reference, and for a
         // set arm the arm's kind byte, its L and the content L frames. A union
         // is a level when its arm is structural (§4).
-        int union(int off, int end) {
+        int union(int off, int end, boolean field) {
             long ref = leb(off, end);
             if (at < 0 || ref > ids.length) {
                 damage();
                 return -1;
             }
             if (ref == 0) {
+                // A UNION FIELD WRITTEN WITH ARM 0 IS NOT THE ONE ENCODING
+                // (§3): its absence is its None. An array element's None is
+                // positional and lawful.
+                if (field) {
+                    damage();
+                    return -1;
+                }
                 return at;
+            }
+            if (!use(ref)) {
+                return -1;
             }
             if (at >= end) {
                 damage();
@@ -2040,6 +2132,35 @@ public final class TableVariable {
             int base = trailerBase(data, report, distinct);
             if (base < 0) {
                 return null;
+            }
+            if (distinct) {
+                // A STANDALONE MEASURE ANSWERS THE SAME VERDICT AS A LOAD: the
+                // wire-alone walk runs here, because the caller's open has not
+                // run it (§3, §4).
+                int count = (data.length - 8 - base) / 8;
+                long[] ids = new long[count];
+                for (int i = 0; i < count; i++) {
+                    ids[i] = u64(data, base + i * 8);
+                }
+                WireCheck wc = WIRE_CHECK.get();
+                wc.reset(data, ids);
+                wc.announcement = false;
+                switch (wc.file(base)) {
+                    case WireCheck.DAMAGED:
+                        report.damaged = true;
+                        return null;
+                    case WireCheck.BLOB_SHARED:
+                        report.refuse("blob_shared");
+                        return null;
+                    case WireCheck.COUNT_CAP:
+                        report.refuse("count_over_extent_cap");
+                        return null;
+                    case WireCheck.NON_FINITE:
+                        report.wireNonFinite = true;
+                        break;
+                    default:
+                        break;
+                }
             }
             Reader r = reader;
             r.buf = data;
@@ -4274,6 +4395,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 
 	// readFields
 	fmt.Fprintf(&b, "    public static boolean readFields(TableVariable.Reader r, Value v, TableVariable.NodeTable nt, TableVariable.Report report) {\n")
+	b.WriteString("        int lastOrder = -1;\n")
 	hasReq := false
 	for i, f := range st.Fields {
 		if f.Required {
@@ -4316,6 +4438,8 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		}
 		first = false
 		fmt.Fprintf(&b, "if (id == F_%s) {\n", varMember(f))
+		fmt.Fprintf(&b, "                if (lastOrder >= %d) { report.refuse(\"non_canonical\"); return false; }\n", i)
+		fmt.Fprintf(&b, "                lastOrder = %d;\n", i)
 		if f.Required {
 			fmt.Fprintf(&b, "                boolean reqMatch = (%s);\n", variableCompatibleKinds(variableWireKind(f), "kind"))
 			if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsMap() {
@@ -4327,6 +4451,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 			}
 		}
 		writeFieldRead(&b, u, st, f, false, i, false)
+		writeVariableCanonicalFieldCheck(&b, f, true)
 		if f.Required {
 			fmt.Fprintf(&b, "                if (!r.fail && reqMatch) { reqSeen_%d = true; }\n", i)
 		}
@@ -4667,6 +4792,73 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 // storage refusal (§6.5: a count past 2^31-1 or past what its body can frame)
 // sets report.refused and unwinds. Every body is walked IN PLACE on the one
 // reader: limit narrowed, then off, limit and fail put back.
+// writeMeasureCanonicalFieldCheck emits, for the region measure, the same
+// one-encoding refusal a load makes where the field's value alone decides it:
+// an explicit null pointer, a union field written with arm 0, and a scalar
+// stored at the writer's declared default (§3, §4). The check reads the
+// payload in place and never advances the reader.
+func writeMeasureCanonicalFieldCheck(b *strings.Builder, f *ir.Field, indent int) {
+	ind := strings.Repeat(" ", indent)
+	if f.Required || f.Type.Optional || f.Array != ir.ArrayNone {
+		return
+	}
+	if f.Type.Pointer {
+		fmt.Fprintf(b, "%sif (kind == 17 && TableVariable.lebValue(r.buf, r.off) == 0) { report.refuse(\"non_canonical\"); return at; }\n", ind)
+		return
+	}
+	if variableUnion(f) != nil {
+		fmt.Fprintf(b, "%sif (kind == 15 && TableVariable.lebValue(r.buf, r.off) == 0) { report.refuse(\"non_canonical\"); return at; }\n", ind)
+		return
+	}
+	if variableWide(f) {
+		return
+	}
+	k := variableWireKind(f)
+	width := ir.TableKindWidth(k)
+	if width == 0 || (f.Type.Kind != ir.TInt && f.Type.Kind != ir.TBits && f.Type.Kind != ir.TBool) {
+		return
+	}
+	if f.Type.Kind == ir.TBool {
+		def := "0"
+		if f.DefBool {
+			def = "1"
+		}
+		fmt.Fprintf(b, "%sif (kind == 1 && r.off < r.limit && (r.buf[r.off] & 0xff) == %s) { report.refuse(\"non_canonical\"); return at; }\n", ind, def)
+		return
+	}
+	var expr string
+	signed := f.Type.Signed && f.Type.Kind == ir.TInt
+	switch width {
+	case 1:
+		if signed {
+			expr = "r.buf[r.off]"
+		} else {
+			expr = "(r.buf[r.off] & 0xff)"
+		}
+	case 2:
+		if signed {
+			expr = "(short) ((r.buf[r.off] & 0xff) | (r.buf[r.off + 1] & 0xff) << 8)"
+		} else {
+			expr = "((r.buf[r.off] & 0xff) | (r.buf[r.off + 1] & 0xff) << 8)"
+		}
+	case 4:
+		if signed {
+			expr = "((r.buf[r.off] & 0xff) | (r.buf[r.off + 1] & 0xff) << 8 | (r.buf[r.off + 2] & 0xff) << 16 | (r.buf[r.off + 3] & 0xff) << 24)"
+		} else {
+			expr = "(((long) (r.buf[r.off] & 0xff)) | ((long) (r.buf[r.off + 1] & 0xff)) << 8 | ((long) (r.buf[r.off + 2] & 0xff)) << 16 | ((long) (r.buf[r.off + 3] & 0xff)) << 24)"
+		}
+	case 8:
+		expr = "TableVariable.u64(r.buf, r.off)"
+	default:
+		return
+	}
+	def := variableDefault(f)
+	if def == "" {
+		return
+	}
+	fmt.Fprintf(b, "%sif (kind == %d && r.off + %d <= r.limit && %s == %s) { report.refuse(\"non_canonical\"); return at; }\n", ind, k, width, expr, def)
+}
+
 func writeMeasureWalk(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("    static long measureFields(TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {\n")
 	b.WriteString("        return measureAt(r, report, 0);\n")
@@ -4676,12 +4868,21 @@ func writeMeasureWalk(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("    // and answers the extent counter advanced by the maps and lists it carries.\n")
 	b.WriteString("    static long measureAt(TableVariable.Reader r, TableVariable.Report report, long at) {\n")
 	b.WriteString("        r.fail = false;\n")
+	b.WriteString("        int lastOrder = -1;\n")
 	b.WriteString("        while (true) {\n")
 	b.WriteString("            long ref = r.leb();\n")
 	b.WriteString("            if (r.fail || ref == 0) { return at; }\n")
 	b.WriteString("            long id = r.resolve(ref);\n")
 	b.WriteString("            if (r.fail || !r.has(1)) { return at; }\n")
 	b.WriteString("            int kind = r.get8();\n")
+	b.WriteString("            int fOrd = -1;\n")
+	for i, f := range st.Fields {
+		fmt.Fprintf(b, "            if (id == F_%s) {\n", varMember(f))
+		fmt.Fprintf(b, "                fOrd = %d;\n", i)
+		writeMeasureCanonicalFieldCheck(b, f, 16)
+		b.WriteString("            }\n")
+	}
+	b.WriteString("            if (fOrd >= 0) { if (fOrd <= lastOrder) { report.refuse(\"non_canonical\"); return at; } lastOrder = fOrd; }\n")
 	var methods []func()
 	unions := map[*ir.Union]bool{}
 	var unionOrder []*ir.Union
@@ -6069,6 +6270,46 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			b.WriteString("                } else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 		}
 	}
+}
+
+// variableAtDefaultTest answers the reader-side test for a field the writer
+// elides when it holds its declared default (§3, §4). It answers "" where the
+// writer's elision is not a fact of this field's value alone (a nested table's
+// emptiness is its body's, and a keyed slot list is never empty).
+func variableAtDefaultTest(f *ir.Field) string {
+	if f.Required || f.Type.Optional || f.Type.Pointer {
+		return ""
+	}
+	if isStruct(f) && f.Array == ir.ArrayNone {
+		return ""
+	}
+	if isStruct(f) && f.Array == ir.ArrayFixed {
+		return ""
+	}
+	if f.KeyEnum != "" {
+		return ""
+	}
+	return variableDefaultTest(f, "v."+varMember(f))
+}
+
+// writeVariableCanonicalFieldCheck emits the strict one-encoding checks a table
+// field owes after its value is read: a field stored at the declared default
+// (or an explicit null pointer, which the pointer reader refuses where it is
+// seen) is not the one encoding a conforming writer emits (§3, §4).
+func writeVariableCanonicalFieldCheck(b *strings.Builder, f *ir.Field, returnFalse bool) {
+	ret := ""
+	if returnFalse {
+		ret = " return false;"
+	}
+	if !f.Required && !f.Type.Optional && f.Type.Pointer && f.Array == ir.ArrayNone {
+		fmt.Fprintf(b, "                if (!r.fail && !report.refused && !report.damaged && v.%sIdx == 0) { report.refuse(\"non_canonical\");%s }\n", varMember(f), ret)
+		return
+	}
+	test := variableAtDefaultTest(f)
+	if test == "" {
+		return
+	}
+	fmt.Fprintf(b, "                if (!r.fail && !report.refused && !report.damaged && (%s)) { report.refuse(\"non_canonical\");%s }\n", test, ret)
 }
 
 func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {

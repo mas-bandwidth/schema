@@ -241,6 +241,7 @@ public final class MixedStatRetain {
             TableVariable.Report report,
             int[] path,
             int depth) {
+        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail) {
@@ -259,6 +260,11 @@ public final class MixedStatRetain {
             }
             int kind = r.get8();
             if (id == MixedStatVariable.F_statId) {
+                if (lastOrder >= 0) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 0;
                 if (kind == 6) {
                     if (kind == 6) {
                         if (r.has(1)) {
@@ -276,7 +282,15 @@ public final class MixedStatRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (!r.fail && !report.refused && !report.damaged && (v.statId == 0)) {
+                    report.refuse("non_canonical");
+                }
             } else if (id == MixedStatVariable.F_delta) {
+                if (lastOrder >= 1) {
+                    report.refuse("non_canonical");
+                    return;
+                }
+                lastOrder = 1;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -313,6 +327,9 @@ public final class MixedStatRetain {
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
+                }
+                if (!r.fail && !report.refused && !report.damaged && (v.delta == 0)) {
+                    report.refuse("non_canonical");
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {
