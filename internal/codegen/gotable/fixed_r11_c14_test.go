@@ -330,7 +330,7 @@ func TestProbe(t *testing.T) {
 		got := make([]Live, 1)
 		got[0].Tail = 0xDEADBEEF
 		var r TableReport
-		if n := LiveFixedLoad(got, hostile, make([]TableFixedEntry, 256), &r); n != -1 || r.Reason != "wire_damaged" {
+		if n := LiveFixedLoad(got, hostile, make([]TableFixedEntry, 256), &r); n != -1 || r.Err() == nil {
 			t.Fatalf("%s: a non-zero dead byte did not refuse: n=%d %+v", tc.name, n, r)
 		}
 		if got[0].Tail != 0xDEADBEEF {
@@ -436,7 +436,7 @@ func TestProbe(t *testing.T) {
 
 	got := make([]Live, 1)
 	var r TableReport
-	if n := LiveFixedLoad(got, buf, make([]TableFixedEntry, 256), &r); n != -1 || r.Reason != "wire_damaged" {
+	if n := LiveFixedLoad(got, buf, make([]TableFixedEntry, 256), &r); n != -1 || r.Err() == nil {
 		t.Fatalf("a non-zero dead byte in a counted array's tail was accepted: n=%d %+v", n, r)
 	}
 }

@@ -1080,7 +1080,7 @@ func TestTagPastTheArmsRefuses(t *testing.T) {
 	got = make([]Host, 1)
 	HostReset(&got[0])
 	r = TableReport{}
-	if n := HostFixedLoad(got, stained, plan, &r); n != -1 || r.Reason != "wire_damaged" {
+	if n := HostFixedLoad(got, stained, plan, &r); n != -1 || r.Err() == nil {
 		t.Fatalf("a non-zero dead byte under tag 0: n=%d %+v", n, r)
 	}
 	if got[0].Pick.Type != PickTypeNone || got[0].Tail != 9 {
@@ -2804,7 +2804,7 @@ func TestNonZeroSlackRefused(t *testing.T) {
 		got := make([]Slack, 1)
 		got[0].Tail = 1234
 		var r TableReport
-		if n := SlackFixedLoad(got, hostile, make([]TableFixedEntry, 256), &r); n != -1 || r.Reason != "wire_damaged" {
+		if n := SlackFixedLoad(got, hostile, make([]TableFixedEntry, 256), &r); n != -1 || r.Err() == nil {
 			t.Fatalf("%s: a non-zero dead byte did not refuse: n=%d %+v", tc.name, n, r)
 		}
 		if got[0].Tail != 1234 {

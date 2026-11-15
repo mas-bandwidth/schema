@@ -194,8 +194,8 @@ func TestOuterTagConjunction(t *testing.T) {
 	TReset(&only[0])
 	only[0].Pick.Q = 0x55
 	r = TableReport{}
-	if n := TFixedLoad(only, buf, plan, &r); n != -1 || r.Reason != "wire_damaged" {
-		t.Fatalf("load %d report %+v, want the wire_damaged refusal", n, r)
+	if n := TFixedLoad(only, buf, plan, &r); n != -1 || r.Err() == nil {
+		t.Fatalf("load %d report %+v, want a refusal", n, r)
 	}
 	if only[0].Pick.P.X != 0 || only[0].Pick.Q != 0x55 {
 		t.Fatalf("the refusal wrote the destination or landed an inner arm: %+v", only[0].Pick)

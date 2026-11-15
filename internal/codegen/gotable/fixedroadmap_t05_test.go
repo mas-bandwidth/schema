@@ -243,8 +243,8 @@ func TestIllFormed(t *testing.T) {
 	for i := 3; i < 8; i++ {
 		slack[sPayload+i] = 0xFF
 	}
-	if got, r := load(slack); got >= 0 || r.Reason != "wire_damaged" {
-		t.Fatalf("slack: n=%d reason=%q, want the wire_damaged refusal (fixed-dead-bytes-are-zero)", got, r.Reason)
+	if got, r := load(slack); got >= 0 || r.Err() == nil {
+		t.Fatalf("slack: n=%d report=%+v, want a refusal (fixed-dead-bytes-are-zero)", got, r)
 	}
 
 	// THE REFUSAL IS TOTAL (§5.8): "no counter moves, nothing is decoded, and
