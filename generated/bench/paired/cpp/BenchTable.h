@@ -7191,11 +7191,8 @@ inline int64_t MixedEntitySave( const MixedEntity & value, uint8_t * buffer, int
 BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & value )
 {
     MixedEntityReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9745,11 +9742,8 @@ inline int64_t MixedStatSave( const MixedStat & value, uint8_t * buffer, int64_t
 BENCH_TABLE_INLINE bool MixedStatLoadBody( TableReader & r, MixedStat & value )
 {
     MixedStatReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10425,11 +10419,8 @@ inline int64_t MixedHitEventSave( const MixedHitEvent & value, uint8_t * buffer,
 BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & value )
 {
     MixedHitEventReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11420,11 +11411,8 @@ inline int64_t MixedChatEventSave( const MixedChatEvent & value, uint8_t * buffe
 BENCH_TABLE_INLINE bool MixedChatEventLoadBody( TableReader & r, MixedChatEvent & value )
 {
     MixedChatEventReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12156,11 +12144,8 @@ inline int64_t MixedPickupEventSave( const MixedPickupEvent & value, uint8_t * b
 BENCH_TABLE_INLINE bool MixedPickupEventLoadBody( TableReader & r, MixedPickupEvent & value )
 {
     MixedPickupEventReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13263,11 +13248,8 @@ inline int64_t BenchMixedSave( const BenchMixed & value, uint8_t * buffer, int64
 BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value )
 {
     BenchMixedReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;

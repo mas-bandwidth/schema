@@ -6961,11 +6961,8 @@ inline int64_t UserSave( const User & value, uint8_t * buffer, int64_t capacity 
 MESSAGEDEMO_TABLE_INLINE bool UserLoadBody( TableReader & r, User & value )
 {
     UserReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -7481,11 +7478,8 @@ inline int64_t ScriptSave( const Script & value, uint8_t * buffer, int64_t capac
 MESSAGEDEMO_TABLE_INLINE bool ScriptLoadBody( TableReader & r, Script & value )
 {
     ScriptReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -8165,11 +8159,8 @@ inline int64_t SelectionSave( const Selection & value, uint8_t * buffer, int64_t
 MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBody( TableReader & r, Selection & value )
 {
     SelectionReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9102,11 +9093,8 @@ inline int64_t InsertTextSave( const InsertText & value, uint8_t * buffer, int64
 MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & value )
 {
     InsertTextReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10980,11 +10968,8 @@ inline int64_t RemoveTextSave( const RemoveText & value, uint8_t * buffer, int64
 MESSAGEDEMO_TABLE_INLINE bool RemoveTextLoadBody( TableReader & r, RemoveText & value )
 {
     RemoveTextReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11630,11 +11615,8 @@ inline int64_t EditSave( const Edit & value, uint8_t * buffer, int64_t capacity 
 MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
 {
     EditReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13001,11 +12983,8 @@ inline int64_t OpenDocumentSave( const OpenDocument & value, uint8_t * buffer, i
 MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBody( TableReader & r, OpenDocument & value )
 {
     OpenDocumentReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13727,11 +13706,8 @@ inline int64_t SaveDocumentSave( const SaveDocument & value, uint8_t * buffer, i
 MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBody( TableReader & r, SaveDocument & value )
 {
     SaveDocumentReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14700,11 +14676,8 @@ inline int64_t TransactionSave( const Transaction & value, uint8_t * buffer, int
 MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction & value )
 {
     TransactionReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -17709,11 +17682,8 @@ inline int64_t ToolMessageSave( const ToolMessage & value, uint8_t * buffer, int
 MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage & value )
 {
     ToolMessageReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -20979,11 +20949,8 @@ inline int64_t CursorSave( const Cursor & value, uint8_t * buffer, int64_t capac
 MESSAGEDEMO_TABLE_INLINE bool CursorLoadBody( TableReader & r, Cursor & value )
 {
     CursorReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -21639,11 +21606,8 @@ inline int64_t PingSave( const Ping & value, uint8_t * buffer, int64_t capacity 
 MESSAGEDEMO_TABLE_INLINE bool PingLoadBody( TableReader & r, Ping & value )
 {
     PingReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;

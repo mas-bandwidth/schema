@@ -11078,11 +11078,8 @@ inline int64_t GunnerSettingsSave( const GunnerSettings & value, uint8_t * buffe
 TABLEDEMO_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSettings & value )
 {
     GunnerSettingsReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11841,11 +11838,8 @@ inline int64_t ShipEntrySave( const ShipEntry & value, uint8_t * buffer, int64_t
 TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBody( TableReader & r, ShipEntry & value )
 {
     ShipEntryReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13082,11 +13076,8 @@ inline int64_t GlobalSettingsSave( const GlobalSettings & value, uint8_t * buffe
 TABLEDEMO_TABLE_INLINE bool GlobalSettingsLoadBody( TableReader & r, GlobalSettings & value )
 {
     GlobalSettingsReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14305,11 +14296,8 @@ inline int64_t PackConfigSave( const PackConfig & value, uint8_t * buffer, int64
 TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & value )
 {
     PackConfigReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -18417,11 +18405,8 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsLoadBodyRetain( TableReader & r, Gunne
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -18700,11 +18685,8 @@ TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBodyRetain( TableReader & r, ShipEntry 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -19198,11 +19180,8 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsLoadBodyRetain( TableReader & r, Globa
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -19756,11 +19735,8 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;

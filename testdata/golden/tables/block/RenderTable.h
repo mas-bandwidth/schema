@@ -7698,11 +7698,8 @@ inline int64_t RenderCameraSave( const RenderCamera & value, uint8_t * buffer, i
 BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera & value )
 {
     RenderCameraReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -8925,11 +8922,8 @@ inline int64_t RenderShipSave( const RenderShip & value, uint8_t * buffer, int64
 BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & value )
 {
     RenderShipReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10560,11 +10554,8 @@ inline int64_t RenderTurretSave( const RenderTurret & value, uint8_t * buffer, i
 BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret & value )
 {
     RenderTurretReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12089,11 +12080,8 @@ inline int64_t RenderMissileSave( const RenderMissile & value, uint8_t * buffer,
 BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissile & value )
 {
     RenderMissileReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13332,11 +13320,8 @@ inline int64_t RenderDynamicPropSave( const RenderDynamicProp & value, uint8_t *
 BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDynamicProp & value )
 {
     RenderDynamicPropReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14577,11 +14562,8 @@ inline int64_t RenderStaticPropSave( const RenderStaticProp & value, uint8_t * b
 BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderStaticProp & value )
 {
     RenderStaticPropReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -15881,11 +15863,8 @@ inline int64_t RenderCosmeticPropSave( const RenderCosmeticProp & value, uint8_t
 BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderCosmeticProp & value )
 {
     RenderCosmeticPropReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -17268,11 +17247,8 @@ inline int64_t RenderLaserSave( const RenderLaser & value, uint8_t * buffer, int
 BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & value )
 {
     RenderLaserReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -18439,11 +18415,8 @@ inline int64_t RenderExplosionSave( const RenderExplosion & value, uint8_t * buf
 BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExplosion & value )
 {
     RenderExplosionReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -20064,11 +20037,8 @@ inline int64_t RenderFrameSave( const RenderFrame & value, uint8_t * buffer, int
 BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & value )
 {
     RenderFrameReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -22337,11 +22307,8 @@ inline int64_t RenderVector3Save( const RenderVector3 & value, uint8_t * buffer,
 BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector3 & value )
 {
     RenderVector3Reset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -23189,11 +23156,8 @@ inline int64_t RenderQuaternionSave( const RenderQuaternion & value, uint8_t * b
 BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQuaternion & value )
 {
     RenderQuaternionReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;

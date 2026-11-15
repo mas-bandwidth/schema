@@ -9809,11 +9809,8 @@ inline int64_t MetaSave( const Meta & value, uint8_t * buffer, int64_t capacity 
 GRAPHDEMO_TABLE_INLINE bool MetaLoadBody( TableReader & r, Meta & value )
 {
     MetaReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10514,11 +10511,8 @@ inline int64_t SettingsSave( const Settings & value, uint8_t * buffer, int64_t c
 GRAPHDEMO_TABLE_INLINE bool SettingsLoadBody( TableReader & r, Settings & value )
 {
     SettingsReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11236,11 +11230,8 @@ inline bool ListNodeLoadBody( TableReader & r, const TableNodeMap & nodes, ListN
 {
     (void) nodes;
     ListNodeReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11546,11 +11537,8 @@ inline bool TreeNodeLoadBody( TableReader & r, const TableNodeMap & nodes, TreeN
 {
     (void) nodes;
     TreeNodeReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11814,11 +11802,8 @@ inline bool LayerLoadBody( TableReader & r, const TableNodeMap & nodes, Layer & 
 {
     (void) nodes;
     LayerReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12234,11 +12219,8 @@ inline bool SceneLoadBody( TableReader & r, const TableNodeMap & nodes, Scene & 
 {
     (void) nodes;
     SceneReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12955,11 +12937,8 @@ inline bool DepotLoadBody( TableReader & r, const TableNodeMap & nodes, Depot & 
 {
     (void) nodes;
     DepotReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13440,11 +13419,8 @@ inline bool AlbumLoadBody( TableReader & r, const TableNodeMap & nodes, Album & 
 {
     (void) nodes;
     AlbumReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -21590,11 +21566,8 @@ GRAPHDEMO_TABLE_INLINE bool MetaLoadBodyRetain( TableReader & r, Meta & value, T
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -21826,11 +21799,8 @@ GRAPHDEMO_TABLE_INLINE bool SettingsLoadBodyRetain( TableReader & r, Settings & 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -22100,11 +22070,8 @@ inline bool ListNodeLoadBodyRetain( TableReader & r, const TableNodeMap & nodes,
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -22417,11 +22384,8 @@ inline bool TreeNodeLoadBodyRetain( TableReader & r, const TableNodeMap & nodes,
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -22692,11 +22656,8 @@ inline bool LayerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, La
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -23114,11 +23075,8 @@ inline bool SceneLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sc
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -23847,11 +23805,8 @@ inline bool DepotLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -24340,11 +24295,8 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;

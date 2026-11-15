@@ -11458,11 +11458,8 @@ inline int64_t SampleSave( const Sample & value, uint8_t * buffer, int64_t capac
 LISTDEMO_TABLE_INLINE bool SampleLoadBody( TableReader & r, Sample & value )
 {
     SampleReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12049,11 +12046,8 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
     (void) nodes;
     if ( nodes.refused ) { return false; }
     RowReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12422,11 +12416,8 @@ inline bool SheetLoadBody( TableReader & r, const TableNodeMap & nodes, Sheet & 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     SheetReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12715,11 +12706,8 @@ inline int64_t ItemSave( const Item & value, uint8_t * buffer, int64_t capacity 
 LISTDEMO_TABLE_INLINE bool ItemLoadBody( TableReader & r, Item & value )
 {
     ItemReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13260,11 +13248,8 @@ LISTDEMO_TABLE_INLINE bool SquadRosterEntrySaveBody( TableWriter & w, TableIds &
 LISTDEMO_TABLE_INLINE bool SquadRosterEntryLoadBody( TableReader & r, SquadRosterEntry & value )
 {
     SquadRosterEntryReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13501,11 +13486,8 @@ inline bool SquadLoadBody( TableReader & r, const TableNodeMap & nodes, Squad & 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     SquadReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13884,11 +13866,8 @@ inline bool ArmyLoadBody( TableReader & r, const TableNodeMap & nodes, Army & va
     (void) nodes;
     if ( nodes.refused ) { return false; }
     ArmyReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14233,11 +14212,8 @@ inline bool DeckLoadBody( TableReader & r, const TableNodeMap & nodes, Deck & va
     (void) nodes;
     if ( nodes.refused ) { return false; }
     DeckReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -21939,11 +21915,8 @@ LISTDEMO_TABLE_INLINE bool SampleLoadBodyRetain( TableReader & r, Sample & value
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -22149,11 +22122,8 @@ inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -22527,11 +22497,8 @@ inline bool SheetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sh
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -22811,11 +22778,8 @@ LISTDEMO_TABLE_INLINE bool ItemLoadBodyRetain( TableReader & r, Item & value, Ta
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -22980,11 +22944,8 @@ LISTDEMO_TABLE_INLINE bool SquadRosterEntryLoadBodyRetain( TableReader & r, Squa
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -23229,11 +23190,8 @@ inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sq
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -23617,11 +23575,8 @@ inline bool ArmyLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Arm
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -23971,11 +23926,8 @@ inline bool DeckLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Dec
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;

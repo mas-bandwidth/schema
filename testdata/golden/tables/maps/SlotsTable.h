@@ -11545,11 +11545,8 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntrySaveBody( TableWriter & w, TableIds & i
 MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEntry & value )
 {
     SlotsSeatsEntryReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11967,11 +11964,8 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     SlotsReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13713,11 +13707,8 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14142,11 +14133,8 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;

@@ -6110,11 +6110,8 @@ inline int64_t ArmorPlateSave( const ArmorPlate & value, uint8_t * buffer, int64
 BLOCKHOME_TABLE_INLINE bool ArmorPlateLoadBody( TableReader & r, ArmorPlate & value )
 {
     ArmorPlateReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -6924,11 +6921,8 @@ inline int64_t ArmorConfigSave( const ArmorConfig & value, uint8_t * buffer, int
 BLOCKHOME_TABLE_INLINE bool ArmorConfigLoadBody( TableReader & r, ArmorConfig & value )
 {
     ArmorConfigReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -7723,11 +7717,8 @@ inline int64_t FiringGroupSave( const FiringGroup & value, uint8_t * buffer, int
 BLOCKHOME_TABLE_INLINE bool FiringGroupLoadBody( TableReader & r, FiringGroup & value )
 {
     FiringGroupReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -8460,11 +8451,8 @@ inline int64_t GunnerSettingsSave( const GunnerSettings & value, uint8_t * buffe
 BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSettings & value )
 {
     GunnerSettingsReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;

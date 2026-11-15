@@ -7028,11 +7028,8 @@ inline int64_t SimStateSave( const SimState & value, uint8_t * buffer, int64_t c
 SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value )
 {
     SimStateReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10325,11 +10322,8 @@ inline int64_t PoseSave( const Pose & value, uint8_t * buffer, int64_t capacity 
 SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
 {
     PoseReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;

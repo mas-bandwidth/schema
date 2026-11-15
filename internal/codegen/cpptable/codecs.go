@@ -2114,18 +2114,15 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		// not refuse a clean record for an earlier read's missing field.
 		g.pf("    const int32_t missing_before = r.report->missing_required;\n")
 	}
-<<<<<<< HEAD
 	// A REPEATED FIELD ID IS DAMAGE (docs/SPEC-TABLES.md §4): the same id
 	// twice in one body is a wire no conforming writer produces, so a
 	// reference already seen discards the load. One bit per reference — the
 	// id table is distinct, so a reference IS a field id, and the entry
 	// count is capped at kTableProbeBound, so the bitmap is bounded.
 	g.pf("    uint64_t seen_refs[kTableProbeBound / 64] = {0};\n")
-=======
 	if len(st.Fields) > 0 {
 		g.pf("    int32_t last_field_ord = 0;\n")
 	}
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t field_ref = 0;\n")
 	g.pf("        if ( !r.getleb( field_ref ) )\n        {\n            r.report->damaged = true;\n            return false;\n        }\n")

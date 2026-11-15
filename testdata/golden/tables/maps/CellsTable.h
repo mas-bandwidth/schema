@@ -11442,11 +11442,8 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntrySaveBody( TableWriter & w, TableIds & id
 MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBody( TableReader & r, CellsRowsEntry & value )
 {
     CellsRowsEntryReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11790,11 +11787,8 @@ inline bool CellsLoadBody( TableReader & r, const TableNodeMap & nodes, Cells & 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     CellsReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13519,11 +13513,8 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBodyRetain( TableReader & r, CellsRo
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13874,11 +13865,8 @@ inline bool CellsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ce
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;

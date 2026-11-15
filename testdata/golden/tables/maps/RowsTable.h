@@ -11959,11 +11959,8 @@ MAPDEMO_TABLE_INLINE bool RowEntriesEntrySaveBody( TableWriter & w, TableIds & i
 MAPDEMO_TABLE_INLINE bool RowEntriesEntryLoadBody( TableReader & r, RowEntriesEntry & value )
 {
     RowEntriesEntryReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12220,11 +12217,8 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
     (void) nodes;
     if ( nodes.refused ) { return false; }
     RowReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12559,11 +12553,8 @@ MAPDEMO_TABLE_INLINE bool WideRowEntriesEntrySaveBody( TableWriter & w, TableIds
 MAPDEMO_TABLE_INLINE bool WideRowEntriesEntryLoadBody( TableReader & r, WideRowEntriesEntry & value )
 {
     WideRowEntriesEntryReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12819,11 +12810,8 @@ inline bool WideRowLoadBody( TableReader & r, const TableNodeMap & nodes, WideRo
     (void) nodes;
     if ( nodes.refused ) { return false; }
     WideRowReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13159,11 +13147,8 @@ MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntrySaveBody( TableWriter & w, TableIds &
 MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntryLoadBody( TableReader & r, EdgeRowNamesEntry & value )
 {
     EdgeRowNamesEntryReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13365,11 +13350,8 @@ MAPDEMO_TABLE_INLINE bool EdgeRowIdsEntrySaveBody( TableWriter & w, TableIds & i
 MAPDEMO_TABLE_INLINE bool EdgeRowIdsEntryLoadBody( TableReader & r, EdgeRowIdsEntry & value )
 {
     EdgeRowIdsEntryReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13686,11 +13668,8 @@ inline bool EdgeRowLoadBody( TableReader & r, const TableNodeMap & nodes, EdgeRo
     (void) nodes;
     if ( nodes.refused ) { return false; }
     EdgeRowReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -18436,11 +18415,8 @@ MAPDEMO_TABLE_INLINE bool RowEntriesEntryLoadBodyRetain( TableReader & r, RowEnt
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -18705,11 +18681,8 @@ inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -19054,11 +19027,8 @@ MAPDEMO_TABLE_INLINE bool WideRowEntriesEntryLoadBodyRetain( TableReader & r, Wi
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -19322,11 +19292,8 @@ inline bool WideRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -19672,11 +19639,8 @@ MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntryLoadBodyRetain( TableReader & r, Edge
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -19886,11 +19850,8 @@ MAPDEMO_TABLE_INLINE bool EdgeRowIdsEntryLoadBodyRetain( TableReader & r, EdgeRo
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -20215,11 +20176,8 @@ inline bool EdgeRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;

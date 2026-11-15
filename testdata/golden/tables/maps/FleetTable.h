@@ -12193,11 +12193,8 @@ inline int64_t ShipConfigSave( const ShipConfig & value, uint8_t * buffer, int64
 MAPDEMO_TABLE_INLINE bool ShipConfigLoadBody( TableReader & r, ShipConfig & value )
 {
     ShipConfigReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12863,11 +12860,8 @@ inline int64_t ItemSave( const Item & value, uint8_t * buffer, int64_t capacity 
 MAPDEMO_TABLE_INLINE bool ItemLoadBody( TableReader & r, Item & value )
 {
     ItemReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13411,11 +13405,8 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBody( TableWriter & w, TableIds & i
 MAPDEMO_TABLE_INLINE bool FleetShipsEntryLoadBody( TableReader & r, FleetShipsEntry & value )
 {
     FleetShipsEntryReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13635,11 +13626,8 @@ inline bool FleetByIdEntryLoadBody( TableReader & r, const TableNodeMap & nodes,
     (void) nodes;
     if ( nodes.refused ) { return false; }
     FleetByIdEntryReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13845,11 +13833,8 @@ MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntrySaveBody( TableWriter & w,
 MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntryLoadBody( TableReader & r, FleetLoadoutsEntryValueEntry & value )
 {
     FleetLoadoutsEntryValueEntryReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14089,11 +14074,8 @@ inline bool FleetLoadoutsEntryLoadBody( TableReader & r, const TableNodeMap & no
     (void) nodes;
     if ( nodes.refused ) { return false; }
     FleetLoadoutsEntryReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14426,11 +14408,8 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntrySaveBody( TableWriter & w, TableIds & i
 MAPDEMO_TABLE_INLINE bool FleetTiersEntryLoadBody( TableReader & r, FleetTiersEntry & value )
 {
     FleetTiersEntryReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14887,11 +14866,8 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     FleetReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -19301,11 +19277,8 @@ MAPDEMO_TABLE_INLINE bool ShipConfigLoadBodyRetain( TableReader & r, ShipConfig 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -19504,11 +19477,8 @@ MAPDEMO_TABLE_INLINE bool ItemLoadBodyRetain( TableReader & r, Item & value, Tab
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -19676,11 +19646,8 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntryLoadBodyRetain( TableReader & r, FleetS
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -19908,11 +19875,8 @@ inline bool FleetByIdEntryLoadBodyRetain( TableReader & r, const TableNodeMap & 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -20125,11 +20089,8 @@ MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntryLoadBodyRetain( TableReade
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -20377,11 +20338,8 @@ inline bool FleetLoadoutsEntryLoadBodyRetain( TableReader & r, const TableNodeMa
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -20724,11 +20682,8 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntryLoadBodyRetain( TableReader & r, FleetT
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -21193,11 +21148,8 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;

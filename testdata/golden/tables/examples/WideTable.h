@@ -10776,11 +10776,8 @@ inline int64_t WideBlobSave( const WideBlob & value, uint8_t * buffer, int64_t c
 TABLEDEMO_TABLE_INLINE bool WideBlobLoadBody( TableReader & r, WideBlob & value )
 {
     WideBlobReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11798,11 +11795,8 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBodyRetain( TableReader & r, WideBlob & 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;

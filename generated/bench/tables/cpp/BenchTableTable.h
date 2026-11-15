@@ -7229,11 +7229,8 @@ inline int64_t TableEntitySave( const TableEntity & value, uint8_t * buffer, int
 BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity & value )
 {
     TableEntityReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9787,11 +9784,8 @@ inline int64_t TableStatSave( const TableStat & value, uint8_t * buffer, int64_t
 BENCHTABLE_TABLE_INLINE bool TableStatLoadBody( TableReader & r, TableStat & value )
 {
     TableStatReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10834,11 +10828,8 @@ inline int64_t TableMixedSave( const TableMixed & value, uint8_t * buffer, int64
 BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & value )
 {
     TableMixedReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -15686,11 +15677,8 @@ inline int64_t TableHitEventSave( const TableHitEvent & value, uint8_t * buffer,
 BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEvent & value )
 {
     TableHitEventReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -16681,11 +16669,8 @@ inline int64_t TableChatEventSave( const TableChatEvent & value, uint8_t * buffe
 BENCHTABLE_TABLE_INLINE bool TableChatEventLoadBody( TableReader & r, TableChatEvent & value )
 {
     TableChatEventReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -17417,11 +17402,8 @@ inline int64_t TablePickupEventSave( const TablePickupEvent & value, uint8_t * b
 BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePickupEvent & value )
 {
     TablePickupEventReset( value ); // prefill declared defaults in place, then overlay
-<<<<<<< HEAD
     uint64_t seen_refs[kTableProbeBound / 64] = {0};
-=======
     int32_t last_field_ord = 0;
->>>>>>> c2909c52d249753b1f2d81041b4c3fbc3b9579cd
     for ( ;; )
     {
         uint64_t field_ref = 0;
