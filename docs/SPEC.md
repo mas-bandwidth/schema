@@ -2220,8 +2220,11 @@ Where the leg reports it, `Read` reports bits consumed. Framing several
 objects in one buffer is not several `Read<T>` calls: use a top-level type
 whose fields are the objects, or the leg's bit-offset entry where it has one
 (§6.1), and the one end check runs once, after the last. The Dart `read<T>`
-and the JavaScript `Read<T>Flat` return a boolean only; they do not report
-bits consumed today. That is an open question for the owner, not changed here.
+and the JavaScript `Read<T>Flat` return a boolean only. Dart reads do not
+report bits consumed today. That is an open question for the owner, not
+changed here. Beside `Read<T>Flat`, `Read<T>FlatBits` returns the bits
+consumed on success and refuses as `Read<T>Flat` does; it is the framing
+entry and does not run the end-of-packet check.
 
 **Writes check what the declaration does not admit in every packet target, by the leg's own mechanism (§5.1).** A language verifies correctness the way that language verifies
 correctness: a debug-only assert where that is the language's idiom, a refusal
@@ -2332,9 +2335,9 @@ check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal
 is the leg's assert, "every build" its refusal. These tables record the code as
 it stands, not the contract: an "every build" entry in an assert leg is a
 release-build check the contract does not ask for, and the contract for that
-row is the debug assert. As a fact of today's code, C++, C# and Rust also
-refuse a count or length past the storage it indexes in a release build,
-before the first byte, held by the `write-refusal-storage-release-<lang>`
+row is the debug assert. As a fact of today's code, C++, C, Rust and Java
+also refuse a count or length past the storage it indexes in a release
+build, before the first byte, held by the `write-refusal-storage-release-<lang>`
 gates.
 
 **After a refusal, the caller's buffer is UNSPECIFIED.** Consistency is owed on
@@ -2350,7 +2353,7 @@ across languages.
 |---|---|
 | C++ | 1–2 and 8 debug; 3–7 every build (8 too for optional text and text-list elements); 9 unchecked; 10 every build |
 | C | 1–4 and 8 debug; 5–7 every build; 9 unchecked; 10 every build |
-| C# | 1–2 debug; 3–8 every build; 9 unchecked; 10 every build |
+| C# | 1–4 debug, except that every build still refuses a negative text-list element length (`TextFits`) and a count past its bound in the region `Save`'s node walk; 5–8 every build; 9 unchecked; 10 every build for `required` fields only |
 | Rust | 1–2 and 4 debug; 3 and 7 every build; 5–6 and 8 unrepresentable (native enums, a Rust `String`); 9 unchecked; 10 every build |
 | Java | 1–5 and 8 debug; 6–7 every build; 9 unchecked; 10 every build |
 | Dart | 1–5 and 8 debug; 6–7 every build; 10 every build for `required` fields only; 9 unchecked |
@@ -2381,20 +2384,20 @@ active, a writer never produces bytes its own reader refuses.
 
 | leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–8 and 10) |
 |---|---|---|---|
-| C++ | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 not yet held |
-| C | 1–6 and 8 debug; 7 every build | 1–4 and 8 debug; 5–7 every build | 1–7 debug; 8 not yet held |
-| C# | 1–6 and 8 debug; 7 every build | 1–2 debug; 3–8 every build | 1 and 3–7 debug; 2 unchecked; 8 not yet held |
-| Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable; 8 not yet held |
-| Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 not yet held |
-| Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 debug; 8 not yet held |
-| Go | 1–8 every build | 1–8 every build | 1–8 every build, on the flat and the per-field path alike |
-| JavaScript | 1–8 every build | 1–8 every build | the flat tier 1–7 every build, whatever `NODE_ENV` says; 8 not yet held |
-| Elixir | 1–6 and 8 every build (`ArgumentError`); 7 unrepresentable | 1–6 and 8 every build; 7 unrepresentable | 1–7 every build (`ArgumentError`); 8 not yet held |
-| Lua | 1–8 every build | 1–8 every build | 1–6 every build; 7 raises; 8 not yet held |
-| Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises; 8 not yet held |
-| Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 8 not yet held |
-| MOO | 1–8 every build | 1–8 every build | 1–8 every build |
-| Goose | 1–8 every build | 1–8 every build | 1–7 every build; 8 not yet held |
+| C++ | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 and 10 not yet held |
+| C | 1–6 and 8 debug; 7 every build | 1–4 and 8 debug; 5–7 every build | 1–7 debug; 8 and 10 not yet held |
+| C# | 1–6 and 8 debug; 7 every build | 1–2 debug; 3–8 every build | 1 and 3–7 debug; 2 unchecked; 8 and 10 not yet held |
+| Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable; 8 and 10 not yet held |
+| Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 and 10 not yet held |
+| Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 debug; 8 and 10 not yet held |
+| Go | 1–8 every build | 1–8 every build | 1–8 every build, on the flat and the per-field path alike; 10 not yet held |
+| JavaScript | 1–8 every build | 1–8 every build | the flat tier 1–7 every build, whatever `NODE_ENV` says; 8 and 10 not yet held |
+| Elixir | 1–6 and 8 every build (`ArgumentError`); 7 unrepresentable | 1–6 and 8 every build; 7 unrepresentable | 1–7 every build (`ArgumentError`); 8 and 10 not yet held |
+| Lua | 1–8 every build | 1–8 every build | 1–6 every build; 7 raises; 8 and 10 not yet held |
+| Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises; 8 and 10 not yet held |
+| Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 8 and 10 not yet held |
+| MOO | 1–8 every build | 1–8 every build | 1–8 every build; 10 not yet held |
+| Goose | 1–8 every build | 1–8 every build | 1–7 every build; 8 and 10 not yet held |
 | Lobster | 1–8 every build (`SaveChecked`) | 1–8 every build | 1–6 debug; 7 traps |
 
 **The text writer** (§16) refuses a zero byte or a zero unit by row 8, as the
@@ -2938,11 +2941,11 @@ schema build-version [--facts] [dir|files...]  // the cook/block id, and the tex
 schema tables-baseline [--update --reason "..."] [--verbose] [dir|files...]
                                                // the table wire's evolution gate (SPEC-TABLES.md §18)
 schema fmt        [--verbose] [dir|files...]   // the canonical formatter, and the only command that writes a schema file
-schema pack       --root <Table> --out <file> [--message [--announce <file>]] [--tolerate] [--verbose] <tree-dir> [dir|files...]
-schema unpack     --root <Table> --in  <file> [--announce <file>] [--one-file] [--tolerate] [--verbose] <tree-dir> [dir|files...]
+schema pack       --root <Table> --out <file> [--message [--announce <file>]] [--verbose] <tree-dir> [dir|files...]
+schema unpack     --root <Table> --in  <file> [--announce <file>] [--one-file] [--verbose] <tree-dir> [dir|files...]
                                                // a text tree to a table-wire file, and back (SPEC-TABLES.md §17)
 schema cook       --root <Table> --in  <file|tree-dir> --out <file>
-                  [--byte-order little|big] [--attribution <file>] [--tolerate] [--verbose] [dir|files...]
+                  [--byte-order little|big] [--attribution <file>] [--verbose] [dir|files...]
 schema cook-check [--root <Table>] [--attribution <file>] [--verbose] <file.cook> [dir|files...]
 schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
                                                // the cooked form: produce, validate, and back to the wire (SPEC-TABLES.md §7)
@@ -2961,8 +2964,9 @@ nothing unless `--verbose` asks for the per-file report — the files
 `generate` wrote, the files `fmt` rewrote, `check`'s ok line, the
 header facts a cook was written with. Errors and
 diagnostics always reach stderr, and exit codes do not depend on verbosity.
-`pack` and `unpack` exit nonzero when their read report is not silent, and
-`--tolerate` accepts it.
+`pack`, `unpack` and `cook` exit nonzero when their read refuses the input;
+a report that counts only lawful evolution — an unknown field from a newer
+writer, a widening — prints its line and exits 0.
 
 **`fmt` is the only command that writes a schema file.** Every other command
 loads the unit as it sits on disk and leaves it byte for byte alone, so a

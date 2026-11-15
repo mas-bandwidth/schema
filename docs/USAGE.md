@@ -3877,9 +3877,9 @@ is byte-stable.
 and one `<field>/<Variant>.json` per keyed slot, or one `<Root>.json` with
 `--one-file` — and PRUNES the files it owns
 and did not write, so a stale value cannot survive into a newer tree. Neither
-verb writes to your `.schema` sources, and both exit nonzero when the read
-report is not silent; `--tolerate` accepts it, `--verbose` prints it either way
-and names any hidden non-JSON file the walk passed over.
+verb writes to your `.schema` sources. Both exit nonzero when the read refuses
+the input, and a report that counts only lawful evolution exits 0; `--verbose`
+prints it either way and names any hidden non-JSON file the walk passed over.
 
 `pack` reads the texts with its own engine inside the compiler rather than by
 calling generated code — the compiler is a Go program — so the tree carries a

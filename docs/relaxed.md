@@ -103,7 +103,7 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-luau`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-moo`: both hostile rows.
   - `relax/hostile-rows-rust`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-squirrel`: both hostile rows.
+  - `relax/hostile-rows-squirrel`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried in `internal/ci/schema_squirrel_runs_hostile_corpus_test.go`); the JSON walk refuses a U+0000 in an object key or a skipped string (read.go scanKey).
 - `relax/deprecated-carried`: `test/conformance/go/rows/R20_test.go`, clause 2
   (`TestRowR20DroppedFieldUnknown`). The header is restored to the
   maintainer's ruling of 2026-11-10 (a `| deprecated` fixed-form field is
