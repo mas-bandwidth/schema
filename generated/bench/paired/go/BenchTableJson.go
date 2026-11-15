@@ -472,6 +472,7 @@ func tableJSONWriteStringBody(out *tableJSONOut, s []byte) {
 		default:
 			switch {
 			case c < 0x20:
+				out.invalid = out.invalid || c == 0 // text holds no zero byte (§16.14 W8)
 				var escape [6]byte
 				escape[0], escape[1], escape[2], escape[3] = '\\', 'u', '0', '0'
 				escape[4], escape[5] = hex[c>>4], hex[c&0xf]
@@ -1820,14 +1821,14 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		}
 		if f.HasRange {
 			// A COMPRESSED FLOAT'S -0 LANDS AS +0 (§3.3, the special values):
-			// it is inside the range, so it does not count, and the sign bit
-			// is a spelling the declaration cannot name. A NaN or an infinity
-			// never reaches this line: the text has no spelling for either
-			// and the walk above refused it as kind_mismatch.
-			if value < f.RangeMin {
+			// it is inside the range, so it does not count, and the sign bit is
+			// a spelling the declaration cannot name. A float32 field's ends are
+			// compared at float32; a NaN or an infinity never reaches this line:
+			// the text has no spelling for either and the walk above refused it.
+			if value < f.RangeMin && (!single || float32(value) < float32(f.RangeMin)) {
 				value = f.RangeMin
 				in.report.Refuse(TableRefuseOutOfRange, "")
-			} else if value > f.RangeMax {
+			} else if value > f.RangeMax && (!single || float32(value) > float32(f.RangeMax)) {
 				value = f.RangeMax
 				in.report.Refuse(TableRefuseOutOfRange, "")
 			} else if value == 0 {
@@ -2419,6 +2420,9 @@ func tableJSONRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 }
 
 func tableJSONWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte, options TableJSONOptions) int64 {
+	if buffer != nil && tableJSONWrite(value, info, nil, options) < 0 {
+		return -1
+	}
 	out := tableJSONOut{buffer: buffer, measure: buffer == nil, omit: options.OmitDefaults, compact: options.Compact}
 	if !tableJSONWriteValue(&out, value, info, 0) {
 		return -1
