@@ -14,6 +14,11 @@ from typing import Any
 
 from . import InvalidValue, Refused
 from . import descriptor, kinds
+# load and save import this module for its registration; binding them as
+# modules (not their names) resolves at call time, so the hot paths pay
+# no per-call import.
+from . import load as _load
+from . import save as _save
 from .descriptor import ArmDesc, FieldDesc
 
 # The kinds whose FIELD payload begins with its own length: an arm holds the
@@ -45,8 +50,6 @@ def _arm(un: type[Any], tag: int, path: str) -> ArmDesc:
 
 
 def _read_union_payload(r: Any, un: type[Any], ctx: Any) -> Any:
-    from .load import check_content
-
     reference = r.varint()
     if reference == 0:
         # The empty arm reads as None, in a field as in an array element: the
@@ -66,7 +69,7 @@ def _read_union_payload(r: Any, un: type[Any], ctx: Any) -> Any:
         # An arm this reader cannot name reads as None, counted unknown, and
         # its payload is judged as the engine's wire check judges any skipped
         # value (internal/tablewire/wirecheck.go, union and content).
-        check_content(payload, kind, ctx.ids)
+        _load.check_content(payload, kind, ctx.ids)
         ctx.unknown += 1
         return un()
     if kind != arm.kind:
@@ -97,9 +100,7 @@ def _read_arm_payload(r: Any, framed: int, start: int, f: FieldDesc, ctx: Any) -
     so the field codec reads from the arm's L onward; every other kind reads
     the bytes after it. Both are bounded to the arm's end, never copied.
     """
-    from .load import Reader
-
-    sub = Reader(r.data, framed if f.kind in _LENGTH_KINDS else start, r.pos, ctx.ids)
+    sub = _load.Reader(r.data, framed if f.kind in _LENGTH_KINDS else start, r.pos, ctx.ids)
     if f.codec == "union":
         value = _read_union_payload(sub, _union_class(f.target), ctx)
     else:
@@ -132,9 +133,7 @@ def _write_arm_header(w: Any, arm: ArmDesc, value: Any, ctx: Any) -> None:
 
 
 def _writer(buf: bytearray) -> Any:
-    from .save import Writer
-
-    return Writer(buf)
+    return _save.Writer(buf)
 
 
 def _write_union_element(w: Any, un: type[Any], value: Any, ctx: Any) -> None:
@@ -174,21 +173,19 @@ def _validate_union_array(value: Any, f: FieldDesc, path: str, seen: set[int]) -
 
 
 def _validate_arm_value(value: Any, f: FieldDesc, path: str, seen: set[int]) -> None:
-    from .save import _validate as validate_table
-
     if f.codec == "pointer":
         if value is None:
             return
         target = descriptor.by_name(f.target)
         if target is None or not isinstance(value, target):
             raise InvalidValue(path, f"not a {f.target} or None")
-        validate_table(value, value.descriptor, path, seen)
+        _save._validate(value, value.descriptor, path, seen)
         return
     if f.codec == "table":
         target = descriptor.by_name(f.target)
         if target is None or not isinstance(value, target):
             raise InvalidValue(path, f"not a {f.target}")
-        validate_table(value, value.descriptor, path, seen)
+        _save._validate(value, value.descriptor, path, seen)
         return
     if f.codec == "union":
         _validate_union(value, f.target, path, seen)
@@ -216,8 +213,6 @@ def _collect_union_array(value: Any, ctx: Any) -> None:
 
 
 def _collect_arm_value(value: Any, f: FieldDesc, ctx: Any) -> None:
-    from .save import _collect as collect_table
-
     if f.codec == "pointer":
         if value is None:
             return
@@ -229,11 +224,11 @@ def _collect_arm_value(value: Any, f: FieldDesc, ctx: Any) -> None:
         ctx.indices[key] = len(ctx.order) + 2
         ctx.order.append(value)
         ctx.onstack.add(key)
-        collect_table(value, ctx)
+        _save._collect(value, ctx)
         ctx.onstack.discard(key)
         return
     if f.codec == "table":
-        collect_table(value, ctx)
+        _save._collect(value, ctx)
         return
     if f.codec == "union":
         _collect_union(value, ctx)
@@ -265,11 +260,9 @@ class _UnionArray:
         _validate_union_array(value, fd, path, set())
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
-        from .load import Reader
-
         length = r.varint()
         payload = r.take(length)
-        sub = Reader(payload, 0, len(payload), ctx.ids)
+        sub = _load.Reader(payload, 0, len(payload), ctx.ids)
         element_kind = sub.byte()
         if element_kind != 15:
             raise Refused(
