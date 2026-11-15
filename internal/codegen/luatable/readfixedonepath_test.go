@@ -4,7 +4,8 @@ package luatable
 // "ONE path", §2 step 7, §5.3). A file this leg wrote with two records is
 // refused, the same verdict FixedLoad gives at a capacity of one, as is a
 // two-record file whose second record carries a damaged hash. One record plus
-// a trailing byte is refused. The refusal's name is not the contract.
+// a trailing byte is refused, as is a header with no record behind it. The
+// refusal's name is not the contract.
 
 import (
 	"fmt"
@@ -43,7 +44,8 @@ b.n = 9
 b.name = "two"
 local one = T.FixedSave("Row", { a })
 local two = T.FixedSave("Row", { a, b })
-local zero = T.FixedSave("Row", {})
+local layoutLen = string.unpack("<I4", one, 17)
+local zero = one:sub(1, 20 + layoutLen)
 local function verdict(ok)
   if ok then return "read" else return "refused" end
 end
@@ -71,7 +73,8 @@ local okD = pcall(T.ReadFixed, "Row", dmg)
 local okLD = pcall(T.FixedLoad, "Row", dmg, 1)
 print("dmg " .. verdict(okD) .. " " .. verdict(okLD))
 local okZ = pcall(T.ReadFixed, "Row", zero)
-print("zero " .. verdict(okZ))
+local okLZ = pcall(T.FixedLoad, "Row", zero, 1)
+print("zero " .. verdict(okZ) .. " " .. verdict(okLZ))
 `, ModuleName(unit)))
 	out := string(luarun.Run(t, dir, "main.lua", nil))
 	got := map[string]string{}
@@ -84,7 +87,7 @@ print("zero " .. verdict(okZ))
 		"two refused refused",
 		"trail refused refused",
 		"dmg refused refused",
-		"zero refused",
+		"zero refused refused",
 	}
 	for _, line := range want {
 		key, _, _ := strings.Cut(line, " ")
