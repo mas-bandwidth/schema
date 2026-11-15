@@ -60,7 +60,8 @@ const (
 	// (§3.4): the variable form's measure walk and save header are gone at a fixed root, and a root with no file form refuses its save (§3.4)
 	// +14: the JSON walk reads a bytes body as canonical base64 only (§16.8): padded, pad bits zero
 	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
-	goOneTableLineBudget = 10102
+	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
+	goOneTableLineBudget = 10118
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -103,8 +104,9 @@ const (
 	// -153: the same, across every fixed root in the examples (WideBlob has no file form; a fixed Measure checks the value as its Save does)
 	// +14: the JSON walk reads a bytes body as canonical base64 only (§16.8): padded, pad bits zero
 	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
+	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
 	// +100: every pointer is a graph edge, a field the reader cannot name included: a record of a type it cannot name, and a named record carrying such a pointer, is counted and released from the wire, and the root walks its own body when it carries one (SPEC-TABLES §3.1, §4)
-	goExamplesLineBudget = 60193
+	goExamplesLineBudget = 60209
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
