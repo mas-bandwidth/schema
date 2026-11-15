@@ -14,6 +14,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -71,6 +72,26 @@ func skippedValueReader(t *testing.T) *ir.Unit {
 	return u
 }
 
+// skippedValueJSONInputs numbers the probe's inputs: a manifest row reads its
+// vector, an inline row carries its text in the map.
+func skippedValueJSONInputs(t *testing.T, rows []jsonRow, inline map[string][]byte) map[string][]byte {
+	t.Helper()
+	in := map[string][]byte{}
+	for i, r := range rows {
+		key := "in" + strconv.Itoa(i) + ".json"
+		if data, ok := inline[r.name]; ok {
+			in[key] = data
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(fixedRoot, filepath.FromSlash(r.path)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		in[key] = data
+	}
+	return in
+}
+
 func TestGooseSkippedValueIsValidated(t *testing.T) {
 	t.Parallel()
 	const dir = "testdata/wire/skipped-value"
@@ -92,6 +113,20 @@ func TestGooseSkippedValueIsValidated(t *testing.T) {
 			})
 		}
 	}
+	// The shared vectors carry a zero in a skipped string and in a key, but
+	// not a name the read meets twice. A skipped object's own keys and an
+	// unknown field's key are held to §16.2's one-name rule as a placed key
+	// is, two spellings that decode equal included, so these refuse too.
+	inline := []struct{ name, text string }{
+		{"unknown-field-key-repeat.json", `{"known":1,"extra":1,"extra":2}`},
+		{"skipped-object-key-repeat.json", `{"known":1,"extra_nested":{"a":1,"a":2}}`},
+		{"skipped-object-key-equal-spelling.json", `{"known":1,"extra_nested":{"a":1,"\u0061":2}}`},
+	}
+	inlineText := map[string][]byte{}
+	for _, c := range inline {
+		inlineText[c.name] = []byte(c.text)
+		jsonRows = append(jsonRows, jsonRow{name: c.name, root: "Root", want: "refused"})
+	}
 	if len(jsonRows) > 0 {
 		files, err := goose.Generate(u)
 		if err != nil {
@@ -104,7 +139,7 @@ func TestGooseSkippedValueIsValidated(t *testing.T) {
 		maps.Copy(files, tables)
 		probeDir := t.TempDir()
 		jsonProbe(t, u, files, probeDir, jsonRows, false)
-		out := string(gooserun.Run(t, probeDir, "main.goose", jsonInputs(t, jsonRows)))
+		out := string(gooserun.Run(t, probeDir, "main.goose", skippedValueJSONInputs(t, jsonRows, inlineText)))
 		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 		if len(lines) != len(jsonRows) {
 			t.Fatalf("the JSON probe printed %d lines for %d rows:\n%s", len(lines), len(jsonRows), out)
