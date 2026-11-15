@@ -2537,6 +2537,14 @@ defmodule Bench.Bench do
       raise ArgumentError, "value.player_name longer than the declared 15-byte bound"
     end
 
+    if not String.valid?(value_player_name) do
+      raise ArgumentError, "value.player_name is not well-formed UTF-8 (SPEC §4.7)"
+    end
+
+    if :binary.match(value_player_name, <<0>>) != :nomatch do
+      raise ArgumentError, "value.player_name holds a zero byte (SPEC §4.7)"
+    end
+
     v = byte_size(value_player_name)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4

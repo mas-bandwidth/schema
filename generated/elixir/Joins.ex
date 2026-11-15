@@ -829,6 +829,14 @@ defmodule Example.Joins do
           raise ArgumentError, "value.s longer than the declared 4-byte bound"
         end
 
+        if not String.valid?(value.s) do
+          raise ArgumentError, "value.s is not well-formed UTF-8 (SPEC §4.7)"
+        end
+
+        if :binary.match(value.s, <<0>>) != :nomatch do
+          raise ArgumentError, "value.s holds a zero byte (SPEC §4.7)"
+        end
+
         v = byte_size(value.s)
         scratch = scratch ||| v <<< 6
         data = <<data::binary, scratch::little-size(1)-unit(8)>>
@@ -1764,6 +1772,14 @@ defmodule Example.Joins do
 
     if byte_size(value_s) > 4 do
       raise ArgumentError, "value.s longer than the declared 4-byte bound"
+    end
+
+    if not String.valid?(value_s) do
+      raise ArgumentError, "value.s is not well-formed UTF-8 (SPEC §4.7)"
+    end
+
+    if :binary.match(value_s, <<0>>) != :nomatch do
+      raise ArgumentError, "value.s holds a zero byte (SPEC §4.7)"
     end
 
     v = byte_size(value_s)
