@@ -299,20 +299,26 @@ def _unknown_field(reader: Reader, field_id: int, kind: int, ctx: Ctx, root: boo
 
 def _placeable(root: type[Any]) -> frozenset[int]:
     """THE TYPE IDS THIS ROOT CAN PLACE (§3.1): every table a pointer below
-    the root targets, through by-value tables and pointers alike."""
+    the root targets, through by-value tables and pointers alike, and the
+    reserved id of each byte buffer kind a *bytes or *string slot below it
+    names (§2.5). A map's buffer value is not carried, so it places nothing."""
     cached: frozenset[int] | None = getattr(root, "_s_placeable", None)
     if cached is not None:
         return cached
     out: set[int] = set()
     visited: set[str] = set()
-    stack = [root]
+    stack: list[tuple[type[Any], bool]] = [(root, False)]
     while stack:
-        cls = stack.pop()
+        cls, entry = stack.pop()
         desc: TableDesc = cls.descriptor
         if desc.name in visited:
             continue
         visited.add(desc.name)
         for field in desc.fields:
+            if field.codec == "bytes_blob" and not entry:
+                out.add(_BYTES_WIRE_TYPE_ID)
+            elif field.codec == "string_blob" and not entry:
+                out.add(_STRING_WIRE_TYPE_ID)
             if not field.target:
                 continue
             target = descriptor.by_name(field.target)
@@ -320,7 +326,7 @@ def _placeable(root: type[Any]) -> frozenset[int]:
                 continue
             if field.pointer or field.codec == "pointer":
                 out.add(target.descriptor.type_id)
-            stack.append(target)
+            stack.append((target, field.codec == "map"))
     answer = frozenset(out)
     setattr(root, "_s_placeable", answer)
     return answer
@@ -352,8 +358,12 @@ def _read_node_table(payload: memoryview, ctx: Ctx) -> None:
         types.append(type_id)
         if blob:
             # A BLOB RECORD IS ITS BYTES (§2.5, §3.1): a known *bytes or
-            # *string slot places it (_resolve); one no known slot names is
-            # counted there as a record this reader does not place
+            # *string slot places it (_resolve). A record of a kind no slot
+            # below the root can place is one this reader cannot name, and
+            # counts once; one of a placeable kind that no known slot names
+            # belongs to a skipped field, which counted it already.
+            if type_id not in ctx.placeable and ctx.variable:
+                ctx.unknown += 1
             if type_id == _STRING_WIRE_TYPE_ID:
                 _check_text(body, "a string blob record that is not well-formed text")
                 nodes.append(kind_blob._BlobValue(True, bytes(body).decode("utf-8")))
@@ -469,7 +479,6 @@ def _resolve(ctx: Ctx) -> None:
             owner[key] = value
         else:
             setattr(owner, field.name, value)
-    placed: set[int] = set()
     for owner, field, index in ctx.blob_pending:
         if index == 0:
             setattr(owner, field.name, None)
@@ -477,16 +486,15 @@ def _resolve(ctx: Ctx) -> None:
         # the graph admitted the index and refused a record named twice
         buffer = ctx.nodes[index - 2]
         if not isinstance(buffer, kind_blob._BlobValue):
-            raise Refused("wire_damaged", "a byte buffer slot names a table record")
+            if descriptor.by_id(ctx.types[index - 2]) is not None:
+                raise Refused("wire_damaged", "a byte buffer slot names a table record")
+            # a record of a type this reader does not declare reads null; it
+            # counted once when the node table was read
+            setattr(owner, field.name, None)
+            continue
         if buffer.string != (field.codec == "string_blob"):
             raise Refused("wire_damaged", "a byte buffer slot names the other buffer kind")
-        placed.add(index)
         setattr(owner, field.name, buffer.value)
-    if ctx.variable:
-        # a blob record no known slot places is one this reader does not place
-        for k, blob in enumerate(ctx.blobs):
-            if blob and k + 2 not in placed:
-                ctx.unknown += 1
 
 
 # THE SKIP WALK: the engine's declaration-free wire check (wirecheck.go) over

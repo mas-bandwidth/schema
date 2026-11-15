@@ -126,10 +126,11 @@ func blobUnknownEngine(t *testing.T, reader *ir.Unit, wire []byte) string {
 	return fmt.Sprintf("read %d keep %s", rep.Unknown, keep)
 }
 
-// Functional (python pins): run with SCHEMA_SLOW=1.
-func TestPythonVtBlobsUnknownCount(t *testing.T) {
-	t.Parallel()
-	slowtest.Gate(t, "python (it runs the emitted table runtime)")
+// blobUnknownFailures reads every case's wire with the reader unit, in Go
+// and in Python under both pins (mutate, when set, edits the generated
+// files first), and answers each case whose Python read is not the engine's.
+func blobUnknownFailures(t *testing.T, mutate func(*testing.T, map[string][]byte)) []string {
+	t.Helper()
 	reader := loadUnit(t, blobUnknownReader)
 	inputs := map[string][]byte{}
 	names := make([]string, 0, len(blobUnknownCases))
@@ -142,15 +143,67 @@ func TestPythonVtBlobsUnknownCount(t *testing.T) {
 		engine[c.name] = blobUnknownEngine(t, reader, wire)
 	}
 	inputs["cases"] = []byte(strings.Join(names, "\n"))
-	got := pyKeyedRun(t, reader, blobUnknownProbe, inputs, nil)
+	got := pyKeyedRun(t, reader, blobUnknownProbe, inputs, mutate)
+	var fails []string
 	for _, name := range names {
 		verdict := engine[name]
 		if !strings.HasPrefix(verdict, "read ") {
 			t.Fatalf("%s: the Go engine answers %s, not a read", name, verdict)
 		}
-		want := "case " + name + " " + verdict + "\n"
-		if !strings.Contains(got, want) {
-			t.Errorf("%s: the Python read differs from the Go engine's %q:\n%s", name, verdict, got)
+		if want := "case " + name + " " + verdict + "\n"; !strings.Contains(got, want) {
+			fails = append(fails, fmt.Sprintf("%s: the Python read differs from the Go engine's %q:\n%s", name, verdict, got))
 		}
+	}
+	return fails
+}
+
+// Functional (python pins): run with SCHEMA_SLOW=1.
+func TestPythonVtBlobsUnknownCount(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "python (it runs the emitted table runtime)")
+	for _, f := range blobUnknownFailures(t, nil) {
+		t.Error(f)
+	}
+}
+
+// TestPythonVtBlobsUnknownCountNegativeControl plants, one at a time, in a
+// COPY of the runtime:
+//
+//   - NOT PLACEABLE: the root no longer places the *bytes records its own
+//     slot can name, so a skipped *bytes field's record counts a second time;
+//     skipped_bytes_beside_bytes must go red;
+//   - UNDECLARED REFUSED: a *bytes slot that names a record of a type this
+//     reader does not declare refuses instead of reading None;
+//     bytes_slot_names_undeclared_table must go red.
+//
+// Functional (python pins): run with SCHEMA_SLOW=1.
+func TestPythonVtBlobsUnknownCountNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "python (it runs the emitted table runtime)")
+	const file = "probe/_schema/load.py"
+	for _, control := range []struct{ name, from, to, row string }{
+		{"not-placeable", "                out.add(_BYTES_WIRE_TYPE_ID)\n", "                pass\n", "skipped_bytes_beside_bytes:"},
+		{"undeclared-refused", "            if descriptor.by_id(ctx.types[index - 2]) is not None:\n                raise Refused(\"wire_damaged\", \"a byte buffer slot names a table record\")\n", "            raise Refused(\"wire_damaged\", \"a byte buffer slot names a table record\")\n", "bytes_slot_names_undeclared_table:"},
+	} {
+		t.Run(control.name, func(t *testing.T) {
+			t.Parallel()
+			mutate := func(t *testing.T, files map[string][]byte) {
+				src := string(files[file])
+				if strings.Count(src, control.from) != 1 {
+					t.Fatalf("%s carries %q %d times, want 1: the control would be vacuous", file, control.from, strings.Count(src, control.from))
+				}
+				files[file] = []byte(strings.Replace(src, control.from, control.to, 1))
+			}
+			fails := blobUnknownFailures(t, mutate)
+			named := false
+			for _, f := range fails {
+				if strings.HasPrefix(f, control.row) {
+					named = true
+				}
+			}
+			if !named {
+				t.Fatalf("NEGATIVE CONTROL FAILED: %s did not turn %s red:\n%s", control.name, strings.TrimSuffix(control.row, ":"), strings.Join(fails, "\n"))
+			}
+		})
 	}
 }
