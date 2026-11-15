@@ -650,6 +650,68 @@ def scalar_at(r:Reader, cell:Value, fd:FieldDescriptor, declared:int, kind:int) 
     cell.i = value
     return true
 
+// THE WRITE CONTRACT'S SCALAR ROWS (docs/SPEC.md §5.1 rows 1, 2, 7 and 10):
+// every table writer refuses, in every build, a scalar its declaration does
+// not admit — the same bounds scalar_at refuses on the read. kind is the
+// value's declared wire kind: a ranged integer or a fixed raw value off its
+// min/max, a bits(N) value wider than N bits, an integer the kind's width
+// cannot hold, a NaN or an infinity at the width it is written, and a ranged
+// float off its range are not admitted.
+def scalar_admitted(fd:FieldDescriptor, kind:int, v:Value) -> bool:
+    if kind == 1:
+        return true
+    if kind == 10:
+        let x = fround(v.f)
+        if not finite_f32(v.f):
+            return false
+        return not fd.franged or (x >= fround(fd.flo) and x <= fround(fd.fhi))
+    if kind == 11:
+        if not finite_f64(v.f):
+            return false
+        return not fd.franged or (v.f >= fd.flo and v.f <= fd.fhi)
+    let width = kind_width(kind)
+    if width == 0:
+        return true
+    let signed = kind_signed(kind)
+    if kind_wide(kind):
+        let w = v.w
+        if width < 16:
+            // a narrow fixed kind's raw value is its low lane, the high lane
+            // only its sign
+            if w.hi != (if signed and w.lo < 0: -1 else: 0):
+                return false
+            if not int_fits(w.lo, width, signed):
+                return false
+        if fd.ranged:
+            let lo = i128_shl(fd.lo, fd.fbits)
+            let hi = i128_shl(fd.hi, fd.fbits)
+            if i128_lt(w, lo, signed) or i128_lt(hi, w, signed):
+                return false
+        return true
+    let value = v.i
+    if not int_fits(value, width, signed):
+        return false
+    if fd.ranged:
+        if signed:
+            if value < fd.lo.lo or value > fd.hi.lo:
+                return false
+        elif ult(value, fd.lo.lo) or ult(fd.hi.lo, value):
+            return false
+    if fd.bits > 0 and fd.bits < width * 8 and ult(shl(1, fd.bits) - 1, value):
+        return false
+    return true
+
+// int_fits is whether an integer's bit pattern is a value of a kind width
+// bytes wide: every pattern at 8 bytes, and below it the signed or unsigned
+// range of the width
+def int_fits(value:int, width:int, signed:bool) -> bool:
+    if width >= 8:
+        return true
+    let span = shl(1, width * 8)
+    if signed:
+        return value >= -(span / 2) and value < span / 2
+    return value >= 0 and value < span
+
 // THE CONSTRUCTION (Go's tabletext Model.New, reset, elementZero,
 // fieldDefault): a fresh record holds exactly what the generated class's
 // constructor holds, so a field the wire never mentions keeps the default an

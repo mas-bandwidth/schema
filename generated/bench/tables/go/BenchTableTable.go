@@ -615,10 +615,11 @@ const (
 	// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 	TableRefuseBlobShared
 	// The fixed form's own refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3,
-	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the one refusal enum: every
-	// fixed-form refusal name is a TableRefuseReason member, appended after
-	// TableRefuseBlobShared so no existing value renumbers, in §6.5's table order so
-	// names, order and spelling agree in all ports. Each member's Error() is its
+	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the reference's one refusal
+	// enum: every fixed-form refusal name is a TableRefuseReason member, appended
+	// after TableRefuseBlobShared so no existing value renumbers, in §6.5's
+	// recommended table order so a port that follows it spells them alike; the
+	// verdict, not the names, is the contract. Each member's Error() is its
 	// snake_case name, and TableReport.Err() maps a fixed report whose Reason is
 	// that name to the member, so errors.Is(err, TableRefuseLayoutUnknown) holds
 	// for a fixed load that refused. The form-byte refusals keep answering
@@ -1377,11 +1378,13 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 	}
 	start := len(data) - 8 - int(n)*8
 	r.Buffer, r.Ids = data[1:start], data[start:len(data)-8]
-	// Count is attacker-capped by (bytes-9)/8 and the 4096-entry bound. The
-	// open-addressed path runs at 8<=n<=4096 with 8192 slots and compares the
-	// stored id, not the hash. n<8 stays pairwise: 21 comparisons at 7 versus
-	// 40 KiB of slot zeroing on every open, including a two-entry trailer. The
-	// mix is C's table_writer_id.
+	// Count is attacker-capped by (bytes-9)/8 and the 4096-entry bound. At
+	// 8<=n<=4096 a sort over a fixed scratch copy compares neighbours, so
+	// the work is n log n whatever the ids are. n<8 stays pairwise: 21
+	// comparisons at 7 versus the scratch array on every open, including a
+	// two-entry trailer. The scratch copy is a fixed array, so the open still
+	// allocates nothing, and the neighbour compare keeps duplicate ids refused.
+	// The 4096-entry cap above still bounds the scratch copy.
 	if n > 1 {
 		if n < 8 {
 			for i := 0; i < len(r.Ids); i += 8 {
@@ -1393,25 +1396,22 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 				}
 			}
 		} else {
-			var seen [8192]uint64
-			var used [8192]uint8
+			var ids [4096]uint64
 			for i := range n {
-				id := binary.LittleEndian.Uint64(r.Ids[i*8:])
-				hash := id
-				hash ^= hash >> 33
-				hash *= 0xff51afd7ed558ccd
-				hash ^= hash >> 33
-				slot := uint32(hash) & 8191
-				for {
-					if used[slot] == 0 {
-						used[slot] = 1
-						seen[slot] = id
-						break
-					}
-					if seen[slot] == id {
-						return r, TableOpenDamaged
-					}
-					slot = (slot + 1) & 8191
+				ids[i] = binary.LittleEndian.Uint64(r.Ids[i*8:])
+			}
+			slices.SortFunc(ids[:n], func(a, b uint64) int {
+				if a < b {
+					return -1
+				}
+				if a > b {
+					return 1
+				}
+				return 0
+			})
+			for i := 1; i < int(n); i++ {
+				if ids[i-1] == ids[i] {
+					return r, TableOpenDamaged
 				}
 			}
 		}
@@ -4776,7 +4776,7 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]TableEntity
-		if TableEntityFixedLoad(fixed[:], data, tableFixedReadPlanTableEntity, read) != 1 {
+		if TableEntityFixedLoad(fixed[:], data, TableEntityFixedReadPlan, read) != 1 {
 			TableEntityReset(value)
 			return false
 		}
@@ -5015,7 +5015,7 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]TableStat
-		if TableStatFixedLoad(fixed[:], data, tableFixedReadPlanTableStat, read) != 1 {
+		if TableStatFixedLoad(fixed[:], data, TableStatFixedReadPlan, read) != 1 {
 			TableStatReset(value)
 			return false
 		}
@@ -6719,7 +6719,7 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]TableMixed
-		if TableMixedFixedLoad(fixed[:], data, tableFixedReadPlanTableMixed, read) != 1 {
+		if TableMixedFixedLoad(fixed[:], data, TableMixedFixedReadPlan, read) != 1 {
 			TableMixedReset(value)
 			return false
 		}
@@ -8723,7 +8723,7 @@ var TableEntityFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanTableEntity = make([]TableFixedEntry, int(TableEntityFixedPlanMax))
+var TableEntityFixedReadPlan = make([]TableFixedEntry, int(TableEntityFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -8979,7 +8979,7 @@ var TableStatFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanTableStat = make([]TableFixedEntry, int(TableStatFixedPlanMax))
+var TableStatFixedReadPlan = make([]TableFixedEntry, int(TableStatFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -9459,7 +9459,7 @@ var TableMixedFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanTableMixed = make([]TableFixedEntry, int(TableMixedFixedPlanMax))
+var TableMixedFixedReadPlan = make([]TableFixedEntry, int(TableMixedFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.

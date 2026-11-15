@@ -1,9 +1,21 @@
 package elixirtable
 
+// THE MESSAGE FORM'S KIND-12 CONTENT RULE ON THE ELIXIR LEG (docs/SPEC-TABLES.md
+// §3, §3.3). A `string(N)` is well-formed UTF-8 with no zero byte among its
+// bytes, and in the message form ill-formed text is damage and terminal for the
+// batch. The engine's `text` is the oracle: it refuses the whole batch on the
+// same bytes. A batch against the unit's own announcement is refused by
+// `load_messages`; a well-formed multi-byte twin still loads with its bytes.
+//
+// THE WIRE IS THE BATCH OF ONE over a table whose only field is a string, so the
+// string's payload is the only text in the stream. The Go writer encodes a
+// same-length well-formed placeholder and its bytes are replaced in place, which
+// leaves every length and alignment in the batch untouched.
+
 import (
+	"bytes"
+	"encoding/hex"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,193 +25,56 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-const textOffShapeSchema = `package textcheck
-
-union Origin {
-    note string(24)
-}
-
-fixed table Root {
-    label   string(8)
-    origins [..2]Origin
-}
-`
-
-type textOffShapeBits struct {
-	b []byte
-	n int
-}
-
-func (w *textOffShapeBits) put(v uint64, n int) {
-	for i := 0; i < n; i++ {
-		if w.n%8 == 0 {
-			w.b = append(w.b, 0)
-		}
-		if v>>uint(i)&1 == 1 {
-			w.b[w.n/8] |= 1 << uint(w.n%8)
-		}
-		w.n++
-	}
-}
-
-func (w *textOffShapeBits) align() {
-	for w.n%8 != 0 {
-		w.put(0, 1)
-	}
-}
-
-func (w *textOffShapeBits) bytes(p []byte) {
-	for _, by := range p {
-		w.put(uint64(by), 8)
-	}
-}
-
-func namedField(t *testing.T, st *ir.Struct, name string) *ir.Field {
-	t.Helper()
-	for _, f := range st.Fields {
-		if f.Name == name {
-			return f
-		}
-	}
-	t.Fatalf("table %s has no field %s", st.Name, name)
-	return nil
-}
-
-func TestElixirLoadMessagesRefusesTextOffShape(t *testing.T) {
+func TestElixirMessageReadRefusesIllFormedText(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "an external toolchain")
+	_ = elixirBinary(t)
 
-	u := unitFrom(t, textOffShapeSchema)
+	const schema = `package probe
+
+fixed table Root {
+	text string(16)
+}
+`
+	u := unitFrom(t, schema)
 	m := tabletext.NewModel(u)
-	root := findTable(t, u, "Root")
-	label := namedField(t, root, "label")
-	origins := namedField(t, root, "origins")
-	un := tabletext.UnionOf(origins)
-	if un == nil {
-		t.Fatal("the origins field holds no union")
+	field := u.Tables["Root"].Fields[0]
+	slot := tablewire.MessageVocabularySlots(u)[ir.TableFieldEntry(field).Key()]
+
+	ann := tablewire.Announce(u)
+	var vocab tablewire.Vocabulary
+	var annReport tabletext.Report
+	if err := vocab.AnnounceRead(ann, &annReport); err != nil {
+		t.Fatalf("the unit's own announcement did not resolve: %v", err)
 	}
-	var note ir.UnionVariant
-	for _, arm := range un.Variants {
-		if arm.Name == "note" {
-			note = arm
+
+	rows := []messageTextRow{
+		{"zero_byte_inside_the_text", []byte{'a', 0x00, 'b', 'c'}, false},
+		{"a_lone_ff", []byte{'a', 0xFF, 'b', 'c'}, false},
+		{"an_encoded_surrogate", []byte{'a', 0xED, 0xA0, 0x80}, false},
+		{"an_overlong_two_byte_form", []byte{'a', 0xC0, 0xAF, 'b'}, false},
+		{"a_well_formed_multibyte_text", []byte{'a', 0xC3, 0xA9, 'b', 'c'}, true},
+	}
+
+	var probeRows strings.Builder
+	for _, row := range rows {
+		batch := messageBatchWithText(t, m, u, row.text, field)
+
+		inst := m.New(u.Tables["Root"])
+		n, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{inst}, batch, &vocab, &tabletext.Report{})
+		if row.ok {
+			if !ok || err != nil || n != 1 {
+				t.Fatalf("%s: the engine refused a well-formed batch: n=%d ok=%v err=%v", row.name, n, ok, err)
+			}
+			if got := inst.Fields[0].Cell.Str; !bytes.Equal(got, row.text) {
+				t.Fatalf("%s: the engine read %q, want %q", row.name, got, row.text)
+			}
+		} else if ok || err == nil || n != 0 {
+			t.Fatalf("%s: the engine did not refuse the batch: n=%d ok=%v err=%v", row.name, n, ok, err)
 		}
-	}
-	if note.Name == "" {
-		t.Fatal("the Origin union has no note arm")
-	}
 
-	vocabulary := tablewire.MessageVocabulary(u)
-	slots := make(map[string]uint64, len(vocabulary))
-	for i, e := range vocabulary {
-		slots[e.Key()] = uint64(i + 1)
-	}
-	slot := func(entry ir.TableVocabularyEntry) uint64 {
-		s, ok := slots[entry.Key()]
-		if !ok {
-			t.Fatalf("no announced slot for %x at kind %d", entry.Id, entry.Kind)
-		}
-		return s
-	}
-
-	refBits := ir.TableMessageRefBits(len(vocabulary))
-	labelEntry := ir.TableFieldEntry(label)
-	originsEntry := ir.TableFieldEntry(origins)
-	noteEntry := ir.TableArmEntry(note)
-
-	fieldBatch := func(text []byte) []byte {
-		w := &textOffShapeBits{}
-		w.put(slot(labelEntry), refBits)
-		w.put(uint64(len(text)), ir.TableMessageBitsRequired(0, labelEntry.Shape.Max))
-		w.align()
-		w.bytes(text)
-		w.put(0, refBits)
-		w.align()
-		return append([]byte{ir.TableWireMessageForm, 0}, w.b...)
-	}
-
-	arrayBatch := func(text []byte) []byte {
-		w := &textOffShapeBits{}
-		w.put(slot(originsEntry), refBits)
-		w.put(1, ir.TableMessageCountBits(originsEntry.Shape))
-		w.put(slot(noteEntry), refBits)
-		w.put(uint64(len(text)), ir.TableMessageBitsRequired(0, noteEntry.Shape.Max))
-		w.align()
-		w.bytes(text)
-		w.put(0, refBits)
-		w.align()
-		return append([]byte{ir.TableWireMessageForm, 0}, w.b...)
-	}
-
-	type textCase struct {
-		name  string
-		batch []byte
-	}
-
-	var invalid []textCase
-	for _, c := range []struct {
-		name string
-		text []byte
-	}{
-		{"field_ill_formed", []byte{'a', 0xff, 'b'}},
-		{"field_zero", []byte{'a', 0, 'b'}},
-		{"field_past_max", []byte(strings.Repeat("a", int(labelEntry.Shape.Max)+1))},
-		{"array_ill_formed", []byte{'a', 0xff, 'b'}},
-		{"array_zero", []byte{'a', 0, 'b'}},
-		{"array_past_max", []byte(strings.Repeat("a", int(noteEntry.Shape.Max)+1))},
-	} {
-		batch := fieldBatch(c.text)
-		if strings.HasPrefix(c.name, "array_") {
-			batch = arrayBatch(c.text)
-		}
-		invalid = append(invalid, textCase{name: c.name, batch: batch})
-	}
-
-	var lawful []textCase
-	for _, c := range []struct {
-		name string
-		text []byte
-	}{
-		{"field_exactly_max", []byte(strings.Repeat("a", int(labelEntry.Shape.Max)))},
-		{"field_multibyte_utf8", []byte("h\u00e9llo")},
-		{"array_exactly_max", []byte(strings.Repeat("a", int(noteEntry.Shape.Max)))},
-		{"array_multibyte_utf8", []byte(strings.Repeat("\u00e9", int(noteEntry.Shape.Max)/2))},
-	} {
-		batch := fieldBatch(c.text)
-		if strings.HasPrefix(c.name, "array_") {
-			batch = arrayBatch(c.text)
-		}
-		lawful = append(lawful, textCase{name: c.name, batch: batch})
-	}
-
-	for _, c := range invalid {
-		if engineMessageAccepts(t, u, m, c.batch) {
-			t.Fatalf("%s: the engine accepted a batch whose text is off shape", c.name)
-		}
-	}
-	for _, c := range lawful {
-		if !engineMessageAccepts(t, u, m, c.batch) {
-			t.Fatalf("%s: the engine refused a lawful text batch", c.name)
-		}
-	}
-
-	dir := t.TempDir()
-	announcement := filepath.Join(dir, "announcement.bin")
-	if err := os.WriteFile(announcement, tablewire.Announce(u), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	writeBatch := func(c textCase) string {
-		path := filepath.Join(dir, c.name+".bin")
-		if err := os.WriteFile(path, c.batch, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		return path
-	}
-	var invalidPairs, lawfulPairs []string
-	for _, c := range invalid {
-		invalidPairs = append(invalidPairs, fmt.Sprintf("{%s, %s}", elixirString(c.name), elixirString(writeBatch(c))))
-	}
-	for _, c := range lawful {
-		lawfulPairs = append(lawfulPairs, fmt.Sprintf("{%s, %s}", elixirString(c.name), elixirString(writeBatch(c))))
+		fmt.Fprintf(&probeRows, "    {%q, Base.decode16!(%q, case: :lower), %t},\n",
+			row.name, hex.EncodeToString(batch), row.ok)
 	}
 
 	tables, err := Generate(u)
@@ -208,10 +83,11 @@ func TestElixirLoadMessagesRefusesTextOffShape(t *testing.T) {
 	}
 	module, ok := tables[TableMessageModule+".ex"]
 	if !ok {
-		t.Fatalf("the unit grows no %s.ex", TableMessageModule)
+		t.Fatalf("the unit grows no %s.ex; files are %v", TableMessageModule, keysOf(tables))
 	}
-	ns := ir.GoExportName(u.Package)
-	probe := fmt.Sprintf(`defmodule Probe do
+
+	probe := fmt.Sprintf(`# GENERATED BY internal/codegen/elixirtable/messageform_text_test.go.
+defmodule Probe do
   alias %s.TableMessage, as: M
 
   def check(true, _what), do: :ok
@@ -223,54 +99,84 @@ func TestElixirLoadMessagesRefusesTextOffShape(t *testing.T) {
 
   def run do
     vocab =
-      case M.announce_read(File.read!(%s)) do
+      case M.announce_read(M.announce()) do
         {:ok, v} -> v
-        other -> raise "announce_read refused the bytes: #{inspect(other)}"
+        other -> raise "announce_read refused the unit's own announcement: #{inspect(other)}"
       end
 
-    for {name, path} <- [%s] do
-      case M.load_messages(vocab, File.read!(path)) do
-        {:malformed, 0, []} -> :ok
-        other -> check(false, "#{name}: load did not refuse the whole batch: #{inspect(other)}")
-      end
-    end
+    rows = [
+%s    ]
 
-    for {name, path} <- [%s] do
-      batch = File.read!(path)
-
+    Enum.each(rows, fn {label, batch, well_formed} ->
       case M.load_messages(vocab, batch) do
-        {:ok, values} ->
-          case M.save_messages(vocab, values) do
-            {:ok, again} -> check(again == batch, "#{name}: save did not reproduce the batch")
-            other -> check(false, "#{name}: save refused: #{inspect(other)}")
-          end
+        {:malformed, 0, []} ->
+          check(not well_formed, label <> " refused a well-formed batch")
+
+        {:ok, [body]} ->
+          check(well_formed and body == [{%d, <<%s>>}], label <> " loaded " <> inspect(body))
 
         other ->
-          check(false, "#{name}: lawful twin did not load: #{inspect(other)}")
+          check(false, label <> " answered " <> inspect(other))
       end
-    end
+    end)
 
     if Process.get(:failed), do: System.halt(1), else: IO.puts("ok")
   end
 end
 
 Probe.run()
-`, ns, elixirString(announcement), strings.Join(invalidPairs, ", "), strings.Join(lawfulPairs, ", "))
-
-	out, err := runElixirModuleProbe(t, module, probe)
-	if err != nil {
+`, ir.GoExportName(u.Package), probeRows.String(), slot, elixirByteList(rowBytes(rows)))
+	if out, err := runElixirModuleProbe(t, module, probe); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
 }
 
-func engineMessageAccepts(t *testing.T, u *ir.Unit, m *tabletext.Model, batch []byte) bool {
+// messageBatchWithText writes a batch of one body whose only non-default field
+// is the string, using a well-formed same-length placeholder and replacing it
+// with the bytes under test in place: the length and alignment stay the wire's.
+func messageBatchWithText(t *testing.T, m *tabletext.Model, u *ir.Unit, text []byte, field *ir.Field) []byte {
 	t.Helper()
-	var v tablewire.Vocabulary
-	var report tabletext.Report
-	if err := v.AnnounceRead(tablewire.Announce(u), &report); err != nil {
-		t.Fatalf("the engine refused its own announcement: %v", err)
+	placeholder := bytes.Repeat([]byte{'a'}, len(text))
+	inst := m.New(u.Tables["Root"])
+	fv := &inst.Fields[0]
+	fv.Cell.Str = placeholder
+	fv.Count = len(placeholder)
+	batch, err := tablewire.EncodeMessages(m, []*tabletext.Instance{inst})
+	if err != nil {
+		t.Fatalf("encode the placeholder batch: %v", err)
 	}
-	inst := m.New(m.Lookup("Root"))
-	n, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{inst}, batch, &v, &report)
-	return ok && err == nil && n == 1
+	at := bytes.Index(batch, placeholder)
+	if at < 0 || bytes.Contains(batch[at+len(placeholder):], placeholder) {
+		t.Fatalf("the string payload is not a single run of the batch (at %d): %x", at, batch)
+	}
+	out := append([]byte(nil), batch...)
+	copy(out[at:], text)
+	return out
+}
+
+// messageTextRow is one batch's text and the verdict it owes.
+type messageTextRow struct {
+	name string
+	text []byte
+	ok   bool
+}
+
+// rowBytes is the well-formed row's payload, the one the probe compares to.
+func rowBytes(rows []messageTextRow) []byte {
+	for _, row := range rows {
+		if row.ok {
+			return row.text
+		}
+	}
+	return nil
+}
+
+// elixirByteList renders bytes as an Elixir bitstring's comma-separated
+// elements, so the probe's expected value is the exact payload.
+func elixirByteList(b []byte) string {
+	parts := make([]string, len(b))
+	for i, c := range b {
+		parts[i] = fmt.Sprintf("%d", c)
+	}
+	return strings.Join(parts, ", ")
 }

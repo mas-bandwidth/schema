@@ -270,7 +270,7 @@ PUT_RANGED(w, value, min, max):
 | a `flags` mask | `W` raw bits, `W` = variant count or the widened max. `ASSERT value < 2^W` when `W < 64` (a bit above the wire width is writer misuse, not silent truncation). Every pattern of `W` bits is legal |
 | a nested `type` | `WRITE` of that type, in place |
 | a `union` | §2.6 |
-| `string(N)` / `bytes(N)` | `PUT_RANGED(w, length, 0, N)` then `PUT_BYTES(w, buf, length)`. `string`: `ASSERT` no 0x00 in the used bytes. `bytes`: no interior-null assert. Length 0 is a legal empty payload; `PUT_BYTES` still aligns |
+| `string(N)` / `bytes(N)` | `PUT_RANGED(w, length, 0, N)` then `PUT_BYTES(w, buf, length)`. `string`: check the used bytes for both 0x00 and well-formed UTF-8, by the leg's own mechanism (§5.1): a debug-only assert in assert legs, a refusal in every build in the others. `bytes`: no text check. Length 0 is a legal empty payload; `PUT_BYTES` still aligns |
 
 ### 2.5 Compressed float (write)
 
@@ -346,7 +346,7 @@ An empty union (`Max = 0`) holds only `None` and costs zero bits.
 
 Reads validate **everything**, in every build, in every packet target (SPEC §5): ranges, enum
 bounds, union tags, alignment padding, constants, reserved bits, counts, lengths, interior
-nulls, UTF-8, and buffer exhaustion. A value that controls iteration is
+nulls, UTF-8, non-finite floats, and buffer exhaustion. A value that controls iteration is
 never used before it has been bounded. **Reject, never clamp.**
 
 ```
@@ -435,7 +435,7 @@ because the internal align contributes zero bits.
 | ranged integer / `int128` | `GET_RANGED`; reject, never clamp |
 | `uint128` | two `GET_VALUE` of 64, low then high |
 | `fixed` / `ufixed` | read the offset in `bitlen(max-min)+F` bits (zero when `min == max`); if offset > raw span `REFUSE`; `raw := (min << F) + offset` |
-| `float32` / `float64` | 32 / 64 raw bits as the IEEE-754 pattern, no repair |
+| `float32` / `float64` | 32 / 64 raw bits as the IEEE-754 pattern; test the raw bits and refuse a NaN or an infinity as `non_finite_float` before the field is written; `-0` and subnormals stay bit exact |
 | compressed `float32` | §3.4 |
 | an enum | `GET_RANGED(r, 0, E.Max)`; the wire range is `[0, variant count]`, so every value names a variant |
 | a `flags` mask | `GET_VALUE(r, W)`; every pattern legal |
@@ -526,9 +526,10 @@ other range in every packet target, by the leg's own mechanism (§5.1): a debug-
 assert where the language has the idiom, a refusal in every build elsewhere.
 The read refuses the same numbers in every build, in every packet target.
 
-Text well-formedness is **not** a write-side contract. UTF-8 in `string(N)` is a read-side
-refusal in every target, so the guarantee rests on the reader
-rather than on a write-side check some targets carry and others do not.
+Packet `Write` checks row 8 (§5.1): the used bytes of `string(N)` have no zero
+byte and are well-formed UTF-8. Each packet target uses its own write mechanism:
+a debug-only assert in an assert leg, a refusal in every build in the others.
+The reader independently refuses ill-formed text in every build.
 
 ## 6. The oracle fixtures
 
@@ -579,7 +580,7 @@ are the work.
 | `int128` / `uint128` / `fixed` / `ufixed` | `ludicrous_state`, `fixed.txt` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | specified defaults do not elide | `packet-defaults/` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | empty type (zero bits) | `Heartbeat` in `Wire.schema` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| NaN / signalling NaN bit-identity | PORTING.md float row; corpus pins |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| non-finite refusal: NaN / signalling NaN / each infinity refused, `-0` and a subnormal bit exact | PORTING.md float row; corpus pins |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | paired 64-record `BenchMixed` | `bench_mixed.bin` + variants |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | bit-flip agreement | SPEC §7.2 gate 5 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | write-side debug-only vs every-build | SPEC §5 tiers |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |

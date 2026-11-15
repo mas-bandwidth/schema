@@ -2234,21 +2234,17 @@ reader on the other end refuses it (§4).
 **None of this reaches the read side.** "Of course, on read side we MUST
 always do the checks!" (2026-09-07). Every read-side refusal §4 and this
 section name — ranges, counts, bounds, wire constants, reserved bits, enum
-values, union tags, UTF-8 in `string(N)` — runs
+values, union tags, UTF-8 in `string(N)`, non-finite floats — runs
 in every packet target, in every build mode, and a refusal is terminal. Readers
 face untrusted bytes; writers do not.
 
-The generated
-write code's job is to
-make misuse impossible by construction — bounds come from the schema. Every
-write-side contract applies in every packet target, by the leg's own mechanism (§5.1):
-a debug-only assert in assert legs and a refusal in every build elsewhere. Text
-well-formedness is not one of them. UTF-8 in `string(N)` is a READ-side
-refusal in every target (§4.7), so the
-guarantee rests on the reader rather than on a write-side check some
-targets carry and others do not. Ranges are trusted
-inputs everywhere: generated code never feeds attacker-influenced values as
-min/max.
+The packet `Write` contract includes row 8 (§5.1): a zero byte or used bytes
+that are not well-formed UTF-8. Each leg checks writes by its own mechanism.
+C, C++, C#, Rust, Java and Dart use a debug-only assert; Go, JavaScript,
+Elixir, Lua, Luau, Squirrel, MOO and Goose use a refusal in every build.
+The reader independently refuses the same ill-formed text in every build
+(§4.7). Ranges are trusted inputs everywhere: generated code never feeds
+attacker-influenced values as min/max.
 
 **Read failure leaves the output object in an unspecified state**; callers
 use it only on success. **Read success fully initializes it**: fields in
@@ -2312,11 +2308,7 @@ correct writes are the programmer's responsibility, and the assert is how the
 leg tells them they got it wrong. An assert leg's release build carries no
 write-side check and no write-side refusal, and none is a defect. Reads are the
 library's responsibility, because they arrive from the network, and every read
-check runs in every leg and in every build (§4). The owner, 2026-11-10, restating
-`docs/rulings.json`, `write-refusal`: "in languages
-that have assert, we rely on assert to prompt the user they fucked up. when we
-don't have asserts, we have to do some checks in release depending on the
-language."
+check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal`, 2026-11-10)
 
 | leg | idiom | build | how a refusal surfaces |
 |---|---|---|---|
@@ -2340,7 +2332,10 @@ language."
 is the leg's assert, "every build" its refusal. These tables record the code as
 it stands, not the contract: an "every build" entry in an assert leg is a
 release-build check the contract does not ask for, and the contract for that
-row is the debug assert.
+row is the debug assert. As a fact of today's code, C++, C, C#, Rust, Java and
+Dart also refuse a count or length past the storage it indexes in a release
+build, before the first byte, held by the `write-refusal-storage-release-<lang>`
+gates.
 
 **After a refusal, the caller's buffer is UNSPECIFIED.** Consistency is owed on
 success, never after failure: a writer that refuses returns its refusal
@@ -2354,7 +2349,7 @@ across languages.
 | leg | variable `Save` and its `Measure` |
 |---|---|
 | C++ | 1–2 and 8 debug; 3–7 every build (8 too for optional text and text-list elements); 9 unchecked; 10 every build |
-| C | 1–2 and 8 debug; 3–7 every build; 9 unchecked; 10 every build |
+| C | 1–4 and 8 debug; 5–7 every build; 9 unchecked; 10 every build |
 | C# | 1–2 debug; 3–8 every build; 9 unchecked; 10 every build |
 | Rust | 1–2 and 4 debug; 3 and 7 every build; 5–6 and 8 unrepresentable (native enums, a Rust `String`); 9 unchecked; 10 every build |
 | Java | 1–5 and 8 debug; 6–7 every build; 9 unchecked; 10 every build |
@@ -2367,42 +2362,46 @@ across languages.
 | Squirrel | 1–8 every build; 9 unchecked; 10 every build |
 | MOO | 1–8 every build; 9 unchecked; 10 every build |
 | Goose | 1–8 and 10 every build; 9 not audited |
-| Lobster | 7 every build; 1–5 and 8 unchecked; 6 an index fault, not a refusal |
+| Lobster | 1–8 and 10 every build (`save_reasoned`'s `invalid_value`; 7 its `non_finite_float`); 9 unchecked |
 
 The other writers, over rows 1–8 and 10 (row 9 is not audited there: a file
 read KEEPS an appended mask bit, the text writer refuses a bit it cannot name,
 and the message form refuses a mask above its declared width rather than
 truncating it, SPEC-TABLES §3.3 and §4.1).
 Under strict-only, row 10 refuses exactly as rows 1–4 do: no reader clamps a
-finite value off its range, and no writer quantizes one into it in the build where its check is active
-(docs/plans/strict-only.md, decision 8).
+finite value off its range, and no writer quantizes one into it in the build
+where its check is active (docs/plans/strict-only.md, decision 8).
 **One rule holds in every leg on top of the table.** A count or a length that
 would index past the storage it describes is a write check like any other: a
 debug assert in an assert leg, a refusal in every build elsewhere. No release
 build of an assert leg is required to refuse it, and no gate may require one.
 `FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
-reader refuses one as `text_ill_formed`: a writer never produces bytes its own
-reader refuses.
+reader refuses one as `text_ill_formed`: in the build where its check is
+active, a writer never produces bytes its own reader refuses.
 
-| leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–7 and 10) |
+| leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–8 and 10) |
 |---|---|---|---|
-| C++, C | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 10 not yet held |
-| C# | 1–6 and 8 debug; 7 every build | 1–2 debug; 3–8 every build | 1 and 3–7 debug; 2 unchecked; 10 not yet held |
-| Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable; 10 not yet held |
-| Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 10 not yet held |
-| Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 debug; 10 not yet held |
-| Go | 1–8 every build | 1–8 every build | 1–7 every build, on the flat and the per-field path alike; 10 not yet held |
-| JavaScript | 1–8 every build | 1–8 every build | the flat tier 1–7 every build, whatever `NODE_ENV` says; 10 not yet held |
-| Elixir | 1–6 and 8 every build (`ArgumentError`); 7 unrepresentable | 1–6 and 8 every build; 7 unrepresentable | 1–7 every build (`ArgumentError`); 10 not yet held |
-| Lua | 1–8 every build | 1–8 every build | 1–6 every build; 7 raises; 10 not yet held |
-| Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises; 10 not yet held |
-| Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 10 not yet held |
-| MOO | 1–8 every build | 1–8 every build | 1–7 every build; 10 not yet held |
-| Goose | 1–8 every build | 1–8 every build | 1–7 every build; 10 not yet held |
-| Lobster | 1–7 every build (`SaveChecked`) | 2–6 every build; 1 and 7 unchecked | 1–6 debug; 7 traps |
+| C++ | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 and 10 not yet held |
+| C | 1–6 and 8 debug; 7 every build | 1–4 and 8 debug; 5–7 every build | 1–7 debug; 8 and 10 not yet held |
+| C# | 1–6 and 8 debug; 7 every build | 1–2 debug; 3–8 every build | 1 and 3–7 debug; 2 unchecked; 8 and 10 not yet held |
+| Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable; 8 and 10 not yet held |
+| Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 and 10 not yet held |
+| Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 debug; 8 and 10 not yet held |
+| Go | 1–8 every build | 1–8 every build | 1–8 every build, on the flat and the per-field path alike; 10 not yet held |
+| JavaScript | 1–8 every build | 1–8 every build | the flat tier 1–7 every build, whatever `NODE_ENV` says; 8 and 10 not yet held |
+| Elixir | 1–6 and 8 every build (`ArgumentError`); 7 unrepresentable | 1–6 and 8 every build; 7 unrepresentable | 1–7 every build (`ArgumentError`); 8 and 10 not yet held |
+| Lua | 1–8 every build | 1–8 every build | 1–6 every build; 7 raises; 8 and 10 not yet held |
+| Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises; 8 and 10 not yet held |
+| Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 8 and 10 not yet held |
+| MOO | 1–8 every build | 1–8 every build | 1–8 every build; 10 not yet held |
+| Goose | 1–8 every build | 1–8 every build | 1–7 every build; 8 and 10 not yet held |
+| Lobster | 1–8 every build (`SaveChecked`) | 1–8 every build | 1–6 debug; 7 traps |
 
-**The text writer** (§16) writes a zero byte or a zero unit as `\u0000` in every
-leg, and refuses ill-formed text (SPEC-TABLES §16.3).
+**The text writer** (§16) refuses a zero byte or a zero unit by row 8, as the
+mechanism above gives it — a debug assert in an assert leg and a refusal in
+every build in the every-build legs — and refuses ill-formed text by the same
+row: its reader refuses a text that places `U+0000` (SPEC-TABLES §16.3), and a
+writer never produces text its own reader refuses.
 
 **Held by test**: five conformance surfaces (test/conformance/README.md). Four
 hold the table forms, one per writer, each loading one instance, setting one
@@ -2800,17 +2799,16 @@ or a file per declaration where the language demands one.
   in declaration order. `InitX` restores a type's construction values in
   existing storage; `ZeroX` applies the §5 zero form. **Generated JS never imports the serialize runtime** —
   every wire call is a method on the stream parameter, so no wiring file
-  exists and this tier's checked/production fork stays where it lives, in the
-  runtime's own load-time mode selection: the runtime-tier module reads no
-  `NODE_ENV` of its own. An enum's or a tag's frozen variant object holds
+  exists. Every JavaScript packet writer checks in every build; generated
+  modules read no `NODE_ENV` of their own. An enum's or a tag's frozen variant object holds
   its variants only — the extent is the module constant `<Name>Max` — so
   `Object.values` enumerates variants. Beside it, **every schema file that
   declares types or unions also emits `<Base>Flat.js`** — the FLAT tier, a single-word bitpacker
   inlined at every field with no runtime import at all, held byte-identical
   to the runtime tier by a standing gate. The flat tier's writer holds its
   checks in every build, whatever `NODE_ENV` says: it reads no `NODE_ENV`
-  and selects no production variant, so a value its declaration does not
-  admit refuses whether the bundle is checked or released.
+  and selects no production variant. It emits one writer per type, so a value
+  its declaration does not admit refuses in every build.
   The READ side is never configurable in either tier. **Every packet module
   ships its TypeScript declarations beside it** — `<Base>.d.ts` and
   `<Base>Flat.d.ts`, emitted from the same IR walk, accepted by `tsc

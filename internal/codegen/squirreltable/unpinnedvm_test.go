@@ -1,6 +1,7 @@
 package squirreltable_test
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,19 +40,11 @@ func TestSquirrelTableRuntimeRefusesUnpinnedVm(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := make(map[string][]byte, len(typeFiles)+len(tableFiles))
-	for name, data := range typeFiles {
-		files[name] = data
-	}
-	for name, data := range tableFiles {
-		files[name] = data
-	}
-	for name, data := range squirrel.Runtime() {
-		files[name] = data
-	}
+	maps.Copy(files, typeFiles)
+	maps.Copy(files, tableFiles)
+	maps.Copy(files, squirrel.Runtime())
 	runtimeFiles := squirreltable.Runtime()
-	for name, data := range runtimeFiles {
-		files[name] = data
-	}
+	maps.Copy(files, runtimeFiles)
 
 	runModule := func(t *testing.T, descriptor []byte) string {
 		t.Helper()

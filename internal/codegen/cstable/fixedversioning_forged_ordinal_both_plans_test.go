@@ -15,10 +15,11 @@ import (
 // forged bytes twice — once by the NEW build's COMPILED plan, selected through
 // the lineage, and once by the OLD build's IDENTITY plan, its own hash. The
 // forge turns old_enum_append.bin's r0.tier from 3 (Gold) into 4, an ordinal
-// past the writer's three variants and a name the reader does have. Both reads
-// land tier None and never Platinum, leave seq == 9, and count clamped EXACTLY
-// == 1 on both plans — never >= 1, since a leg that also counts in the ordinal
-// op lands 2; the equality of the two clamped counts is the row's whole proof.
+// past the writer's three variants and a name the reader does have. Under the
+// strict read (docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6: the bounds pass refuses
+// on the forged flag) both plans refuse the whole load, never land Platinum, and
+// leave tier and seq at their declared defaults; the same verdict on both plans
+// is the row's whole proof.
 func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
@@ -50,36 +51,33 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 		{name: "forged_ordinal_both_plans/compiled", reader: "VNEW_enum_append",
 			older: []string{"VOLD_enum_append"}, file: "hostile_enum_append.bin",
 			body: csVersionHead + `            _ = want;
-            if (n != 1)
+            @TABLE@ fresh = new @TABLE@();
+            if (n != -1)
             {
-                bad += ProbeLog.Fail(@NAME@, "the COMPILED plan read one record: n=" + n + " reason=" + r.Reason);
+                bad += ProbeLog.Fail(@NAME@, "the COMPILED plan must refuse the forged ordinal: n=" + n);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (!r.Refused || r.Verdict != Schema.TableWire.Verdict.Refused)
             {
-                bad += ProbeLog.Fail(@NAME@, "a forged ordinal is not a refusal and not malformed on the COMPILED plan: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a forged ordinal is a refusal on the COMPILED plan: refused=" + r.Refused + " verdict=" + r.Verdict);
             }
-            if ((int)back[0].Tier != 0)
+            if (back[0].Tier != fresh.Tier)
             {
-                bad += ProbeLog.Fail(@NAME@, "the COMPILED plan lands the forged ordinal as None, not tier=" + (int)back[0].Tier);
+                bad += ProbeLog.Fail(@NAME@, "the COMPILED plan's refusal left tier at its declared default, not tier=" + (int)back[0].Tier);
             }
             if ((int)back[0].Tier == 4)
             {
                 bad += ProbeLog.Fail(@NAME@, "the COMPILED plan never lands the forged ordinal as Platinum: tier=" + (int)back[0].Tier);
             }
-            if (back[0].Seq != 9)
+            if (back[0].Seq != fresh.Seq)
             {
-                bad += ProbeLog.Fail(@NAME@, "the scalar after the enum is untouched: seq=" + back[0].Seq);
+                bad += ProbeLog.Fail(@NAME@, "the COMPILED plan's refusal wrote the scalar after the enum: seq=" + back[0].Seq);
             }
-            if (r.Clamped != 1)
+            if (r.Widened != 0 || r.Unknown != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "the COMPILED plan counts the forged ordinal exactly once: clamped=" + r.Clamped);
-            }
-            if (r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0)
-            {
-                bad += ProbeLog.Fail(@NAME@, "a counter other than clamp moved on the COMPILED plan: widened=" + r.Widened + " unknown=" + r.Unknown + " kind=" + r.KindMismatch + " duplicate=" + r.Duplicate + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves on the COMPILED plan: widened=" + r.Widened + " unknown=" + r.Unknown + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`},
 		{name: "forged_ordinal_both_plans/no_report", reader: "VOLD_enum_append",
-			older: nil, file: "hostile_enum_append.bin",
+			older: nil, suffix: "nr", file: "hostile_enum_append.bin",
 			body: csVersionHead + `            _ = want;
             if (n != -1)
             {
@@ -99,33 +97,30 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 		{name: "forged_ordinal_both_plans/identity", reader: "VOLD_enum_append",
 			older: nil, file: "hostile_enum_append.bin",
 			body: csVersionHead + `            _ = want;
-            if (n != 1)
+            @TABLE@ fresh = new @TABLE@();
+            if (n != -1)
             {
-                bad += ProbeLog.Fail(@NAME@, "the IDENTITY plan read one record: n=" + n + " reason=" + r.Reason);
+                bad += ProbeLog.Fail(@NAME@, "the IDENTITY plan must refuse the forged ordinal: n=" + n);
             }
-            if (r.Refused || r.Malformed || r.Reason != null)
+            if (!r.Refused || r.Verdict != Schema.TableWire.Verdict.Refused)
             {
-                bad += ProbeLog.Fail(@NAME@, "a forged ordinal is not a refusal and not malformed on the IDENTITY plan: reason=" + r.Reason + " malformed=" + r.Malformed);
+                bad += ProbeLog.Fail(@NAME@, "a forged ordinal is a refusal on the IDENTITY plan: refused=" + r.Refused + " verdict=" + r.Verdict);
             }
-            if (0 != (int)back[0].Tier)
+            if (back[0].Tier != fresh.Tier)
             {
-                bad += ProbeLog.Fail(@NAME@, "the IDENTITY plan lands the forged ordinal as None, not tier=" + (int)back[0].Tier);
+                bad += ProbeLog.Fail(@NAME@, "the IDENTITY plan's refusal left tier at its declared default, not tier=" + (int)back[0].Tier);
             }
             if ((int)back[0].Tier == 4)
             {
                 bad += ProbeLog.Fail(@NAME@, "the IDENTITY plan never lands the forged ordinal as Platinum: tier=" + (int)back[0].Tier);
             }
-            if (back[0].Seq != 9)
+            if (back[0].Seq != fresh.Seq)
             {
-                bad += ProbeLog.Fail(@NAME@, "the scalar after the enum is untouched: seq=" + back[0].Seq);
+                bad += ProbeLog.Fail(@NAME@, "the IDENTITY plan's refusal wrote the scalar after the enum: seq=" + back[0].Seq);
             }
-            if (1 != r.Clamped)
+            if (r.Widened != 0 || r.Unknown != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "the IDENTITY plan counts the forged ordinal exactly once: clamped=" + r.Clamped);
-            }
-            if (r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Duplicate != 0 || r.Retained != 0 || r.RetainLost != 0)
-            {
-                bad += ProbeLog.Fail(@NAME@, "a counter other than clamp moved on the IDENTITY plan: widened=" + r.Widened + " unknown=" + r.Unknown + " kind=" + r.KindMismatch + " duplicate=" + r.Duplicate + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves on the IDENTITY plan: widened=" + r.Widened + " unknown=" + r.Unknown + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`},
 	}
 

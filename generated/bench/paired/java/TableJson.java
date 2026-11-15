@@ -888,6 +888,10 @@ public final class TableJson {
                     return 0;
                 }
                 if (signed) {
+                    if (Double.isFinite(d) && d >= 9223372036854775808.0) {
+                        rep.refuse("out_of_range");
+                        return max;
+                    }
                     if (!Double.isFinite(d) || d != (double) (long) d) {
                         rep.refuse("kind_mismatch");
                         rejected = true;
@@ -1021,6 +1025,7 @@ public final class TableJson {
                 return;
             }
             p++; // the opening bracket
+            java.util.Set<String> seenKey = null;
             while (true) {
                 int c = peek();
                 if (c == closing) {
@@ -1035,6 +1040,14 @@ public final class TableJson {
                     String key = scanString();
                     if (bad) {
                         return;
+                    }
+                    // A SKIPPED OBJECT'S KEYS ARE HELD TO THE SAME RULE (§16.2,
+                    // §16.12): the set is per object and holds decoded text.
+                    if (seenKey == null) {
+                        seenKey = new java.util.HashSet<>();
+                    }
+                    if (!seenKey.add(key)) {
+                        rep.refuse("text_damaged");
                     }
                     if (peek() != ':') {
                         bad = true;

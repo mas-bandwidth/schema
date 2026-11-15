@@ -1,2 +1,4 @@
 # carried findings: name	slug	input	one line
 # every line is a FIX-CARD the java port owes; the runner fails if one goes green
+conformance-base64-unpadded	java-hostile-rows	inputs/conformance-base64-unpadded.json	RELAXED 2026-11-14 (maintainer: get main green): the java JSON read accepts unpadded base64 the ruling json-base64-canonical refuses; re-enable: relax/hostile-rows-java
+conformance-str-zero-escape-unknown-key	java-hostile-rows	inputs/conformance-str-zero-escape-unknown-key.json	RELAXED 2026-11-14 (maintainer: get main green): the java JSON read accepts a zero escape in a skipped value the skipped-value rule refuses; re-enable: relax/hostile-rows-java

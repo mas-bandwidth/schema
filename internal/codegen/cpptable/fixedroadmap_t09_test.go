@@ -535,9 +535,11 @@ func TestFixedRoadmapCppT09IntegersFloats(t *testing.T) {
 					}
 					t.Skipf("named as not run: the sibling serialize runtime is not staged at %s, so the generated header's 128-bit storage type does not resolve; stage the checkout to run this row", ser)
 				}
-				out, err = cppRunUnit(t, path, row.pkg, row.body, []string{ser})
+				// Every row saves out-of-range values to forge the bytes its
+				// reader must refuse, so the probe is a release build.
+				out, err = cppRunForging(t, path, row.pkg, row.body, []string{ser})
 			} else {
-				out, err = cppRunCapability(t, path, row.pkg, row.body)
+				out, err = cppRunForging(t, path, row.pkg, row.body, nil)
 			}
 			if err != nil {
 				t.Fatalf("%s: %v\n%s", row.id, err, out)

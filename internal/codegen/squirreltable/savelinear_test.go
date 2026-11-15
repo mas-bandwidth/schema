@@ -90,7 +90,7 @@ func saveLinearChainLinks(n int) []saveLinearLink {
 }
 
 // the diamond: the root reaches node 3 through next.next and side.next, and
-// holds two distinct blobs with equal bytes (two nodes, each owned once)
+// holds two distinct blobs with equal bytes (two nodes, each owned once).
 var (
 	saveLinearDiamondLinks = []saveLinearLink{{0, "next", 1}, {0, "side", 2}, {1, "next", 3}, {2, "next", 3}}
 	saveLinearDiamondBlobs = []saveLinearBlob{{0, "data", 0}, {3, "more", 1}, {2, "data", 2}}

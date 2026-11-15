@@ -264,6 +264,11 @@ func DecodeShape(in []byte, kind uint8) (TableMessageShape, int, bool) {
 		if !TableMessageKnownKind(s.Elem) {
 			return s, 0, false // an element kind outside the closed set
 		}
+		if s.Elem == TableKindArray || s.Elem == TableKindKeyed {
+			// AN ARRAY OR KEYED ELEMENT IS FRAMING DAMAGE (§3.3): no
+			// declaration produces a list of lists or a list of keyed arrays
+			return s, 0, false
+		}
 		// AN ELEMENT KIND OF 12 OR 33 IS AN ANNOUNCED SHAPE LIKE ANY OTHER
 		// (§3.3): a text list (§2.13) is a kind `14` array of kind `12`, so a
 		// unit that declares one announces one, and the element's own shape is

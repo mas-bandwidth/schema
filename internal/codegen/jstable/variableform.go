@@ -526,7 +526,11 @@ function TableVariableNodeTableScan(bytes, table, end, report) {
     if (rec.bad || tref === 0 || tref > table.length) { report.damaged = true; return null; }
     const tlen = rec.leb();
     if (rec.bad || rec.at + tlen > rec.end) { report.damaged = true; return null; }
-    raw.push({ tid: table[tref - 1], body: payload.slice(rec.at, rec.at + tlen) });
+    // A RESERVED ID IS NO RECORD'S TYPE (§3.1, §3.3, §5): it is damage
+    // anywhere but its own transport. The two blob ids are lawful types.
+    const tid = table[tref - 1];
+    if (tid === TableNodeTableId || tid === TableBuildVersionId || tid === TableMessageVocabularyId) { report.damaged = true; return null; }
+    raw.push({ tid, body: payload.slice(rec.at, rec.at + tlen) });
     rec.at += tlen;
   }
   if (count !== raw.length) { report.damaged = true; return null; }
@@ -663,6 +667,10 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 	case f.KeyEnum != "" || f.Array == ir.ArrayFixed:
 		// one slot per keyed variant or fixed bound, each at the element's default (§2.4, §2.9)
 		return fmt.Sprintf("Array.from({ length: %d }, () => %s)", f.ArrayBound, g.elemDefaultExpr(f))
+	case f.Array == ir.ArrayCounted && f.ArrayMin > 0:
+		// a counted array is BORN AT ITS MINIMUM count (docs/SPEC.md §5), each
+		// slot at the element's default
+		return fmt.Sprintf("Array.from({ length: %d }, () => %s)", f.ArrayMin, g.elemDefaultExpr(f))
 	case f.Array != ir.ArrayNone:
 		return "[]"
 	case f.Type.Pointer:
@@ -985,8 +993,12 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 		if f.IsTextList() {
 			fmt.Fprintf(&b, "tl: true, plain: %v, total: %d, ", ir.TextListPlain(f), f.TextTotal)
 		}
-		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, fixed: %v, bound: %d, ek: %d, esz: %d, eal: %d, e: %s }",
-			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayBound, ir.TableWireElemKind(f), lsize, lalign, g.keyedElemDesc(f))
+		min := ""
+		if f.Array == ir.ArrayCounted && f.ArrayMin != 0 {
+			min = fmt.Sprintf(", min: %d", f.ArrayMin)
+		}
+		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, fixed: %v, bound: %d%s, ek: %d, esz: %d, eal: %d, e: %s }",
+			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayBound, min, ir.TableWireElemKind(f), lsize, lalign, g.keyedElemDesc(f))
 	case f.Type.Pointer && f.Type.Blob() && f.Type.Kind == ir.TString:
 		b.WriteString("s: \"sblob\", js: \"s\" }")
 	case f.Type.Pointer && f.Type.Blob():

@@ -262,26 +262,26 @@ type runPatternException struct {
 // runs; and slow-gate-coverage's pattern is emitted by tools/slowgatescan
 // when its recipe runs.
 var runPatternExceptions = []runPatternException{
-	{"make/go.mk:323", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root", "^TestCorpusFixtureWrite$"},
-	{"make/go.mk:459", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'", "^TestCardFixtureWrite$"},
-	{"make/go.mk:531", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root", "Soak"},
-	{"make/go.mk:561", "same separate test/go-tables module, -run Fuzz", "Fuzz"},
-	{"make/go.mk:562", "same separate test/go-tables module, -run Fuzz under -race", "Fuzz"},
-	{"make/go.mk:599", "same separate test/go-tables module, and it runs under a -overlay built at recipe time", "BlockForgeryFuzz"},
-	{"make/go.mk:984", "same separate test/go-tables module, -run '^TestSoak$$'", "^TestSoak$"},
-	{"make/go.mk:1136", "same separate test/go-tables module, -run '^TestUsage$$'", "^TestUsage$"},
-	{"make/go.mk:1154", "same separate test/go-tables module, -run '^TestKeyed'", "^TestKeyed"},
-	{"make/go.mk:541", "-run '^$$' runs no test on purpose: the recipe runs the fuzz target FuzzTableFrontEnd alone", "^$"},
-	{"make/go.mk:555", "-run '^$$' runs no test on purpose: the recipe runs a fuzz target alone", "^$"},
+	{"make/go.mk:338", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root", "^TestCorpusFixtureWrite$"},
+	{"make/go.mk:474", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'", "^TestCardFixtureWrite$"},
+	{"make/go.mk:552", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root", "Soak"},
+	{"make/go.mk:582", "same separate test/go-tables module, -run Fuzz", "Fuzz"},
+	{"make/go.mk:583", "same separate test/go-tables module, -run Fuzz under -race", "Fuzz"},
+	{"make/go.mk:620", "same separate test/go-tables module, and it runs under a -overlay built at recipe time", "BlockForgeryFuzz"},
+	{"make/go.mk:1005", "same separate test/go-tables module, -run '^TestSoak$$'", "^TestSoak$"},
+	{"make/go.mk:1157", "same separate test/go-tables module, -run '^TestUsage$$'", "^TestUsage$"},
+	{"make/go.mk:1175", "same separate test/go-tables module, -run '^TestKeyed'", "^TestKeyed"},
+	{"make/go.mk:562", "-run '^$$' runs no test on purpose: the recipe runs the fuzz target FuzzTableFrontEnd alone", "^$"},
+	{"make/go.mk:576", "-run '^$$' runs no test on purpose: the recipe runs a fuzz target alone", "^$"},
 	{"make/moo-text.mk:28", "-run '$(MOO_TEXT_GATES)' is a make variable defined at the top of make/moo-text.mk; the gate reads the recipe's literal text, so the pattern has no value until make expands it", "$(MOO_TEXT_GATES)"},
 	{"make/moo-text.mk:32", "-run 'TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)' ends in a make variable defined at the top of make/moo-text.mk, so the pattern has no value until make expands it", "TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)"},
 	{"make/moo-tables.mk:18", "-run 'Moo' names tests in compiler/tablesmoo_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them", "Moo"},
 	{"make/moo-readiness.mk:35", "-run 'Moo' names tests in compiler/tablesmoo_test.go and compiler/tablesmoonames_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them", "Moo"},
-	{"Makefile:5870", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion", "^$(3)$"},
-	{"make/js.mk:1513", "inside define js_jstable_control: $(3) is the caller's test pattern and $(4) its package, so the pattern has no value until expansion", "$(3)"},
-	{"Makefile:7422", "slow-gate-coverage: -run \"$$(go run ./tools/slowgatescan -emit-gated-run)\" is the gated tests' names, which tools/slowgatescan scans the tree for when the recipe runs, so the pattern has no literal value, and ./tools/slowgatescan in it is the program, not the package under test", "$(go run ./tools/slowgatescan -emit-gated-run)"},
-	{"Makefile:7450", "slow-gate-coverage-codegen: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
-	{"Makefile:7454", "slow-gate-coverage-rest: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
+	{"Makefile:5911", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion", "^$(3)$"},
+	{"make/js.mk:1541", "inside define js_jstable_control: $(3) is the caller's test pattern and $(4) its package, so the pattern has no value until expansion", "$(3)"},
+	{"Makefile:7472", "slow-gate-coverage: -run \"$$(go run ./tools/slowgatescan -emit-gated-run)\" is the gated tests' names, which tools/slowgatescan scans the tree for when the recipe runs, so the pattern has no literal value, and ./tools/slowgatescan in it is the program, not the package under test", "$(go run ./tools/slowgatescan -emit-gated-run)"},
+	{"Makefile:7500", "slow-gate-coverage-codegen: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
+	{"Makefile:7504", "slow-gate-coverage-rest: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
 }
 
 // checkRunPatterns is the shared code path for both tests. It extracts every
@@ -404,9 +404,10 @@ func TestEveryRunPatternMatchesATest(t *testing.T) {
 // TestPerCommitLegBuildsFitTheWall holds the three leg jobs the two-minute
 // rule names to the shape that fits it: the toolchain-dependent build is
 // restored from a cache (or handed over as an artifact), the make
-// prerequisite is a real stamp rather than a phony regenerator, and the fuzz
-// row runs the bounded per-commit smoke while the full campaign still runs
-// nightly in certify.yml. A job that rebuilds its driver from nothing on
+// prerequisite is a real stamp rather than a phony regenerator, each fuzz
+// row runs its campaign as the workflow's tracked relaxations set it (the C#
+// region row's per-commit smoke), and the full campaign still runs nightly in
+// certify.yml. A job that rebuilds its driver from nothing on
 // every run spends its two minutes before it tests, which is the red this
 // pins.
 func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
@@ -439,7 +440,7 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 				"build/tables-generated-cs/cards/.stamp",
 			},
 			build: `make -j"$(nproc)" build/conformance-harness build-conformance-cs`,
-			run:   `make ${{ matrix.target }}-smoke`,
+			run:   "make ${{ matrix.target }}${{ (github.event_name == 'push' || github.event_name == 'pull_request') && matrix.name == 'region' && '-smoke' || '' }}",
 		},
 		{
 			job:      "dart-fuzz",
@@ -451,7 +452,7 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 				"build/conformance-dart",
 			},
 			build: `make -j"$(nproc)" build/conformance-harness build/conformance-dart DART=dart`,
-			run:   `make ${{ matrix.target }}-smoke`,
+			run:   `make ${{ matrix.target }} DART=dart`,
 		},
 	}
 	for _, leg := range legs {
@@ -515,7 +516,7 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 	// stamp newer than them is remade at make time and recompiles its object
 	// even when the object itself was touched.
 	pathLines := 0
-	for _, l := range strings.Split(conf, "\n") {
+	for l := range strings.SplitSeq(conf, "\n") {
 		if strings.TrimSpace(l) == "build/conformance-c-objs" {
 			pathLines++
 		}
@@ -526,7 +527,7 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 	stampAt := strings.Index(conf, "touch build/tables-generated-c/.stamp")
 	driverAt := strings.Index(conf, "touch build/conformance-c")
 	generatedAt, objectsAt := -1, -1
-	for _, l := range strings.Split(conf, "\n") {
+	for l := range strings.SplitSeq(conf, "\n") {
 		if strings.Contains(l, "find build/tables-generated-c ") &&
 			strings.Contains(l, "-exec touch") {
 			generatedAt = strings.Index(conf, l)
@@ -543,7 +544,7 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 		t.Error("conformance does not stand every restored object under build/conformance-c-objs newer than the checkout: make recompiles all of the C driver's translation units on a cache hit")
 	}
 	if stampAt < 0 || driverAt < 0 || generatedAt < 0 || objectsAt < 0 ||
-		!(stampAt < generatedAt && generatedAt < objectsAt && objectsAt < driverAt) {
+		(stampAt >= generatedAt || generatedAt >= objectsAt || objectsAt >= driverAt) {
 		t.Error("conformance refreshes the C driver inputs out of order: the stamp, then the generated sources, then the objects, then the linked driver must each stand newer than the last, or make recompiles or relinks on a hit")
 	}
 
@@ -617,7 +618,7 @@ func TestCSharpCacheHitRefreshesEveryRestoredOutput(t *testing.T) {
 	}
 	for _, dir := range []string{"test/conformance/cs/obj", "test/conformance/cs/bin"} {
 		refreshed := false
-		for _, l := range strings.Split(body, "\n") {
+		for l := range strings.SplitSeq(body, "\n") {
 			if strings.Contains(l, "find") && strings.Contains(l, dir) &&
 				strings.Contains(l, "-type f") && strings.Contains(l, "-exec touch") {
 				refreshed = true

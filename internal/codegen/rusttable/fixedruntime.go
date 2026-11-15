@@ -627,14 +627,18 @@ pub fn table_fixed_run(
                     report.damaged = true;
                     return;
                 }
-                let mut raw: u64 = 0;
+                // THE WIDENED VALUE RIDES IN 128 BITS, because the ladder's
+                // top rung stores sixteen bytes: a source no wider than eight
+                // bytes sign-extends into the whole destination, and every
+                // destination byte is a shift of a type that holds it.
+                let mut raw: u128 = 0;
                 for i in 0..n {
-                    raw |= u64::from(src[s + i]) << (8 * i);
+                    raw |= u128::from(src[s + i]) << (8 * i);
                 }
                 if p.sign != 0 {
                     // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the
                     // whole reason a widen is an op and not a short copy.
-                    let top = 1u64 << (n * 8 - 1);
+                    let top = 1u128 << (n * 8 - 1);
                     if raw & top != 0 {
                         raw |= !((top << 1).wrapping_sub(1));
                     }
