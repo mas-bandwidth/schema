@@ -1568,6 +1568,22 @@ namespace Bench
                     }
                 }
                 if (malformed) { return RefuseText(ref input, "kind_mismatch"); }
+                // The writer's spelling is padded standard base64 with zero pad bits
+                // (docs/SPEC-TABLES.md §16.2, §16.8). The grammar above accepts
+                // decodable unpadded input, so hold the text to that exact spelling
+                // before placing any bytes.
+                bool canonical = symbols % 4 == 0;
+                if (pad == 1)
+                {
+                    int last = Base64Decode[body[body.Length - 2]];
+                    canonical = last >= 0 && (last & 0x03) == 0;
+                }
+                else if (pad == 2)
+                {
+                    int last = Base64Decode[body[body.Length - 3]];
+                    canonical = last >= 0 && (last & 0x0f) == 0;
+                }
+                if (!canonical) { return RefuseText(ref input, "base64_not_canonical"); }
                 byte[] bytes = new byte[symbols * 6 / 8];
                 int count = 0, held = 0;
                 uint accumulator = 0;
@@ -2675,6 +2691,22 @@ namespace Bench
                         // the field keeps its default and the event is counted
                         return RefuseText(ref input, "kind_mismatch");
                     }
+                    // The writer's spelling is padded standard base64 with zero pad
+                    // bits (docs/SPEC-TABLES.md §16.2, §16.8). The grammar above
+                    // accepts decodable unpadded input, so hold the text to that exact
+                    // spelling before placing any bytes.
+                    bool canonical = symbols % 4 == 0;
+                    if (pad == 1)
+                    {
+                        int last = Base64Decode[body[body.Length - 2]];
+                        canonical = last >= 0 && (last & 0x03) == 0;
+                    }
+                    else if (pad == 2)
+                    {
+                        int last = Base64Decode[body[body.Length - 3]];
+                        canonical = last >= 0 && (last & 0x0f) == 0;
+                    }
+                    if (!canonical) { return RefuseText(ref input, "base64_not_canonical"); }
                     byte[] storage = f.GetBuffer(value);
                     Array.Clear(storage, 0, f.ArrayBound);
                     PutCount(value, f, 0);
