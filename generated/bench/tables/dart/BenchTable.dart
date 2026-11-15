@@ -19,6 +19,10 @@
 // tags — and NEVER throw on hostile bytes. No slack past the payload is
 // required: the reader prices its 64-bit windows inside the buffer.
 //
+// read<Name>Bits(value, view, numBits, bitOffset) -> the bits consumed, or
+// -1 on the same refusals: the framing entry, read from a bit offset with
+// no end-of-packet check, so several objects read in turn from one buffer.
+//
 // zero<Name>(value) -> the §5 zero form. There is no measure function
 // (SPEC §6.1): write returns the size, <name>MaxBytes sizes buffers.
 
@@ -234,8 +238,38 @@ int writeTableHitEvent(TableHitEvent value, ByteData view) {
 // and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTableHitEvent(TableHitEvent value, ByteData view, int numBits) {
+  final bitsRead = readTableHitEventBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readTableHitEventBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readTableHitEvent does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readTableHitEventBits(
+  TableHitEvent value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -249,11 +283,11 @@ bool readTableHitEvent(TableHitEvent value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 28 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -272,18 +306,7 @@ bool readTableHitEvent(TableHitEvent value, ByteData view, int numBits) {
   v = (window >>> 27) & 0x1;
   bitsRead += 1;
   value.crit = v != 0;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type TableChatEvent
@@ -339,8 +362,38 @@ int writeTableChatEvent(TableChatEvent value, ByteData view) {
 // and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTableChatEvent(TableChatEvent value, ByteData view, int numBits) {
+  final bitsRead = readTableChatEventBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readTableChatEventBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readTableChatEvent does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readTableChatEventBits(
+  TableChatEvent value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -354,11 +407,11 @@ bool readTableChatEvent(TableChatEvent value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 14 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -371,18 +424,7 @@ bool readTableChatEvent(TableChatEvent value, ByteData view, int numBits) {
   v = (window >>> 2) & 0xfff;
   bitsRead += 12;
   value.speaker = v;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type TablePickupEvent
@@ -438,8 +480,38 @@ int writeTablePickupEvent(TablePickupEvent value, ByteData view) {
 // and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTablePickupEvent(TablePickupEvent value, ByteData view, int numBits) {
+  final bitsRead = readTablePickupEventBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readTablePickupEventBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readTablePickupEvent does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readTablePickupEventBits(
+  TablePickupEvent value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -453,11 +525,11 @@ bool readTablePickupEvent(TablePickupEvent value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 18 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -470,18 +542,7 @@ bool readTablePickupEvent(TablePickupEvent value, ByteData view, int numBits) {
   v = (window >>> 10) & 0xff;
   bitsRead += 8;
   value.amount = v;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // TableEventType: union TableEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -591,8 +652,38 @@ int writeTableEvent(TableEvent value, ByteData view) {
 // and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTableEvent(TableEvent value, ByteData view, int numBits) {
+  final bitsRead = readTableEventBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readTableEventBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readTableEvent does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readTableEventBits(
+  TableEvent value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -606,11 +697,11 @@ bool readTableEvent(TableEvent value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 2 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -623,7 +714,7 @@ bool readTableEvent(TableEvent value, ByteData view, int numBits) {
   switch (value.type) {
     case TableEventType.hit:
       if (bitsRead + 28 > numBits) {
-        return false;
+        return -1;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -645,7 +736,7 @@ bool readTableEvent(TableEvent value, ByteData view, int numBits) {
       value.hit.crit = v != 0;
     case TableEventType.chat:
       if (bitsRead + 14 > numBits) {
-        return false;
+        return -1;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -661,7 +752,7 @@ bool readTableEvent(TableEvent value, ByteData view, int numBits) {
       value.chat.speaker = v;
     case TableEventType.pickup:
       if (bitsRead + 18 > numBits) {
-        return false;
+        return -1;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -676,16 +767,5 @@ bool readTableEvent(TableEvent value, ByteData view, int numBits) {
       bitsRead += 8;
       value.pickup.amount = v;
   }
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
+  return bitsRead - bitOffset;
 }
