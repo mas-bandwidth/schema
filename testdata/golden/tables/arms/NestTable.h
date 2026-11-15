@@ -6480,10 +6480,10 @@ inline void TableRetainIdsWrite( TableWriter & w, const TableRetainIds & ids )
 //
 // A retained record's inner nesting is the WRITER's and not this build's, so
 // it is the one depth on this path a file can drive. The cap counts NESTED
-// BODIES, and a record past it is dropped on the same rule as any other shape
-// the walk cannot take. Time no longer rests on it: it is a small stated
-// constant and nothing more.
-static const int32_t kTableRetainWalkDepthMax = 64;
+// BODIES as §4 counts them, and a record past it is dropped on the same rule
+// as any other shape the walk cannot take. Time no longer rests on it: it is a
+// small stated constant and nothing more.
+static const int32_t kTableRetainWalkDepthMax = 128;
 
 // the three RESERVED ids (§3.1, §3.3). One inside a retained record's payload
 // would be re-emitted into a nested body, where it is malformed, so meeting
@@ -6501,6 +6501,7 @@ struct TableRetainIn
     const TableIdTable * ids;
     uint8_t * out;   // NULL: measuring, and nothing is written
     int64_t out_at;
+    bool too_deep;   // the walk met §4's nesting bound: the FILE is malformed
 };
 
 inline void TableRetainInRaw( TableRetainIn & s, const uint8_t * from, int64_t bytes )
@@ -6607,7 +6608,7 @@ inline int64_t TableRetainInFramed( TableRetainIn & s, uint8_t kind, int64_t len
 
 inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t length, int32_t depth )
 {
-    if ( depth > kTableRetainWalkDepthMax ) { return -1; }
+    if ( depth > kTableRetainWalkDepthMax ) { s.too_deep = true; return -1; }
     if ( length < 0 || s.at + length > s.size ) { return -1; }
     const int64_t end = s.at + length;
     const int64_t began = s.out_at;
@@ -6668,7 +6669,11 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
                 uint64_t slot_bytes = 0;
                 if ( !TableRetainInLebRead( s, slot_bytes ) ) { return -1; }
                 if ( slot_bytes > (uint64_t) ( end - s.at ) ) { return -1; }
-                if ( TableRetainInFramed( s, elem_kind, (int64_t) slot_bytes, depth + 1 ) < 0 ) { return -1; }
+                // The keyed entry's framing adds nothing by itself (§4): what
+                // it frames is its element, and only a structural element is a
+                // level.
+                const int32_t elem_depth = depth + ( elem_kind == 13 || elem_kind == 14 || elem_kind == 16 ? 1 : 0 );
+                if ( TableRetainInFramed( s, elem_kind, (int64_t) slot_bytes, elem_depth ) < 0 ) { return -1; }
             }
             break;
         }
@@ -6792,7 +6797,11 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
             if ( length > (uint64_t) ( s.size - s.at ) ) { return -1; }
-            if ( TableRetainInFramed( s, arm_kind, (int64_t) length, depth + 1 ) < 0 ) { return -1; }
+            // A UNION WHOSE ARM IS STRUCTURAL ADDS TWO LEVELS (§4): the union,
+            // then the table, array or keyed body inside it. A union arm that is
+            // another union adds one, and a scalar or None arm adds none.
+            const int32_t arm_depth = depth + ( arm_kind == 15 ? 1 : ( arm_kind == 13 || arm_kind == 14 || arm_kind == 16 ? 2 : 0 ) );
+            if ( TableRetainInFramed( s, arm_kind, (int64_t) length, arm_depth ) < 0 ) { return -1; }
             break;
         }
         case 30: // an ENUM's variant reference, zero for None
@@ -6842,7 +6851,15 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     probe.ids = r.ids;
     probe.out = NULL;
     probe.out_at = 0;
+    probe.too_deep = false;
     const int64_t payload = TableRetainInPayload( probe, kind, 0 );
+    if ( probe.too_deep )
+    {
+        // §4's ONE NESTING BOUND IS THE WALK'S VERDICT, not a retention
+        // capacity: a file past it is malformed, and the whole load refuses.
+        r.report->damaged = true;
+        return false;
+    }
     if ( payload < 0 || probe.at != wire_bytes )
     {
         r.report->retain_lost++;
@@ -6877,6 +6894,7 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     write.ids = r.ids;
     write.out = record + kTableRetainRecordHeader + 8 * (int64_t) path.depth;
     write.out_at = 0;
+    write.too_deep = false;
     if ( TableRetainInPayload( write, kind, 0 ) < 0 )
     {
         r.report->retain_lost++;
@@ -7124,7 +7142,10 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             for ( uint64_t i = 0; i < n; i++ )
             {
                 if ( !TableRetainOutRef( s ) ) { return false; }
-                if ( !TableRetainOutFramed( s, elem_kind, depth + 1 ) ) { return false; }
+                // The keyed entry's framing adds nothing by itself (§4), as on
+                // the capture side.
+                const int32_t elem_depth = depth + ( elem_kind == 13 || elem_kind == 14 || elem_kind == 16 ? 1 : 0 );
+                if ( !TableRetainOutFramed( s, elem_kind, elem_depth ) ) { return false; }
             }
             break;
         }
@@ -7230,7 +7251,10 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             if ( s.at >= s.size ) { return false; }
             const uint8_t arm_kind = s.in[s.at++];
             TableRetainOutRaw( s, &arm_kind, 1 );
-            if ( !TableRetainOutFramed( s, arm_kind, depth + 1 ) ) { return false; }
+            // A UNION WHOSE ARM IS STRUCTURAL ADDS TWO LEVELS (§4), as on the
+            // capture side.
+            const int32_t arm_depth = depth + ( arm_kind == 15 ? 1 : ( arm_kind == 13 || arm_kind == 14 || arm_kind == 16 ? 2 : 0 ) );
+            if ( !TableRetainOutFramed( s, arm_kind, arm_depth ) ) { return false; }
             break;
         }
         case 30:
