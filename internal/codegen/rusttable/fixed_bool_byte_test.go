@@ -11,9 +11,10 @@ import (
 
 // A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS DAMAGE (docs/FIXED-FORM-ALGORITHM.md
 // §4.5, the strict read): the whole load answers None with `damaged` set and
-// every caller row back at its declared defaults. ON LIVE DATA ONLY (§3.4, the
-// slack rule): the payload under an absent optional and the slots past a
-// counted array's count are unspecified on read and never a refusal.
+// every caller row back at its declared defaults. A NON-ZERO DEAD BYTE REFUSES
+// TOO (docs/rulings.json fixed-dead-bytes-are-zero): the payload under an
+// absent optional and the slots past a counted array's count are dead, and a
+// non-zero one refuses the whole load before any record lands.
 // tables-rust-bool-byte-negative-control takes the scatter's check out and
 // requires this test red.
 const rustBoolByteUnit = `package bprobe
@@ -93,14 +94,17 @@ func TestFixedBoolByteIsDamageRust(t *testing.T) {
             failures.push(format!("{name}: a damaged load left a caller value"));
         }
     }
-    for (name, at) in [("oi-payload-absent", 4usize), ("flags-slack-slot", 11)] {
+    for (name, at) in [("oi-payload-absent", 4usize), ("flags-dead-slot", 11)] {
         let mut data = valid.clone();
         data[body_at + at] = 2;
-        let mut values = vec![BRow::default(); 1];
+        let mut values = vec![row; 1];
         let mut report = TableFixedReport::default();
         let got = b_fixed_load(&mut values, &data, &mut plan, &mut remap, &mut report);
-        if got != Some(1) || report.damaged || report.refused {
-            failures.push(format!("{name}: slack is never a refusal: {:?} {:?}", got, report));
+        if got.is_some() || !report.damaged || report.refused {
+            failures.push(format!("{name}: a non-zero dead byte must refuse the whole load: {:?} {:?}", got, report));
+        }
+        if !values[0].ok || !values[0].opt_present || values[0].flags_count != 1 || values[0].pick.tag != 1 {
+            failures.push(format!("{name}: a refused load changed the caller's destination"));
         }
     }
     if failures.is_empty() { println!("FIXED_BOOL_BYTE ok"); }
