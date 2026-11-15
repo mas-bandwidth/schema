@@ -861,16 +861,38 @@ func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
 	if !st.IsTable && g.gen.need != nil {
 		g.need(fixedDeclaringFile(g.unit, st.Name), "Init"+st.Name)
 	}
-	g.pf("export function %sLoadMessageBody(r, value) {\n", st.Name)
+	g.pf("export function %sLoadMessageBody(r, value, elideEmpty) {\n", st.Name)
 	g.pf("  Init%s(value);\n", st.Name)
 	g.pf("  const seen = [];\n")
+	g.pf("  let lastRef = 0n;\n")
+	g.pf("  let any = false;\n")
 	g.pf("  for (;;) {\n")
 	g.pf("    const [ref, ok] = r.Bits.Get(r.RefBits);\n")
 	g.pf("    if (!ok) { r.Report.Damaged = true; return false; }\n")
-	g.pf("    if (ref === 0n) { return true; }\n")
+	g.pf("    if (ref === 0n) {\n")
+	g.pf("      if (elideEmpty && !any && r.Vocabulary.BuildVersion === %s) { r.Report.Damaged = true; return false; }\n", jsId(ir.BuildVersion(g.unit)))
+	g.pf("      return true;\n")
+	g.pf("    }\n")
 	g.pf("    const entry = tableMessageEntry(r.Vocabulary, ref);\n")
 	g.pf("    if (entry === null || entry.Id >= 0xfffffffffffffffdn || seen.includes(entry.Id)) { r.Report.Damaged = true; return false; }\n")
 	g.pf("    seen.push(entry.Id);\n")
+	// Known fields keep the writer's declaration order, which is the
+	// announcement's slot order. An unknown field keeps its place without
+	// moving that cursor: a newer field before an older one still reads.
+	if len(st.Fields) > 0 {
+		g.pf("    if (")
+		for i, f := range st.Fields {
+			if i > 0 {
+				g.pf(" || ")
+			}
+			g.pf("entry.Id === 0x%016xn", ir.TableFieldEntry(f).Id)
+		}
+		g.pf(") {\n")
+		g.pf("      if (ref <= lastRef) { r.Report.Damaged = true; return false; }\n")
+		g.pf("      lastRef = ref;\n")
+		g.pf("    }\n")
+	}
+	g.pf("    any = true;\n")
 	g.pf("    switch (entry.Id) {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
@@ -885,17 +907,52 @@ func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
 func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyEntry, ind string) {
 	mem := "value." + js.MemberName(f.Name)
 	g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, mine.Kind, mine.Shape.Elem)
-	g.emitMessageReadValue(f, mem, ind, "entry.Shape")
+	atField := !f.Type.Optional
+	if enumRefOf(f) != nil && atField {
+		g.pf("%sconst unknownBefore = r.Report.Unknown;\n", ind)
+	}
+	g.emitMessageReadValue(f, mem, ind, "entry.Shape", atField)
+	if cond := messageStoredDefaultCond(f, mem); cond != "" {
+		extra := ""
+		if enumRefOf(f) != nil {
+			extra = " && r.Report.Unknown === unknownBefore"
+		}
+		g.pf("%sif (r.Vocabulary.BuildVersion === %s && (%s)%s) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), cond, extra)
+	}
 	if f.Type.Optional {
 		g.pf("%svalue.%sPresent = true;\n", ind, js.MemberName(f.Name))
 	}
+}
+
+// messageStoredDefaultCond is the value a conforming writer of this build
+// elides. Empty means this shape is not itself a stored default: a nested
+// body, an array and a union ride only when a child or an arm does, and an
+// optional rides because it is present.
+func messageStoredDefaultCond(f *ir.Field, mem string) string {
+	if f.Type.Optional {
+		return ""
+	}
+	switch {
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		if len(f.DefBytes) == 0 {
+			return mem + "Length === 0"
+		}
+		return fmt.Sprintf("(function(){if(%sLength!==%d)return false;const d=%s;for(let i=0;i<d.length;i++){if(%s[i]!==d[i])return false;}return true;})()", mem, len(f.DefBytes), jsByteList(f.DefBytes), mem)
+	case f.KeyEnum != "" || f.Array != ir.ArrayNone || isStructRef(f.Type) || isUnionRef(f.Type):
+		return ""
+	}
+	def := fixedZeroFor(f)
+	if fixedIsFloat(f.Type) {
+		return "Object.is(" + mem + ", " + def + ")"
+	}
+	return mem + " === " + def
 }
 
 // shape is the JS expression naming the SHAPE this value rides at: a top-level
 // field reads at `entry.Shape`, an array element at `entry.Element` and a union
 // arm at `arm.Shape`, so a scalar element is read at its own width and never at
 // the array's count width (§3.2).
-func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) {
+func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string, atField bool) {
 	switch {
 	case f.Type.Kind == ir.TString:
 		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || !r.Bits.Align()) { r.Report.Damaged = true; return false; }\n", ind, shape)
@@ -918,11 +975,16 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) 
 		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
-		g.emitMessageReadArray(f, mem, ind)
+		elide := atField && !(f.Array == ir.ArrayFixed && isStructRef(f.Type) && !f.Type.Pointer && f.KeyEnum == "")
+		g.emitMessageReadArray(f, mem, ind, elide)
 	case isStructRef(f.Type):
-		g.pf("%sif (!%sLoadMessageBody(r, %s)) { return false; }\n", ind, f.Type.Name, mem)
+		elideEmpty := "false"
+		if atField {
+			elideEmpty = "true"
+		}
+		g.pf("%sif (!%sLoadMessageBody(r, %s, %s)) { return false; }\n", ind, f.Type.Name, mem, elideEmpty)
 	case isUnionRef(f.Type):
-		g.emitMessageReadUnion(f, mem, ind)
+		g.emitMessageReadUnion(f, mem, ind, atField)
 	case enumRefOf(f) != nil:
 		g.emitMessageReadEnum(f, mem, ind)
 	default:
@@ -930,7 +992,7 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) 
 	}
 }
 
-func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string) {
+func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string, elideEmpty bool) {
 	bad := "r.Report.Damaged = true; return false"
 	bound := f.ArrayBound
 	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes
@@ -944,6 +1006,9 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string) {
 		g.pf("%s  if (entry.Element.Kind === 6 && !r.Bits.Align()) { %s; }\n", ind, bad)
 	}
 	g.pf("%s  let keep = Number(n);\n", ind)
+	if elideEmpty {
+		g.pf("%s  if (n === 0n && r.Vocabulary.BuildVersion === %s) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)))
+	}
 	g.pf("%s  if (keep > %d) { keep = %d; r.Report.Oor++; }\n", ind, bound, bound)
 	e := messageElementField(f)
 	if f.KeyEnum != "" {
@@ -994,7 +1059,7 @@ func (g *fixedModule) emitMessageReadElement(f *ir.Field, mem, ind, shape string
 		g.pf("%sif (!%sLoadMessageBody(r, %s)) { return false; }\n", ind, f.Type.Name, mem)
 		return
 	}
-	g.emitMessageReadValue(f, mem, ind, shape)
+	g.emitMessageReadValue(f, mem, ind, shape, false)
 }
 
 func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string) {
@@ -1091,10 +1156,14 @@ func (g *fixedModule) emitMessageReadEnum(f *ir.Field, mem, ind string) {
 	g.pf("%s  }\n%s}\n", ind, ind)
 }
 
-func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string) {
+func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string, atField bool) {
 	un := f.Type.Ref.(*ir.Union)
 	g.pf("%s{ const [ref, ok] = r.Bits.Get(r.RefBits); if (!ok) { r.Report.Damaged = true; return false; }\n", ind)
-	g.pf("%s  if (ref === 0n) { %s.type = 0; }\n", ind, mem)
+	if atField {
+		g.pf("%s  if (ref === 0n) { r.Report.Damaged = true; return false; }\n", ind)
+	} else {
+		g.pf("%s  if (ref === 0n) { %s.type = 0; }\n", ind, mem)
+	}
 	g.pf("%s  else {\n", ind)
 	g.pf("%s    const arm = tableMessageEntry(r.Vocabulary, ref);\n", ind)
 	g.pf("%s    if (arm === null || arm.Id >= 0xfffffffffffffffdn || arm.Shape.Kind === 0) { r.Report.Damaged = true; return false; }\n", ind)
@@ -1105,7 +1174,7 @@ func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string) {
 		g.pf("%s        if (arm.Shape.Kind !== %d || arm.Element.Kind !== %d) { %s.type = 0; r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, arm.Kind, arm.Shape.Elem, mem)
 		g.pf("%s        %s.type = %d;\n", ind, mem, i+1)
 		if !v.Void() {
-			g.emitMessageReadValue(v.F, mem+"."+js.MemberName(v.Name), ind+"        ", "arm.Shape")
+			g.emitMessageReadValue(v.F, mem+"."+js.MemberName(v.Name), ind+"        ", "arm.Shape", false)
 		}
 		g.pf("%s        break;\n%s      }\n", ind, ind)
 	}
