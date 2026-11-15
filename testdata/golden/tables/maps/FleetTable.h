@@ -1554,7 +1554,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -12098,7 +12098,7 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
 inline int64_t ShipConfigMeasureBody( TableIds & ids, const ShipConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 64 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.health != 0 ) { bytes += TableLebBytes( ids.ref_at( 39, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     return bytes;
@@ -12116,7 +12116,7 @@ inline int64_t ShipConfigMeasure( const ShipConfig & value )
 
 MAPDEMO_TABLE_INLINE bool ShipConfigSaveBody( TableWriter & w, TableIds & ids, const ShipConfig & value )
 {
-    if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 56, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -12395,7 +12395,7 @@ inline bool ShipConfigLoad( ShipConfig & value, const uint8_t * buffer, int64_t 
 inline int64_t ShipConfigMeasureMessageBody( int64_t at, const ShipConfig & value )
 {
     int64_t bits = 0;
-    if ( value.name_length < 0 || value.name_length > 64 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -12418,7 +12418,7 @@ inline int64_t ShipConfigMeasureMessageBody( int64_t at, const ShipConfig & valu
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool ShipConfigSaveMessageBody( TableBitWriter & w, const ShipConfig & value )
 {
-    if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.put( 16, kTableMessageRefBitsHere );
@@ -13209,7 +13209,7 @@ inline bool ItemLoadMessages( Item * values, int64_t * count, const TableVocabul
 inline int64_t FleetShipsEntryMeasureBody( TableIds & ids, const FleetShipsEntry & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key_length < 0 || value.key_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
@@ -13224,7 +13224,7 @@ inline int64_t FleetShipsEntryMeasureBody( TableIds & ids, const FleetShipsEntry
 
 MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBody( TableWriter & w, TableIds & ids, const FleetShipsEntry & value )
 {
-    if ( value.key_length < 0 || value.key_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -13722,7 +13722,7 @@ inline int64_t FleetLoadoutsEntryMeasureBody( const Ctx & ctx, const TableNumber
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key_length < 0 || value.key_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         // value: a kind 14 array of kind 13 elements, ASCENDING (§2.8)
@@ -13754,7 +13754,7 @@ inline bool FleetLoadoutsEntrySaveBodyFields( const Ctx & ctx, const TableNumber
 {
     (void) ctx;
     (void) numbering;
-    if ( value.key_length < 0 || value.key_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -18823,7 +18823,7 @@ inline const Fleet * FleetReadStrict( const uint8_t * wire_file, int64_t wire_fi
 inline int64_t ShipConfigMeasureBodyRetain( TableRetainIds & ids, const ShipConfig & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 64 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.health != 0 ) { bytes += TableLebBytes( ids.ref_at( 39, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     bytes += TableRetainTailMeasure( retain, ids, path );
@@ -18832,7 +18832,7 @@ inline int64_t ShipConfigMeasureBodyRetain( TableRetainIds & ids, const ShipConf
 
 MAPDEMO_TABLE_INLINE bool ShipConfigSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const ShipConfig & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 56, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -19112,7 +19112,7 @@ MAPDEMO_TABLE_INLINE bool ItemLoadBodyRetain( TableReader & r, Item & value, Tab
 inline int64_t FleetShipsEntryMeasureBodyRetain( TableRetainIds & ids, const FleetShipsEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key_length < 0 || value.key_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
@@ -19128,7 +19128,7 @@ inline int64_t FleetShipsEntryMeasureBodyRetain( TableRetainIds & ids, const Fle
 
 MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const FleetShipsEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.key_length < 0 || value.key_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -19648,7 +19648,7 @@ inline int64_t FleetLoadoutsEntryMeasureBodyRetain( const Ctx & ctx, const Table
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key_length < 0 || value.key_length > 16 ) { return -1; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         // value: a kind 14 array of kind 13 elements, ASCENDING (§2.8)
@@ -19681,7 +19681,7 @@ inline bool FleetLoadoutsEntrySaveBodyFieldsRetain( const Ctx & ctx, const Table
 {
     (void) ctx;
     (void) numbering;
-    if ( value.key_length < 0 || value.key_length > 16 ) { return false; } // storage invariant
+    schema_assert( value.key_length >= 0 && value.key_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
