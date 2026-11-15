@@ -179,7 +179,7 @@ func (g *tableGen) emitArmMeasure(v ir.UnionVariant, base, into, ind, onBad, sfx
 		un := f.Type.Ref.(*ir.Union)
 		g.pf("%sif ( %s.type == %sType::None ) { %s += 1; } // the inner union's None: L = 1 and that one zero byte (§3)\n", ind, value, un.Name, into)
 		g.pf("%selse\n%s{\n", ind, ind)
-		g.emitUnionPayloadMeasure(f, value, into, ind+"    ", sfx+"a")
+		g.emitUnionPayloadMeasure(f, value, into, ind+"    ", onBad, sfx+"a")
 		g.pf("%s}\n", ind)
 	default:
 		g.emitFloatCheck(kind, value, ind, onBad)
