@@ -138,8 +138,16 @@ typedef struct bench_table_json_wide_t
 } bench_table_json_wide_t;
 
 static SCHEMA_UNUSED int bench_table_json_kind_wide( uint8_t kind ) { return kind >= 18 && kind <= 29; }
-static SCHEMA_UNUSED int bench_table_json_kind_wide_signed( uint8_t kind ) { return kind == 18 || ( kind >= 20 && kind <= 24 ); }
+static SCHEMA_UNUSED int bench_table_json_kind_wide_signed( uint8_t kind ) { return kind == 5 || kind == 18 || ( kind >= 20 && kind <= 24 ); }
 static SCHEMA_UNUSED int bench_table_json_kind_fixed( uint8_t kind ) { return kind >= 20 && kind <= 29; }
+/* the integer-shaped kinds whose storage is wider than 32 bits: int64, uint64,
+   int128, uint128, and the 64- and 128-bit fixed-point kinds. These are the
+   kinds the JSON form writes as a STRING of decimal digits (§16.2). */
+static SCHEMA_UNUSED int bench_table_json_kind_wide_integer( uint8_t kind )
+{
+    return kind == 5 || kind == 9 || kind == 18 || kind == 19 ||
+           kind == 23 || kind == 24 || kind == 28 || kind == 29;
+}
 
 static SCHEMA_UNUSED int bench_table_json_wide_zero( bench_table_json_wide_t v ) { return v.lo == 0 && v.hi == 0; }
 static SCHEMA_UNUSED int bench_table_json_wide_negative( bench_table_json_wide_t v ) { return ( v.hi >> 63 ) != 0; }
@@ -356,6 +364,22 @@ static SCHEMA_UNUSED char bench_table_json_element_shape( const bench_table_fiel
     if ( f->kind == 36 ) { return 's'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
+}
+
+/* A wide integer declares the number shape and READS a string or a number
+   (§16.2); every other shape is exact. */
+static SCHEMA_UNUSED int bench_table_json_shape_accepts( const bench_table_field_info_t * f, char got )
+{
+    char want = bench_table_json_shape( f );
+    if ( got == want ) { return 1; }
+    return want == 'n' && got == 's' && bench_table_json_kind_wide_integer( f->kind );
+}
+
+static SCHEMA_UNUSED int bench_table_json_element_shape_accepts( const bench_table_field_info_t * f, char got )
+{
+    char want = bench_table_json_element_shape( f );
+    if ( got == want ) { return 1; }
+    return want == 'n' && got == 's' && bench_table_json_kind_wide_integer( f->kind );
 }
 
 /* A guarded group rides only when its guard reads true — the wire's own
@@ -604,7 +628,7 @@ static SCHEMA_UNUSED void bench_table_json_write_signed( bench_table_json_out_t 
    readable. Non-finite values have no JSON spelling at all, and the writer
    REFUSES rather than losing one silently — the same rule measure and save
    already apply to an enum value no variant names (§5). */
-static SCHEMA_UNUSED void bench_table_json_write_wide( bench_table_json_out_t * out, const void * storage, const bench_table_field_info_t * f )
+static SCHEMA_UNUSED void bench_table_json_write_wide_digits( bench_table_json_out_t * out, const void * storage, const bench_table_field_info_t * f )
 {
     int is_signed = bench_table_json_kind_wide_signed( f->kind );
     bench_table_json_wide_t v = bench_table_json_wide_load( storage, f->elem_size, is_signed );
@@ -647,6 +671,20 @@ static SCHEMA_UNUSED void bench_table_json_write_wide( bench_table_json_out_t * 
         if ( frac < 64 ) { fraction.hi = 0; fraction.lo &= ( (uint64_t) ( 1 ) << frac ) - 1; }
         else { fraction.hi &= ( (uint64_t) ( 1 ) << ( frac - 64 ) ) - 1; }
     }
+}
+
+/* a kind wider than 32 bits is a STRING of decimal digits (§16.2); one of 32
+   bits and under is a bare number. */
+static SCHEMA_UNUSED void bench_table_json_write_wide( bench_table_json_out_t * out, const void * storage, const bench_table_field_info_t * f )
+{
+    if ( !bench_table_json_kind_wide_integer( f->kind ) )
+    {
+        bench_table_json_write_wide_digits( out, storage, f );
+        return;
+    }
+    bench_table_json_put( out, '"' );
+    bench_table_json_write_wide_digits( out, storage, f );
+    bench_table_json_put( out, '"' );
 }
 
 
@@ -879,7 +917,7 @@ static SCHEMA_UNUSED int bench_table_json_write_scalar( bench_table_json_out_t *
         bench_table_json_put( out, ']' );
         return 1;
     }
-    if ( bench_table_json_kind_wide( f->kind ) ) { bench_table_json_write_wide( out, storage, f ); return 1; }
+    if ( bench_table_json_kind_wide( f->kind ) || bench_table_json_kind_wide_integer( f->kind ) ) { bench_table_json_write_wide( out, storage, f ); return 1; }
     switch ( f->kind )
     {
         case 1:
@@ -1511,6 +1549,24 @@ static SCHEMA_UNUSED int bench_table_json_scan_number( bench_table_json_in_t * i
     return 1;
 }
 
+/* AN INTEGER TOKEN (§16.2): an optional minus, then digits with no leading
+   zero, and not -0. A fraction, an exponent, a plus and a negative zero are
+   each the wrong shape for an integer field, never coerced. */
+static SCHEMA_UNUSED int bench_table_json_integer_token( const char * text, int64_t length )
+{
+    int64_t i = 0;
+    int negative = 0;
+    if ( i < length && text[i] == '-' ) { negative = 1; i++; }
+    if ( i >= length ) { return 0; }
+    if ( text[i] == '0' ) { return !negative && i + 1 == length; }
+    if ( text[i] < '1' || text[i] > '9' ) { return 0; }
+    for ( ; i < length; i++ )
+    {
+        if ( text[i] < '0' || text[i] > '9' ) { return 0; }
+    }
+    return 1;
+}
+
 /* the token's exact double, through the runtime's own converter — which
    speaks the LOCALE's decimal point, so the token crosses back over that
    character on its way in. A token too long to copy whole is handed over as
@@ -1942,6 +1998,13 @@ static SCHEMA_UNUSED int bench_table_json_read_wide( bench_table_json_in_t * in,
     int frac = f->frac_bits;
     int64_t i = 0;
     int negative = 0;
+    /* a 128-bit INTEGER takes an integer token only (§16.2); a fixed-point
+       kind keeps its exact decimal spelling */
+    if ( !bench_table_json_kind_fixed( f->kind ) && !bench_table_json_integer_token( token, length ) )
+    {
+        in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
+        return 1;
+    }
     if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { negative = token[i] == '-'; i++; }
     const char * int_digits = token + i;
     int64_t int_len = 0;
@@ -2265,6 +2328,7 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
     const char * token = NULL;
     int64_t length = 0;
     int integral = 0;
+    char textbuf[64]; /* a wide integer's string spelling: 128 bits is 40 digits */
     if ( f->text_list != 0 ) { return schema_bench_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {
@@ -2304,7 +2368,7 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
             void * payload = (uint8_t *) storage + arms->arms[tag].offset;
             const bench_table_field_info_t * arm = arms->arms[tag].field;
             char want = arm != NULL ? bench_table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
-            if ( bench_table_json_value_shape( in ) != want && !(arm != NULL && arm->kind == 17 && !arm->is_array && bench_table_json_value_shape(in) == 'z') ) {
+            if ( !( arm != NULL ? bench_table_json_shape_accepts( arm, bench_table_json_value_shape( in ) ) : bench_table_json_value_shape( in ) == want ) && !(arm != NULL && arm->kind == 17 && !arm->is_array && bench_table_json_value_shape(in) == 'z') ) {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !bench_table_json_skip_value( in, depth+1 ) ) { return 0; }
             } else {
@@ -2413,7 +2477,17 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
         bench_table_json_set_raw( storage, f->elem_size, (uint64_t) nanos );
         return 1;
     }
-    if ( !bench_table_json_scan_number( in, &token, &length, &integral ) )
+    if ( bench_table_json_kind_wide_integer( f->kind ) && bench_table_json_peek( in ) == '"' )
+    {
+        /* a wide integer reads as a string OR a number, the same digits (§16.2) */
+        int32_t text_length = 0;
+        if ( !bench_table_json_scan_text( in, textbuf, (int32_t) sizeof( textbuf ) - 1, &text_length ) ) { return 0; }
+        if ( in->report->refused ) { return 1; }
+        token = textbuf;
+        length = text_length;
+        integral = 1;
+    }
+    else if ( !bench_table_json_scan_number( in, &token, &length, &integral ) )
     {
         in->bad = 1;
         return 0;
@@ -2456,14 +2530,17 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
         }
         return 1;
     }
-    // AN ORDINARY FIELD'S POLICY over the one interpreted value: it CLAMPS to
-    // its domain and counts. JSON has one number type, so 2.0 IS the integer 2
-    // and 1e3 IS 1000. A library that round-trips numbers through a double
-    // emits them that way, and this walker's own float writer emits 1e+21. Only
-    // a genuinely fractional value is the wrong shape for the kind.
+    // EVERY INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (§16.2): digits with an
+    // optional minus, no fraction, no exponent, not -0. The value never passes
+    // through a double and its range is tested on the exact value.
+    if ( !bench_table_json_integer_token( token, length ) )
+    {
+        in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
+        return 1;
+    }
     const int is_signed = f->kind >= 2 && f->kind <= 5;
-    const bench_table_json_integer_t number = bench_table_json_interpret( token, length, integral );
-    if ( !number.finite || number.fractional )
+    const bench_table_json_integer_t number = bench_table_json_interpret( token, length, 1 );
+    if ( !number.finite )
     {
         in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
         return 1;
@@ -2471,8 +2548,19 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
     if ( number.saturated ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } // past what sixty-four bits hold
     // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
-    // The comparison is on the value's OWN scale, correctly signed past
-    // INT64_MAX, where the storage's bit pattern is not a number to compare.
+    // A 64-bit integer's range is compared on the exact 128-bit lanes: a value
+    // at or above 2^53 is never rounded through a double on its way to a bound.
+    if ( f->wide != NULL && ( f->kind == 5 || f->kind == 9 ) )
+    {
+        bench_table_json_wide_t v = { number.magnitude, 0 };
+        bench_table_json_wide_t lo = { f->wide->lo[0], f->wide->lo[1] };
+        bench_table_json_wide_t hi = { f->wide->hi[0], f->wide->hi[1] };
+        if ( number.negative ) { v = bench_table_json_wide_neg( v ); }
+        if ( bench_table_json_wide_compare( v, lo, is_signed ) < 0 ) { v = lo; in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
+        else if ( bench_table_json_wide_compare( v, hi, is_signed ) > 0 ) { v = hi; in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
+        bench_table_json_set_raw( storage, f->elem_size, v.lo );
+        return 1;
+    }
     bench_table_json_integer_t bounded = number;
     if ( f->has_range )
     {
@@ -2540,7 +2628,6 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
            omits keeps them and a repeated field key cannot leave an earlier
            occurrence's slots standing */
         int32_t i;
-        char shape;
         uint64_t seen[8];
         if ( bench_table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
         in->pos++;
@@ -2550,7 +2637,6 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
             if ( f->kind == 13 ) { f->table->reset( slot ); }
             else { memset( slot, 0, (size_t) f->elem_size ); }
         }
-        shape = bench_table_json_element_shape( f );
         /* A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a repeated
            key like any other, last-wins and counted (§16.2). Tracked the way
            a table's own field keys are — a bounded, allocation-free bitmask;
@@ -2606,7 +2692,7 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
                 in->report->unknown++;
                 if ( !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( bench_table_json_value_shape( in ) != shape && !(f->kind == 17 && bench_table_json_value_shape(in) == 'z') )
+            else if ( !bench_table_json_element_shape_accepts( f, bench_table_json_value_shape( in ) ) && !(f->kind == 17 && bench_table_json_value_shape(in) == 'z') )
             {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
@@ -2633,7 +2719,6 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
            this occurrence's elements are placed — the re-establishment a nested
            table and a union arm already get. */
         int32_t placed = 0;
-        char shape;
         if ( bench_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
         int64_t spent = 0;
@@ -2652,7 +2737,6 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
             memset( storage, 0, (size_t) f->array_bound * (size_t) f->elem_size );
         }
         bench_table_json_set_count( base, f, 0 );
-        shape = bench_table_json_element_shape( f );
         for ( ;; )
         {
             char c = bench_table_json_peek( in );
@@ -2672,7 +2756,7 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE;
                 if ( !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( bench_table_json_value_shape( in ) != shape && !( ( f->kind == 17 || f->text_list == 2 ) && bench_table_json_value_shape(in) == 'z') )
+            else if ( !bench_table_json_element_shape_accepts( f, bench_table_json_value_shape( in ) ) && !( ( f->kind == 17 || f->text_list == 2 ) && bench_table_json_value_shape(in) == 'z') )
             {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
@@ -2806,7 +2890,7 @@ static SCHEMA_UNUSED int bench_table_json_read_table_members( bench_table_json_i
             }
             else
             {
-                if ( got != bench_table_json_shape( f ) && !(f->kind == 17 && !f->is_array && got == 'z') )
+                if ( !bench_table_json_shape_accepts( f, got ) && !(f->kind == 17 && !f->is_array && got == 'z') )
                 {
                     /* the wrong JSON type for the kind: skipped, never coerced */
                     in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
