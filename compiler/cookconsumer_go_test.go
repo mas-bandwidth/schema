@@ -367,7 +367,7 @@ func TestCheckedCookGoConsumersNegativeControls(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ name, path, before, after, want string }{
-		{"strict-companion", "internal/tablecook/check.go", "if n < 0 || n > bound {", "if false {", "count-negative: strict checker accepted a directed forgery"},
+		{"strict-companion", "internal/tablecook/check.go", "if n < 0 || n > bound {", "if false {", "count-over-bound: strict checker accepted a directed forgery"},
 		{"native-accessor", "internal/codegen/gotable/lists.go", "return (*T)(c.At(index))", "_ = c; return nil", "panic: runtime error: invalid memory address"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -94,7 +94,6 @@ func TestDeadBytesVectors(t *testing.T) {
 		names[vec.Name] = true
 	}
 	for _, vec := range DeadBytes {
-		vec := vec
 		t.Run(vec.Name, func(t *testing.T) {
 			t.Parallel()
 			if _, err := os.Stat(filepath.Join(corpus, vec.File)); err != nil {

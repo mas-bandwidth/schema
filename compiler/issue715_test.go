@@ -82,14 +82,15 @@ int main(void) {
         if ( s.past != 0 || s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 3: tag default not preserved\n"); return 12; }
     }
 
-    // 4. Valid unpadded Base64 ("YWI" -> "ab")
+    // 4. Unpadded Base64 ("YWI", decodes to "ab" but is not the canonical
+    // "YWI=", docs/rulings.json json-base64-canonical): refused, default preserved
     {
         const char * text = "{\"tag\":\"YWI\",\"past\":42}";
         Ship s;
         TableReport r;
         bool ok = ShipFromJson( s, text, (int64_t) strlen(text), &r );
-        if ( !ok || r.refuse_reason != TableRefuseReason::ok || r.damaged ) { fprintf(stderr, "case 4 failed\n"); return 13; }
-        if ( s.past != 42 || s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 4 data mismatch\n"); return 14; }
+        if ( ok || r.refuse_reason == TableRefuseReason::ok || !r.refused ) { fprintf(stderr, "case 4: unpadded Base64 accepted\n"); return 13; }
+        if ( s.past != 0 || s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 4: tag default not preserved\n"); return 14; }
     }
 
     // 5. Valid padded Base64 ("YWI=" -> "ab")
