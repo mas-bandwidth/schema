@@ -41,6 +41,8 @@ class FieldDesc:
         "array_min",
         "elem_kind",
         "variant_ids",
+        "wire_of",
+        "value_of",
         "deprecated",
         "default",
         "elem_codec",
@@ -68,6 +70,8 @@ class FieldDesc:
     array_min: int
     elem_kind: int
     variant_ids: tuple[int, ...]
+    wire_of: dict[int, int]
+    value_of: dict[int, int]
     deprecated: frozenset[int]
     default: Any
     elem_codec: str
@@ -121,6 +125,10 @@ class FieldDesc:
         self.array_min = array_min
         self.elem_kind = elem_kind
         self.variant_ids = variant_ids
+        # an enum's two lookups, built once: variant k (from 1) to its wire id,
+        # and back (docs/PORT-PYTHON.md, THE TABLE FRAME, Enum lookup bench)
+        self.wire_of = {value: wire_id for value, wire_id in enumerate(variant_ids, 1)}
+        self.value_of = {wire_id: value for value, wire_id in enumerate(variant_ids, 1)}
         # the ordinals of the variants marked `| deprecated` (§2.15)
         self.deprecated = frozenset(deprecated)
         self.default = default

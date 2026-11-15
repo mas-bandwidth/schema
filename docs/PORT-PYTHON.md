@@ -323,6 +323,9 @@ generated class per table and per map entry, each with its descriptor
 
   - `*T` pointers to tables: carried
 
+  - enums and the id-table wire's escape and payload-free kinds: carried
+    ([the id table](port-python/table-idtable.md))
+
   - `*bytes`: carried ([the table blobs](port-python/table-blobs.md))
 
   - `*string`: carried ([the table blobs](port-python/table-blobs.md))
