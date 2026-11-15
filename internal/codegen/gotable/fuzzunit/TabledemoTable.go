@@ -3468,13 +3468,22 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		types[0] = root.ID
 		scan := tableNodeScanBegin(w)
 		for k := 1; ; k++ {
-			id, body, ok := scan.next()
+			id, _, ok := scan.next()
 			if !ok {
 				break
 			}
 			if nodeType(id) != nil || id == tableBytesTypeID || id == tableStringTypeID {
 				types[k] = id
 			}
+		}
+		w.Nodes.NodeTypes = types
+		scan = tableNodeScanBegin(w)
+		for {
+			id, body, ok := scan.next()
+			if !ok {
+				break
+			}
+			body.Nodes.NodeTypes = types
 			if id == tableStringTypeID && blobs&2 != 0 && !tableUTF8Valid(body.Buffer) {
 				return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
 			}
@@ -3482,7 +3491,6 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 				return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
 			}
 		}
-		w.Nodes.NodeTypes = types
 		if tableWireExtent(&w, root, &at, nodes) != TableRefuseOk {
 			return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
 		}
