@@ -173,8 +173,6 @@ func (d *lineageDecoder) table(w *fixedNode, b []byte, inst *tabletext.Instance)
 		switch {
 		case !named:
 			d.report.Unknown++ // a field the reader no longer declares (§4)
-		case inst.Fields[i].Def.Deprecated:
-			// the reader yields its declared default out of a deprecated slot
 		default:
 			if reason := d.field(c, b[off:off+c.size], &inst.Fields[i]); reason != "" {
 				return reason

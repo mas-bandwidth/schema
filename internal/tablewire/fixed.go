@@ -112,20 +112,13 @@ func EncodeFixed(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
 }
 
 // encodeFixedBody writes one body at its constant offsets. A DEPRECATED
-// FIELD'S SLOT CARRIES ITS DECLARED DEFAULT whatever the value holds (§3.4,
-// DEPRECATED SLOT), so its bytes come from a freshly reset field.
+// FIELD IS CARRIED: its slot stores what the value holds, like any field
+// (§3.4).
 func encodeFixedBody(m *tabletext.Model, b []byte, inst *tabletext.Instance) error {
-	var fresh *tabletext.Instance
 	off := int64(0)
 	for i := range inst.Fields {
 		fv := &inst.Fields[i]
 		f := fv.Def
-		if f.Deprecated {
-			if fresh == nil {
-				fresh = m.New(inst.Def)
-			}
-			fv = &fresh.Fields[i]
-		}
 		if err := encodeFixedField(m, b[off:], fv); err != nil {
 			return err
 		}
@@ -367,12 +360,10 @@ func (d *fixedDecoder) body(b []byte, inst *tabletext.Instance) string {
 		fv := &inst.Fields[i]
 		f := fv.Def
 		n := ir.TableFixedFieldBytes(f)
-		// THE READER YIELDS THE DECLARED DEFAULT OUT OF A DEPRECATED SLOT, and
-		// nothing counts (§3.4, DEPRECATED SLOT): the field keeps its reset value
-		if !f.Deprecated {
-			if reason := d.field(b[off:off+n], fv); reason != "" {
-				return reason
-			}
+		// A DEPRECATED FIELD IS CARRIED: the reader lands the stored value and
+		// checks it as it checks any field of its kind (§3.4).
+		if reason := d.field(b[off:off+n], fv); reason != "" {
+			return reason
 		}
 		off += n
 	}

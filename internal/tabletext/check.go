@@ -27,9 +27,10 @@ func (e *InvalidValue) Error() string {
 	return "invalid_value: " + e.Field + ": " + e.Detail
 }
 
-// CheckValue walks a value as the writers walk it (absent optionals, elided
-// guards and deprecated fields are not written, so they are not asked) and
-// answers the first value outside its declaration as an *InvalidValue. It is
+// CheckValue walks a value as the writers walk it (an absent optional and an
+// elided guarded field are not written, so they are not asked; a deprecated
+// field is carried, so it is asked like any other) and answers the first value
+// outside its declaration as an *InvalidValue. It is
 // the check of the TEXT writer, which carries a flags mask by its names, so a
 // mask bit that names no variant (one a newer writer appended) refuses there
 // rather than being dropped. A zero byte or unit is ill-formed text there too
@@ -75,9 +76,6 @@ func (m *Model) checkInstance(inst *Instance, seen *checkWalk) error {
 	guards := Guards(inst.Def)
 	for i := range inst.Fields {
 		fv := &inst.Fields[i]
-		if fv.Def.Deprecated {
-			continue
-		}
 		if terms, guarded := guards[fv.Def.Name]; guarded && !inst.GuardHolds(terms) {
 			continue
 		}
