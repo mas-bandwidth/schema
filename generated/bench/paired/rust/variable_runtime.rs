@@ -1991,16 +1991,23 @@ pub fn json_b64(bytes: &[u8], out: &mut String) {
     out.push('"');
 }
 
-/// Base64 back to bytes (docs/SPEC-TABLES.md §16.2): padded and unpadded both
-/// read; anything else is None, which the caller counts kind_mismatch.
+/// Base64 back to bytes (docs/SPEC-TABLES.md §16.2, §16.8): CANONICAL base64
+/// only — the standard alphabet, padded, pad bits zero. A body that decodes
+/// but is another spelling (unpadded, or a pad bit set) is None, as is one
+/// that does not decode at all; the caller counts the refusal.
 #[allow(dead_code)]
 pub fn json_unb64(s: &str) -> Option<Vec<u8>> {
     let b = s.as_bytes();
+    // CANONICAL is exactly the writer's spelling: whole four-symbol groups,
+    // so zero, one or two trailing equals signs and never unpadded text.
+    if !b.len().is_multiple_of(4) {
+        return None;
+    }
     let mut end = b.len();
     while end > 0 && b[end - 1] == b'=' {
         end -= 1;
     }
-    if b.len() - end > 2 || (b.len() != end && !b.len().is_multiple_of(4)) || end % 4 == 1 {
+    if b.len() - end > 2 || end % 4 == 1 {
         return None;
     }
     let mut out = Vec::with_capacity(end * 3 / 4);
@@ -2021,6 +2028,11 @@ pub fn json_unb64(s: &str) -> Option<Vec<u8>> {
             bits -= 8;
             out.push((acc >> bits & 0xff) as u8);
         }
+    }
+    // PAD BITS ZERO: the bits a padded group carries but no output byte uses
+    // are the low bits of the accumulator after the last full byte.
+    if bits > 0 && acc & ((1u32 << bits) - 1) != 0 {
+        return None;
     }
     Some(out)
 }
