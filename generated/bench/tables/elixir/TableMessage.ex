@@ -1091,33 +1091,42 @@ defmodule Benchtable.TableMessage do
   defp read_bodies(_vocab, r, 0, acc), do: {:ok, Enum.reverse(acc), r}
 
   defp read_bodies(vocab, r, n, acc) do
-    case read_body(vocab, r, [], 0) do
+    case read_body(vocab, r, [], MapSet.new(), 0) do
       {:ok, body, rest} -> read_bodies(vocab, rest, n - 1, [body | acc])
       :malformed -> {:malformed, length(acc), Enum.reverse(acc)}
     end
   end
 
-  defp read_body(_vocab, _r, _acc, depth) when depth > 128, do: :malformed
+  defp read_body(_vocab, _r, _acc, _seen, depth) when depth > 128, do: :malformed
 
-  defp read_body(vocab, r, acc, depth) do
+  defp read_body(vocab, r, acc, seen, depth) do
     case get_bits(r, vocab.ref_bits) do
       {:ok, 0, rest} ->
         {:ok, Enum.reverse(acc), rest}
 
       {:ok, ref, rest} ->
-        # A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or not
+        # A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or not: the
+        # ENTRY's id, not the position that named it, is the field's identity
         case entry_at(vocab, ref) do
           {:ok, entry} when entry.id < 0xFFFFFFFFFFFFFFFD ->
             elem = Map.get(entry, :element)
 
-            case read_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
-              {:ok, value, rest2} ->
-                if List.keymember?(acc, ref, 0),
-                  do: :malformed,
-                  else: read_body(vocab, rest2, [{ref, value} | acc], depth)
+            if MapSet.member?(seen, entry.id) do
+              :malformed
+            else
+              case read_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
+                {:ok, value, rest2} ->
+                  read_body(
+                    vocab,
+                    rest2,
+                    [{ref, value} | acc],
+                    MapSet.put(seen, entry.id),
+                    depth
+                  )
 
-              :malformed ->
-                :malformed
+                :malformed ->
+                  :malformed
+              end
             end
 
           _ ->
@@ -1131,7 +1140,8 @@ defmodule Benchtable.TableMessage do
 
   defp read_value(_vocab, _kind, _shape, _elem, _r, depth) when depth > 128, do: :malformed
 
-  defp read_value(vocab, 13, _shape, _elem, r, depth), do: read_body(vocab, r, [], depth + 1)
+  defp read_value(vocab, 13, _shape, _elem, r, depth),
+    do: read_body(vocab, r, [], MapSet.new(), depth + 1)
 
   defp read_value(vocab, 14, shape, elem, r, depth),
     do: read_array(vocab, shape, elem, r, depth)
@@ -1172,8 +1182,14 @@ defmodule Benchtable.TableMessage do
     n = scalar_bits(kind, shape)
 
     case get_bits(r, n) do
-      {:ok, raw, rest} -> {:ok, scalar_value(kind, shape, raw), rest}
-      :error -> :malformed
+      {:ok, raw, rest} ->
+        case scalar_value(kind, shape, raw) do
+          :malformed -> :malformed
+          value -> {:ok, value, rest}
+        end
+
+      :error ->
+        :malformed
     end
   end
 
@@ -1304,12 +1320,18 @@ defmodule Benchtable.TableMessage do
   # ranged scalar whose bit width is 0, or a nested run of those. Looping on
   # the count would allocate a list in proportion to the announcement and
   # consume no input. This reader returns the list, so zero_width_run holds
-  # every zero-width run to the bits the batch still holds
-  # (internal/tablewire/messagedecode.go) before any cell is allocated.
+  # every fixed-width zero run to the bits the batch still holds
+  # (internal/tablewire/messagedecode.go) before any cell is allocated. A
+  # WALKED element that consumes no bits is damage, even where the remaining
+  # count could fit in the batch's padding.
   defp read_elements(vocab, shape, elem, n, r, acc, depth) when is_map(elem) and n > 0 do
     case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), r, depth) do
       {:ok, v, ^r} ->
-        zero_width_run(vocab, shape, n, r, acc, v)
+        if element_run_bits(elem) < 0 do
+          :malformed
+        else
+          zero_width_run(vocab, shape, n, r, acc, v)
+        end
 
       {:ok, v, rest} ->
         read_elements(vocab, shape, elem, n - 1, rest, [v | acc], depth)
@@ -1324,14 +1346,35 @@ defmodule Benchtable.TableMessage do
   defp zero_width_run(_vocab, _shape, n, r, acc, v) do
     # The shape is the writer's announcement, whatever its minimum and maximum:
     # a run the batch's bits cannot back is damage
-    # (internal/tablewire/messagedecode.go). An element costs at least one bit
-    # (floor 1), so a count the batch cannot back is refused before any cell is
-    # allocated. A run the bits back is materialized, and the uint32 ceiling on
-    # the announced shape is untouched.
+    # (internal/tablewire/messagedecode.go). A run the bits back is
+    # materialized, and the uint32 ceiling on the announced shape is untouched.
     if n > bits_left(r) do
       :malformed
     else
       {:ok, Enum.reverse(acc, List.duplicate(v, n)), r}
+    end
+  end
+
+  # THE ELEMENT'S FIXED WIDTH WHERE IT IS ONE THIS READER CAN MULTIPLY, and -1
+  # where it must be walked (§3.3): a table, union, enum, pointer or nested
+  # array resolves something, a string finds a length, and a float or a
+  # ranged/quantized scalar carries a value condition the wire decides. A fixed
+  # width is stepped by its width, including zero, and is not walked; a walked
+  # element must move the cursor on every step.
+  defp element_run_bits(%{kind: kind, shape: shape}) do
+    cond do
+      kind in [0, 32] ->
+        0
+
+      kind in [10, 11, 12, 13, 14, 15, 16, 17, 30] ->
+        -1
+
+      kind in [1, 2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 36] ->
+        width = scalar_bits(kind, shape)
+        if width > 0 and shape.packing in [1, 2], do: -1, else: width
+
+      true ->
+        -1
     end
   end
 
@@ -1389,12 +1432,27 @@ defmodule Benchtable.TableMessage do
 
   defp scalar_bits(kind, _shape), do: kind_bits(kind)
 
-  defp scalar_value(_kind, %{packing: 1, base: base}, raw), do: base + raw
+  # A RANGED VALUE'S OFFSET CAN SPELL A VALUE PAST ITS KIND (§3.3), a skipped
+  # field's too: base + offset must land in the domain the kind declares.
+  defp scalar_value(kind, %{packing: 1, base: base}, raw) do
+    value = base + raw
+    if kind_holds?(kind, value), do: value, else: :malformed
+  end
 
   defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18, 36],
     do: sign_extend(raw, kind_bits(kind))
 
   defp scalar_value(_kind, _shape, raw), do: raw
+
+  defp kind_holds?(kind, value) when kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24, 36] do
+    bits = kind_bits(kind)
+    value >= -(1 <<< (bits - 1)) and value <= (1 <<< (bits - 1)) - 1
+  end
+
+  defp kind_holds?(kind, value) do
+    bits = kind_bits(kind)
+    bits > 0 and value >= 0 and value <= (1 <<< bits) - 1
+  end
 
   defp sign_extend(raw, bits) do
     if (raw >>> (bits - 1) &&& 1) == 1 do

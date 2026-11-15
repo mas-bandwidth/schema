@@ -627,7 +627,11 @@ func sabotageDescendingEmptyRange(t *testing.T, module []byte) []byte {
 func sabotageCountLoop(t *testing.T, module []byte) []byte {
 	t.Helper()
 	const have = `      {:ok, v, ^r} ->
-        zero_width_run(vocab, shape, n, r, acc, v)`
+        if element_run_bits(elem) < 0 do
+          :malformed
+        else
+          zero_width_run(vocab, shape, n, r, acc, v)
+        end`
 	const restored = `      {:ok, v, rest} when rest == r ->
         seen = Process.get(:zero_iters, 0) + 1
         Process.put(:zero_iters, seen)
@@ -845,7 +849,18 @@ const boundsValueFns = boundsElixirHelpers + `
       entry(0x1000, <<14>> <> leb(2) <> leb(2) <> <<14>> <> leb(2) <> leb(2) <> <<0>>) <>
         entry(0x1001, <<6, 0>>)
 
-    round_trip(read!(small), [{1, [[:name, :name], [:name, :name]]}, {2, 9}])
+    vocab = read!(small)
+
+    case M.save_messages(vocab, [[{1, [[:name, :name], [:name, :name]]}, {2, 9}]]) do
+      {:ok, batch} ->
+        case M.load_messages(vocab, batch) do
+          {:malformed, 0, []} -> :ok
+          other -> check(false, "nested zero-width walk #{inspect_small(other)}")
+        end
+
+      other ->
+        check(false, "save nested #{inspect(other)}")
+    end
   end
 
   defp second_body_damage do
