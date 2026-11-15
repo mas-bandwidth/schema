@@ -1304,7 +1304,9 @@ func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, e
 			arg:   arg,
 		})
 		*wireOff += fixedPresentBytes
+		payload := len(b.plan)
 		b.buildPayloadSlotsAndPlan(owner, f, expr, baseSlot, wireOff, size-fixedPresentBytes, guard, arg)
+		b.stampGuard(payload, fieldWireBase, 1, 1)
 		return
 	}
 
