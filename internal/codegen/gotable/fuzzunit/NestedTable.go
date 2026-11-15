@@ -1006,8 +1006,8 @@ func ArchiveConfigFixedLoad(values []ArchiveConfig, data []byte, plan []TableFix
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+	for k := range values[:n] {
+		value, dst := &values[k], tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -1015,8 +1015,8 @@ func ArchiveConfigFixedLoad(values []ArchiveConfig, data []byte, plan []TableFix
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
-		if why := ArchiveConfigFixedFiniteBody(&values[k]); why != "" {
-			for j := range k + 1 {
+		if why := ArchiveConfigFixedFiniteBody(value); why != "" {
+			for j := range values[:k+1] {
 				ArchiveConfigReset(&values[j])
 			}
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
@@ -1025,8 +1025,8 @@ func ArchiveConfigFixedLoad(values []ArchiveConfig, data []byte, plan []TableFix
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !ArchiveConfigFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !ArchiveConfigFixedBounds(value) {
+			for j := range values[:k+1] {
 				ArchiveConfigReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())

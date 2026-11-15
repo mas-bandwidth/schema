@@ -1345,8 +1345,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// same name there as it does for a lineage entry.
 	g.pf("\tif int64(entryCount) > int64(len(plan)) {\n\t\treturn tableFixedRefuse(report, TableRefusePlanTooLarge.Error())\n\t}\n")
 	// STEP 9 and STEP 10.
-	g.pf("\tat := data[TableFixedHeaderBytes+4+layoutBytes:]\n")
-	g.pf("\trest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)\n")
+	g.pf("\tat := data[TableFixedHeaderBytes+4+layoutBytes:]; rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)\n")
 	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 || (rest == 0 && len(values) == 1) {\n\t\treport.Refuse(TableRefuseWireDamaged, \"\")\n\t\treport.Reason = TableRefuseTruncated.Error()\n\t\treturn -1\n\t}\n")
 	g.pf("\tn := rest / recordBytes\n")
 	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())\n\t}\n")
@@ -1368,8 +1367,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\t\treturn tableFixedRefuse(report, why)\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
-	g.pf("\tfor k := range n {\n")
-	g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
+	g.pf("\tfor k := range values[:n] {\n")
+	finite := fixedFiniteNeededStruct(st, map[string]bool{})
+	clamp := ir.TableFixedClampNeeded(st)
+	if finite || len(writerBounds) > 0 || clamp {
+		g.pf("\t\tvalue, dst := &values[k], tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
+	} else {
+		g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
+	}
 	g.pf("\t\tfor i := range holes {\n")
 	g.pf("\t\t\th := holes[i]\n")
 	g.pf("\t\t\tcopy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])\n")
@@ -1380,31 +1385,31 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tif why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != \"\" {\n")
 	g.pf("\t\t\treturn tableFixedRefuse(report, why)\n")
 	g.pf("\t\t}\n")
-	if fixedFiniteNeededStruct(st, map[string]bool{}) {
+	if finite {
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
 		// FIRST, before the bounds pass, over the storage the run just wrote,
 		// and a NaN or an infinity refuses the whole batch as
 		// non_finite_float. Nothing of the batch is kept: every record this
 		// call wrote goes back to its defaults.
-		g.pf("\t\tif why := %sFixedFiniteBody(&values[k]); why != \"\" {\n", st.Name)
-		g.pf("\t\t\tfor j := range k + 1 {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
+		g.pf("\t\tif why := %sFixedFiniteBody(value); why != \"\" {\n", st.Name)
+		g.pf("\t\t\tfor j := range values[:k+1] {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
 		g.pf("\t\t\ttableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())\n\t\t\treport.Field = why\n\t\t\treturn -1\n\t\t}\n")
 	}
 	if len(writerBounds) > 0 {
 		g.pf("\t\tswitch pick {\n")
 		for _, i := range writerBounds {
 			g.pf("\t\tcase %d:\n", i)
-			g.pf("\t\t\tif !%sFixedBoundsKnown%d(&values[k]) {\n", st.Name, i)
-			g.pf("\t\t\t\tfor j := range k + 1 { %sReset(&values[j]) }\n", st.Name)
+			g.pf("\t\t\tif !%sFixedBoundsKnown%d(value) {\n", st.Name, i)
+			g.pf("\t\t\t\tfor j := range values[:k+1] { %sReset(&values[j]) }\n", st.Name)
 			g.pf("\t\t\t\treturn tableFixedRefuse(report, TableRefuseOutOfRange.Error())\n\t\t\t}\n")
 		}
 		g.pf("\t\t}\n")
 	}
-	if ir.TableFixedClampNeeded(st) {
+	if clamp {
 		g.pf("\t\t// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("\t\t// storage it just wrote: the same pass for either plan (§3.4, §4.6).\n")
-		g.pf("\t\tif !%sFixedBounds(&values[k]) {\n", st.Name)
-		g.pf("\t\t\tfor j := range k + 1 {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
+		g.pf("\t\tif !%sFixedBounds(value) {\n", st.Name)
+		g.pf("\t\t\tfor j := range values[:k+1] {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
 		g.pf("\t\t\treturn tableFixedRefuse(report, TableRefuseOutOfRange.Error())\n\t\t}\n")
 	}
 	g.pf("\t\tat = at[recordBytes:]\n")

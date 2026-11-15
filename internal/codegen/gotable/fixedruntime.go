@@ -1070,7 +1070,7 @@ func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, string) {
 	var out tableFixedLayoutView
 	// THE RESIDUE: bytes that are not a layout at all — fewer than a header's
 	// worth of them — are layout_malformed and not one of the seven.
-	if int32(len(bytes)) < tableFixedLayoutHeaderBytes {
+	if int64(len(bytes)) < int64(tableFixedLayoutHeaderBytes) {
 		return out, "layout_malformed"
 	}
 	// 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
@@ -1078,7 +1078,7 @@ func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, string) {
 	if count == 0 || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
 		return out, "layout_count_mismatch"
 	}
-	view := tableFixedLayoutView{Bytes: bytes, Count: int32(count)}
+	view := tableFixedLayoutView{Bytes: bytes, Count: int32(count & 0x7fffffff)}
 	// 2. THE ROOT IS A TABLE, and its size is the record's body
 	root := tableFixedEntryAt(view, 0)
 	if root.Kind != 13 {

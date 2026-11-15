@@ -21,15 +21,19 @@ LUA_LUACHECK_CONFIG := build/lua-luacheck.rc
 # every schema directory a Makefile generate target reads, plus the per-file
 # units under test/tables (the tables_generate macro names each file) and the
 # two-file guard unit.
-LUA_LUACHECK_DIRS := examples examples128 bench/corpus \
+LUA_LUACHECK_DIRS := examples examples128 \
 	tables/examples tables/pointers tables/block tables/blockhome \
 	tables/messages tables/stream tables/blobs tables/scalars tables/maps \
 	tables/lists tables/arms tables/backend tables/vocab tables/vocab9
 LUA_LUACHECK_FILES := $(wildcard test/tables/*.schema) $(wildcard test/guard/*.schema)
 LUA_LUACHECK_UNITS := $(LUA_LUACHECK_DIRS) $(LUA_LUACHECK_FILES)
+# bench/corpus holds units of different packages, so each unit is named by the
+# files that make it rather than by the whole directory.
+LUA_LUACHECK_GROUPS := 'bench/corpus/Bench.schema bench/corpus/FixedTable.schema' \
+	bench/corpus/BenchTable.schema bench/corpus/RealWorld.schema
 # A directory's mtime does not change when an existing schema file is edited.
 # Track its member files so a local gate cannot reuse stale generated Lua.
-LUA_LUACHECK_SOURCES := $(foreach dir,$(LUA_LUACHECK_DIRS),$(wildcard $(dir)/*.schema)) $(LUA_LUACHECK_FILES)
+LUA_LUACHECK_SOURCES := $(foreach dir,$(LUA_LUACHECK_DIRS),$(wildcard $(dir)/*.schema)) $(LUA_LUACHECK_FILES) $(wildcard bench/corpus/*.schema)
 
 .PHONY: toolchain-luacheck
 toolchain-luacheck:
@@ -89,8 +93,8 @@ $(LUA_LUACHECK_CONFIG): make/schema-lua-generated-luacheck-gate.mk
 $(LUA_LUACHECK_CORPUS)/.stamp: bin/schema make/schema-lua-generated-luacheck-gate.mk $(LUA_LUACHECK_UNITS) $(LUA_LUACHECK_SOURCES)
 	@rm -rf $(LUA_LUACHECK_CORPUS) && mkdir -p $(LUA_LUACHECK_CORPUS)
 	@set -e; ok=0; refused=0; \
-	for u in $(LUA_LUACHECK_UNITS); do \
-		key=$$(printf '%s' "$$u" | sed 's#[/.]#_#g'); \
+	for u in $(LUA_LUACHECK_UNITS) $(LUA_LUACHECK_GROUPS); do \
+		key=$$(printf '%s' "$$u" | sed 's#[/. ]#_#g'); \
 		log=$(LUA_LUACHECK_CORPUS)/$$key.log; \
 		if ./bin/schema generate --lang lua --out $(LUA_LUACHECK_CORPUS)/$$key $$u > $$log 2>&1; then \
 			rm -f $$log; ok=$$((ok + 1)); \

@@ -1091,7 +1091,7 @@ func TestGoFiniteFloatNegativeControl(t *testing.T) {
 			{"r.Get64()&0x7ff0000000000000 == 0x7ff0000000000000", "false && r.Get64()&0x7ff0000000000000 == 0x7ff0000000000000 /* SABOTAGED */"},
 		}, "want the refusal non_finite_float"},
 		{"fixed", fsFlatSchema, fsFlatProbe, [][2]string{
-			{`FlatFixedFiniteBody(&values[k]); why != ""`, `FlatFixedFiniteBody(&values[k]); false && why != "" /* SABOTAGED */`},
+			{`FlatFixedFiniteBody(value); why != ""`, `FlatFixedFiniteBody(value); false && why != "" /* SABOTAGED */`},
 		}, "tolerant="},
 		{"writer", fsKeyedSchema, fsKeyedProbe, [][2]string{
 			{"value.Ks[i]-value.Ks[i] != 0", "false && value.Ks[i]-value.Ks[i] != 0 /* SABOTAGED */"},
