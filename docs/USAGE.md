@@ -4675,10 +4675,11 @@ end
 
 **A loaded pointered value is a root plus a node directory.** A table that
 reaches a pointer to a table loads as `{root, nodes}`: `root` is the root's
-map, and `nodes` is a tuple of the table nodes in node-table order. Every
+map, and `nodes` is a tuple of the table nodes in node-table order. A field
+the root or a node did not store reads its declared default. Every
 table-pointer field holds a node number, `nil` for null; a `*string` or
-`*bytes` field holds its bytes. Node `1` is the root, and
-node `2` and up name the tuple's entries in order; a position the node table
+`*bytes` field holds its bytes. Node `2` and up name the tuple's entries in
+order; `deref(value, 1)` returns the root, but no pointer names it. A position the node table
 spent on a `*string` or `*bytes` blob holds `nil`. Follow a table pointer with
 `deref/2`, which returns `nil` for `nil`; never index the tuple by hand. Two
 fields that name one node hold the same number, so the node is held once
@@ -4692,7 +4693,7 @@ number (its position plus 2) in every table-pointer field that names it.
 writes each node once and numbers the wire by first visit, so any numbering
 you choose saves the same bytes. A pointer to a node whose body is still being
 walked is a data cycle, `{:error, :data_cycle}`; a number that names no table
-node, or one node named by pointers of two table types, is
+node (`1`, the root, included), or one node named by pointers of two table types, is
 `{:error, :invalid_value}`:
 
 ```elixir
