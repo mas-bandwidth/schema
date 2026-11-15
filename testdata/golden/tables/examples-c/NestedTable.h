@@ -3611,6 +3611,7 @@ static SCHEMA_UNUSED void tabledemo_table_mark_framed( tabledemo_table_reader_t 
             }
             return;
         case 15: { tabledemo_table_reader_t rr = sub; tabledemo_table_mark_value( &rr, kind, named, records, depth ); return; }
+        case 17: tabledemo_table_mark_value( &sub, kind, named, records, depth ); return;
         default: return;
     }
 }

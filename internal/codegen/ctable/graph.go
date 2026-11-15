@@ -473,6 +473,7 @@ static SCHEMA_UNUSED void table_mark_framed( TableReader sub, uint8_t kind, uint
             }
             return;
         case 15: { TableReader rr = sub; table_mark_value( &rr, kind, named, records, depth ); return; }
+        case 17: table_mark_value( &sub, kind, named, records, depth ); return;
         default: return;
     }
 }
@@ -1015,9 +1016,6 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	n := st.Name
 	reachCheck := "if(nodes->good && !nodes->refused && !table_nodes_all_named(reader,(uint64_t)(nodes->count-1))) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n      "
-	if g.retain {
-		reachCheck = ""
-	}
 	// One fill procedure serves caller-owned regions and editable arenas. Both
 	// passes use the resident directory; following a reference never decodes it.
 	g.pf("static SCHEMA_UNUSED int %s(TableReader * reader, %s * root, TableNodeMap * nodes, TableNodeDirEntry * directory, TableSink * sink)\n{\n", g.sym(n, "load_graph"), n)
