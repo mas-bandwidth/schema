@@ -487,19 +487,26 @@ skip_entry = function(R, e, ctx)
     end
     return true
   elseif k == 10 then
-    if e.packing == 2 then
-      local _, ok = R:get(e.bits or 0)
-      return ok
-    end
-    local _, ok = R:get(32)
-    return ok
+    -- A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS COUNT
+    -- (§3.3): the same raw-bits rule a named float read applies.
+    local raw, ok = R:get(e.packing == 2 and (e.bits or 0) or 32)
+    if not ok then return false end
+    if e.packing == 2 then return raw <= (e.qcount or 0) end
+    return raw & D.F32_EXP ~= D.F32_EXP
   elseif k == 11 then
-    local _, ok = R:get(64)
-    return ok
+    local raw, ok = R:get(64)
+    if not ok then return false end
+    return raw & D.F64_EXP ~= D.F64_EXP
   elseif k == 12 then
+    -- A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its
+    -- length is inside the announced bound and its bytes are well-formed
+    -- UTF-8 with no zero byte, which is the check a named read applies.
     local n, ok = R:get(bits_range(0, e.max or 0))
     if not ok or not R:align() then return false end
-    return R:raw(n) ~= nil
+    if n > (e.max or 0) then return false end
+    local raw = R:raw(n)
+    if raw == nil then return false end
+    return D.text_ok(raw)
   elseif k == 30 then
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
@@ -520,6 +527,9 @@ skip_entry = function(R, e, ctx)
     end
     return skip_entry(R, ae, ctx)
   elseif k == 13 then
+    -- A NESTED BODY NAMES NO FIELD ID TWICE (§3.3): a repeat is damage on the
+    -- skip path as it is on the named one.
+    local seen = {}
     while true do
       local ref, ok = R:get(ctx.refBits)
       if not ok then return false end
@@ -528,6 +538,8 @@ skip_entry = function(R, e, ctx)
       if fe == nil or fe.id == NODE_ID or fe.id == 0xfffffffffffffffe or fe.id == 0xfffffffffffffffd then
         return false
       end
+      if seen[ref] then return false end
+      seen[ref] = true
       if not skip_entry(R, fe, ctx) then return false end
     end
   elseif k == 14 or k == 16 then
@@ -545,12 +557,17 @@ skip_entry = function(R, e, ctx)
         n = raw
       end
     end
+    -- THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3).
+    if n > (e.max or 0) then return false end
     if k == 14 and e.elem == 6 and (e.inner == nil or e.inner.packing == nil) then
       if not R:align() then return false end
       return R:raw(n) ~= nil
     end
     if k == 14 and e.elem == 6 and not R:align() then return false end
     local inner = e.inner or { kind = e.elem }
+    -- A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
+    -- REPEATS (§3.2, §3.3).
+    local seen = k == 16 and {} or nil
     for _ = 1, n do
       if k == 16 then
         local kref, kok = R:get(ctx.refBits)
@@ -565,6 +582,8 @@ skip_entry = function(R, e, ctx)
         then
           return false
         end
+        if seen[kref] then return false end
+        seen[kref] = true
       end
       if not skip_entry(R, inner, ctx) then return false end
     end
@@ -1019,6 +1038,22 @@ local function read_shape(e, s, at)
     if packing == 0 then return at end
     if packing ~= 2 or at + 11 > #s then return nil end
     e.packing = 2
+    local min = string.unpack("<f", s, at)
+    local max = string.unpack("<f", s, at + 4)
+    local res = string.unpack("<f", s, at + 8)
+    -- THE QUANTIZED FACTS ARE DERIVED BY THE PACKET WIRE'S RULE IN FLOAT32
+    -- (docs/SPEC-TABLES.md §3.3): delta, count and the index width, each
+    -- operation rounded to float32 as the read's dequantizer expects.
+    local function f32(x) return string.unpack("<f", string.pack("<f", x)) end
+    local delta = f32(max - min)
+    local count = math.ceil(f32(delta / res))
+    if count < 1 then
+      count = 1
+    elseif count > 4294967040 then
+      count = 4294967040
+    end
+    e.qmin, e.qdelta, e.qcount = min, delta, count
+    e.bits = bits_range(0, count)
     return at + 12
   elseif kind >= 20 and kind <= 29 then
     if at > #s then return nil end

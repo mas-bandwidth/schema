@@ -473,8 +473,14 @@ local function skip_container(inp, close, depth, graph)
       return false
     end
     if close == "}" then
-      local key, _, ok = scan_string(inp, MAX_KEY)
+      -- A SKIPPED OBJECT'S KEY IS HELD TO THE TEXT RULES OF A PLACED VALUE
+      -- (§16.3): one that decodes to U+0000 refuses the read.
+      local key, _, ok, nul = scan_string(inp, MAX_KEY)
       if not ok then return false end
+      if nul then
+        inp.bad = true
+        return false
+      end
       if seen[key] then
         inp.bad = true
         return false
@@ -527,7 +533,13 @@ skip_value = function(inp, depth, graph)
   if c == "{" then return skip_container(inp, "}", depth, graph) end
   if c == "[" then return skip_container(inp, "]", depth, graph) end
   if c == '"' then
-    local _, _, ok = scan_string(inp, -1)
+    -- a skipped string is held to the text rules of a placed value: one that
+    -- decodes to U+0000 refuses the read (§16.3)
+    local _, _, ok, nul = scan_string(inp, -1)
+    if nul then
+      inp.bad = true
+      return false
+    end
     return ok
   end
   if c == "t" then return literal(inp, "true") end
