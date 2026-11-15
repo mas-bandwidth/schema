@@ -1066,7 +1066,13 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
             if !r.align() {
                 return false;
             }
-            r.skip(n * 8)
+            let start = (r.offset / 8) as usize;
+            if !r.skip(n * 8) {
+                return false;
+            }
+            // a skipped string's bytes are held to the text rule a named read
+            // applies to them, and ill-formed text is damage (§3.3, §4)
+            table_message_utf8(&r.buffer[start..start + n as usize])
         }
         31 => {
             if !r.align() {
