@@ -1173,9 +1173,13 @@ namespace Benchtable
             // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1), and no read puts
             // anything else into storage, so a byte that is not part of a well-formed
             // sequence was put there by a program: the write REFUSES (invalid_value,
-            // docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced.
+            // docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced. A ZERO
+            // BYTE IS NOT TEXT EITHER, and its reader refuses the \u0000 a writer would
+            // otherwise spell: C# is an assert leg, so the write contract is the debug
+            // assert (docs/SPEC.md §5.1 row 8) and a release build carries no check.
             static void WriteString(ref Out o, ReadOnlySpan<byte> s)
             {
+                System.Diagnostics.Debug.Assert(s.IndexOf((byte)0) < 0, "a zero byte is not text (docs/SPEC.md §5.1 row 8)");
                 o.Put((byte)'"');
                 for (int i = 0; i < s.Length; i++)
                 {
@@ -1503,8 +1507,9 @@ namespace Benchtable
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
                 if (f.Kind == 12 && !f.TextList)
                 {
-                    // the text writer WRITES a zero byte, spelled \u0000 (§16.3);
-                    // WriteString refuses ill-formed UTF-8 itself (§16.14 W0)
+                    // a zero byte is storage that is not text, caught by the debug
+                    // write assert (§5.1 row 8); WriteString refuses ill-formed UTF-8
+                    // itself (§16.14 W0)
                     WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
                     return true;
                 }
