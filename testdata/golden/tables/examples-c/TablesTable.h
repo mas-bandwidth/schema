@@ -3593,30 +3593,56 @@ static SCHEMA_UNUSED int tabledemo_table_node_scan_whole( const tabledemo_table_
 {
     return !scan->damaged && (!scan->present || scan->declared == scan->records);
 }
-/* A RECORD NO POINTER REACHES IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the
-   naming walk below counts every kind-17 payload in the root body and in
-   every record body, in fields this reader names and in fields it does not,
-   which is the wire-alone half of the reachability rule. */
-static SCHEMA_UNUSED void tabledemo_table_mark_value( tabledemo_table_reader_t * r, uint8_t kind, uint8_t * named, uint64_t records, int depth );
-static SCHEMA_UNUSED void tabledemo_table_mark_body( tabledemo_table_reader_t r, uint8_t * named, uint64_t records, int depth )
+/* THE GRAPH IS EVERY KIND-17 PAYLOAD (docs/SPEC-TABLES.md §3.1, §6.5): the
+   walk below collects every pointer slot in the root body and in every record
+   body, in fields this reader names and in fields it only skips, then judges
+   it. A record no slot reaches is damage; a slot naming a node whose descent
+   is still open is a cycle; a blob record named from two slots is blob_shared.
+   The walk is iterative over an explicit stack, so a long legal chain costs no
+   C recursion. */
+typedef struct tabledemo_table_graph_wire_t
+{
+    uint8_t * names;   /* records + 2: the slots naming each node, saturating */
+    uint8_t * marks;   /* records + 2: blob flags, then the DFS's three marks */
+    uint64_t records;
+    uint64_t * edges;  /* every kind-17 payload, grouped by declaring body */
+    uint64_t edge_count, edge_capacity;
+    int failed, damaged;
+} tabledemo_table_graph_wire_t;
+
+static SCHEMA_UNUSED int tabledemo_table_graph_wire_edge( tabledemo_table_graph_wire_t * g, uint64_t index )
+{
+    if ( g->edge_count == g->edge_capacity )
+    {
+        void * grown = tabledemo_table_number_grow( tabledemo_table_default_allocator(), g->edges, &g->edge_capacity, sizeof(uint64_t) );
+        if ( grown == NULL ) { g->failed = 1; return 0; }
+        g->edges = (uint64_t *)grown;
+    }
+    g->edges[g->edge_count++] = index;
+    return 1;
+}
+
+static SCHEMA_UNUSED void tabledemo_table_mark_value( tabledemo_table_reader_t * r, uint8_t kind, tabledemo_table_graph_wire_t * g, int depth );
+static SCHEMA_UNUSED void tabledemo_table_mark_body( tabledemo_table_reader_t r, tabledemo_table_graph_wire_t * g, int depth )
 {
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
+        if ( g->failed ) { return; }
         if ( !tabledemo_table_reader_leb( &r, &ref ) || ref == 0 ) { return; }
         if ( ref > r.id_count || !tabledemo_table_reader_has( &r, 1 ) ) { return; }
         id = tabledemo_table_reader_id_at( &r, ref ); kind = tabledemo_table_reader_get8( &r );
         if ( id == UINT64_MAX ) { tabledemo_table_reader_t payload; if ( !tabledemo_table_reader_span( &r, &payload ) ) { return; } continue; }
-        tabledemo_table_mark_value( &r, kind, named, records, depth );
+        tabledemo_table_mark_value( &r, kind, g, depth );
     }
 }
-static SCHEMA_UNUSED void tabledemo_table_mark_framed( tabledemo_table_reader_t sub, uint8_t kind, uint8_t * named, uint64_t records, int depth )
+static SCHEMA_UNUSED void tabledemo_table_mark_framed( tabledemo_table_reader_t sub, uint8_t kind, tabledemo_table_graph_wire_t * g, int depth )
 {
     uint8_t elem_kind; uint64_t count, i;
     if ( depth > 128 ) { return; }
     switch ( kind )
     {
-        case 13: tabledemo_table_mark_body( sub, named, records, depth ); return;
+        case 13: tabledemo_table_mark_body( sub, g, depth ); return;
         case 14: case 16:
             if ( sub.size < 2 ) { return; }
             elem_kind = tabledemo_table_reader_get8( &sub );
@@ -3626,23 +3652,28 @@ static SCHEMA_UNUSED void tabledemo_table_mark_framed( tabledemo_table_reader_t 
             for ( i = 0; i < count; i++ )
             {
                 int64_t before = sub.offset;
-                if ( kind == 14 ) { tabledemo_table_mark_value( &sub, elem_kind, named, records, depth ); }
-                else { uint64_t key; tabledemo_table_reader_t elem; if ( !tabledemo_table_reader_leb( &sub, &key ) || !tabledemo_table_reader_span( &sub, &elem ) ) { return; } tabledemo_table_mark_framed( elem, elem_kind, named, records, depth + 1 ); }
+                if ( kind == 14 ) { tabledemo_table_mark_value( &sub, elem_kind, g, depth ); }
+                else { uint64_t key; tabledemo_table_reader_t elem; if ( !tabledemo_table_reader_leb( &sub, &key ) || !tabledemo_table_reader_span( &sub, &elem ) ) { return; } tabledemo_table_mark_framed( elem, elem_kind, g, depth + 1 ); }
                 if ( sub.offset == before ) { return; }
             }
             return;
-        case 15: { tabledemo_table_reader_t rr = sub; tabledemo_table_mark_value( &rr, kind, named, records, depth ); return; }
-        case 17: tabledemo_table_mark_value( &sub, kind, named, records, depth ); return;
+        case 15: { tabledemo_table_reader_t rr = sub; tabledemo_table_mark_value( &rr, kind, g, depth ); return; }
+        case 17: tabledemo_table_mark_value( &sub, kind, g, depth ); return;
         default: return;
     }
 }
-static SCHEMA_UNUSED void tabledemo_table_mark_value( tabledemo_table_reader_t * r, uint8_t kind, uint8_t * named, uint64_t records, int depth )
+static SCHEMA_UNUSED void tabledemo_table_mark_value( tabledemo_table_reader_t * r, uint8_t kind, tabledemo_table_graph_wire_t * g, int depth )
 {
     uint64_t n;
-    if ( depth > 128 ) { return; }
+    if ( depth > 128 || g->failed ) { return; }
     switch ( kind )
     {
-        case 17: if ( tabledemo_table_reader_leb( r, &n ) && n >= 2 && n <= records + 1 ) { named[n] = 1; } return;
+        case 17:
+            if ( !tabledemo_table_reader_leb( r, &n ) || n == 0 ) { return; }
+            if ( n > g->records + 1 ) { g->damaged = 1; return; }
+            if ( n >= 2 && g->names[n] != 255 ) { g->names[n]++; }
+            tabledemo_table_graph_wire_edge( g, n );
+            return;
         case 30: tabledemo_table_reader_leb( r, &n ); return;
         case 15:
         {
@@ -3650,14 +3681,14 @@ static SCHEMA_UNUSED void tabledemo_table_mark_value( tabledemo_table_reader_t *
             if ( !tabledemo_table_reader_leb( r, &ref ) || ref == 0 || !tabledemo_table_reader_has( r, 1 ) ) { return; }
             arm_kind = tabledemo_table_reader_get8( r );
             if ( !tabledemo_table_reader_span( r, &arm ) ) { return; }
-            tabledemo_table_mark_framed( arm, arm_kind, named, records, depth + 1 );
+            tabledemo_table_mark_framed( arm, arm_kind, g, depth + 1 );
             return;
         }
         case 13: case 14: case 16:
         {
             tabledemo_table_reader_t sub;
             if ( !tabledemo_table_reader_span( r, &sub ) ) { return; }
-            tabledemo_table_mark_framed( sub, kind, named, records, depth + 1 );
+            tabledemo_table_mark_framed( sub, kind, g, depth + 1 );
             return;
         }
         case 12: case 31: case 32: { tabledemo_table_reader_t sub; tabledemo_table_reader_span( r, &sub ); return; }
@@ -3679,22 +3710,72 @@ static SCHEMA_UNUSED void tabledemo_table_mark_value( tabledemo_table_reader_t *
         }
     }
 }
-static SCHEMA_UNUSED int tabledemo_table_nodes_all_named( const tabledemo_table_reader_t * root, uint64_t records )
+static SCHEMA_UNUSED int tabledemo_table_nodes_all_named( const tabledemo_table_reader_t * root, uint64_t records, tabledemo_table_report_t * report )
 {
-    uint8_t * named; tabledemo_table_node_scan_t scan; tabledemo_table_reader_t body; uint64_t id, i; int ok = 1;
-    if ( records == 0 ) { return 1; }
-    named = (uint8_t *) tabledemo_table_allocate( tabledemo_table_default_allocator(), (int64_t) records + 2 );
-    if ( named == NULL ) { return 0; }
-    memset( named, 0, (size_t) records + 2 );
-    { tabledemo_table_reader_t r = *root; r.offset = 0; tabledemo_table_mark_body( r, named, records, 0 ); }
+    tabledemo_table_graph_wire_t g; tabledemo_table_node_scan_t scan; tabledemo_table_reader_t body; uint64_t id, i, k;
+    uint64_t * start = NULL, * stack = NULL, * cursor = NULL;
+    uint8_t * marks = NULL;
+    int ok = 1, shared = 0;
+    if ( records > (uint64_t)( INT64_MAX / (int64_t)sizeof(uint64_t) - 2 ) ) { return 0; }
+    memset( &g, 0, sizeof( g ) );
+    g.records = records;
+    g.names = (uint8_t *) tabledemo_table_allocate( tabledemo_table_default_allocator(), (int64_t) records + 2 );
+    marks = (uint8_t *) tabledemo_table_allocate( tabledemo_table_default_allocator(), (int64_t) records + 2 );
+    start = (uint64_t *) tabledemo_table_allocate( tabledemo_table_default_allocator(), ( (int64_t) records + 2 ) * (int64_t)sizeof(uint64_t) );
+    stack = (uint64_t *) tabledemo_table_allocate( tabledemo_table_default_allocator(), ( (int64_t) records + 2 ) * (int64_t)sizeof(uint64_t) );
+    cursor = (uint64_t *) tabledemo_table_allocate( tabledemo_table_default_allocator(), ( (int64_t) records + 2 ) * (int64_t)sizeof(uint64_t) );
+    if ( g.names == NULL || marks == NULL || start == NULL || stack == NULL || cursor == NULL ) { ok = 0; goto done; }
+    memset( g.names, 0, (size_t) records + 2 );
+    memset( marks, 0, (size_t) records + 2 );
+    start[0] = 0;
+    { tabledemo_table_reader_t r = *root; r.offset = 0; tabledemo_table_mark_body( r, &g, 0 ); }
     scan = tabledemo_table_node_scan_begin( root );
+    k = 1;
     while ( tabledemo_table_node_scan_next( &scan, &id, &body ) )
     {
-        if ( id == UINT64_C(0x2f2ec0474f1c4fe4) || id == UINT64_C(0x704be0d8faaffc58) ) { continue; }
-        tabledemo_table_mark_body( body, named, records, 0 );
+        start[k] = g.edge_count;
+        if ( id == UINT64_C(0x2f2ec0474f1c4fe4) || id == UINT64_C(0x704be0d8faaffc58) ) { marks[k] = 1; }
+        else { tabledemo_table_mark_body( body, &g, 0 ); }
+        k++;
     }
-    for ( i = 2; i <= records + 1; i++ ) { if ( !named[i] ) { ok = 0; } }
-    tabledemo_table_release( tabledemo_table_default_allocator(), named );
+    start[records + 1] = g.edge_count;
+    if ( g.failed || g.damaged ) { ok = 0; goto done; }
+    for ( i = 1; i <= records; i++ )
+    {
+        if ( marks[i] && g.names[i + 1] > 1 ) { shared = 1; }
+    }
+    if ( shared && report != NULL )
+    {
+        if ( report->blob_shared == 0 ) { report->blob_shared = 1; }
+        report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_BLOB_SHARED;
+    }
+    memset( marks, 0, (size_t) records + 2 );
+    marks[0] = 1;
+    stack[0] = 0; cursor[0] = start[0];
+    {
+        uint64_t top = 1;
+        while ( top > 0 )
+        {
+            uint64_t node = stack[top - 1];
+            if ( cursor[top - 1] >= start[node + 1] ) { marks[node] = 2; top--; continue; }
+            {
+                uint64_t target = g.edges[cursor[top - 1]++];
+                uint64_t child = target - 1;
+                if ( marks[child] == 1 ) { ok = 0; goto done; }
+                if ( marks[child] == 2 ) { continue; }
+                marks[child] = 1;
+                stack[top] = child; cursor[top] = start[child]; top++;
+            }
+        }
+    }
+    for ( i = 1; i <= records; i++ ) { if ( marks[i] == 0 ) { ok = 0; goto done; } }
+done:
+    tabledemo_table_release( tabledemo_table_default_allocator(), g.edges );
+    tabledemo_table_release( tabledemo_table_default_allocator(), g.names );
+    tabledemo_table_release( tabledemo_table_default_allocator(), marks );
+    tabledemo_table_release( tabledemo_table_default_allocator(), start );
+    tabledemo_table_release( tabledemo_table_default_allocator(), stack );
+    tabledemo_table_release( tabledemo_table_default_allocator(), cursor );
     return ok;
 }
 /* ---- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4) ----
