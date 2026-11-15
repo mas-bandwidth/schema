@@ -96,7 +96,7 @@ def _int_code(element: FieldDesc) -> str | None:
 
 def _read_walk(sub: Any, element: FieldDesc, count: int, ctx: Any) -> list[Any]:
     """The per-element shape: each element through its own kind module."""
-    codec = cast(kinds.ElementKind, kinds._REGISTRY[element.codec])
+    codec = cast(kinds._ElementKind, kinds._REGISTRY[element.codec])
     items: list[Any] = []
     append = items.append
     for _ in range(count):
@@ -127,7 +127,7 @@ def _read_bulk(sub: Any, element: FieldDesc, count: int, ctx: Any) -> list[Any] 
 
 def _write_walk(w: Any, element: FieldDesc, value: list[Any], ctx: Any) -> None:
     """The per-element shape: each element through its own kind module."""
-    codec = cast(kinds.ElementKind, kinds._REGISTRY[element.codec])
+    codec = cast(kinds._ElementKind, kinds._REGISTRY[element.codec])
     for item in value:
         codec.write_element(w, element, item, ctx)
 

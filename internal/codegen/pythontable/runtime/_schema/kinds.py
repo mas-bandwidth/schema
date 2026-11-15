@@ -20,7 +20,7 @@ class FieldKind(Protocol):
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None: ...
 
 
-class ElementKind(FieldKind, Protocol):
+class _ElementKind(FieldKind, Protocol):
     """A kind that can also be an array element: its value without the
     field header."""
 
