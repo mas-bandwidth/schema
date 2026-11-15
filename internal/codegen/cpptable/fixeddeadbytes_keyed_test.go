@@ -183,7 +183,6 @@ func TestFixedDeadBytesKeyedSlots(t *testing.T) {
 		{name: "counted_tail", want: "count"},
 		{name: "absent_payload", want: "opt"},
 	} {
-		vec := vec
 		t.Run(vec.name, func(t *testing.T) {
 			t.Parallel()
 			out, err := exec.Command(probe, vec.want).CombinedOutput()

@@ -13869,7 +13869,7 @@ in build version (§20.5).
   FixedMeasure  FixedSave  FixedSaveReason  FixedLoad  FixedWriteBody  FixedLeaves  FixedDefaultBody
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
-  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedFiniteBody  FixedRefuseBatch
+  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedCheckDead  FixedFiniteBody  FixedRefuseBatch
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
@@ -13934,7 +13934,8 @@ in build version (§20.5).
   infinity before the bounds pass runs; it is claimed on the same rule, because
   a type gains a float as an ordinary edit. `FixedRefuseBatch` is the batch
   save's refusal path, which the JavaScript leg emits at module scope for every
-  fixed table; it is claimed on the same rule.
+  fixed table; it is claimed on the same rule, and so is `FixedCheckDead`,
+  the read's dead-byte check, which the JavaScript leg emits there too.
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
