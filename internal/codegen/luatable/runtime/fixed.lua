@@ -774,7 +774,7 @@ function F.write(T, name, value)
   -- a retired variant (docs/SPEC-TABLES.md §2.15) and a value off the write
   -- contract (docs/SPEC.md §5.1) are refused, by name, before the first byte
   local refused = D.refuse_write(T, name, value)
-  if refused ~= nil then error(refused, 0) end
+  if refused ~= nil then return nil, refused end
   local body = encode_table(T, name, value)
   if #body ~= f.size then error("layout_malformed") end
   local out = f.header .. f.hashPrefix .. body
@@ -808,7 +808,7 @@ function F.save(T, name, values)
   for i = 1, #values do
     local v = values[i]
     local refused = D.refuse_write(T, name, v)
-    if refused ~= nil then error(refused, 0) end
+    if refused ~= nil then return nil, refused end
     local body = encode_table(T, name, v)
     if #body ~= f.size then error("layout_malformed", 0) end
     parts[#parts + 1] = hPrefix .. body
