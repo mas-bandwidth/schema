@@ -232,22 +232,25 @@ func wire32Cases(u *ir.Unit) []wire32Case {
 }
 
 // rust32BitTarget returns the first 32-bit target triple rustc has a standard
-// library for, or fails/skips naming the missing fact.
+// library for, or fails/skips naming the missing fact. Each target has a usize
+// of 4 bytes and a u64 aligned to 8; a target where u64 aligns to 4 (i686) is
+// not one, because the runtime refuses to build there.
 func rust32BitTarget(t *testing.T) string {
 	t.Helper()
 	for _, triple := range []string{
-		"i686-unknown-linux-gnu",
-		"i686-unknown-linux-musl",
+		"wasm32-wasip1",
 		"armv7-unknown-linux-gnueabihf",
 	} {
 		out, err := exec.Command("rustc", "--print", "target-libdir", "--target", triple).Output()
 		if err != nil {
+			t.Logf("passing over %s: rustc does not know it: %v", triple, err)
 			continue
 		}
 		libs, _ := filepath.Glob(filepath.Join(strings.TrimSpace(string(out)), "libstd-*.rlib"))
 		if len(libs) > 0 {
 			return triple
 		}
+		t.Logf("passing over %s: its standard library is not installed", triple)
 	}
 	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 		t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc has no 32-bit target with std installed, so the wire lengths and references cannot be compared across usize widths")
@@ -305,7 +308,13 @@ func writeWire32Probe(t *testing.T, u *ir.Unit, cases []wire32Case) string {
 func buildWire32Probe(t *testing.T, dir, target, bin string) error {
 	t.Helper()
 	args := []string{"--edition", "2024", "-O", "-A", "warnings"}
-	if cc, err := exec.LookPath("cc"); err == nil {
+	if strings.HasPrefix(target, "wasm32-") {
+		lld, err := rustLLD()
+		if err != nil {
+			return err
+		}
+		args = append(args, "-C", "linker="+lld)
+	} else if cc, err := exec.LookPath("cc"); err == nil {
 		if abs, err := filepath.Abs(cc); err == nil {
 			cc = abs
 		}
@@ -324,8 +333,26 @@ func buildWire32Probe(t *testing.T, dir, target, bin string) error {
 	return nil
 }
 
+// rustLLD returns the absolute path of the rust-lld that ships in rustc's own
+// sysroot for the host, the linker a wasm32 target needs in place of the host cc.
+func rustLLD() (string, error) {
+	sysroot, err := exec.Command("rustc", "--print", "sysroot").Output()
+	if err != nil {
+		return "", fmt.Errorf("rustc --print sysroot: %v", err)
+	}
+	host, err := exec.Command("rustc", "--print", "host-tuple").Output()
+	if err != nil {
+		return "", fmt.Errorf("rustc --print host-tuple: %v", err)
+	}
+	lld := filepath.Join(strings.TrimSpace(string(sysroot)), "lib", "rustlib", strings.TrimSpace(string(host)), "bin", "rust-lld")
+	if _, err := os.Stat(lld); err != nil {
+		return "", fmt.Errorf("rust-lld is not in the sysroot: %v", err)
+	}
+	return lld, nil
+}
+
 // targetCommand runs a binary built for target under the runner cargo names for
-// that target (CARGO_TARGET_<TRIPLE>_RUNNER, for example qemu-i386), and
+// that target (CARGO_TARGET_<TRIPLE>_RUNNER, for example wasmtime), and
 // directly when the variable is unset.
 func targetCommand(target, bin string) *exec.Cmd {
 	key := "CARGO_TARGET_" + strings.ToUpper(strings.NewReplacer("-", "_", ".", "_").Replace(target)) + "_RUNNER"
@@ -405,6 +432,7 @@ func TestRustWireLengthsOn32BitTargets(t *testing.T) {
 		t.Skipf("the probe did not run for the 32-bit target %s and SCHEMA_REQUIRE_CORPUS is unset: %v\n%s", target, err, out)
 	}
 	wide := wire32Verdicts(out)
+	t.Logf("ran the probe for the 32-bit target %s as %s", target, run.String())
 
 	for _, c := range cases {
 		h, okHost := host[c.name]
