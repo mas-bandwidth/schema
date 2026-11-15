@@ -42,6 +42,7 @@ func TestSquirrelFixedBatchHoldsARecord(t *testing.T) {
 
 	const probe = `local S = dofile("schema_module.nut", true);
 local T = S.require("FixedemptybatchTables");
+local L = S.require("schema_table_load");
 local R = S.require("schema_table_refusal");
 local inputs = dofile("inputs.nut", true);
 local fails = 0;
@@ -58,23 +59,32 @@ foreach (cap in [null, 1, 4]) {
   else if (T.FixedReason == null) fail("fixed load (cap " + cap + ") refused without a reason");
 }
 
-// THE GENERIC STRICT READ dispatches to the fixed reader and refuses it too.
-{
+// THE READS BUILT OVER THE FIXED READER refuse it too: the root's own load,
+// the module's plain strict load, and the strict read that dispatches by form.
+foreach (entry in ["root", "plain", "strict"]) {
   local report = {};
   local v = null;
-  try { v = R.ReadStrict(T, "Batch", inputs["no-record.bin"], report); } catch (e) { fail("strict read raised " + e); }
-  if (v != null) fail("strict read accepted a file holding no record");
-  else if (report.reason == null) fail("strict read refused without a reason");
+  try {
+    if (entry == "root") v = T.BatchLoad(inputs["no-record.bin"], report);
+    else if (entry == "plain") v = L.load(T, "Batch", inputs["no-record.bin"], report);
+    else v = R.ReadStrict(T, "Batch", inputs["no-record.bin"], report);
+  } catch (e) { fail(entry + " read raised " + e); continue; }
+  if (v != null) fail(entry + " read accepted a file holding no record");
+  else if (report.reason == null) fail(entry + " read refused without a reason");
 }
 
-// THE CONTROL: A ONE-RECORD FILE STILL READS through both entries.
+// THE CONTROL: A ONE-RECORD FILE STILL READS through every entry.
 {
   local rows = fresh(1);
   local n = T.BatchFixedLoad(inputs["one-record.bin"], rows, null);
   if (n != 1 || rows[0].A != 7) fail("one-record file read " + n + " records, A=" + rows[0].A);
+  local byRoot = T.BatchLoad(inputs["one-record.bin"], {});
+  if (byRoot == null || byRoot.A != 7) fail("one-record file did not read through the root load");
+  local byPlain = L.load(T, "Batch", inputs["one-record.bin"], {});
+  if (byPlain == null || byPlain.A != 7) fail("one-record file did not read through the plain load");
   local report = {};
   local v = R.ReadStrict(T, "Batch", inputs["one-record.bin"], report);
-  if (v == null || v.A != 7) fail("one-record file did not read through the strict entry");
+  if (v == null || v.A != 7) fail("one-record file did not read through the strict read");
 }
 
 // A SAVE OF ZERO RECORDS IS REFUSED before any byte is written, in every
