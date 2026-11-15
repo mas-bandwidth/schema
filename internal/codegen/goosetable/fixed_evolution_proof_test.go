@@ -364,7 +364,8 @@ fixed table T {
     while i < clean.len { badUtf8.push(clean[i]); i += 1; }
     badUtf8[body + 4] = 0xff;
 
-    // R24: 0xff in slack past used length (at index 2 when length == 2) is NOT a refusal!
+    // R24: 0xff in the bytes past the used length (at index 2 when length
+    // == 2) is a non-zero DEAD byte, so the whole load refuses wire_damaged.
     var slackBytes: u8[>..] = [];
     i = 0;
     while i < clean.len { slackBytes.push(clean[i]); i += 1; }
@@ -381,7 +382,7 @@ fixed table T {
     print(n1, " ", r1, " ", n2, " ", r2, " ", n3, " ", r3);
 }
 `, nil)
-	if got != "-1 length_over_bound -1 text_ill_formed 1 ok" {
+	if got != "-1 length_over_bound -1 text_ill_formed -1 wire_damaged" {
 		t.Fatalf("Text (C3/C4/C5/R24): got %q", got)
 	}
 }
@@ -509,7 +510,8 @@ fixed table T {
     let body = data.len - probe::TFixedBodyBytes;
     // Body layout: ArrCount (4B at +0), Arr[0..3] (3B at +4..+7), OptPresent (1B at +7), Opt (1B at +8), Tail (4B at +9..+13).
     // Forge out-of-range enum ordinals (99) into inactive Arr[1], Arr[2] and absent Opt!
-    // C14 & W4: bounds pass walks LIVE extent only; slack is not clamped or counted.
+    // C14 & W4: those bytes are DEAD, so the check pass refuses wire_damaged
+    // before the bounds pass; they are never clamped or counted.
     data[body + 5] = 99;
     data[body + 6] = 99;
     data[body + 8] = 99;
@@ -520,7 +522,7 @@ fixed table T {
     print(n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", dst[0].ArrCount, " ", dst[0].Arr[0] as u64, " ", !dst[0].OptPresent, " ", dst[0].Tail);
 }
 `, nil)
-	if got != "1 ok 0 1 1 true 77" {
+	if got != "-1 wire_damaged 0 0 0 true 77" {
 		t.Fatalf("LiveExtents (C14/W4/W9): got %q", got)
 	}
 }
