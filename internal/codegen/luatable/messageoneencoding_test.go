@@ -18,6 +18,9 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 type luaMessageOneEncodingRow struct {
@@ -162,5 +165,80 @@ print("saved=" .. (saved:gsub(".", function(ch) return string.format("%%02x", ch
 	}
 	if saved != wantHex.String() {
 		t.Errorf("SaveMessages of the canonical value = %s, want canonical.bin %s", saved, wantHex.String())
+	}
+}
+
+func TestLuaLoadMessagesOneEncodingTracksUnknownFields(t *testing.T) {
+	t.Parallel()
+
+	load := func(name, schema string) *ir.Unit {
+		path := filepath.Join(t.TempDir(), name+".schema")
+		writeFile(t, path, schema)
+		return luarun.LoadUnit(t, path)
+	}
+	sender := load("Sender", `package sender
+fixed table One {
+    first uint8
+    hidden uint8
+    last uint8
+}
+`)
+	receiver := load("Receiver", `package receiver
+fixed table One {
+    first uint8
+    last uint8
+}
+`)
+	model := tabletext.NewModel(sender)
+	root := model.Lookup("One")
+	inst := model.New(root)
+	var modelReport tabletext.Report
+	if !model.Read(inst, []byte(`{"first": 1, "hidden": 2, "last": 3}`), &modelReport) || !modelReport.Silent() {
+		t.Fatalf("sender value: %+v", modelReport)
+	}
+	batch, err := tablewire.EncodeMessages(model, []*tabletext.Instance{inst})
+	if err != nil {
+		t.Fatalf("encode canonical sender batch: %v", err)
+	}
+	var vocab tablewire.Vocabulary
+	if err := vocab.AnnounceRead(tablewire.Announce(sender), &modelReport); err != nil {
+		t.Fatalf("read sender announcement: %v", err)
+	}
+	spots := tablewire.MessageSpots(model, root, batch, &vocab)
+	if len(spots) != 4 || spots[0].Value == 0 || spots[1].Value == 0 || spots[2].Value == 0 || spots[3].Value != 0 {
+		t.Fatalf("sender references = %+v, want three fields then terminator", spots)
+	}
+	// Swap the unknown middle field and the known last field. Their uint8
+	// payloads have equal widths, so the body remains parseable; only its
+	// writer order is wrong.
+	bad := append([]byte(nil), batch...)
+	first, second := 8+spots[1].Off, 8+spots[2].Off
+	for bit := 0; bit < spots[1].Width; bit++ {
+		a, b := msgBit(bad, first+bit), msgBit(bad, second+bit)
+		msgSetBit(bad, first+bit, b)
+		msgSetBit(bad, second+bit, a)
+	}
+
+	files, err := Generate(receiver)
+	if err != nil {
+		t.Fatalf("Generate receiver: %v", err)
+	}
+	probe := fmt.Sprintf(`local T = require(%q)
+local inputs = require("inputs")
+local vocab, report = {}, {}
+for i = 1, T.MessageEntries do vocab[i] = {} end
+assert(T.AnnounceRead(vocab, inputs.announce, report), "sender announcement refused")
+local values = T.LoadMessages("One", vocab, inputs.batch, report)
+if values == nil or #values == 0 then print("refused") else print("read") end
+`, ModuleName(receiver))
+	out, stderr, err := try(t, files, probe, map[string][]byte{
+		"announce": tablewire.Announce(sender),
+		"batch":    bad,
+	})
+	if err != nil {
+		t.Fatalf("unknown-field order probe failed: %v\nstderr:\n%s\nstdout:\n%s", err, stderr, out)
+	}
+	if strings.TrimSpace(out) != "refused" {
+		t.Fatalf("LoadMessages = %q, want refusal when an unknown field is out of writer order", strings.TrimSpace(out))
 	}
 }
