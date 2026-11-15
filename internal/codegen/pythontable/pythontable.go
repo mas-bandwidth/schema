@@ -258,6 +258,7 @@ func emitModule(u *ir.Unit, base string, tables []*ir.Struct, unions []*ir.Union
 	b.WriteString("from typing import ClassVar, Self\n\n")
 	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
+	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, FieldDesc, TableDesc, UnionDesc, new_by_name, new_union_by_name, register, register_union\n")
 	b.WriteString("from ._schema.load import Ctx as _LoadCtx, NODE_WIRE_ID as _NODE_WIRE_ID, Reader as _LoadReader, _body_end, _decode_node_records, _open_file, _resolve, _skip, buffer_view, load_table\n")
 	b.WriteString("from ._schema.save import Ctx as _SaveCtx, Writer as _Writer, _collect as _collect_nodes, _validate as _validate_value, _write_form, _write_node_table, measure_table, save_table\n\n\n")
@@ -275,6 +276,20 @@ func emitModule(u *ir.Unit, base string, tables []*ir.Struct, unions []*ir.Union
 		emitTable(&b, u, st)
 	}
 	return b.String()
+}
+
+// emitGraphEqRepr emits a generated class's __eq__ and __repr__. Both walk the
+// value graph on an explicit stack (runtime/_schema/graph.py): a pointer chain
+// longer than the interpreter's recursion limit, a shared node and a cycle a
+// caller built are each compared and spelled in time linear in the graph,
+// with no RecursionError (docs/PORT-PYTHON.md, THE VALUE MAPPING, Tables).
+func emitGraphEqRepr(b *strings.Builder, name string) {
+	b.WriteString("\n    def __eq__(self, other: object) -> bool:\n")
+	fmt.Fprintf(b, "        if not isinstance(other, %s):\n", name)
+	b.WriteString("            return False\n")
+	b.WriteString("        return _s_graph_eq(self, other)\n")
+	b.WriteString("\n    def __repr__(self) -> str:\n")
+	b.WriteString("        return _s_graph_repr(self)\n")
 }
 
 func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
@@ -302,28 +317,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			fmt.Fprintf(b, "        self.%s = %s\n", f.Name, defaultExpr(st.Name, f))
 		}
 	}
-	b.WriteString("\n    def __eq__(self, other: object) -> bool:\n")
-	fmt.Fprintf(b, "        if not isinstance(other, %s):\n", name)
-	b.WriteString("            return False\n")
-	if len(st.Fields) == 0 {
-		b.WriteString("        return True\n")
-	} else {
-		parts := make([]string, 0, len(st.Fields))
-		for _, f := range st.Fields {
-			parts = append(parts, fmt.Sprintf("self.%s == other.%s", f.Name, f.Name))
-		}
-		fmt.Fprintf(b, "        return bool(%s)\n", strings.Join(parts, " and "))
-	}
-	b.WriteString("\n    def __repr__(self) -> str:\n")
-	if len(st.Fields) == 0 {
-		fmt.Fprintf(b, "        return %q\n", name+"()")
-	} else {
-		parts := make([]string, 0, len(st.Fields))
-		for _, f := range st.Fields {
-			parts = append(parts, fmt.Sprintf("%s={self.%s!r}", f.Name, f.Name))
-		}
-		fmt.Fprintf(b, "        return f\"%s(%s)\"\n", name, strings.Join(parts, ", "))
-	}
+	emitGraphEqRepr(b, name)
 	guards := structGuards(st)
 	variable := ir.VariableTables(u)[name]
 	straight := straightLineable(st)
@@ -471,9 +465,11 @@ func arrayMode(f *ir.Field) string {
 
 // straightLineable reports whether every field of st is carried by an active
 // codec so generated straight-line root save/load with bound locals can run.
+// A table holding a map keeps the descriptor walk, the shape its bench
+// measured (docs/PORT-PYTHON.md, Maps bench).
 func straightLineable(st *ir.Struct) bool {
 	for _, f := range st.Fields {
-		if codecOf(f) == "unsupported" {
+		if codecOf(f) == "unsupported" || f.IsMap() {
 			return false
 		}
 	}
@@ -627,13 +623,9 @@ func emitKeyedClass(b *strings.Builder, st *ir.Struct, f *ir.Field) {
 	b.WriteString("    def __setitem__(self, key: int, value: object) -> None:\n")
 	fmt.Fprintf(b, "        if key < 1 or key > %d:\n", count)
 	b.WriteString("            raise KeyError(key)\n")
-	b.WriteString("        self._values[key - 1] = value\n\n")
-	b.WriteString("    def __eq__(self, other: object) -> bool:\n")
-	fmt.Fprintf(b, "        if not isinstance(other, %s):\n", name)
-	b.WriteString("            return False\n")
-	b.WriteString("        return self._values == other._values\n\n")
-	b.WriteString("    def __repr__(self) -> str:\n")
-	fmt.Fprintf(b, "        return f\"%s({self._values!r})\"\n\n\n", name)
+	b.WriteString("        self._values[key - 1] = value\n")
+	emitGraphEqRepr(b, name)
+	b.WriteString("\n\n")
 }
 
 // emitUnion emits a table-side union (docs/PORT-PYTHON.md, THE VALUE MAPPING,
@@ -667,24 +659,8 @@ func emitUnion(b *strings.Builder, un *ir.Union) {
 			fmt.Fprintf(b, "        self.%s = %s\n", v.Name, defaultExpr(un.Name, v.F))
 		}
 	}
-	b.WriteString("\n    def __eq__(self, other: object) -> bool:\n")
-	fmt.Fprintf(b, "        if not isinstance(other, %s):\n", un.Name)
-	b.WriteString("            return False\n")
-	parts := []string{"self.type == other.type"}
-	for _, v := range un.Variants {
-		if v.F != nil {
-			parts = append(parts, fmt.Sprintf("self.%s == other.%s", v.Name, v.Name))
-		}
-	}
-	fmt.Fprintf(b, "        return bool(%s)\n", strings.Join(parts, " and "))
-	b.WriteString("\n    def __repr__(self) -> str:\n")
-	reprParts := []string{"type={self.type!r}"}
-	for _, v := range un.Variants {
-		if v.F != nil {
-			reprParts = append(reprParts, fmt.Sprintf("%s={self.%s!r}", v.Name, v.Name))
-		}
-	}
-	fmt.Fprintf(b, "        return f\"%s(%s)\"\n\n", un.Name, strings.Join(reprParts, ", "))
+	emitGraphEqRepr(b, un.Name)
+	b.WriteString("\n")
 	fmt.Fprintf(b, "%s.descriptor = UnionDesc(\n", un.Name)
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(un.Name))
 	b.WriteString("    arms=(\n")
@@ -763,7 +739,13 @@ func packageInit(u *ir.Unit, bases []string, byFile map[string][]*ir.Struct, uni
 }
 
 func codecOf(f *ir.Field) string {
-	if f.IsMap() || f.KeyEnum != "" || f.Type.Optional {
+	if f.IsMap() {
+		if f.Type.Optional {
+			return "unsupported"
+		}
+		return "map"
+	}
+	if f.KeyEnum != "" || f.Type.Optional {
 		return "unsupported"
 	}
 	if f.Type.Pointer {
@@ -932,6 +914,8 @@ func descriptorDefault(f *ir.Field) string {
 			return f.DefInt.String()
 		}
 		return "0"
+	case "map":
+		return "{}"
 	}
 	return "None"
 }

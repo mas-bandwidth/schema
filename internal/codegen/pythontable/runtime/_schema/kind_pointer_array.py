@@ -10,7 +10,7 @@ from typing import Any
 
 from . import InvalidValue, Refused
 from . import descriptor, kinds
-from .descriptor import FieldDesc
+from .descriptor import FieldDesc, TableDesc
 
 _ELEM_KIND_POINTER = 17
 _MAX_COUNT = 0x7FFFFFFF
@@ -56,8 +56,13 @@ class _PointerArray:
             raise InvalidValue(path, "length exceeds int32 storage cap")
         target = _target(fd)
         for index, elem in enumerate(value):
-            if elem is not None and not isinstance(elem, target):
-                raise InvalidValue(f"{path}[{index}]", f"not a {fd.target} or None")
+            if elem is None or isinstance(elem, target):
+                continue
+            where = f"{path}[{index}]"
+            other = getattr(elem, "descriptor", None)
+            if isinstance(other, TableDesc):
+                raise InvalidValue(where, f"{other.name} is not a {fd.target} or None")
+            raise InvalidValue(where, f"not a {fd.target} or None")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         length: int = r.varint()

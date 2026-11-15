@@ -193,6 +193,77 @@ type hostileCase struct {
 	reason string
 }
 
+// buildChainWire returns the Go engine's own wire for a Root whose head is a
+// chain of n Nodes, each holding the next as children[0]: deeper than either
+// pinned interpreter's recursion limit once n is in the thousands. The file is
+// framed by hand, decoded by the engine (which must accept it) and encoded
+// again by the engine, so the bytes the probe holds Python to are the
+// engine's, not this builder's.
+func buildChainWire(t *testing.T, u *ir.Unit, m *tabletext.Model, n int) []byte {
+	t.Helper()
+	rootSt := u.Tables["Root"]
+	nodeSt := u.Tables["Node"]
+	field := func(st *ir.Struct, name string) *ir.Field {
+		for _, f := range st.Fields {
+			if f.Name == name {
+				return f
+			}
+		}
+		t.Fatalf("missing field %s.%s", st.Name, name)
+		return nil
+	}
+	head := field(rootSt, "head")
+	label := field(nodeSt, "label")
+	children := field(nodeSt, "children")
+	// ids: 1 head, 2 the node table, 3 Node, 4 label, 5 children.
+	ids := []uint64{
+		ir.TableFieldWireId(head),
+		^uint64(0),
+		ir.TableWireId(nodeSt.WireName()),
+		ir.TableFieldWireId(label),
+		ir.TableFieldWireId(children),
+	}
+	var records []byte
+	records = appendUleb(records, uint64(n))
+	for k := 0; k < n; k++ {
+		var body []byte
+		body = append(body, 4, byte(ir.TableWireFieldKind(label)))
+		var v [4]byte
+		binary.LittleEndian.PutUint32(v[:], uint32(k+1))
+		body = append(body, v[:]...)
+		if k+1 < n {
+			var payload []byte
+			payload = append(payload, 17, 1)
+			payload = appendUleb(payload, uint64(k+3))
+			body = append(body, 5, byte(ir.TableWireFieldKind(children)))
+			body = appendUleb(body, uint64(len(payload)))
+			body = append(body, payload...)
+		}
+		body = append(body, 0)
+		records = appendUleb(records, 3)
+		records = appendUleb(records, uint64(len(body)))
+		records = append(records, body...)
+	}
+	var root []byte
+	root = append(root, 1, byte(ir.TableWireFieldKind(head)), 2)
+	root = append(root, 2, 12)
+	root = appendUleb(root, uint64(len(records)))
+	root = append(root, records...)
+	root = append(root, 0)
+	framed := buildForm1File(root, ids)
+	inst := m.New(m.Lookup("Root"))
+	var rep tabletext.Report
+	ok, err := tablewire.Decode(m, inst, framed, &rep)
+	if !ok || err != nil || rep.Refused || rep.Unknown != 0 {
+		t.Fatalf("Go tablewire.Decode refused the %d-node chain: ok=%v err=%v rep=%+v", n, ok, err, rep)
+	}
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatalf("Go tablewire.Encode of the %d-node chain: %v", n, err)
+	}
+	return wire
+}
+
 func buildHostileCorpus(t *testing.T, u *ir.Unit, m *tabletext.Model) []hostileCase {
 	t.Helper()
 	rootSt := u.Tables["Root"]
@@ -541,6 +612,14 @@ func buildHostileCorpus(t *testing.T, u *ir.Unit, m *tabletext.Model) []hostileC
 	return cases
 }
 
+// The deep-chain lengths: the long one is the 20,000-node chain the save must
+// carry, and the short one is half of it, so the step counts of the two show
+// the cost is linear.
+const (
+	chainShort = 10000
+	chainLong  = 20000
+)
+
 func TestPythonVtPointerArrays(t *testing.T) {
 	t.Parallel()
 
@@ -658,6 +737,10 @@ func TestPythonVtPointerArrays(t *testing.T) {
 		{"ranged_two", "RangedHolder", `{"window": [{"&node": 1, "id": 8, "weight": 80}, {"&node": 1}], "note": 3}`},
 		{"ranged_four", "RangedHolder", `{"window": [{"id": 1}, null, {"id": 2}, null]}`},
 		{"value_only_guarded", "ValueOnly", `{"count": 5, "guarded": {"active": true, "bonus": 42}}`},
+		// Two equal nodes built separately are two records; one node held
+		// twice is one record named twice (docs/SPEC-TABLES.md §3.1).
+		{"two_equal_nodes", "Root", `{"list_nodes": [{"label": 5}, {"label": 5}]}`},
+		{"one_node_twice", "Root", `{"list_nodes": [{"&node": 1, "label": 5}, {"&node": 1}]}`},
 	}
 
 	var goodCorpus []goodCase
@@ -836,6 +919,12 @@ table Guarded
 	fmt.Fprintf(&manifest, "EVO writer_secret %s\n", hex.EncodeToString(evoWire))
 	fmt.Fprintf(&manifest, "EVO unknown_target %s\n", hex.EncodeToString(evoUnknownTargetWire))
 	fmt.Fprintf(&manifest, "VALONLY empty_nodetable %s\n", hex.EncodeToString(valueOnlyNodeWire))
+	// Two chains, the second twice the first, both far past the recursion
+	// limit: the probe holds each to the engine's bytes and counts the steps
+	// of every walk on both, so the cost is held linear without a clock.
+	for _, n := range []int{chainShort, chainLong} {
+		fmt.Fprintf(&manifest, "CHAIN %d %s\n", n, hex.EncodeToString(buildChainWire(t, u, m, n)))
+	}
 
 	probe := pyrun.ImportPrelude + pointerArraysProbePy
 	inputs := map[string][]byte{
@@ -914,6 +1003,7 @@ good_wires: dict[str, bytes] = {}
 gold_wires: dict[str, bytes] = {}
 evo_wires: dict[str, bytes] = {}
 valonly_wires: dict[str, bytes] = {}
+chain_wires: dict[int, bytes] = {}
 
 with open("cases.txt", "r", encoding="utf-8") as fh:
     lines = [ln.strip() for ln in fh if ln.strip()]
@@ -983,6 +1073,8 @@ for ln in lines:
         evo_wires[parts[1]] = bytes.fromhex(parts[2])
     elif tag == "VALONLY":
         valonly_wires[parts[1]] = bytes.fromhex(parts[2])
+    elif tag == "CHAIN":
+        chain_wires[int(parts[1])] = bytes.fromhex(parts[2])
 
 # 3. Committed repository golden vectors (Shared.schema & G1.schema)
 for gname in ("list_shared", "list_before_pointer"):
@@ -1063,58 +1155,66 @@ grow_wire = (
 grown = ptrarr.Root.load(grow_wire)
 assert grown.fixed_nodes == [None, None, None] and len(grown.fixed_nodes) == 3
 
-# 6. Write-side InvalidValue refusals on BOTH save and measure
-def must_refuse_write(obj, label: str) -> None:
+# 6. Write-side InvalidValue refusals on BOTH save and measure, each by the
+# path from the root and the rule it broke, with no byte written.
+def must_refuse_write(obj, label: str, path: str, rule: str) -> None:
     for fn_name in ("save", "measure"):
         try:
             getattr(obj, fn_name)()
-        except InvalidValue:
-            pass
+        except InvalidValue as exc:
+            assert (exc.path, exc.rule) == (path, rule), f"{label} ({fn_name}): refused at {exc.path!r} for {exc.rule!r}, want {path!r} for {rule!r}"
         else:
             raise AssertionError(f"{label} ({fn_name}) did not raise InvalidValue")
 
 bad = Root()
 bad.list_nodes = None  # type: ignore[assignment]
-must_refuse_write(bad, "list_nodes=None")
+must_refuse_write(bad, "list_nodes=None", "list_nodes", "not a list")
 
 bad = Root()
 bad.list_nodes = (Node(),)  # type: ignore[assignment]
-must_refuse_write(bad, "list_nodes=tuple")
+must_refuse_write(bad, "list_nodes=tuple", "list_nodes", "not a list")
 
 bad = Root()
 bad.fixed_nodes = [None, None]
-must_refuse_write(bad, "fixed_nodes_short")
+must_refuse_write(bad, "fixed_nodes_short", "fixed_nodes", "length 2 is not 3")
 
 bad = Root()
 bad.fixed_nodes = [None, None, None, None]
-must_refuse_write(bad, "fixed_nodes_long")
+must_refuse_write(bad, "fixed_nodes_long", "fixed_nodes", "length 4 is not 3")
 
 bad = Root()
 bad.bounded_nodes = [None, None, None, None, None]
-must_refuse_write(bad, "bounded_nodes_over")
+must_refuse_write(bad, "bounded_nodes_over", "bounded_nodes", "length 5 is outside [0, 4]")
 
 bad_rh = RangedHolder()
 bad_rh.window = [None]
-must_refuse_write(bad_rh, "ranged_under_min")
+must_refuse_write(bad_rh, "ranged_under_min", "window", "length 1 is outside [2, 4]")
 
 bad_rh = RangedHolder()
 bad_rh.window = [None, None, None, None, None]
-must_refuse_write(bad_rh, "ranged_over_bound")
+must_refuse_write(bad_rh, "ranged_over_bound", "window", "length 5 is outside [2, 4]")
 
 bad = Root()
 bad.list_nodes = [123]  # type: ignore[list-item]
-must_refuse_write(bad, "element_int")
+must_refuse_write(bad, "element_int", "list_nodes[0]", "not a Node or None")
 
 bad = Root()
-bad.list_nodes = [Other()]
-must_refuse_write(bad, "element_wrong_table")
+bad.list_nodes = [None, Other()]
+must_refuse_write(bad, "element_wrong_table", "list_nodes[1]", "Other is not a Node or None")
 
-# Self-cycle in []*Node
+# An element deep in the graph is refused by its path from the root.
+bad = Root()
+deep_bad = make_node(1)
+deep_bad.children = [make_node(2), Leaf()]  # type: ignore[list-item]
+bad.head = deep_bad
+must_refuse_write(bad, "element_deep", "head.children[1]", "Leaf is not a Node or None")
+
+# Self-cycle in []*Node, named by the path of the edge that closes it.
 bad = Root()
 self_n = make_node(1)
 self_n.children = [self_n]
-bad.list_nodes = [self_n]
-must_refuse_write(bad, "self_cycle")
+bad.list_nodes = [make_node(7), self_n]
+must_refuse_write(bad, "self_cycle", "list_nodes[1].children[0]", "a pointer cycle has no wire form")
 
 # 2-hop cycle across *Node and [3]*Node and []*Node
 bad = Root()
@@ -1124,21 +1224,201 @@ na.children = [nb]
 nb.active = True
 nb.guard_next = na
 bad.fixed_nodes = [None, na, None]
-must_refuse_write(bad, "two_hop_cycle")
+must_refuse_write(bad, "two_hop_cycle", "fixed_nodes[1].children[0].guard_next", "a pointer cycle has no wire form")
 
 # Active guard exposes cycle
 bad = Root()
 bad.enabled = True
 bad.guarded_ptr = self_n
-must_refuse_write(bad, "active_guard_cycle")
+must_refuse_write(bad, "active_guard_cycle", "guarded_ptr.children[0]", "a pointer cycle has no wire form")
+
+# A []*T over the int32 count cap is refused on write. The cap is lowered in
+# the runtime for the check, so the test needs no list of 2**31 elements; a
+# list at the lowered cap still saves.
+import ptrarr._schema.kind_pointer_array as _kpa
+saved_cap = _kpa._MAX_COUNT
+_kpa._MAX_COUNT = 3
+try:
+    at_cap = Root()
+    at_cap.list_nodes = [None, None, None]
+    assert at_cap.measure() == len(at_cap.save())
+    bad = Root()
+    bad.list_nodes = [None, None, None, None]
+    must_refuse_write(bad, "list_over_count", "list_nodes", "length exceeds int32 storage cap")
+    bad = Root()
+    bad.enabled = True
+    bad.guarded_list = [None, None, None, None]
+    must_refuse_write(bad, "guarded_list_over_count", "guarded_list", "length exceeds int32 storage cap")
+finally:
+    _kpa._MAX_COUNT = saved_cap
+
+# The caller's objects are untouched by a refused write.
+assert len(self_n.children) == 1 and self_n.children[0] is self_n
+
+# 7. Two equal nodes built separately stay two nodes; one node referenced
+# twice saves once. Both are held to the engine's bytes.
+sep_wire = good_wires["two_equal_nodes"]
+one_wire = good_wires["one_node_twice"]
+assert sep_wire != one_wire
+sep_val = Root.load(sep_wire)
+assert sep_val.list_nodes[0] is not sep_val.list_nodes[1]
+assert sep_val.list_nodes[0] == sep_val.list_nodes[1]
+one_val = Root.load(one_wire)
+assert one_val.list_nodes[0] is one_val.list_nodes[1]
+built = Root()
+built.list_nodes = [make_node(5), make_node(5)]
+assert built.save() == sep_wire, f"two equal nodes: {built.save().hex()} != {sep_wire.hex()}"
+assert built.measure() == len(sep_wire)
+shared_n = make_node(5)
+built = Root()
+built.list_nodes = [shared_n, shared_n]
+assert built.save() == one_wire, f"one node twice: {built.save().hex()} != {one_wire.hex()}"
+assert built.measure() == len(one_wire)
+
+# 8. Equality and repr hold on cyclic graphs a caller builds.
+cyc_a = make_node(1)
+cyc_a.children = [cyc_a]
+cyc_b = make_node(1)
+cyc_b.children = [cyc_b]
+cyc_c = make_node(2)
+cyc_c.children = [cyc_c]
+assert cyc_a == cyc_b and not (cyc_a != cyc_b)
+assert cyc_a != cyc_c
+cyc_text = repr(cyc_a)
+assert cyc_text.startswith("Node(label=1, ") and "children=[Node(...)]" in cyc_text, cyc_text
+assert repr(Leaf()) == "Leaf(id=0, weight=0)", repr(Leaf())
+
+# 9. A chain far deeper than the recursion limit loads from the engine's wire,
+# saves back to the same bytes, measures, compares equal and reprs. Every walk
+# is counted by the profiler, never timed: its Python frame depth must not
+# grow with the chain, and its calls must double, not more, when the chain
+# doubles.
+import sys
+
+def profiled(fn):
+    state = [0, 0, 0]  # calls, depth, deepest
+    def hook(frame, event, arg):
+        if event == "call":
+            state[0] += 1
+            state[1] += 1
+            if state[1] > state[2]:
+                state[2] = state[1]
+        elif event == "return":
+            state[1] -= 1
+    sys.setprofile(hook)
+    try:
+        result = fn()
+    finally:
+        sys.setprofile(None)
+    return result, state[0], state[2]
+
+assert sorted(chain_wires) == [10000, 20000], sorted(chain_wires)
+assert sys.getrecursionlimit() < 10000
+steps: dict[int, dict[str, int]] = {}
+for n in sorted(chain_wires):
+    wire = chain_wires[n]
+    rep = make_report(9, 9, 9, 9)
+    val, load_calls, load_depth = profiled(lambda: Root.load(wire, report=rep))
+    assert rep.unknown == 0, (n, rep.unknown)
+    node = val.head
+    walked = 0
+    while node is not None:
+        walked += 1
+        assert node.label == walked
+        node = node.children[0] if node.children else None
+    assert walked == n, (n, walked)
+    saved, save_calls, save_depth = profiled(val.save)
+    assert saved == wire, f"chain {n}: the resave differs from the engine's wire"
+    measured, measure_calls, measure_depth = profiled(val.measure)
+    assert measured == len(wire), (n, measured, len(wire))
+    again = Root.load(saved)
+    equal, eq_calls, eq_depth = profiled(lambda: again == val)
+    assert equal is True, f"chain {n}: loaded twice, not equal"
+    text, repr_calls, repr_depth = profiled(lambda: repr(val))
+    assert text.startswith("Root(") and text.count("Node(") == n, (n, text[:80])
+    steps[n] = {
+        "load": load_calls, "save": save_calls, "measure": measure_calls,
+        "eq": eq_calls, "repr": repr_calls,
+    }
+    for walk, depth in (("load", load_depth), ("save", save_depth), ("measure", measure_depth), ("eq", eq_depth), ("repr", repr_depth)):
+        assert depth <= 40, f"chain {n}: {walk} reached a Python frame depth of {depth}"
+    # One differing label at the far end makes the two unequal.
+    tail = again.head
+    while tail.children:
+        tail = tail.children[0]
+    tail.label = -1
+    assert again != val, f"chain {n}: a changed tail still compared equal"
+for walk in ("load", "save", "measure", "eq", "repr"):
+    short, long = steps[10000][walk], steps[20000][walk]
+    assert 1.8 * short <= long <= 2.2 * short, f"{walk}: {short} calls at 10000 nodes, {long} at 20000: not linear"
 
 print("ALL_POINTER_ARRAY_CHECKS_OK")
 `
 
-// TestPythonVtPointerArraysNegativeControl plants three independent faults into
-// copies of the generated Python runtime — dropping the pointer-array bound
-// check, dropping shared-node identity reuse, and dropping field guard gating
-// on write — and verifies that the test probe turns red on every fault.
+// pointerArraysControlPrelude is the head of every control probe: helpers
+// that turn any outcome other than the expected one into an AssertionError
+// whose text starts with the control's own name, so a sabotaged run is red BY
+// NAME and a run red for any other reason (a NameError in the probe, a
+// different refusal) fails the control.
+const pointerArraysControlPrelude = `import ptrarr
+import listdemo
+import tblg1
+from ptrarr import InvalidValue, Node, Other, RangedHolder, Refused, Root
+
+def make_node(label: int = 0) -> Node:
+    nd = Node()
+    nd.label = label
+    return nd
+
+def make_gnode(val: int = 0) -> tblg1.Node:
+    nd = tblg1.Node()
+    nd.value = val
+    return nd
+
+def expect_refused(name, cls, wire, reason, detail):
+    try:
+        cls.load(wire)
+    except Refused as exc:
+        if exc.reason != reason or str(exc) != f"{reason}: {detail}":
+            raise AssertionError(f"{name}: refused as {str(exc)!r}, not {reason}: {detail}")
+        return
+    except Exception as exc:
+        raise AssertionError(f"{name}: raised {type(exc).__name__} {exc}, not Refused {reason}")
+    raise AssertionError(f"{name}: accepted, not refused as {reason}")
+
+def expect_invalid(name, value, path, rule):
+    for fn_name in ("save", "measure"):
+        try:
+            getattr(value, fn_name)()
+        except InvalidValue as exc:
+            if (exc.path, exc.rule) != (path, rule):
+                raise AssertionError(f"{name}: {fn_name} refused at {exc.path!r} for {exc.rule!r}, not at {path!r} for {rule!r}")
+            continue
+        except Exception as exc:
+            raise AssertionError(f"{name}: {fn_name} raised {type(exc).__name__} {exc}, not InvalidValue")
+        raise AssertionError(f"{name}: {fn_name} accepted, not refused at {path!r} for {rule!r}")
+
+def expect_bytes(name, got, want, what):
+    if got != want:
+        raise AssertionError(f"{name}: {what}: wrote {got.hex()}, not {want.hex()}")
+`
+
+// pointerArraysControl is one check's negative control: its probe, the one
+// edit that plants the check out of a copy of the runtime, and the name its
+// red must carry.
+type pointerArraysControl struct {
+	name   string // the subtest, the make target's stem and the probe's label
+	path   string // the runtime file in the generated tree
+	target string // the text the sabotage replaces; it must occur
+	repl   string
+	probe  string // the probe's own lines, after the prelude
+}
+
+// TestPythonVtPointerArraysNegativeControl gives every check this card adds
+// its own control. Each runs its probe under both pinned interpreters twice:
+// on the tree as generated, where it must exit 0 and print its OK line, and on
+// a copy whose runtime has exactly that check planted out, where it must exit
+// nonzero with "AssertionError: <name>:" in its stderr.
 func TestPythonVtPointerArraysNegativeControl(t *testing.T) {
 	t.Parallel()
 
@@ -1146,6 +1426,11 @@ func TestPythonVtPointerArraysNegativeControl(t *testing.T) {
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
+	}
+	m := tabletext.NewModel(u)
+	hostile := map[string][]byte{}
+	for _, hc := range buildHostileCorpus(t, u, m) {
+		hostile[hc.name] = hc.wire
 	}
 	repoRoot, err := pyrun.RepoRoot()
 	if err != nil {
@@ -1180,7 +1465,6 @@ table Guarded
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	sharedFiles, err := Generate(loadNamedUnit(t, "Shared.schema", string(sharedBytes)))
 	if err != nil {
 		t.Fatalf("Generate(Shared.schema): %v", err)
@@ -1189,94 +1473,184 @@ table Guarded
 	if err != nil {
 		t.Fatalf("Generate(G1.schema): %v", err)
 	}
+	hexOf := func(name string) string {
+		w, ok := hostile[name]
+		if !ok {
+			t.Fatalf("hostile case %s missing", name)
+		}
+		return hex.EncodeToString(w)
+	}
 
-	controlProbe := pyrun.ImportPrelude + fmt.Sprintf(`import ptrarr
-import listdemo
-import tblg1
-from ptrarr import Refused, Root
-
-# 1. Bound check on [..4]*Node
-bounded_id = [f.field_id for f in Root.descriptor.fields if f.name == "bounded_nodes"][0]
-over_wire = (
-    bytes([1, 1, 14, 7, 17, 5, 0, 0, 0, 0, 0, 0])
-    + bounded_id.to_bytes(8, "little")
-    + (1).to_bytes(8, "little")
-)
-try:
-    ptrarr.Root.load(over_wire)
-except Refused as exc:
-    assert exc.reason == "count_over_bound", exc.reason
-else:
-    raise SystemExit("negative control failed: count_over_bound accepted")
-
-# 2. Shared node identity on list_shared
-ls_wire = bytes.fromhex(%q)
+	const (
+		pa   = "ptrarr/_schema/kind_pointer_array.py"
+		load = "ptrarr/_schema/load.py"
+	)
+	controls := []pointerArraysControl{
+		{
+			name: "count-over-bound", path: pa,
+			target: `if fd.array_mode != "list" and count > fd.bound:`, repl: `if False:`,
+			probe: `bounded_id = [f.field_id for f in Root.descriptor.fields if f.name == "bounded_nodes"][0]
+over_wire = bytes([1, 1, 14, 7, 17, 5, 0, 0, 0, 0, 0, 0]) + bounded_id.to_bytes(8, "little") + (1).to_bytes(8, "little")
+expect_refused("count-over-bound", Root, over_wire, "count_over_bound", "bounded_nodes: count 5 exceeds bound 4")
+`,
+		},
+		{
+			name: "read-cycle", path: load,
+			target: `if m_state == 1:`, repl: "if m_state == 1:\n            continue\n        if False:",
+			probe: fmt.Sprintf(`expect_refused("read-cycle", Root, bytes.fromhex(%q), "wire_damaged", "a pointer to a node whose descent is still open: a cycle")
+expect_refused("read-cycle", Root, bytes.fromhex(%q), "wire_damaged", "a pointer to a node whose descent is still open: a cycle")
+`, hexOf("self_cycle_in_node_record"), hexOf("two_node_cycle_in_pointer_arrays")),
+		},
+		{
+			name: "wrong-type-target", path: load,
+			target: `if rec_type in ctx.declared_ids:`, repl: `if False:`,
+			probe: fmt.Sprintf(`expect_refused("wrong-type-target", Root, bytes.fromhex(%q), "wire_damaged", "a pointer whose target is not the type its slot requires")
+`, hexOf("declared_wrong_target_type_in_pointer_array")),
+		},
+		{
+			name: "index-past-node-table", path: load,
+			target: `if index - 1 >= n:`, repl: "if index - 1 >= n:\n                continue\n            if False:",
+			probe: fmt.Sprintf(`expect_refused("index-past-node-table", Root, bytes.fromhex(%q), "wire_damaged", "a pointer index past the node table")
+`, hexOf("pointer_index_past_node_table")),
+		},
+		{
+			name: "element-kind", path: pa,
+			target: `if ek != _ELEM_KIND_POINTER:`, repl: `if False:`,
+			probe: fmt.Sprintf(`expect_refused("element-kind", Root, bytes.fromhex(%q), "kind_mismatch", "list_nodes: array element kind 4 is not 17")
+`, hexOf("element_kind_mismatch_int32_for_pointer")),
+		},
+		{
+			name: "shared-identity", path: "listdemo/_schema/save.py",
+			target: `if key in indices:`, repl: `if False:`,
+			probe: fmt.Sprintf(`ls_wire = bytes.fromhex(%q)
 album = listdemo.Album.load(ls_wire)
-assert album.save() == ls_wire, "shared node written twice"
-
-# 3. Inactive guarded field on guard_false_no_edge
-gf_wire = bytes.fromhex(%q)
-g = tblg1.Guarded()
+if album.photos[0] is not album.photos[1]:
+    raise AssertionError("shared-identity: the load did not share the node")
+expect_bytes("shared-identity", album.save(), ls_wire, "a shared node")
+`, hex.EncodeToString(listSharedWire)),
+		},
+		{
+			name: "field-guard", path: "tblg1/_schema/save.py",
+			target: `if not field.guard_holds(value):`, repl: `if False:`,
+			probe: fmt.Sprintf(`g = tblg1.Guarded()
 g.at_rest = False
 g.always = make_gnode(1)
 g.resting = make_gnode(2)
-assert g.save() == gf_wire, "inactive guarded pointer leaked onto wire"
-`, hex.EncodeToString(listSharedWire), hex.EncodeToString(guardFalseWire))
-
-	sabotages := []struct {
-		name   string
-		path   string
-		target string
-		repl   string
-	}{
-		{
-			name:   "drop_array_bound_check",
-			path:   "ptrarr/_schema/kind_pointer_array.py",
-			target: `if fd.array_mode != "list" and count > fd.bound:`,
-			repl:   `if False:`,
+expect_bytes("field-guard", g.save(), bytes.fromhex(%q), "an inactive guarded pointer")
+`, hex.EncodeToString(guardFalseWire)),
 		},
 		{
-			name:   "drop_shared_node_identity",
-			path:   "listdemo/_schema/save.py",
-			target: `if key in ctx.indices:`,
-			repl:   `if False:`,
+			name: "write-not-list", path: pa,
+			target: `if type(value) is not list:`, repl: `if False:`,
+			probe: `bad = Root()
+bad.list_nodes = (make_node(1),)
+expect_invalid("write-not-list", bad, "list_nodes", "not a list")
+`,
 		},
 		{
-			name:   "drop_field_guard_check",
-			path:   "tblg1/_schema/save.py",
-			target: `if not field.guard_holds(value):`,
-			repl:   `if False:`,
+			name: "write-fixed-length", path: pa,
+			target: `if n != fd.bound:`, repl: `if False:`,
+			probe: `bad = Root()
+bad.fixed_nodes = [None, None]
+expect_invalid("write-fixed-length", bad, "fixed_nodes", "length 2 is not 3")
+`,
+		},
+		{
+			name: "write-counted-range", path: pa,
+			target: `if n < fd.min_count or n > fd.bound:`, repl: `if False:`,
+			probe: `bad = RangedHolder()
+bad.window = [None]
+expect_invalid("write-counted-range", bad, "window", "length 1 is outside [2, 4]")
+bad = Root()
+bad.bounded_nodes = [None, None, None, None, None]
+expect_invalid("write-counted-range", bad, "bounded_nodes", "length 5 is outside [0, 4]")
+`,
+		},
+		{
+			name: "write-over-count", path: pa,
+			target: `elif n > _MAX_COUNT:`, repl: `elif False:`,
+			probe: `import ptrarr._schema.kind_pointer_array as kpa
+kpa._MAX_COUNT = 3
+bad = Root()
+bad.list_nodes = [None, None, None, None]
+expect_invalid("write-over-count", bad, "list_nodes", "length exceeds int32 storage cap")
+`,
+		},
+		{
+			name: "write-non-node", path: pa,
+			target: `raise InvalidValue(where, f"not a {fd.target} or None")`, repl: `pass`,
+			probe: `bad = Root()
+bad.list_nodes = [make_node(1), 123]
+expect_invalid("write-non-node", bad, "list_nodes[1]", "not a Node or None")
+`,
+		},
+		{
+			name: "write-wrong-type-node", path: pa,
+			target: `if isinstance(other, TableDesc):`, repl: `if False:`,
+			probe: `bad = Root()
+bad.list_nodes = [Other()]
+expect_invalid("write-wrong-type-node", bad, "list_nodes[0]", "Other is not a Node or None")
+`,
+		},
+		{
+			name: "write-cycle", path: "ptrarr/_schema/save.py",
+			target: `if key in onstack:`, repl: `if False:`,
+			probe: `self_n = make_node(1)
+self_n.children = [self_n]
+bad = Root()
+bad.list_nodes = [make_node(2), self_n]
+expect_invalid("write-cycle", bad, "list_nodes[1].children[0]", "a pointer cycle has no wire form")
+`,
 		},
 	}
 
-	for _, s := range sabotages {
-		t.Run(s.name, func(t *testing.T) {
+	pins := []struct {
+		name   string
+		python string
+	}{
+		{"current", pyrun.Interpreter(t)},
+		{"floor", pyrun.Floor(t)},
+	}
+	for _, c := range controls {
+		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			dir := t.TempDir()
-			writeTree(t, dir, files)
-			writeTree(t, dir, sharedFiles)
-			writeTree(t, dir, g1Files)
+			probe := pyrun.ImportPrelude + pointerArraysControlPrelude + c.probe + fmt.Sprintf("print(%q)\n", "CONTROL_OK "+c.name)
+			inputs := map[string][]byte{"control.py": []byte(probe)}
+			want := "AssertionError: " + c.name + ":"
+			for _, pin := range pins {
+				clean := t.TempDir()
+				writeTree(t, clean, files)
+				writeTree(t, clean, sharedFiles)
+				writeTree(t, clean, g1Files)
+				stdout, stderr, runErr := pyrun.Try(t, pin.python, clean, "control.py", inputs)
+				if runErr != nil || !strings.Contains(stdout, "CONTROL_OK "+c.name+"\n") {
+					t.Fatalf("%s: the probe is red with no fault planted (%v):\nstdout:\n%s\nstderr:\n%s", pin.name, runErr, stdout, stderr)
+				}
 
-			fullPath := filepath.Join(dir, filepath.FromSlash(s.path))
-			raw, err := os.ReadFile(fullPath)
-			if err != nil {
-				t.Fatalf("read %s: %v", s.path, err)
+				dir := t.TempDir()
+				writeTree(t, dir, files)
+				writeTree(t, dir, sharedFiles)
+				writeTree(t, dir, g1Files)
+				fullPath := filepath.Join(dir, filepath.FromSlash(c.path))
+				raw, err := os.ReadFile(fullPath)
+				if err != nil {
+					t.Fatalf("read %s: %v", c.path, err)
+				}
+				if !strings.Contains(string(raw), c.target) {
+					t.Fatalf("sabotage target %q not found in %s", c.target, c.path)
+				}
+				mutated := strings.ReplaceAll(string(raw), c.target, c.repl)
+				if err := os.WriteFile(fullPath, []byte(mutated), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				stdout, stderr, runErr = pyrun.Try(t, pin.python, dir, "control.py", inputs)
+				if runErr == nil {
+					t.Fatalf("%s: sabotage %s survived; the probe exited 0:\n%s", pin.name, c.name, stdout)
+				}
+				if !strings.Contains(stderr, want) {
+					t.Fatalf("%s: sabotage %s went red, but not by name (want %q in stderr):\n%s", pin.name, c.name, want, stderr)
+				}
 			}
-			if !strings.Contains(string(raw), s.target) {
-				t.Fatalf("sabotage target %q not found in %s", s.target, s.path)
-			}
-			mutated := strings.ReplaceAll(string(raw), s.target, s.repl)
-			if err := os.WriteFile(fullPath, []byte(mutated), 0o644); err != nil {
-				t.Fatal(err)
-			}
-
-			_, stderr, runErr := pyrun.Try(t, pyrun.Floor(t), dir, "control.py", map[string][]byte{
-				"control.py": []byte(controlProbe),
-			})
-			if runErr == nil {
-				t.Fatalf("sabotage %s survived; probe exited 0", s.name)
-			}
-			_ = stderr
 		})
 	}
 }

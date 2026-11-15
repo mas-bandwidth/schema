@@ -13,6 +13,7 @@ from . import descriptor, kinds
 from . import (
     kind_bool,
     kind_int,
+    kind_map,
     kind_pointer,
     kind_pointer_array,
     kind_table,
