@@ -2337,6 +2337,8 @@ class JsonWriter:
     blobs:[JsonBlobCount] = []
     next:int = 0
     err:string = ""
+    // found is the nodes the record the first pass is walking names
+    found:[Record] = []
 
 def j_indents() -> [string]:
     let out:[string] = []
@@ -2365,16 +2367,51 @@ def j_fail(w:JsonWriter, why:string) -> bool:
         w.err = why
     return false
 
+// A record's entry is found through its own mark (Record.at), never by a
+// scan of the entries collected so far; json_write clears every mark.
 def j_node_entry(w:JsonWriter, rec:Record) -> JsonNodeCount:
-    for(w.nodes) x:
-        if x.rec == rec:
-            return x
+    if rec.at > 0:
+        return w.nodes[rec.at - 1]
     let x = JsonNodeCount { rec: rec }
     push(w.nodes, x)
+    rec.at = length(w.nodes)
     return x
 
 // THE FIRST PASS (§16.7): every slot that names a node counted, a node whose
-// descent is still open refused as the cycle it is.
+// descent is still open refused as the cycle it is. A CHAIN IS NOT A DEPTH
+// (§3.1; docs/SECURITY.md): j_count_record collects the nodes one record's
+// by-value closure names into w.found, and j_count_graph follows them with
+// its own stack, so a pointer chain of any length costs no call stack.
+def j_count_graph(w:JsonWriter, root:Record) -> bool:
+    w.found = []
+    j_count_record(w, root)
+    let frames:[[Record]] = [w.found]
+    let next:[int] = [0]
+    let entries:[JsonNodeCount] = [j_node_entry(w, root)]
+    while length(frames) > 0:
+        let top = length(frames) - 1
+        let es = frames[top]
+        if next[top] >= length(es):
+            entries[top].open = false
+            pop(frames)
+            pop(next)
+            pop(entries)
+        else:
+            let node = es[next[top]]
+            next[top] = next[top] + 1
+            let x = j_node_entry(w, node)
+            x.count++
+            if x.open:
+                return j_fail(w, "data cycle: a " + node.d.name + " reaches a node whose descent is still open (docs/SPEC-TABLES.md §3.1, §16.7)")
+            if x.count == 1:
+                x.open = true
+                w.found = []
+                j_count_record(w, node)
+                push(frames, w.found)
+                push(next, 0)
+                push(entries, x)
+    return true
+
 def j_count_record(w:JsonWriter, rec:Record) -> bool:
     for(rec.fields) sl:
         if json_guard_holds(rec, sl) and (sl.fd.present == "" or sl.present):
@@ -2388,13 +2425,11 @@ def j_count_field(w:JsonWriter, sl:Slot) -> bool:
     if s == "sblob" or s == "bblob":
         let n = sl.cell.blob_node
         if sl.cell.blob and n:
-            var found = false
-            for(w.blobs) b:
-                if b.node == n:
-                    b.count++
-                    found = true
-            if not found:
+            if n.at > 0:
+                w.blobs[n.at - 1].count++
+            else:
                 push(w.blobs, JsonBlobCount { node: n, count: 1 })
+                n.at = length(w.blobs)
         return true
     if s == "ptr":
         return j_count_node(w, sl.cell.node)
@@ -2439,18 +2474,8 @@ def j_count_cell(w:JsonWriter, cell:Value, f:FieldDescriptor) -> bool:
     return true
 
 def j_count_node(w:JsonWriter, node:Record?) -> bool:
-    if not node:
-        return true
-    let x = j_node_entry(w, node)
-    x.count++
-    if x.open:
-        return j_fail(w, "data cycle: a " + node.d.name + " reaches a node whose descent is still open (docs/SPEC-TABLES.md §3.1, §16.7)")
-    if x.count > 1:
-        return true
-    x.open = true
-    if not j_count_record(w, node):
-        return false
-    x.open = false
+    if node:
+        push(w.found, node)
     return true
 
 def j_write_value(w:JsonWriter, rec:Record, depth:int) -> bool:
@@ -2530,9 +2555,8 @@ def j_write_field(w:JsonWriter, sl:Slot, depth:int) -> bool:
             return true
         let n = sl.cell.blob_node
         if n:
-            for(w.blobs) b:
-                if b.node == n and b.count > 1:
-                    return j_fail(w, "field " + f.name + " names a byte buffer another slot names: a shared blob has no spelling this form can carry (docs/SPEC-TABLES.md §16.7)")
+            if n.at > 0 and w.blobs[n.at - 1].count > 1:
+                return j_fail(w, "field " + f.name + " names a byte buffer another slot names: a shared blob has no spelling this form can carry (docs/SPEC-TABLES.md §16.7)")
         if s == "sblob":
             j_write_string(w, blob)
         else:
@@ -2847,9 +2871,18 @@ def json_write(rec:Record) -> string, string:
     if not rec.d.json_form:
         return "", "json_form_not_carried"
     let w = JsonWriter {}
+    let text, why = j_write_root(w, rec)
+    for(w.nodes) x:
+        x.rec.at = 0
+    for(w.blobs) b:
+        b.node.at = 0
+    return text, why
+
+// j_write_root is the two passes, while each node's mark names its entry.
+def j_write_root(w:JsonWriter, rec:Record) -> string, string:
     let root = j_node_entry(w, rec)
     root.open = true
-    if not j_count_record(w, rec):
+    if not j_count_graph(w, rec):
         return "", w.err
     if not j_write_value(w, rec, 0) or w.err != "":
         return "", w.err
