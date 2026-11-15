@@ -51,5 +51,5 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 }
 
 func init() {
-	registerBuiltin(pythonTarget{}, false, false, false, false)
+	registerBuiltin(pythonTarget{}, false, true, true, false)
 }

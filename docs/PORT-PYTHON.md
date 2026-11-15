@@ -289,11 +289,20 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
-  the kinds this cut carries. A later card adds its module and one registration
-  line, never an edit to the body walk. `kind_unsupported.py` is the named
-  placeholder for a construct whose descriptor exists but whose codec has not
-  landed; a read or write that reaches it refuses by name.
+  `kind_bool.py`, `kind_int.py`, `kind_table.py`, `kind_pointer.py` and
+  `kind_union.py` register the kinds this cut carries. A later card adds its
+  module and one registration line; the body walk itself changes only for a
+  kind that owns a graph edge, as a union's selected table or pointer arm does.
+  `kind_unsupported.py` is the named placeholder for a construct whose
+  descriptor exists but whose codec has not landed; a read or write that
+  reaches it refuses by name.
+- **A union arm is a field line.** `kind_union.py` frames the arm id, the
+  arm's kind and its `L`, and reads or writes the payload through the arm's own
+  kind module: a table body, a scalar, a pointer index or a nested union. An
+  array of unions is kind `14` over element kind `15`, one union payload per
+  element in place, a `None` element the single zero reference. The selected
+  table and pointer arms are graph edges, so the writer numbers them and the
+  validator descends them.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
@@ -308,10 +317,11 @@ generated class per table and per map entry, each with its descriptor
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
-  `kind_unsupported.py` until their cards land.
+  by-value tables, `*T` pointers to tables, table-side unions whose arms are
+  those kinds, and bounded arrays of those unions, for both the fixed and the
+  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and every
+  other array element kind have descriptors in this cut and refuse by name
+  through `kind_unsupported.py` until their cards land.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.

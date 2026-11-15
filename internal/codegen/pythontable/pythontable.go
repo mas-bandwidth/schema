@@ -268,13 +268,50 @@ func emitModule(u *ir.Unit, base string, tables []*ir.Struct, unions []*ir.Union
 			}
 		}
 	}
-	for _, un := range unions {
+	for _, un := range orderUnions(unions) {
 		emitUnion(&b, un)
 	}
 	for _, st := range tables {
 		emitTable(&b, u, st)
 	}
 	return b.String()
+}
+
+// orderUnions emits a union whose arm names another union after that arm's
+// union: a generated union's constructor builds every payload arm at its
+// default, so the class it names must already be registered.
+func orderUnions(unions []*ir.Union) []*ir.Union {
+	byName := make(map[string]*ir.Union, len(unions))
+	for _, un := range unions {
+		byName[un.Name] = un
+	}
+	sorted := append([]*ir.Union(nil), unions...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
+	out := make([]*ir.Union, 0, len(sorted))
+	done := map[string]bool{}
+	active := map[string]bool{}
+	var emit func(un *ir.Union)
+	emit = func(un *ir.Union) {
+		if done[un.Name] || active[un.Name] {
+			return
+		}
+		active[un.Name] = true
+		for _, v := range un.Variants {
+			if v.F == nil {
+				continue
+			}
+			if ref, ok := v.F.Type.Ref.(*ir.Union); ok && byName[ref.Name] != nil {
+				emit(byName[ref.Name])
+			}
+		}
+		active[un.Name] = false
+		done[un.Name] = true
+		out = append(out, un)
+	}
+	for _, un := range sorted {
+		emit(un)
+	}
+	return out
 }
 
 func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
@@ -365,8 +402,10 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "            optional=%s,\n", pyBool(f.Type.Optional))
 		fmt.Fprintf(b, "            array=%s,\n", pyBool(f.Array != ir.ArrayNone))
 		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
+		fmt.Fprintf(b, "            array_min=%d,\n", f.ArrayMin)
+		fmt.Fprintf(b, "            array_fixed=%s,\n", pyBool(f.Array == ir.ArrayFixed))
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
-		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
+		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(st.Name, f))
 		fmt.Fprintf(b, "        ),\n")
 	}
 	if len(st.Fields) == 1 {
@@ -567,12 +606,12 @@ func emitUnion(b *strings.Builder, un *ir.Union) {
 	fmt.Fprintf(b, "%s.descriptor = UnionDesc(\n", un.Name)
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(un.Name))
 	b.WriteString("    arms=(\n")
-	for _, v := range un.Variants {
+	for tag, v := range un.Variants {
 		wire := v.Name
 		if v.WasName != "" {
 			wire = v.WasName
 		}
-		kind := 0
+		kind := ir.TableKindNoPayload
 		target := ""
 		pointer := false
 		if v.F != nil {
@@ -582,15 +621,71 @@ func emitUnion(b *strings.Builder, un *ir.Union) {
 		}
 		fmt.Fprintf(b, "        ArmDesc(\n")
 		fmt.Fprintf(b, "            name=%s,\n", strconv.Quote(v.Name))
+		fmt.Fprintf(b, "            tag=%d,\n", tag+1)
 		fmt.Fprintf(b, "            arm_id=%s,\n", hex64(ir.TableWireId(wire)))
 		fmt.Fprintf(b, "            kind=%d,\n", kind)
 		fmt.Fprintf(b, "            target=%s,\n", strconv.Quote(target))
 		fmt.Fprintf(b, "            pointer=%s,\n", pyBool(pointer))
+		fmt.Fprintf(b, "            field=%s,\n", armFieldDesc(v, tag+1))
 		fmt.Fprintf(b, "        ),\n")
 	}
 	b.WriteString("    ),\n")
 	b.WriteString(")\n")
 	fmt.Fprintf(b, "register_union(%s)\n\n\n", un.Name)
+}
+
+// armFieldDesc is one arm's field line as data: the same descriptor facts a
+// field carries, with the arm id standing in for the field id (docs/
+// SPEC-TABLES.md §2.6, §3). A payload-free arm has no field line.
+func armFieldDesc(v ir.UnionVariant, tag int) string {
+	f := v.F
+	if f == nil {
+		return "None"
+	}
+	wire := v.Name
+	if v.WasName != "" {
+		wire = v.WasName
+	}
+	lo, hi := intRange(f)
+	mapEntry := ""
+	if f.MapEntry != nil {
+		mapEntry = f.MapEntry.Name
+	}
+	return "FieldDesc(" +
+		"name=" + strconv.Quote(v.Name) +
+		", field_id=" + hex64(ir.TableWireId(wire)) +
+		", kind=" + strconv.Itoa(ir.TableWireFieldKind(f)) +
+		", codec=" + strconv.Quote(codecOf(f)) +
+		", ordinal=" + strconv.Itoa(tag) +
+		", lo=" + lo +
+		", hi=" + hi +
+		", target=" + strconv.Quote(targetName(f)) +
+		", map_entry=" + strconv.Quote(mapEntry) +
+		", pointer=" + pyBool(f.Type.Pointer) +
+		", optional=" + pyBool(f.Type.Optional) +
+		", array=" + pyBool(f.Array != ir.ArrayNone) +
+		", bound=" + strconv.FormatInt(f.ArrayBound, 10) +
+		", array_min=" + strconv.FormatInt(f.ArrayMin, 10) +
+		", array_fixed=" + pyBool(f.Array == ir.ArrayFixed) +
+		", key_enum=" + strconv.Quote(f.KeyEnum) +
+		", default=" + armDefault(f) +
+		")"
+}
+
+// armDefault is the value an arm's field descriptor carries. An arm is always
+// written when selected, so the descriptor's default is read by no walk; a
+// table or union default would also name a class the module has not built yet.
+func armDefault(f *ir.Field) string {
+	switch codecOf(f) {
+	case "bool":
+		return pyBool(f.HasDefault && f.DefBool)
+	case "int":
+		if f.HasDefault && f.DefInt != nil {
+			return f.DefInt.String()
+		}
+		return "0"
+	}
+	return "None"
 }
 
 func packageInit(u *ir.Unit, bases []string, byFile map[string][]*ir.Struct, unionsByFile map[string][]*ir.Union) string {
@@ -651,7 +746,13 @@ func codecOf(f *ir.Field) string {
 		}
 		return "unsupported"
 	}
-	if f.Array != ir.ArrayNone || f.IsMap() || f.KeyEnum != "" || f.Type.Optional {
+	if f.Type.Optional || f.IsMap() || f.KeyEnum != "" {
+		return "unsupported"
+	}
+	if f.Array != ir.ArrayNone {
+		if _, ok := f.Type.Ref.(*ir.Union); ok && f.Type.Kind == ir.TNamed {
+			return "union_array"
+		}
 		return "unsupported"
 	}
 	switch f.Type.Kind {
@@ -660,8 +761,13 @@ func codecOf(f *ir.Field) string {
 	case ir.TInt, ir.TFixed, ir.TBits:
 		return "int"
 	case ir.TNamed:
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
-			return "table"
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if ref.IsTable {
+				return "table"
+			}
+		case *ir.Union:
+			return "union"
 		}
 	}
 	return "unsupported"
@@ -790,7 +896,7 @@ func valueDefault(f *ir.Field) string {
 	return "None"
 }
 
-func descriptorDefault(f *ir.Field) string {
+func descriptorDefault(owner string, f *ir.Field) string {
 	switch codecOf(f) {
 	case "bool":
 		return pyBool(f.HasDefault && f.DefBool)
@@ -799,6 +905,8 @@ func descriptorDefault(f *ir.Field) string {
 			return f.DefInt.String()
 		}
 		return "0"
+	case "union", "union_array":
+		return defaultExpr(owner, f)
 	}
 	return "None"
 }
