@@ -142,7 +142,7 @@ _M.ReadHandle <- function(stream, value) {
 _M.WriteHandle <- function(stream, value) {
   _h.value = value.ObjectId;
   if (!stream.serializeInt(_h, 0, 9999)) return false;
-  if (typeof value.ObjectSequence != "integer") return false;
+  if (typeof value.ObjectSequence != "integer" || value.ObjectSequence < 0 || value.ObjectSequence > 255) return false;
   _h.value = value.ObjectSequence;
   if (!stream.serializeBits(_h, 8)) return false;
   return true;
@@ -502,7 +502,7 @@ _M.ReadInputPacket <- function(stream, value) {
 
 // WriteInputPacket writes value in declared order; false on a refused value.
 _M.WriteInputPacket <- function(stream, value) {
-  if (typeof value.SynchronizeSequence != "integer") return false;
+  if (typeof value.SynchronizeSequence != "integer" || value.SynchronizeSequence < 0 || value.SynchronizeSequence > 65535) return false;
   _h.value = value.SynchronizeSequence;
   if (!stream.serializeBits(_h, 16)) return false;
   if (typeof value.CurrentFrame != "integer") return false;

@@ -1205,9 +1205,13 @@ def j_scan_unit(r:JsonReader) -> string, bool, bool:
     return substring(t, at, got), false, true
 
 // Read a whole decoded string or refuse at its bound. Capacity < 0 is
-// unbounded; stored strings also forbid zero. The middle result is retained
-// for scanner call compatibility and is always false: no prefix is published.
-def j_scan_text(r:JsonReader, capacity:int, store:bool) -> string, bool, bool:
+// unbounded. zero is the U+0000 rule (§16.3): 0 compares only and holds none,
+// 1 is a stored string (text_holds_zero), 2 is an object key or a string the
+// walk only SKIPS, held to the rule a placed string is held to (§4, §16.3);
+// no field holds it, so its refusal is plain malformed. The middle result is
+// retained for scanner call compatibility and is always false: no prefix is
+// published.
+def j_scan_text(r:JsonReader, capacity:int, zero:int) -> string, bool, bool:
     if j_peek(r) != '\"':
         j_refuse(r, "kind_mismatch")
         return "", false, false
@@ -1236,9 +1240,12 @@ def j_scan_text(r:JsonReader, capacity:int, store:bool) -> string, bool, bool:
             return "", false, false
         if done:
             return concat_string(parts, ""), false, true
-        if store and length(unit) == 1 and unit[0] == 0:
-            r.zero = true
-            j_refuse(r, "text_holds_zero")
+        if zero != 0 and length(unit) == 1 and unit[0] == 0:
+            if zero == 1:
+                r.zero = true
+                j_refuse(r, "text_holds_zero")
+            else:
+                j_refuse(r, "malformed")
             return "", false, false
         if capacity >= 0 and length(unit) > capacity - size:
             j_refuse(r, "length_over_bound")
@@ -1249,10 +1256,10 @@ def j_scan_text(r:JsonReader, capacity:int, store:bool) -> string, bool, bool:
 
 
 def j_scan_string(r:JsonReader, capacity:int) -> string, bool, bool:
-    return j_scan_text(r, capacity, false)
+    return j_scan_text(r, capacity, 0)
 
 def j_scan_stored(r:JsonReader, capacity:int) -> string, bool, bool:
-    return j_scan_text(r, capacity, true)
+    return j_scan_text(r, capacity, 1)
 
 // j_decode_utf8 is the code point of one well-formed UTF-8 unit.
 def j_decode_utf8(u:string) -> int:
@@ -1336,18 +1343,13 @@ def j_scan_number(r:JsonReader) -> string, bool, bool:
         return "", false, false
     return substring(r.text, start, r.pos - start), integral, true
 
-// j_skip_string steps over one string the walk does not keep.
+// j_skip_string steps over one string the walk does not keep, held to the
+// text rules of a placed string (§4, §16.3: skipped is not unread).
 def j_skip_string(r:JsonReader) -> bool:
     if j_peek(r) != '\"':
         return j_refuse(r, "malformed")
-    r.pos++
-    while true:
-        let _, done, ok = j_scan_unit(r)
-        if not ok:
-            return false
-        if done:
-            return true
-    return false
+    let _, clamped, ok = j_scan_text(r, -1, 2)
+    return ok and not clamped
 
 
 def j_skip_value(r:JsonReader, depth:int) -> bool:
@@ -1394,7 +1396,7 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
             return false
         var keyed = false
         if close == '}':
-            let key, _, ok = j_scan_string(r, json_max_key)
+            let key, _, ok = j_scan_text(r, json_max_key, 2)
             if not ok:
                 return false
             push(keys, key)
@@ -1540,7 +1542,7 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
                 return j_required(r, rec, seen)
             if c == 0:
                 return j_refuse(r, "malformed")
-            let k, _, ok = j_scan_string(r, json_max_key)
+            let k, _, ok = j_scan_text(r, json_max_key, 2)
             if not ok:
                 return false
             if j_peek(r) != ':':
@@ -1825,7 +1827,7 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
         if c == 0:
             r.bad = true
             return false
-        let key, _, ok = j_scan_string(r, json_max_key)
+        let key, _, ok = j_scan_text(r, json_max_key, 2)
         if not ok:
             return false
         push(seen, key)
@@ -2179,7 +2181,7 @@ def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> boo
     if j_peek(r) == '}':
         r.pos++
         return true
-    let key, _, ok = j_scan_string(r, json_max_key)
+    let key, _, ok = j_scan_text(r, json_max_key, 2)
     if not ok:
         return false
     if j_peek(r) != ':':
@@ -2306,7 +2308,7 @@ def j_read_pointer_cell(r:JsonReader, cell:Value, tname:string, depth:int) -> bo
     if c == 0:
         r.bad = true
         return false
-    let key, _, ok = j_scan_string(r, json_max_key)
+    let key, _, ok = j_scan_text(r, json_max_key, 2)
     if not ok:
         return false
     if j_peek(r) != ':':
@@ -2745,6 +2747,22 @@ def j_array_count(sl:Slot) -> int:
         return sl.count
     return f.bound
 
+// THE WRITE CONTRACT (docs/SPEC.md §5.1 rows 1 to 4 and 10): the writer
+// refuses, in every build, a value its declaration does not admit, as
+// invalid_value, so it never writes a text its own json_read refuses. Each
+// value is checked once, where the writer branches on its kind: a scalar by
+// scalar_admitted (the save's own test), a counted array's count against its
+// bounds and its elements, a string(N) or bytes(N) length against N, and a
+// map key that is admitted and appears once.
+def j_count_admitted(sl:Slot, count:int) -> bool:
+    let f = sl.fd
+    if f.array == "counted" and (count < f.min or count > f.bound):
+        return false
+    return count >= 0 and count <= length(sl.elems)
+
+def j_length_admitted(f:FieldDescriptor, s:string) -> bool:
+    return (f.s != "str" and f.s != "bytes") or length(s) <= f.bound
+
 def j_write_field(w:JsonWriter, sl:Slot, depth:int) -> bool:
     let f = sl.fd
     let s = f.s
@@ -2763,9 +2781,13 @@ def j_write_field(w:JsonWriter, sl:Slot, depth:int) -> bool:
             j_write_base64(w, blob)
         return true
     if s == "text" or s == "str":
+        if not j_length_admitted(f, sl.cell.s):
+            return j_fail(w, "invalid_value")
         j_write_string(w, sl.cell.s)
         return true
     if s == "bytes":
+        if not j_length_admitted(f, sl.cell.s):
+            return j_fail(w, "invalid_value")
         j_write_base64(w, sl.cell.s)
         return true
     if s == "map":
@@ -2774,6 +2796,8 @@ def j_write_field(w:JsonWriter, sl:Slot, depth:int) -> bool:
         if f.array == "keyed":
             return j_write_keyed(w, sl, depth)
         let count = j_array_count(sl)
+        if not j_count_admitted(sl, count):
+            return j_fail(w, "invalid_value")
         if count == 0:
             j_raw(w, "[]")
             return true
@@ -2791,6 +2815,8 @@ def j_write_field(w:JsonWriter, sl:Slot, depth:int) -> bool:
                     let v = t.fields[0]
                     if v.fd.present != "" and not v.present:
                         j_raw(w, "null")
+                    elif not j_length_admitted(v.fd, v.cell.s):
+                        return j_fail(w, "invalid_value")
                     else:
                         j_write_string(w, v.cell.s)
             elif not j_write_scalar(w, sl.elems[i], e, depth + 1):
@@ -2812,9 +2838,13 @@ def j_write_map(w:JsonWriter, sl:Slot, depth:int) -> bool:
         if i > 0:
             j_raw(w, ",")
         j_line(w, depth + 1)
+        if i > 0 and j_entry_order(kf, entries[i - 1], v) == 0:
+            return j_fail(w, "invalid_value")
         let entry = v.tab
         if entry:
             let k = entry.fields[0]
+            if not j_length_admitted(kf, k.cell.s) or not (key_is_string(kf) or scalar_admitted(kf, j_kind(kf), k.cell)):
+                return j_fail(w, "invalid_value")
             if key_is_string(kf):
                 j_write_string(w, k.cell.s)
             elif kf.s == "int" and kf.signed and not j_is_fixed(kf):
@@ -2928,6 +2958,8 @@ def j_write_scalar(w:JsonWriter, cell:Value, f:FieldDescriptor, depth:int) -> bo
         j_raw(w, "]")
         return true
     let kind = j_kind(f)
+    if kind != 10 and kind != 11 and not scalar_admitted(f, kind, cell):
+        return j_fail(w, "invalid_value")
     if kind == 5:
         // int64 is wider than 32 bits: written as a string of digits (§16.2)
         j_write_string(w, string(cell.i))
@@ -2950,6 +2982,8 @@ def j_write_scalar(w:JsonWriter, cell:Value, f:FieldDescriptor, depth:int) -> bo
         let v = cell.f
         if v != v or j_is_inf(v):
             return j_fail(w, "a non-finite float has no JSON spelling (docs/SPEC-TABLES.md §16.2)")
+        if not scalar_admitted(f, kind, cell):
+            return j_fail(w, "invalid_value")
         j_raw(w, j_float_text(v, kind == 10))
         return true
     if kind == 36:

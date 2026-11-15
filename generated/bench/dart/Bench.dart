@@ -2127,6 +2127,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (32 - scratchBits);
   }
+  assert(value.clientId >= 0);
+  assert(value.clientId <= 4294967295);
   v = value.sessionId;
   scratch |= v << scratchBits;
   scratchBits += 64;
@@ -2385,6 +2387,11 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   }
   assert(value.playerNameLength >= 0);
   assert(value.playerNameLength <= 15);
+  assert(Schema.utf8Valid(value.playerName, value.playerNameLength));
+  // an interior null is content the write refuses (SPEC §4.7)
+  for (var i0 = 0; i0 < value.playerNameLength; i0++) {
+    assert(value.playerName[i0] != 0);
+  }
   v =
       value.loadout[0] |
       (value.loadout[1] << 8) |

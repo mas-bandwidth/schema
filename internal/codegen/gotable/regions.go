@@ -23,6 +23,21 @@ func (g *tableGen) storageName(n string) string {
 	}
 	return storageName(g.unit, n)
 }
+
+// declaredTableNames lists every table the unit DECLARES, in a stable order:
+// a node record's type is checked against what the reader declares, not only
+// what a particular root's pointers reach (docs/SPEC-TABLES.md §3.1).
+func declaredTableNames(u *ir.Unit) []string {
+	names := make([]string, 0, len(u.Tables))
+	for name, st := range u.Tables {
+		if st != nil && st.IsTable && !st.IsMapEntry() {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names
+}
+
 func pointerTargetId(f *ir.Field) uint64 {
 	if !f.Type.Pointer {
 		return 0
@@ -46,13 +61,12 @@ func (g *tableGen) typeCodecColumns(st *ir.Struct) string {
 	columns += fmt.Sprintf(", CookSize:%d, CookAlign:%d", ml.Size, ir.CookNodeAlign(g.unit, st))
 
 	if g.regional && ir.VariableTables(g.unit)[st.Name] {
-		var nodes strings.Builder
-		nodes.WriteString(", NodeType:func(id uint64)*TableTypeInfo{switch id {")
-		for _, node := range ir.PointerReachable(st) {
-			fmt.Fprintf(&nodes, "case 0x%016x:return %sTableType();", ir.TableWireId(node.WireName()), node.Name)
-		}
-		nodes.WriteString("};return nil}")
-		columns += nodes.String()
+		// A record's TYPE is what the reader DECLARES, not only what a
+		// pointer below this root happens to reach: a record of a declared
+		// type that is not the type a slot requires is damage, while one of
+		// a type the reader cannot name is the lawful newer-writer case
+		// (docs/SPEC-TABLES.md §3.1).
+		columns += ", NodeType:tableDeclaredType"
 	}
 	return columns
 }
@@ -155,6 +169,15 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 		g.pf("case %d:return %sTableType();", i+1, name)
 	}
 	g.pf("};return nil}\n")
+	var declared strings.Builder
+	declared.WriteString("var tableDeclaredTypes = map[uint64]*TableTypeInfo{")
+	for _, name := range declaredTableNames(g.unit) {
+		st := g.unit.Tables[name]
+		fmt.Fprintf(&declared, "0x%016x: %sTableType(), ", ir.TableWireId(st.WireName()), st.Name)
+	}
+	declared.WriteString("}\n")
+	g.pf("%s", declared.String())
+	g.pf("func tableDeclaredType(id uint64)*TableTypeInfo{return tableDeclaredTypes[id]}\n")
 	cycle := tableCycleSource
 	edges := tableSourceFunction(tableRegionSource, "func tableRegionEdges(") + tableSourceFunction(tableRegionSource, "func tableRegionValueEdges(")
 	edges = tableSourceReplace(edges, "tableRegionEdges", "tableCycleEdges", 2)
@@ -323,7 +346,7 @@ func tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,visit func(*TableR
  if f.Kind==13 && f.Table!=nil {return tableRegionEdges(p,f.Table(),visit)}
  if f.Kind==15 && f.Arms!=nil {arms:=f.Arms();tag:=tableJSONGetRaw(unsafe.Add(p,arms.TagOffset),arms.TagSize);if tag>=uint64(len(arms.Arms)){return false};if tag!=0 {arm:=&arms.Arms[tag];if arm.Void{return true};af:=&arm.Field;at:=unsafe.Add(p,af.Offset);count:=int32(1);if af.IsArray {count=tableRegionCount(p,af);if count<0 || count>af.ArrayBound{return false}};for j := range count {if !tableRegionValueEdges(unsafe.Add(at,uintptr(j)*uintptr(af.ElemSize)),af,visit){return false}}} };return true
 }
-func tableNodeWrite(w *TableWriter,e *tableNodeEntry) bool { if e.info!=nil{return e.info.SaveBody(w,e.node)};length:=uint64(*(*uint32)(e.node));w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node,8)),int(length)));return !w.Overflow }
+func tableNodeWrite(w *TableWriter,e *tableNodeEntry) bool { if e.info!=nil{return e.info.SaveBody(w,e.node)};length:=uint64(*(*uint32)(e.node));text:=unsafe.Slice((*byte)(unsafe.Add(e.node,8)),int(length));if e.id==tableStringTypeID&&!tableUTF8Valid(text){return false};w.Raw(text);return !w.Overflow }
 func tableNodeMeasure(w *TableWriter,ids *TableIds,e *tableNodeEntry)int64 {*w=TableWriter{Measuring:true,Ids:ids};if !tableNodeWrite(w,e){return -1};return w.Offset}
 // A typed frame keeps its pointers visible to Go's collector. The descriptor
 // callbacks make it escape once per call; node-proportional storage uses the pair.
@@ -339,14 +362,14 @@ func tableRegionSaveReason(root unsafe.Pointer,info *TableTypeInfo,buffer []byte
 
 // Resolve places a pointer slot from its node index (docs/SPEC-TABLES.md §3.1,
 // §6.5). A record of a type this reader cannot name reads null; one of a type
-// it names that is not the type the slot requires refuses. The open's wire
-// check has already refused an index past the table and a blob named twice.
+// it names that is not the slot's target refuses, as does an unplaced reserved
+// blob. The open's wire check has refused an index past the table and a blob named twice.
 type TableNodeDirEntry struct { Offset,TypeID uint64 }
-type TableNodeMap struct { Base unsafe.Pointer; Entries []TableNodeDirEntry; Good bool; Arena bool; Once bool; Indexed bool; Count uint64 }
+type TableNodeMap struct { Base unsafe.Pointer; Entries []TableNodeDirEntry; Good bool; Arena bool; Once bool; Indexed bool; Count uint64; NodeTypes []uint64 }
 // Mark records that a slot the reader cannot name points at a node record, so
 // the graph walk starts there too (docs/SPEC-TABLES.md §4, §6.5).
 func (m TableNodeMap) Mark(index uint64) { if index==0||index>uint64(len(m.Entries)){return};e:=&m.Entries[index-1];if e.Offset==^uint64(0){return};if e.TypeID==tableBytesTypeID||e.TypeID==tableStringTypeID{if e.Offset&tableNodeBlobSeen!=0{e.Offset|=tableNodeWireNamed};e.Offset|=tableNodeBlobSeen;return};e.Offset|=tableNodeWireNamed }
-func (m TableNodeMap) Resolve(slot *TableRef,index,target uint64,r *TableReport) { *slot=0;if index==0||!m.Good{return};if index>uint64(len(m.Entries)){r.Refuse(TableRefuseWireDamaged,"");return};e:=&m.Entries[index-1];if e.Offset==^uint64(0){return};if e.TypeID!=target{r.Refuse(TableRefuseWireDamaged,"");return};if target==tableBytesTypeID||target==tableStringTypeID {if e.Offset&tableNodeBlobSeen!=0 {r.Refuse(TableRefuseBlobShared,"");return};e.Offset|=tableNodeBlobSeen;off:=e.Offset&^tableNodeBlobSeen;if m.Arena {*slot=int64(off)} else {*slot=int64(uintptr(unsafe.Add(m.Base,off))-uintptr(unsafe.Pointer(slot)))};return};if m.Indexed{*slot=int64(index);return};off:=e.Offset&^tableNodeWireNamed;if m.Arena {*slot=int64(off)} else {*slot=int64(uintptr(unsafe.Add(m.Base,off))-uintptr(unsafe.Pointer(slot)))} }
+func (m TableNodeMap) Resolve(slot *TableRef,index,target uint64,r *TableReport) { *slot=0;if index==0||!m.Good{return};if index>uint64(len(m.Entries)){r.Refuse(TableRefuseWireDamaged,"");return};e:=&m.Entries[index-1];if e.Offset==^uint64(0){if (e.TypeID==tableBytesTypeID||e.TypeID==tableStringTypeID)&&e.TypeID!=target{r.Refuse(TableRefuseWireDamaged,"")};return};if e.TypeID!=target{r.Refuse(TableRefuseWireDamaged,"");return};if target==tableBytesTypeID||target==tableStringTypeID {if e.Offset&tableNodeBlobSeen!=0 {r.Refuse(TableRefuseBlobShared,"");return};e.Offset|=tableNodeBlobSeen;off:=e.Offset&^tableNodeBlobSeen;if m.Arena {*slot=int64(off)} else {*slot=int64(uintptr(unsafe.Add(m.Base,off))-uintptr(unsafe.Pointer(slot)))};return};if m.Indexed{*slot=int64(index);return};off:=e.Offset&^tableNodeWireNamed;if m.Arena {*slot=int64(off)} else {*slot=int64(uintptr(unsafe.Add(m.Base,off))-uintptr(unsafe.Pointer(slot)))} }
 
 type tableNodeScan struct { payload TableReader; declared,records uint64; present,bad bool }
 func tableNodeScanBegin(r TableReader) tableNodeScan {
@@ -363,7 +386,7 @@ func tableRegionMeasure(wire []byte,root *TableTypeInfo,nodeType func(uint64)*Ta
 // lists.go container patch on the first only. It refuses any framing damage, a
 // count past the storage cap and a blob past its cap; a refusal here implies the
 // load's (docs/SPEC-TABLES.md §6.5).
-func tableRegionMeasureReason(wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int,strict ...bool)(int64,int64,TableOpenVerdict,TableRefuseReason){var ignored TableReport;r,verdict:=tableOpenFramed(wire,&ignored);if verdict!=TableOpenOk{reason:=TableRefuseWireDamaged;if verdict==TableOpenRefused{reason=TableRefuseUnknownForm};return -1,0,verdict,reason};probe:=r;probe.Offset=0;framed:=true;for{ref,ok:=probe.Leb();if !ok{framed=false;break};if ref==0{break};id,ok:=probe.Resolve(ref);if !ok||!probe.Has(1){framed=false;break};kind:=probe.Get8();if id==0xffffffffffffffff{if kind!=12{framed=false;break};if _,ok:=probe.Body();!ok{framed=false;break}}else if !probe.Skip(kind){framed=false;break}};if !framed||probe.Offset!=int64(len(probe.Buffer)){return -1,0,TableOpenDamaged,TableRefuseWireDamaged};data:=tableRegionRound(int64(root.Size));s:=tableNodeScanBegin(r);for{id,body,ok:=s.next();if !ok{break};n,reason:=tableNodeStorageReason(id,body,nodeType,blobs);if n== -2{return -1,0,TableOpenRefused,reason};if n>0{data+=n}};if !s.whole(){return -1,0,TableOpenDamaged,TableRefuseWireDamaged};if len(strict)==0||strict[0]{w:=TableReader{Buffer:r.Buffer,Ids:r.Ids};at:=int64(0);nodes:=int64(s.records);scan:=tableNodeScanBegin(w);for{id,body,ok:=scan.next();if !ok{break};if id==tableStringTypeID&&blobs&2!=0&&!tableUTF8Valid(body.Buffer){return -1,0,TableOpenDamaged,TableRefuseWireDamaged};if t:=nodeType(id);t!=nil&&tableWireExtent(&body,t,&at,nodes)!=TableRefuseOk{return -1,0,TableOpenDamaged,TableRefuseWireDamaged}};if tableWireExtent(&w,root,&at,nodes)!=TableRefuseOk{return -1,0,TableOpenDamaged,TableRefuseWireDamaged}};attribution:=int64(s.records+1)*16;return data+attribution,attribution,TableOpenOk,TableRefuseOk}
+func tableRegionMeasureReason(wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int,strict ...bool)(int64,int64,TableOpenVerdict,TableRefuseReason){var ignored TableReport;r,verdict:=tableOpenFramed(wire,&ignored);if verdict!=TableOpenOk{reason:=TableRefuseWireDamaged;if verdict==TableOpenRefused{reason=TableRefuseUnknownForm};return -1,0,verdict,reason};probe:=r;probe.Offset=0;framed:=true;for{ref,ok:=probe.Leb();if !ok{framed=false;break};if ref==0{break};id,ok:=probe.Resolve(ref);if !ok||!probe.Has(1){framed=false;break};kind:=probe.Get8();if id==0xffffffffffffffff{if kind!=12{framed=false;break};if _,ok:=probe.Body();!ok{framed=false;break}}else if !probe.Skip(kind){framed=false;break}};if !framed||probe.Offset!=int64(len(probe.Buffer)){return -1,0,TableOpenDamaged,TableRefuseWireDamaged};data:=tableRegionRound(int64(root.Size));s:=tableNodeScanBegin(r);for{id,body,ok:=s.next();if !ok{break};n,reason:=tableNodeStorageReason(id,body,nodeType,blobs);if n== -2{return -1,0,TableOpenRefused,reason};if n>0{data+=n}};if !s.whole(){return -1,0,TableOpenDamaged,TableRefuseWireDamaged};if len(strict)==0||strict[0]{w:=TableReader{Buffer:r.Buffer,Ids:r.Ids};at:=int64(0);nodes:=int64(s.records);var stack [4097]uint64;var types []uint64;if int(s.records)+1<=len(stack){types=stack[:int(s.records)+1]}else{types=make([]uint64,int(s.records)+1)};types[0]=root.ID;scan:=tableNodeScanBegin(w);for k:=1;;k++{id,_,ok:=scan.next();if !ok{break};if nodeType(id)!=nil||id==tableBytesTypeID||id==tableStringTypeID{types[k]=id}};w.Nodes.NodeTypes=types;scan=tableNodeScanBegin(w);for{id,body,ok:=scan.next();if !ok{break};body.Nodes.NodeTypes=types;if id==tableStringTypeID&&blobs&2!=0&&!tableUTF8Valid(body.Buffer){return -1,0,TableOpenDamaged,TableRefuseWireDamaged};if t:=nodeType(id);t!=nil&&tableWireExtent(&body,t,&at,nodes)!=TableRefuseOk{return -1,0,TableOpenDamaged,TableRefuseWireDamaged}};if tableWireExtent(&w,root,&at,nodes)!=TableRefuseOk{return -1,0,TableOpenDamaged,TableRefuseWireDamaged}};attribution:=int64(s.records+1)*16;return data+attribution,attribution,TableOpenOk,TableRefuseOk}
 
 // tableRegionLoad is the region read (docs/SPEC-TABLES.md §4, §6.5): the open
 // and the wire check, then every record of a type this reader names placed and
@@ -377,7 +400,7 @@ func tableRegionLoad(region,wire []byte,root *TableTypeInfo,nodeType func(uint64
  s:=tableNodeScanBegin(r);used:=tableRegionRound(int64(root.Size));k:=1;unknown:=int32(0)
  for {id,body,ok:=s.next();if !ok{break};size:=tableNodeStorage(id,body,nodeType,blobs);directory[k].TypeID=id;if size<=0 {directory[k].Offset=^uint64(0);unknown++} else {directory[k].Offset=uint64(used);p:=unsafe.Add(base,used);if t:=nodeType(id);t!=nil{t.Reset(p)}else{*(*TableBlob)(p)=TableBlob{Length:uint32(uint64(len(body.Buffer)))}};used+=size};k++ }
  nodes.Good=s.whole();report.Unknown+=unknown
- s=tableNodeScanBegin(r);k=1;for {id,body,ok:=s.next();if !ok{break};if directory[k].Offset!=^uint64(0){p:=unsafe.Add(base,directory[k].Offset&^(tableNodeWireNamed|tableNodeBlobSeen));if t:=nodeType(id);t!=nil{body.Nodes=nodes;t.LoadBody(body,p)}else{copy(unsafe.Slice((*byte)(unsafe.Add(p,8)),len(body.Buffer)),body.Buffer)}}else if reason:=tableWireRecordCheck(body,len(r.Ids)/8,uint64(len(directory)-1),nodes.Mark);reason!=TableRefuseOk{report.Refuse(reason,"");clear(region);return nil};k++}
+ s=tableNodeScanBegin(r);k=1;for {id,body,ok:=s.next();if !ok{break};if directory[k].Offset!=^uint64(0){p:=unsafe.Add(base,directory[k].Offset&^(tableNodeWireNamed|tableNodeBlobSeen));if t:=nodeType(id);t!=nil{body.Nodes=nodes;t.LoadBody(body,p)}else{copy(unsafe.Slice((*byte)(unsafe.Add(p,8)),len(body.Buffer)),body.Buffer)}}else if reason:=tableWireRecordCheck(body,uint64(len(r.Ids))/8,uint64(len(directory)-1),nodes.Mark);reason!=TableRefuseOk{report.Refuse(reason,"");clear(region);return nil};k++}
  r.Nodes=nodes;r.Nested=false;root.LoadBody(r,base);if report.Refused(){clear(region);return nil}
  if reason:=tableCycleCheckReason(base,root,nil,directory,nodeType);reason!=TableRefuseOk{report.Refuse(reason,"")}
  if report.Refused(){clear(region);return nil};return base
@@ -401,6 +424,7 @@ func tableRegionFromJSON(value unsafe.Pointer,info *TableTypeInfo,worker *TableW
 // there is no spelling to owe, and writing the value at each slot is the
 // amplification the standard refuses (docs/SPEC-TABLES.md §2.5, §16.7).
 func tableRegionToJSON(value unsafe.Pointer,info *TableTypeInfo,buffer []byte,options TableJSONOptions,allocator ...TableAllocator) (int64,TableRefuseReason) {
+ if buffer!=nil {if _,reason:=tableRegionToJSON(value,info,nil,options,allocator...);reason!=TableRefuseOk{return -1,reason}}
  n,ok:=tableNumber(value,info,nil,allocator...);if !ok{return -1,n.reason};defer n.Release();if n.shared{return -1,TableRefuseBlobShared};graph:=tableJSONGraph{node:func(p unsafe.Pointer)*tableJSONGraphNode{i,ok:=n.find(p);if !ok{return nil};return &n.entries[i].json}}
  for i:=range n.entries {e:=&n.entries[i];if e.info!=nil&&!tableRegionEdges(e.node,e.info,func(slot *TableRef,f *TableFieldInfo) bool {p:=tableRefAt(slot,nil);if p!=nil {graph.node(p).refs++};return true}){return -1,TableRefuseInvalidValue}}
  out:=tableJSONOut{buffer:buffer,measure:buffer==nil,graph:&graph,omit:options.OmitDefaults,compact:options.Compact};if !tableJSONWriteValue(&out,value,info,0){return -1,TableRefuseInvalidValue};out.put('\n');if out.overflow||out.invalid{return -1,TableRefuseInvalidValue};return out.offset,TableRefuseOk
@@ -437,7 +461,7 @@ func tableBuilderLoad(p unsafe.Pointer,ref TableRef,worker *TableWorker,wire []b
  for {id,body,ok:=scan.next();if !ok{break};directory[k]=TableNodeDirEntry{^uint64(0),id};t:=nodeType(id);isblob:=id==tableBytesTypeID&&blobs&1!=0||id==tableStringTypeID&&blobs&2!=0
  if t==nil&&!isblob {unknown++;k++;continue};if isblob&&id==tableStringTypeID&&!tableUTF8Valid(body.Buffer){report.Refuse(TableRefuseWireDamaged,"");return false};size:=int64(0);if t!=nil {size=int64(t.Size)}else{if uint64(len(body.Buffer))>math.MaxUint32{report.Refuse(TableRefuseBlobOverSizeCap,"");return false};size=8+int64(len(body.Buffer));if id==tableStringTypeID{size++}};node,at:=worker.Alloc(size);if node==nil {report.Refuse(TableRefuseAllocationFailed,"");return false};directory[k].Offset=uint64(at);if t!=nil{t.Reset(node)}else{*(*TableBlob)(node)=TableBlob{Length:uint32(uint64(len(body.Buffer)))};copy(unsafe.Slice((*byte)(unsafe.Add(node,8)),len(body.Buffer)),body.Buffer)};k++ }
  nodes.Good=scan.whole();report.Unknown+=unknown
- scan=tableNodeScanBegin(r);k=1;for {id,body,ok:=scan.next();if !ok{break};if directory[k].Offset!=^uint64(0) {if t:=nodeType(id);t!=nil {body.Nodes=nodes;t.LoadBody(body,worker.Arena.At(int64(directory[k].Offset&^(tableNodeWireNamed|tableNodeBlobSeen))));if worker.refused!=TableRefuseOk||report.Refused(){return false}}}else if reason:=tableWireRecordCheck(body,len(r.Ids)/8,uint64(count-1),nodes.Mark);reason!=TableRefuseOk{report.Refuse(reason,"");return false};k++}
+ scan=tableNodeScanBegin(r);k=1;for {id,body,ok:=scan.next();if !ok{break};if directory[k].Offset!=^uint64(0) {if t:=nodeType(id);t!=nil {body.Nodes=nodes;t.LoadBody(body,worker.Arena.At(int64(directory[k].Offset&^(tableNodeWireNamed|tableNodeBlobSeen))));if worker.refused!=TableRefuseOk||report.Refused(){return false}}}else if reason:=tableWireRecordCheck(body,uint64(len(r.Ids))/8,uint64(count-1),nodes.Mark);reason!=TableRefuseOk{report.Refuse(reason,"");return false};k++}
  r.Nodes=nodes;r.Nested=false;ok:=root.LoadBody(r,p)
  if ok&&worker.refused==TableRefuseOk&&!report.Refused(){if reason:=tableCycleCheckReason(p,root,worker.Arena,directory,nodeType);reason!=TableRefuseOk{report.Refuse(reason,"")}}
  return ok&&worker.refused==TableRefuseOk&&!report.Refused()
