@@ -32,9 +32,9 @@ local NodeTableId = V.NodeTableId
 local BuildVersionId = V.BuildVersionId
 local MessageVocabularyId = V.MessageVocabularyId
 
--- THE WALK'S NESTING CAP (§6.6): a small stated constant; a record past it is
--- dropped on the same rule as any other shape the walk cannot take
-local DEPTH_CAP = 64
+-- THE WALK'S NESTING CAP (§6.6): §4's binary bound, the one constant; a record
+-- past it is dropped on the same rule as any other shape the walk cannot take
+local DEPTH_CAP = 128 -- ir.TableBinaryMaxDepth
 
 local TWO32 = 4294967296
 
@@ -170,6 +170,16 @@ end
 local walk_payload: any
 local walk_content: any
 
+-- §4: a table, array or keyed body is a level of its own; a scalar's or a
+-- union's own frame adds none, and a union is a level only for a structural arm
+local function framed_level(kind: number): number
+	return if kind == 13 or kind == 14 or kind == 16 then 1 else 0
+end
+
+local function structural_arm(kind: number): boolean
+	return kind == 13 or kind == 14 or kind == 15 or kind == 16
+end
+
 local function walk_framed(rs: any, c: any, kind: number, depth: number)
 	local n = c_leb(c)
 	if n == nil or c.at + n > c.e then
@@ -179,7 +189,7 @@ local function walk_framed(rs: any, c: any, kind: number, depth: number)
 	local sub = new_cursor(c.b, c.at, c.at + n)
 	c.at += n
 	local at = o_mark(rs.out)
-	walk_content(rs, sub, kind, depth + 1)
+	walk_content(rs, sub, kind, depth + framed_level(kind))
 	o_patch(rs.out, at)
 end
 
@@ -259,7 +269,7 @@ walk_payload = function(rs: any, c: any, kind: number, depth: number)
 		local armKind = buffer.readu8(c.b, c.at)
 		c.at += 1
 		o_u8(rs.out, armKind)
-		walk_framed(rs, c, armKind, depth)
+		walk_framed(rs, c, armKind, depth + (if structural_arm(armKind) then 1 else 0))
 	elseif kind == 13 or kind == 14 or kind == 16 then
 		walk_framed(rs, c, kind, depth)
 	else

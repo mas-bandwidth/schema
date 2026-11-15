@@ -530,11 +530,16 @@ func TestLuauFixedProofGroupENegativeControl(t *testing.T) {
 		if eOwn.Record != 8+13 || len(good) < 13 {
 			t.Fatal("live-extents: the fixture no longer has a 13-byte body")
 		}
-		live := bytes.Clone(good)
-		at := len(live) - 13
-		// The unused array slots and absent optional payload are opaque.
-		live[at+5], live[at+6], live[at+8] = 99, 99, 99
-		badBody := bytes.Clone(live)
+		at := len(good) - 13
+		// A non-zero byte in an unused array slot or an absent optional is dead.
+		stained := bytes.Clone(good)
+		stained[at+5], stained[at+6], stained[at+8] = 99, 99, 99
+		n, reason, _, _, _ := r.LoadLineage(t, u, "T", map[string][]fixedproof.LineageEntry{"T": {eOwn}}, stained, -1)
+		if n != -1 {
+			t.Fatalf("live-extents: a non-zero dead byte read: n=%d reason=%q", n, reason)
+		}
+		// The body plant keeps every dead byte zero and moves a live count.
+		badBody := bytes.Clone(good)
 		binary.LittleEndian.PutUint32(badBody[at:], 2)
 		badBody[at+5] = 2 // make the newly live element a valid Small.Two
 		n, reason, fields, _, counters := r.LoadLineage(t, u, "T", map[string][]fixedproof.LineageEntry{"T": {eOwn}}, badBody, -1)
@@ -550,7 +555,7 @@ func TestLuauFixedProofGroupENegativeControl(t *testing.T) {
 			}
 			return nil
 		}
-		luauEvoFileBodyControl(t, "live-extents", live, badBody, proof)
+		luauEvoFileBodyControl(t, "live-extents", good, badBody, proof)
 		luauEvoSaveWriterDiffers(t, "live-extents", u, "T", "live_extents_base")
 	}
 
