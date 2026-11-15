@@ -1217,14 +1217,17 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_mixed( serializ
     {
         return 0;
     }
+    serialize_assert( value->aim_x >= -1.0f && value->aim_x <= 1.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->aim_x, 200u, 8, 2.0f, -1.0f ) )
     {
         return 0;
     }
+    serialize_assert( value->aim_y >= -1.0f && value->aim_y <= 1.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->aim_y, 200u, 8, 2.0f, -1.0f ) )
     {
         return 0;
     }
+    serialize_assert( value->aim_z >= -1.0f && value->aim_z <= 1.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->aim_z, 200u, 8, 2.0f, -1.0f ) )
     {
         return 0;
