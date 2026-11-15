@@ -92,6 +92,14 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	FixedTableReset(value)
+<<<<<<< HEAD
+=======
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
+>>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -113,6 +121,11 @@ func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts
 		switch entry.ID {
 		case 0x7ce4fd9430e80cea:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
 					if false {
@@ -122,8 +135,20 @@ func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts
 						return false
 					}
 				}
+<<<<<<< HEAD
 				if !tableMessageBodyBenchMixed(r, &value.Value, starts, depth+1) {
 					return false
+=======
+				{
+					start := r.Bits.Offset
+					if !BenchMixedLoadMessageBody(r, &value.Value) {
+						return false
+					}
+					if exact && r.Bits.Offset-start == r.Vocabulary.RefBits {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+>>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 				}
 				if widened {
 					r.Report.Widened++

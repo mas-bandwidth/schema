@@ -158,6 +158,14 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	WideBlobReset(value)
+<<<<<<< HEAD
+=======
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
+>>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -179,6 +187,11 @@ func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []u
 		switch entry.ID {
 		case 0x39f7fcec8fcb623d:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
 					if false {
@@ -212,12 +225,21 @@ func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []u
 					copy(value.Label[:], text)
 					value.LabelLength = int32(n)
 				}
+				if exact && !(value.LabelLength > 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xcfb8a9d063b5e9e5:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 6 {
 					if false {
@@ -246,12 +268,21 @@ func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []u
 					copy(value.Payload[:], r.Bits.Buffer[start:start+int64(n)])
 					value.PayloadLength = int32(n)
 				}
+				if exact && !(value.PayloadLength > 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xe3b1ca6a3b48dddc:
 			{
+				if order >= 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 2
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 7 {
 					if entry.Shape.Kind == 14 && tableKindWidens(entry.Element.Kind, 7) {
@@ -298,6 +329,10 @@ func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []u
 						}
 					}
 					value.SamplesCount = int32(n)
+				}
+				if exact && !(value.SamplesCount > 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				if widened {
 					r.Report.Widened++

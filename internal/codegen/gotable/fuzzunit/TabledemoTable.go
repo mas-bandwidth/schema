@@ -28,8 +28,13 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
+<<<<<<< HEAD
 const _ = uint64(goruntime.Version - 0x11536863a144e917)
 const _ = uint64(0x11536863a144e917 - goruntime.Version)
+=======
+const _ = uint64(goruntime.Version - 0x716700b912cdb71d)
+const _ = uint64(0x716700b912cdb71d - goruntime.Version)
+>>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 
 type TableReport = goruntime.TableReport
 
@@ -42,6 +47,16 @@ func tableJSONSetRaw(a0 unsafe.Pointer, a1 uint32, a2 uint64) { goruntime.TableJ
 func tableJSONGetSigned(a0 unsafe.Pointer, a1 uint32) int64 {
 	return goruntime.TableJSONGetSigned(a0, a1)
 }
+
+type tableFirstUse = goruntime.TableFirstUse
+
+type tableFirstUseRun = goruntime.TableFirstUseRun
+
+func tableFirstUseCount(a0 *TableReport, a1 uint8) { goruntime.TableFirstUseCount(a0, a1) }
+
+func tableFirstUseMeet(a0 *TableReport, a1 uint64) { goruntime.TableFirstUseMeet(a0, a1) }
+
+func tableFirstUseWhole(a0 *TableReport, a1 uint64) bool { return goruntime.TableFirstUseWhole(a0, a1) }
 
 type TableRefuseReason = goruntime.TableRefuseReason
 
@@ -1187,6 +1202,7 @@ func (r *TableReader) Resolve(ref uint64) (uint64, bool) {
 	if ref == 0 || ref > uint64(len(r.Ids)/8) {
 		return 0, false
 	}
+	r.meetFirstUse(ref)
 	return binary.LittleEndian.Uint64(r.Ids[(ref-1)*8:]), true
 }
 
@@ -1489,6 +1505,9 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
 		if !ok || ref > c.ids {
 			return 0, c.fail(TableRefuseWireDamaged)
 		}
+		if ref != 0 {
+			r.meetFirstUse(ref)
+		}
 	case 15:
 		return c.union(r)
 	case 12, 13, 14, 16, 31, 32:
@@ -1593,7 +1612,8 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 		}
 	}
 	for range count {
-		sub.Leb()
+		key, _ := sub.Leb()
+		sub.meetFirstUse(key)
 		elem, _ := sub.Body()
 		if !c.framed(elem, kind) {
 			return 0, false
@@ -1612,6 +1632,7 @@ func (c *tableWireCheck) union(r TableReader) (int64, bool) {
 	if ref == 0 {
 		return r.Offset, true
 	}
+	r.meetFirstUse(ref)
 	if !r.Has(1) {
 		return 0, c.fail(TableRefuseWireDamaged)
 	}
@@ -1701,6 +1722,12 @@ func tableOpenChecked(data []byte, report *TableReport) (TableReader, TableOpenV
 	r, verdict := tableOpen(data, report)
 	tableOpenAnswer(report, verdict, data)
 	return r, verdict
+}
+
+func (r *TableReader) meetFirstUse(ref uint64) {
+	if r.Report != nil {
+		tableFirstUseMeet(r.Report, ref)
+	}
 }
 
 type TableMessageWriter struct {
@@ -3128,7 +3155,7 @@ func tableNodeScanBegin(r TableReader) tableNodeScan {
 	if s.present {
 		var ok bool
 		s.declared, ok = s.payload.Leb()
-		if !ok {
+		if !ok || s.declared == 0 {
 			s.bad = true
 		}
 	}
@@ -3200,6 +3227,7 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 	probe := r
 	probe.Offset = 0
 	framed := true
+	nodeTable := false
 	for {
 		ref, ok := probe.Leb()
 		if !ok {
@@ -3209,6 +3237,10 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		if ref == 0 {
 			break
 		}
+		if nodeTable {
+			framed = false
+			break
+		}
 		id, ok := probe.Resolve(ref)
 		if !ok || !probe.Has(1) {
 			framed = false
@@ -3216,6 +3248,7 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		}
 		kind := probe.Get8()
 		if id == 0xffffffffffffffff {
+			nodeTable = true
 			if kind != 12 {
 				framed = false
 				break
@@ -3359,6 +3392,7 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 	report.Unknown += unknown
 	s = tableNodeScanBegin(r)
 	k = 1
+	tableFirstUseCount(report, 1)
 	for {
 		id, body, ok := s.next()
 		if !ok {
@@ -3379,9 +3413,13 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 		}
 		k++
 	}
+	tableFirstUseCount(report, 2)
 	r.Nodes = nodes
 	r.Nested = false
 	root.LoadBody(r, base)
+	if !tableFirstUseWhole(report, uint64(len(r.Ids)/8)) {
+		report.Refuse(TableRefuseWireDamaged, "")
+	}
 	if report.Refused() {
 		clear(region)
 		return nil
@@ -3551,6 +3589,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		report = &ignored
 	}
 	defer func() {
+		tableFirstUseCount(report, 0)
 		if !loaded && p != nil {
 			root.Reset(p)
 		}
@@ -3646,6 +3685,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	report.Unknown += unknown
 	scan = tableNodeScanBegin(r)
 	k = 1
+	tableFirstUseCount(report, 1)
 	for {
 		id, body, ok := scan.next()
 		if !ok {
@@ -3665,9 +3705,13 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		}
 		k++
 	}
+	tableFirstUseCount(report, 2)
 	r.Nodes = nodes
 	r.Nested = false
 	ok := root.LoadBody(r, p)
+	if !tableFirstUseWhole(report, uint64(len(r.Ids)/8)) && ok {
+		report.Refuse(TableRefuseWireDamaged, "")
+	}
 	if ok && worker.refused == TableRefuseOk && !report.Refused() {
 		if reason := tableCycleCheckReason(p, root, worker.Arena, directory, nodeType); reason != TableRefuseOk {
 			report.Refuse(reason, "")
@@ -5203,6 +5247,7 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 	}
 	s = tableNodeScanBegin(r)
 	k = 1
+	tableFirstUseCount(report, 1)
 	for {
 		id, body, ok := s.next()
 		if !ok {
@@ -5223,9 +5268,13 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 		}
 		k++
 	}
+	tableFirstUseCount(report, 2)
 	r.Nodes = nodes
 	r.Nested = false
 	root.LoadBodyRetain(TableRetainReader{tableRetainPlainReader: r, Retain: retain, Path: tableRetainPath{at: base, node: 1}}, base)
+	if !tableFirstUseWhole(report, uint64(len(r.Ids)/8)) {
+		report.Refuse(TableRefuseWireDamaged, "")
+	}
 	if report.Refused() {
 		clear(region)
 		retain.reset(nil, nil)

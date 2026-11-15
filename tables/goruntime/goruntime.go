@@ -50,6 +50,7 @@ type TableReport struct {
 	// refusals keep answering unknown_form. Message-form refusals clear it, so a reused report
 	// still answers unknown_form on the message path.
 	FixedRaised bool
+	firstUse    TableFirstUse // the form-1 load's first-use count (canonical.go)
 	// LayoutHash is THE FILE'S hash, set by the layout refusals
 	// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3) so the application can ask for that
 	// layout.
@@ -62,7 +63,11 @@ type TableReport struct {
 // meets; the verdict, not the reason, is the contract (tla/ReadOrder.tla,
 // OneVerdict).
 func (r *TableReport) Refuse(reason TableRefuseReason, field string) {
-	if r == nil || r.Refusal != TableRefuseOk {
+	if r == nil {
+		return
+	}
+	r.firstUse = TableFirstUse{}
+	if r.Refusal != TableRefuseOk {
 		return
 	}
 	r.Refusal, r.Field = reason, field
@@ -122,6 +127,49 @@ func TableJSONGetSigned(storage unsafe.Pointer, width uint32) int64 {
 		}
 	}
 	return int64(raw)
+}
+
+type TableFirstUse struct {
+	usePhase          uint8 // 0 not counting, 1 the node records, 2 the root body
+	useNodes, useRoot TableFirstUseRun
+}
+
+type TableFirstUseRun struct{ useHigh, useJump uint64 }
+
+func (u *TableFirstUseRun) useMeet(ref uint64) {
+	if ref > u.useHigh {
+		if ref != u.useHigh+1 {
+			u.useJump = ref
+		}
+		u.useHigh = ref
+	}
+}
+
+// tableFirstUseCount starts counting one part of a load's walk: 1 the node
+// records, which starts the count afresh, and 2 the root body; 0 stops it.
+func TableFirstUseCount(r *TableReport, phase uint8) {
+	if phase != 2 {
+		r.firstUse = TableFirstUse{}
+	}
+	r.firstUse.usePhase = phase
+}
+
+func TableFirstUseMeet(r *TableReport, ref uint64) {
+	switch r.firstUse.usePhase {
+	case 1:
+		r.firstUse.useNodes.useMeet(ref)
+	case 2:
+		r.firstUse.useRoot.useMeet(ref)
+	}
+}
+
+// tableFirstUseWhole answers the count's verdict over an id table of n
+// entries, and stops it.
+func TableFirstUseWhole(r *TableReport, n uint64) bool {
+	u := r.firstUse
+	r.firstUse = TableFirstUse{}
+	root, nodes := u.useRoot, u.useNodes
+	return root.useJump <= 1 && (nodes.useHigh <= root.useHigh || nodes.useJump <= root.useHigh+1) && max(root.useHigh, nodes.useHigh) == n
 }
 
 // TableRefuseReason is the typed error shared by file and accelerator failures.
@@ -583,6 +631,7 @@ func TableRefused(r *TableReport) {
 		r.Refuse(TableRefuseWireDamaged, "")
 	}
 	r.Unknown, r.Widened, r.Retained, r.RetainLost = 0, 0, 0, 0
+	r.firstUse = TableFirstUse{}
 }
 
 // TableBitWriter uses the packet wire's low-bit-first order. Measuring walks
@@ -2174,4 +2223,8 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
+<<<<<<< HEAD
 const Version uint64 = 0x11536863a144e917
+=======
+const Version uint64 = 0x716700b912cdb71d
+>>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780

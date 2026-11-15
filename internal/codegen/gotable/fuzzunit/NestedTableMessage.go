@@ -104,6 +104,14 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	ArchiveConfigReset(value)
+<<<<<<< HEAD
+=======
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
+>>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -125,6 +133,11 @@ func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, 
 		switch entry.ID {
 		case 0xa354fd1ff0c467c5:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
 					if false {
@@ -134,8 +147,20 @@ func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, 
 						return false
 					}
 				}
+<<<<<<< HEAD
 				if !tableMessageBodyRootConfig(r, &value.Root, starts, depth+1) {
 					return false
+=======
+				{
+					start := r.Bits.Offset
+					if !RootConfigLoadMessageBody(r, &value.Root) {
+						return false
+					}
+					if exact && r.Bits.Offset-start == r.Vocabulary.RefBits {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+>>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 				}
 				if widened {
 					r.Report.Widened++
@@ -143,6 +168,11 @@ func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, 
 			}
 		case 0xb1e5e28e4479a274:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -172,6 +202,10 @@ func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, 
 						}
 						value.Count = int32(v)
 					}
+				}
+				if exact && !(value.Count != 1) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				if widened {
 					r.Report.Widened++
