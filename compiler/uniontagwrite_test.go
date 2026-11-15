@@ -55,7 +55,7 @@ var tagAssertsInDebug = map[string][]string{
 	"dart": {"assert(value.type >= 0);", "assert(value.type <= 2);"},
 	"java": {"assert (value.type & 0xffL) >= 0;", "assert (value.type & 0xffL) <= 2;"},
 	// --runtime-no-asserts removes a Lobster assert from the build
-	"lobster": {"assert v.Type >= 0 and v.Type <= 2"},
+	"lobster": {"assert v·.Type >= 0 and v·.Type <= 2"},
 }
 
 // tagGoneFromRelease is the every-build refusal each assert target used to
@@ -65,7 +65,7 @@ var tagGoneFromRelease = map[string][]string{
 	"c":       {"if ( value->type > TAGUNIT_SHOT_TYPE_MAX )", "not a ShotType value; nothing was written"},
 	"cpp":     {"not a ShotType value; nothing was written"},
 	"cs":      {"if (tagValue > 2)"},
-	"lobster": {"if v.Type < 0 or v.Type > 2: return false"},
+	"lobster": {"if v·.Type < 0 or v·.Type > 2: return false"},
 }
 
 // tagRefusesEveryBuild is the write's UNCONDITIONAL tag refusal, for the

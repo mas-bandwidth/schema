@@ -673,11 +673,12 @@ SCHEMA_READ_INLINE bool ReadHoldsEmptyUnion( serialize::ReadStream & stream, Hol
 SCHEMA_WRITE_INLINE bool WriteStrs( serialize::WriteStream & stream, const Strs & value )
 {
     write_bits( stream, value.lead, 5 );
+    serialize_assert( int32_t( value.s_length ) >= int32_t( 0 ) && int32_t( value.s_length ) <= int32_t( 8 ) );
     for ( int32_t i = 0; i < value.s_length; i++ )
     {
         serialize_assert( value.s[i] != 0 );
     }
-    serialize_assert( int32_t( value.s_length ) >= int32_t( 0 ) && int32_t( value.s_length ) <= int32_t( 8 ) );
+    serialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( value.s ), value.s_length ) );
     write_bits( stream, uint32_t( value.s_length ), 4 );
     write_bytes( stream, value.s, value.s_length );
     serialize_assert( int32_t( value.b_length ) >= int32_t( 0 ) && int32_t( value.b_length ) <= int32_t( 8 ) );
