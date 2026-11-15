@@ -65,6 +65,10 @@ pub fn json_newline(out: &mut String, depth: usize) {
 /// rides raw, so multibyte text stays byte for byte.
 #[allow(dead_code)]
 pub fn json_escape(s: &str, out: &mut String) {
+    debug_assert!(
+        !s.contains('\0'),
+        "a string holding a zero byte is not text (docs/SPEC-TABLES.md §16.3)"
+    );
     out.push('"');
     for c in s.chars() {
         json_escape_char(c, out);
