@@ -9,7 +9,7 @@ never share or shadow each other's runtime.
 
 from typing import Final
 
-__all__: Final = ["InvalidValue", "LoadReport", "Refused"]
+__all__: Final = ["InvalidValue", "LoadReport", "Refused", "cook", "cookwrite"]
 
 
 class Refused(ValueError):
@@ -64,3 +64,6 @@ class LoadReport:
         self.widened = 0
         self.retained = 0
         self.retain_lost = 0
+
+
+from . import cook, cookwrite  # noqa: E402  (the errors above come first)

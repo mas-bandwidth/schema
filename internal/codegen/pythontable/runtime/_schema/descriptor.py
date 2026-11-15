@@ -29,6 +29,7 @@ class FieldDesc:
         "bound",
         "key_enum",
         "default",
+        "at",
     )
 
     name: str
@@ -46,6 +47,7 @@ class FieldDesc:
     bound: int
     key_enum: str
     default: Any
+    at: int
 
     def __init__(
         self,
@@ -64,6 +66,7 @@ class FieldDesc:
         bound: int = 0,
         key_enum: str = "",
         default: Any = None,
+        at: int = 0,
     ) -> None:
         self.name = name
         self.field_id = field_id
@@ -80,6 +83,7 @@ class FieldDesc:
         self.bound = bound
         self.key_enum = key_enum
         self.default = default
+        self.at = at
 
     def is_default(self, value: Any) -> bool:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""
@@ -99,13 +103,33 @@ class FieldDesc:
 class TableDesc:
     """One generated table: its name, type id and fields."""
 
-    __slots__ = ("name", "type_id", "variable", "fields", "by_id")
+    __slots__ = (
+        "name",
+        "type_id",
+        "variable",
+        "fields",
+        "by_id",
+        "size",
+        "align",
+        "cook_align",
+        "build_version",
+        "region_align",
+        "bytes_blob_type_id",
+        "string_blob_type_id",
+    )
 
     name: str
     type_id: int
     variable: bool
     fields: tuple[FieldDesc, ...]
     by_id: dict[int, FieldDesc]
+    size: int
+    align: int
+    cook_align: int
+    build_version: int
+    region_align: int
+    bytes_blob_type_id: int
+    string_blob_type_id: int
 
     def __init__(
         self,
@@ -113,12 +137,26 @@ class TableDesc:
         type_id: int,
         variable: bool,
         fields: tuple[FieldDesc, ...],
+        size: int = 0,
+        align: int = 1,
+        cook_align: int = 1,
+        build_version: int = 0,
+        region_align: int = 8,
+        bytes_blob_type_id: int = 0,
+        string_blob_type_id: int = 0,
     ) -> None:
         self.name = name
         self.type_id = type_id
         self.variable = variable
         self.fields = fields
         self.by_id = {field.field_id: field for field in fields}
+        self.size = size
+        self.align = align
+        self.cook_align = cook_align
+        self.build_version = build_version
+        self.region_align = region_align
+        self.bytes_blob_type_id = bytes_blob_type_id
+        self.string_blob_type_id = string_blob_type_id
 
     def field(self, name: str) -> FieldDesc | None:
         for field in self.fields:

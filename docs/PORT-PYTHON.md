@@ -320,6 +320,45 @@ generated class per table and per map entry, each with its descriptor
   target does. The table emitter can describe future codec layers directly;
   those descriptors do not claim that the compiler carries their constructs.
 
+### The cooked form
+
+`_schema/cook.py` is the runtime's read side and `_schema/cookwrite.py` its
+write side (docs/SPEC-TABLES.md §7, §7.1, §7.2, §7.4, §7.6). The generated table
+descriptor now carries the layout facts the walk needs — its record `size` and
+`align`, its cook node alignment, the unit's build version and region alignment,
+the two reserved blob type ids, and each field's offset `at` — beside the facts
+it already carried. A later card adds no second layout model: the cook reads the
+same `ir.RecordLayout` and `ir.FieldPieces` facts the save does.
+
+- **Open is match-and-point.** `cook.open_cook(cls, data, base_offset)` reads
+  the magic, build version, byte-order word, reserved words, alignment and the
+  two part lengths, and answers a handle; it reads no node and no directory
+  entry. A file of the other byte order refuses `foreign_order` before any other
+  word is read, as every accelerator surface does (§7.6, §19.1).
+- **Check is cook-check's tool pass.** `cook.check_cook` runs Open and then the
+  two passes: the directory linearly (ascending, aligned for its own type, each
+  node inside the region), then every node in directory order decoding no
+  payload and following no reference, with the reference's named type and the
+  cycle check. It refuses `bad_layout` where `schema cook-check` does.
+- **Cook writes the tool's bytes.** `cook.cook(value, order=1, capacity=None)`
+  writes the header, the depth-first pre-order region and the attribution part
+  byte for byte with `schema cook` in both byte orders, and
+  `cook.cook_measure(value)` answers that file's length. A pointer is a
+  self-relative delta, zero for null, a 128-bit integer is its raw 16 bytes in
+  the named order, and every byte no field covers is zero.
+- **Scope follows the codec.** The walk covers the constructs this cut carries:
+  bool, the full-width integers (8 to 128 bits), by-value tables and `*T`
+  pointers. A field of any other kind is refused by name, as the load and save
+  refuse it, and a later card extends the same walk with its shape.
+- **The proof is the tool's oracle.** `TestPythonCook`
+  (internal/codegen/pythontable) writes a fixed root and a variable root with a
+  shared tail under both pins, holds both byte orders and the measure to
+  `tablecook.Cook`, opens the tool's file, and refuses the header, directory and
+  region forgeries `cook-check` names. Its negative controls plant the byte
+  order, the wide integer's order, the pointer delta, the attribution length
+  and the reserved word in a copy of the runtime and require the comparison to
+  go red.
+
 ### Bench
 
 The shape bench runs a ten-field fixed-point table (the five storage widths,

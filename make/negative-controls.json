@@ -1046,6 +1046,15 @@
       "python": "pin"
     },
     {
+      "name": "python-cook",
+      "when": "pull-request",
+      "why": "the cooked form's controls (make/python.mk): the write-side byte order, the wide integer's order, the pointer delta and the attribution length are each moved in a copy of the generated runtime, and the reserved word in the read side, and TestPythonCook's comparison against tablecook.Cook must go red under every one. It is also a prerequisite of test-python, so the leg runs it beside the table tests; this row is the one the negative-control matrix schedules, on the pins .github/actions/python restores.",
+      "targets": [
+        "python-cook-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",

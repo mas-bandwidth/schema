@@ -279,6 +279,7 @@ func emitModule(u *ir.Unit, base string, tables []*ir.Struct, unions []*ir.Union
 
 func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	name := st.Name
+	layout := ir.RecordLayout(u, st)
 	fmt.Fprintf(b, "class %s:\n", name)
 	fmt.Fprintf(b, "    \"\"\"The table %s.\"\"\"\n\n", name)
 	slots := make([]string, 0, len(st.Fields))
@@ -344,9 +345,22 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(name))
 	fmt.Fprintf(b, "    type_id=%s,\n", hex64(ir.TableWireId(st.WireName())))
 	fmt.Fprintf(b, "    variable=%s,\n", pyBool(ir.VariableTables(u)[name]))
+	fmt.Fprintf(b, "    size=%d,\n", layout.Size)
+	fmt.Fprintf(b, "    align=%d,\n", layout.Align)
+	fmt.Fprintf(b, "    cook_align=%d,\n", ir.CookNodeAlign(u, st))
+	fmt.Fprintf(b, "    build_version=%s,\n", hex64(ir.BuildVersion(u)))
+	fmt.Fprintf(b, "    region_align=%d,\n", ir.TableRegionAlign(u))
+	fmt.Fprintf(b, "    bytes_blob_type_id=%s,\n", hex64(ir.BytesTypeId))
+	fmt.Fprintf(b, "    string_blob_type_id=%s,\n", hex64(ir.StringTypeId))
 	fmt.Fprintf(b, "    fields=(\n")
 	for ordinal, f := range st.Fields {
 		lo, hi := intRange(f)
+		at := int64(0)
+		if fl := layout.FieldByName(f.Name); fl != nil {
+			if pieces := ir.FieldPieces(u, f, fl.Offset); len(pieces) > 0 {
+				at = pieces[0].Offset
+			}
+		}
 		fmt.Fprintf(b, "        FieldDesc(\n")
 		fmt.Fprintf(b, "            name=%s,\n", strconv.Quote(f.Name))
 		fmt.Fprintf(b, "            field_id=%s,\n", hex64(ir.TableFieldWireId(f)))
@@ -367,6 +381,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
 		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
+		fmt.Fprintf(b, "            at=%d,\n", at)
 		fmt.Fprintf(b, "        ),\n")
 	}
 	if len(st.Fields) == 1 {
