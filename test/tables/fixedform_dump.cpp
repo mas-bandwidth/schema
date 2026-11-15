@@ -21,6 +21,7 @@
 
 #include "FX1Table.h"
 #include "FX2Table.h"
+#include "FNZTable.h"
 #include "P1Table.h"
 #include "P3Table.h"
 #include "KeyedTable.h"
@@ -757,6 +758,22 @@ static bool fu2_file( const char * dir )
     MS( v[1].extra, -11 );
 
     return emit( dir, "fu2.bin", v, tblfu2::FuRootFixedMeasure, tblfu2::FuRootFixedSave );
+}
+
+// THE COMPRESSED FLOAT'S NEGATIVE ZERO (docs/SPEC-TABLES.md §3.3). The record
+// holds the bits of -0 in `value`; the manifest's `expect=` states the rule's
+// landing, the value 0 itself, which is also the canonical bytes with that
+// field all zero. The read is not asserted here: the file records what went
+// onto the wire, and every leg's own read is where the rule is held.
+static bool nz_file( const char * dir )
+{
+    std::vector<tblfnz::NegZero> v( 1 );
+    tblfnz::NegZeroReset( v[0] );
+    MS( v[0].lead, 1u );
+    MS( v[0].value, float_from_bits( 0x80000000u ) );
+    MS( v[0].trail, 2u );
+    g_expect = "r0.value=0";
+    return emit( dir, "negative_zero.bin", v, tblfnz::NegZeroFixedMeasure, tblfnz::NegZeroFixedSave );
 }
 
 // ---- the DEAD-BYTE corpus --------------------------------------------------
@@ -1882,7 +1899,7 @@ int main( int argc, char ** argv )
     const char * dir = argv[1];
     if ( !fx1_file( dir ) || !fx2_file( dir ) || !p1_file( dir ) || !p3_file( dir ) ||
          !keyed_file( dir ) || !pack_file( dir ) ||
-         !fu1_file( dir ) || !fu2_file( dir ) ) { return 1; }
+         !fu1_file( dir ) || !fu2_file( dir ) || !nz_file( dir ) ) { return 1; }
     if ( !dead_bytes_files( dir ) ) { return 1; }
     // ---- rowan/cpp-versioning-numbers: BEGIN ----
     if ( !versioning_numbers_files( dir ) ) { return 1; }
