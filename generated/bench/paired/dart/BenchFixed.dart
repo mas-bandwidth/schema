@@ -3474,6 +3474,7 @@ bool mixedEntitySaveMessageBody(TableBitWriter w, MixedEntity value) {
 bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
   initMixedEntity(value);
   r.seenReset();
+  var nextField = 0;
   while (true) {
     final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
@@ -3487,6 +3488,8 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
     if (shape == null) { r.report.Damage(); return false; }
     switch (entry.id) {
       case 2593226102015223570: {
+        if (nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 1;
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3499,9 +3502,12 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           if (shape.packing == 1) { value.entityId += shape.base; }
         }
         if (value.entityId > 4095) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.entityId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -3797881157997612786: {
+        if (nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 2;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3515,9 +3521,12 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           if (shape.packing == 0) { value.posX = value.posX.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.posX < -16383 || value.posX > 16383) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.posX != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -3797880058485984575: {
+        if (nextField > 2) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 3;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3531,9 +3540,12 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           if (shape.packing == 0) { value.posY = value.posY.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.posY < -16383 || value.posY > 16383) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.posY != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -3797883357020869208: {
+        if (nextField > 3) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 4;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3547,9 +3559,12 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           if (shape.packing == 0) { value.posZ = value.posZ.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.posZ < -16383 || value.posZ > 16383) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.posZ != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -5382489739573192984: {
+        if (nextField > 4) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 5;
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3562,9 +3577,12 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           if (shape.packing == 1) { value.yaw += shape.base; }
         }
         if (value.yaw > 511) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.yaw != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 6028620492700434865: {
+        if (nextField > 5) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 6;
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3577,9 +3595,12 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           if (shape.packing == 1) { value.pitch += shape.base; }
         }
         if (value.pitch > 511) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.pitch != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 7849183398884077159: {
+        if (nextField > 6) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 7;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3593,9 +3614,12 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           if (shape.packing == 0) { value.velX = value.velX.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.velX < -2048 || value.velX > 2047) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.velX != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 7849182299372448948: {
+        if (nextField > 7) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 8;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3609,9 +3633,12 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           if (shape.packing == 0) { value.velY = value.velY.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.velY < -2048 || value.velY > 2047) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.velY != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 7849185597907333581: {
+        if (nextField > 8) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 9;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3625,9 +3652,12 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           if (shape.packing == 0) { value.velZ = value.velZ.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.velZ < -2048 || value.velZ > 2047) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.velZ != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 9181103189905877455: {
+        if (nextField > 9) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 10;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3641,13 +3671,17 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           if (shape.packing == 0) { value.health = value.health.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.health < 0 || value.health > 1000) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.health != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -6866282850657997311: {
+        if (nextField > 10) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 11;
         if (entry.kind != 30 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
         }
+        final unknownAt = r.report.unknown;
         {
           final ref = r.bits.get(r.vocabulary.refBits);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -3675,16 +3709,22 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
             }
           }
         }
+        if (r.report.unknown == unknownAt && !(value.weapon != MixedWeapon.none)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 9179190079975030720: {
+        if (nextField > 11) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 12;
         if (entry.kind != 9 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
         }
+        if (!(value.damage != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 1271228688681418151: {
+        if (nextField > 12) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 13;
         if (entry.kind != 1 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -3694,9 +3734,12 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.moving = v;
         }
+        if (!(value.moving != false)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 8535675692938965450: {
+        if (nextField > 13) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 14;
         if (entry.kind != 1 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -3706,6 +3749,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.firing = v;
         }
+        if (!(value.firing != false)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       default:
@@ -3735,6 +3779,7 @@ bool mixedStatSaveMessageBody(TableBitWriter w, MixedStat value) {
 bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
   initMixedStat(value);
   r.seenReset();
+  var nextField = 0;
   while (true) {
     final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
@@ -3748,6 +3793,8 @@ bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
     if (shape == null) { r.report.Damage(); return false; }
     switch (entry.id) {
       case -9175110139929313435: {
+        if (nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 1;
         if (entry.kind != 6 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -3760,9 +3807,12 @@ bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
           if (shape.packing == 1) { value.statId += shape.base; }
         }
         if (value.statId > 255) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.statId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 5910805692604981441: {
+        if (nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 2;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3776,6 +3826,7 @@ bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
           if (shape.packing == 0) { value.delta = value.delta.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.delta < -512 || value.delta > 511) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.delta != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       default:
@@ -3813,6 +3864,7 @@ bool mixedHitEventSaveMessageBody(TableBitWriter w, MixedHitEvent value) {
 bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
   initMixedHitEvent(value);
   r.seenReset();
+  var nextField = 0;
   while (true) {
     final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
@@ -3826,6 +3878,8 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
     if (shape == null) { r.report.Damage(); return false; }
     switch (entry.id) {
       case -5207116919359778736: {
+        if (nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 1;
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3838,9 +3892,12 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
           if (shape.packing == 1) { value.targetId += shape.base; }
         }
         if (value.targetId > 4095) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.targetId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 9179190079975030720: {
+        if (nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 2;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3854,9 +3911,12 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
           if (shape.packing == 0) { value.damage = value.damage.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.damage < 0 || value.damage > 4095) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.damage != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 142922654710085925: {
+        if (nextField > 2) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 3;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3870,9 +3930,12 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
           if (shape.packing == 0) { value.hitKind = value.hitKind.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.hitKind < 0 || value.hitKind > 7) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.hitKind != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 1324453635955533101: {
+        if (nextField > 3) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 4;
         if (entry.kind != 1 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -3882,6 +3945,7 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.crit = v;
         }
+        if (!(value.crit != false)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       default:
@@ -3911,6 +3975,7 @@ bool mixedChatEventSaveMessageBody(TableBitWriter w, MixedChatEvent value) {
 bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
   initMixedChatEvent(value);
   r.seenReset();
+  var nextField = 0;
   while (true) {
     final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
@@ -3924,6 +3989,8 @@ bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
     if (shape == null) { r.report.Damage(); return false; }
     switch (entry.id) {
       case -6556890747741999708: {
+        if (nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 1;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3937,9 +4004,12 @@ bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
           if (shape.packing == 0) { value.channel = value.channel.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.channel < 0 || value.channel > 3) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.channel != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -292263051557875678: {
+        if (nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 2;
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3952,6 +4022,7 @@ bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
           if (shape.packing == 1) { value.speaker += shape.base; }
         }
         if (value.speaker > 4095) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.speaker != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       default:
@@ -3984,6 +4055,7 @@ bool mixedPickupEventLoadMessageBody(
 ) {
   initMixedPickupEvent(value);
   r.seenReset();
+  var nextField = 0;
   while (true) {
     final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
@@ -3997,6 +4069,8 @@ bool mixedPickupEventLoadMessageBody(
     if (shape == null) { r.report.Damage(); return false; }
     switch (entry.id) {
       case -7025667724851298986: {
+        if (nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 1;
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4009,9 +4083,12 @@ bool mixedPickupEventLoadMessageBody(
           if (shape.packing == 1) { value.itemId += shape.base; }
         }
         if (value.itemId > 1023) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.itemId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -9145686598410475159: {
+        if (nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 2;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4025,6 +4102,7 @@ bool mixedPickupEventLoadMessageBody(
           if (shape.packing == 0) { value.amount = value.amount.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.amount < 0 || value.amount > 255) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.amount != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       default:
@@ -4258,6 +4336,7 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
 bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
   initBenchMixed(value);
   r.seenReset();
+  var nextField = 0;
   while (true) {
     final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4271,6 +4350,8 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
     if (shape == null) { r.report.Damage(); return false; }
     switch (entry.id) {
       case -6181000666011064152: {
+        if (nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 1;
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4283,9 +4364,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (shape.packing == 1) { value.sequence += shape.base; }
         }
         if (value.sequence > 65535) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.sequence != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 990229364654832702: {
+        if (nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 2;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4299,9 +4383,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (shape.packing == 0) { value.ackSequence = value.ackSequence.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.ackSequence < 0 || value.ackSequence > 65535) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.ackSequence != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -7228825333587644925: {
+        if (nextField > 2) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 3;
         if (entry.kind != 8 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 8))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4314,9 +4401,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (shape.packing == 1) { value.ackBits += shape.base; }
         }
         if (value.ackBits > 4294967295) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.ackBits != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -5199487799206016251: {
+        if (nextField > 3) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 4;
         if (entry.kind != 9 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4328,9 +4418,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.sessionId = v;
           if (shape.packing == 1) { value.sessionId += shape.base; }
         }
+        if (!(value.sessionId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 7889067272199050878: {
+        if (nextField > 4) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 5;
         if (entry.kind != 8 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 8))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4342,9 +4435,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.clientId = v;
           if (shape.packing == 1) { value.clientId += shape.base; }
         }
+        if (!(value.clientId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 8334276637232054488: {
+        if (nextField > 5) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 6;
         if (entry.kind != 9 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4357,9 +4453,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (shape.packing == 1) { value.nonce += shape.base; }
         }
         if ((value.nonce ^ 0x8000000000000000) < 0x8000000000000000 || (value.nonce ^ 0x8000000000000000) > 9223372036854775807) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.nonce != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 4534679873638431877: {
+        if (nextField > 6) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 7;
         if (entry.kind != 5 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 5))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4373,9 +4472,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (shape.packing == 0) { value.worldTime = value.worldTime.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.worldTime < -1000000000000 || value.worldTime > 1000000000000) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.worldTime != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 8916005070914257170: {
+        if (nextField > 7) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 8;
         if (entry.kind != 9 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4388,9 +4490,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (shape.packing == 1) { value.frameTick += shape.base; }
         }
         if ((value.frameTick ^ 0x8000000000000000) > 0x8000ffffffffffff) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.frameTick != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 4343163795393112518: {
+        if (nextField > 8) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 9;
         if (entry.kind != 22 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4403,9 +4508,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (shape.packing == 1) { value.serverTime += shape.base; }
         }
         if (value.serverTime < 0 || value.serverTime > 65535) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.serverTime != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -7828083326636031446: {
+        if (nextField > 9) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 10;
         if (entry.kind != 14 || shape.elem != 13) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4430,9 +4538,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           }
           value.entitiesCount = n;
         }
+        if (!(value.entitiesCount > 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -1268998401975805620: {
+        if (nextField > 10) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 11;
         if (entry.kind != 14 || shape.elem != 13) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4457,13 +4568,17 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           }
           value.statsCount = n;
         }
+        if (!(value.statsCount > 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 3329809749115557776: {
+        if (nextField > 11) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 12;
         if (entry.kind != 15 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
         }
+        final unknownAt = r.report.unknown;
         {
           final ref = r.bits.get(r.vocabulary.refBits);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4526,9 +4641,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
             }
           }
         }
+        if (r.report.unknown == unknownAt && !(value.gameEvent.type != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 6294288958393922979: {
+        if (nextField > 12) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 13;
         if (entry.kind != 14 || shape.elem != 6) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4556,6 +4674,8 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
         break;
       }
       case 1415871171432867950: {
+        if (nextField > 13) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 14;
         if (entry.kind != 12 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4571,9 +4691,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.playerNameLength = kept;
           value.playerName.setRange(0, kept, r.bits.buffer, start);
         }
+        if (!(value.playerNameLength > 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -3478843999652550171: {
+        if (nextField > 14) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 15;
         if (entry.kind != 14 || shape.elem != 6) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4588,9 +4711,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.payloadLength = kept;
           value.payload.setRange(0, kept, r.bits.buffer, start);
         }
+        if (!(value.payloadLength > 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -2616736631205226807: {
+        if (nextField > 15) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 16;
         if (entry.kind != 10 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4614,6 +4740,8 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
         break;
       }
       case -2616737730716855018: {
+        if (nextField > 16) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 17;
         if (entry.kind != 10 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4637,6 +4765,8 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
         break;
       }
       case -2616738830228483229: {
+        if (nextField > 17) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 18;
         if (entry.kind != 10 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4660,6 +4790,8 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
         break;
       }
       case -7138431908913683369: {
+        if (nextField > 18) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 19;
         if (entry.kind != 10 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4672,9 +4804,13 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.recoil = TableBitWriter._float32Cell[0];
         }
         if (r.bits.failed) { r.report.Damage(); return false; }
+        TableBitWriter._float32Cell[0] = value.recoil;
+        if (!(TableBitWriter._float32Words[0] != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 6535842126802938884: {
+        if (nextField > 19) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 20;
         if (entry.kind != 11 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 11))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4692,9 +4828,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           TableBitWriter._float64Words[0] = b;
           value.drift = TableBitWriter._float64Cell[0];
         }
+        if (!(value.drift != 0 || value.drift.isNegative)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -6686572760759554282: {
+        if (nextField > 20) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 21;
         if (entry.kind != 19 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 19))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4715,9 +4854,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           }
           value.wideKey = UInt128(hi, lo);
         }
+        if (!(value.wideKey != UInt128.zero)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -3018575613315307966: {
+        if (nextField > 21) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 22;
         if (entry.kind != 18 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 18))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4740,9 +4882,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.flux = Int128(hi, lo);
           if (value.flux < Int128(0xfffffff000000000, 0) || value.flux > Int128(68719476736, 0)) { r.report.Refuse('out_of_range'); return false; }
         }
+        if (!(value.flux != Int128.zero)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -4669986463835551831: {
+        if (nextField > 22) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 23;
         if (entry.kind != 26 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4755,9 +4900,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (shape.packing == 1) { value.ping += shape.base; }
         }
         if (value.ping < 0 || value.ping > 250) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.ping != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 6200723483573899615: {
+        if (nextField > 23) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 24;
         if (entry.kind != 8 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 8))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4770,9 +4918,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (shape.packing == 1) { value.crcHint += shape.base; }
         }
         if (value.crcHint > 16777215) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.crcHint != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -4574933642144545166: {
+        if (nextField > 24) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 25;
         if (entry.kind != 1 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4782,9 +4933,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.hasExtra = v;
         }
+        if (!(value.hasExtra != true)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -204370544148493463: {
+        if (nextField > 25) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 26;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4798,9 +4952,12 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (shape.packing == 0) { value.extra = value.extra.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.extra < 0 || value.extra > 255) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.extra != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 8651444298976115966: {
+        if (nextField > 26) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 27;
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4814,6 +4971,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (shape.packing == 0) { value.idleTicks = value.idleTicks.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.idleTicks < 0 || value.idleTicks > 15) { r.report.Refuse('out_of_range'); return false; }
+        if (!(value.idleTicks != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       default:
@@ -4841,6 +4999,7 @@ bool fixedTableSaveMessageBody(TableBitWriter w, FixedTable value) {
 bool fixedTableLoadMessageBody(TableMessageReader r, FixedTable value) {
   initFixedTable(value);
   r.seenReset();
+  var nextField = 0;
   while (true) {
     final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4854,16 +5013,21 @@ bool fixedTableLoadMessageBody(TableMessageReader r, FixedTable value) {
     if (shape == null) { r.report.Damage(); return false; }
     switch (entry.id) {
       case 8999596768310594794: {
+        if (nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        nextField = 1;
         if (entry.kind != 13 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
         }
+        final unknownAt = r.report.unknown;
+        final bitsAt = r.bits.offset;
         {
           r.seenDepth++;
           final ok = benchMixedLoadMessageBody(r, value.value);
           r.seenDepth--;
           if (!ok) return false;
         }
+        if (r.report.unknown == unknownAt && !(r.bits.offset - bitsAt > r.vocabulary.refBits)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       default:
