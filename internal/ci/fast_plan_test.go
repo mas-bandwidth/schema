@@ -200,3 +200,54 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		})
 	}
 }
+
+// TestFastPlanSelectsLanguageLints runs the plan script and holds the
+// per-language lint selection (Glenn 2026-11-15: "run only the fastest unit
+// tests as verification, on a per-language basis"): the lens a touched
+// language owns, and only that one, rides the pull request as a lang-lint row,
+// and a broad diff selects all three.
+func TestFastPlanSelectsLanguageLints(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, tail, ok := strings.Cut(string(data), "          # THE BROAD RULE.")
+	if !ok {
+		t.Fatal("fast workflow broad selector not found")
+	}
+	selector, _, ok := strings.Cut(tail, "          echo \"broad=$broad\"")
+	if !ok {
+		t.Fatal("fast workflow output boundary not found")
+	}
+	_, selector, _ = strings.Cut(selector, "\n")
+	var script strings.Builder
+	for line := range strings.SplitSeq(selector, "\n") {
+		script.WriteString(strings.TrimPrefix(line, "          "))
+		script.WriteByte('\n')
+	}
+	script.WriteString(`printf '%s|%s' "$lints_json" "$packages"`)
+	for _, tc := range []struct{ name, files, want string }{
+		{"luau only", "internal/codegen/luautable/fixedlineage.go", `[]|./internal/codegen/luautable ./internal/goldens`},
+		{"dart leg", "internal/codegen/darttable/darttable.go", `["dart"]|./internal/codegen/darttable ./internal/goldens`},
+		{"go leg", "internal/codegen/gotable/wire.go", `["go"]|./internal/codegen/gotable ./internal/goldens`},
+		{"lua runtime, no .go file", "internal/codegen/luatable/runtime/wire.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens`},
+		{"lua make file", "make/lua.mk", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable`},
+		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|`},
+		{"docs only", "docs/CONTRIBUTING.md", `[]|`},
+		{"broad", "compiler/compiler.go", `["dart","go","lua"]|./...`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
+			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
+			cmd.Dir = repoRoot(t)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("plan script: %v: %s", err, out)
+			}
+			if got := selectorOutput(out); got != tc.want {
+				t.Fatalf("files=%q produced %q; want %q", tc.files, got, tc.want)
+			}
+		})
+	}
+}
