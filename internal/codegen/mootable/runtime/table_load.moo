@@ -1791,6 +1791,26 @@ local function writer_elides(fd: any, kind: number, b: buffer, at: number, e: nu
 		if fd.e.s == "tab" then
 			return false
 		end
+		if fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob" then
+			-- a pointer slot resolves after the walk, so its null is read off
+			-- the wire: L, the element kind, the count, then each index
+			local n, p = V.leb(b, at, e)
+			if n == nil or p >= e then
+				return false
+			end
+			local count, q = V.leb(b, p + 1, e)
+			if count == nil then
+				return false
+			end
+			for _ = 1, count do
+				local index, nxt = V.leb(b, q, e)
+				if index == nil or index ~= 0 then
+					return false
+				end
+				q = nxt
+			end
+			return true
+		end
 		for i = 1, fd.bound do
 			local x = if type(val) == "buffer" then buffer.readu8(val, i - 1) elseif type(val) == "table" then val[i] else nil
 			if not elem_default(fd.e, x) then
@@ -2230,20 +2250,21 @@ end
 -- THE ID TABLE IS IN FIRST-USE ORDER (§3): the walk meets every reference
 -- that names an entry (a field, a union arm, an enum variant, a keyed slot's
 -- key, a node record's type) in the order a writer interns them, so the first
--- reference to each entry must name the next entry not yet used. An entry
--- named out of that order is wire_damaged here, and one no reference names is
--- wire_damaged when the walk ends. An announcement's body is the transport of
--- its own two reserved ids and keeps its own rules (§3.3).
-local function wcUse(ref: number): boolean
+-- reference to each entry must name the next entry not yet used. The walk
+-- notes an entry named out of that order and goes on, so a refusal it meets
+-- later in the same walk still names the load; with none, the order is
+-- wire_damaged when the walk ends, as is an entry no reference names. An
+-- announcement's body is the transport of its own two reserved ids and keeps
+-- its own rules (§3.3).
+local function wcUse(ref: number)
 	if wc.announcement or wc.used[ref] then
-		return true
+		return
 	end
 	if ref ~= wc.nextRef then
-		return wcFail("wire_damaged")
+		wc.outOfOrder = true
 	end
 	wc.used[ref] = true
 	wc.nextRef += 1
-	return true
 end
 
 local wcPayload: any
@@ -2319,9 +2340,7 @@ local function wcKeyed(s: number, e: number): boolean
 			return wcFail("wire_damaged")
 		end
 		seen[key] = true
-		if not wcUse(key) then
-			return false
-		end
+		wcUse(key)
 		local n, after = V.leb(wc.b, nxt, e)
 		if n == nil or n > e - after then
 			return wcFail("wire_damaged")
@@ -2352,9 +2371,7 @@ local function wcUnion(at: number, e: number): number?
 		wcFail("wire_damaged")
 		return nil
 	end
-	if not wcUse(ref) then
-		return nil
-	end
+	wcUse(ref)
 	local kind = buffer.readu8(wc.b, nxt)
 	local n, after = V.leb(wc.b, nxt + 1, e)
 	if n == nil or n > e - after then
@@ -2404,8 +2421,8 @@ wcPayload = function(at: number, e: number, kind: number): number?
 			wcFail("wire_damaged")
 			return nil
 		end
-		if ref ~= 0 and not wcUse(ref) then
-			return nil
+		if ref ~= 0 then
+			wcUse(ref)
 		end
 		return nxt
 	elseif kind == 15 then
@@ -2506,9 +2523,7 @@ wcBody = function(s: number, e: number, root: boolean): boolean
 		if root and wc.table ~= nil and not wc.announcement then
 			return wcFail("wire_damaged")
 		end
-		if not wcUse(ref) then
-			return false
-		end
+		wcUse(ref)
 		if p >= e then
 			return wcFail("wire_damaged")
 		end
@@ -2622,7 +2637,7 @@ end
 -- float rides anywhere in the file. An announcement's body is the one root
 -- body whose transport carries the two reserved announcement ids (§3.3).
 local function wireCheck(b: buffer, s: number, e: number, ids: { string }, announcement: boolean?): (string?, boolean)
-	wc = { b = b, ids = ids, edges = {}, fail = nil, nonFinite = false, depth = 0, table = nil, announcement = announcement == true, used = {}, nextRef = 1 }
+	wc = { b = b, ids = ids, edges = {}, fail = nil, nonFinite = false, depth = 0, table = nil, announcement = announcement == true, used = {}, nextRef = 1, outOfOrder = false }
 	local function finish(): (string?, boolean)
 		local fail, nonFinite = wc.fail, wc.nonFinite
 		wc = nil
@@ -2641,9 +2656,7 @@ local function wireCheck(b: buffer, s: number, e: number, ids: { string }, annou
 		end
 		for _, rec in records do
 			wc.edges = {}
-			if not wcUse(rec.ref) then
-				return finish()
-			end
+			wcUse(rec.ref)
 			if rec.tid == BytesBlobId or rec.tid == StringBlobId then
 				-- A BLOB RECORD IS ITS BYTES (§2.5, §3.1)
 				if rec.e - rec.s > BLOB_SIZE_CAP then
@@ -2667,7 +2680,7 @@ local function wireCheck(b: buffer, s: number, e: number, ids: { string }, annou
 	wcGraph(children, blobs)
 	-- AN ENTRY NO REFERENCE NAMES (§3): a writer never interns an id it
 	-- does not write
-	if not wc.announcement and wc.nextRef ~= #ids + 1 then
+	if not wc.announcement and (wc.outOfOrder or wc.nextRef ~= #ids + 1) then
 		wcFail("wire_damaged")
 	end
 	return finish()

@@ -22,7 +22,10 @@ import (
 // nothing; one inside it lands exactly. The verdict is the contract
 // (docs/rulings.json refusal-verdict-only): never a reason name.
 
-const intDomainSchema = "package probe\n\nfixed table Ints\n{\n    i int8\n    j int32\n    u uint8\n}\n"
+// Each field declares a default of 1, so no batch below writes a field at its
+// default: the kind's own ends and the planted 0 are all values a conforming
+// writer writes, never elides (docs/SPEC-TABLES.md §3.3 (a)).
+const intDomainSchema = "package probe\n\nfixed table Ints\n{\n    i int8 = 1\n    j int32 = 1\n    u uint8 = 1\n}\n"
 
 // intDomainEnd is one field's announced ranged packing and the offset the
 // batch writes at that width. The value the read reconstructs is base plus
