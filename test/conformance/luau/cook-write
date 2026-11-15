@@ -21,7 +21,7 @@ set -eu
 
 # check <log>: the cook-write verdict of one harness log
 check() {
-	line=$(grep -E '^cook-write ' "$1" || true)
+	line=$(grep -E '^cook-write ' "$1" | sed 's/ *$//' || true)
 	if [ -z "$line" ]; then
 		echo "luau cook-write: the harness log $1 has no cook-write line" >&2
 		return 1
