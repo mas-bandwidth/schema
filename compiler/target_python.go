@@ -29,7 +29,7 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 			return nil, err
 		}
 	}
-	if err := refuseUnported(u, "python"); err != nil {
+	if err := pythonRefuseUnported(u); err != nil {
 		return nil, err
 	}
 	if err := refuseOptionalArrays(u, "python"); err != nil {
@@ -50,6 +50,62 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return python.Generate(u)
 }
 
+// pythonRefuseUnported is the shared refusal chain with one table-frame
+// carve-out: a bounded array of TABLE-SIDE unions is what this target carries
+// (a union with a general arm), while an array of packet unions waits for the
+// packet layer. The shared list is coarser because its test unit has packet
+// arms, so it would otherwise speak for a construct Python already carries.
+func pythonRefuseUnported(u *ir.Unit) error {
+	if err := refuseValueDefaults(u, "python"); err != nil {
+		return err
+	}
+	if err := refuseWasRows(u, "python"); err != nil {
+		return err
+	}
+	if err := refuseTableArms(u, "python"); err != nil {
+		return err
+	}
+	if err := refuseVoidArms(u, "python"); err != nil {
+		return err
+	}
+	if !pythonCarriesUnionArrays(u) {
+		if err := refuseUnionArrays(u, "python"); err != nil {
+			return err
+		}
+	}
+	if err := refuseBytes(u, "python"); err != nil {
+		return err
+	}
+	return refuseStrings(u, "python")
+}
+
+// pythonCarriesUnionArrays reports whether every array of unions the table
+// closure declares names a table-side union. A closure with no such array
+// answers false, so the shared refusal keeps its own wording.
+func pythonCarriesUnionArrays(u *ir.Unit) bool {
+	seen := false
+	for name := range ir.TableClosure(u) {
+		st := ir.ClosureMember(u, name)
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.Array == ir.ArrayNone || f.Type.Kind != ir.TNamed {
+				continue
+			}
+			ref, ok := f.Type.Ref.(*ir.Union)
+			if !ok {
+				continue
+			}
+			seen = true
+			if _, carried := u.TableUnions[ref.Name]; !carried {
+				return false
+			}
+		}
+	}
+	return seen
+}
+
 func init() {
-	registerBuiltin(pythonTarget{}, false, true, true, false)
+	registerBuiltin(pythonTarget{}, false, true, false, false)
 }

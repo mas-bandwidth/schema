@@ -324,7 +324,10 @@ generated class per table and per map entry, each with its descriptor
   through `kind_unsupported.py` until their cards land.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
-  and the type, until P4 carries packet types into tables.
+  and the type, until P4 carries packet types into tables. For the same
+  reason a bounded array of unions whose union arms are only packet types
+  keeps the shared union-array refusal; an array of table-side unions (a union
+  with a general arm) is carried here.
 - **The compiler keeps the shared carry checks.** Before table dispatch it
   refuses constructs outside the registered carry set, just as the packet
   target does. The table emitter can describe future codec layers directly;
