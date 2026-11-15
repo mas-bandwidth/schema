@@ -908,7 +908,7 @@ public final class TableVocabulary {
             };
 
     // THE UNIT'S OWN BUILD VERSION is the fact a strict announcement compares
-    // the endpoint's against (docs/SPEC-TABLES.md §3.3).
+    // the peer's against (docs/SPEC-TABLES.md §3.3).
     private static final long tableBuildVersion = 0x41d3559378bfa852L;
 
     public static int announceMeasure() {
@@ -955,7 +955,7 @@ public final class TableVocabulary {
         public String reason;
         public int unknown;
         public int widened;
-        // The endpoint's and the unit's own build versions a strict announcement
+        // The peer's and the unit's own build versions a strict announcement
         // refusal carries (docs/SPEC-TABLES.md §3.3).
         public long buildVersionRemote;
         public long buildVersionOwn;
@@ -1169,7 +1169,7 @@ public final class TableVocabulary {
         }
         // "STRICT MODE IS OPT-IN, and the default is unchanged." With 'strict'
         // set, an announcement whose build version is not the unit's own is
-        // refused by name, sets no vocabulary, keeps the endpoint's build version,
+        // refused by name, sets no vocabulary, keeps the peer's build version,
         // moves no counter, is never damage, and is terminal like every
         // refused first announcement (§3.3).
         if (v.strict && v.buildVersion != tableBuildVersion) {
