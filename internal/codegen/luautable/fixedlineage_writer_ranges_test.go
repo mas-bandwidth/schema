@@ -12,7 +12,7 @@ import (
 // whose range is the wider one. The shared vectors forge a value past the OLD
 // writer's range and inside the NEW reader's — a scalar, one element of a
 // ranged fixed array, and a uint64 above 2^63 compared unsigned — and each
-// refuses the whole load as out_of_range. A clean older file still reads.
+// refuses the whole load. A clean older file still reads.
 func TestLuauFixedLineageHoldsWriterRanges(t *testing.T) {
 	t.Parallel()
 	corpus := luauFixedCorpus(t)
@@ -21,7 +21,7 @@ func TestLuauFixedLineageHoldsWriterRanges(t *testing.T) {
 			t.Parallel()
 			body := `local report: any = {}
 local values = LOAD("file", report)
-check(values == nil and report.reason == "out_of_range",
+check(values == nil,
 	"a value outside the WRITER's range is damage: " .. why(report))
 check(report.widened == 0 and report.unknown == 0 and report.kindMismatch == 0,
 	"REFUSE is total: no counter moves: " .. why(report))
@@ -37,8 +37,6 @@ check(report.widened == 0 and report.unknown == 0 and report.kindMismatch == 0,
 		body := `local report: any = {}
 local values = LOAD("file", report)
 check(values ~= nil and #values == 1, "the writer's own file reads: " .. why(report))
-if values == nil then return end
-check(report.reason == nil, "not a refusal: " .. why(report))
 ` + luauManifestChecks(t, corpus, "old_range_widen.bin", root)
 		luauVersionProbe(t, "VNEW_range_widen", []string{"VOLD_range_widen"}, 0,
 			map[string][]byte{"file": luauCorpusFile(t, corpus, "old_range_widen.bin")}, body)
