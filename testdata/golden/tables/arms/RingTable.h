@@ -10335,7 +10335,7 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                             {
                                 const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
-                                if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return -1; }
+                                if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return false; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
                             }
                             body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
@@ -10349,7 +10349,7 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                             body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
                             break;
                         }
-                        default: return -1; // invalid tag — the write side refuses it too
+                        default: return false; // invalid tag — the write side refuses it too
                     }
                 }
             }
@@ -10816,14 +10816,14 @@ inline bool RackSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return -1; } // storage invariant
+                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return false; } // storage invariant
                             arm_payload_itemsu += 1 + TableLebBytes( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) ); // the element kind byte and the count
                             for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
                             {
                                 {
                                     const Node * slot_pointee_itemsue = NodeAt( ctx, cursor_items[elem_i_items].many.value[elem_i_itemsue] );
                                     uint64_t slot_index_itemsue = 0;
-                                    if ( slot_pointee_itemsue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee_itemsue, slot_index_itemsue ) ) { return -1; }
+                                    if ( slot_pointee_itemsue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee_itemsue, slot_index_itemsue ) ) { return false; }
                                     arm_payload_itemsu += TableLebBytes( slot_index_itemsue );
                                 }
                             }
@@ -10838,7 +10838,7 @@ inline bool RackSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                             body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
                             break;
                         }
-                        default: return -1; // invalid tag — the write side refuses it too
+                        default: return false; // invalid tag — the write side refuses it too
                     }
                 }
             }
@@ -11345,14 +11345,14 @@ inline bool TraySaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     {
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return -1; } // storage invariant
+                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return false; } // storage invariant
                         arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.entries[elem_i].many.value_count ) ); // the element kind byte and the count
                         for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
                         {
                             {
                                 const Node * slot_pointeeue = NodeAt( ctx, value.entries[elem_i].many.value[elem_iue] );
                                 uint64_t slot_indexue = 0;
-                                if ( slot_pointeeue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointeeue, slot_indexue ) ) { return -1; }
+                                if ( slot_pointeeue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointeeue, slot_indexue ) ) { return false; }
                                 arm_payloadu += TableLebBytes( slot_indexue );
                             }
                         }
@@ -11367,7 +11367,7 @@ inline bool TraySaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
                     }
-                    default: return -1; // invalid tag — the write side refuses it too
+                    default: return false; // invalid tag — the write side refuses it too
                 }
             }
         }
@@ -16599,7 +16599,7 @@ inline bool RingSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                             {
                                 const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
-                                if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return -1; }
+                                if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return false; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
                             }
                             body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
@@ -16613,7 +16613,7 @@ inline bool RingSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                             body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
                             break;
                         }
-                        default: return -1; // invalid tag — the write side refuses it too
+                        default: return false; // invalid tag — the write side refuses it too
                     }
                 }
             }
@@ -17090,14 +17090,14 @@ inline bool RackSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return -1; } // storage invariant
+                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return false; } // storage invariant
                             arm_payload_itemsu += 1 + TableLebBytes( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) ); // the element kind byte and the count
                             for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
                             {
                                 {
                                     const Node * slot_pointee_itemsue = NodeAt( ctx, cursor_items[elem_i_items].many.value[elem_i_itemsue] );
                                     uint64_t slot_index_itemsue = 0;
-                                    if ( slot_pointee_itemsue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee_itemsue, slot_index_itemsue ) ) { return -1; }
+                                    if ( slot_pointee_itemsue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee_itemsue, slot_index_itemsue ) ) { return false; }
                                     arm_payload_itemsu += TableLebBytes( slot_index_itemsue );
                                 }
                             }
@@ -17112,7 +17112,7 @@ inline bool RackSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                             body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
                             break;
                         }
-                        default: return -1; // invalid tag — the write side refuses it too
+                        default: return false; // invalid tag — the write side refuses it too
                     }
                 }
             }
@@ -17629,14 +17629,14 @@ inline bool TraySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     {
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return -1; } // storage invariant
+                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return false; } // storage invariant
                         arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.entries[elem_i].many.value_count ) ); // the element kind byte and the count
                         for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
                         {
                             {
                                 const Node * slot_pointeeue = NodeAt( ctx, value.entries[elem_i].many.value[elem_iue] );
                                 uint64_t slot_indexue = 0;
-                                if ( slot_pointeeue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointeeue, slot_indexue ) ) { return -1; }
+                                if ( slot_pointeeue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointeeue, slot_indexue ) ) { return false; }
                                 arm_payloadu += TableLebBytes( slot_indexue );
                             }
                         }
@@ -17651,7 +17651,7 @@ inline bool TraySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
                     }
-                    default: return -1; // invalid tag — the write side refuses it too
+                    default: return false; // invalid tag — the write side refuses it too
                 }
             }
         }

@@ -161,25 +161,32 @@ func (g *cookGen) emitCookFixedFieldPayload(f *ir.Field, offset int64, expr, ind
 		if f.KeyEnum != "" {
 			bound = f.KeyEnumRef.Max
 		}
-		g.pf("%sif (%s.length < %d) return false;\n", ind, expr, bound)
+		// THE STORAGE CHECKS ARE DEBUG ASSERTS (docs/SPEC.md §5.1): Dart is an
+		// assert leg, so a list shorter than its storage or a count past it
+		// is the programmer's error, caught by `assert` and gone in release.
+		g.cookAssert(ind, fmt.Sprintf("%s.length >= %d", expr, bound))
 		if f.Array == ir.ArrayCounted {
-			chk := fmt.Sprintf("%sif (%sCount < 0 || %sCount > %d) return false;", ind, expr, expr, bound)
-			if len(chk) <= 80 {
-				g.pf("%s\n", chk)
-			} else {
-				g.pf("%sif (%sCount < 0 || %sCount > %d)\n%s  return false;\n", ind, expr, expr, bound, ind)
-			}
+			g.cookAssert(ind, fmt.Sprintf("%sCount >= 0", expr))
+			g.cookAssert(ind, fmt.Sprintf("%sCount <= %d", expr, bound))
 			g.pf("%sif (out != null) out.setInt32(at + %d, %sCount, order);\n", ind, pieces[1].Offset, expr)
 		}
 		stride := int64(0)
 		if bound > 0 {
 			stride = pieces[0].Size / bound
 		}
+		// A counted array cooks its LIVE elements only; the slots past the
+		// count are dead storage and stay the zero the output fill wrote,
+		// as the engine writes a dead slot (docs/SPEC-TABLES.md §7.2, §7.6;
+		// docs/rulings.json fixed-dead-bytes-are-zero).
+		limit := fmt.Sprintf("%d", bound)
+		if f.Array == ir.ArrayCounted {
+			limit = expr + "Count"
+		}
 		// Typed float arrays already hold the transmitted 32-bit cells, and
 		// each is held finite first (docs/SPEC-TABLES.md §3.3): a NaN or an
 		// infinity refuses the cook, measure and write alike.
 		if f.Type.Kind == ir.TFloat32 {
-			g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
+			g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, limit)
 			g.cookRefuseUnless(ind+"  ", expr+"[i].isFinite", "false")
 			g.pf("%s}\n", ind)
 			g.pf("%sif (out != null) {\n", ind)
@@ -189,7 +196,7 @@ func (g *cookGen) emitCookFixedFieldPayload(f *ir.Field, offset int64, expr, ind
 			} else {
 				g.pf("%s  final raw = ByteData.view(\n%s    %s.buffer,\n%s    %s.offsetInBytes,\n%s    %s.lengthInBytes,\n%s  );\n", ind, ind, expr, ind, expr, ind, expr, ind)
 			}
-			g.pf("%s  for (var i = 0; i < %d; i++) {\n", ind, bound)
+			g.pf("%s  for (var i = 0; i < %s; i++) {\n", ind, limit)
 			setLine := fmt.Sprintf("%s    out.setUint32(at + %d + i * %d, raw.getUint32(i * 4, Endian.host), order);", ind, offset, stride)
 			if len(setLine) <= 80 {
 				g.pf("%s\n", setLine)
@@ -199,13 +206,15 @@ func (g *cookGen) emitCookFixedFieldPayload(f *ir.Field, offset int64, expr, ind
 			g.pf("%s  }\n%s}\n", ind, ind)
 			return
 		}
-		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
+		g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, limit)
 		g.emitCookFixedScalar(f, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
 		g.pf("%s}\n", ind)
 		return
 	}
 	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-		g.pf("%sif (%sLength < 0 ||\n%s    %sLength > %d ||\n%s    %sLength > %s.length)\n%s  return false;\n", ind, expr, ind, expr, f.Type.Size, ind, expr, expr, ind)
+		g.cookAssert(ind, fmt.Sprintf("%sLength >= 0", expr))
+		g.cookAssert(ind, fmt.Sprintf("%sLength <= %d", expr, f.Type.Size))
+		g.cookAssert(ind, fmt.Sprintf("%sLength <= %s.length", expr, expr))
 		g.pf("%sif (out != null) {\n", ind)
 		g.pf("%s  out.setInt32(at + %d, %sLength, order);\n", ind, pieces[1].Offset, expr)
 		g.pf("%s  for (var i = 0; i < %sLength; i++) {\n", ind, expr)
@@ -249,6 +258,17 @@ func (g *cookGen) cookRefuseUnless(ind, cond, ret string) {
 		return
 	}
 	g.pf("%sif (!%s)\n%s  return %s;\n", ind, cond, ind, ret)
+}
+
+// cookAssert writes a write-side storage check as `assert(<cond>);` the way
+// dart format does: one line while it fits eighty columns, the condition on
+// its own line past it.
+func (g *cookGen) cookAssert(ind, cond string) {
+	if line := fmt.Sprintf("%sassert(%s);", ind, cond); len(line) <= 80 {
+		g.pf("%s\n", line)
+		return
+	}
+	g.pf("%sassert(\n%s  %s,\n%s);\n", ind, ind, cond, ind)
 }
 
 // emitCookScalarStore is emitCookFixedScalar's store with no null test on
