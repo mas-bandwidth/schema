@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -69,7 +70,7 @@ table Holder {
 			api := schemaAPIEntries(goEscapeTables(test.unit), files)
 
 			fset := token.NewFileSet()
-			parsed := make([]*ast.File, 0, len(names))
+			parsed := make(map[string]*ast.File, len(names))
 			declarations := map[string][]*ast.Ident{}
 			methods := map[string]bool{}
 			var blankShims []string
@@ -78,7 +79,7 @@ table Holder {
 				if err != nil {
 					t.Fatalf("parse %s: %v", name, err)
 				}
-				parsed = append(parsed, file)
+				parsed[name] = file
 				for _, decl := range file.Decls {
 					if shim := blankRuntimeShim(decl); shim != "" {
 						blankShims = append(blankShims, fmt.Sprintf("%s (%s)", shim, fset.Position(decl.Pos())))
@@ -88,23 +89,15 @@ table Holder {
 						if decl.Recv != nil {
 							methods[decl.Name.Name] = true
 						}
-						if decl.Recv != nil || decl.Name.Name != "init" {
-							if !api[decl.Name.Name] {
-								addUnexportedDeclaration(declarations, decl.Name)
-							}
-						}
+						addDeclaration(declarations, decl.Name)
 					case *ast.GenDecl:
 						for _, spec := range decl.Specs {
 							switch spec := spec.(type) {
 							case *ast.TypeSpec:
-								if !api[spec.Name.Name] {
-									addUnexportedDeclaration(declarations, spec.Name)
-								}
+								addDeclaration(declarations, spec.Name)
 							case *ast.ValueSpec:
 								for _, name := range spec.Names {
-									if !api[name.Name] {
-										addUnexportedDeclaration(declarations, name)
-									}
+									addDeclaration(declarations, name)
 								}
 							}
 						}
@@ -112,59 +105,145 @@ table Holder {
 				}
 			}
 
-			referenced := map[string]bool{}
-			selectorNames := map[string]bool{}
-			for _, file := range parsed {
-				nonReferences := map[*ast.Ident]bool{}
-				ast.Inspect(file, func(node ast.Node) bool {
-					switch node := node.(type) {
-					case *ast.SelectorExpr:
-						nonReferences[node.Sel] = true
-						selectorNames[node.Sel.Name] = true
-					case *ast.KeyValueExpr:
-						if key, ok := node.Key.(*ast.Ident); ok {
-							nonReferences[key] = true
-						}
-					case *ast.Field:
-						for _, name := range node.Names {
-							nonReferences[name] = true
-						}
-					}
-					return true
-				})
-				ast.Inspect(file, func(node ast.Node) bool {
-					id, ok := node.(*ast.Ident)
-					if !ok || declarations[id.Name] == nil || declarationIdent(declarations[id.Name], id) {
-						return true
-					}
-					if nonReferences[id] {
-						return true
-					}
-					referenced[id.Name] = true
-					return true
-				})
-			}
-			for name := range selectorNames {
-				if methods[name] {
-					referenced[name] = true
+			roots := map[string]bool{"init": true}
+			for name := range declarations {
+				if token.IsExported(name) {
+					roots[name] = true
 				}
 			}
+			for name := range api {
+				roots[name] = true
+			}
+			referenced := reachableFromRoots(names, parsed, declarations, methods, roots)
 
 			var unused []string
 			for name := range declarations {
-				if !referenced[name] {
-					unused = append(unused, name)
+				if name == "init" || !isPrivate(name) || referenced[name] {
+					continue
 				}
+				unused = append(unused, name)
 			}
 			sort.Strings(unused)
 			if len(unused) != 0 {
-				t.Errorf("%s has unreferenced unexported declarations: %s", test.name, strings.Join(unused, ", "))
+				t.Errorf("%s has unexported declarations unreachable from the unit's API: %s", test.name, strings.Join(unused, ", "))
 			}
 			if len(blankShims) != 0 {
 				t.Errorf("%s carries shims it does not use, as blank constants: %s", test.name, strings.Join(blankShims, ", "))
 			}
 		})
 	}
+}
+
+// reachableFromRoots keeps the declarations a unit's API can reach: an
+// exported top-level name, an init function, or a schema-rooted entry point,
+// followed through every name those declarations use. A private cluster that
+// only calls itself does not stay.
+func reachableFromRoots(names []string, parsed map[string]*ast.File, declarations map[string][]*ast.Ident, methods map[string]bool, roots map[string]bool) map[string]bool {
+	declarationIDs := map[*ast.Ident]bool{}
+	for _, ids := range declarations {
+		for _, id := range ids {
+			declarationIDs[id] = true
+		}
+	}
+	edges := map[string]map[string]bool{}
+	addEdge := func(from, to string) {
+		if edges[from] == nil {
+			edges[from] = map[string]bool{}
+		}
+		edges[from][to] = true
+	}
+	for _, name := range names {
+		file := parsed[name]
+		nonReferences := map[*ast.Ident]bool{}
+		ast.Inspect(file, func(node ast.Node) bool {
+			switch node := node.(type) {
+			case *ast.SelectorExpr:
+				nonReferences[node.Sel] = true
+			case *ast.KeyValueExpr:
+				if key, ok := node.Key.(*ast.Ident); ok {
+					nonReferences[key] = true
+				}
+			case *ast.Field:
+				for _, id := range node.Names {
+					nonReferences[id] = true
+				}
+			case *ast.ImportSpec:
+				if node.Name != nil {
+					nonReferences[node.Name] = true
+				}
+			}
+			return true
+		})
+		collect := func(from string, nodes ...ast.Node) {
+			for _, node := range nodes {
+				if node == nil || reflect.ValueOf(node).IsNil() {
+					continue
+				}
+				ast.Inspect(node, func(node ast.Node) bool {
+					switch node := node.(type) {
+					case *ast.SelectorExpr:
+						if methods[node.Sel.Name] {
+							addEdge(from, node.Sel.Name)
+						}
+						return true
+					}
+					id, ok := node.(*ast.Ident)
+					if !ok || nonReferences[id] || declarationIDs[id] || declarations[id.Name] == nil {
+						return true
+					}
+					addEdge(from, id.Name)
+					return true
+				})
+			}
+		}
+		for _, decl := range file.Decls {
+			switch decl := decl.(type) {
+			case *ast.FuncDecl:
+				collect(decl.Name.Name, decl.Recv, decl.Type, decl.Body)
+			case *ast.GenDecl:
+				for _, spec := range decl.Specs {
+					switch spec := spec.(type) {
+					case *ast.TypeSpec:
+						collect(spec.Name.Name, spec.Type)
+					case *ast.ValueSpec:
+						if len(spec.Values) == len(spec.Names) {
+							for i, id := range spec.Names {
+								collect(id.Name, spec.Type, spec.Values[i])
+							}
+						} else {
+							for _, id := range spec.Names {
+								collect(id.Name, spec.Type)
+								for _, value := range spec.Values {
+									collect(id.Name, value)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	referenced := map[string]bool{}
+	var queue []string
+	for name := range roots {
+		if referenced[name] {
+			continue
+		}
+		referenced[name] = true
+		queue = append(queue, name)
+	}
+	for len(queue) != 0 {
+		name := queue[0]
+		queue = queue[1:]
+		for ref := range edges[name] {
+			if referenced[ref] {
+				continue
+			}
+			referenced[ref] = true
+			queue = append(queue, ref)
+		}
+	}
+	return referenced
 }
 
 // blankRuntimeShim names a const declaration that binds only the blank name
@@ -188,21 +267,6 @@ func blankRuntimeShim(decl ast.Decl) string {
 		}
 	}
 	return ""
-}
-
-func addUnexportedDeclaration(dst map[string][]*ast.Ident, name *ast.Ident) {
-	if name != nil && name.Name != "_" && !token.IsExported(name.Name) {
-		dst[name.Name] = append(dst[name.Name], name)
-	}
-}
-
-func declarationIdent(ids []*ast.Ident, id *ast.Ident) bool {
-	for _, declaration := range ids {
-		if declaration == id {
-			return true
-		}
-	}
-	return false
 }
 
 func TestGoPreservesLowercaseTableEntryPoints(t *testing.T) {

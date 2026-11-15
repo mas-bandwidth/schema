@@ -7,16 +7,19 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"reflect"
 	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
 )
 
-// pruneUnreferencedDeclarations drops private package declarations that no
-// generated Go file names. The table runtime is assembled from shared source
-// fragments, so a unit that needs one path should not carry every helper those
-// fragments can serve.
+// pruneUnreferencedDeclarations drops private package declarations that the
+// unit's API cannot reach: an exported name, an init function or a schema-rooted
+// entry point, followed through the names those declarations use. The table
+// runtime is assembled from shared source fragments, so a unit that needs one
+// path should not carry every helper those fragments can serve, and a private
+// cluster that only calls itself leaves too.
 func pruneUnreferencedDeclarations(files map[string][]byte, schemaAPI map[string]bool) (map[string][]byte, error) {
 	names := make([]string, 0, len(files))
 	for name := range files {
@@ -41,17 +44,15 @@ func pruneUnreferencedDeclarations(files map[string][]byte, schemaAPI map[string
 				if decl.Recv != nil {
 					methods[decl.Name.Name] = true
 				}
-				if decl.Recv != nil || decl.Name.Name != "init" {
-					addPrivateDeclaration(declarations, decl.Name)
-				}
+				addDeclaration(declarations, decl.Name)
 			case *ast.GenDecl:
 				for _, spec := range decl.Specs {
 					switch spec := spec.(type) {
 					case *ast.TypeSpec:
-						addPrivateDeclaration(declarations, spec.Name)
+						addDeclaration(declarations, spec.Name)
 					case *ast.ValueSpec:
 						for _, name := range spec.Names {
-							addPrivateDeclaration(declarations, name)
+							addDeclaration(declarations, name)
 						}
 					}
 				}
@@ -63,10 +64,16 @@ func pruneUnreferencedDeclarations(files map[string][]byte, schemaAPI map[string
 	// so their doc and interior comments leave with them.
 	removed := map[string][]sourceRange{}
 	for {
-		referenced, usedIdentifiers := referencesInFiles(names, parsed, declarations, methods)
-		for name := range schemaAPI {
-			referenced[name] = true
+		roots := map[string]bool{"init": true}
+		for name := range declarations {
+			if token.IsExported(name) {
+				roots[name] = true
+			}
 		}
+		for name := range schemaAPI {
+			roots[name] = true
+		}
+		referenced, usedIdentifiers := reachableDeclarations(names, parsed, declarations, methods, roots)
 		changed := false
 		for _, name := range names {
 			file := parsed[name]
@@ -120,10 +127,18 @@ func pruneUnreferencedDeclarations(files map[string][]byte, schemaAPI map[string
 	return files, nil
 }
 
-func referencesInFiles(names []string, parsed map[string]*ast.File, declarations map[string][]*ast.Ident, methods map[string]bool) (map[string]bool, map[string]map[string]bool) {
-	referenced := map[string]bool{}
+func reachableDeclarations(names []string, parsed map[string]*ast.File, declarations map[string][]*ast.Ident, methods map[string]bool, roots map[string]bool) (map[string]bool, map[string]map[string]bool) {
+	edges := map[string]map[string]bool{}
 	usedIdentifiers := map[string]map[string]bool{}
-	selectorNames := map[string]bool{}
+	addEdge := func(from, to string) {
+		if from == "" {
+			return
+		}
+		if edges[from] == nil {
+			edges[from] = map[string]bool{}
+		}
+		edges[from][to] = true
+	}
 	for _, name := range names {
 		file := parsed[name]
 		usedIdentifiers[name] = map[string]bool{}
@@ -132,7 +147,6 @@ func referencesInFiles(names []string, parsed map[string]*ast.File, declarations
 			switch node := node.(type) {
 			case *ast.SelectorExpr:
 				nonReferences[node.Sel] = true
-				selectorNames[node.Sel.Name] = true
 			case *ast.KeyValueExpr:
 				if key, ok := node.Key.(*ast.Ident); ok {
 					nonReferences[key] = true
@@ -148,28 +162,83 @@ func referencesInFiles(names []string, parsed map[string]*ast.File, declarations
 			}
 			return true
 		})
-		ast.Inspect(file, func(node ast.Node) bool {
-			id, ok := node.(*ast.Ident)
-			if !ok || nonReferences[id] || isDeclarationIdentifier(declarations[id.Name], id) {
-				return true
+		collect := func(from string, nodes ...ast.Node) {
+			for _, node := range nodes {
+				if node == nil || reflect.ValueOf(node).IsNil() {
+					continue
+				}
+				ast.Inspect(node, func(node ast.Node) bool {
+					switch node := node.(type) {
+					case *ast.SelectorExpr:
+						if methods[node.Sel.Name] {
+							addEdge(from, node.Sel.Name)
+						}
+						return true
+					}
+					id, ok := node.(*ast.Ident)
+					if !ok || nonReferences[id] || isDeclarationIdentifier(declarations[id.Name], id) {
+						return true
+					}
+					usedIdentifiers[name][id.Name] = true
+					if declarations[id.Name] != nil {
+						addEdge(from, id.Name)
+					}
+					return true
+				})
 			}
-			usedIdentifiers[name][id.Name] = true
-			if declarations[id.Name] != nil {
-				referenced[id.Name] = true
+		}
+		for _, decl := range file.Decls {
+			switch decl := decl.(type) {
+			case *ast.FuncDecl:
+				collect(decl.Name.Name, decl.Recv, decl.Type, decl.Body)
+			case *ast.GenDecl:
+				for _, spec := range decl.Specs {
+					switch spec := spec.(type) {
+					case *ast.TypeSpec:
+						collect(spec.Name.Name, spec.Type)
+					case *ast.ValueSpec:
+						if len(spec.Values) == len(spec.Names) {
+							for i, id := range spec.Names {
+								collect(id.Name, spec.Type, spec.Values[i])
+							}
+						} else {
+							for _, id := range spec.Names {
+								collect(id.Name, spec.Type)
+								for _, value := range spec.Values {
+									collect(id.Name, value)
+								}
+							}
+						}
+					}
+				}
 			}
-			return true
-		})
+		}
 	}
-	for name := range selectorNames {
-		if methods[name] {
-			referenced[name] = true
+	referenced := map[string]bool{}
+	var queue []string
+	for name := range roots {
+		if referenced[name] {
+			continue
+		}
+		referenced[name] = true
+		queue = append(queue, name)
+	}
+	for len(queue) != 0 {
+		name := queue[0]
+		queue = queue[1:]
+		for ref := range edges[name] {
+			if referenced[ref] {
+				continue
+			}
+			referenced[ref] = true
+			queue = append(queue, ref)
 		}
 	}
 	return referenced, usedIdentifiers
 }
 
-func addPrivateDeclaration(dst map[string][]*ast.Ident, id *ast.Ident) {
-	if id != nil && isPrivate(id.Name) {
+func addDeclaration(dst map[string][]*ast.Ident, id *ast.Ident) {
+	if id != nil && id.Name != "_" {
 		dst[id.Name] = append(dst[id.Name], id)
 	}
 }
