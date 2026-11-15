@@ -63,10 +63,14 @@ function validText(bytes, length) {
 
 // ---- type ProbeHeader: the flat codec ----
 
-// WriteProbeHeaderFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold ProbeHeaderMaxBytes.
+// WriteProbeHeaderFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ProbeHeaderMaxBytes.
 export function WriteProbeHeaderFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.version) || value.version < 0 || value.version > 7) {
+    return -1;
+  }
   lo = (171 | ((value.version & 0x7) << 8) | (0 << 11));
   SC.setBigUint64(0, value.probeId, true);
   v = SC.getUint32(0, true);
@@ -157,6 +161,12 @@ export function ReadProbeHeaderFlatBits(view, numBits, value) {
 // must hold ProbeBitsMaxBytes.
 export function WriteProbeBitsFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.small) || value.small < 0 || value.small > 511) {
+    return -1;
+  }
+  if (value.boundary < 0n || value.boundary > 8589934591n) {
+    return -1;
+  }
   lo = ((value.small & 0x1ff));
   SC.setBigUint64(0, value.boundary, true);
   v = SC.getUint32(0, true);
@@ -164,6 +174,9 @@ export function WriteProbeBitsFlat(view, value) {
   lo = v >>> 23;
   v = SC.getUint32(4, true) & 0x1;
   lo = (lo | (v << 9)) >>> 0;
+  if (value.wide < 0n || value.wide > 18446744073709551615n) {
+    return -1;
+  }
   SC.setBigUint64(0, value.wide, true);
   v = SC.getUint32(0, true);
   view.setUint32(4, (lo | (v << 10)) >>> 0, true);
@@ -2251,6 +2264,9 @@ export function ReadChatFlatBits(view, numBits, value) {
 // must hold ProbeReportMaxBytes.
 export function WriteProbeReportFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.header.version) || value.header.version < 0 || value.header.version > 7) {
+    return -1;
+  }
   lo = (171 | ((value.header.version & 0x7) << 8) | (0 << 11));
   SC.setBigUint64(0, value.header.probeId, true);
   v = SC.getUint32(0, true);
@@ -2423,7 +2439,16 @@ export function WriteTestDataFlat(view, value) {
   if (!Number.isInteger(value.c) || value.c < -100 || value.c > 150) {
     return -1;
   }
+  if (!Number.isInteger(value.d) || value.d < 0 || value.d > 255) {
+    return -1;
+  }
+  if (!Number.isInteger(value.e) || value.e < 0 || value.e > 255) {
+    return -1;
+  }
   view.setUint32(0, (((((value.a >>> 0) - 4294967196) >>> 0) & 0xff) | (((((value.b >>> 0) - 4294967196) >>> 0) & 0xff) << 8) | (((((value.c >>> 0) - 4294967196) >>> 0) & 0xff) << 16) | ((value.d & 0xff) << 24)), true);
+  if (!Number.isInteger(value.f) || value.f < 0 || value.f > 255) {
+    return -1;
+  }
   if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 16) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }

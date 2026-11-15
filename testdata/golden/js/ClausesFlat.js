@@ -797,10 +797,17 @@ export function ReadF13FlatBits(view, numBits, value) {
 
 // ---- type Tri3: the flat codec ----
 
-// WriteTri3Flat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold Tri3MaxBytes.
+// WriteTri3Flat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold Tri3MaxBytes.
 export function WriteTri3Flat(view, value) {
   let lo = 0;
+  if (!Number.isInteger(value.a) || value.a < 0 || value.a > 1) {
+    return -1;
+  }
+  if (!Number.isInteger(value.b) || value.b < 0 || value.b > 3) {
+    return -1;
+  }
   lo = ((value.a & 0x1) | ((value.b & 0x3) << 1));
   view.setUint32(0, lo, true);
   return 1;
@@ -858,6 +865,12 @@ export function WriteArrTri3Flat(view, value) {
   sb = 4;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
     const e0 = value.items[i0];
+    if (!Number.isInteger(e0.a) || e0.a < 0 || e0.a > 1) {
+      return -1;
+    }
+    if (!Number.isInteger(e0.b) || e0.b < 0 || e0.b > 3) {
+      return -1;
+    }
     v = ((e0.a & 0x1) | ((e0.b & 0x3) << 1)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 3;
@@ -951,10 +964,17 @@ export function ReadArrTri3FlatBits(view, numBits, value) {
 
 // ---- type Eleven: the flat codec ----
 
-// WriteElevenFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold ElevenMaxBytes.
+// WriteElevenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ElevenMaxBytes.
 export function WriteElevenFlat(view, value) {
   let lo = 0;
+  if (!Number.isInteger(value.a) || value.a < 0 || value.a > 7) {
+    return -1;
+  }
+  if (!Number.isInteger(value.b) || value.b < 0 || value.b > 255) {
+    return -1;
+  }
   lo = ((value.a & 0x7) | ((value.b & 0xff) << 3));
   view.setUint32(0, lo, true);
   return 2;
@@ -1000,12 +1020,19 @@ export function ReadElevenFlatBits(view, numBits, value) {
 
 // ---- type ArrEleven: the flat codec ----
 
-// WriteArrElevenFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold ArrElevenMaxBytes.
+// WriteArrElevenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold ArrElevenMaxBytes.
 export function WriteArrElevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 9; i0++) {
     const e0 = value.items[i0];
+    if (!Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
+      return -1;
+    }
+    if (!Number.isInteger(e0.b) || e0.b < 0 || e0.b > 255) {
+      return -1;
+    }
     v = ((e0.a & 0x7) | ((e0.b & 0xff) << 3)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 11;
@@ -1219,6 +1246,9 @@ export function ReadEmptyUnionFlatBits(view, numBits, value) {
 // must hold HoldsEmptyUnionMaxBytes.
 export function WriteHoldsEmptyUnionFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
   if (!Number.isInteger(value.u.type) || value.u.type < 0 || value.u.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
@@ -1231,6 +1261,9 @@ export function WriteHoldsEmptyUnionFlat(view, value) {
     case 2: {
       break;
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+    return -1;
   }
   v = ((value.tail & 0x7f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1347,6 +1380,9 @@ export function ReadHoldsEmptyUnionFlatBits(view, numBits, value) {
 // must hold StrsMaxBytes.
 export function WriteStrsFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
   if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 8) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
@@ -1420,6 +1456,9 @@ export function WriteStrsFlat(view, value) {
         lo = sb === 0 ? 0 : v >>> (8 - sb);
       }
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) {
+    return -1;
   }
   v = ((value.tail & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1636,6 +1675,9 @@ export function ReadStrsFlatBits(view, numBits, value) {
 // must hold ArrNestedMaxBytes.
 export function WriteArrNestedFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
   if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 4) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
@@ -1643,6 +1685,12 @@ export function WriteArrNestedFlat(view, value) {
   sb = 8;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
     const e0 = value.items[i0];
+    if (!Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
+      return -1;
+    }
+    if (!Number.isInteger(e0.b) || e0.b < 0 || e0.b > 255) {
+      return -1;
+    }
     v = ((e0.a & 0x7) | ((e0.b & 0xff) << 3)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 11;
@@ -1652,6 +1700,9 @@ export function WriteArrNestedFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) {
+    return -1;
   }
   v = ((value.tail & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -1779,10 +1830,14 @@ export function ReadArrNestedFlatBits(view, numBits, value) {
 
 // ---- type Sole: the flat codec ----
 
-// WriteSoleFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold SoleMaxBytes.
+// WriteSoleFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold SoleMaxBytes.
 export function WriteSoleFlat(view, value) {
   let lo = 0;
+  if (!Number.isInteger(value.only) || value.only < 0 || value.only > 8191) {
+    return -1;
+  }
   lo = ((value.only & 0x1fff));
   view.setUint32(0, lo, true);
   return 2;
