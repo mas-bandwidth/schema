@@ -1367,7 +1367,7 @@ jobs:
             pins=yes
           fi
           cs=no
-          if [ "$broad" = yes ] || echo "$files" | grep -E '^(internal/codegen/cstable/|internal/codegen/csharp/|generated/cs/|test/cs-tables/|make/cs\.mk$)' >/dev/null; then
+          if [ "$broad" = yes ] || echo "$files" | grep -E '^(internal/codegen/cstable/|internal/codegen/csharp/|generated/cs/|test/cs-tables/|make/cs\.mk$|make/cs-[^/]*\.mk$)' >/dev/null; then
             cs=yes
           fi
           printf 'pins=%s\ncs=%s\n' "$pins" "$cs" >> "$GITHUB_OUTPUT"
