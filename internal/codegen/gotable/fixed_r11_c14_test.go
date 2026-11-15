@@ -12,12 +12,13 @@ package gotable
 // distractor's is 6, the reader's own is 8, and the same forged count 5 is
 // refused under the 4 and read under the 6.
 //
-// C14: "the bounds pass walks live only". The read-side bounds walk a counted
-// array's live count, never its slack. An endpoint's garbage past the live
-// count is unspecified on read: it is neither a refusal nor a counter, while
-// the live prefix still reads. The slack is poisoned past the declared element
-// range and past the bool's 0/1 so a walk over the declared bound cannot stay
-// green.
+// C14: "the bounds pass walks live only". Every dead byte in a fixed record is
+// zero, and a non-zero one refuses the whole load
+// (docs/rulings.json fixed-dead-bytes-are-zero). The slack past a counted
+// array's live count and a text's used length is dead, so the read refuses it
+// as wire_damaged and writes nothing, while the writer's own zeroed image
+// reads. The slack is poisoned past the declared element range and past the
+// bool's 0/1 so a walk over the declared bound cannot stay green.
 //
 // TestGoFixedArrayBoundsAndLiveExtentsNegativeControl plants each fault in a
 // COPY of the emitted artifact (no tracked file is written) and requires the
@@ -301,35 +302,51 @@ func TestProbe(t *testing.T) {
 	if LiveFixedBodyBytes != 47 {
 		t.Fatalf("the record body moved (%d bytes), so the offsets below are stale", LiveFixedBodyBytes)
 	}
-	body := buf[len(buf)-LiveFixedRecordBytes+8:]
 	// the declared wire order: lead (4), vals count (4) + four int32 (16),
 	// flags count (4) + three bools (3), text length (4) + eight bytes (8),
 	// tail (4).
 	const valsSlackAt = 4 + 4 + 2*4
 	const flagsSlackAt = 4 + 4 + 4*4 + 4 + 1
 	const textSlackAt = 4 + 4 + 4*4 + 4 + 3 + 4 + 2
-	for i := 0; i < 2; i++ {
-		binary.LittleEndian.PutUint32(body[valsSlackAt+4*i:], 0x7FFFFFFF)
-	}
-	for i := 0; i < 2; i++ {
-		body[flagsSlackAt+i] = 0x02
-	}
-	for i := 0; i < 6; i++ {
-		body[textSlackAt+i] = 0xAA
-	}
-	// NOT VACUOUS: the declared slack really carries garbage no clean record has.
-	if binary.LittleEndian.Uint32(body[valsSlackAt:]) == 0 || body[flagsSlackAt] == 0 || body[textSlackAt] == 0 {
-		t.Fatal("the wire slack was not poisoned, so nothing below is tested")
+	for _, tc := range []struct {
+		name  string
+		stain func([]byte)
+	}{
+		{"counted array tail", func(b []byte) {
+			for i := 0; i < 2; i++ {
+				binary.LittleEndian.PutUint32(b[valsSlackAt+4*i:], 0x7FFFFFFF)
+			}
+		}},
+		{"bool array tail", func(b []byte) { b[flagsSlackAt] = 0x02 }},
+		{"text tail", func(b []byte) { b[textSlackAt] = 0xAA }},
+	} {
+		hostile := append([]byte(nil), buf...)
+		tc.stain(hostile[len(hostile)-LiveFixedRecordBytes+8:])
+		// NOT VACUOUS: the declared slack really carries garbage no clean record has.
+		poisoned := hostile[len(hostile)-LiveFixedRecordBytes+8:]
+		if binary.LittleEndian.Uint32(poisoned[valsSlackAt:]) == 0 && poisoned[flagsSlackAt] == 0 && poisoned[textSlackAt] == 0 {
+			t.Fatal("the wire slack was not poisoned, so nothing below is tested")
+		}
+		got := make([]Live, 1)
+		got[0].Tail = 0xDEADBEEF
+		var r TableReport
+		if n := LiveFixedLoad(got, hostile, make([]TableFixedEntry, 256), &r); n != -1 || r.Reason != "wire_damaged" {
+			t.Fatalf("%s: a non-zero dead byte did not refuse: n=%d %+v", tc.name, n, r)
+		}
+		if got[0].Tail != 0xDEADBEEF {
+			t.Fatalf("%s: the refused load wrote the destination: %+v", tc.name, got[0])
+		}
 	}
 
+	// THE CONTROL: the writer's own image has every dead byte zero.
 	got := make([]Live, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 256)
 	if n := LiveFixedLoad(got, buf, plan, &r); n != 1 {
-		t.Fatalf("an endpoint's garbage in the slack refused the record: n=%d %+v", n, r)
+		t.Fatalf("CONTROL FAILED: the writer's zeroed image refused: n=%d %+v", n, r)
 	}
 	if r != (TableReport{}) {
-		t.Fatalf("an endpoint's garbage in the slack moved a counter or named a refusal: %+v", r)
+		t.Fatalf("CONTROL FAILED: the writer's zeroed image moved a counter or named a refusal: %+v", r)
 	}
 	if got[0].Lead != 0xAAAAAAAA || got[0].Tail != 0xBBBBBBBB {
 		t.Fatalf("the bracketing fields did not land: %+v", got[0])
@@ -413,34 +430,23 @@ func TestProbe(t *testing.T) {
 	}
 	body := buf[len(buf)-LiveFixedRecordBytes+8:]
 	const valsSlackAt = 4 + 4 + 2*4
-	const flagsSlackAt = 4 + 4 + 4*4 + 4 + 1
-	const textSlackAt = 4 + 4 + 4*4 + 4 + 3 + 4 + 2
 	for i := 0; i < 2; i++ {
 		binary.LittleEndian.PutUint32(body[valsSlackAt+4*i:], 0x7FFFFFFF)
-	}
-	for i := 0; i < 2; i++ {
-		body[flagsSlackAt+i] = 0x02
-	}
-	for i := 0; i < 6; i++ {
-		body[textSlackAt+i] = 0xAA
 	}
 
 	got := make([]Live, 1)
 	var r TableReport
-	if n := LiveFixedLoad(got, buf, make([]TableFixedEntry, 256), &r); n != 1 {
-		t.Fatalf("an endpoint's garbage in the slack refused the record: n=%d %+v", n, r)
-	}
-	if r != (TableReport{}) {
-		t.Fatalf("an endpoint's garbage in the slack moved a counter or named a refusal: %+v", r)
+	if n := LiveFixedLoad(got, buf, make([]TableFixedEntry, 256), &r); n != -1 || r.Reason != "wire_damaged" {
+		t.Fatalf("a non-zero dead byte in a counted array's tail was accepted: n=%d %+v", n, r)
 	}
 }
 `
 		out, err := runFixedProbe(t, unitFrom(t, schema), nil, func(files map[string][]byte) {
-			sabotageGenerated(t, files, "live array extents", [2]string{
-				"for i := range int64(value.ValsCount)",
-				"for i := range int64(4)",
+			sabotageGenerated(t, files, "counted array dead tail", [2]string{
+				"if p.Aux != 0 && uint32(v) < p.Size {",
+				"if false && p.Aux != 0 && uint32(v) < p.Size {",
 			})
 		}, src)
-		requireRed(t, "the live array extent", out, err, "in the slack refused")
+		requireRed(t, "the counted array's dead tail", out, err, "was accepted")
 	})
 }

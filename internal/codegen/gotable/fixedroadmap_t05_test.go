@@ -110,11 +110,13 @@ func t05GoC4(t *testing.T) {
 
 // t05GoR24 holds R24 to the emitted runtime and load: ill-formed text in the
 // USED units refuses by name (`text_ill_formed`); text is counted in bytes;
-// slack is unspecified on read and not a refusal. docs/FIXED-FORM-ALGORITHM.md
+// the bytes past the used length are dead and a non-zero one refuses the whole
+// load (docs/rulings.json fixed-dead-bytes-are-zero). docs/FIXED-FORM-ALGORITHM.md
 // §4.5: "the CONTENT RULES apply to the USED UNITS and nothing else: UTF-8
 // validity over v bytes, never over N ... A content violation REFUSES BY NAME,
-// the verdict the packet reader gives"; docs/SPEC-TABLES.md §3.4: "ZERO on write past the used
-// bytes, UNSPECIFIED on read, never a refusal".
+// the verdict the packet reader gives"; docs/SPEC-TABLES.md §3.4: "ZERO on
+// write past the used bytes, and every byte past the used length is DEAD: a
+// non-zero one REFUSES wire_damaged on read".
 //
 // THE SOURCE IS NOT THE PROOF. A string match cannot bite on a validator that
 // ACCEPTS an ill-formed sequence, so this subtest also GENERATES the table unit
@@ -141,7 +143,7 @@ func t05GoR24(t *testing.T) {
 	}
 	t05Has(t, t05GeneratedLoad(t), "tableFixedRefuse(report, why)", "the refusal is by name, the load's own path (§5.8 row 8)")
 	// RUN it: every ill-formed sequence must land `text_ill_formed` through the
-	// generated load, and slack past the used units must not refuse.
+	// generated load, and a non-zero byte past the used units must refuse.
 	if out, err := t05RunProbe(t, t05IllFormedSchema, t05IllFormedProbe); err != nil {
 		t.Fatalf("t05: R24 drove the emitted runtime and it did not hold (§4.5):\n%s", out)
 	}
@@ -181,9 +183,9 @@ fixed table T {
 // t05IllFormedProbe drives the emitted tableFixedTextIllFormed through the
 // generated load. The wire is a clean record patched in place: the first
 // string's payload at body+4, the second string's length at body+12. Each
-// ill-formed sequence must return -1 with Reason text_ill_formed (§4.5), and
-// slack past the used string bytes
-// is UNSPECIFIED and must not refuse (docs/SPEC-TABLES.md §3.4).
+// ill-formed sequence must return -1 with Reason text_ill_formed (§4.5), and a
+// non-zero byte past the used string bytes is dead damage and refuses
+// (docs/rulings.json fixed-dead-bytes-are-zero; docs/SPEC-TABLES.md §3.4).
 const t05IllFormedProbe = `package probe
 
 import (
@@ -231,6 +233,7 @@ func TestIllFormed(t *testing.T) {
 		w := append([]byte(nil), wire...)
 		binary.LittleEndian.PutUint32(w[sBase:], uint32(len(c.b)))
 		copy(w[sPayload:], c.b)
+		clear(w[sPayload+len(c.b) : sPayload+8])
 		if got, r := load(w); got >= 0 || r.Reason != "text_ill_formed" {
 			t.Fatalf("utf8 %-15s: n=%d verdict=%v reason=%q, want text_ill_formed", c.name, got, r.Verdict, r.Reason)
 		}
@@ -240,8 +243,8 @@ func TestIllFormed(t *testing.T) {
 	for i := 3; i < 8; i++ {
 		slack[sPayload+i] = 0xFF
 	}
-	if got, r := load(slack); got < 0 {
-		t.Fatalf("slack: refused %q, want a clean read — slack is UNSPECIFIED, never a refusal (§3.4)", r.Reason)
+	if got, r := load(slack); got >= 0 || r.Reason != "wire_damaged" {
+		t.Fatalf("slack: n=%d reason=%q, want the wire_damaged refusal (fixed-dead-bytes-are-zero)", got, r.Reason)
 	}
 
 	// THE REFUSAL IS TOTAL (§5.8): "no counter moves, nothing is decoded, and
@@ -259,6 +262,8 @@ func TestIllFormed(t *testing.T) {
 	pw[sPayload] = 'a'
 	binary.LittleEndian.PutUint32(pw[uBase:], 1)
 	pw[uPayload] = 0xFF
+	clear(pw[sPayload+1 : sPayload+8])
+	clear(pw[uPayload+1 : uPayload+8])
 	var pr TableReport
 	if got := TFixedLoad(poison, pw, plan, &pr); got >= 0 || pr.Reason != "text_ill_formed" {
 		t.Fatalf("poison: n=%d reason=%q, want text_ill_formed", got, pr.Reason)

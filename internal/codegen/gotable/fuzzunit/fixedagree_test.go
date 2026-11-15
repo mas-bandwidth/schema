@@ -20,10 +20,10 @@ import (
 // TestGeneratedFixedAgreesWithEngine is the generated fixed read held to the
 // engine's over every fixed root of the examples unit and 6000 mutants of two
 // records each: one verdict on every input (docs/SPEC-TABLES.md §4, §6.5),
-// slack included (§3.4, THE SLACK RULE: bytes past a count and under an absent
-// optional are never a refusal); and where both accept, the same value, so the
-// generated save and the engine's write the same bytes, and the generated text
-// reads back in the engine to that value.
+// dead bytes included (docs/rulings.json fixed-dead-bytes-are-zero; §3.4: a
+// non-zero dead byte is refused by both); and where both accept, the same
+// value, so the generated save and the engine's write the same bytes, and the
+// generated text reads back in the engine to that value.
 func TestGeneratedFixedAgreesWithEngine(t *testing.T) {
 	t.Parallel()
 	c := compiler.New()
@@ -128,16 +128,16 @@ func TestGeneratedFixedAgreesWithEngine(t *testing.T) {
 	}
 }
 
-// TestGeneratedFixedSlackNegativeControl makes the generated pre-scan read the
-// slack (every slack span dropped) and requires the differential red on a
+// TestGeneratedFixedSlackNegativeControl drops the generated dead-byte check
+// (every dead span answered zero) and requires the differential red on a
 // verdict the engine does not share.
 func TestGeneratedFixedSlackNegativeControl(t *testing.T) {
 	t.Parallel()
 	out, failed := slowtest.RunSabotaged(t, "../../../..", "./internal/codegen/gotable/fuzzunit", "^TestGeneratedFixedAgreesWithEngine$",
 		slowtest.Sabotage{File: "tables/goruntime/goruntime.go",
-			From: "\tfor _, d := range dead {", To: "\tfor _, d := range dead[:0] {"})
-	if !failed || !strings.Contains(out, "verdict gen=false") {
-		t.Errorf("negative control: the generated read refuses slack and the differential did not go red on a verdict\n%s", out)
+			From: "\treturn [2]uint32{from, to}, TableFixedAllZero(src[from:to])", To: "\treturn [2]uint32{from, to}, true"})
+	if !failed || !strings.Contains(out, "verdict gen=true") {
+		t.Errorf("negative control: the generated read accepts dead bytes and the differential did not go red on a verdict\n%s", out)
 	}
 }
 

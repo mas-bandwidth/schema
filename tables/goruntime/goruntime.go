@@ -645,6 +645,7 @@ const (
 	TableFixedWidenF
 	TableFixedBool
 	TableFixedTag
+	TableFixedSlack
 )
 
 const (
@@ -1294,8 +1295,8 @@ func TableFixedUTF8Ok(p []byte) bool {
 }
 
 // tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count, text,
-// bool, tag and ordinal entries, run before the caller's storage is touched. A
-// count or a text length past the PLAN's bound refuses by name —
+// bool, tag, ordinal and dead-span entries, run before the caller's storage is
+// touched. A count or a text length past the PLAN's bound refuses by name —
 // count_over_bound / length_over_bound — an ill-formed payload refuses
 // text_ill_formed, a bool or present byte other than 0 or 1 wire_damaged, and a
 // tag or ordinal past its set out_of_range (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4,
@@ -1304,11 +1305,12 @@ func TableFixedUTF8Ok(p []byte) bool {
 // written. It walks each entry under its own guards, writes nothing and moves
 // no counter.
 //
-// THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE (§3.4, THE
-// SLACK RULE): the bytes past a counted array's count and under an absent
-// optional's present byte are slack, unspecified on read and never a refusal.
-// Each count and present byte it reads adds the slack behind it to dead, and an
-// entry inside dead is not asked.
+// EVERY DEAD BYTE IS ZERO (mas-bandwidth/schema docs/rulings.json fixed-dead-bytes-are-zero;
+// mas-bandwidth/schema docs/SPEC-TABLES.md §3.4; mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3): an
+// absent optional's payload, a counted array's slots past its count, a text's
+// units past its used length, and an inactive union arm. A dead range is
+// checked here before anything lands, and a non-zero one is wire_damaged. Each
+// dead range is added to dead, and an entry inside one is not asked.
 func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
 	var deadBuf [64][2]uint32
 	dead := deadBuf[:0]
@@ -1337,13 +1339,20 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 				return TableRefuseCountOverBound.Error()
 			}
 			if p.Aux != 0 && uint32(v) < p.Size {
-				dead = append(dead, [2]uint32{p.Src + 4 + uint32(v)*p.Aux, p.Src + 4 + p.Size*p.Aux})
+				span, zero := TableFixedDeadSpan(src, p.Src+4+uint32(v)*p.Aux, p.Src+4+p.Size*p.Aux)
+				if !zero {
+					return TableRefuseWireDamaged.Error()
+				}
+				dead = append(dead, span)
 			}
 		case TableFixedText:
 			v := int32(TableFixedGet32(src[p.Src:]))
 			capn := p.Size
 			if v < 0 || uint32(v) > capn {
 				return TableRefuseLengthOverBound.Error()
+			}
+			if _, zero := TableFixedDeadSpan(src, p.Src+4+uint32(v), p.Src+4+capn); !zero {
+				return TableRefuseWireDamaged.Error()
 			}
 			if TableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
 				return TableRefuseTextIllFormed.Error()
@@ -1358,9 +1367,21 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 					return TableRefuseWireDamaged.Error()
 				}
 				if p.Meta == TableFixedPresent && src[p.Src+k] == 0 && p.Aux != 0 {
-					dead = append(dead, [2]uint32{p.Src + k + 1, p.Src + k + 1 + p.Aux})
+					span, zero := TableFixedDeadSpan(src, p.Src+k+1, p.Src+k+1+p.Aux)
+					if !zero {
+						return TableRefuseWireDamaged.Error()
+					}
+					dead = append(dead, span)
 				}
 			}
+		case TableFixedSlack:
+			// an inactive union arm: the bytes under tag 0 to the widest arm's
+			// span, or those past a narrower taken arm
+			span, zero := TableFixedDeadSpan(src, p.Src, p.Src+p.Size)
+			if !zero {
+				return TableRefuseWireDamaged.Error()
+			}
+			dead = append(dead, span)
 		case TableFixedTag:
 			// a union tag past the reader's arm count names no arm (§4.6)
 			var tag uint64
@@ -1392,6 +1413,35 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		}
 	}
 	return ""
+}
+
+// tableFixedAllZero is whether every byte of a dead range is zero, the
+// writer's image (mas-bandwidth/schema docs/rulings.json fixed-dead-bytes-are-zero).
+func TableFixedAllZero(b []byte) bool {
+	for _, c := range b {
+		if c != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// tableFixedDeadSpan checks a dead range for zero and answers it clamped to the
+// record the plan is read against. A plan entry past its own record is refused
+// whole when the plan is laid down; the clamp here keeps a damaged plan from
+// reading past the buffer, and reads no byte twice.
+func TableFixedDeadSpan(src []byte, from, to uint32) ([2]uint32, bool) {
+	end := uint32(len(src))
+	if from > end {
+		from = end
+	}
+	if to > end {
+		to = end
+	}
+	if from > to {
+		from = to
+	}
+	return [2]uint32{from, to}, TableFixedAllZero(src[from:to])
 }
 
 // tableFixedDead is whether src offset at lies in one of the slack spans the
@@ -2018,4 +2068,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x681ce543bdbbb046
+const Version uint64 = 0xed47c500103b1add

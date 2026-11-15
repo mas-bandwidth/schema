@@ -598,13 +598,35 @@ func (g *tableGen) fixedFieldLeafCount(f *ir.Field) int {
 	return n
 }
 
+// fixedUnionSlackCount is the plan entries a union adds to hold its dead bytes
+// to zero: the span under tag 0, and one tail per arm narrower than the widest
+// (docs/rulings.json fixed-dead-bytes-are-zero; docs/FIXED-FORM-ALGORITHM.md
+// §3.1, §4.5).
+func fixedUnionSlackCount(un *ir.Union) int {
+	span := ir.TableFixedUnionBytes(un) - ir.TableFixedUnionTagBytes(un)
+	if span == 0 {
+		return 0
+	}
+	n := 1
+	for _, v := range un.Variants {
+		arm := int64(0)
+		if v.F != nil {
+			arm = ir.TableFixedFieldBytes(v.F)
+		}
+		if arm < span {
+			n++
+		}
+	}
+	return n
+}
+
 func (g *tableGen) fixedElementLeafCount(f *ir.Field) int {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			return g.fixedLeafCount(r)
 		case *ir.Union:
-			n := 1
+			n := 1 + fixedUnionSlackCount(r)
 			for _, v := range r.Variants {
 				if v.F != nil {
 					n += g.fixedFieldLeafCount(v.F)
@@ -723,10 +745,21 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 			g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s + %s, Size: %d, DstSize: uint8(unsafe.Sizeof(%s{}.Type)), Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag\n",
 				ind, src, dst, g.offGo(f.Type.Name, "Type"), tag, f.Type.Name)
 			g.pf("%sn++\n", ind)
+			span := ir.TableFixedUnionBytes(r) - tag
 			for i, v := range r.Variants {
 				g.pf("%s{ // arm %s, ordinal %d\n%s\tguardAt := n\n", ind, v.Name, i+1, ind)
 				if v.F != nil {
 					g.emitFixedArmLeaves(r, v, fmt.Sprintf("%s+%d", src, tag), dst, tabs+1)
+				}
+				armBytes := int64(0)
+				if v.F != nil {
+					armBytes = ir.TableFixedFieldBytes(v.F)
+				}
+				if armBytes < span {
+					// THE BYTES PAST A NARROWER TAKEN ARM ARE DEAD.
+					g.pf("%s\tout[n] = TableFixedEntry{Src: %s+%d+%d, Size: %d, Guard: %s, Arg: %d, ArgW: %d, Op: tableFixedSlack} // past the narrower arm\n",
+						ind, src, tag, armBytes, span-armBytes, src, i+1, tag)
+					g.pf("%s\tn++\n", ind)
 				}
 				// THE GUARD'S WIDTH IS THE TAG'S (§5.2): stamped here, the read
 				// loop compares the tag WHOLE and a foreign 0x0101 is not arm 1.
@@ -741,6 +774,13 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 				g.pf("%s\t\tlinks[q] = append(links[q], TableFixedGuardLink{Guard: %s, Arg: %d, ArgW: %d})\n", ind, src, i+1, tag)
 				g.pf("%s\t}\n", ind)
 				g.pf("%s}\n", ind)
+			}
+			if span > 0 {
+				// TAG 0 NAMES NO ARM: the whole widest arm's span is dead.
+				g.pf("%sout[n] = TableFixedEntry{Src: %s+%d, Size: %d, Guard: %s, Arg: 0, ArgW: %d, Op: tableFixedSlack} // the inactive arm span\n",
+					ind, src, tag, span, src, tag)
+				g.pf("%slinks[n] = append(links[n], TableFixedGuardLink{Guard: %s, Arg: 0, ArgW: %d})\n", ind, src, tag)
+				g.pf("%sn++\n", ind)
 			}
 			return
 		}

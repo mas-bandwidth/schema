@@ -146,9 +146,10 @@ func t08GoW16(t *testing.T) {
 // t08NestedProbe builds, writes and reads the nested fixture end-to-end and
 // bites the second lane: (a) when both the outer tag and the inner tag hold,
 // the inner arm lands; (b) when only the inner tag holds — the outer tag names
-// a different arm — the inner arm's bytes must NOT land beneath an outer arm
-// that never rode, which is the bug §4.1 describes. A plan whose reader drops
-// the Guard2 check lands the bytes in (b) and this test goes red.
+// a different arm — the inner arm's bytes sit in the wider arm's dead tail, so
+// the whole load refuses and no inner-arm byte lands beneath an outer arm that
+// never rode (docs/rulings.json fixed-dead-bytes-are-zero). A plan whose reader
+// drops the Guard2 check or the dead check cannot pass both halves.
 const t08NestedProbe = `package probe
 
 import "testing"
@@ -176,8 +177,9 @@ func TestOuterTagConjunction(t *testing.T) {
 	}
 
 	// (b) ONLY THE INNER TAG HOLDS: the record's outer tag says q while its
-	// inner tag byte still says x. The x entry must not run, so no inner-arm
-	// bytes land beneath outer arm p, which never rode (§4.1).
+	// inner tag byte still says x. Those inner-arm bytes are dead under q and
+	// non-zero, so the load refuses and nothing lands (§4.1,
+	// fixed-dead-bytes-are-zero).
 	body := buf[len(buf)-TFixedRecordBytes:]
 	for i := range body[8:] {
 		body[8+i] = 0
@@ -189,15 +191,14 @@ func TestOuterTagConjunction(t *testing.T) {
 	body[8+4] = 0xbe
 	body[8+5] = 0xef
 	only := make([]T, 1)
+	TReset(&only[0])
+	only[0].Pick.Q = 0x55
 	r = TableReport{}
-	if n := TFixedLoad(only, buf, plan, &r); n != 1 {
-		t.Fatalf("load %d report %+v", n, r)
+	if n := TFixedLoad(only, buf, plan, &r); n != -1 || r.Reason != "wire_damaged" {
+		t.Fatalf("load %d report %+v, want the wire_damaged refusal", n, r)
 	}
-	if only[0].Pick.P.X != 0 {
-		t.Fatalf("the inner tag alone landed an inner arm's bytes beneath an outer arm that never rode: %+v", only[0].Pick)
-	}
-	if only[0].Pick.Type != OuterTypeQ || only[0].Pick.Q == 0 {
-		t.Fatalf("the outer q arm did not land: %+v", only[0].Pick)
+	if only[0].Pick.P.X != 0 || only[0].Pick.Q != 0x55 {
+		t.Fatalf("the refusal wrote the destination or landed an inner arm: %+v", only[0].Pick)
 	}
 }
 `
