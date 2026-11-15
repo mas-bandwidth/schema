@@ -471,7 +471,7 @@ func TestPythonPacketCore(t *testing.T) {
 			base := pruned.DeclFile[pin.root]
 			intField, boolField, intMin, intMax := topLevelFields(pruned, pin.root)
 			probe := packetProbe(pruned, pin.root, base, intField, boolField, intMin, intMax)
-			pinBytes, err := os.ReadFile(filepath.Join(root, "testdata", "wire", pin.name+".bin"))
+			pinBytes, err := os.ReadFile(pinFile(root, pin.name))
 			if err != nil {
 				t.Fatal(err)
 			}

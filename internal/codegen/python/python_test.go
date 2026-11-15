@@ -213,9 +213,9 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 
 		{"bits", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "small", Type: ir.FieldType{Kind: ir.TBits, Width: 9}}}}, "uses bits"},
 
-		{"string", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TString, Size: 8}}}}, "uses string"},
+		{"string", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TString, Size: 8}}}}, ""},
 
-		{"bytes", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TBytes, Size: 8}}}}, "uses bytes"},
+		{"bytes", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TBytes, Size: 8}}}}, ""},
 
 		{"uint128", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}}}, ""},
 
