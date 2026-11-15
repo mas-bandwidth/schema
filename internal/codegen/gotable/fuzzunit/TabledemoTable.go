@@ -4301,7 +4301,7 @@ func tableCycleCheckReason(base unsafe.Pointer, root *TableTypeInfo, a *TableAre
 		}
 		if i == 0 {
 			var c tableWireCheck
-			c.ids = len(r.Ids) / 8
+			c.ids = uint64(len(r.Ids)) / 8
 			c.nodes = uint64(len(dir) - 1)
 			c.mark = mark
 			r.Offset = 0
@@ -4309,7 +4309,7 @@ func tableCycleCheckReason(base unsafe.Pointer, root *TableTypeInfo, a *TableAre
 			return ok && !bad
 		}
 		id, b := body(i)
-		return tableWireRecordCheck(id, b, len(r.Ids)/8, uint64(len(dir)-1), mark) == TableRefuseOk && !bad
+		return tableWireRecordCheck(id, b, uint64(len(r.Ids))/8, uint64(len(dir)-1), mark) == TableRefuseOk && !bad
 	}
 	in := func(index uint64) bool {
 		e := &dir[index-1]
