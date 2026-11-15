@@ -1249,6 +1249,19 @@ defmodule Example.ArmDefaults do
 
   defp wZdefault_armZentries([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     %{retries: e1_retries, preferred: e1_preferred} = e1
+
+    if not is_integer(e1_retries) do
+      raise ArgumentError, "e.retries is not an integer"
+    end
+
+    if e1_retries < -2_147_483_648 do
+      raise ArgumentError, "e.retries is below the wire minimum"
+    end
+
+    if e1_retries > 2_147_483_647 do
+      raise ArgumentError, "e.retries is above the wire maximum"
+    end
+
     v = e1_retries &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1256,6 +1269,19 @@ defmodule Example.ArmDefaults do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
     %{retries: e2_retries, preferred: e2_preferred} = e2
+
+    if not is_integer(e2_retries) do
+      raise ArgumentError, "e.retries is not an integer"
+    end
+
+    if e2_retries < -2_147_483_648 do
+      raise ArgumentError, "e.retries is below the wire minimum"
+    end
+
+    if e2_retries > 2_147_483_647 do
+      raise ArgumentError, "e.retries is above the wire maximum"
+    end
+
     v = e2_retries &&& 0xFFFFFFFF
     sc0 = scratch
     fl0 = scratch_bits >>> 3
@@ -1267,6 +1293,19 @@ defmodule Example.ArmDefaults do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
     %{retries: e3_retries, preferred: e3_preferred} = e3
+
+    if not is_integer(e3_retries) do
+      raise ArgumentError, "e.retries is not an integer"
+    end
+
+    if e3_retries < -2_147_483_648 do
+      raise ArgumentError, "e.retries is below the wire minimum"
+    end
+
+    if e3_retries > 2_147_483_647 do
+      raise ArgumentError, "e.retries is above the wire maximum"
+    end
+
     v = e3_retries &&& 0xFFFFFFFF
     sc1 = scratch
     fl1 = scratch_bits >>> 3
@@ -1278,6 +1317,19 @@ defmodule Example.ArmDefaults do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
     %{retries: e4_retries, preferred: e4_preferred} = e4
+
+    if not is_integer(e4_retries) do
+      raise ArgumentError, "e.retries is not an integer"
+    end
+
+    if e4_retries < -2_147_483_648 do
+      raise ArgumentError, "e.retries is below the wire minimum"
+    end
+
+    if e4_retries > 2_147_483_647 do
+      raise ArgumentError, "e.retries is above the wire maximum"
+    end
+
     v = e4_retries &&& 0xFFFFFFFF
     sc2 = scratch
     fl2 = scratch_bits >>> 3
@@ -1301,6 +1353,19 @@ defmodule Example.ArmDefaults do
 
   defp wZdefault_armZentries([e | rest], data, scratch, scratch_bits) do
     %{retries: e_retries, preferred: e_preferred} = e
+
+    if not is_integer(e_retries) do
+      raise ArgumentError, "e.retries is not an integer"
+    end
+
+    if e_retries < -2_147_483_648 do
+      raise ArgumentError, "e.retries is below the wire minimum"
+    end
+
+    if e_retries > 2_147_483_647 do
+      raise ArgumentError, "e.retries is above the wire maximum"
+    end
+
     v = e_retries &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
