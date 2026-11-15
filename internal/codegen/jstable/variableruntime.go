@@ -797,9 +797,10 @@ function TableVariableStrictMark(report) {
 
 // RESOLUTION (§3.1, decodenodes.go resolveCell): 0 is null, 1 is the root
 // (checked against the reader's own root type), k + 1 is record k. A record of
-// another kind than the slot declares is a kind mismatch, an index past the
-// numbering is damaged, and a numbering that could not be read resolves
-// nothing. A *string record named by two or more slots lands as ONE String
+// another kind than the slot declares is a kind mismatch, a record of a
+// declared type the root does not place is a wrong-type target and damaged, an
+// index past the numbering is damaged, and a numbering that could not be read
+// resolves nothing. A *string record named by two or more slots lands as ONE String
 // object in each, so the save numbers it once again.
 function TableVariableResolve(st, report) {
   const strings = new Map();
@@ -814,7 +815,17 @@ function TableVariableResolve(st, report) {
       } else {
         if (st.reached !== undefined) { st.reached.add(index - 2); }
         const n = st.nodes[index - 2];
-        if (n !== null) {
+        if (n === null) {
+          // A RECORD THIS ROOT DOES NOT PLACE (§3.1): of a type the reader
+          // cannot name at all it reads null, counted unknown once; of a type
+          // the reader DECLARES, or a blob, that is not the slot's target it
+          // is a wrong-type pointer target, damage (§6.5).
+          const tid = st.nodeTypes[index - 2];
+          const want = d.s === "sblob" ? TableStringBlobId : (d.s === "bblob" ? TableBytesBlobId : d.c.typeId);
+          if (tid !== want && (TableVariableDeclaredTypes.has(tid) || tid === TableStringBlobId || tid === TableBytesBlobId)) {
+            report.damaged = true;
+          }
+        } else {
           if (d.s === "sblob") {
             if (n.kind === "s") { str = n; } else { report.mismatch++; }
           } else if (d.s === "bblob") {
@@ -2293,6 +2304,16 @@ class TableVariableTextIn {
       this.p++;
     }
   }
+  // A schema name is at most 255 bytes after decoding (§16.2): a field key,
+  // an enum name, a flags element, a union arm, an &node key, and a key inside
+  // a skipped object. A longer one refuses the read. Map keys and string
+  // values are not schema names and stay on str().
+  name() {
+    const s = this.str();
+    if (s === null) { return null; }
+    if (TableVariableUtf8Encode(s).length > 255) { this.bad = true; return null; }
+    return s;
+  }
   // ONE RFC 8259 number, and whether it was integral in FORM
   number() {
     this.space();
@@ -2369,7 +2390,7 @@ class TableVariableTextIn {
       if (ch === close) { this.p++; return true; }
       if (ch === "") { this.bad = true; return false; }
       if (close === "}") {
-        const key = this.str();
+        const key = this.name();
         if (key === null) { return false; }
         if (!TableVariableStoredText(key, this, report)) { return false; }
         if (this.peek() !== ":") { this.bad = true; return false; }
@@ -2398,6 +2419,24 @@ class TableVariableTextIn {
       return false;
     }
   }
+}
+
+// ONE TEXT HANDED AS BYTES (docs/SPEC-TABLES.md §16.2): the read validates
+// UTF-8 itself — well-formed, no overlong form, no surrogate code point and
+// nothing above U+10FFFF — before a byte reaches the text walk. A caller's
+// error is the non-Uint8Array; data that is not UTF-8 refuses the whole read.
+function TableVariableFromJsonBytes(c, bytes, report) {
+  if (!(bytes instanceof Uint8Array)) {
+    throw new TypeError("TableVariableFromJsonBytes takes the text's bytes as a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
+  }
+  const decoded = TableVariableUtf8Decode(bytes);
+  if (!decoded.ok) {
+    report.damaged = true;
+    report.refused = 1;
+    report.reason = "string_not_utf8";
+    return null;
+  }
+  return TableVariableFromJson(c, decoded.s, report);
 }
 
 // ONE TEXT: the root's object and nothing after it. The instance holds what
@@ -2459,7 +2498,7 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
       const ch = inp.peek();
       if (ch === "}") { inp.p++; return TableVariableRequireSeen(c, v, seen, report); }
       if (ch === "") { inp.bad = true; return false; }
-      key = inp.str();
+      key = inp.name();
       if (key === null) { return false; }
       if (!TableVariableStoredText(key, inp, report)) { return false; }
       if (inp.peek() !== ":") { inp.bad = true; return false; }
@@ -2662,7 +2701,7 @@ function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
   let ch = inp.peek();
   if (ch === "}") { inp.p++; holder[key] = d.c.make(); return TableVariableRequireSeen(d.c, holder[key], new Set(), report); }
   if (ch === "") { inp.bad = true; return false; }
-  const k = inp.str();
+  const k = inp.name();
   if (k === null) { return false; }
   if (inp.peek() !== ":") { inp.bad = true; return false; }
   inp.p++;
@@ -2707,7 +2746,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       return TableVariableReadTable(d.c, inp, inst, depth + 1, graph, report);
     }
     case "enum": {
-      const s = inp.str();
+      const s = inp.name();
       if (s === null) { return false; }
       if (s === "None") { holder[key] = null; return true; }
       for (const [name] of d.vs) { if (name === s) { holder[key] = name; return true; } }
@@ -2728,7 +2767,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
           report.mismatch++;
           if (!inp.skip(depth + 1, graph, report)) { return false; }
         } else {
-          const s = inp.str();
+          const s = inp.name();
           if (s === null) { return false; }
           const bit = d.vs.indexOf(s);
           if (bit >= 0) {

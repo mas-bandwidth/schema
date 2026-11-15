@@ -429,7 +429,7 @@ function tableRetainReserved(id) { return id === 0n || id === TableNodeTableId |
 // string copy verbatim. Kind 17 (a node index) is an excluded class and returns
 // false, as does any framing the walk cannot take.
 function TableVariableRetainResolveBody(r, table, out, depth, end) {
-  if (depth > 64) { return false; }
+  if (depth > out.depthLimit) { return false; }
   // THE BODY IS ITS OWN CURSOR: a reference or length must not read past the
   // bytes its framing gave it, exactly as the reference's sub-cursor bounds it
   // (internal/tablewire retain.go walkBody).
@@ -444,7 +444,7 @@ function TableVariableRetainResolveBody(r, table, out, depth, end) {
     out.u64(id);
     if (rd.at >= end) { return false; }
     const k = rd.u8(); out.u8(k);
-    if (!TableVariableRetainResolve(rd, table, k, out, depth + 1)) { return false; }
+    if (!TableVariableRetainResolve(rd, table, k, out, depth)) { return false; }
     if (rd.at > end) { return false; }
   }
 }
@@ -456,7 +456,7 @@ function TableVariableRetainResolveBody(r, table, out, depth, end) {
 // array, 15 and 30 carry a resolved reference, and every other kind copies the
 // framed bytes as they stand.
 function TableVariableRetainResolveContent(r, table, kind, out, depth, end) {
-  if (depth > 64) { return false; }
+  if (depth > out.depthLimit) { return false; }
   const rd = new TableVariableReader(r.b, r.at, end);
   let ok = false;
   switch (kind) {
@@ -495,11 +495,13 @@ function TableVariableRetainResolveElements(r, table, kind, out, depth, end) {
       const eend = rd.at + elen;
       const mark = out.len;
       out.u32(0);
-      if (!TableVariableRetainResolveContent(rd, table, ek, out, depth + 1, eend)) { return false; }
+      // a framed table, array or keyed element is one level deeper (§4)
+      const framedLevel = ek === 13 || ek === 14 || ek === 16 ? 1 : 0;
+      if (!TableVariableRetainResolveContent(rd, table, ek, out, depth + framedLevel, eend)) { return false; }
       if (rd.at !== eend) { return false; }
       const bytes = out.len - mark - 4;
       out.b[mark] = bytes & 0xff; out.b[mark + 1] = (bytes >>> 8) & 0xff; out.b[mark + 2] = (bytes >>> 16) & 0xff; out.b[mark + 3] = (bytes >>> 24) & 0xff;
-    } else if (!TableVariableRetainResolve(rd, table, ek, out, depth + 1)) {
+    } else if (!TableVariableRetainResolve(rd, table, ek, out, depth)) {
       return false;
     }
     if (rd.at > end) { return false; }
@@ -510,7 +512,7 @@ function TableVariableRetainResolveElements(r, table, kind, out, depth, end) {
 }
 
 function TableVariableRetainResolve(r, table, kind, out, depth) {
-  if (depth > 64) { return false; }
+  if (depth > out.depthLimit) { return false; }
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } out.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
@@ -557,7 +559,11 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
       const end = r.at + L;
       const mark = out.len;
       out.u32(0);
-      if (!TableVariableRetainResolveContent(r, table, k, out, depth + 1, end)) { return false; }
+      // a union is a level when its arm is structural, and the arm's framed
+      // table, array or keyed body is one more; a union's frame adds none (§4)
+      const structural = k === 13 || k === 14 || k === 15 || k === 16;
+      const framedLevel = k === 13 || k === 14 || k === 16 ? 1 : 0;
+      if (!TableVariableRetainResolveContent(r, table, k, out, depth + (structural ? 1 : 0) + framedLevel, end)) { return false; }
       if (r.at !== end) { return false; }
       const bytes = out.len - mark - 4;
       out.b[mark] = bytes & 0xff; out.b[mark + 1] = (bytes >>> 8) & 0xff; out.b[mark + 2] = (bytes >>> 16) & 0xff; out.b[mark + 3] = (bytes >>> 24) & 0xff;
@@ -574,7 +580,10 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
 // is one retainLost and never 'damaged' (§6.6).
 function TableVariableRetainCapture(bytes, start, end, id, kind, table, retain, path, report) {
   const src = new TableVariableReader(bytes, start, end);
+  // The resolving walk shares §4's binary nesting bound.
+  const depthLimit = 128;
   const out = new TableVariableWriter();
+  out.depthLimit = depthLimit;
   if (!TableVariableRetainResolve(src, table, kind, out, 0) || src.at !== end) { report.retainLost++; return; }
   const depth = path.length;
   const total = 4 + 1 + 8 * depth + 8 + 1 + 1 + 4 + out.len;
@@ -1541,9 +1550,10 @@ function TableVariableStrictMark(report) {
 
 // RESOLUTION (§3.1, decodenodes.go resolveCell): 0 is null, 1 is the root
 // (checked against the reader's own root type), k + 1 is record k. A record of
-// another kind than the slot declares is a kind mismatch, an index past the
-// numbering is damaged, and a numbering that could not be read resolves
-// nothing. A *string record named by two or more slots lands as ONE String
+// another kind than the slot declares is a kind mismatch, a record of a
+// declared type the root does not place is a wrong-type target and damaged, an
+// index past the numbering is damaged, and a numbering that could not be read
+// resolves nothing. A *string record named by two or more slots lands as ONE String
 // object in each, so the save numbers it once again.
 function TableVariableResolve(st, report) {
   const strings = new Map();
@@ -1558,7 +1568,17 @@ function TableVariableResolve(st, report) {
       } else {
         if (st.reached !== undefined) { st.reached.add(index - 2); }
         const n = st.nodes[index - 2];
-        if (n !== null) {
+        if (n === null) {
+          // A RECORD THIS ROOT DOES NOT PLACE (§3.1): of a type the reader
+          // cannot name at all it reads null, counted unknown once; of a type
+          // the reader DECLARES, or a blob, that is not the slot's target it
+          // is a wrong-type pointer target, damage (§6.5).
+          const tid = st.nodeTypes[index - 2];
+          const want = d.s === "sblob" ? TableStringBlobId : (d.s === "bblob" ? TableBytesBlobId : d.c.typeId);
+          if (tid !== want && (TableVariableDeclaredTypes.has(tid) || tid === TableStringBlobId || tid === TableBytesBlobId)) {
+            report.damaged = true;
+          }
+        } else {
           if (d.s === "sblob") {
             if (n.kind === "s") { str = n; } else { report.mismatch++; }
           } else if (d.s === "bblob") {
@@ -3733,6 +3753,16 @@ class TableVariableTextIn {
       this.p++;
     }
   }
+  // A schema name is at most 255 bytes after decoding (§16.2): a field key,
+  // an enum name, a flags element, a union arm, an &node key, and a key inside
+  // a skipped object. A longer one refuses the read. Map keys and string
+  // values are not schema names and stay on str().
+  name() {
+    const s = this.str();
+    if (s === null) { return null; }
+    if (TableVariableUtf8Encode(s).length > 255) { this.bad = true; return null; }
+    return s;
+  }
   // ONE RFC 8259 number, and whether it was integral in FORM
   number() {
     this.space();
@@ -3809,7 +3839,7 @@ class TableVariableTextIn {
       if (ch === close) { this.p++; return true; }
       if (ch === "") { this.bad = true; return false; }
       if (close === "}") {
-        const key = this.str();
+        const key = this.name();
         if (key === null) { return false; }
         if (!TableVariableStoredText(key, this, report)) { return false; }
         if (this.peek() !== ":") { this.bad = true; return false; }
@@ -3838,6 +3868,24 @@ class TableVariableTextIn {
       return false;
     }
   }
+}
+
+// ONE TEXT HANDED AS BYTES (docs/SPEC-TABLES.md §16.2): the read validates
+// UTF-8 itself — well-formed, no overlong form, no surrogate code point and
+// nothing above U+10FFFF — before a byte reaches the text walk. A caller's
+// error is the non-Uint8Array; data that is not UTF-8 refuses the whole read.
+function TableVariableFromJsonBytes(c, bytes, report) {
+  if (!(bytes instanceof Uint8Array)) {
+    throw new TypeError("TableVariableFromJsonBytes takes the text's bytes as a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
+  }
+  const decoded = TableVariableUtf8Decode(bytes);
+  if (!decoded.ok) {
+    report.damaged = true;
+    report.refused = 1;
+    report.reason = "string_not_utf8";
+    return null;
+  }
+  return TableVariableFromJson(c, decoded.s, report);
 }
 
 // ONE TEXT: the root's object and nothing after it. The instance holds what
@@ -3899,7 +3947,7 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
       const ch = inp.peek();
       if (ch === "}") { inp.p++; return TableVariableRequireSeen(c, v, seen, report); }
       if (ch === "") { inp.bad = true; return false; }
-      key = inp.str();
+      key = inp.name();
       if (key === null) { return false; }
       if (!TableVariableStoredText(key, inp, report)) { return false; }
       if (inp.peek() !== ":") { inp.bad = true; return false; }
@@ -4102,7 +4150,7 @@ function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
   let ch = inp.peek();
   if (ch === "}") { inp.p++; holder[key] = d.c.make(); return TableVariableRequireSeen(d.c, holder[key], new Set(), report); }
   if (ch === "") { inp.bad = true; return false; }
-  const k = inp.str();
+  const k = inp.name();
   if (k === null) { return false; }
   if (inp.peek() !== ":") { inp.bad = true; return false; }
   inp.p++;
@@ -4147,7 +4195,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       return TableVariableReadTable(d.c, inp, inst, depth + 1, graph, report);
     }
     case "enum": {
-      const s = inp.str();
+      const s = inp.name();
       if (s === null) { return false; }
       if (s === "None") { holder[key] = null; return true; }
       for (const [name] of d.vs) { if (name === s) { holder[key] = name; return true; } }
@@ -4168,7 +4216,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
           report.mismatch++;
           if (!inp.skip(depth + 1, graph, report)) { return false; }
         } else {
-          const s = inp.str();
+          const s = inp.name();
           if (s === null) { return false; }
           const bit = d.vs.indexOf(s);
           if (bit >= 0) {
@@ -4491,7 +4539,7 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
     let ch = inp.peek();
     if (ch === "}") { inp.p++; return true; }
     if (ch === "") { inp.bad = true; return false; }
-    const key = inp.str();
+    const key = inp.name();
     if (key === null) { return false; }
     if (!TableVariableStoredText(key, inp, report)) { return false; }
     if (inp.peek() !== ":") { inp.bad = true; return false; }
@@ -4526,7 +4574,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   inp.p++;
   holder[key] = null;
   if (inp.peek() === "}") { inp.p++; return true; }
-  const k = inp.str();
+  const k = inp.name();
   if (k === null) { return false; }
   if (!TableVariableStoredText(k, inp, report)) { return false; }
   if (inp.peek() !== ":") { inp.bad = true; return false; }
@@ -4917,6 +4965,7 @@ const TableVariableCodecs = {
     place: { tables: [], str: false, bytes: false },
   },
 };
+const TableVariableDeclaredTypes = new Set([0x85df369cdca746b3n]);
 TableVariableLink(TableVariableCodecs, TableVariableUnions);
 TableVariableFreeze(TableVariableCodecs);
 TableVariableFreeze(TableVariableUnions);
@@ -5521,6 +5570,10 @@ export function FixedTableToJson(v) {
 
 export function FixedTableFromJson(text, report) {
   return TableVariableFromJson(TableVariableCodecs.FixedTable, text, report);
+}
+
+export function FixedTableFromJsonBytes(bytes, report) {
+  return TableVariableFromJsonBytes(TableVariableCodecs.FixedTable, bytes, report);
 }
 
 export function FixedTableLoadMeasure(bytes) {

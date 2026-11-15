@@ -930,7 +930,7 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
     let ch = inp.peek();
     if (ch === "}") { inp.p++; return true; }
     if (ch === "") { inp.bad = true; return false; }
-    const key = inp.str();
+    const key = inp.name();
     if (key === null) { return false; }
     if (!TableVariableStoredText(key, inp, report)) { return false; }
     if (inp.peek() !== ":") { inp.bad = true; return false; }
@@ -965,7 +965,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   inp.p++;
   holder[key] = null;
   if (inp.peek() === "}") { inp.p++; return true; }
-  const k = inp.str();
+  const k = inp.name();
   if (k === null) { return false; }
   if (!TableVariableStoredText(k, inp, report)) { return false; }
   if (inp.peek() !== ":") { inp.bad = true; return false; }
