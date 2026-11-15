@@ -145,7 +145,6 @@ squirrel cook-write root_full-be relax/cook-dead-slots-zero-ports
 # refuses a zero byte); these legs still read or write them.
 c json-hostile base64-unpadded relax/hostile-rows-c
 c json-hostile str-zero-escape-unknown-key relax/hostile-rows-c
-cpp json-hostile base64-unpadded relax/hostile-rows-cpp
 cpp json-hostile str-zero-escape-unknown-key relax/hostile-rows-cpp
 cs json-hostile base64-unpadded relax/hostile-rows-cs
 cs json-hostile str-zero-escape-unknown-key relax/hostile-rows-cs

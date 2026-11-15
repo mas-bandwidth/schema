@@ -4597,6 +4597,15 @@ static void test_json_pinned_text()
         const char * unpadded = "{ \"icon\": \"AQI\" }";
         CHECK( !tabledemo::ProfileConfigFromJson( profile, unpadded, (int64_t) strlen( unpadded ), &report ) );
     }
+    // ... while the padded spelling of the same bytes reads them back
+    {
+        tabledemo::ProfileConfig profile;
+        tabledemo::TableReport report;
+        const char * padded = "{ \"icon\": \"AQI=\" }";
+        CHECK( tabledemo::ProfileConfigFromJson( profile, padded, (int64_t) strlen( padded ), &report ) );
+        CHECK( profile.icon_length == 2 && profile.icon[0] == 1 && profile.icon[1] == 2 );
+        CHECK( !report.damaged );
+    }
 }
 
 // ---- numbers: JSON has ONE number type, and no value the field cannot hold

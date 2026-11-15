@@ -3238,11 +3238,11 @@ HOSTILE_MANIFEST := testdata/conformance/tables/MANIFEST.txt
 HOSTILE_TREES := $(shell find testdata/conformance/tables/json-hostile -type f 2>/dev/null)
 
 # RELAXED 2026-11-14 (maintainer: get main green): the C++ FromJson still reads
-# the rows base64-unpadded (json-base64-canonical) and
-# str-zero-escape-unknown-key (the skipped-value rule), which the MANIFEST and
-# the engine refuse. The gate runs on a copy of the manifest without those two
-# rows. re-enable: relax/hostile-rows-cpp
-HOSTILE_ENGINE_RELAXED := base64-unpadded str-zero-escape-unknown-key
+# the row str-zero-escape-unknown-key (the skipped-value rule), which the
+# MANIFEST and the engine refuse. The gate runs on a copy of the manifest
+# without that row (base64-unpadded is gated again since
+# sm-a1-cpp-json-base64-canonical). re-enable: relax/hostile-rows-cpp
+HOSTILE_ENGINE_RELAXED := str-zero-escape-unknown-key
 HOSTILE_GATE_MANIFEST := build/hostile-values/MANIFEST.txt
 
 build/hostile-values/.stamp: bin/schema $(HOSTILE_MANIFEST) $(HOSTILE_TREES)

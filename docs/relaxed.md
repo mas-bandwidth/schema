@@ -77,15 +77,16 @@ listed case that passes fails the leg until its line is removed.
   Go engine and the Go JSON walk carry all three; the other legs still read
   the two hostile rows (and some write the zero byte), so their cases are in
   `test/conformance/relaxed.txt`. The table-base64 harness
-  (`test/table-base64/harness`) expects the canonical rule too, and its C, C++
-  and C# runs pass `-relax <slug>`, which keeps the old accept for the
-  non-canonical cases only (`make/checks/table-base64.mk`). Real fix, per
+  (`test/table-base64/harness`) expects the canonical rule too, and its C and
+  C# runs pass `-relax <slug>`, which keeps the old accept for the
+  non-canonical cases only (`make/checks/table-base64.mk`); the C++ run is
+  gated since sm-a1-cpp-json-base64-canonical. Real fix, per
   leg: its JSON read refuses unpadded Base64 and set pad bits, and validates a
   skipped value; its text writer refuses a zero byte (a debug assert in C,
   C++, C#, Rust, Java and Dart; a refusal in every build elsewhere). Then the
   leg's lines go. WIP: none.
   - `relax/hostile-rows-c`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-cpp`: both hostile rows, jref_zero_byte, table-base64, and the str-zero-escape-unknown-key row in the port's hostile-corpus run (carried findings; its base64-unpadded row is re-enabled, the C++ JSON read refuses it since sm-a1-cpp-json-base64-canonical) and in the pack hostile-value gate (`Makefile`, `HOSTILE_ENGINE_RELAXED`).
+  - `relax/hostile-rows-cpp`: the str-zero-escape-unknown-key hostile row, jref_zero_byte, and the str-zero-escape-unknown-key row in the port's hostile-corpus run (carried findings) and in the pack hostile-value gate (`Makefile`, `HOSTILE_ENGINE_RELAXED`). The base64-unpadded row and table-base64 are gated again: the C++ JSON read refuses non-canonical base64 since sm-a1-cpp-json-base64-canonical.
   - `relax/hostile-rows-cs`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-dart`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-elixir`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
