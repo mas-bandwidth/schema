@@ -1984,6 +1984,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    return TableFixedWire.HeaderBytes + 4 + %sFixedLayoutBytes + count * %sFixedRecordBytes + %d;\n}\n\n", name, name, integrityTrailerBytes(st))
 
 	g.pf("public static long %sFixedSave(ReadOnlySpan<%s> values, Span<byte> buffer)\n{\n", name, name)
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+	// the writer refuses an empty batch, a debug-only assert as every write
+	// contract on this leg is (docs/SPEC.md §5.1).
+	g.pf("    System.Diagnostics.Debug.Assert(values.Length > 0, \"a fixed-form file holds at least one record\");\n")
 	g.pf("    long need = %sFixedMeasure(values.Length);\n", name)
 	g.pf("    if (values.Length < 0 || buffer.Length < need) { return -1; }\n")
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
@@ -2132,9 +2136,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        writerClamp = %sFixedClampKnown[pick];\n", name)
 	}
 	g.pf("    }\n")
-	// A ROOT READ IS ONE RECORD: handed room for exactly one value, a file of
-	// none holds no value to read, and the engine answers it truncated.
-	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0 || (rest == 0 && values.Length == 1))\n    {\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6,
+	// docs/FIXED-FORM-ALGORITHM.md §5.3 step 9): a header and a layout followed
+	// by no record is truncated, whatever capacity the caller offered.
+	g.pf("    if (record_bytes <= 8 || rest == 0 || rest %% record_bytes != 0)\n    {\n")
 	g.pf("        if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    long n = rest / record_bytes;\n")

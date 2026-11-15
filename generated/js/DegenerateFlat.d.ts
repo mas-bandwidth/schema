@@ -12,40 +12,53 @@ export declare const FlatReadSlack: 8;
 
 export declare function WriteVec2Flat(view: DataView, value: Vec2): number;
 export declare function ReadVec2Flat(view: DataView, numBits: number, value: Vec2): boolean;
+export declare function ReadVec2FlatBits(view: DataView, numBits: number, value: Vec2): number | false;
 
 export declare function WriteSpanF64Flat(view: DataView, value: SpanF64): number;
 export declare function ReadSpanF64Flat(view: DataView, numBits: number, value: SpanF64): boolean;
+export declare function ReadSpanF64FlatBits(view: DataView, numBits: number, value: SpanF64): number | false;
 
 export declare function WriteSpanU64Flat(view: DataView, value: SpanU64): number;
 export declare function ReadSpanU64Flat(view: DataView, numBits: number, value: SpanU64): boolean;
+export declare function ReadSpanU64FlatBits(view: DataView, numBits: number, value: SpanU64): number | false;
 
 export declare function WriteSpanI64Flat(view: DataView, value: SpanI64): number;
 export declare function ReadSpanI64Flat(view: DataView, numBits: number, value: SpanI64): boolean;
+export declare function ReadSpanI64FlatBits(view: DataView, numBits: number, value: SpanI64): number | false;
 
 export declare function WriteSpanOneFlat(view: DataView, value: SpanOne): number;
 export declare function ReadSpanOneFlat(view: DataView, numBits: number, value: SpanOne): boolean;
+export declare function ReadSpanOneFlatBits(view: DataView, numBits: number, value: SpanOne): number | false;
 
 export declare function WriteSpanChunkFlat(view: DataView, value: SpanChunk): number;
 export declare function ReadSpanChunkFlat(view: DataView, numBits: number, value: SpanChunk): boolean;
+export declare function ReadSpanChunkFlatBits(view: DataView, numBits: number, value: SpanChunk): number | false;
 
 export declare function WriteSpanTailFlat(view: DataView, value: SpanTail): number;
 export declare function ReadSpanTailFlat(view: DataView, numBits: number, value: SpanTail): boolean;
+export declare function ReadSpanTailFlatBits(view: DataView, numBits: number, value: SpanTail): number | false;
 
 export declare function WriteSpanTwiceFlat(view: DataView, value: SpanTwice): number;
 export declare function ReadSpanTwiceFlat(view: DataView, numBits: number, value: SpanTwice): boolean;
+export declare function ReadSpanTwiceFlatBits(view: DataView, numBits: number, value: SpanTwice): number | false;
 
 export declare function WriteTrioFlat(view: DataView, value: Trio): number;
 export declare function ReadTrioFlat(view: DataView, numBits: number, value: Trio): boolean;
+export declare function ReadTrioFlatBits(view: DataView, numBits: number, value: Trio): number | false;
 
 export declare function WriteTrioSoleFlat(view: DataView, value: TrioSole): number;
 export declare function ReadTrioSoleFlat(view: DataView, numBits: number, value: TrioSole): boolean;
+export declare function ReadTrioSoleFlatBits(view: DataView, numBits: number, value: TrioSole): number | false;
 
 export declare function WriteVec3SoleFlat(view: DataView, value: Vec3Sole): number;
 export declare function ReadVec3SoleFlat(view: DataView, numBits: number, value: Vec3Sole): boolean;
+export declare function ReadVec3SoleFlatBits(view: DataView, numBits: number, value: Vec3Sole): number | false;
 
 export declare function WriteTrioFirstFlat(view: DataView, value: TrioFirst): number;
 export declare function ReadTrioFirstFlat(view: DataView, numBits: number, value: TrioFirst): boolean;
+export declare function ReadTrioFirstFlatBits(view: DataView, numBits: number, value: TrioFirst): number | false;
 
 export declare function WriteTrioStraddleFlat(view: DataView, value: TrioStraddle): number;
 export declare function ReadTrioStraddleFlat(view: DataView, numBits: number, value: TrioStraddle): boolean;
+export declare function ReadTrioStraddleFlatBits(view: DataView, numBits: number, value: TrioStraddle): number | false;
 

@@ -60,7 +60,7 @@
 #define benchtable_table_mixed_t bench_bench_mixed_t
 #define benchtable_table_mixed_reset bench_bench_mixed_reset
 #define benchtable_table_mixed_save bench_bench_mixed_save
-#define benchtable_table_mixed_load_tolerant bench_bench_mixed_load_tolerant
+#define benchtable_table_mixed_load bench_bench_mixed_load
 #else
 #include "BenchTableTable.h"
 #endif
@@ -382,7 +382,7 @@ static int bench_load( benchtable_table_mixed_t * value, const uint8_t * bytes, 
 {
     BENCH_Q( table_report_t ) report;
     memset( &report, 0, sizeof( report ) );
-    return benchtable_table_mixed_load_tolerant( value, bytes, size, &report ) && !report.malformed;
+    return benchtable_table_mixed_load( value, bytes, size, &report ) && !report.refused;
 }
 
 static void bench_table( const char * name, const char * golden, long base_iters )
@@ -524,7 +524,7 @@ static int64_t fixed_load_all( bench_fixed_table_t * values, const uint8_t * byt
 {
     BENCH_Q( table_report_t ) report;
     memset( &report, 0, sizeof( report ) );
-    return bench_fixed_table_fixed_load_tolerant( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, NULL, &report );
+    return bench_fixed_table_fixed_load( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, NULL, &report );
 }
 
 /* ------------------------------------------------------------------------
@@ -722,7 +722,7 @@ static size_t g_lineage_bytes = 0;
 #define g_plan_poisoned g_fixed_values
 #define plan_load_all( values, report ) \
     ( memset( ( report ), 0, sizeof( *( report ) ) ), \
-      bench_fixed_table_fixed_load_tolerant( ( values ), FixedCount, g_lineage, (int64_t) g_lineage_bytes, g_fixed_plan, FixedPlanCapacity, NULL, ( report ) ) )
+      bench_fixed_table_fixed_load( ( values ), FixedCount, g_lineage, (int64_t) g_lineage_bytes, g_fixed_plan, FixedPlanCapacity, NULL, ( report ) ) )
 
 /* THE PLAN READ'S ANSWER, pinned before any clock. Gates P1, P3 and P4 below
    are shape-blind: no field is named, only the lineage the build laid down and
@@ -797,13 +797,13 @@ static const char * plan_read_verdict( const BENCH_Q( table_report_t ) * report,
         snprintf( why, why_bytes, "the plan read returned %d records, not %d", (int) loaded, FixedCount );
         return why;
     }
-    if ( report->malformed || report->refused || report->unknown || report->kind_mismatch || report->clamped || report->duplicate ||
+    if ( report->refused || report->reason || report->refuse_reason || report->unknown || report->missing_required || report->non_finite_floats ||
          report->widened != FixedCount * PlanWidenedPerRecord )
     {
         snprintf( why, why_bytes,
-                  "the counters are not section 5.4's for these six classes: widened %d (want %d = %d x %d), malformed %d refused %d unknown %d kind_mismatch %d clamped %d duplicate %d (want every other counter zero)",
-                  (int) report->widened, FixedCount * PlanWidenedPerRecord, FixedCount, PlanWidenedPerRecord, report->malformed, report->refused,
-                  (int) report->unknown, (int) report->kind_mismatch, (int) report->clamped, (int) report->duplicate );
+                  "the counters are not section 5.4's for these six classes: widened %d (want %d = %d x %d), refused %d reason %d refuse_reason %d unknown %d missing_required %d non_finite_floats %d (want every other counter zero)",
+                  (int) report->widened, FixedCount * PlanWidenedPerRecord, FixedCount, PlanWidenedPerRecord, report->refused, report->reason,
+                  report->refuse_reason, (int) report->unknown, (int) report->missing_required, (int) report->non_finite_floats );
         return why;
     }
     if ( memcmp( got, want, saved_bytes ) == 0 ) { return NULL; }
@@ -897,8 +897,8 @@ static int gate_plan_read( const char * name, const uint8_t * identity_file, siz
             fail( name, "the plan read or the plan's answer did not save" );
             goto done;
         }
-        fprintf( stderr, "%-18s plan read of %d records: widened %d (expected %d x %d = %d), clamped %d (lineage 0x%016llx -> 0x%016llx)\n", name, FixedCount,
-                 (int) report.widened, FixedCount, PlanWidenedPerRecord, FixedCount * PlanWidenedPerRecord, (int) report.clamped,
+        fprintf( stderr, "%-18s plan read of %d records: widened %d (expected %d x %d = %d), refused %d (lineage 0x%016llx -> 0x%016llx)\n", name, FixedCount,
+                 (int) report.widened, FixedCount, PlanWidenedPerRecord, FixedCount * PlanWidenedPerRecord, report.refused,
                  (unsigned long long) bench_fixed_table_fixed_known[0].hash, (unsigned long long) bench_fixed_table_fixed_hash );
         if ( plan_read_verdict( &report, loaded, g_plan_out, g_plan_expected, a, c, saved_bytes, why, sizeof( why ) ) != NULL )
         {
