@@ -869,21 +869,20 @@ tables-cs-fixed-rows: tables-fixedform-corpus
 # tables-cs-release passes) run in certify.yml's nightly tier.
 CS_FUZZ_SMOKE_N ?= 2000
 
-# RELAXED 2026-11-14 (maintainer: get main green): the C# wire fuzz does not
-# compare the fixed-form dead-byte mutants (array tail, absent optional
-# payload, text tail, inactive arm), which C# refuses and the engine still
-# accepts; every other mutant is compared. re-enable: relax/dead-bytes
-CS_WIRE_FUZZ_RELAX ?= --relax-dead-bytes
-
+# THE FIXED-FORM DEAD-BYTE MUTANTS ARE COMPARED AGAIN (docs/rulings.json
+# fixed-dead-bytes-are-zero): the engine and the C# reader both refuse a
+# non-zero dead byte — an array tail past a counted array's live count, an
+# absent optional's payload, a text tail and an inactive union arm — so the
+# relax that once skipped them is gone and every mutant is compared.
 .PHONY: tables-cs-wire-fuzz-smoke tables-cs-region-fuzz-smoke
 tables-cs-wire-fuzz-smoke: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N) $(CS_WIRE_FUZZ_RELAX)
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N)
 
 tables-cs-region-fuzz-smoke: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N)
 
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N) $(CS_WIRE_FUZZ_RELAX)
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
 
 tables-cs-region-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(N)
@@ -901,6 +900,20 @@ tables-cs-wire-fuzz-repeated-id:
 tables-cs-wire-fuzz-repeated-id-negative-control:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldIdNegativeControl$$'
 test-cs: tables-cs-wire-fuzz-repeated-id tables-cs-wire-fuzz-repeated-id-negative-control
+
+# EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/rulings.json
+# fixed-dead-bytes-are-zero): the C# reader holds a dead range to all-zero bytes
+# and never reads it as a live value — a counted array's slots past its count,
+# an absent optional's payload, a text tail and an inactive union arm. These are
+# the emitted artifact's unit checks (no interpreter): the runtime's DeadZero
+# check and the plan's count/present/union dead markers. The control strips the
+# check out of the same artifact and requires the check red.
+.PHONY: tables-cs-wire-fuzz-dead-bytes tables-cs-wire-fuzz-dead-bytes-negative-control
+tables-cs-wire-fuzz-dead-bytes:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZero$$'
+tables-cs-wire-fuzz-dead-bytes-negative-control:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZeroNegativeControl$$'
+test-cs: tables-cs-wire-fuzz-dead-bytes tables-cs-wire-fuzz-dead-bytes-negative-control
 
 tables-cs-builder-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-builder" --seed $(SEED) --n $(N) --builder --failed build/wire-fuzz/failed-builder-cs.bin
