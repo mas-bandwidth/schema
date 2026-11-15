@@ -9,6 +9,7 @@ package darttable
 // for every name-cap row under testdata/wire/json-read-closed/.
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -189,9 +190,7 @@ func TestDartJsonNameCap(t *testing.T) {
 		t.Fatal("Generate emitted no ProbeWire.dart")
 	}
 	packet := packetFiles(t, u)
-	for name, src := range files {
-		packet[name] = src
-	}
+	maps.Copy(packet, files)
 	dir, rows := dartJsonNameCapVectors(t)
 
 	// The manifest is the contract and the Go engine is the oracle: they agree

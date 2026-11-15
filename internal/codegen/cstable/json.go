@@ -200,6 +200,47 @@ public static class TableJson
         return f.VariantId != null && f.Arms == null;
     }
 
+    // THE WIDE KINDS' JSON FORM (docs/SPEC-TABLES.md §16.2, §16.14 W10): an
+    // integer-shaped kind whose storage is wider than 32 bits is written as a
+    // STRING of decimal digits and reads as a string or a number — int64,
+    // uint64, int128, uint128, and the 64- and 128-bit fixed-point kinds.
+    static bool TableWideJson(TableFieldInfo f)
+    {
+        return f.Kind == 5 || f.Kind == 9 || f.Kind == 18 || f.Kind == 19 ||
+               f.Kind == 23 || f.Kind == 24 || f.Kind == 28 || f.Kind == 29;
+    }
+
+    // the pure integer kinds, 128-bit included; a fixed-point kind is not one
+    static bool TableIntegerKind(TableFieldInfo f)
+    {
+        return f.Kind >= 2 && f.Kind <= 9 || f.Kind == 18 || f.Kind == 19;
+    }
+
+    // AN INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (docs/SPEC-TABLES.md §16.2):
+    // digits with an optional minus, no leading zero, no fraction, no exponent,
+    // and not -0. The value never passes through a double.
+    static bool TableIntegerToken(ReadOnlySpan<char> text)
+    {
+        int i = 0;
+        bool negative = false;
+        if (i < text.Length && text[i] == '-') { negative = true; i++; }
+        if (i >= text.Length) { return false; }
+        if (text[i] == '0') { return !negative && i + 1 == text.Length; }
+        if (text[i] < '1' || text[i] > '9') { return false; }
+        for (; i < text.Length; i++)
+        {
+            if (text[i] < '0' || text[i] > '9') { return false; }
+        }
+        return true;
+    }
+
+    // a wide integer declares 'N' and takes a string or a number; every other
+    // shape is exact
+    static bool TableShapeMatches(char want, char got)
+    {
+        return want == got || (want == 'N' && (got == 's' || got == 'n'));
+    }
+
     static char Shape(TableFieldInfo f)
     {
         if (f.Map) { return 'o'; }
@@ -215,6 +256,7 @@ public static class TableJson
         if (IsEnum(f)) { return 's'; }
         if (IsFlags(f)) { return 'a'; }
         if (f.Kind == 1) { return 'b'; }
+        if (TableWideJson(f)) { return 'N'; }
         return 'n';
     }
 
@@ -229,6 +271,7 @@ public static class TableJson
         if (IsEnum(f)) { return 's'; }
         if (IsFlags(f)) { return 'a'; }
         if (f.Kind == 1) { return 'b'; }
+        if (TableWideJson(f)) { return 'N'; }
         return 'n';
     }
 
@@ -421,9 +464,13 @@ public static class TableJson
     // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1), and no read puts
     // anything else into storage, so a byte that is not part of a well-formed
     // sequence was put there by a program: the write REFUSES (invalid_value,
-    // docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced.
+    // docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced. A ZERO
+    // BYTE IS NOT TEXT EITHER, and its reader refuses the \u0000 a writer would
+    // otherwise spell: C# is an assert leg, so the write contract is the debug
+    // assert (docs/SPEC.md §5.1 row 8) and a release build carries no check.
     static void WriteString(ref Out o, ReadOnlySpan<byte> s)
     {
+        System.Diagnostics.Debug.Assert(s.IndexOf((byte)0) < 0, "a zero byte is not text (docs/SPEC.md §5.1 row 8)");
         o.Put((byte)'"');
         for (int i = 0; i < s.Length; i++)
         {
@@ -730,8 +777,14 @@ public static class TableJson
             case 2:
             case 3:
             case 4:
-            case 5:
                 WriteSigned(ref o, unchecked((long)f.GetRaw(owner, index)));
+                return true;
+            case 5:
+                // int64 is wider than 32 bits: a STRING of decimal digits (§16.14 W10)
+                o.Put((byte)'"'); WriteSigned(ref o, unchecked((long)f.GetRaw(owner, index))); o.Put((byte)'"');
+                return true;
+            case 9:
+                o.Put((byte)'"'); WriteUnsigned(ref o, f.GetRaw(owner, index)); o.Put((byte)'"');
                 return true;
             default:
                 WriteUnsigned(ref o, f.GetRaw(owner, index));
@@ -745,8 +798,9 @@ public static class TableJson
         if (f.Map) { return WriteMap(ref o, value, f, depth); }
         if (f.Kind == 12 && !f.TextList)
         {
-            // the text writer WRITES a zero byte, spelled \u0000 (§16.3);
-            // WriteString refuses ill-formed UTF-8 itself (§16.14 W0)
+            // a zero byte is storage that is not text, caught by the debug
+            // write assert (§5.1 row 8); WriteString refuses ill-formed UTF-8
+            // itself (§16.14 W0)
             WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
             return true;
         }
@@ -1515,7 +1569,7 @@ public static class TableJson
                 TableUnionArmInfo arm = f.Arms.Arms[tag];
                 TableFieldInfo payload = arm.Field;
                 char wanted = payload == null ? 'z' : Shape(payload);
-                if (ValueShape(text, ref input) != wanted && !(payload != null && payload.Kind == 17 && !payload.IsArray && ValueShape(text, ref input) == 'z'))
+                if (!TableShapeMatches(wanted, ValueShape(text, ref input)) && !(payload != null && payload.Kind == 17 && !payload.IsArray && ValueShape(text, ref input) == 'z'))
                 {
                     return RefuseText(ref input, "kind_mismatch");
                 }
@@ -1620,6 +1674,19 @@ public static class TableJson
             f.SetRaw(owner, index, 0);
             return true;
         }
+        if (TableWideJson(f) && Peek(text, ref input) == '"')
+        {
+            // a wide integer reads as a string OR a number (§16.2); the string
+            // holds the same digits, judged by the same integer-token rule
+            if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
+            Span<char> wideToken = stackalloc char[MaxNumber];
+            if (body.Length <= wideToken.Length)
+            {
+                for (int i = 0; i < body.Length; i++) { wideToken[i] = (char)body[i]; }
+                return ReadNumber(wideToken.Slice(0, body.Length), true, ref input, owner, f, index);
+            }
+            return ReadNumber(System.Text.Encoding.ASCII.GetString(body), true, ref input, owner, f, index);
+        }
         Span<char> scratch = stackalloc char[MaxNumber];
         int length;
         bool tokenIntegral;
@@ -1639,6 +1706,10 @@ public static class TableJson
     // how many bytes spelled it (§16.2 Numbers).
     static bool ReadNumber(ReadOnlySpan<char> token, bool tokenIntegral, ref In input, object owner, TableFieldInfo f, int index)
     {
+        // THE INTEGER TOKEN RULE: an integer field takes an integer token only
+        // — no fraction, no exponent, not -0 — and its range is tested on the
+        // exact value, never through a double (§16.2).
+        if (TableIntegerKind(f) && !TableIntegerToken(token)) { return RefuseText(ref input, "kind_mismatch"); }
         if (f.GetWide != null) { return ReadWide(token, ref input, owner, f, index); }
         if (f.Kind == 10 || f.Kind == 11)
         {
@@ -1937,7 +2008,7 @@ public static class TableJson
                     input.Report.Unknown++;
                     if (!SkipValue(text, ref input, depth + 1)) { return false; }
                 }
-                else if (ValueShape(text, ref input) != shape)
+                else if (!TableShapeMatches(shape, ValueShape(text, ref input)))
                 {
                     return RefuseText(ref input, "kind_mismatch");
                 }
@@ -1976,7 +2047,7 @@ public static class TableJson
                 {
                     return RefuseText(ref input, "count_over_bound");
                 }
-                else if (ValueShape(text, ref input) != shape && !((f.Kind == 17 || f.TextList && f.Table.Fields[0].Optional) && ValueShape(text, ref input) == 'z'))
+                else if (!TableShapeMatches(shape, ValueShape(text, ref input)) && !((f.Kind == 17 || f.TextList && f.Table.Fields[0].Optional) && ValueShape(text, ref input) == 'z'))
                 {
                     return RefuseText(ref input, "kind_mismatch");
                 }
@@ -2088,7 +2159,7 @@ public static class TableJson
                 }
                 else
                 {
-                    if (got != Shape(f))
+                    if (!TableShapeMatches(Shape(f), got))
                     {
                         // the wrong JSON type for the kind: skipped, never
                         // coerced

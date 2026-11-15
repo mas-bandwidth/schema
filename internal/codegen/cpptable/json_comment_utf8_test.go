@@ -106,7 +106,7 @@ func TestCPPJsonCommentIsWellFormedUTF8(t *testing.T) {
 	}
 
 	got := map[string]bool{}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		name, verdict, ok := strings.Cut(strings.TrimPrefix(line, "ROW "), ": ")
 		if !ok || !strings.HasPrefix(line, "ROW ") {
 			continue
