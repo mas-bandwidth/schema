@@ -289,15 +289,31 @@ A triple that is not finite in float32, or that overflows or requires that clamp
 compile (SPEC §4.6). On write:
 
 ```
-ASSERT value is finite
+CHECK value is finite and min <= value <= max  // the leg's mechanism, before quantizing
 normalized := (value - min) / delta
-normalized := clamp to [0, 1]                  // NaN forced in via !>= / !<=
 scaled := normalized * steps
 FORCE_ROUND(scaled)                            // the product rounds to float32 BEFORE 0.5 is added
 integer := floor(scaled + 0.5)
 if integer > steps: integer := steps           // normative once steps >= 2^23
 PUT_BITS(w, integer, wire_bits)
 ```
+
+**The value check is SPEC §5.1 row 10.** A NaN, an infinity, or a finite value outside
+[min, max] is a value the declaration does not admit, checked before quantizing by the leg's
+mechanism as `docs/rulings.json` `write-refusal` lists it: a debug assert in C, C++, C#, Rust,
+Java and Dart, and a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO
+and Goose. A conforming writer never relies on clamping the value into [0, 1]: an in-range value
+normalizes into [0, 1] by itself. What a build whose check is compiled out writes for an
+off-range value is unspecified (SPEC §5), and the reader on the other end refuses an off-range
+decode (§3.4). A runtime that keeps a [0, 1] clamp in its release build is not required to
+remove it; the clamp is not part of the rule. Negative zero normalises to +0: it compares equal
+to 0, so it passes the check wherever 0 does and quantizes exactly as +0.
+
+**The integer clamp is not a value clamp.** It is part of quantizing an in-range value: once
+`steps >= 2^23` float32 has no room below one for the added 0.5, so `scaled + 0.5` for a value
+at or next to `max` can round to `steps + 1`, and the clamp brings that rounding back to the
+last step. It does not stand in for the value check: in the build where the check is active, no
+off-range value reaches it.
 
 **Two roundings, never one FMA.** A fused multiply-add diverges by one quantization step at
 boundary values. Do not fold `normalized * steps + 0.5` into one expression. Do not drop the

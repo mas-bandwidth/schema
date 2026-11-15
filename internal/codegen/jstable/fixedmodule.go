@@ -168,6 +168,7 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 			g.gen.emitWriteBody(st)
 			g.gen.emitCheckBody(st)
 			g.gen.emitDecodeBody(st)
+			g.gen.emitDeadCheckBody(st)
 		}
 		g.pf("%s", g.gen.body.String())
 		// THE MESSAGE FORM'S BODY VERBS RIDE THE MESSAGE ROOTS' WHOLE CLOSURE,
@@ -220,6 +221,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		"TableFixedKnownLayout", "TableFixedDecodeLayout", "TableFixedSelect",
 		"TableFixedRefuseHash", "TableFixedLineagePlans")
 	g.needHome(st.Name+"FixedWriteBody", st.Name+"FixedDecode", st.Name, "Init"+st.Name)
+	if fixedStructHasDead(st) {
+		g.needHome(st.Name + "FixedCheckDead")
+	}
 	finite := slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck)
 	if finite {
 		g.needHome(st.Name + "FixedCheckBody")
@@ -356,7 +360,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// writer does; nothing here throws.\n")
 	g.pf("export function %sFixedSave(values, count, bytes) {\n", st.Name)
 	g.pf("  const need = %sFixedMeasure(count);\n", st.Name)
-	g.pf("  if (count < 0 || bytes === null || bytes.length < need) { return -1; }\n")
+	g.pf("  // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6): an\n")
+	g.pf("  // empty batch is refused before it writes a byte.\n")
+	g.pf("  if (count <= 0 || bytes === null || bytes.length < need) { return -1; }\n")
 	if finite {
 		g.pf("  // A NaN OR AN INFINITY IS REFUSED BEFORE A BYTE IS WRITTEN (docs/SPEC-TABLES.md\n")
 		g.pf("  // §3.3): no form carries one, so the save answers -1 and the buffer is untouched.\n")
@@ -493,9 +499,11 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  // against this build's; digest is not on the wire, so the header hash is\n")
 	g.pf("  // not a hash of the layout bytes alone (§3, bill §13).\n")
 	g.pf("  const rest = byteLength - layoutAt - layoutBytes;\n")
-	g.pf("  // BYTES LEFT OVER ARE damaged, which is §3's rule for the same reason:\n")
-	g.pf("  // the two ends of the file have met.\n")
-	g.pf("  if (recordBytes <= 8 || rest %% recordBytes !== 0) { report.damaged = true; return -1; }\n")
+	g.pf("  // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6): a\n")
+	g.pf("  // header and a layout with no record behind them is refused, never read\n")
+	g.pf("  // as a batch of none. BYTES LEFT OVER ARE damaged, which is §3's rule for\n")
+	g.pf("  // the same reason: the two ends of the file have met.\n")
+	g.pf("  if (rest === 0 || recordBytes <= 8 || rest %% recordBytes !== 0) { report.damaged = true; return -1; }\n")
 	g.pf("  const n = (rest / recordBytes) | 0;\n")
 	g.pf("  if (n > capacity) { report.refused = TableFixedRefusal.BatchTooLarge; return -1; }\n")
 	g.pf("  const image = plan.image, imageView = plan.view;\n")
@@ -526,11 +534,25 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      report.refused = TableFixedRefusal.NoLayout; return -1;\n")
 	g.pf("    }\n")
 	g.pf("    if (identity) {\n")
+	if fixedStructHasDead(st) {
+		g.pf("      %sFixedCheckDead(srcView, at + 8, stage);\n", st.Name)
+		g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", st.Name)
+	}
 	g.pf("      %sFixedDecode(values[k], srcView, at + 8, stage);\n", st.Name)
 	g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", st.Name)
 	g.pf("      at += recordBytes;\n")
 	g.pf("      continue;\n")
 	g.pf("    }\n")
+	if fixedStructHasDead(st) {
+		// THE IDENTITY PLAN IS ONE COPY, so its dead bytes are checked on the
+		// SOURCE record just as the in-place door checks them; a COMPILED plan
+		// carries its own dead-byte entries (docs/FIXED-FORM-ALGORITHM.md §4.5,
+		// §5.3 step 11).
+		g.pf("    if (entries === %sFixedIdentity && holeN === 0) {\n", st.Name)
+		g.pf("      %sFixedCheckDead(srcView, at + 8, stage);\n", st.Name)
+		g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", st.Name)
+		g.pf("    }\n")
+	}
 	g.pf("    for (let h = 0; h < holeN; h++) {\n")
 	g.pf("      const o = plan.holes[h * 2], z = plan.holes[h * 2 + 1];\n")
 	g.pf("      for (let i = 0; i < z; i++) { image[o + i] = %sFixedPrefill[o + i]; }\n", st.Name)

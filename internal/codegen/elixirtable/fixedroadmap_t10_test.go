@@ -260,7 +260,7 @@ fixed table Rec
 `, "Rec", `  v = %Probe.Rec{a: 5, b: "abcdef", c: "hi"}
   one = save([v])
   check(byte_size(one) == measure(1), "measure(1) is not the saved size: #{byte_size(one)} vs #{measure(1)}")
-  check(byte_size(save([])) == measure(0), "measure(0) is not an empty file's size: #{measure(0)}")
+  check(match?({:error, _}, save([])), "a save of no record is not refused")
   check(byte_size(save([v, v, v])) == measure(3), "measure(3) is not three records: #{measure(3)}")
   check(record_bytes() == body_bytes() + 8, "the record is not the body plus the hash: #{record_bytes()} vs #{body_bytes()}")
   check(measure(10) - measure(0) == 10 * record_bytes(), "measure is not linear in the record count")

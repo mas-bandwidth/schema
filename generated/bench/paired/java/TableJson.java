@@ -47,7 +47,7 @@ public final class TableJson {
                 in.rep.refuse("kind_mismatch");
                 in.skipValue();
             } else {
-                String name = in.scanString();
+                String name = in.scanName();
                 if (in.bad) return null;
                 boolean found = false;
                 for (int i = 0; i < names.length; i++)
@@ -490,17 +490,31 @@ public final class TableJson {
                 if (c == '/' && p + 1 < t.length) {
                     if (t[p + 1] == '/') {
                         p += 2;
+                        int start = p;
                         while (p < t.length && t[p] != '\n') {
                             p++;
+                        }
+                        // §16.2: the bytes inside a comment are well-formed UTF-8
+                        // and hold no NUL, the same rule a string site keeps.
+                        if (!TableVariable.textValid(t, start, p - start)) {
+                            bad = true;
+                            return;
                         }
                         continue;
                     }
                     if (t[p + 1] == '*') {
                         p += 2;
+                        int start = p;
                         while (p + 1 < t.length && !(t[p] == '*' && t[p + 1] == '/')) {
                             p++;
                         }
                         if (p + 1 >= t.length) {
+                            bad = true;
+                            return;
+                        }
+                        // §16.2: the same UTF-8 and no-NUL rule inside a block
+                        // comment as inside a line comment.
+                        if (!TableVariable.textValid(t, start, p - start)) {
                             bad = true;
                             return;
                         }
@@ -739,6 +753,26 @@ public final class TableJson {
                     b.appendCodePoint(cp);
                 }
             }
+        }
+
+        // scanName reads one string that NAMES a schema name — an object key
+        // naming a field, an enum variant, a flags element, a union arm, an
+        // &node name — and holds it to §16.2's 255-byte cap after decoding.
+        // A longer one refuses the read; a map key and a string value are data
+        // and go through scanString/scanStored, never this.
+        public String scanName() {
+            String s = scanString();
+            if (s == null) {
+                return null;
+            }
+            if (s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 255) {
+                bad = true;
+                if (rep != null) {
+                    rep.refuse("length_over_bound");
+                }
+                return null;
+            }
+            return s;
         }
 
         // loneSurrogate refuses a string whose u-escape is a surrogate half
@@ -1037,7 +1071,7 @@ public final class TableJson {
                     return;
                 }
                 if (closing == '}') {
-                    String key = scanString();
+                    String key = scanName();
                     if (bad) {
                         return;
                     }

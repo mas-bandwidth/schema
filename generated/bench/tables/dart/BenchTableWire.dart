@@ -32,6 +32,17 @@ const int _kBinaryMaxDepth = 128;
 // body, an array, a keyed or map body, and a union.
 bool _structuralKind(int kind) => kind == 13 || kind == 14 || kind == 16 || kind == 15;
 
+// _arrayElementKindAllowed is §3's closed list for an array body (kind 14):
+// 1–13, 15, 17 and 18–30. Any other element kind is damage under any count
+// (internal/tablewire elementkinds.go).
+bool _arrayElementKindAllowed(int kind) =>
+    (kind >= 1 && kind <= 13) || kind == 15 || kind == 17 || (kind >= 18 && kind <= 30);
+
+// _keyedElementKindAllowed is §3's closed list for an enum-keyed body
+// (kind 16): 1–11, 13 and 18–30 (internal/tablewire elementkinds.go).
+bool _keyedElementKindAllowed(int kind) =>
+    (kind >= 1 && kind <= 11) || kind == 13 || (kind >= 18 && kind <= 30);
+
 final class _TableMissingRequired implements Exception { const _TableMissingRequired(); }
 bool _requiredCollectionKind(TableWireReader r, int expected) {
  final peek=TableWireReader.sub(r,r.pos,r.limit);
@@ -1044,21 +1055,23 @@ final class TableWireReader {
     return b;
   }
 
-  // _placedNode is true for a node record the node table scan placed: a
-  // table this root can name, or a blob of a kind some pointer below the root
-  // targets (docs/SPEC-TABLES.md §2.5, §3.1). It is the Dart side of the
-  // Inst/Blob test in internal/tablewire/decodenodes.go resolveCell: every
-  // other record — counted unknown, or a refused text blob — is an empty node.
+  // _placedNode is true for a node record whose type this reader can name: a
+  // table the unit declares, or one of the two reserved blob ids (docs/
+  // SPEC-TABLES.md §2.5, §3.1). A record of a type the unit does not declare,
+  // or a refused text blob, is an empty node: it counts one unknown and every
+  // pointer naming it reads null. A placed record of any other type under a
+  // slot is a wrong-type pointer target and refuses the load.
   bool _placedNode(int typeId) =>
       knownTypes.contains(typeId) ||
-      (typeId == _kStringBlobId && stringBlob) ||
-      (typeId == _kBytesBlobId && bytesBlob);
+      typeId == _kStringBlobId ||
+      typeId == _kBytesBlobId;
 
   // resolveTable turns a kind-17 node index into the table it names (§3.1).
   // 0 is null. 1 is the root, and only when the field's target is the root's
   // own type. A record is decoded once and stored before its body is read, so
-  // a second slot names the same object. A type this reader cannot place, or
-  // a type other than the field's target, is a kind mismatch and reads null.
+  // a second slot names the same object. A record of a type this reader cannot
+  // name reads null; one of a type it names that is not the field's target is
+  // a wrong-type pointer target and refuses the whole load.
   Object? resolveTable(int idx, int wantType) {
     if (!nodeTableGood) return null;
     if (idx == 0) return null;
@@ -1502,6 +1515,9 @@ final class TableWireReader {
         return depth < _kBinaryMaxDepth && _wireBody(b, false, out, depth + 1);
       case 14:
         if (depth >= _kBinaryMaxDepth || b.length < 2) return false;
+        // THE ELEMENT KIND IS CLOSED, judged under any count, a count of 0
+        // included (docs/SPEC-TABLES.md §3, §4).
+        if (!_arrayElementKindAllowed(b[0])) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
         var off = head.$2;
@@ -1512,6 +1528,9 @@ final class TableWireReader {
         return off == b.length;
       case 16:
         if (depth >= _kBinaryMaxDepth || b.length < 2) return false;
+        // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under
+        // any count, a count of 0 included (docs/SPEC-TABLES.md §3, §4).
+        if (!_keyedElementKindAllowed(b[0])) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
         var off = head.$2;
@@ -6121,6 +6140,54 @@ List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
   return null;
 }
 
+// _jsonName holds a SCHEMA-NAME STRING to its 255-byte cap (docs/SPEC-TABLES.md
+// §16.2): an object key naming a field, an enum variant name, a flags element,
+// a union arm key and an &node name, in every object and inside a skipped
+// value. The cap never reaches a map key or a string value.
+bool _jsonName(String name, TableTextReport r) {
+  if (utf8.encode(name).length > 255) {
+    r.refuse('length_over_bound');
+    return false;
+  }
+  return true;
+}
+
+// _jsonSkipValue holds a value the read only SKIPS to the grammar and text
+// rules a placed value is held to (docs/SPEC-TABLES.md §16.2, §16.3, §4):
+// the parser has judged its grammar, and every object key and every string in
+// it goes through the same text check a placed string does, so one that
+// decodes to U+0000 refuses the read as a placed one would. Every object key
+// also carries the 255-byte schema-name cap (§16.2), however deep it sits.
+void _jsonSkipValue(dynamic val, TableTextReport r) {
+  if (val is String) {
+    _jsonText(val);
+    return;
+  }
+  if (val is _JObj) {
+    for (final entry in val.entries) {
+      _jsonText(entry.key);
+      _jsonName(entry.key, r);
+      _jsonSkipValue(entry.value, r);
+    }
+    return;
+  }
+  if (val is List) {
+    for (final item in val) {
+      _jsonSkipValue(item, r);
+    }
+    return;
+  }
+  if (val is Map) {
+    for (final entry in val.entries) {
+      final key = entry.key;
+      if (key is! String) throw const FormatException('kind_mismatch');
+      _jsonText(key);
+      _jsonName(key, r);
+      _jsonSkipValue(entry.value, r);
+    }
+  }
+}
+
 // _jsonDecodeExact is JSON decoding that keeps every number's token
 // (docs/SPEC-TABLES.md §16.2): an integer token an int holds is an int, and
 // every other number is a _JNum.
@@ -6437,7 +6504,8 @@ bool _jsonBoolField(dynamic val, TableTextReport r, [bool def = false]) {
 String _jsonBytesField(dynamic val, TableTextReport r, int bound, [String def = '']) {
   if (val is String) {
     try {
-      final b = base64Decode(base64.normalize(val));
+      final b = base64Decode(val);
+      if (base64Encode(b) != val) throw const FormatException('base64_not_canonical');
       if (b.length > bound) {
         r.refuse('length_over_bound');
         return def;
@@ -6463,7 +6531,9 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r, [Uint8List? def]) {
   if (val == null) return null;
   if (val is String) {
     try {
-      return base64Decode(base64.normalize(val));
+      final b = base64Decode(val);
+      if (base64Encode(b) != val) throw const FormatException('base64_not_canonical');
+      return b;
     } on FormatException {
       r.refuse('kind_mismatch');
       return null;
@@ -6517,9 +6587,15 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   // key's repeat is caught by slot (§2.8: a repeated key is damage)
   Set<String>? unknownSeen;
   for (final entry in entries) {
+    if (!_jsonName(entry.key, r)) return out;
     final slot = slots[entry.key];
     if (slot == null) {
+      // AN UNKNOWN KEY AND ITS VALUE are held to the text and grammar rules a
+      // placed one is held to (docs/SPEC-TABLES.md §16.3, §4): a key or a
+      // string inside the value that decodes to U+0000 refuses the read.
+      _jsonText(entry.key);
       if (!(unknownSeen ??= <String>{}).add(entry.key)) r.refuse('text_damaged');
+      _jsonSkipValue(entry.value, r);
       r.unknown++;
       continue;
     }
@@ -6679,6 +6755,7 @@ String tableWeaponName(int v) {
 
 TableWeapon tableWeaponFromName(dynamic val, TableTextReport r, [TableWeapon? def]) {
   if (val is! String) { r.refuse('kind_mismatch'); return def ?? TableWeapon.none; }
+  if (!_jsonName(val, r)) return def ?? TableWeapon.none;
   switch (val) {
     case "None": return TableWeapon.none;
     case "Fists": return TableWeapon.fists;
@@ -6722,6 +6799,7 @@ int _tableDamageFromJson(dynamic val, TableTextReport r, [int def = 0]) {
   if (val is! List) { r.refuse('kind_mismatch'); return def; }
   var bits = 0;
   for (final item in val) {
+    if (item is String && !_jsonName(item, r)) return def;
     switch (item) {
       case "Bleeding": if (bits & 1 != 0) { r.refuse('text_damaged'); return def; } bits |= 1;
       case "Burning": if (bits & 2 != 0) { r.refuse('text_damaged'); return def; } bits |= 2;
@@ -6779,6 +6857,7 @@ TableEvent _tableEventFromJson(dynamic val, TableTextReport r, _Share sh, [Table
   final v = TableEvent();
   if (entries.isEmpty) return v;
   if (entries.length != 1) throw const FormatException('union has two keys');
+  if (!_jsonName(entries.first.key, r)) return v;
   final item = entries.first.value;
   switch (entries.first.key) {
     case "hit":
@@ -6804,6 +6883,7 @@ TableEvent _tableEventFromJson(dynamic val, TableTextReport r, _Share sh, [Table
       }
     default:
       r.unknown++;
+      _jsonSkipValue(item, r);
   }
   return v;
 }
@@ -6989,7 +7069,9 @@ void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _S
   final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
+    _jsonText(key);
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -7052,6 +7134,7 @@ void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _S
         break;
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
+        _jsonSkipValue(val, r);
         r.unknown++;
     }
   }
@@ -7092,7 +7175,9 @@ void tableStatFromJsonFields(TableStat v, dynamic obj, TableTextReport r, _Share
   final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
+    _jsonText(key);
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -7107,6 +7192,7 @@ void tableStatFromJsonFields(TableStat v, dynamic obj, TableTextReport r, _Share
         break;
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
+        _jsonSkipValue(val, r);
         r.unknown++;
     }
   }
@@ -7159,7 +7245,9 @@ void tableHitEventFromJsonFields(TableHitEvent v, dynamic obj, TableTextReport r
   final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
+    _jsonText(key);
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -7182,6 +7270,7 @@ void tableHitEventFromJsonFields(TableHitEvent v, dynamic obj, TableTextReport r
         break;
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
+        _jsonSkipValue(val, r);
         r.unknown++;
     }
   }
@@ -7222,7 +7311,9 @@ void tableChatEventFromJsonFields(TableChatEvent v, dynamic obj, TableTextReport
   final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
+    _jsonText(key);
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -7237,6 +7328,7 @@ void tableChatEventFromJsonFields(TableChatEvent v, dynamic obj, TableTextReport
         break;
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
+        _jsonSkipValue(val, r);
         r.unknown++;
     }
   }
@@ -7277,7 +7369,9 @@ void tablePickupEventFromJsonFields(TablePickupEvent v, dynamic obj, TableTextRe
   final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
+    _jsonText(key);
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -7292,6 +7386,7 @@ void tablePickupEventFromJsonFields(TablePickupEvent v, dynamic obj, TableTextRe
         break;
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
+        _jsonSkipValue(val, r);
         r.unknown++;
     }
   }
@@ -7530,7 +7625,9 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
   final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
+    _jsonText(key);
     final val = entry.value;
+    if (!_jsonName(key, r)) return;
     switch (key) {
       case '&node':
         if (!pointer) throw const FormatException('label outside pointer');
@@ -7673,6 +7770,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
+        _jsonSkipValue(val, r);
         r.unknown++;
     }
   }
