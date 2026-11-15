@@ -926,7 +926,7 @@ public final class MixedStatVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffL);
+                        long placed = in.integer(false, false, 0L, 0xffL);
                         if (!in.rejected) {
                             v.statId = (int) placed;
                         }
@@ -947,7 +947,7 @@ public final class MixedStatVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -512, 511);
+                        long placed = in.integer(true, false, -512, 511);
                         if (!in.rejected) {
                             v.delta = (int) placed;
                         }

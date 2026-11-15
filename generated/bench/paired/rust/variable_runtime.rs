@@ -159,20 +159,6 @@ pub struct TableReport {
     pub missing_required_fields: String,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub struct TableReportWireFuzz {
-    pub mismatch: u64,
-    pub oor: u64,
-    pub repeated: u64,
-}
-
-impl std::ops::Deref for TableReport {
-    type Target = TableReportWireFuzz;
-    fn deref(&self) -> &Self::Target {
-        &TableReportWireFuzz { mismatch: 0, oor: 0, repeated: 0 }
-    }
-}
-
 impl TableReport {
     pub fn missing_required_reason(&self) -> Option<String> {
         if self.missing_required_fields.is_empty() { None }
@@ -357,7 +343,7 @@ impl IdTable {
 /// table's kth entry; reference 0 names no id; a reference past the table is
 /// None and the caller counts malformed.
 pub fn ref_id(ids: &[u64], r: u64) -> Option<u64> {
-    if r == 0 {
+    if r == 0 || r > ids.len() as u64 {
         return None;
     }
     ids.get(r as usize - 1).copied()
@@ -432,9 +418,15 @@ impl TableNodeGraph {
 
 /// One record's state in a LOAD's numbering (docs/SPEC-TABLES.md §3.1).
 pub enum TableNodeSlot {
-    /// a record this root cannot place (counted unknown once, at the record) or
-    /// a text blob refused as damaged: every slot naming it reads null
+    /// a record of a type this reader does NOT declare (counted unknown once,
+    /// at the record) or a text blob refused as damaged: every slot naming it
+    /// reads null
     Null,
+    /// a record of a type this reader DECLARES but this root cannot place
+    /// (counted unknown once, at the record): a slot naming it names a known
+    /// type that is not the type the slot requires, which is damage (§3.1,
+    /// §6.5)
+    Unplaced(u64),
     /// a *bytes blob record (§2.5), materialized ONCE and shared by every
     /// slot that names it
     Bytes(Rc<[u8]>),
@@ -504,10 +496,12 @@ impl TableNodeReader {
     /// does not match make the TABLE damaged: good is false, one damaged
     /// counts, and nothing in it is counted unknown, because the numbering it
     /// belonged to does not exist. A record whose type id this root cannot
-    /// place keeps its index and counts unknown once; a *string blob that is
-    /// not well-formed text is malformed and its slots read null.
+    /// place keeps its index and counts unknown once; one whose type this
+    /// reader DECLARES is remembered so a slot naming it is damage, while one
+    /// whose type it does not declare reads null. A *string blob that is not
+    /// well-formed text is malformed and its slots read null.
     #[allow(clippy::too_many_arguments)]
-    pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
+    pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], declared: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
         let mut reader = TableNodeReader { good: true, count_refused: false, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: vec![Vec::new()], wire_edge_owner: 0, wire_blob_names: Vec::new() };
         let mut seen_node_table = false;
         let mut off = 1usize;
@@ -552,7 +546,7 @@ impl TableNodeReader {
                 Some(declared) => {
                     while off < sub {
                         let Some(tref) = leb_read(&wire[..sub], &mut off) else { scan_ok = false; break; };
-                        if tref == 0 || tref as usize > ids.len() { scan_ok = false; break; }
+                        if tref == 0 || tref > ids.len() as u64 { scan_ok = false; break; }
                         let Some(bl) = leb_read(&wire[..sub], &mut off) else { scan_ok = false; break; };
                         if off > sub || bl > (sub - off) as u64 { scan_ok = false; break; }
                         let type_id = ids[tref as usize - 1];
@@ -581,28 +575,32 @@ impl TableNodeReader {
                 let bytes = &wire[start..stop];
                 if tid == BYTES_TYPE_ID && bytes_edge {
                     reader.slots.push(TableNodeSlot::Bytes(Rc::from(bytes)));
-                } else if tid == STRING_TYPE_ID {
-                    if string_edge {
-                        if text_valid(bytes) {
-                            reader.slots.push(TableNodeSlot::Text(Rc::from(std::str::from_utf8(bytes).unwrap())));
-                        } else {
-                            report.damaged = true;
-                            reader.slots.push(TableNodeSlot::Null);
-                        }
+                } else if tid == STRING_TYPE_ID && string_edge {
+                    if text_valid(bytes) {
+                        reader.slots.push(TableNodeSlot::Text(Rc::from(std::str::from_utf8(bytes).unwrap())));
                     } else {
-                        if !text_valid(bytes) { report.damaged = true; }
-                        report.unknown += 1;
-                        if retaining { report.retain_lost += 1; }
+                        report.damaged = true;
                         reader.slots.push(TableNodeSlot::Null);
                     }
                 } else if placeable.contains(&tid) {
                     reader.slots.push(TableNodeSlot::Table(tid));
+                } else if tid == STRING_TYPE_ID {
+                    if !text_valid(bytes) { report.damaged = true; }
+                    report.unknown += 1;
+                    if retaining { report.retain_lost += 1; }
+                    reader.slots.push(TableNodeSlot::Unplaced(tid));
                 } else {
                     // skipped by its length, and it keeps its index (§3.1); a
                     // node record is an excluded class for retention (§6.6)
                     report.unknown += 1;
                     if retaining { report.retain_lost += 1; }
-                    reader.slots.push(TableNodeSlot::Null);
+                    if declared.contains(&tid) || tid == BYTES_TYPE_ID {
+                        // a type this reader can NAME that this root cannot
+                        // place: a slot naming it is damage (§3.1, §6.5)
+                        reader.slots.push(TableNodeSlot::Unplaced(tid));
+                    } else {
+                        reader.slots.push(TableNodeSlot::Null);
+                    }
                 }
             }
         } else {
@@ -753,11 +751,11 @@ impl TableNodeReader {
 
     fn note_pointer_edge(&mut self, index: u64, report: &mut TableReport) {
         if !self.good || index == 0 { return; }
-        let target = (index - 1) as usize;
-        if target >= self.wire_edges.len() {
+        if index - 1 >= self.wire_edges.len() as u64 {
             report.damaged = true;
             return;
         }
+        let target = (index - 1) as usize;
         let owner = self.wire_edge_owner;
         if owner < self.wire_edges.len() {
             self.wire_edges[owner].push(target);
@@ -786,7 +784,7 @@ impl TableNodeReader {
         match kind {
             30 => {
                 let Some(r) = leb_read(payload, &mut off) else { report.damaged = true; return; };
-                if off != payload.len() || r as usize > ids.len() { report.damaged = true; }
+                if off != payload.len() || r > ids.len() as u64 { report.damaged = true; }
             }
             17 => {
                 let Some(index) = leb_read(payload, &mut off) else { report.damaged = true; return; };
@@ -821,7 +819,7 @@ impl TableNodeReader {
             32 => { if !content.is_empty() { report.damaged = true; } }
             30 => {
                 let Some(r) = leb_read(content, &mut off) else { report.damaged = true; return; };
-                if off != content.len() || r as usize > ids.len() { report.damaged = true; }
+                if off != content.len() || r > ids.len() as u64 { report.damaged = true; }
             }
             17 => {
                 let Some(index) = leb_read(content, &mut off) else { report.damaged = true; return; };
@@ -854,7 +852,7 @@ impl TableNodeReader {
             14 => {
                 if depth + 1 > BINARY_MAX_DEPTH || content.len() < 2 { report.damaged = true; return; }
                 let ek = content[0];
-                if matches!(ek, 16 | 32) { report.damaged = true; return; }
+                if !table_array_element_kind_allowed(ek) { report.damaged = true; return; }
                 off = 1;
                 let Some(count) = leb_read(content, &mut off) else { report.damaged = true; return; };
                 if count > 0x7fffffff { let _ = self.refuse_count(report); return; }
@@ -869,14 +867,14 @@ impl TableNodeReader {
             16 => {
                 if depth + 1 > BINARY_MAX_DEPTH || content.len() < 2 { report.damaged = true; return; }
                 let ek = content[0];
-                if matches!(ek, 14 | 12 | 31 | 32) { report.damaged = true; return; }
+                if !table_keyed_element_kind_allowed(ek) { report.damaged = true; return; }
                 off = 1;
                 let Some(count) = leb_read(content, &mut off) else { report.damaged = true; return; };
                 if count > 0x7fffffff { let _ = self.refuse_count(report); return; }
                 let mut seen_keys: Vec<u64> = Vec::new();
                 for _ in 0..count {
                     let Some(kref) = leb_read(content, &mut off) else { report.damaged = true; return; };
-                    if kref == 0 || kref as usize > ids.len() { report.damaged = true; return; }
+                    if kref == 0 || kref > ids.len() as u64 { report.damaged = true; return; }
                     let kid = ids[kref as usize - 1];
                     if seen_keys.contains(&kid) { report.damaged = true; return; }
                     seen_keys.push(kid);
@@ -895,7 +893,7 @@ impl TableNodeReader {
                     if off != content.len() { report.damaged = true; }
                     return;
                 }
-                if aref as usize > ids.len() || off >= content.len() { report.damaged = true; return; }
+                if aref > ids.len() as u64 || off >= content.len() { report.damaged = true; return; }
                 let akind = content[off]; off += 1;
                 let Some(al) = leb_read(content, &mut off) else { report.damaged = true; return; };
                 if off > content.len() || al != (content.len() - off) as u64 { report.damaged = true; return; }
@@ -915,11 +913,11 @@ impl TableNodeReader {
             if want != self.root_type { report.damaged = true; return None; }
             return Some(0);
         }
-        let k = (index - 2) as usize;
         if index - 2 >= self.slots.len() as u64 {
             report.damaged = true;
             return None;
         }
+        let k = (index - 2) as usize;
         match &self.slots[k] {
             TableNodeSlot::Null => {
                 if self.blob_named.len() < self.slots.len() {
@@ -929,6 +927,7 @@ impl TableNodeReader {
                 None
             }
             TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) => { report.damaged = true; None }
+            TableNodeSlot::Unplaced(_) => { report.damaged = true; None }
             TableNodeSlot::Table(t) | TableNodeSlot::Built(t, _) => {
                 if *t == want { Some(k + 1) } else { report.damaged = true; None }
             }
@@ -1008,6 +1007,19 @@ pub fn table_kind_width(kind: u8) -> usize {
         18 | 19 | 24 | 29 => 16,
         _ => 0,
     }
+}
+
+/// THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body (kind
+/// 14) opens with 1–13, 15, 17 or 18–30; an enum-keyed body (kind 16) opens
+/// with 1–11, 13 or 18–30. Any other element kind is damage under ANY count,
+/// a count of 0 included, in a declared field and in an unknown one alike, so
+/// the header byte is judged before any comparison with the declaration.
+pub fn table_array_element_kind_allowed(kind: u8) -> bool {
+    matches!(kind, 1..=13 | 15 | 17 | 18..=30)
+}
+
+pub fn table_keyed_element_kind_allowed(kind: u8) -> bool {
+    matches!(kind, 1..=11 | 13 | 18..=30)
 }
 
 /// Whether a payload under kind decodes EXACTLY into a field declared at
@@ -1118,9 +1130,8 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         }
         12 | 13 | 14 | 16 | 31 | 32 => {
             let Some(n) = leb_read(bounded, off) else { return false; };
-            let n = n as usize;
-            if *off > end || n > end - *off { return false; }
-            *off += n;
+            if *off > end || n > (end - *off) as u64 { return false; }
+            *off += n as usize;
             true
         }
         15 => {
@@ -1129,9 +1140,8 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
             if *off >= end { return false; }
             *off += 1;
             let Some(n) = leb_read(bounded, off) else { return false; };
-            let n = n as usize;
-            if *off > end || n > end - *off { return false; }
-            *off += n;
+            if *off > end || n > (end - *off) as u64 { return false; }
+            *off += n as usize;
             true
         }
         _ => false,
@@ -1332,7 +1342,7 @@ impl<'a> RetainCur<'a> {
 /// drops the record. It reads kind bytes, lengths and references and nothing
 /// else, so no value is decoded and no bound is checked.
 fn retain_id(ids: &[u64], r: u64, bad: &mut bool) -> u64 {
-    if r == 0 || r as usize > ids.len() {
+    if r == 0 || r > ids.len() as u64 {
         *bad = true;
         return 0;
     }
@@ -1928,6 +1938,10 @@ pub fn json_newline(out: &mut String, depth: usize) {
 /// rides raw, so multibyte text stays byte for byte.
 #[allow(dead_code)]
 pub fn json_escape(s: &str, out: &mut String) {
+    debug_assert!(
+        !s.contains('\0'),
+        "a string holding a zero byte is not text (docs/SPEC-TABLES.md §16.3)"
+    );
     out.push('"');
     for c in s.chars() {
         json_escape_char(c, out);
@@ -1991,16 +2005,23 @@ pub fn json_b64(bytes: &[u8], out: &mut String) {
     out.push('"');
 }
 
-/// Base64 back to bytes (docs/SPEC-TABLES.md §16.2): padded and unpadded both
-/// read; anything else is None, which the caller counts kind_mismatch.
+/// Base64 back to bytes (docs/SPEC-TABLES.md §16.2, §16.8): CANONICAL base64
+/// only — the standard alphabet, padded, pad bits zero. A body that decodes
+/// but is another spelling (unpadded, or a pad bit set) is None, as is one
+/// that does not decode at all; the caller counts the refusal.
 #[allow(dead_code)]
 pub fn json_unb64(s: &str) -> Option<Vec<u8>> {
     let b = s.as_bytes();
+    // CANONICAL is exactly the writer's spelling: whole four-symbol groups,
+    // so zero, one or two trailing equals signs and never unpadded text.
+    if !b.len().is_multiple_of(4) {
+        return None;
+    }
     let mut end = b.len();
     while end > 0 && b[end - 1] == b'=' {
         end -= 1;
     }
-    if b.len() - end > 2 || (b.len() != end && !b.len().is_multiple_of(4)) || end % 4 == 1 {
+    if b.len() - end > 2 || end % 4 == 1 {
         return None;
     }
     let mut out = Vec::with_capacity(end * 3 / 4);
@@ -2021,6 +2042,11 @@ pub fn json_unb64(s: &str) -> Option<Vec<u8>> {
             bits -= 8;
             out.push((acc >> bits & 0xff) as u8);
         }
+    }
+    // PAD BITS ZERO: the bits a padded group carries but no output byte uses
+    // are the low bits of the accumulator after the last full byte.
+    if bits > 0 && acc & ((1u32 << bits) - 1) != 0 {
+        return None;
     }
     Some(out)
 }
@@ -2077,6 +2103,56 @@ pub fn json_fixed(out: &mut String, raw: u128, signed: bool, frac: u32) {
         let digit = if frac >= 128 { carry } else { (low >> frac) | (carry << (128 - frac)) };
         out.push((b'0' + digit as u8) as char);
         f = low & mask;
+    }
+}
+
+/// An INTEGER TOKEN's exact value (docs/SPEC-TABLES.md §16.2, **Numbers**):
+/// digits with an optional minus, no fraction, no exponent, no negative zero
+/// and no leading zero. The signed flag names the kind's domain, so a magnitude
+/// past i128's or u128's own ends is refused. The value is two's complement in a
+/// u128 for a signed kind and the magnitude for an unsigned one, with no
+/// binary floating-point step anywhere on the path.
+#[allow(dead_code)]
+pub fn json_integer_literal(t: &[u8], signed: bool) -> Option<u128> {
+    let mut i = 0usize;
+    let negative = t.first() == Some(&b'-');
+    if negative {
+        i += 1;
+    }
+    if i >= t.len() {
+        return None;
+    }
+    if t[i] == b'0' {
+        // "0" is the one spelling of zero; "-0" and "00" are not integer tokens
+        if i + 1 != t.len() || negative {
+            return None;
+        }
+        return Some(0);
+    }
+    let mut mag: u128 = 0;
+    while i < t.len() {
+        let b = t[i];
+        if !b.is_ascii_digit() {
+            return None;
+        }
+        let d = u128::from(b - b'0');
+        mag = match mag.checked_mul(10).and_then(|m| m.checked_add(d)) {
+            Some(m) => m,
+            None => return None,
+        };
+        i += 1;
+    }
+    if signed {
+        let limit = if negative { 1u128 << 127 } else { (1u128 << 127) - 1 };
+        if mag > limit {
+            return None;
+        }
+        Some(if negative { mag.wrapping_neg() } else { mag })
+    } else {
+        if negative {
+            return None;
+        }
+        Some(mag)
     }
 }
 
@@ -2179,16 +2255,29 @@ impl<'a> Jr<'a> {
                 b' ' | b'\t' | b'\n' | b'\r' => self.p += 1,
                 b'/' if self.p + 1 < self.b.len() && self.b[self.p + 1] == b'/' => {
                     self.p += 2;
+                    let start = self.p;
                     while self.p < self.b.len() && self.b[self.p] != b'\n' {
                         self.p += 1;
+                    }
+                    // §16.3: a comment's bytes are well-formed UTF-8 and hold
+                    // no NUL, on the same terms a string site's are.
+                    if std::str::from_utf8(&self.b[start..self.p]).is_err() || self.b[start..self.p].contains(&0) {
+                        self.damaged = true;
+                        return;
                     }
                 }
                 b'/' if self.p + 1 < self.b.len() && self.b[self.p + 1] == b'*' => {
                     self.p += 2;
+                    let start = self.p;
                     let mut closed = false;
                     while self.p + 1 < self.b.len() {
                         if self.b[self.p] == b'*' && self.b[self.p + 1] == b'/' {
+                            let end = self.p;
                             self.p += 2;
+                            if std::str::from_utf8(&self.b[start..end]).is_err() || self.b[start..end].contains(&0) {
+                                self.damaged = true;
+                                return;
+                            }
                             closed = true;
                             break;
                         }
@@ -2338,6 +2427,20 @@ impl<'a> Jr<'a> {
         }
         Some(s)
     }
+    /// read_name reads a string that NAMES a schema name — an object key
+    /// naming a field, an enum variant, a flags element, a union arm, an
+    /// &node name — and holds it to §16.2's 255-byte cap after decoding. A
+    /// longer one refuses the read, and so does a U+0000 in it, as in every
+    /// object key (§16.3); a map key and a string value are data and go
+    /// through read_text/read_string, never this.
+    pub fn read_name(&mut self) -> Option<String> {
+        let s = self.read_text()?;
+        if s.len() > 255 {
+            self.damaged = true;
+            return None;
+        }
+        Some(s)
+    }
     pub fn read_null(&mut self) -> bool {
         self.space();
         if self.p + 4 <= self.b.len() && &self.b[self.p..self.p + 4] == b"null" {
@@ -2400,71 +2503,86 @@ impl<'a> Jr<'a> {
         self.p = p;
         Some(String::from_utf8_lossy(&b[s..p]).into_owned())
     }
-    /// An integer field's value (docs/SPEC-TABLES.md §16.2): any token whose
-    /// VALUE is integral, saturating past what 64 bits hold; a fractional one
-    /// is kind_mismatch, and a value of another JSON type is kind_mismatch,
-    /// skipped.
-    pub fn read_int(&mut self) -> Option<i128> {
+    /// An integer field's value (docs/SPEC-TABLES.md §16.2, **Numbers**): an
+    /// INTEGER TOKEN only — digits with an optional minus, no fraction, no
+    /// exponent, not -0 — and, for a kind wider than 32 bits, the same digits
+    /// as a JSON string. The value is exact and never passes through a double.
+    /// A value of another JSON type, or a token that is not an integer token,
+    /// is kind_mismatch, skipped.
+    pub fn read_int(&mut self, allow_string: bool) -> Option<i128> {
         let c = self.peek();
-        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.damaged = true;
-            self.skip_value();
-            return None;
-        }
-        let t = self.number_token()?;
-        if !t.contains(['.', 'e', 'E']) {
-            let neg = t.starts_with('-');
-            let digits = t.strip_prefix('-').unwrap_or(&t);
-            let mut mag: u64 = 0;
-            for b in digits.bytes() {
-                let d = (b - b'0') as u64;
-                if mag > (u64::MAX - d) / 10 {
-                    mag = u64::MAX;
-                    self.damaged = true;
-                    break;
-                }
-                mag = mag * 10 + d;
+        let token: String;
+        if c == b'"' {
+            if !allow_string {
+                self.damaged = true;
+                self.skip_value();
+                return None;
             }
-            if mag == 0 {
-                return Some(0);
-            }
-            return Some(if neg { -(mag as i128) } else { mag as i128 });
-        }
-        let f: f64 = t.parse().ok()?;
-        if !f.is_finite() || f.fract() != 0.0 {
-            self.damaged = true;
-            return None;
-        }
-        let neg = f.is_sign_negative();
-        let whole = f.abs();
-        let mag = if whole >= 18446744073709551616.0 {
-            self.damaged = true;
-            u64::MAX
+            let Some(s) = self.read_string() else { self.damaged = true; return None; };
+            token = s;
         } else {
-            whole as u64
-        };
-        if mag == 0 {
-            return Some(0);
+            if matches!(c, b'{' | b'[' | b't' | b'f' | b'n') {
+                self.damaged = true;
+                self.skip_value();
+                return None;
+            }
+            token = self.number_token()?;
+            if token.contains(['.', 'e', 'E']) {
+                self.damaged = true;
+                return None;
+            }
         }
-        Some(if neg { -(mag as i128) } else { mag as i128 })
+        match json_integer_literal(token.as_bytes(), true) {
+            Some(raw) => Some(raw as i128),
+            None => {
+                self.damaged = true;
+                None
+            }
+        }
     }
-    /// A WIDE value (docs/SPEC-TABLES.md §16.2): a 128-bit integer (frac 0)
-    /// or a fixed(I, F)'s raw integer, read EXACTLY from any number token whose
-    /// value the Q I.F grid holds — `2`, `2.0` and `20e-1` are one value —
-    /// with no binary float between, as two's complement in a u128. A digit
-    /// the grid cannot hold is kind_mismatch, the wrong shape, never rounded;
-    /// a magnitude past 128 bits saturates and counts held; a value of
-    /// another JSON type is kind_mismatch, skipped. The caller clamps to the
-    /// field's raw range.
-    pub fn read_wide(&mut self, signed: bool, frac: u32) -> Option<u128> {
+    /// A WIDE value (docs/SPEC-TABLES.md §16.2, §16.14): a 128-bit integer's
+    /// exact value, or a fixed(I, F)'s raw integer. An INTEGER takes an
+    /// integer token only — from a number token, or, for a kind wider than 32
+    /// bits, from a JSON string of the same digits. A FIXED value is read
+    /// EXACTLY from a string or a number token whose value the Q I.F grid
+    /// holds — `2`, `2.0` and `20e-1` are one value — with no binary
+    /// float between, as two's complement in a u128. A digit the grid cannot
+    /// hold is kind_mismatch, the wrong shape, never rounded; a magnitude past
+    /// 128 bits saturates and counts held; a value of another JSON type is
+    /// kind_mismatch, skipped. The caller clamps to the field's raw range.
+    pub fn read_wide(&mut self, signed: bool, frac: u32, integer: bool, allow_string: bool) -> Option<u128> {
         let c = self.peek();
-        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.damaged = true;
-            self.skip_value();
-            return None;
+        let token: String;
+        if c == b'"' {
+            if !allow_string {
+                self.damaged = true;
+                self.skip_value();
+                return None;
+            }
+            let Some(s) = self.read_string() else { self.damaged = true; return None; };
+            token = s;
+        } else {
+            if matches!(c, b'{' | b'[' | b't' | b'f' | b'n') {
+                self.damaged = true;
+                self.skip_value();
+                return None;
+            }
+            token = self.number_token()?;
         }
-        let token = self.number_token()?;
         let t = token.as_bytes();
+        if integer {
+            if c != b'"' && (t.contains(&b'.') || t.contains(&b'e') || t.contains(&b'E')) {
+                self.damaged = true;
+                return None;
+            }
+            return match json_integer_literal(t, signed) {
+                Some(raw) => Some(raw),
+                None => {
+                    self.damaged = true;
+                    None
+                }
+            };
+        }
         let negative = t.first() == Some(&b'-');
         let mut i = usize::from(negative);
         let int_start = i;
@@ -2474,7 +2592,9 @@ impl<'a> Jr<'a> {
         let int_len = i - int_start;
         let mut frac_start = i;
         let mut frac_len = 0;
+        let mut has_point = false;
         if i < t.len() && t[i] == b'.' {
+            has_point = true;
             i += 1;
             frac_start = i;
             while i < t.len() && t[i].is_ascii_digit() {
@@ -2483,7 +2603,10 @@ impl<'a> Jr<'a> {
             frac_len = i - frac_start;
         }
         let mut exp: i64 = 0;
+        let mut has_exp = false;
+        let mut exp_digits = 0usize;
         if i < t.len() && (t[i] == b'e' || t[i] == b'E') {
+            has_exp = true;
             i += 1;
             let mut eneg = false;
             if i < t.len() && (t[i] == b'-' || t[i] == b'+') {
@@ -2494,11 +2617,21 @@ impl<'a> Jr<'a> {
                 if exp < 100000 {
                     exp = exp * 10 + i64::from(t[i] - b'0');
                 }
+                exp_digits += 1;
                 i += 1;
             }
             if eneg {
                 exp = -exp;
             }
+        }
+        if int_len == 0
+            || i != t.len()
+            || (has_point && frac_len == 0)
+            || (has_exp && exp_digits == 0)
+            || (int_len > 1 && t[int_start] == b'0')
+        {
+            self.damaged = true;
+            return None;
         }
         let digit = |k: usize| if k < int_len { t[int_start + k] } else { t[frac_start + k - int_len] };
         let (mut start, mut end) = (0usize, int_len + frac_len);
@@ -2674,7 +2807,7 @@ impl<'a> Jr<'a> {
         }
         match self.b[self.p] {
             b'"' => {
-                let _ = self.read_string();
+                let _ = self.read_text();
             }
              b'{' => {
                  if self.depth > JSON_DEPTH_CAP {
@@ -2696,7 +2829,7 @@ impl<'a> Jr<'a> {
                          self.depth -= 1;
                          return;
                      }
-                     let key = self.read_string();
+                     let key = self.read_name();
                      if self.damaged {
                          self.depth -= 1;
                          return;

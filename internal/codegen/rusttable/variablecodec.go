@@ -666,6 +666,82 @@ func (g *gen) scalarWrite(f *ir.Field, x, dst string) string {
 	return fmt.Sprintf("%s.extend_from_slice(&%s.to_le_bytes());", dst, rustCast(x, scalarRust(f), t))
 }
 
+// scalarSaveRefusal is the debug-only half of the write contract
+// (docs/SPEC.md §5.1, rows 1–2): a ranged integer off its min/max, or a
+// bits(N) value wider than its declared N bits. It returns the assert to emit
+// before a scalar field is written; "" when the field cannot hold such a
+// value (a bool or a float assert its own way, and a bits(N) whose storage
+// is exactly N bits broad cannot exceed them).
+func (g *gen) scalarSaveRefusal(f *ir.Field, x, ind string) string {
+	// a fixed field is stored RAW: its declared whole-unit bounds shift by F
+	// onto the raw scale, exactly as the read's clamp does (docs/SPEC-TABLES.md
+	// §4). Comparing the raw storage with the whole-unit bound would refuse a
+	// lawful fixed value.
+	if lo, hi, ok := ir.TableRawRange(f); ok {
+		// only an end the storage can actually hold is asserted: a bound that
+		// sits on the storage's own limit cannot fire and would be an absurd
+		// comparison (deny-by-default clippy), exactly as clampStmt elides it
+		minBits, maxBits, _ := storageLimits(f)
+		var conds []string
+		low, high := lo.Cmp(minBits) > 0, hi.Cmp(maxBits) < 0
+		if low {
+			conds = append(conds, fmt.Sprintf("%s >= %s", x, lo.String()))
+		}
+		if high {
+			conds = append(conds, fmt.Sprintf("%s <= %s", x, hi.String()))
+		}
+		if len(conds) == 0 {
+			return ""
+		}
+		what := f.Name + " out of range"
+		if f.Type.Kind == ir.TFixed {
+			what = f.Name + " raw value out of range"
+		}
+		span := fmt.Sprintf("[%s, %s]", lo.String(), hi.String())
+		switch {
+		case low && !high:
+			span = ">= " + lo.String()
+		case high && !low:
+			span = "<= " + hi.String()
+		}
+		return fmt.Sprintf("%sdebug_assert!(%s, \"%s %s\");\n", ind, strings.Join(conds, " && "), what, span)
+	}
+	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < int64(rustTypeWidth(scalarRust(f))) {
+		maxv := (uint64(1) << f.Type.Width) - 1
+		return fmt.Sprintf("%sdebug_assert!(%s <= %d, \"%s exceeds bits(%d) width\");\n", ind, x, maxv, f.Name, f.Type.Width)
+	}
+	return ""
+}
+
+// storageLimits is the few representable signed or unsigned value of the
+// field's Rust storage type.
+func storageLimits(f *ir.Field) (min, max *big.Int, bits uint) {
+	bits = uint(rustTypeWidth(scalarRust(f)))
+	one := new(big.Int).Lsh(big.NewInt(1), bits)
+	if strings.HasPrefix(scalarRust(f), "i") {
+		half := new(big.Int).Rsh(one, 1)
+		return new(big.Int).Neg(half), new(big.Int).Sub(half, big.NewInt(1)), bits
+	}
+	return big.NewInt(0), new(big.Int).Sub(one, big.NewInt(1)), bits
+}
+
+// rustTypeWidth is the bit width of one scalar's Rust storage type.
+func rustTypeWidth(t string) int {
+	switch t {
+	case "u8", "i8":
+		return 8
+	case "u16", "i16":
+		return 16
+	case "u32", "i32":
+		return 32
+	case "u64", "i64":
+		return 64
+	case "u128", "i128":
+		return 128
+	}
+	return 0
+}
+
 // rustCast renders `(x as to)`, or `(x)` when x's storage type `from` is
 // already `to` (clippy's unnecessary_cast).
 func rustCast(x, from, to string) string {
@@ -731,6 +807,10 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		count := x + ".len()"
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
+			// a count past the declared maximum is refused in EVERY build
+			// (docs/SPEC.md §5.1, row 3): it guards the storage the writer
+			// indexes, not a value, so the debug-only allowance does not reach it
+			fmt.Fprintf(b, "%sif %s.len() > %d { ids.refused = Some(String::from(\"invalid_value: count past max\")); }\n", inner, x, f.ArrayBound)
 		}
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet count = %s;\n", inner, count)
@@ -760,6 +840,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			g.withArmIndex("j as u32", func() { g.emitUnionElement(b, f, "e", "body", ordinal, ein) })
 		default:
 			fmt.Fprintf(b, "%slet _ = j;\n", ein)
+			b.WriteString(g.scalarSaveRefusal(f, "(*e)", ein))
 			fmt.Fprintf(b, "%s%s\n", ein, g.scalarWrite(f, "(*e)", "body"))
 		}
 		fmt.Fprintf(b, "%s}\n", inner)
@@ -812,6 +893,11 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 	case vString:
 		if f.Type.TextUnbounded() {
 			fmt.Fprintf(b, "%sif %s.as_bytes().contains(&0) || %s.len() as u64 > 0xffffffff { ids.refused=Some(String::from(\"invalid_value: unbounded text\")); return; }\n", ind, x, x)
+		} else {
+			// a bounded string(N) refuses a length past N and a zero byte in
+			// the debug build (docs/SPEC.md §5.1, rows 4 and 8)
+			fmt.Fprintf(b, "%sdebug_assert!(%s.len() <= %d, \"%s length past %d\");\n", ind, x, rustTextBound(f), f.Name, rustTextBound(f))
+			fmt.Fprintf(b, "%sdebug_assert!(!%s.as_bytes().contains(&0), \"%s holds a zero byte\");\n", ind, x, f.Name)
 		}
 		// at its default, empty when none is declared (§3)
 		guard := "!" + x + ".is_empty()"
@@ -855,6 +941,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		g.emitUnionSave(b, f, ordinal, x, ind)
 	default:
 		// a field holding its declared default is not written at all (§3)
+		b.WriteString(g.scalarSaveRefusal(f, x, ind))
 		guard := scalarDiffers(f, x, scalarDefault(f))
 		if f.Type.Kind == ir.TBool {
 			guard = x
@@ -1115,7 +1202,7 @@ func emitEnumDecode(b *strings.Builder, f *ir.Field, dst, bound, onBad, ind stri
 	// one assignment, so dst may be a fresh `let`; onBad diverges, so a
 	// refused reference leaves dst as it was
 	fmt.Fprintf(b, "%s%s = if vref == 0 { %s::None }\n", ind, dst, e.Name)
-	fmt.Fprintf(b, "%selse if vref as usize > ids.len() { report.damaged = true; %s }\n", ind, onBad)
+	fmt.Fprintf(b, "%selse if vref > ids.len() as u64 { report.damaged = true; %s }\n", ind, onBad)
 	fmt.Fprintf(b, "%selse {\n", ind)
 	fmt.Fprintf(b, "%s    match ids[vref as usize - 1] {\n", ind)
 	for i, v := range e.Variants {
@@ -1288,9 +1375,9 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	cls := classOf(f)
 	widens := cls == vScalar
 	if widens {
-		fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { %sreport.damaged = true; }\n", i3, ek, ek, requiredCollectionSkip(f))
+		fmt.Fprintf(b, "%sif !table_array_element_kind_allowed(ek) || (ek != %d && !table_kind_widens(ek, %d)) { %sreport.damaged = true; }\n", i3, ek, ek, requiredCollectionSkip(f))
 	} else {
-		fmt.Fprintf(b, "%sif ek != %d { %sreport.damaged = true; }\n", i3, ek, requiredCollectionSkip(f))
+		fmt.Fprintf(b, "%sif !table_array_element_kind_allowed(ek) || ek != %d { %sreport.damaged = true; }\n", i3, ek, requiredCollectionSkip(f))
 	}
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
@@ -1321,12 +1408,10 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 	switch {
 	case isBytes:
-		fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 		fmt.Fprintf(b, "%s%s.push(wire[*off]); *off += 1;\n", i5, field)
 	case ir.TextListPlain(f):
 		emitPlainTextListElement(b, f, field, i5)
 	case cls == vTable:
-		fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 		fmt.Fprintf(b, "%slet Some(el) = leb_read(wire, off) else { report.damaged = true; break; };\n", i5)
 		fmt.Fprintf(b, "%sif *off > sub || el > (sub - *off) as u64 { report.damaged = true; break; }\n", i5)
 		fmt.Fprintf(b, "%slet eend = *off + el as usize;\n", i5)
@@ -1338,13 +1423,11 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%s*off = eend;\n", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	case cls == vPointer:
-		fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 		fmt.Fprintf(b, "%slet Some(index) = leb_read(wire, off) else { report.damaged = true; break; };\n", i5)
 		fmt.Fprintf(b, "%sif *off > sub { report.damaged = true; break; }\n", i5)
 		emitPointerResolve(b, f, "let e", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	case cls == vEnum:
-		fmt.Fprintf(b, "%sif *off >= sub { report.damaged = true; break; }\n", i5)
 		emitEnumDecode(b, f, "let e", "sub", "break;", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	case cls == vUnion:
@@ -1383,7 +1466,6 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	if f.Array == ir.ArrayFixed {
 		fmt.Fprintf(b, "%swhile %s.len() < %d { %s.push(prior.get(%s.len()).cloned()%s); }\n", i4, field, f.ArrayBound, field, field, orElse(fieldDefault(scalarOnly(f))))
 	}
-	fmt.Fprintf(b, "%sif *off != sub { report.damaged = true; }\n", i4)
 	fmt.Fprintf(b, "%s}\n", i3)
 	fmt.Fprintf(b, "%s    }\n", i2)
 	fmt.Fprintf(b, "%s}\n", i2)
@@ -1859,10 +1941,17 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "}\n\n")
 
 	// the root's PLACEABLE set (§3.1): a record whose type id no pointer below
-	// this root can name is a node this reader cannot place
+	// this root can name is a node this reader cannot place. The DECLARED set
+	// is every table this unit declares, whether or not a pointer below the
+	// root targets it: a record of one is a type this reader can NAME, so a
+	// slot that names it at another type is damage (§3.1, §6.5).
 	var placeable []string
 	for _, t := range ir.PointerReachable(st) {
 		placeable = append(placeable, fmt.Sprintf("0x%016x", ir.TableWireId(t.WireName())))
+	}
+	var declared []string
+	for _, name := range slices.Sorted(maps.Keys(g.unit.Tables)) {
+		declared = append(declared, fmt.Sprintf("0x%016x", ir.TableWireId(g.unit.Tables[name].WireName())))
 	}
 	bytesEdge, stringEdge := ir.PointerReachableBlobs(st)
 
@@ -1978,7 +2067,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "            if p >= end { break; }\n")
 	fmt.Fprintf(b, "            let Some(r) = leb_read(wire, &mut p) else { break; };\n")
 	fmt.Fprintf(b, "            if r == 0 { term = Some(p); break; }\n")
-	fmt.Fprintf(b, "            if r as usize > ids.len() { break; }\n")
+	fmt.Fprintf(b, "            if r > ids.len() as u64 { break; }\n")
 	fmt.Fprintf(b, "            if p >= end { break; }\n")
 	fmt.Fprintf(b, "            let kind = wire[p]; p += 1;\n")
 	fmt.Fprintf(b, "            if !leb_skip(wire, &mut p, end, kind) { break; }\n")
@@ -1995,7 +2084,8 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "    let mut nodes = TableNodeReader { good: true, count_refused: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: Vec::new(), wire_edge_owner: 0, wire_blob_names: Vec::new() };\n", ir.TableWireId(st.WireName()))
 	} else {
 		fmt.Fprintf(b, "    let placeable: &[u64] = &[%s];\n", strings.Join(placeable, ", "))
-		fmt.Fprintf(b, "    let mut nodes = match TableNodeReader::scan(wire, end, ids, 0x%016x, placeable, %v, %v, retain.is_some(), retain.as_ref().map_or(0, |r| r.bytes.capacity()), report) {\n", ir.TableWireId(st.WireName()), bytesEdge, stringEdge)
+		fmt.Fprintf(b, "    let declared: &[u64] = &[%s];\n", strings.Join(declared, ", "))
+		fmt.Fprintf(b, "    let mut nodes = match TableNodeReader::scan(wire, end, ids, 0x%016x, placeable, declared, %v, %v, retain.is_some(), retain.as_ref().map_or(0, |r| r.bytes.capacity()), report) {\n", ir.TableWireId(st.WireName()), bytesEdge, stringEdge)
 		fmt.Fprintf(b, "        Some(nodes) => nodes,\n")
 		fmt.Fprintf(b, "        None if probe => TableNodeReader { good: false, count_refused: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: 0, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: vec![Vec::new()], wire_edge_owner: 0, wire_blob_names: Vec::new() },\n", ir.TableWireId(st.WireName()))
 		fmt.Fprintf(b, "        None => return None,\n")
@@ -2181,9 +2271,9 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "            let mut cur_blob = 0i64;\n")
 	fmt.Fprintf(b, "            while off < sub {\n")
 	fmt.Fprintf(b, "                let Some(tref) = leb_read(wire, &mut off) else { return -1; };\n")
-	fmt.Fprintf(b, "                if tref == 0 || tref as usize > ids.len() { return -1; }\n")
+	fmt.Fprintf(b, "                if tref == 0 || tref > ids.len() as u64 { return -1; }\n")
 	fmt.Fprintf(b, "                let Some(bl) = leb_read(wire, &mut off) else { return -1; };\n")
-	fmt.Fprintf(b, "                if off > sub || bl as usize > sub - off { return -1; }\n")
+	fmt.Fprintf(b, "                if off > sub || bl > (sub - off) as u64 { return -1; }\n")
 	fmt.Fprintf(b, "                if ids[tref as usize - 1] == STRING_TYPE_ID || ids[tref as usize - 1] == BYTES_TYPE_ID {\n")
 	fmt.Fprintf(b, "                    if bl > 0xffffffff { return -1; }\n")
 	fmt.Fprintf(b, "                    // Only text needs a terminator in region storage (§6.5).\n")
@@ -2247,7 +2337,7 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "                    if carries {\n")
 		fmt.Fprintf(b, "                        if c > 0x7fffffff { return -1; }\n")
 		fmt.Fprintf(b, "                        let floor = if ek == %d { 2 } else { table_kind_width(ek).max(1) };\n", ir.TableKindTable)
-		fmt.Fprintf(b, "                        if off > sub || c as usize > (sub - off) / floor { return -1; }\n")
+		fmt.Fprintf(b, "                        if off > sub || c > ((sub - off) / floor) as u64 { return -1; }\n")
 		// the root's own extent is root_at's (nested_measure walks the root
 		// body, lists included); this pass only refuses the framing, and
 		// descends into each element that is itself a body

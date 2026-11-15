@@ -69,7 +69,7 @@ func TestFastLaneRunsCardAddedGoFixedFormTests(t *testing.T) {
 		ev := ciEvent{
 			Name:     "pull_request",
 			Branch:   base,
-			HeadRef:  "sprint/schema-go",
+			HeadRef:  "sprint-group/schema-go",
 			Repo:     "mas-bandwidth/schema",
 			HeadRepo: "mas-bandwidth/schema",
 			PlanPkgs: "./internal/codegen/gotable",
@@ -95,7 +95,7 @@ func TestFastLaneRunsCardAddedGoFixedFormTests(t *testing.T) {
 	if ok, err := jobRunsInWorkflow(mutated, "go-test-touched", ciEvent{
 		Name:     "pull_request",
 		Branch:   "feature/not-a-named-base",
-		HeadRef:  "sprint/schema-go",
+		HeadRef:  "sprint-group/schema-go",
 		Repo:     "mas-bandwidth/schema",
 		HeadRepo: "mas-bandwidth/schema",
 		PlanPkgs: "./internal/codegen/gotable",
@@ -156,8 +156,26 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 	if _, ok := workflowTriggerBranches(wfs["ci-full.yml"])["push"]; ok {
 		t.Fatal("ci-full.yml gained a push trigger; it runs nightly and on dispatch only")
 	}
-	if _, ok := workflowTriggerBranches(wfs["ci-fast.yml"])["push"]; ok {
-		t.Fatal("ci-fast.yml gained a push trigger")
+	// ci-fast.yml runs on a push to main and nowhere else: the sprint reads
+	// this lane's verdict on every base tip to tell a card's red from main's.
+	if push := workflowTriggerBranches(wfs["ci-fast.yml"])["push"]; len(push) != 1 || push[0] != "main" {
+		t.Fatalf("ci-fast.yml push branches %v; it runs on a push to main only", push)
+	}
+	if !workflowTriggersOn(wfs["ci-fast.yml"], ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"}) {
+		t.Fatal("ci-fast.yml does not trigger on a push to main")
+	}
+	mainPush := ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema", PlanPkgs: "./internal/codegen/gotable", PlanLegs: `["go"]`}
+	for nameJob, body := range yamlJobs(wfs["ci-fast.yml"]) {
+		if strings.Contains(body, "github.event_name == 'workflow_dispatch'") {
+			continue // the leg rows run on dispatch only
+		}
+		runs, err := jobRunsInWorkflow(wfs["ci-fast.yml"], nameJob, mainPush)
+		if err != nil {
+			t.Fatalf("ci-fast.yml %s eval error on a push to main: %v", nameJob, err)
+		}
+		if !runs {
+			t.Fatalf("ci-fast.yml %s does not run on a push to main", nameJob)
+		}
 	}
 }
 

@@ -173,7 +173,7 @@ impl<'a> TableVocabulary<'a> {
     /// THE ENTRY a reference names, counted from 1 (§3.3): one array index, no
     /// parse and no branch. Reference 0 names no entry.
     pub fn entry(&self, reference: u64) -> Option<&TableMessageEntry> {
-        if reference == 0 || reference as usize > self.count {
+        if reference == 0 || reference > self.count as u64 {
             return None;
         }
         Some(&self.entries[reference as usize - 1])
@@ -276,7 +276,7 @@ fn announce_read_once(
         report.damaged = true;
         return false;
     }
-    let end = data.len() - 8 - (trailer_count as usize) * 8;
+    let end = data.len() - 8 - (trailer_count * 8) as usize;
     // "a table carrying one id twice" is the whole wire malformed (§3.3),
     // proved with the open-addressing probe over a fixed 8192-slot stack table
     // rather than a pairwise scan (§3).
@@ -331,7 +331,7 @@ fn announce_read_once(
             report.damaged = true;
             return false;
         }
-        let id = read_u64(data, end + ((reference - 1) as usize) * 8);
+        let id = read_u64(data, end + ((reference - 1) * 8) as usize);
         let kind = body[at];
         at += 1;
         if id == TABLE_BUILD_VERSION_FIELD_ID {
@@ -697,12 +697,16 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
         }
         s.elem = bytes[*at];
         *at += 1;
-        if !known_kind(s.elem) {
-            return (s, false);
-        }
-        // an element kind of 12 is refused here, at the announcement, rather
-        // than at the skip that would meet it (§3.3)
-        if s.elem == 12 {
+        // THE ELEMENT KINDS ARE CLOSED, one list per body kind (§3.3): an
+        // array of strings rides element kind 12 and is walked, while no
+        // declaration produces an array or a keyed body as an element, so
+        // those are damage here at the announcement.
+        let listed = if kind == 14 {
+            (1..=13).contains(&s.elem) || s.elem == 15 || s.elem == 17 || (18..=29).contains(&s.elem) || s.elem == 30
+        } else {
+            (1..=11).contains(&s.elem) || s.elem == 13 || (18..=29).contains(&s.elem) || s.elem == 30
+        };
+        if !listed {
             return (s, false);
         }
         return (s, true);
@@ -924,20 +928,6 @@ pub struct TableReport {
     pub missing_required: u64,
     /// The current refusal's names, in field declaration order.
     pub missing_required_fields: String,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub struct TableReportWireFuzz {
-    pub mismatch: u64,
-    pub oor: u64,
-    pub repeated: u64,
-}
-
-impl std::ops::Deref for TableReport {
-    type Target = TableReportWireFuzz;
-    fn deref(&self) -> &Self::Target {
-        &TableReportWireFuzz { mismatch: 0, oor: 0, repeated: 0 }
-    }
 }
 
 impl TableReport {

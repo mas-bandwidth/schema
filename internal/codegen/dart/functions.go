@@ -488,7 +488,11 @@ func (g *gen) emitReadFunction(name, low string, items []ir.Item) {
 		g.bpf("    }\n")
 		g.bpf("  }\n")
 	}
-	g.bpf("  var bitsRead = bitOffset;\n")
+	// an empty body reads nothing and returns 0, so it declares no cursor
+	// (the strict analyze gate refuses an unused local)
+	if g.usesRead || strings.Contains(body, "bitsRead") {
+		g.bpf("  var bitsRead = bitOffset;\n")
+	}
 	if g.usesRead {
 		g.bpf("  var window = 0;\n")
 	}
@@ -1008,7 +1012,29 @@ func (g *gen) emitWriteInt(f *ir.Field, name, ind string) {
 	// bare integer at storage width; signed values mask to the same-width
 	// unsigned pattern (the sign smear a wider merge would spread corrupts
 	// neighboring wire data, exactly as in C++)
+	g.emitBareIntWidthAssert(f, name, ind)
 	g.emitWriteWide64(name, w, ind)
+}
+
+// emitBareIntWidthAssert asserts a bare intN/uintN value is inside its
+// declared N-bit width when the Dart storage can hold a wider one (SPEC §5.1
+// row 11): the mask would otherwise land a different value on the wire. A
+// scalar, a struct field and an arm payload are a 64-bit int; an array
+// element sits in the typed list of its own width, which holds exactly N
+// bits, and a 64-bit width is the storage itself. The mask on the write
+// stays; the assert is debug-only, like the other write asserts.
+func (g *gen) emitBareIntWidthAssert(f *ir.Field, name, ind string) {
+	w := uint(f.Type.Width)
+	if f.Array != ir.ArrayNone || w >= 64 {
+		return
+	}
+	lo, hi := big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w), big.NewInt(1))
+	if f.Type.Signed {
+		lo = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), w-1))
+		hi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w-1), big.NewInt(1))
+	}
+	g.pf("%sassert(%s >= %s);\n", ind, name, dartIntLit(lo))
+	g.pf("%sassert(%s <= %s);\n", ind, name, dartIntLit(hi))
 }
 
 // emitWrite128Ranged writes a ranged 128-bit-storage value (int128/uint128,
@@ -1088,6 +1114,30 @@ func (g *gen) emitWriteFlags(ref *ir.Flags, name, ind string) {
 func (g *gen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	length := name + "Length"
 	g.assertRange(length, big.NewInt(0), big.NewInt(f.Type.Size), true, ind)
+	if f.Type.Kind == ir.TString {
+		g.useRuntime()
+		check := fmt.Sprintf("%sassert(Schema.utf8Valid(%s, %s));", ind, name, length)
+		if len(check) <= 80 {
+			g.pf("%s\n", check)
+		} else {
+			g.pf("%sassert(\n%s  Schema.utf8Valid(\n%s    %s,\n%s    %s,\n%s  ),\n%s);\n",
+				ind, ind, ind, name, ind, length, ind, ind)
+		}
+		g.pf("%s// an interior null is content the write refuses (SPEC §4.7)\n", ind)
+		iv := fmt.Sprintf("i%d", g.loopDepth)
+		g.loopDepth++
+		hi := g.scratchHi
+		g.emitByteReadLoop(ind, iv, length)
+		g.scratchHi = hi
+		one := fmt.Sprintf("%s  assert(%s[%s] != 0);", ind, name, iv)
+		if len(one) <= 80 {
+			g.pf("%s\n", one)
+		} else {
+			g.pf("%s  assert(\n%s    %s[%s] != 0,\n%s  );\n", ind, ind, name, iv, ind)
+		}
+		g.pf("%s}\n", ind)
+		g.loopDepth--
+	}
 	g.emitWriteOffset(length, big.NewInt(0), big.NewInt(f.Type.Size), ind)
 	g.emitWriteAlign(ind)
 	g.emitWriteByteRun(f, name, length, f.Type.Size, false, ind)

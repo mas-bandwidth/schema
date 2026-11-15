@@ -3,6 +3,7 @@ package cpptable
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,9 +101,7 @@ func cppLongChainRun(t *testing.T, u *ir.Unit, body string) ([]byte, error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	outDir := t.TempDir()
 	var headers, sources []string
 	for name, data := range files {

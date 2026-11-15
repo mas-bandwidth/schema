@@ -904,6 +904,9 @@ defmodule Benchtable.TableMessage do
 
   defp encode_value(vocab, 15, _shape, _elem, value, acc), do: encode_union(vocab, value, acc)
 
+  defp encode_value(vocab, 16, shape, elem, value, acc),
+    do: encode_keyed(vocab, shape, elem, value, acc)
+
   defp encode_value(vocab, 30, _shape, _elem, value, acc) do
     if enum_ref?(vocab, value), do: {:ok, put_bits(acc, value, vocab.ref_bits)}, else: :error
   end
@@ -987,6 +990,40 @@ defmodule Benchtable.TableMessage do
     end
   end
 
+  # An enum-keyed array (docs/SPEC-TABLES.md §3.2, §3.3): the present-slot
+  # count at bits_required(0, slots), then per slot a KEY REFERENCE and the
+  # element. A count past the announced slots, a key that names no kind-0 entry
+  # (a variant name), and a key that names one twice each refuse the batch in
+  # every build (docs/SPEC-TABLES.md §3.2, §3.3, §5.1). No align: a keyed body
+  # never aligns, whatever its element kind.
+  defp encode_keyed(vocab, shape, elem, value, acc) do
+    count = length(value)
+    check(count <= shape.max)
+    acc2 = put_bits(acc, count, bit_length(shape.max))
+    encode_keyed_slots(vocab, elem, value, acc2, MapSet.new())
+  end
+
+  defp encode_keyed_slots(_vocab, _elem, [], acc, _seen), do: {:ok, acc}
+
+  defp encode_keyed_slots(vocab, elem, [{key_ref, value} | rest], acc, seen) do
+    case entry_at(vocab, key_ref) do
+      {:ok, entry} ->
+        check(
+          entry.kind == 0 and entry.id < 0xFFFFFFFFFFFFFFFD and not MapSet.member?(seen, entry.id)
+        )
+
+        acc2 = put_bits(acc, key_ref, vocab.ref_bits)
+
+        case encode_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), value, acc2) do
+          {:ok, acc3} -> encode_keyed_slots(vocab, elem, rest, acc3, MapSet.put(seen, entry.id))
+          :error -> :error
+        end
+
+      :error ->
+        :error
+    end
+  end
+
   defp encode_union(vocab, :none, acc), do: {:ok, put_bits(acc, 0, vocab.ref_bits)}
 
   defp encode_union(vocab, {ref, value}, acc) do
@@ -1019,6 +1056,16 @@ defmodule Benchtable.TableMessage do
 
       %{each_min: lo, each_max: hi} ->
         check(is_list(value) and Enum.all?(value, &(is_integer(&1) and &1 >= lo and &1 <= hi)))
+
+      %{keyed_each_min: lo, keyed_each_max: hi} ->
+        check(
+          is_list(value) and
+            Enum.all?(
+              value,
+              &(is_tuple(&1) and is_integer(elem(&1, 1)) and elem(&1, 1) >= lo and
+                  elem(&1, 1) <= hi)
+            )
+        )
 
       %{text: max} ->
         check(is_binary(value) and byte_size(value) <= max and text_ok?(value))

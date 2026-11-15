@@ -664,8 +664,11 @@ build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) t
 # scalars (the WIDE KINDS as array elements) are carried by two pieces of
 # cookwrite_form1.go / cookwrite.go. Each leg removes one from a COPY of the
 # emitter, regenerates that unit beside the tree, compiles a copy of the driver
-# against it, and requires the harness to go red on that unit's cook-write
-# rows and on nothing else. No tracked file is written to.
+# against it, and requires the harness to go red on that unit's cook-write rows
+# and on nothing else. The clean driver's own failure set is the baseline, so a
+# row another group already owns is not read as this plant's; every row this
+# plant adds beyond its own still fails the control. No tracked file is written
+# to.
 DART_COOKWRITE_NC := build/dart-cookwrite-nc
 # $(1) leg, $(2) emitter file, $(3) sed sabotage, $(4) unit dir in the tree,
 # $(5) schema source, $(6) the failing rows' name prefix
@@ -682,6 +685,15 @@ define dart-cookwrite-nc-leg
 	     -e "s|../../../build/|$(CURDIR)/build/|g" \
 		test/conformance/dart/main.dart > $(DART_COOKWRITE_NC)/$(1)/main.dart
 	$(DART) compile exe -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
+	@printf 'dart %s/build/conformance-dart\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt
+	@./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt \
+			--work $(DART_COOKWRITE_NC)/$(1)/clean-work > $(DART_COOKWRITE_NC)/$(1)/clean-log 2>&1 || true
+	@awk '/^FAILURES/ { f = 1; next } f && /^  / { sub(/^  /, ""); print }' \
+		$(DART_COOKWRITE_NC)/$(1)/clean-log | LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt
+	@if grep -q "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt; then \
+		echo "NEGATIVE CONTROL FAILED: the clean leg is already red on a $(6) cook-write row"; \
+		grep "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt; exit 1; \
+	fi
 	@printf 'dart %s/$(DART_COOKWRITE_NC)/$(1)/driver-bin\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/drivers.txt
 	@if ./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/drivers.txt \
 			--work $(DART_COOKWRITE_NC)/$(1)/work > $(DART_COOKWRITE_NC)/$(1)/log 2>&1; then \
@@ -691,8 +703,14 @@ define dart-cookwrite-nc-leg
 	@grep -q "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a $(6) cook-write row"; \
 		  tail -30 $(DART_COOKWRITE_NC)/$(1)/log; exit 1; }
-	@if awk '/^FAILURES/ { f = 1; next } f && /^  /' $(DART_COOKWRITE_NC)/$(1)/log | grep -v "dart / cook-write: $(6)"; then \
-		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage turned another row red too"; exit 1; \
+	@awk '/^FAILURES/ { f = 1; next } f && /^  / { sub(/^  /, ""); print }' \
+		$(DART_COOKWRITE_NC)/$(1)/log | grep -v "dart / cook-write: $(6)" \
+		| LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/other-failures.txt
+	@if grep -v -F -x -f $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt \
+			$(DART_COOKWRITE_NC)/$(1)/other-failures.txt | grep -q .; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage turned another row red too"; \
+		grep -v -F -x -f $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt \
+			$(DART_COOKWRITE_NC)/$(1)/other-failures.txt; exit 1; \
 	fi
 	@grep -m1 "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log
 endef
@@ -1855,8 +1873,10 @@ write-refusal-storage-debug-dart-negative-control: write-refusal-storage-debug-d
 	@sed -i.bak -e 's/assert(value.itemsCount <= 8);/\/\/ SABOTAGED count/' \
 		-e 's/assert(value.nameLength <= 16);/\/\/ SABOTAGED length/' \
 		-e 's/assert(value.nameLength <= value.name.length);/\/\/ SABOTAGED storage/' \
+		-e 's/assert(value.items.length <= 8);/\/\/ SABOTAGED variable count/' \
+		-e 's/assert(nameText.length <= 16);/\/\/ SABOTAGED variable length/' \
 		$(STORAGE_DEBUG_DART)-negative/generated/StorageCook.dart
-	@test "$$(grep -c 'SABOTAGED' $(STORAGE_DEBUG_DART)-negative/generated/StorageCook.dart)" = 3 || \
+	@test "$$(grep -c 'SABOTAGED' $(STORAGE_DEBUG_DART)-negative/generated/StorageCook.dart)" = 5 || \
 		{ echo "NEGATIVE CONTROL FAILED: the storage assert sabotage did not apply"; exit 1; }
 	@cp test/conformance/dart/storage_debug.dart $(STORAGE_DEBUG_DART)-negative/generated/storage_debug_main.dart
 	@if $(DART) --enable-asserts $(STORAGE_DEBUG_DART)-negative/generated/storage_debug_main.dart > $(STORAGE_DEBUG_DART)-negative/log 2>&1; then \
@@ -1864,8 +1884,10 @@ write-refusal-storage-debug-dart-negative-control: write-refusal-storage-debug-d
 		cat $(STORAGE_DEBUG_DART)-negative/log; exit 1; \
 	fi
 	@grep -q 'FAIL storage debug count' $(STORAGE_DEBUG_DART)-negative/log && \
-		grep -q 'FAIL storage debug length' $(STORAGE_DEBUG_DART)-negative/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on both storage asserts"; \
+		grep -q 'FAIL storage debug length' $(STORAGE_DEBUG_DART)-negative/log && \
+		grep -q 'FAIL storage debug variable count' $(STORAGE_DEBUG_DART)-negative/log && \
+		grep -q 'FAIL storage debug variable length' $(STORAGE_DEBUG_DART)-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on every storage assert"; \
 		  cat $(STORAGE_DEBUG_DART)-negative/log; exit 1; }
 	@grep 'FAIL storage debug' $(STORAGE_DEBUG_DART)-negative/log
 	@echo "negative control: removing the Dart storage asserts turns the debug gate RED"
@@ -1957,3 +1979,36 @@ packet-write-cfloat-dart-negative-control: packet-write-cfloat-dart
 	@echo 'negative control: with no range check, the three finite off-range cases are written and nothing else goes red'
 
 test-dart: packet-write-cfloat-dart packet-write-cfloat-dart-negative-control
+
+# THE PACKET WRITE TEXT LEG (docs/SPEC.md §5.1 row 8,
+# docs/PACKET-WIRE-ALGORITHM.md §2.4): a string(N) the writer accepts holds no
+# zero byte and well-formed UTF-8 in its used bytes. Dart's write contracts are
+# debug asserts, so the driver runs under --enable-asserts. The control removes
+# the write content contract and must red the seven ill-formed cases by name.
+build/packet-write-text/dart/.stamp: bin/schema test/packet-write-text/dart/PacketText.schema make/dart.mk
+	@rm -rf build/packet-write-text/dart/gen
+	./bin/schema generate --lang dart --out build/packet-write-text/dart/gen test/packet-write-text/dart/PacketText.schema
+	@touch $@
+
+.PHONY: packet-write-text-dart packet-write-text-dart-negative-control
+packet-write-text-dart: build/packet-write-text/dart/.stamp
+	$(DART) analyze build/packet-write-text/dart/gen test/packet-write-text/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-write-text/dart/gen test/packet-write-text/dart
+	$(DART) --enable-asserts test/packet-write-text/dart/main.dart test/packet-write-text/cases.txt
+
+packet-write-text-dart-negative-control: packet-write-text-dart
+	@mkdir -p build/packet-write-text/dart-negative
+	go run ./tools/sabotage -name packet-write-text-dart-write -out build/packet-write-text/dart-negative/functions.gotext internal/codegen/dart/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/dart/functions.go":"%s/build/packet-write-text/dart-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-write-text/dart-negative/overlay.json
+	go run -overlay=build/packet-write-text/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-write-text/dart-negative/gen test/packet-write-text/dart/PacketText.schema
+	@sed 's|../../../build/packet-write-text/dart/gen|$(CURDIR)/build/packet-write-text/dart-negative/gen|' test/packet-write-text/dart/main.dart > build/packet-write-text/dart-negative/main.dart
+	@if $(DART) --enable-asserts build/packet-write-text/dart-negative/main.dart test/packet-write-text/cases.txt > build/packet-write-text/dart-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a Dart packet writer with no text contract accepted an ill-formed string'; \
+		cat build/packet-write-text/dart-negative/log; exit 1; fi
+	@test "$$(grep -c '^FAILED: .* write accepted$$' build/packet-write-text/dart-negative/log)" = 7 && \
+		test "$$(grep -c '^FAILED: ' build/packet-write-text/dart-negative/log)" = 7 || \
+		{ echo 'NEGATIVE CONTROL FAILED: Dart did not red exactly the seven ill-formed writes'; \
+		  cat build/packet-write-text/dart-negative/log; exit 1; }
+	@echo 'packet write text Dart negative control: a removed write text contract accepts the seven ill-formed strings'
+
+test-dart: packet-write-text-dart packet-write-text-dart-negative-control

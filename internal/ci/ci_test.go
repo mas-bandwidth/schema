@@ -35,6 +35,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -443,8 +444,22 @@ func TestModernizeRunsOnEveryPullRequest(t *testing.T) {
 	if strings.Contains(cond, "full-ci") {
 		t.Errorf("ci-fast.yml's lint-fast job gates on the full-ci label (%q): a pull request into fixed-table-form skips it, so a modernize red lands with nothing able to see it until the push (issue #1424)", cond)
 	}
-	if !strings.Contains(body, "golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@") {
+	// the fast lane runs the fleet's installed v0.23.0 binary (a `go run` build
+	// of the tool ran past the two-minute cap); ci-full.yml's pin is the same
+	// version, and a runner without the binary is a loud red, never a skip
+	lint := yamlJobs(body)["lint-fast"]
+	if !strings.Contains(lint, "- name: modernize") || !strings.Contains(lint, "modernize ./...") {
 		t.Error("ci-fast.yml's lint-fast no longer carries the modernize step — it must run on every pull request, as ci-full.yml's lint job runs it on the push (issue #1424)")
+	}
+	if !strings.Contains(lint, `modernize-0\.23\.0/`) || !strings.Contains(lint, "tool missing: modernize 0.23.0") {
+		t.Error("ci-fast.yml's modernize step must refuse, by name, a runner whose modernize is not the pinned v0.23.0")
+	}
+	full, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-full.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(full), "modernize/cmd/modernize@v0.23.0") {
+		t.Error("ci-full.yml's modernize pin is not v0.23.0, the version ci-fast.yml's fleet binary is held to: bump both together")
 	}
 }
 
@@ -863,7 +878,26 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 	if len(tok) >= 2 && ((tok[0] == '\'' && tok[len(tok)-1] == '\'') || (tok[0] == '"' && tok[len(tok)-1] == '"')) {
 		return tok[1 : len(tok)-1], nil
 	}
+	// startsWith(<token>, '<prefix>'), case-insensitive as in Actions, reads
+	// as the literal true or false (the card-branch skip, cardbranch_test.go)
+	if inner, ok := strings.CutPrefix(tok, "startsWith("); ok && strings.HasSuffix(inner, ")") {
+		arg, prefix, ok := strings.Cut(strings.TrimSuffix(inner, ")"), ",")
+		if !ok {
+			return "", fmt.Errorf("malformed startsWith() in %q", tok)
+		}
+		v, err := resolveCIToken(arg, ev)
+		if err != nil {
+			return "", err
+		}
+		p, err := resolveCIToken(prefix, ev)
+		if err != nil {
+			return "", err
+		}
+		return strconv.FormatBool(strings.HasPrefix(strings.ToLower(v), strings.ToLower(p))), nil
+	}
 	switch tok {
+	case "true", "false":
+		return tok, nil
 	case "github.event_name":
 		return ev.Name, nil
 	case "github.repository":
@@ -1098,7 +1132,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	streamToDevPR := ciEvent{
 		Name:     "pull_request",
 		Branch:   "dev",
-		HeadRef:  "sprint/schema-elixir",
+		HeadRef:  "sprint-group/schema-elixir",
 		Repo:     repo,
 		HeadRepo: repo,
 		PlanPkgs: planPkgs,
@@ -1179,7 +1213,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	unnamedBase := ciEvent{
 		Name:     "pull_request",
 		Branch:   "feature/not-a-named-base",
-		HeadRef:  "sprint/schema/shared-2856-ci-every-base-2",
+		HeadRef:  "sprint-group/schema",
 		Repo:     repo,
 		HeadRepo: repo,
 		PlanPkgs: planPkgs,
@@ -1321,6 +1355,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:plan",
+		"ci-fast.yml:vet",
 		"ci-full.yml:conformance",
 		"ci-full.yml:conformance-matrix",
 		"ci-full.yml:cpp-lock",
@@ -1351,6 +1386,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"promotion-tag.yml:tag",
 		"python-leg.yml:test",
 		"release.yml:release",
+		"roadmap.yml:page",
 		"roadmap.yml:roadmap",
 		"schema-c-runs-hostile-corpus.yml:corpus",
 		"schema-c-runs-hostile-corpus.yml:negative-control",
@@ -1452,8 +1488,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		{
 			name:      "drop ci-fast plan same-repo PR guard",
 			workflow:  "ci-fast.yml",
-			oldSubstr: "  plan:\n    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n",
-			newSubstr: "  plan:\n",
+			oldSubstr: "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)\n",
+			newSubstr: "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false\n",
 			wantErr:   "ci-fast.yml:plan admits fork PR",
 		},
 		{

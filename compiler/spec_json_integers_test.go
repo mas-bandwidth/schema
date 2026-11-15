@@ -1,7 +1,7 @@
 // TestSpecJsonIntegers pins docs/SPEC-TABLES.md §16.2 and §16.14's two JSON
 // integer rules (docs/rulings.json `json-wide-integers-are-strings` and
 // `json-integer-token-only`): an integer whose storage is wider than 32 bits is
-// written as a JSON string of decimal digits and reads as a string or a number;
+// written as a JSON string of decimal digits and reads as that string only;
 // every integer field takes an integer token only — digits with an optional
 // minus, no fraction, no exponent, no negative zero. It also pins the vector
 // corpus under testdata/wire/json-integers/.
@@ -26,8 +26,8 @@ func TestSpecJsonIntegers(t *testing.T) {
 			// the exact kind list, pinned (§16.2)
 			"`int64`, `uint64`, `bits(33..64)` — is written as a JSON string of decimal digits",
 			"`int8` … `int32`, `uint8` … `uint32`, `bits(1..32)` — is a number",
-			// the wide integer reads as a string or a number
-			"reads as a string or a number, the same digits",
+			// the wide integer reads as the string only
+			"reads as that STRING only; a bare number token there refuses `kind_mismatch`",
 			// a wide fixed-point kind is a string, a narrow one a number
 			"one whose storage is wider than 32 bits — 64- or 128-bit — is written as a string of digits",
 			// the map key is the same digits
@@ -104,7 +104,6 @@ func TestSpecJsonIntegers(t *testing.T) {
 		}{
 			{"canonical", "Integers", "read"},
 			{"strings", "Integers", "read"},
-			{"numbers", "Integers", "read"},
 			{"small-fraction", "Integers", "refused"},
 			{"small-exponent", "Integers", "refused"},
 			{"small-neg-zero", "Integers", "refused"},
@@ -186,13 +185,28 @@ func TestSpecJsonIntegers(t *testing.T) {
 		for _, r := range named {
 			files[r.json] = true
 		}
+		// the refused number-token rows live in NUMBER-TOKEN.tsv beside
+		// MANIFEST.tsv; TestSpecJsonWideIntegerRefusesNumberToken holds them
+		numberToken := make(map[string]bool, len(numberTokenRows))
+		for _, r := range numberTokenRows {
+			numberToken[r.name+".refused.json"] = true
+		}
 		for _, e := range entries {
-			if e.IsDir() || e.Name() == "MANIFEST.tsv" {
+			if e.IsDir() || e.Name() == "MANIFEST.tsv" || e.Name() == "NUMBER-TOKEN.tsv" {
 				continue
 			}
-			if !files[e.Name()] {
-				t.Errorf("the vector %q is not named in MANIFEST.tsv", e.Name())
+			if !files[e.Name()] && !numberToken[e.Name()] {
+				t.Errorf("the vector %q is named in neither MANIFEST.tsv nor NUMBER-TOKEN.tsv", e.Name())
+			}
+			if files[e.Name()] && numberToken[e.Name()] {
+				t.Errorf("the vector %q is named in both MANIFEST.tsv and NUMBER-TOKEN.tsv", e.Name())
 			}
 		}
+
+		// the stale header: a wide integer no longer reads as a number
+		mustNotState(t, "MANIFEST.tsv no longer reads a wide integer as a number",
+			string(data), "reads as a string OR a number")
+		mustState(t, "MANIFEST.tsv reads a wide integer as the string only",
+			string(data), "reads as that STRING only")
 	})
 }
