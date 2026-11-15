@@ -272,6 +272,8 @@ func init() {
 		Name{Name: "table_skip_framed", What: "the form-1 file wire runtime: the wire-alone skip"},
 		Name{Name: "table_skip_utf8", What: "the form-1 file wire runtime: the wire-alone skip"},
 		Name{Name: "table_skip_value", What: "the form-1 file wire runtime: the wire-alone skip"},
+		Name{Name: "TableGraphWire", What: "the form-1 file wire runtime: the declaration-free pointer graph"},
+		Name{Name: "table_graph_wire_edge", What: "the form-1 file wire runtime: the declaration-free pointer graph"},
 		Name{Name: "table_mark_body", What: "the form-1 file wire runtime: the record-naming walk"},
 		Name{Name: "table_mark_framed", What: "the form-1 file wire runtime: the record-naming walk"},
 		Name{Name: "table_mark_value", What: "the form-1 file wire runtime: the record-naming walk"},
