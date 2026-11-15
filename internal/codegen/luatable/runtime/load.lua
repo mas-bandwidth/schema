@@ -690,9 +690,7 @@ local function scalar_at(r, d, kind, report, ctx)
   -- outside it counts out of range and the strict read refuses it; no
   -- reader clamps. A field, an element, a map value and a union arm all land
   -- here, as fixed.lua and message.lua hold the same bound.
-  if d.fmin ~= nil and d.fmax ~= nil and (x < d.fmin or x > d.fmax) then
-    report.outOfRange = report.outOfRange + 1
-  end
+  if d.fmin ~= nil and d.fmax ~= nil and (x < d.fmin or x > d.fmax) then report.outOfRange = report.outOfRange + 1 end
   -- THE bits(N) CLAMP is a bits(N) field's alone (decode.go scalarAt: the
   -- declared kind is TBits): a flags field's descriptor carries its wire bits
   -- for the JSON writer, and an undeclared flag bit on the wire lands as it

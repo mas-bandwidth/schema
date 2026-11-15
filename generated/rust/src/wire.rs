@@ -160,6 +160,13 @@ pub fn write_probe_header(stream: &mut WriteStream<'_>, value: &ProbeHeader) -> 
 
 #[inline]
 pub fn read_probe_header(stream: &mut ReadStream<'_>, value: &mut ProbeHeader) -> Result {
+    read_probe_header_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_probe_header_body(stream: &mut ReadStream<'_>, value: &mut ProbeHeader) -> Result {
     let mut c: u32 = 0;
     // word 0, 16 bits: const(171)[0..8], version[0..3], reserved[0..5]
     stream.serialize_bits(&mut c, 16)?;
@@ -226,6 +233,13 @@ pub fn write_probe_bits(stream: &mut WriteStream<'_>, value: &ProbeBits) -> Resu
 
 #[inline]
 pub fn read_probe_bits(stream: &mut ReadStream<'_>, value: &mut ProbeBits) -> Result {
+    read_probe_bits_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_probe_bits_body(stream: &mut ReadStream<'_>, value: &mut ProbeBits) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: small[0..9], boundary[0..23]
     stream.serialize_bits(&mut c, 32)?;
@@ -358,6 +372,13 @@ pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> 
 
 #[inline]
 pub fn read_probe_sample(stream: &mut ReadStream<'_>, value: &mut ProbeSample) -> Result {
+    read_probe_sample_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_probe_sample_body(stream: &mut ReadStream<'_>, value: &mut ProbeSample) -> Result {
     stream.serialize_bool(&mut value.active)?;
     stream.serialize_compressed_float_precomputed(&mut value.orientation, 36000, 16, 360.0_f32, -180.0_f32)?; // compressed float [-180.0, 180.0] @ 0.01, constants folded at generation
     let mut c: u32 = 0;
@@ -434,6 +455,13 @@ pub fn write_probe_ring(stream: &mut WriteStream<'_>, value: &ProbeRing) -> Resu
 
 #[inline]
 pub fn read_probe_ring(stream: &mut ReadStream<'_>, value: &mut ProbeRing) -> Result {
+    read_probe_ring_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_probe_ring_body(stream: &mut ReadStream<'_>, value: &mut ProbeRing) -> Result {
     {
         let mut raw_value: u32 = 0;
         stream.serialize_bits(&mut raw_value, 16)?;
@@ -468,6 +496,13 @@ pub fn write_probe_slab(stream: &mut WriteStream<'_>, value: &ProbeSlab) -> Resu
 
 #[inline]
 pub fn read_probe_slab(stream: &mut ReadStream<'_>, value: &mut ProbeSlab) -> Result {
+    read_probe_slab_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_probe_slab_body(stream: &mut ReadStream<'_>, value: &mut ProbeSlab) -> Result {
     let mut c: u32 = 0;
     // word 0, 15 bits: width[0..7], height[0..8]
     stream.serialize_bits(&mut c, 15)?;
@@ -551,18 +586,26 @@ pub fn write_probe_shape(stream: &mut WriteStream<'_>, value: &ProbeShape) -> Re
     }
 }
 
+#[inline]
 pub fn read_probe_shape(stream: &mut ReadStream<'_>, value: &mut ProbeShape) -> Result {
+    read_probe_shape_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_probe_shape_body(stream: &mut ReadStream<'_>, value: &mut ProbeShape) -> Result {
     let mut tag_value: i32 = 0;
     stream.serialize_int(&mut tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
     match tag_value {
         1 => {
             let mut arm = ProbeRing::default();
-            read_probe_ring(stream, &mut arm)?;
+            read_probe_ring_body(stream, &mut arm)?;
             *value = ProbeShape::Ring(arm);
         }
         2 => {
             let mut arm = ProbeSlab::default();
-            read_probe_slab(stream, &mut arm)?;
+            read_probe_slab_body(stream, &mut arm)?;
             *value = ProbeShape::Slab(arm);
         }
         _ => *value = ProbeShape::None,
@@ -608,16 +651,23 @@ pub fn write_probe_collider(stream: &mut WriteStream<'_>, value: &ProbeCollider)
 
 #[inline]
 pub fn read_probe_collider(stream: &mut ReadStream<'_>, value: &mut ProbeCollider) -> Result {
+    read_probe_collider_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_probe_collider_body(stream: &mut ReadStream<'_>, value: &mut ProbeCollider) -> Result {
     {
         let mut raw_value: u32 = 0;
         stream.serialize_bits(&mut raw_value, 8)?;
         value.armor = raw_value as u8;
     }
-    read_probe_shape(stream, &mut value.shape)?;
-    read_probe_shape(stream, &mut value.backup)?;
+    read_probe_shape_body(stream, &mut value.shape)?;
+    read_probe_shape_body(stream, &mut value.backup)?;
     stream.serialize_int(&mut value.extras_count, 0, 2)?; // the count guards the loop (§6.3)
     for i in 0..value.extras_count as usize {
-        read_probe_shape(stream, &mut value.extras[i])?;
+        read_probe_shape_body(stream, &mut value.extras[i])?;
     }
     Ok(())
 }
@@ -662,6 +712,13 @@ pub fn write_probe_config(stream: &mut WriteStream<'_>, value: &ProbeConfig) -> 
 
 #[inline]
 pub fn read_probe_config(stream: &mut ReadStream<'_>, value: &mut ProbeConfig) -> Result {
+    read_probe_config_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_probe_config_body(stream: &mut ReadStream<'_>, value: &mut ProbeConfig) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: retries[0..32]
     stream.serialize_bits(&mut c, 32)?;
@@ -713,10 +770,17 @@ pub fn write_probe_array(stream: &mut WriteStream<'_>, value: &ProbeArray) -> Re
 
 #[inline]
 pub fn read_probe_array(stream: &mut ReadStream<'_>, value: &mut ProbeArray) -> Result {
+    read_probe_array_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_probe_array_body(stream: &mut ReadStream<'_>, value: &mut ProbeArray) -> Result {
     for i in 0..2 {
-        read_probe_sample(stream, &mut value.samples[i])?;
+        read_probe_sample_body(stream, &mut value.samples[i])?;
     }
-    read_probe_config(stream, &mut value.config)?;
+    read_probe_config_body(stream, &mut value.config)?;
     Ok(())
 }
 
@@ -739,6 +803,13 @@ pub fn write_heartbeat(stream: &mut WriteStream<'_>, value: &Heartbeat) -> Resul
 
 #[inline]
 pub fn read_heartbeat(stream: &mut ReadStream<'_>, value: &mut Heartbeat) -> Result {
+    read_heartbeat_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_heartbeat_body(stream: &mut ReadStream<'_>, value: &mut Heartbeat) -> Result {
     let _ = (stream, value);
     Ok(())
 }
@@ -777,6 +848,13 @@ pub fn write_test(stream: &mut WriteStream<'_>, value: &Test) -> Result {
 
 #[inline]
 pub fn read_test(stream: &mut ReadStream<'_>, value: &mut Test) -> Result {
+    read_test_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_test_body(stream: &mut ReadStream<'_>, value: &mut Test) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: test_a[0..16], test_b[0..10], test_c[0..6]
     stream.serialize_bits(&mut c, 32)?;
@@ -840,6 +918,13 @@ pub fn write_block(stream: &mut WriteStream<'_>, value: &Block) -> Result {
 
 #[inline]
 pub fn read_block(stream: &mut ReadStream<'_>, value: &mut Block) -> Result {
+    read_block_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_block_body(stream: &mut ReadStream<'_>, value: &mut Block) -> Result {
     stream.serialize_int(&mut value.data_length, 0, MAX_BLOCK_SIZE as i32)?; // the length guards the slice (§6.3)
     stream.serialize_bytes(&mut value.data[..value.data_length as usize])?;
     Ok(())
@@ -881,6 +966,13 @@ pub fn write_chat(stream: &mut WriteStream<'_>, value: &Chat) -> Result {
 
 #[inline]
 pub fn read_chat(stream: &mut ReadStream<'_>, value: &mut Chat) -> Result {
+    read_chat_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_chat_body(stream: &mut ReadStream<'_>, value: &mut Chat) -> Result {
     stream.serialize_int(&mut value.text_length, 0, MAX_CHAT_LENGTH as i32)?; // the length guards the slice (§6.3)
     stream.serialize_bytes(&mut value.text[..value.text_length as usize])?;
     if std::str::from_utf8(&value.text[..value.text_length as usize]).is_err() {
@@ -923,13 +1015,20 @@ pub fn write_probe_report(stream: &mut WriteStream<'_>, value: &ProbeReport) -> 
 
 #[inline]
 pub fn read_probe_report(stream: &mut ReadStream<'_>, value: &mut ProbeReport) -> Result {
-    read_probe_header(stream, &mut value.header)?;
+    read_probe_report_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_probe_report_body(stream: &mut ReadStream<'_>, value: &mut ProbeReport) -> Result {
+    read_probe_header_body(stream, &mut value.header)?;
     {
         let mut flags_value: u32 = 0;
         stream.serialize_bits(&mut flags_value, 8)?;
         value.flags = flags_value as ProbeFlags;
     }
-    read_test(stream, &mut value.echo)?;
+    read_test_body(stream, &mut value.echo)?;
     Ok(())
 }
 
@@ -1083,6 +1182,13 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
 
 #[inline]
 pub fn read_test_data(stream: &mut ReadStream<'_>, value: &mut TestData) -> Result {
+    read_test_data_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_test_data_body(stream: &mut ReadStream<'_>, value: &mut TestData) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: a[0..8], b[0..8], c[0..8], d[0..8]
     stream.serialize_bits(&mut c, 32)?;
@@ -1223,6 +1329,13 @@ pub fn write_compressed_probe(stream: &mut WriteStream<'_>, value: &CompressedPr
 
 #[inline]
 pub fn read_compressed_probe(stream: &mut ReadStream<'_>, value: &mut CompressedProbe) -> Result {
+    read_compressed_probe_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_compressed_probe_body(stream: &mut ReadStream<'_>, value: &mut CompressedProbe) -> Result {
     stream.serialize_compressed_float_precomputed(&mut value.boundary, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
     stream.serialize_compressed_float_precomputed(&mut value.offset, 10000, 14, 10.0_f32, -5.0_f32)?; // compressed float [-5.0, 5.0] @ 0.001, constants folded at generation
     Ok(())

@@ -78,9 +78,9 @@ func TestLobsterTypeWireReadNegativeControls(t *testing.T) {
 		name, anchor, with string
 		red                []string
 	}{
-		{"reserved", "if rv != 0: return stream.fail(serialize_refusal_value_out_of_range) // reserved(", "if false: return stream.fail(serialize_refusal_value_out_of_range) // reserved(", []string{"refuse reserved"}},
-		{"const", "if rv != 171: return stream.fail(", "if false: return stream.fail(", []string{"refuse const"}},
-		{"text", "if rt != serialize_refusal_none: return stream.fail(rt)", "if false: return stream.fail(rt)", []string{"refuse latched", "refuse nul", "refuse nulutf8", "refuse utf8"}},
+		{"reserved", "if rv· != 0: return stream·.fail(serialize_refusal_value_out_of_range) // reserved(", "if false: return stream·.fail(serialize_refusal_value_out_of_range) // reserved(", []string{"refuse reserved"}},
+		{"const", "if rv· != 171: return stream·.fail(", "if false: return stream·.fail(", []string{"refuse const"}},
+		{"text", "if rt· != serialize_refusal_none: return stream·.fail(rt·)", "if false: return stream·.fail(rt·)", []string{"refuse latched", "refuse nul", "refuse nulutf8", "refuse utf8"}},
 		{"align", "if n > 0 and s.unpack_bits(n) != 0:", "if n > 0 and s.unpack_bits(n) != 0 and false:", []string{"refuse padding"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

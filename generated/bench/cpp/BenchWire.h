@@ -505,14 +505,17 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
     write_bytes( stream, value.payload, value.payload_length );
     {
         float compressed_value = value.aim_x;
+        serialize_assert( compressed_value >= -1.0f && compressed_value <= 1.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 200u, 8, 2.0f, -1.0f );
     }
     {
         float compressed_value = value.aim_y;
+        serialize_assert( compressed_value >= -1.0f && compressed_value <= 1.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 200u, 8, 2.0f, -1.0f );
     }
     {
         float compressed_value = value.aim_z;
+        serialize_assert( compressed_value >= -1.0f && compressed_value <= 1.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 200u, 8, 2.0f, -1.0f );
     }
     write_float( stream, value.recoil );

@@ -169,9 +169,10 @@ function _M.ZeroTableHitEvent(value: any)
   value.Crit = false
 end
 
--- ReadTableHitEvent reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadTableHitEventBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadTableHitEvent(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadTableHitEvent is the one-packet read (SPEC §5).
+function _M.ReadTableHitEventBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 12) then
     return false
   end
@@ -191,6 +192,13 @@ function _M.ReadTableHitEvent(stream: any, value: any): boolean
   return true
 end
 
+-- ReadTableHitEvent reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadTableHitEvent(stream: any, value: any): boolean
+  if not _M.ReadTableHitEventBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitTableChatEvent resets a value to what NewTableChatEvent builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -205,9 +213,10 @@ function _M.ZeroTableChatEvent(value: any)
   value.Speaker = 0
 end
 
--- ReadTableChatEvent reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadTableChatEventBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadTableChatEvent(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadTableChatEvent is the one-packet read (SPEC §5).
+function _M.ReadTableChatEventBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, 0, 3) then
     return false
   end
@@ -217,6 +226,13 @@ function _M.ReadTableChatEvent(stream: any, value: any): boolean
   end
   value.Speaker = BITS.value
   return true
+end
+
+-- ReadTableChatEvent reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadTableChatEvent(stream: any, value: any): boolean
+  if not _M.ReadTableChatEventBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitTablePickupEvent resets a value to what NewTablePickupEvent builds, in place: its declared defaults
@@ -233,9 +249,10 @@ function _M.ZeroTablePickupEvent(value: any)
   value.Amount = 0
 end
 
--- ReadTablePickupEvent reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadTablePickupEventBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadTablePickupEvent(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadTablePickupEvent is the one-packet read (SPEC §5).
+function _M.ReadTablePickupEventBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 10) then
     return false
   end
@@ -245,6 +262,13 @@ function _M.ReadTablePickupEvent(stream: any, value: any): boolean
   end
   value.Amount = BITS.value
   return true
+end
+
+-- ReadTablePickupEvent reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadTablePickupEvent(stream: any, value: any): boolean
+  if not _M.ReadTablePickupEventBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitTableEvent resets the union to what NewTableEvent builds, in place: None, and every
@@ -261,24 +285,32 @@ function _M.ZeroTableEvent(value: any)
   value.Type = 0
 end
 
-function _M.ReadTableEvent(stream: any, value: any): boolean
+-- ReadTableEventBody reads the union wire; it does not end the packet (SPEC §5).
+function _M.ReadTableEventBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, 0, 3) then -- rejects a tag above the count (SPEC §4.8)
     return false
   end
   value.Type = BITS.value
   if value.Type == _M.TableEventType.Hit then
     _M.InitTableHitEvent(value.Hit) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)
-    return _M.ReadTableHitEvent(stream, value.Hit)
+    return _M.ReadTableHitEventBody(stream, value.Hit)
   end
   if value.Type == _M.TableEventType.Chat then
     _M.InitTableChatEvent(value.Chat) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)
-    return _M.ReadTableChatEvent(stream, value.Chat)
+    return _M.ReadTableChatEventBody(stream, value.Chat)
   end
   if value.Type == _M.TableEventType.Pickup then
     _M.InitTablePickupEvent(value.Pickup) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)
-    return _M.ReadTablePickupEvent(stream, value.Pickup)
+    return _M.ReadTablePickupEventBody(stream, value.Pickup)
   end
   return true -- None
+end
+
+-- ReadTableEvent reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadTableEvent(stream: any, value: any): boolean
+  if not _M.ReadTableEventBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- TableHitEventMaxBits is the longest wire path, align padding at its worst case;

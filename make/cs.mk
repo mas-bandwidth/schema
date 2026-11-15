@@ -1542,3 +1542,49 @@ packet-end-cs-negative-control: build/packet-end/cs/.stamp
 	@echo 'packet end C# negative control: removing the end check turns the trailing-byte and padding verdicts red'
 
 test-cs: packet-end-cs packet-end-cs-negative-control
+
+# THE PACKET-WRITE COMPRESSED-FLOAT RANGE GATE (docs/SPEC.md §5.1 row 10,
+# docs/PACKET-WIRE-ALGORITHM.md §2.5): the generated packet writer holds a
+# compressed float to finite and inside [min, max] before quantizing, with a
+# debug-only Debug.Assert (a Release build removes it). The shared cases in
+# test/packet-write-cfloat are written in a Debug build whose assertions throw
+# through a TraceListener: every refused case must be refused and every lawful
+# case must read back to its quantized value.
+.PHONY: packet-write-cfloat-cs packet-write-cfloat-cs-negative-control
+PACKET_WRITE_CFLOAT_CS := build/packet-write-cfloat/cs
+
+$(PACKET_WRITE_CFLOAT_CS)/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/cs.mk
+	@mkdir -p $(PACKET_WRITE_CFLOAT_CS)
+	./bin/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS) test/packet-write-cfloat/CFloat.schema
+	@touch $@
+
+packet-write-cfloat-cs: $(PACKET_WRITE_CFLOAT_CS)/.stamp
+	$(DOTNET) run --configuration Debug --project test/packet-write-cfloat/cs/packet-write-cfloat.csproj -- test/packet-write-cfloat
+	@echo 'packet-write-cfloat C#: every refused case refused, every lawful case reads back quantized'
+
+# The control turns the generated finite/range assertion into a constant true
+# through a go build overlay, regenerates the shared schema, and requires the
+# driver to go red on the three finite off-range cases by name.
+PACKET_WRITE_CFLOAT_CS_NEG := build/packet-write-cfloat/cs-negative
+packet-write-cfloat-cs-negative-control: $(PACKET_WRITE_CFLOAT_CS)/.stamp
+	@rm -rf $(PACKET_WRITE_CFLOAT_CS_NEG) && mkdir -p $(PACKET_WRITE_CFLOAT_CS_NEG)/generated
+	go run ./tools/sabotage -name packet-write-cfloat-cs-range -out $(PACKET_WRITE_CFLOAT_CS_NEG)/functions.gotext internal/codegen/csharp/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/csharp/functions.go":"%s/%s/functions.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(PACKET_WRITE_CFLOAT_CS_NEG)" > $(PACKET_WRITE_CFLOAT_CS_NEG)/overlay.json
+	go build -overlay=$(PACKET_WRITE_CFLOAT_CS_NEG)/overlay.json -o $(PACKET_WRITE_CFLOAT_CS_NEG)/schema ./cmd/schema
+	./$(PACKET_WRITE_CFLOAT_CS_NEG)/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS_NEG)/generated test/packet-write-cfloat/CFloat.schema
+	$(DOTNET) build test/packet-write-cfloat/cs/packet-write-cfloat.csproj \
+		-p:GeneratedDir="$(CURDIR)/$(PACKET_WRITE_CFLOAT_CS_NEG)/generated" -o $(PACKET_WRITE_CFLOAT_CS_NEG)/checker --nologo
+	@if $(DOTNET) $(PACKET_WRITE_CFLOAT_CS_NEG)/checker/packet-write-cfloat.dll test/packet-write-cfloat > $(PACKET_WRITE_CFLOAT_CS_NEG)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: packet-write-cfloat-cs stayed green with the range assertion removed'; \
+		cat $(PACKET_WRITE_CFLOAT_CS_NEG)/log; exit 1; fi
+	@grep -Fq 'FAILED: above-max refused' $(PACKET_WRITE_CFLOAT_CS_NEG)/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: above-max was not refused by name'; cat $(PACKET_WRITE_CFLOAT_CS_NEG)/log; exit 1; }
+	@grep -Fq 'FAILED: below-min refused' $(PACKET_WRITE_CFLOAT_CS_NEG)/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: below-min was not refused by name'; cat $(PACKET_WRITE_CFLOAT_CS_NEG)/log; exit 1; }
+	@grep -Fq 'FAILED: largest-finite-float32 refused' $(PACKET_WRITE_CFLOAT_CS_NEG)/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: largest-finite-float32 was not refused by name'; cat $(PACKET_WRITE_CFLOAT_CS_NEG)/log; exit 1; }
+	@grep '^FAILED: ' $(PACKET_WRITE_CFLOAT_CS_NEG)/log
+	@echo 'packet-write-cfloat C# negative control: removing the range assertion turns the off-range verdicts red'
+
+test-cs: packet-write-cfloat-cs packet-write-cfloat-cs-negative-control

@@ -256,6 +256,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeSample( serialize::WriteStream & stream, cons
     write_bool( stream, value.active );
     {
         float compressed_value = value.orientation;
+        serialize_assert( compressed_value >= -180.0f && compressed_value <= 180.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 36000u, 16, 360.0f, -180.0f );
     }
     write_bits( stream, uint32_t( value.raw_delta ), 32 );
@@ -624,6 +625,7 @@ SCHEMA_WRITE_INLINE bool WriteTestData( serialize::WriteStream & stream, const T
     write_float( stream, value.float_value );
     {
         float compressed_value = value.compressed_float_value;
+        serialize_assert( compressed_value >= 0.0f && compressed_value <= 10.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 1000u, 10, 10.0f, 0.0f );
     }
     write_double( stream, value.double_value );
@@ -714,10 +716,12 @@ SCHEMA_WRITE_INLINE bool WriteCompressedProbe( serialize::WriteStream & stream, 
 {
     {
         float compressed_value = value.boundary;
+        serialize_assert( compressed_value >= 0.0f && compressed_value <= 10.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 1000u, 10, 10.0f, 0.0f );
     }
     {
         float compressed_value = value.offset;
+        serialize_assert( compressed_value >= -5.0f && compressed_value <= 5.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 10000u, 14, 10.0f, -5.0f );
     }
     return true;

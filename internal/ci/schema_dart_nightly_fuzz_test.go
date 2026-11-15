@@ -10,12 +10,12 @@ import (
 
 // TestSchemaDartNightlyFuzzWiring holds the card's artefacts to the shape that
 // makes the nightly fuzz a gate rather than a script: a make fragment with a
-// case-count budget, a workflow that fuzzes only on the schedule, a replay gate on
-// pushes, a registry built from the generated corpus, saved regression inputs,
+// case-count budget, a workflow that runs only on the schedule and on dispatch
+// (the owner, 2026-11-15), a replay target, a registry built from the generated corpus, saved regression inputs,
 // and the planted-pattern control registered in the negative-control manifest.
 //
 // It reads files only. The heavy work is the make target the nightly workflow
-// runs; this test is the cheap structural half that a push can afford.
+// runs; this test is the cheap structural half that the Go unit tier can afford.
 func TestSchemaDartNightlyFuzzWiring(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -65,8 +65,32 @@ func TestSchemaDartNightlyFuzzWiring(t *testing.T) {
 	if !strings.Contains(wf, "schedule:") || !strings.Contains(wf, "workflow_dispatch:") {
 		t.Error("the nightly workflow needs both schedule: and workflow_dispatch:")
 	}
-	if !strings.Contains(wf, "push:") {
-		t.Error("the replay gate needs a push: trigger (its PR gate is ci-fast.yml, the owner, 2026-11-15)")
+	// NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that
+	// is not light moved to nightly test now." "no exceptions."): no push and
+	// no pull request starts this workflow; the PR gate is ci-fast.yml.
+	for _, p := range nightlyOnlyTriggerProblems(wf) {
+		t.Errorf("schema-dart-nightly-fuzz.yml: %s", p)
+	}
+	if len(nightlyOnlyTriggerProblems(strings.Replace(wf, "\non:\n", "\non:\n  push:\n", 1))) == 0 {
+		t.Error("nightly-only control: a restored push trigger was not refused")
+	}
+	for _, ev := range []ciEvent{
+		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
+	} {
+		if ok, err := jobRunsInWorkflow(wf, "nightly", ev); err != nil || !ok {
+			t.Errorf("the nightly fuzz job did not run on %+v: ok=%v err=%v", ev, ok, err)
+		}
+	}
+	for _, ev := range []ciEvent{
+		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
+	} {
+		for _, job := range []string{"replay", "nightly"} {
+			if ok, _ := jobRunsInWorkflow(wf, job, ev); ok {
+				t.Errorf("the %s job ran on %+v; the workflow is nightly and dispatch only", job, ev)
+			}
+		}
 	}
 	if !strings.Contains(wf, "schema-dart-nightly-fuzz-replay") {
 		t.Error("the workflow does not run the fast replay target")
