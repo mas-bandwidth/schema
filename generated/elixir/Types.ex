@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0xeb26c970fde3fd71
+# package example — protocol id 0xf35accd0582cdd84
 
 # type Vec3
 defmodule Example.Vec3 do
@@ -352,7 +352,7 @@ defmodule Example.Types do
           {:ok, Example.Vec3.t(), non_neg_integer()} | :error
   def read_vec3_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -436,7 +436,7 @@ defmodule Example.Types do
           {:ok, Example.Quat.t(), non_neg_integer()} | :error
   def read_quat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -534,7 +534,7 @@ defmodule Example.Types do
           {:ok, Example.Handle.t(), non_neg_integer()} | :error
   def read_handle_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -659,7 +659,7 @@ defmodule Example.Types do
   def read_quantized_position_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -793,7 +793,7 @@ defmodule Example.Types do
   def read_quantized_velocity_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -932,7 +932,7 @@ defmodule Example.Types do
   def read_quantized_rotation_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1142,7 +1142,7 @@ defmodule Example.Types do
           {:ok, Example.RigidBody.t(), non_neg_integer()} | :error
   def read_rigid_body_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1378,7 +1378,7 @@ defmodule Example.Types do
           {:ok, Example.Input.t(), non_neg_integer()} | :error
   def read_input_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1516,7 +1516,7 @@ defmodule Example.Types do
     scratch_bits = 5
 
     {data, scratch, scratch_bits} =
-      w_input_packet_inputs(value_inputs, data, scratch, scratch_bits)
+      wZinput_packetZinputs(value_inputs, data, scratch, scratch_bits)
 
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -1543,7 +1543,7 @@ defmodule Example.Types do
           {:ok, Example.InputPacket.t(), non_neg_integer()} | :error
   def read_input_packet_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1572,7 +1572,7 @@ defmodule Example.Types do
       if v > 16, do: throw(:invalid)
       n = v
       if 149 + n * 168 > num_bits, do: throw(:invalid)
-      {bits_read, v_inputs} = r_input_packet_inputs(n, [], data, num_bits, 149)
+      {bits_read, v_inputs} = rZinput_packetZinputs(n, [], data, num_bits, 149)
 
       value = %Example.InputPacket{
         synchronize_sequence: v_synchronize_sequence,
@@ -1868,7 +1868,7 @@ defmodule Example.Types do
           {:ok, Example.ShipCreate.t(), non_neg_integer()} | :error
   def read_ship_create_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2079,7 +2079,7 @@ defmodule Example.Types do
           {:ok, Example.ExpressionProbe.t(), non_neg_integer()} | :error
   def read_expression_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2250,7 +2250,7 @@ defmodule Example.Types do
           {:ok, Example.ExtremeProbe.t(), non_neg_integer()} | :error
   def read_extreme_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2438,7 +2438,7 @@ defmodule Example.Types do
           {:ok, Example.ExtremeRow.t(), non_neg_integer()} | :error
   def read_extreme_row_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2502,9 +2502,9 @@ defmodule Example.Types do
     end
   end
 
-  defp w_input_packet_inputs([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZinput_packetZinputs([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_input_packet_inputs([e | rest], data, scratch, scratch_bits) do
+  defp wZinput_packetZinputs([e | rest], data, scratch, scratch_bits) do
     %{
       stick_x: e_stick_x,
       stick_y: e_stick_y,
@@ -2585,13 +2585,13 @@ defmodule Example.Types do
 
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_input_packet_inputs(rest, data, scratch, scratch_bits)
+    wZinput_packetZinputs(rest, data, scratch, scratch_bits)
   end
 
-  defp r_input_packet_inputs(0, acc, _data, _num_bits, bits_read),
+  defp rZinput_packetZinputs(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_input_packet_inputs(remaining, acc, data, num_bits, bits_read) do
+  defp rZinput_packetZinputs(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
     e_stick_x = f32_value(v)
@@ -2640,6 +2640,6 @@ defmodule Example.Types do
       ping: e_ping
     }
 
-    r_input_packet_inputs(remaining - 1, [e | acc], data, num_bits, bits_read + 168)
+    rZinput_packetZinputs(remaining - 1, [e | acc], data, num_bits, bits_read + 168)
   end
 end

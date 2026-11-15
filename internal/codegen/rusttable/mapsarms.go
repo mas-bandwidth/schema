@@ -749,7 +749,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	case vPointer:
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
 		fmt.Fprintf(b, "%sif let Some(index) = leb_read(wire, &mut o) {\n", i5)
-		fmt.Fprintf(b, "%s    if o <= eend { let e; ", i5)
+		fmt.Fprintf(b, "%s    if o == eend { let e; ", i5)
 		emitPointerResolve(b, f, "e", "")
 		fmt.Fprintf(b, "%s[slot] = e; } else { report.damaged = true; }\n", field)
 		fmt.Fprintf(b, "%s} else { report.damaged = true; }\n", i5)
@@ -759,6 +759,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%s{ let off = &mut o;\n", i5)
 		g.withArmIndex("slot as u32", func() { g.emitUnionDecode(b, f, "e", "eend", ordinal, i5+"    ", true) })
 		fmt.Fprintf(b, "%s}\n", i5)
+		fmt.Fprintf(b, "%sif o != eend { report.damaged = true; }\n", i5)
 		fmt.Fprintf(b, "%s%s[slot] = e;\n", i5, field)
 	case vEnum:
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
@@ -766,11 +767,13 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%s{ let off = &mut o; 'enum_decode: {\n", i5)
 		emitEnumDecode(b, f, "e", "eend", "break 'enum_decode;", i5+"    ")
 		fmt.Fprintf(b, "%s} }\n", i5)
+		fmt.Fprintf(b, "%sif o != eend { report.damaged = true; }\n", i5)
 		fmt.Fprintf(b, "%s%s[slot] = e;\n", i5, field)
 	default:
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
 		fmt.Fprintf(b, "%sif let Some(raw) = %s(wire, &mut o, eend, ek) {\n", i5, scalarReadFn(f))
 		emitScalarConvert(b, f, g.floatOwner(f), "let e", "ek", i5+"    ")
+		fmt.Fprintf(b, "%s    if o != eend { report.damaged = true; }\n", i5)
 		fmt.Fprintf(b, "%s    %s[slot] = e;\n", i5, field)
 		fmt.Fprintf(b, "%s} else { report.damaged = true; }\n", i5)
 	}

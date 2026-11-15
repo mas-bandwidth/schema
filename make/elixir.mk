@@ -369,6 +369,49 @@ conformance-negative-control-elixir-order: build/conformance-harness
 conformance-negative-control-elixir-mapsort: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-mapsort,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_MAPSORT_SED,wire report,framing,a map writer that sorts its entries descending)
 
+# THE WRITE-REFUSAL CONTROLS (docs/SPEC.md §5.1, test/conformance/README.md):
+# each takes ONE check out of a copy of the emitter, rebuilds the corpus, and
+# requires its surface red on EXACTLY that check's rows while the surface that
+# never reaches the check stays green.
+#   write-refusal: a bits(N) leaf held to its storage word and not its N bits
+#     (wref_bits_wide; the fixed surface's fref_bits_wide reaches the same writer);
+#   write-refusal-fixed: the fixed writer's string check takes ill-formed and
+#     zero-byte text (fref_text_illformed, fref_text_zero);
+#   write-refusal-message: the message writer's integer rule holds no range
+#     (mref_element, mref_range_high, mref_range_low).
+ELIXIR_WREF_BITS_SED := -e 's|domain = int64(f.Type.Width)|domain = width|'
+ELIXIR_WREF_TEXT_SED := -e 's|if not String.valid?(text) or :binary.match(text, <<0>>) != :nomatch do|if not is_binary(text) do|'
+ELIXIR_WREF_MESSAGE_SED := -e 's|check(is_integer(value) and value >= lo and value <= hi)|check(is_integer(value) and lo <= hi)|'
+
+# $(call ELIXIR_WREF_CONTROL,dir,file,sedvar,surface,rows,green,what)
+define ELIXIR_WREF_CONTROL
+	$(call ELIXIR_SABOTAGED_BUILD,$(1),$(2),$(3))
+	@ELIXIR_TABLES_EBIN=$(CURDIR)/$(1)/ebin ./build/conformance-harness run --only elixir \
+		--work $(1)/work > $(1)/log 2>&1 || true
+	@got=$$(sed -n 's|^  elixir / $(4): \([^:]*\):.*|\1|p' $(1)/log | sort | tr '\n' ' '); \
+		want="$$(echo $(5) | tr ' ' '\n' | sort | tr '\n' ' ')"; \
+		if [ "$$got" != "$$want" ]; then \
+			cat $(1)/log; echo "NEGATIVE CONTROL FAILED: $(7) reds $(4) on [$$got], want exactly [$$want]"; exit 1; \
+		fi
+	@grep -qE "^$(6) +pass" $(1)/log || \
+		{ cat $(1)/log; echo "NEGATIVE CONTROL FAILED: $(7) also broke $(6), which never runs the sabotaged check"; exit 1; }
+	@echo "elixir write-refusal negative control: $(7) reds $(4) on exactly [$(5)] and leaves $(6) green"
+endef
+
+.PHONY: conformance-negative-control-elixir-write-refusal conformance-negative-control-elixir-write-refusal-fixed \
+	conformance-negative-control-elixir-write-refusal-message
+conformance-negative-control-elixir-write-refusal: build/conformance-harness
+	$(call ELIXIR_WREF_CONTROL,build/elixir-conformance-negative-wref,internal/codegen/elixirtable/fixedelixir.go,ELIXIR_WREF_BITS_SED,write-refusal,wref_bits_wide,wire,a bits(N) leaf held to its storage word)
+
+conformance-negative-control-elixir-write-refusal-fixed: build/conformance-harness
+	$(call ELIXIR_WREF_CONTROL,build/elixir-conformance-negative-wref-fixed,internal/codegen/elixirtable/fixedruntime.go,ELIXIR_WREF_TEXT_SED,write-refusal-fixed,fref_text_illformed fref_text_zero,wire,a fixed writer that takes ill-formed and zero-byte text)
+
+conformance-negative-control-elixir-write-refusal-message: build/conformance-harness
+	$(call ELIXIR_WREF_CONTROL,build/elixir-conformance-negative-wref-message,internal/codegen/elixirtable/messageform.go,ELIXIR_WREF_MESSAGE_SED,write-refusal-message,mref_element mref_range_high mref_range_low,message,a message writer whose integer rule holds no range)
+
+test-elixir: conformance-negative-control-elixir-write-refusal conformance-negative-control-elixir-write-refusal-fixed \
+	conformance-negative-control-elixir-write-refusal-message
+
 test-elixir: conformance-negative-control-elixir-walk conformance-negative-control-elixir-shared \
 	conformance-negative-control-elixir-label conformance-negative-control-elixir-ids \
 	conformance-negative-control-elixir-arm conformance-negative-control-elixir-order \
@@ -1041,7 +1084,7 @@ test-elixir:
 # json-write and report surfaces for the variable-class instances.
 .PHONY: tables-elixir-variable-class
 tables-elixir-variable-class: build/conformance/manifest.txt
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestListdemoNamesUncarriedRoots|TestOptionalVariableClosureElixir|TestScalarListUnderATableHeaderElixir|TestCountPastTheBoundClampsBeforeReadingElixir|TestNestedBodyEndingEarlyIsDamageElixir|TestReservedNodeIdInANestedBodyIsDamageElixir'
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestListdemoNamesUncarriedRoots|TestOptionalVariableClosureElixir|TestScalarListUnderATableHeaderElixir|TestCountPastTheBoundRefusesElixir|TestNestedBodyEndingEarlyIsDamageElixir|TestReservedNodeIdInANestedBodyIsDamageElixir'
 	./build/conformance-harness run --only elixir
 
 test-elixir: tables-elixir-variable-class
@@ -1696,11 +1739,13 @@ test-elixir: cards-elixir-retain-fuzz
 # --retain arm of this roster is its own gate.
 ELIXIR_WIRE_FUZZ_ABSENT_COUNT := 0
 ELIXIR_WIRE_FUZZ_ABSENT_LOG = build/tables-elixir-wire-fuzz-all.absent
+# ELIXIR_WIRE_FUZZ_ALL_EBIN lets the control point the gate at a planted reader.
+ELIXIR_WIRE_FUZZ_ALL_EBIN ?= $(CURDIR)/build/elixir-tables-ebin
 .PHONY: tables-elixir-wire-fuzz-all
 tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/.stamp
 	@rm -f $(ELIXIR_WIRE_FUZZ_ABSENT_LOG)
 	@ELIXIR_WIRE_FUZZ_ABSENT=$(CURDIR)/$(ELIXIR_WIRE_FUZZ_ABSENT_LOG) \
-		ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		ELIXIR_TABLES_EBIN=$(ELIXIR_WIRE_FUZZ_ALL_EBIN) ./build/conformance-harness wire-fuzz --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-elixir-wire-fuzz-all.log 2>&1; \
 		status=$$?; cat build/tables-elixir-wire-fuzz-all.log; \
 		if [ ! -f $(ELIXIR_WIRE_FUZZ_ABSENT_LOG) ]; then \
@@ -1721,6 +1766,35 @@ tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/
 	@grep -qE '[1-9][0-9]* mutants' build/tables-elixir-wire-fuzz-all.log
 
 test-elixir: tables-elixir-wire-fuzz-all
+
+# ITS CONTROL: the one read's rule that bytes left inside an array's L after
+# its elements are damage (docs/SPEC-TABLES.md §3, §4) is removed from a copy
+# of one unit's generated reader (featurewitnesses), compiled over a copy of
+# the corpus ebin, and the gate must go red with the leg accepting a mutant
+# the oracle refuses. N is small: the plant is met in the enumerated pass.
+ELIXIR_WIRE_FUZZ_NC := build/elixir-wire-fuzz-nc
+
+.PHONY: tables-elixir-wire-fuzz-negative-control
+tables-elixir-wire-fuzz-negative-control: build/conformance-harness build/elixir-tables-ebin/.stamp
+	@rm -rf $(ELIXIR_WIRE_FUZZ_NC) && mkdir -p $(ELIXIR_WIRE_FUZZ_NC)/ebin
+	@cp build/elixir-tables-ebin/*.beam $(ELIXIR_WIRE_FUZZ_NC)/ebin/
+	@sed -e 's|    if rest != <<>>, do: throw(:wire_damaged)|    _ = rest # SABOTAGED|' \
+		build/tables-generated-elixir/featurewitnesses/Table.ex > $(ELIXIR_WIRE_FUZZ_NC)/Table.ex
+	@grep -q SABOTAGED $(ELIXIR_WIRE_FUZZ_NC)/Table.ex || \
+		{ echo "NEGATIVE CONTROL: the Elixir wire-fuzz sabotage patched nothing"; exit 1; }
+	@$(ELIXIRC) --ignore-module-conflict -o $(ELIXIR_WIRE_FUZZ_NC)/ebin $(ELIXIR_WIRE_FUZZ_NC)/Table.ex > /dev/null 2>&1
+	@if $(MAKE) --no-print-directory tables-elixir-wire-fuzz-all N=200 \
+			ELIXIR_WIRE_FUZZ_ALL_EBIN=$(CURDIR)/$(ELIXIR_WIRE_FUZZ_NC)/ebin \
+			> $(ELIXIR_WIRE_FUZZ_NC)/log 2>&1; then \
+		cat $(ELIXIR_WIRE_FUZZ_NC)/log; \
+		echo "NEGATIVE CONTROL FAILED: a reader that keeps bytes left inside an array's L left the wire fuzz green"; exit 1; \
+	fi
+	@grep -q 'read acceptance differs: the leg says true, the oracle says false' $(ELIXIR_WIRE_FUZZ_NC)/log && \
+		grep -q '(featurewitnesses\.' $(ELIXIR_WIRE_FUZZ_NC)/log || \
+		{ cat $(ELIXIR_WIRE_FUZZ_NC)/log; echo "NEGATIVE CONTROL FAILED: the wire fuzz went red, but not on the planted reader"; exit 1; }
+	@echo "elixir wire-fuzz negative control: a reader that keeps bytes left inside an array's L reds the wire fuzz"
+
+test-elixir: tables-elixir-wire-fuzz-negative-control
 
 # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), Elixir side: every
 # framing vector the manifest answers `malformed`, through the plain and the

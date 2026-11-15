@@ -2,11 +2,11 @@
 // §3, §3.1, §3.2, §4; docs/PORT-GOOSE.md, THE LOADED VALUE): the strict read
 // of form 1, ported decision for decision from the Go reference engine
 // (internal/tablewire decode.go, decodenodes.go, nodetable.go). Any reader
-// reads any data and the differences are REPORTED, never fatal: unknown ids
-// are skipped by their length and counted, a kind that grew is widened and
-// counted, out-of-range values clamp and count, a repeated map key counts
-// repeated, and a form byte this reader does not carry is refused. Damage
-// anywhere discards the whole load; no partial root is returned (§4).
+// reads any data, and every difference refuses the read: unknown ids are
+// skipped by their length and counted and a kind that grew is widened and
+// counted, while an out-of-range value, a repeated map key, a kind it cannot
+// land, a form byte it does not carry, a non-finite float or damage anywhere
+// refuses the whole load with the engine's reason; no partial root is returned (§4, §6.5).
 //
 // The walk is driven by THE LOAD DISPATCH TABLE (schema_tables.goose,
 // load_registry): each value's descriptor names its Loader, and the field,
@@ -174,7 +174,7 @@ struct LoadUnit {
 //   bits   an integer's value (sign-extended to 128 bits on a signed kind), a
 //          bool's 0 or 1, an enum's variant ordinal (0 = None), a union's tag,
 //          a pointer's node index, a float's IEEE bits (f32 in the low 32)
-//   off    a text, bytes or wstring value: a VIEW into the input, nothing
+//   off    a text or bytes value: a VIEW into the input, nothing
 //   len    copied; len is the view's byte length, or a collection's live count
 //   first  the first child slot: a record's fields in descriptor order, an
 //   count  array's elements, a map's entries, a union's one payload slot
@@ -193,10 +193,12 @@ struct LoadVal {
 }
 
 // LoadNode is one node record of the flat node table (docs/SPEC-TABLES.md
-// §3.1): wire index i + 2. tab is the record's table, -1 for a record this
-// root cannot place (counted unknown, every pointer naming it reads null);
-// blob is KindString or KindArray for a *string or *bytes record, its bytes a
-// view (off, len); val is the record's LoadVal.
+// §3.1): wire index i + 2. tab is the record's table; -1 for a record of a
+// type this reader does not declare (counted unknown, every pointer naming it
+// reads null), -2 for one of a type it DECLARES but this root cannot place (a
+// pointer naming it is a wrong-type target, §6.5); blob is KindString or
+// KindArray for a *string or *bytes record, its bytes a view (off, len); val is
+// the record's LoadVal.
 struct LoadNode { tab: i64, blob: u8, off: i64, len: i64, val: i64, named: bool }
 
 // Rd is one reader's window over the input: [off, end).
@@ -693,7 +695,7 @@ fn resolve(c: LoadCtx&, v: i64, d: FieldDesc, index: u64) {
     }
     if index - 2 >= c.node_n as! u64 { c.report.body_damaged = true; return; }
     let n = (index - 2) as! i64;
-    if c.nodes[n].tab < 0 && c.nodes[n].blob == 0 { return; }
+    if c.nodes[n].tab == -1 && c.nodes[n].blob == 0 { return; } // a type this reader cannot name reads null
     if blob {
         let want = if d.shape == ShapeSBlob { KindString } else { KindArray };
         if c.nodes[n].blob != want { c.report.mismatch += 1; return; }
@@ -769,8 +771,8 @@ recursive fn body_at(c: LoadCtx&, r: Rd&, tab: i64, rec: i64, nested: bool, entr
 // ---- THE DISPATCH (schema_tables.goose, load_registry; docs/PORT-GOOSE.md,
 // THE LOADED VALUE: the dispatch) ----
 
-// loader_of looks a descriptor up in the registry: the first row whose shape,
-// array kind (0: any) and wstring flag match. A shape no row registers reads
+// loader_of looks a descriptor up in the registry: the first row whose shape
+// and array kind (0: any) match. A shape no row registers reads
 // as a fixed-width scalar, as a header kind it does not know is skipped by
 // its width (docs/SPEC-TABLES.md §3).
 fn loader_of(d: FieldDesc) -> Loader {
@@ -1238,11 +1240,19 @@ fn map_key_scan(c: LoadCtx&, body: Rd, kd: FieldDesc, key: LoadVal&, kind_bad: b
 // key_order: byte-wise then by length for a string key, numeric otherwise —
 // signed where the declaration is (tabletext.MapKeyOrder).
 fn key_order(c: LoadCtx&, kd: FieldDesc, a: LoadVal, b: LoadVal) -> i64 {
+    return map_key_cmp(c.data, kd, a, b);
+}
+
+// map_key_cmp is THE ONE KEY ORDER (§2.8, tabletext.MapKeyOrder) the reader
+// checks and every writer derives: byte-wise then by length for a string
+// key, numeric otherwise — signed where the declaration is. A text key's
+// bytes are data[off .. off + len].
+fn map_key_cmp(data: const u8[:], kd: FieldDesc, a: LoadVal, b: LoadVal) -> i64 {
     if kd.shape == ShapeStr || kd.shape == ShapeText {
         let n = if a.len < b.len { a.len } else { b.len };
         for i in n {
-            let x = c.data[a.off + i];
-            let y = c.data[b.off + i];
+            let x = data[a.off + i];
+            let y = data[b.off + i];
             if x != y { return if x < y { -1 } else { 1 }; }
         }
         if a.len != b.len { return if a.len < b.len { -1 } else { 1 }; }
@@ -1256,6 +1266,31 @@ fn key_order(c: LoadCtx&, kd: FieldDesc, a: LoadVal, b: LoadVal) -> i64 {
     }
     if a.bits.lo != b.bits.lo { return if a.bits.lo < b.bits.lo { -1 } else { 1 }; }
     return 0;
+}
+
+// map_entry_order is THE WRITER'S SORT (§2.8; docs/PORTING.md M19): the n
+// entries of a map whose records start at slot `first` of the value table,
+// as their slots, in ASCENDING key order (an entry's key is its record's
+// first field), appended to `order`. The save and the cook each derive the
+// order here from whatever order the value holds the entries in, so nothing
+// a writer emits rests on the storage being sorted — a load leaves it
+// sorted, but a caller may build or edit the value table in any order. A
+// stable insertion: entries that compare equal keep their storage order.
+// `order` is the writer's one sort stack: a caller reads its entries at
+// [mark, mark + n) and resizes it back to mark when the map is done, so a map
+// an entry holds sorts above it (a recursive walk keeps no growable local).
+fn map_entry_order(data: const u8[:], vals: const LoadVal[:], kd: FieldDesc, first: i64, n: i64, order: i64[>..<]&) {
+    let mark = order.len;
+    for k in n {
+        order.push(first + k);
+        var j = order.len - 1;
+        while j > mark && map_key_cmp(data, kd, vals[vals[order[j - 1]].first], vals[vals[order[j]].first]) > 0 {
+            let t = order[j - 1];
+            order[j - 1] = order[j];
+            order[j] = t;
+            j -= 1;
+        }
+    }
 }
 
 // load_map decodes one map (docs/SPEC-TABLES.md §2.8): ascending keys, a
@@ -1584,6 +1619,9 @@ fn scan_nodes(c: LoadCtx&, payload: Rd) -> bool {
         let len, lg = leb(c, r);
         if !lg || !fits(r, len) { return false; }
         let type_id, named = idof(c, ref);
+        // A RESERVED ID IS NO RECORD'S TYPE (§3.1, §3.3, §5): it is damage
+        // anywhere but its own transport. The two blob ids are lawful types.
+        if type_id == NodeWireId || type_id == BuildVersionWireId || type_id == VocabularyWireId { return false; }
         c.nodes.push(LoadNode { tab: -1, blob: 0, off: r.off, len: len as! i64, val: -1, named: false });
         // the type id rides in val's place until pass one names it
         c.nodes[c.nodes.len - 1].val = type_id as! i64;
@@ -1613,30 +1651,48 @@ fn load_variable(c: LoadCtx&, body: Rd) -> bool {
     else if !scanned { c.report.body_damaged = true; }
     else { c.good = true; }
     // PASS ONE: what each record IS, from the framing — the types this root
-    // can place, and the two blob ids where an edge below it names them
+    // can place, the two blob ids where an edge below it names them, and the
+    // types this reader DECLARES but this root cannot place (a pointer naming
+    // one of those is a wrong-type target, not an unknown record, §3.1, §6.5)
     let root = c.root_tab;
     for k in c.node_n {
         let type_id = c.nodes[k].val as! u64;
         c.nodes[k].val = -1;
-        if c.unit.tables[root].place_str && type_id == StringTypeId {
-            if !text_valid(c.data, c.nodes[k].off, c.nodes[k].len) {
-                c.report.body_damaged = true;
+        if type_id == StringTypeId {
+            c.nodes[k].blob = KindString;
+            if c.unit.tables[root].place_str {
+                if !text_valid(c.data, c.nodes[k].off, c.nodes[k].len) {
+                    c.report.body_damaged = true;
+                }
                 continue;
             }
-            c.nodes[k].blob = KindString;
+            // a blob this root reaches no *string edge for is counted unknown,
+            // as before; its type is still known, so a slot naming it is a
+            // wrong-type target rather than a null
+            c.report.unknown += 1;
+            if c.retaining { c.report.retain_lost += 1; } // an excluded class (§6.6)
             continue;
         }
-        if c.unit.tables[root].place_bytes && type_id == BytesTypeId {
+        if type_id == BytesTypeId {
             c.nodes[k].blob = KindArray;
+            if c.unit.tables[root].place_bytes { continue; }
+            c.report.unknown += 1;
+            if c.retaining { c.report.retain_lost += 1; } // an excluded class (§6.6)
             continue;
         }
         var t: i64 = -1;
+        var declared = false;
         for d, i in c.unit.tables {
-            if d.id == type_id && place_named(c, root, d.name) { t = i; break; }
+            if d.id != type_id { continue; }
+            declared = true;
+            if place_named(c, root, d.name) { t = i; break; }
         }
         if t < 0 {
             c.report.unknown += 1;
             if c.retaining { c.report.retain_lost += 1; } // an excluded class (§6.6)
+            // a type this reader declares but this root cannot place: a pointer
+            // that names it is damage, not an unnameable record (§3.1)
+            if declared { c.nodes[k].tab = -2; }
             continue;
         }
         c.nodes[k].tab = t;

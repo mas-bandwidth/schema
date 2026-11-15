@@ -137,18 +137,44 @@ conformance-negative-control-goose: build/conformance-harness build/conformance-
 # damage (§3.1). The controls remove the emitted runtime's discard and its
 # cycle check, and require the damaged and the cyclic roots to escape.
 .PHONY: tables-goose-damage tables-goose-damage-negative-control
-tables-goose-damage: toolchain-goose
+tables-goose-damage: goose-toolchain-ready
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadReturnsNoRoot|TestGooseCyclicWireIsDamage)$$'
-tables-goose-damage-negative-control: toolchain-goose
+tables-goose-damage-negative-control: goose-toolchain-ready
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadNegativeControl|TestGooseCyclicWireNegativeControl)$$'
 test-goose: tables-goose-damage tables-goose-damage-negative-control
+
+# THE ENUM-KEYED ARRAY's guard (docs/PORTING.md M5): schema_rt::table_keyed
+# indexes a keyed array BY KEY, slot k-1, and refuses None and any key past
+# E.Max by name with `abort` in every build; the probe is a `goose build -O2`
+# executable. The control takes the None compare, the past-E.Max compare and
+# the shift out of the runtime in turn, each turning exactly its own row red.
+.PHONY: tables-goose-keyed tables-goose-keyed-negative-control
+tables-goose-keyed: goose-toolchain-ready
+	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseKeyedAccessorCoversBothEnds$$'
+tables-goose-keyed-negative-control: goose-toolchain-ready
+	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseKeyedNegativeControl$$'
+test-goose: tables-goose-keyed tables-goose-keyed-negative-control
+
+# A MAP IS A SORTED ENTRY ARRAY (docs/PORTING.md M19): every writer (the wire
+# save, the text write, the cook into the holder's node extent) derives the
+# ascending order from a value whose maps are reversed in storage and lands on
+# the reference's bytes, both readers place ascending, and the wire reader
+# refuses a descending key, a repeated key and a foreign key kind. The
+# controls take each rule out of the runtime in turn, each turning exactly its
+# own rows red.
+.PHONY: tables-goose-maps tables-goose-maps-negative-controls
+tables-goose-maps: goose-toolchain-ready
+	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseMapsAreSortedEntryArrays$$'
+tables-goose-maps-negative-controls: goose-toolchain-ready
+	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseMapsNegativeControl$$'
+test-goose: tables-goose-maps tables-goose-maps-negative-controls
 
 # The variable-table wire-fuzz verdict pipe (§4.2, §6.6): both the plain
 # (--builder) and retaining (--builder --retain) arms agree with the Go engine
 # on every mutant's strict read verdict and canonical write-back bytes.
 .PHONY: tables-goose-wire-fuzz-verdict tables-goose-wire-fuzz-verdict-negative-control
-tables-goose-wire-fuzz-verdict: toolchain-goose
+tables-goose-wire-fuzz-verdict: goose-toolchain-ready
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipe$$'
-tables-goose-wire-fuzz-verdict-negative-control: toolchain-goose
+tables-goose-wire-fuzz-verdict-negative-control: goose-toolchain-ready
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipeNegativeControl$$'
 test-goose: tables-goose-wire-fuzz-verdict tables-goose-wire-fuzz-verdict-negative-control

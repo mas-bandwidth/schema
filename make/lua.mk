@@ -118,7 +118,7 @@ lua-generated-loads: toolchain-lua generated/lua/.stamp generated/lua-ludicrous/
 # variant probes) run here instead of skipping green. The wire-fuzz pair is
 # -skip'd only because tables-lua-wire-fuzz-differential, a prerequisite above,
 # has just run it through test/slowgate/proof.
-test-lua: toolchain-lua lua-generated-loads tables-lua-finite-float tables-lua-finite-float-negative-control tables-lua-release-negative-control conformance-negative-control-lua-absent tables-lua-usage tables-lua-usage-negative-control tables-lua-bench-gate tables-lua-bench-gate-negative-control conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing conformance-negative-control-lua-cycle tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control packet-utf8-lua packet-utf8-lua-negative-control packet-defaults-lua packet-defaults-lua-negative-control tables-lua-alloc tables-lua-alloc-negative-control tables-lua-alloc-runtime-negative-control tables-lua-soak tables-lua-soak-negative-control
+test-lua: toolchain-lua lua-generated-loads tables-lua-finite-float tables-lua-finite-float-negative-control tables-lua-release-negative-control conformance-negative-control-lua-absent tables-lua-usage tables-lua-usage-negative-control tables-lua-bench-gate tables-lua-bench-gate-negative-control conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing conformance-negative-control-lua-cycle conformance-negative-control-lua-write tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control packet-utf8-lua packet-utf8-lua-negative-control packet-defaults-lua packet-defaults-lua-negative-control tables-lua-alloc tables-lua-alloc-negative-control tables-lua-alloc-runtime-negative-control tables-lua-soak tables-lua-soak-negative-control
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s -skip '^TestLuaWireFuzz'
 update-goldens-lua: ;
 
@@ -408,25 +408,25 @@ tables-lua-release: toolchain-lua build/conformance-harness build/conformance-lu
 
 # THE RELEASE TIER's REVERSED WITNESS (J3): the release's wire fuzz, at the
 # release count and on its second seed, over a copy of the generated units
-# whose load runtime counts every unknown field twice. The release tier must
-# go red on it, by a divergence, or its depth of search proves nothing.
+# whose load runtime refuses every unknown field as damage. The release tier
+# must go red on it, by a divergence, or its depth of search proves nothing.
 .PHONY: tables-lua-release-negative-control
 tables-lua-release-negative-control: toolchain-lua build/conformance-harness build/conformance-lua
 	@rm -rf build/lua-release-negative && mkdir -p build/lua-release-negative
 	@cp -R build/conformance-lua build/lua-release-negative/units
 	@n=0; for f in build/lua-release-negative/units/*/load.lua; do \
-		sed 's/report.unknown = report.unknown + 1$$/report.unknown = report.unknown + 1 + 1/' "$$f" > "$$f.sabotaged"; \
+		sed 's/report.unknown = report.unknown + 1$$/report.unknown = report.unknown + 1; report.damaged = true/' "$$f" > "$$f.sabotaged"; \
 		if ! cmp -s "$$f" "$$f.sabotaged"; then n=$$((n + 1)); fi; mv "$$f.sabotaged" "$$f"; \
 	done; \
 	if [ "$$n" -eq 0 ]; then echo "NEGATIVE CONTROL: the release sabotage patched no unit's load.lua"; exit 1; fi
 	@if ./build/conformance-harness wire-fuzz \
 		--driver '$(LUA) test/conformance/lua/wirefuzz.lua build/lua-release-negative/units' \
 		--seed 2 --n $(LUA_RELEASE_FUZZ_N) > build/lua-release-negative/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the release wire fuzz stayed green over a load that counts every unknown field twice"; \
+		echo "NEGATIVE CONTROL FAILED: the release wire fuzz stayed green over a load that refuses every unknown field as damage"; \
 		cat build/lua-release-negative/log; exit 1; fi
 	@grep -q 'FAILED after' build/lua-release-negative/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the release wire fuzz went red, but not on a divergence"; cat build/lua-release-negative/log; exit 1; }
-	@echo "tables-lua-release negative control: the release wire fuzz (seed 2, N=$(LUA_RELEASE_FUZZ_N)) reds on a load that counts every unknown field twice"
+	@echo "tables-lua-release negative control: the release wire fuzz (seed 2, N=$(LUA_RELEASE_FUZZ_N)) reds on a load that refuses every unknown field as damage"
 
 # PER-CASE ABSENT's REVERSED WITNESS (I4): a copy of the driver whose absent()
 # writes nothing, so a case the leg cannot answer is left with neither an

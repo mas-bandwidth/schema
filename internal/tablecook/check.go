@@ -271,6 +271,9 @@ func (s *scan) node(base, extent int64, typeId uint64, st *ir.Struct) error {
 		if need > extent {
 			return fmt.Errorf("the byte buffer's length is %d and its node's extent is %d: the bytes leave the node", length, extent)
 		}
+		if typeId == ir.StringTypeId && s.buf[base+BlobHeader+length] != 0 {
+			return fmt.Errorf("the byte buffer's terminator byte at %d is 0x%02x, not 0x00: a string's bytes are NUL-terminated", base+BlobHeader+length, s.buf[base+BlobHeader+length])
+		}
 		return nil
 	}
 	s.base, s.extent, s.arrays = base, base+extent, s.arrays[:0]
@@ -300,6 +303,11 @@ func (s *scan) field(at int64, f *ir.Field) error {
 		return nil
 	}
 	value := pieces[0]
+	if f.Type.Optional {
+		if p := s.buf[pieces[len(pieces)-1].Offset]; p > 1 {
+			return fmt.Errorf("the optional's present byte is %d, not 0 or 1", p)
+		}
+	}
 	switch {
 	case f.IsMap():
 		if f.Type.Optional && s.buf[pieces[len(pieces)-1].Offset] == 0 {
@@ -326,10 +334,23 @@ func (s *scan) field(at int64, f *ir.Field) error {
 	case f.KeyEnum != "", f.Array == ir.ArrayFixed:
 		return s.slots(value.Offset, f, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
-		if err := s.slots(value.Offset, f, f.ArrayBound); err != nil {
+		if err := s.companion(pieces[1].Offset, f.ArrayBound, "used count"); err != nil {
 			return err
 		}
-		return s.companion(pieces[1].Offset, f.ArrayBound, "used count")
+		used := int64(int32(s.ord.Uint32(s.buf[pieces[1].Offset:])))
+		if err := s.slots(value.Offset, f, used); err != nil {
+			return err
+		}
+		step := elementBytes(s.m.Unit, f)
+		for i := used; i < f.ArrayBound; i++ {
+			slot := value.Offset + i*step
+			for at := slot; at < slot+step; at++ {
+				if s.buf[at] != 0 {
+					return fmt.Errorf("the dead slot %d at offset %d holds 0x%02x at offset %d, past the used count %d: a counted array's slots past its count are zero", i, slot, s.buf[at], at, used)
+				}
+			}
+		}
+		return nil
 	case f.Array == ir.ArrayList:
 		return s.list(value.Offset, f)
 	}
@@ -602,6 +623,15 @@ func (s *scan) element(at int64, f *ir.Field) error {
 		return s.ref(at, f) // an element of an array of pointers (§2.1)
 	}
 	switch f.Type.Kind {
+	case ir.TBool:
+		// A BOOL'S STORAGE BYTE IS 0 OR 1 (docs/SPEC-TABLES.md §7): the
+		// mapped readers load it as a bool, and a byte that is neither is
+		// undefined behaviour in them, so the check refuses it as it refuses
+		// a non-finite float
+		if b := s.buf[at]; b > 1 {
+			return fmt.Errorf("the bool byte is %d, not 0 or 1", b)
+		}
+		return nil
 	case ir.TFloat32:
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the check is the cook's
 		// strict validator (§7), and it refuses a NaN or an infinity on its raw

@@ -73,11 +73,14 @@ $(LUA_FUZZ_SCRIPT): make/schema-lua-nightly-fuzz.mk
 	@echo "schema-lua-fuzz: harness rev $(LUA_FUZZ_HARNESS_REV) written to $@"
 
 # A SHORT WIRE ROOT: the truncated-body input the planted control needs,
-# generated (this card may not commit it to the port's test tree).
+# generated (this card may not commit it to the port's test tree). It is
+# shorter than the nine-byte form-1 framing, so it is the vector that reaches
+# load.lua's `blen < 9` bound: a nine-byte seed sits exactly on the bound and
+# never trips it.
 $(LUA_FUZZ_SEEDDIR)/truncated.bin: make/schema-lua-nightly-fuzz.mk
 	@mkdir -p $(dir $@)
-	@printf '\001\000\000\000\000\000\000\000\000' > $@
-	@echo "schema-lua-fuzz: 9-byte truncated wire seed written to $@"
+	@printf '\001\000\000' > $@
+	@echo "schema-lua-fuzz: 3-byte truncated wire seed written to $@"
 
 # one generated unit per corpus line; bin/schema (its lua target) is the port's own
 # emitter, so the fuzzer and the gate cannot disagree about what was generated.

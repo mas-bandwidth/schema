@@ -16,6 +16,7 @@ import (
 )
 
 func TestRetainedContainerUnionArmsElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir container union arms retain their nested body records")
 	u := unitFrom(t, `package armretain
  enum Mode { A, B }
@@ -91,6 +92,7 @@ IO.puts("RETAINED_CONTAINER_ARM_OK")
 }
 
 func TestPinnedNestedUnionRetainElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir nested union retention replays the permanent corpus vector")
 	u := loadVariableRetainFixture(t, "../../../tables/messages/Messages.schema")
 	m := tabletext.NewModel(u)

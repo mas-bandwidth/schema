@@ -79,13 +79,36 @@ func TestSchemaLuauHostileCorpusAndWireFuzzWiring(t *testing.T) {
 		{"luau-conformance", []string{"schema-luau-runs-hostile-corpus-negative-control"}},
 		{"luau-fuzz", []string{"tables-luau-wire-fuzz-negative-control", "luau-nightly-fuzz-negative-control"}},
 	} {
-		at := strings.Index(controls, `"name": "`+want.group+`"`)
-		if at < 0 {
+		// the group, or the slices it was split into (want.group-a, -b, ...):
+		// each target sits in one of them, and that one runs per pull request
+		var groups []string
+		for rest := controls; ; {
+			at := strings.Index(rest, `"name": "`+want.group)
+			if at < 0 {
+				break
+			}
+			group, tail, _ := strings.Cut(rest[at:], "}")
+			name, _, _ := strings.Cut(strings.TrimPrefix(group, `"name": "`+want.group), `"`)
+			if name == "" || (len(name) == 2 && name[0] == '-') {
+				groups = append(groups, group)
+			}
+			rest = tail
+		}
+		if len(groups) == 0 {
 			t.Fatalf("make/negative-controls.json has no %s group", want.group)
 		}
-		group, _, _ := strings.Cut(controls[at:], "}")
-		carries("make/negative-controls.json (the "+want.group+" group)", group,
-			append([]string{`"when": "pull-request"`}, want.targets...)...)
+		for _, target := range want.targets {
+			found := false
+			for _, group := range groups {
+				if strings.Contains(group, `"`+target+`"`) {
+					found = true
+					carries("make/negative-controls.json (the "+want.group+" group holding "+target+")", group, `"when": "pull-request"`)
+				}
+			}
+			if !found {
+				t.Errorf("make/negative-controls.json's %s group does not carry %q", want.group, target)
+			}
+		}
 	}
 
 	workflow := read(".github/workflows/schema-luau-runs-hostile-corpus.yml")

@@ -372,10 +372,10 @@ func t05CsR18(t *testing.T) {
 		t.Error("R18: a ranged table reports no clamp is needed")
 	}
 	_, rsrc := t02Table(t, t05Ranged)
-	if !strings.Contains(rsrc, "public static void TFixedClamp(") {
+	if !strings.Contains(rsrc, "public static bool TFixedClamp(") {
 		t.Error("R18: a ranged table emitted no clamp pass")
 	}
-	if !strings.Contains(t02Norm(rsrc), "TFixedClamp(values[k], report);") {
+	if !strings.Contains(t02Norm(rsrc), "if (!TFixedClamp(values[k], report)) { refused = true; }") {
 		t.Error("R18: the load does not run the clamp pass for a ranged table")
 	}
 }

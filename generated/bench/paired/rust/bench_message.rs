@@ -152,11 +152,17 @@ pub fn mixed_entity_save_message_body(w: &mut TableBitWriter, value: &MixedEntit
 /// kind is a kind mismatch, skipped.
 pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedEntityRow) -> bool {
     *value = mixed_entity_message_default();
+    let mut seen_ids = [0u64; 64];
+    let mut seen_count = 0usize;
+    let mut seen_more: Vec<u64> = Vec::new();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
+        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
+        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
+        seen_count += 1;
         match entry.id {
             0x23fcfd6678e36712 => {
                 let mut widened = false;
@@ -501,11 +507,17 @@ pub fn mixed_stat_save_message_body(w: &mut TableBitWriter, value: &MixedStatRow
 /// kind is a kind mismatch, skipped.
 pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedStatRow) -> bool {
     *value = mixed_stat_message_default();
+    let mut seen_ids = [0u64; 64];
+    let mut seen_count = 0usize;
+    let mut seen_more: Vec<u64> = Vec::new();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
+        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
+        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
+        seen_count += 1;
         match entry.id {
             0x80ab75f0866dbf65 => {
                 let mut widened = false;
@@ -603,11 +615,17 @@ pub fn mixed_hit_event_save_message_body(w: &mut TableBitWriter, value: &MixedHi
 /// kind is a kind mismatch, skipped.
 pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedHitEventRow) -> bool {
     *value = mixed_hit_event_message_default();
+    let mut seen_ids = [0u64; 64];
+    let mut seen_count = 0usize;
+    let mut seen_more: Vec<u64> = Vec::new();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
+        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
+        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
+        seen_count += 1;
         match entry.id {
             0xb7bc9ac015a25050 => {
                 let mut widened = false;
@@ -733,11 +751,17 @@ pub fn mixed_chat_event_save_message_body(w: &mut TableBitWriter, value: &MixedC
 /// kind is a kind mismatch, skipped.
 pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedChatEventRow) -> bool {
     *value = mixed_chat_event_message_default();
+    let mut seen_ids = [0u64; 64];
+    let mut seen_count = 0usize;
+    let mut seen_more: Vec<u64> = Vec::new();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
+        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
+        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
+        seen_count += 1;
         match entry.id {
             0xa5013e9ad5caeda4 => {
                 let mut widened = false;
@@ -827,11 +851,17 @@ pub fn mixed_pickup_event_save_message_body(w: &mut TableBitWriter, value: &Mixe
 /// kind is a kind mismatch, skipped.
 pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedPickupEventRow) -> bool {
     *value = mixed_pickup_event_message_default();
+    let mut seen_ids = [0u64; 64];
+    let mut seen_count = 0usize;
+    let mut seen_more: Vec<u64> = Vec::new();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
+        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
+        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
+        seen_count += 1;
         match entry.id {
             0x9e7fd06d864fbd56 => {
                 let mut widened = false;
@@ -1190,11 +1220,17 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
 /// kind is a kind mismatch, skipped.
 pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut BenchMixedRow) -> bool {
     *value = bench_mixed_message_default();
+    let mut seen_ids = [0u64; 64];
+    let mut seen_count = 0usize;
+    let mut seen_more: Vec<u64> = Vec::new();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
+        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
+        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
+        seen_count += 1;
         match entry.id {
             0xaa38aca481f528a8 => {
                 let mut widened = false;
@@ -1593,7 +1629,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_x"); 0.0 };
+                        let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_x"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
                         value.aim_x = x;
                     }
@@ -1610,7 +1646,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_y"); 0.0 };
+                        let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_y"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
                         value.aim_y = x;
                     }
@@ -1627,7 +1663,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_z"); 0.0 };
+                        let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_z"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
                         value.aim_z = x;
                     }
@@ -1644,7 +1680,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.recoil"); 0.0 };
+                        let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.recoil"); 0.0 };
                         value.recoil = x;
                     }
                     if widened { report.widened += 1; }
@@ -1664,7 +1700,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = if entry.kind == 10 { if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite("BenchMixed.drift"); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite("BenchMixed.drift"); 0.0 };
+                        let mut x = if entry.kind == 10 { if table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite("BenchMixed.drift"); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite("BenchMixed.drift"); 0.0 };
                         value.drift = x;
                     }
                     if widened { report.widened += 1; }

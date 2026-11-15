@@ -4077,7 +4077,7 @@ static void test_json_hostile_extents()
         const char * text = "{ \"version_note\": \"123456789012345\xc3\xa9\" }";
         CHECK( !tabledemo::RootConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.version_note_length == 0 );
-        CHECK( report.refuse_reason == tabledemo::out_of_range );
+        CHECK( report.refuse_reason == tabledemo::length_over_bound );
     }
     {
         // exactly at the bound, a multi-byte character included, lands whole
@@ -4090,7 +4090,7 @@ static void test_json_hostile_extents()
         // and one ASCII byte past it refuses
         const char * over = "{ \"version_note\": \"1234567890123\xe2\x9c\x93X\" }";
         CHECK( !tabledemo::RootConfigFromJson( value, over, (int64_t) strlen( over ), &report ) );
-        CHECK( value.version_note_length == 0 && report.refuse_reason == tabledemo::out_of_range );
+        CHECK( value.version_note_length == 0 && report.refuse_reason == tabledemo::length_over_bound );
     }
 
     // more array elements than the reader's bound refuse the whole read, the

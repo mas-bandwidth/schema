@@ -10,6 +10,7 @@ import (
 // Compilation emits the bound-many widening entries; execution counts only
 // the live elements. Hostile slack is neither content nor a counter event.
 func TestFixedCountedArrayLiveExtent(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir (native counted-array slack and widening)")
 	bin := elixirBinary(t)
 	for _, tc := range []struct {

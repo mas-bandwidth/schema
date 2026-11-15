@@ -3,7 +3,7 @@
 # retain and <why> names what is owed. An owed arm still runs where the leg has a
 # driver; once it runs green the gate is red until its line is removed here.
 # Nothing else may be skipped: a divergence on an arm the leg carries is RED.
-goose plain no form-1 reader to fuzz (test/conformance/goose/main.goose; schema-goose-table-wire-load)
-goose retain no form-1 reader to fuzz (schema-goose-table-wire-load, schema-goose-vt-retain-unknown)
+goose plain no release-gate driver: make/wire-fuzz-release.mk leaves WFR_DRIVER_goose empty (test/conformance/goose/main.goose; schema-goose-table-wire-load)
+goose retain no release-gate driver: make/wire-fuzz-release.mk leaves WFR_DRIVER_goose empty (schema-goose-table-wire-load, schema-goose-vt-retain-unknown)
 lua retain the wire-fuzz driver binds no retaining pair: test/conformance/lua/wirefuzz.lua answers 0 for every RETAIN entry, though the leg carries LoadRetain/SaveRetain (main.lua's retain surface)
 squirrel retain the wire-fuzz driver binds no retaining pair: test/conformance/squirrel/wirefuzz.nut answers 0 for every RETAIN entry, though the leg carries retention (main.nut's retain surface)

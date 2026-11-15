@@ -298,30 +298,6 @@ fixed table T
   check(rmax.m == 7, "the all-bits mask does not round-trip: #{inspect(rmax.m)}")`)
 }
 
-// t09UTF16 holds utf16-values to §3.4: a `wstring(N)` field is its UTF-16 code
-// units, and the write/read pair reproduces a non-default string and a string
-// filling the declared capacity exactly. The verdict is `unknown`, not `done`:
-// this asserts the elixirtable emitter, and the elixir TARGET refuses a
-// table-closure wstring(N) by name (compiler/widetext.go:25-29, :63-65) before
-// a caller reaches that emitter, which the roadmap records as
-// `:implementation :unsupported` (docs/roadmap.sexp:5785-5790).
-func t09UTF16(t *testing.T) {
-	u := unitFrom(t, `package probe
-
-fixed table T
-{
-}
-`)
-	t09Probe(t, u, "T", `  ab = <<0x41, 0x00, 0x42, 0x00>>
-  {:ok, [r], rep} = @@LOAD@@(@@SAVE@@([%Probe.T{w: ab}]))
-  check(r.w == ab, "a non-default UTF-16 string does not round-trip: #{inspect(r.w)}")
-  check(true, "a well-formed UTF-16 string is malformed: #{inspect(rep)}")
-  full = :binary.copy(<<0x41, 0x00>>, 8)
-  {:ok, [rf], repf} = @@LOAD@@(@@SAVE@@([%Probe.T{w: full}]))
-  check(rf.w == full, "a string at the declared capacity does not round-trip: #{inspect(rf.w)}")
-  check(true, "a full-capacity string is malformed: #{inspect(repf)}")`)
-}
-
 // t09UnionValues holds union-values to §3.4: a tagged union is a tag ordinal
 // and the widest arm's storage, and the write/read pair reproduces a value in
 // each arm and the implicit None.

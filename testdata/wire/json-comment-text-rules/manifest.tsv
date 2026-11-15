@@ -1,0 +1,19 @@
+# testdata/wire/json-comment-text-rules — docs/SPEC-TABLES.md §16.2's JSON comment
+# text rules, read at tables/examples' root ProfileConfig. Each line is
+# <file> TAB <verdict> TAB <what it contains>.
+line-comment-utf8.read.json	read	a line comment holding well-formed multi-byte UTF-8
+block-comment-utf8.read.json	read	a block comment holding well-formed multi-byte UTF-8
+line-comment-lone-continuation-0x80.refused.json	refused	a line comment holding a lone continuation byte 0x80
+block-comment-lone-continuation-0x80.refused.json	refused	a block comment holding a lone continuation byte 0x80
+line-comment-overlong-c0-af.refused.json	refused	a line comment holding the overlong sequence 0xC0 0xAF
+block-comment-overlong-c0-af.refused.json	refused	a block comment holding the overlong sequence 0xC0 0xAF
+line-comment-truncated-three-byte.refused.json	refused	a line comment holding a truncated three-byte sequence
+block-comment-truncated-three-byte.refused.json	refused	a block comment holding a truncated three-byte sequence
+line-comment-encoded-surrogate-ed-a0-80.refused.json	refused	a line comment holding the encoded surrogate 0xED 0xA0 0x80
+block-comment-encoded-surrogate-ed-a0-80.refused.json	refused	a block comment holding the encoded surrogate 0xED 0xA0 0x80
+line-comment-nul.refused.json	refused	a line comment holding a NUL (0x00)
+block-comment-nul.refused.json	refused	a block comment holding a NUL (0x00)
+line-comment-lone-cr-key-inside.refused.json	refused	a line comment ended by a lone CR with a key after it on the same line, which is inside the comment
+line-comment-crlf.read.json	read	a line comment ended by CR LF
+unknown-key-128-nested-arrays.read.json	read	128 nested arrays under an unknown key
+unknown-key-129-nested-arrays.refused.json	refused	129 nested arrays under an unknown key

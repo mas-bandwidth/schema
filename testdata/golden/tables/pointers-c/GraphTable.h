@@ -584,11 +584,11 @@ static SCHEMA_UNUSED int graphdemo_table_skip_framed( graphdemo_table_reader_t s
         case 12: return graphdemo_table_skip_utf8( sub.buffer, (uint64_t) sub.size );
         case 31: return 1;
         case 32: return sub.size == 0;
-        case 13: return graphdemo_table_skip_body( sub, nodes, depth, 0 ) == sub.size;
+        case 13: return depth < 128 && graphdemo_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size;
         case 14: case 16:
         {
             graphdemo_table_reader_t rr = sub;
-            return graphdemo_table_skip_array( &rr, kind == 16, nodes, depth );
+            return depth < 128 && graphdemo_table_skip_array( &rr, kind == 16, nodes, depth + 1 );
         }
         case 15: case 17: case 30:
         {
@@ -678,14 +678,17 @@ static SCHEMA_UNUSED int graphdemo_table_skip_value( graphdemo_table_reader_t * 
             if ( !graphdemo_table_reader_has( r, 1 ) ) { return 0; }
             arm_kind = graphdemo_table_reader_get8( r );
             if ( !graphdemo_table_reader_span( r, &arm ) ) { return 0; }
-            return graphdemo_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            /* a union is a level when its arm is structural (§4) */
+            if ( arm_kind == 13 || arm_kind == 14 || arm_kind == 15 || arm_kind == 16 )
+            {
+                return depth < 128 && graphdemo_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            }
+            return graphdemo_table_skip_framed( arm, arm_kind, nodes, depth );
         }
         case 12: case 13: case 14: case 16: case 31: case 32:
         {
             graphdemo_table_reader_t sub;
             if ( !graphdemo_table_reader_span( r, &sub ) ) { return 0; }
-            if ( kind == 13 ) { return depth < 128 && graphdemo_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size; }
-            if ( kind == 14 || kind == 16 ) { return depth < 128 && graphdemo_table_skip_array( &sub, kind == 16, nodes, depth + 1 ); }
             return graphdemo_table_skip_framed( sub, kind, nodes, depth );
         }
         default:
@@ -871,7 +874,8 @@ enum
     GRAPHDEMO_K_TABLE_FIXED_CONST   = 5, /* a constant this reader's own storage takes: a remapped union tag */
     GRAPHDEMO_K_TABLE_FIXED_WIDEN_F  = 6, /* f32 into f64, §4's float rung */
     GRAPHDEMO_K_TABLE_FIXED_PRESENT = 7, /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
-    GRAPHDEMO_K_TABLE_FIXED_BOOL    = 8  /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    GRAPHDEMO_K_TABLE_FIXED_BOOL    = 8, /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS = 9 /* a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read) */
 };
 
 /* meta on a kTableFixedText entry */
@@ -1267,6 +1271,29 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_copy_le( uint8_t * dst, const ui
     graphdemo_table_fixed_copy_run( dst, src, size );
 }
 
+/* A STORE OF ONE PLAN OP'S VALUE INTO NATIVE STORAGE. On a little-endian host
+   the destination width's own word IS the value and stays one copy; on a
+   big-endian host the value's bytes are written most-significant first, so the
+   native word holds the value and a forced build holds the same byte image the
+   copy path writes. */
+static SCHEMA_UNUSED void graphdemo_table_fixed_store_native( uint8_t * dst, uint64_t v, uint32_t size )
+{
+    if ( graphdemo_table_fixed_big_endian_host )
+    {
+        uint32_t i;
+        for ( i = 0; i < size && i < 8; ++i ) { dst[i] = (uint8_t) ( v >> ( 8 * ( size - 1 - i ) ) ); }
+        return;
+    }
+    switch ( size )
+    {
+        case 1: { uint8_t t = (uint8_t) v; memcpy( dst, &t, 1 ); break; }
+        case 2: { uint16_t t = (uint16_t) v; memcpy( dst, &t, 2 ); break; }
+        case 4: { uint32_t t = (uint32_t) v; memcpy( dst, &t, 4 ); break; }
+        case 8: { uint64_t t = v; memcpy( dst, &t, 8 ); break; }
+        default: break;
+    }
+}
+
 /* ---- THE ONE READ LOOP -----------------------------------------------------
 
    A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -1280,7 +1307,7 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_copy_le( uint8_t * dst, const ui
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_apply( const graphdemo_table_fixed_entry_t * p, const uint8_t * base,
                                                       const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                                       uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                                      int32_t * out_of_range, int32_t * widened, int32_t * damaged )
+                                                      int32_t * out_of_range, int32_t * widened, const uint8_t * defaults )
 {
     switch ( p->op )
     {
@@ -1291,16 +1318,15 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
         }
         case GRAPHDEMO_K_TABLE_FIXED_BOOL:
         {
-            /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE, not a
-               value out of range: no writer emits one, so it is neither
-               stored verbatim nor normalised to 1
-               (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 2). The byte still
-               lands normalised here; table_fixed_run turns damaged into
-               the wire_damaged refusal and the load resets every record. */
+            /* A BOOL LANDS AS byte != 0. A BOOL OR PRESENT BYTE OTHER THAN 0
+               OR 1 IS WIRE DAMAGE, and it never reaches this loop: the load's
+               check pass refuses it wire_damaged before the first destination
+               byte is written (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 2), the
+               same pass the C++ reference runs. */
             uint8_t * d = dst + p->dst;
             const uint8_t * s = src + p->src;
             uint32_t i;
-            for ( i = 0; i < p->size; ++i ) { if ( s[i] > 1 ) { (*damaged)++; } d[i] = (uint8_t) ( s[i] != 0 ); }
+            for ( i = 0; i < p->size; ++i ) { d[i] = (uint8_t) ( s[i] != 0 ); }
             break;
         }
         case GRAPHDEMO_K_TABLE_FIXED_COUNT:
@@ -1318,7 +1344,9 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
             if ( v < 0 ) { v = 0; (*out_of_range)++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*out_of_range)++; }
             memcpy( dst + p->dst, &v, 4 );
-            graphdemo_table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
+            /* text is bytes, so an elem of 1: a raw copy on either host, through
+               the one wire-to-storage copy the bulk op takes too */
+            graphdemo_table_fixed_copy_le( dst + p->aux, src + p->src + 4, p->size, 1 );
             if ( p->meta != GRAPHDEMO_K_TABLE_FIXED_TEXT_BYTES )
             {
                 /* the used length terminates the buffer, whose storage is one
@@ -1347,7 +1375,7 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
                tests THIS reader's own top value — which a remapped 0 never
                trips, so the two never count the one event twice. */
             else if ( raw != 0 ) { (*out_of_range)++; }
-            memcpy( dst + p->dst, &v, p->dstsize );
+            graphdemo_table_fixed_store_native( dst + p->dst, v, p->dstsize );
             break;
         }
         case GRAPHDEMO_K_TABLE_FIXED_WIDEN:
@@ -1362,7 +1390,7 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            memcpy( dst + p->dst, &raw, p->dstsize );
+            graphdemo_table_fixed_store_native( dst + p->dst, raw, p->dstsize );
             (*widened)++;
             break;
         }
@@ -1384,7 +1412,7 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
                bytes, and a memcpy of p->size out of the four-byte aux lane
                reads the member beside it (§4.5, §5.8 row 7). */
             const uint64_t lands = p->aux;
-            memcpy( dst + p->dst, &lands, p->size );
+            graphdemo_table_fixed_store_native( dst + p->dst, lands, p->size );
             /* AN UNGUARDED None CONST WITH dstsize = THE WRITER'S ARM COUNT:
                a tag past that set lands None (already written) and COUNTS, so
                the compiled plan counts it exactly as the identity plan's bounds
@@ -1406,6 +1434,22 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
             dst[p->dst] = 1;
             break;
         }
+        case GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS:
+        {
+            /* THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
+               the payload copy above laid the wire's bytes down; when the flag
+               is 0 those bytes are slack and never a value, so the reader
+               overwrites them with the caller's own Reset image. Aux is the
+               payload's storage offset and Size its storage bytes. A plain
+               memcpy and not the run mover: the mover's 32-byte moves let
+               GCC's array-bounds pass form offsets past a small Reset image
+               on a size branch no entry of this op reaches, and an absent
+               payload is the cold path. */
+            const uint8_t flag = (uint8_t) ( src[p->src] != 0 );
+            dst[p->dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p->aux, defaults + p->aux, p->size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -1418,14 +1462,14 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
 static SCHEMA_UNUSED void graphdemo_table_fixed_run( const graphdemo_table_fixed_entry_t * plan, int32_t count, int32_t guarded,
                                            const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                            uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                           graphdemo_table_report_t * report, const graphdemo_table_fixed_guard_link_t * guard_pool )
+                                           graphdemo_table_report_t * report, const graphdemo_table_fixed_guard_link_t * guard_pool,
+                                           const uint8_t * defaults )
 {
     /* THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
        through is a pointer the compiler must assume aliases the destination,
        and every store to a field would then reload it. */
     int32_t out_of_range = 0;
     int32_t widened = 0;
-    int32_t damaged = 0;
     int32_t i;
     /* THE ORDINAL REMAP TABLES RIDE ABOVE THE ENTRIES IN THE SAME STORAGE, so
        the plan's own base is the base an ordinal entry's aux is measured from.
@@ -1434,7 +1478,7 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_run( const graphdemo_table_fixed
        alias the plan the loop is reading. */
     for ( i = 0; i < guarded; ++i )
     {
-        graphdemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
+        graphdemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults );
     }
     for ( i = guarded; i < count; ++i )
     {
@@ -1457,13 +1501,17 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_run( const graphdemo_table_fixed
         }
         else
         {
-            if ( graphdemo_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
+            /* A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+               the deferred present-defaults entry must follow the guarded
+               payload it overwrites, so it rides after the split although
+               it answers to no tag. Its guard lane is SCHEMA_TABLE_FIXED_NO_GUARD
+               and must never be read as an offset. */
+            if ( p->guard != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD && graphdemo_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
             if ( p->guard2 != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD && graphdemo_table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
         }
-        graphdemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
+        graphdemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults );
     }
-    if ( damaged != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
-    else if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     report->widened += widened;
 }
 
@@ -1552,6 +1600,7 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_entry_lands( const graphdemo_tab
         case GRAPHDEMO_K_TABLE_FIXED_WIDEN_F: lands[1] = e->dst + 8u; break;
         case GRAPHDEMO_K_TABLE_FIXED_WIDEN:
         case GRAPHDEMO_K_TABLE_FIXED_ORDINAL: lands[1] = e->dst + e->dstsize; break;
+        case GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS: lands[1] = e->dst + 1u; break; /* the flag; the payload's own entries land it */
         default: lands[1] = e->dst + e->size; break; /* copy, const */
     }
 }
@@ -2001,8 +2050,14 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_compiler_init( graphdemo_table_f
 static SCHEMA_UNUSED void graphdemo_table_fixed_push( graphdemo_table_fixed_compiler_t * c, graphdemo_table_fixed_entry_t e )
 {
     /* THE WALK RUNS TWICE and each pass keeps its own half, which is how the
-       plan comes out partitioned without a second array to partition it in. */
-    if ( ( e.guard != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { return; }
+       plan comes out partitioned without a second array to partition it in.
+       THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+       no tag: it must run AFTER the guarded payload entries it overwrites, or
+       an absent optional whose payload holds a union would read the wire's
+       residue back over the defaults (§3.4). The run loop applies a guardless
+       entry in the second half unconditionally. */
+    const int second_half = ( e.guard != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD ) || e.op == GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS;
+    if ( second_half != c->want_guarded ) { return; }
     /* EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
        side's whole defence: the plan's source offsets are arithmetic over sizes
        a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -2178,10 +2233,18 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_compile_entry( graphdemo_table_f
         {
             case 35: /* the OPTIONAL wrapper: the present byte, then the payload whole */
             {
-                graphdemo_table_fixed_entry_t e = graphdemo_table_fixed_entry_zero();
-                e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = GRAPHDEMO_K_TABLE_FIXED_BOOL; e.arg = arg;
-                graphdemo_table_fixed_push( c, e );
+                /* THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+                   when it is 0, the DECLARED DEFAULTS over the payload's slack
+                   (§3.4: an absent optional's payload is IGNORED on read). The
+                   payload's storage starts at the child's own destination and
+                   runs to the present companion, which the reader's layout puts
+                   after it. */
+                const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+                const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
                 graphdemo_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+                graphdemo_table_fixed_entry_t e = graphdemo_table_fixed_entry_zero();
+                e.src = their_at; e.dst = aux_at; e.aux = payload_dst; e.size = payload_size; e.guard = guard; e.op = GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS; e.arg = arg;
+                graphdemo_table_fixed_push( c, e );
                 break;
             }
             case 13: /* a nested table: match its fields */
@@ -3429,6 +3492,7 @@ typedef struct graphdemo_table_node_map_t
     int good, arena, refused, cycle_indices;
     graphdemo_table_sink_t * sink;
     uint8_t * blob_named; /* parallel to entries; 1 = the blob node is already named */
+    int ( *declared )( uint64_t type_id ); /* a type this reader declares (§3.1) */
 } graphdemo_table_node_map_t;
 
 static SCHEMA_UNUSED void graphdemo_table_node_resolve( const graphdemo_table_node_map_t * nodes, graphdemo_table_ref_t * slot,
@@ -3439,7 +3503,14 @@ static SCHEMA_UNUSED void graphdemo_table_node_resolve( const graphdemo_table_no
     if ( index == 0 || nodes == NULL || !nodes->good ) { return; }
     if ( index > nodes->count ) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return; }
     entry = &nodes->entries[index-1];
-    if ( entry->offset == UINT64_MAX ) { return; }
+    /* a node this root does not place reads null when its type is one this
+       reader cannot name; naming a type it DOES declare that is not the
+       slot's target is damage (docs/SPEC-TABLES.md §3.1) */
+    if ( entry->offset == UINT64_MAX )
+    {
+        if ( nodes->declared != NULL && nodes->declared( entry->type_id ) ) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+        return;
+    }
     if ( entry->type_id != target ) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; return; }
     if ( nodes->cycle_indices && target != UINT64_C(0x2f2ec0474f1c4fe4) && target != UINT64_C(0x704be0d8faaffc58) )
     {
@@ -3511,6 +3582,12 @@ static SCHEMA_UNUSED int graphdemo_table_node_scan_next( graphdemo_table_node_sc
     if ( !graphdemo_table_reader_leb(&scan->payload,&ref) || ref == 0 || ref > scan->payload.id_count ||
          !graphdemo_table_reader_span(&scan->payload,body) ) { scan->damaged = 1; return 0; }
     *type_id = graphdemo_table_reader_id_at(&scan->payload,ref); scan->records++;
+    /* A RECORD'S TYPE MAY NOT NAME A RESERVED ID (docs/SPEC-TABLES.md §3.1,
+       §3.3): the node table, build version and vocabulary ids are transport,
+       never a record's type, so a reserved id in the TYPE position is
+       damage and the whole load refuses. The two blob type ids are a blob
+       record's lawful type (§2.5). */
+    if ( *type_id == UINT64_MAX || *type_id == UINT64_MAX - 1 || *type_id == UINT64_MAX - 2 ) { scan->damaged = 1; return 0; }
     return 1;
 }
 
@@ -3538,6 +3615,7 @@ static SCHEMA_UNUSED void graphdemo_table_mark_body( graphdemo_table_reader_t r,
 static SCHEMA_UNUSED void graphdemo_table_mark_framed( graphdemo_table_reader_t sub, uint8_t kind, uint8_t * named, uint64_t records, int depth )
 {
     uint8_t elem_kind; uint64_t count, i;
+    if ( depth > 128 ) { return; }
     switch ( kind )
     {
         case 13: graphdemo_table_mark_body( sub, named, records, depth ); return;
@@ -3545,13 +3623,18 @@ static SCHEMA_UNUSED void graphdemo_table_mark_framed( graphdemo_table_reader_t 
             if ( sub.size < 2 ) { return; }
             elem_kind = graphdemo_table_reader_get8( &sub );
             if ( !graphdemo_table_reader_leb( &sub, &count ) ) { return; }
+            if ( count > 2147483647ull ) { return; }
+            if ( count > (uint64_t)( sub.size - sub.offset ) ) { return; }
             for ( i = 0; i < count; i++ )
             {
+                int64_t before = sub.offset;
                 if ( kind == 14 ) { graphdemo_table_mark_value( &sub, elem_kind, named, records, depth ); }
-                else { uint64_t key; graphdemo_table_reader_t elem; if ( !graphdemo_table_reader_leb( &sub, &key ) || !graphdemo_table_reader_span( &sub, &elem ) ) { return; } graphdemo_table_mark_framed( elem, elem_kind, named, records, depth ); }
+                else { uint64_t key; graphdemo_table_reader_t elem; if ( !graphdemo_table_reader_leb( &sub, &key ) || !graphdemo_table_reader_span( &sub, &elem ) ) { return; } graphdemo_table_mark_framed( elem, elem_kind, named, records, depth + 1 ); }
+                if ( sub.offset == before ) { return; }
             }
             return;
         case 15: { graphdemo_table_reader_t rr = sub; graphdemo_table_mark_value( &rr, kind, named, records, depth ); return; }
+        case 17: graphdemo_table_mark_value( &sub, kind, named, records, depth ); return;
         default: return;
     }
 }
@@ -3592,6 +3675,7 @@ static SCHEMA_UNUSED void graphdemo_table_mark_value( graphdemo_table_reader_t *
                 case 18: case 19: case 24: case 29: width = 16; break;
                 default: return;
             }
+            if ( !graphdemo_table_reader_has( r, width ) ) { r->offset = r->size; return; }
             r->offset += width;
             return;
         }
@@ -4442,10 +4526,20 @@ static SCHEMA_UNUSED int graphdemo_table_message_skip(graphdemo_table_message_re
    path. Past 128 is damaged, and 128 itself still skips. */
 static SCHEMA_UNUSED int graphdemo_table_message_skip_body(graphdemo_table_message_reader_t * r)
 {
+ uint8_t seen[512];
+ /* one bit a reference, as the file form's body skip keeps */
  if(r->skip_depth>128)return 0;
+ memset(seen,0,sizeof(seen));
  for(;;) {const graphdemo_table_message_entry_t * entry;
+ int64_t ref;
   if(!graphdemo_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
+  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
+     reference is bounded where the file form bounds it, so the bitset fits. */
+  ref=entry-r->vocabulary->entries+1;
+  if(ref<1||ref>4096)return 0;
+  if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))return 0;
+  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
   if(!graphdemo_table_message_skip(r,entry))return 0;
  }
 }
@@ -4461,6 +4555,7 @@ static SCHEMA_UNUSED int graphdemo_table_message_skip(graphdemo_table_message_re
 {
  uint64_t n,i;
  const graphdemo_table_message_entry_t * entry;
+ const uint8_t * text;
  int saved,ok;
  if(r->skip_depth>128)return 0;
  switch(e->kind) {
@@ -4477,23 +4572,68 @@ static SCHEMA_UNUSED int graphdemo_table_message_skip(graphdemo_table_message_re
   if(!graphdemo_table_message_ref(r,&entry,0))return 0;
   return entry==NULL || (entry->kind!=0 && graphdemo_table_message_skip_deeper(r,entry));
  case 12:
+  /* A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its length
+     is inside the announced bound and its bytes are well-formed UTF-8 with no
+     zero byte. table_wire_utf8 is the check a named read applies. */
   if(!graphdemo_table_bit_get(&r->bits,&n,graphdemo_table_bits_required(0,e->max))||!graphdemo_table_bit_align_read(&r->bits))return 0;
-  return graphdemo_table_message_skip_run(r,n,8);
+  if(n>(uint64_t)e->max || n>INT64_MAX/8 || !graphdemo_table_bit_has(&r->bits,(int64_t)n*8))return 0;
+  text=r->bits.buffer+(r->bits.offset>>3);
+  if(!graphdemo_table_wire_utf8(text,n))return 0;
+  r->bits.offset+=(int64_t)n*8;
+  return 1;
  case 31:
   if(!graphdemo_table_bit_align_read(&r->bits)||!graphdemo_table_bit_get(&r->bits,&n,32))return 0;
   return graphdemo_table_message_skip_run(r,n,8);
+ case 10:
+  /* A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS COUNT
+     (§3.3): the same raw-bits rule a named float read applies. */
+  if(!graphdemo_table_bit_get(&r->bits,&n,e->value_bits))return 0;
+  if(e->packing==2)return n<=(uint64_t)e->qcount;
+  return graphdemo_table_bits_finite32((uint32_t)n);
+ case 11:
+  if(!graphdemo_table_bit_get(&r->bits,&n,64))return 0;
+  return graphdemo_table_bits_finite64(n);
  case 14:case 16: {
   graphdemo_table_message_entry_t elem=graphdemo_table_message_element(e);
   if(!graphdemo_table_message_count(r,e,&n))return 0;
-  if(elem.value_bits>=0||elem.kind==0||elem.kind==32) {
-   int64_t width=elem.value_bits>0?elem.value_bits:0;
-   if(e->kind==16)width+=r->vocabulary->ref_bits;
-   return graphdemo_table_message_skip_run(r,n,width);
+  /* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3). */
+  if(n>(uint64_t)e->max)return 0;
+  /* A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3). A float, a ranged or
+     a quantized element carries a value condition, so it is walked; a keyed
+     entry carries a key reference, so it is walked too. */
+  if(e->kind==14 && elem.kind!=13 && elem.kind!=15 && elem.kind!=17 && elem.kind!=30) {
+   if(elem.kind==0||elem.kind==32)return 1;
+   if(elem.value_bits>0 && elem.kind!=10 && elem.kind!=11 && elem.packing!=1 && elem.packing!=2)
+    return graphdemo_table_message_skip_run(r,n,(int64_t)elem.value_bits);
   }
-  for(i=0;i<n;i++) {
-   if(e->kind==16 && !graphdemo_table_message_ref(r,&entry,1))return 0;
-   if(!graphdemo_table_message_skip_deeper(r,&elem))return 0;
-  }return 1;
+  {
+   uint8_t seen[512];
+   int64_t before;
+   /* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
+      REPEATS (§3.2, §3.3): the name reference and the bitset hold it. */
+   if(e->kind==16)memset(seen,0,sizeof(seen));
+   for(i=0;i<n;i++) {
+    before=r->bits.offset;
+    if(e->kind==16) {
+     int64_t key;
+     if(!graphdemo_table_message_ref(r,&entry,1)||entry==NULL)return 0;
+     key=entry-r->vocabulary->entries+1;
+     if(key<1||key>4096)return 0;
+     if(seen[(key-1)>>3]&(uint8_t)(1u<<((key-1)&7)))return 0;
+     seen[(key-1)>>3]|=(uint8_t)(1u<<((key-1)&7));
+    }
+    /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
+       its own value conditions at the array body's level; only a string, a
+       table, a nested array or keyed body, a union or an enum is walked one
+       level deeper. */
+    if(elem.value_bits>=0 || elem.kind==0 || elem.kind==32) {
+     if(!graphdemo_table_message_skip(r,&elem))return 0;
+    } else if(!graphdemo_table_message_skip_deeper(r,&elem))return 0;
+    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). */
+    if(r->bits.offset==before)return 0;
+   }
+   return 1;
+  }
  }
  default:return e->value_bits>=0 && graphdemo_table_bit_skip(&r->bits,e->value_bits);
  }
@@ -4543,6 +4683,7 @@ static SCHEMA_UNUSED int64_t graphdemo_table_message_open(graphdemo_table_messag
  }
  if(buffer[0]!=2){report->refused=1;
  report->reason=SCHEMA_GRAPHDEMO_TABLE_NEWER_FORM;
+ report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM;
  return -1;
  }
  if(v==NULL || !v->announced){report->refused=1;
@@ -4653,7 +4794,11 @@ static SCHEMA_UNUSED int schema_graphdemo_table_cook_text_(graphdemo_table_numbe
 #ifndef SCHEMA_GRAPHDEMO_TABLE_RETAIN_RUNTIME
 #define SCHEMA_GRAPHDEMO_TABLE_RETAIN_RUNTIME
 #define SCHEMA_GRAPHDEMO_TABLE_RETAIN_DEPTH_MAX 1
-#define SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX 64
+/* THE RESOLVING WALK HOLDS §4's ONE NESTING BOUND (docs/SPEC-TABLES.md §4,
+   §6.6 retain_walk_depth): the depth a walk passes is the level of the
+   payload holding a frame; a table, array or keyed body is one level deeper,
+   and a union is a level when its arm is structural. 128 levels pass. */
+#define SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX 128
 #define SCHEMA_GRAPHDEMO_TABLE_RETAIN_HEADER 26
 
 typedef struct graphdemo_table_retain_id_t { uint64_t id; int32_t slot; } graphdemo_table_retain_id_t;
@@ -4865,8 +5010,11 @@ static SCHEMA_UNUSED int graphdemo_table_retain_in_content(graphdemo_table_retai
 {
  int64_t end;
  graphdemo_table_reader_t * r=&s->input;
- if(depth>SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX||!graphdemo_table_reader_has(r,length))return 0;
+ if(!graphdemo_table_reader_has(r,length))return 0;
  end=r->offset+length;
+ if(kind==13||kind==14||kind==16){if(depth>=SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX){return 0;
+ }depth++;
+ }
  switch(kind){
  case 13:for(;;){uint64_t ref;
  int64_t mark=r->offset;
@@ -4885,7 +5033,7 @@ static SCHEMA_UNUSED int graphdemo_table_retain_in_content(graphdemo_table_retai
  elem=graphdemo_table_reader_get8(r);
  if(!graphdemo_table_retain_raw(s,&elem,1)||!graphdemo_table_reader_leb(r,&n)||!graphdemo_table_retain_leb(s,n))return 0;
  for(i=0;i<n;i++){if(kind==16){uint64_t bytes;
- if(!graphdemo_table_retain_in_ref(s,0)||!graphdemo_table_reader_leb(r,&bytes)||bytes>(uint64_t)(end-r->offset)||!graphdemo_table_retain_in_frame(s,elem,(int64_t)bytes,depth+1))return 0;
+ if(!graphdemo_table_retain_in_ref(s,0)||!graphdemo_table_reader_leb(r,&bytes)||bytes>(uint64_t)(end-r->offset)||!graphdemo_table_retain_in_frame(s,elem,(int64_t)bytes,depth))return 0;
  }else if(!graphdemo_table_retain_in_payload(s,elem,depth))return 0;
  if(r->offset>end)return 0;
  }break;
@@ -4920,7 +5068,7 @@ static SCHEMA_UNUSED int graphdemo_table_retain_in_payload(graphdemo_table_retai
  r->offset+=(int64_t)length;
  return 1;
  case 13:case 14:case 16:if(!graphdemo_table_reader_leb(r,&length)||!graphdemo_table_reader_room(r,length))return 0;
- return graphdemo_table_retain_in_frame(s,kind,(int64_t)length,depth+1);
+ return graphdemo_table_retain_in_frame(s,kind,(int64_t)length,depth);
  case 15:{uint64_t arm;
  uint8_t k;
  int64_t mark=r->offset;
@@ -4931,8 +5079,10 @@ static SCHEMA_UNUSED int graphdemo_table_retain_in_payload(graphdemo_table_retai
  if(!graphdemo_table_reader_has(r,1))return 0;
  k=graphdemo_table_reader_get8(r);
  if(!graphdemo_table_retain_raw(s,&k,1)||!graphdemo_table_reader_leb(r,&length)||!graphdemo_table_reader_room(r,length))return 0;
- return graphdemo_table_retain_in_frame(s,k,(int64_t)length,depth+1);
- }
+  if(k==13||k==14||k==15||k==16){if(depth>=SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX){return 0;
+  }depth++;
+  }return graphdemo_table_retain_in_frame(s,k,(int64_t)length,depth);
+  }
  case 30:return graphdemo_table_retain_in_ref(s,1);
  default:return 0;
  }
@@ -4974,16 +5124,22 @@ report->retained++;
 static SCHEMA_UNUSED int graphdemo_table_retain_capture(graphdemo_table_reader_t * r,uint64_t id,uint8_t kind,graphdemo_table_retain_walk_t keep)
 {
  graphdemo_table_retain_in_t s;
- graphdemo_table_reader_t source=*r;
+ graphdemo_table_reader_t source=*r,check;
  uint8_t * record;
+ int64_t nodes;
  if(!graphdemo_table_reader_skip(r,kind))return 0;
- if(!keep.retain)return 1;
  if(kind==10||kind==11){uint64_t raw=0;
  int64_t i;
  for(i=r->offset-1;i>=source.offset;i--)raw=(raw<<8)|source.buffer[i];
   if(kind==10?!graphdemo_table_bits_finite32((uint32_t)raw):!graphdemo_table_bits_finite64(raw)){graphdemo_table_non_finite_float(r->report);
   return 1;
   }}
+ /* AN UNKNOWN FIELD IS VALIDATED BEFORE IT IS KEPT, exactly as the plain
+    read validates one it skips (docs/SPEC-TABLES.md §4, §6.6). */
+ nodes=(r->nodes!=NULL?(int64_t)r->nodes->count-1:0);
+ check=source;
+ if(!graphdemo_table_skip_value(&check,kind,nodes,0)||check.offset!=r->offset)return 0;
+ if(!keep.retain)return 1;
  record=graphdemo_table_retain_begin(keep,id,kind,&s);
  if(!record){r->report->retain_lost++;
  return 1;
@@ -5052,8 +5208,11 @@ static SCHEMA_UNUSED int graphdemo_table_retain_out_frame(graphdemo_table_retain
 static SCHEMA_UNUSED int graphdemo_table_retain_out_content(graphdemo_table_retain_out_t * s,uint8_t kind,int64_t length,int32_t depth)
 {
  int64_t end;
- if(depth>SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX||length<0||length>s->size-s->at)return 0;
+ if(length<0||length>s->size-s->at)return 0;
  end=s->at+length;
+ if(kind==13||kind==14||kind==16){if(depth>=SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX){return 0;
+ }depth++;
+ }
  switch(kind){
  case 13:for(;;){uint64_t id;
  uint8_t k;
@@ -5070,7 +5229,7 @@ static SCHEMA_UNUSED int graphdemo_table_retain_out_content(graphdemo_table_reta
  if(s->at>=end)return 0;
  elem=s->input[s->at++];
  if(!graphdemo_table_retain_out_raw(s,&elem,1)||!graphdemo_table_retain_out_leb_read(s,&n)||!graphdemo_table_retain_out_leb(s,n))return 0;
- for(i=0;i<n;i++){if(kind==16){if(!graphdemo_table_retain_out_ref(s)||!graphdemo_table_retain_out_frame(s,elem,depth+1))return 0;
+ for(i=0;i<n;i++){if(kind==16){if(!graphdemo_table_retain_out_ref(s)||!graphdemo_table_retain_out_frame(s,elem,depth))return 0;
  }else if(!graphdemo_table_retain_out_payload(s,elem,depth))return 0;
  }break;
  }
@@ -5094,7 +5253,7 @@ static SCHEMA_UNUSED int graphdemo_table_retain_out_payload(graphdemo_table_reta
  case 12:case 31:case 32:if(!graphdemo_table_retain_out_leb_read(s,&length)||length>(uint64_t)(s->size-s->at)||!graphdemo_table_retain_out_leb(s,length)||!graphdemo_table_retain_out_raw(s,s->input+s->at,(int64_t)length))return 0;
  s->at+=(int64_t)length;
  return 1;
- case 13:case 14:case 16:return graphdemo_table_retain_out_frame(s,kind,depth+1);
+ case 13:case 14:case 16:return graphdemo_table_retain_out_frame(s,kind,depth);
  case 15:{uint64_t arm;
  uint8_t k;
  if(s->size-s->at<8)return 0;
@@ -5103,8 +5262,10 @@ static SCHEMA_UNUSED int graphdemo_table_retain_out_payload(graphdemo_table_reta
  if(!arm)return 1;
  if(s->at>=s->size)return 0;
  k=s->input[s->at++];
- return graphdemo_table_retain_out_raw(s,&k,1)&&graphdemo_table_retain_out_frame(s,k,depth+1);
- }
+  if(k==13||k==14||k==15||k==16){if(depth>=SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX){return 0;
+  }depth++;
+  }return graphdemo_table_retain_out_raw(s,&k,1)&&graphdemo_table_retain_out_frame(s,k,depth);
+  }
  case 30:return graphdemo_table_retain_out_ref(s);
  default:return 0;
  }
@@ -5654,7 +5815,7 @@ static SCHEMA_UNUSED int graphdemo_meta_load_message_body(graphdemo_table_messag
 static SCHEMA_UNUSED int graphdemo_settings_load_message_body(graphdemo_table_message_reader_t *,graphdemo_settings_t *);
 static SCHEMA_UNUSED int schema_graphdemo_meta_wire_tag_( graphdemo_table_writer_t * w, const graphdemo_meta_t * value )
 {
-    if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
+    schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -5671,7 +5832,7 @@ static SCHEMA_UNUSED int graphdemo_meta_save_body( graphdemo_table_writer_t * w,
         }
     }
     { /* tag */
-        if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
+        schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
         if ( value->tag_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -5695,6 +5856,7 @@ static SCHEMA_UNUSED int graphdemo_meta_save_body( graphdemo_table_writer_t * w,
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_graphdemo_meta_write_admits_( const graphdemo_meta_t * value );
 static SCHEMA_UNUSED int64_t graphdemo_meta_measure( const graphdemo_meta_t * value )
 {
     graphdemo_table_write_ids_t vocabulary; graphdemo_table_writer_t w = graphdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -5847,13 +6009,13 @@ static SCHEMA_UNUSED int graphdemo_meta_save_message_body(graphdemo_table_bit_wr
  }
  }
  { /* tag */
- if(value->tag_length<0 || value->tag_length>8) return 0;
+ schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
  if(value->tag_length != 0) {
   if(w->check_default) {w->bits=GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   graphdemo_table_bit_put(w,2,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->tag_length<0 || value->tag_length>8) return 0;
+  schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
   graphdemo_table_bit_put(w,(uint64_t)value->tag_length,4);
   graphdemo_table_bit_align_write(w);
   graphdemo_table_bit_putbytes(w,value->tag,value->tag_length);
@@ -5874,7 +6036,11 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_measure_messages(const graphdemo_met
  w=graphdemo_table_bit_writer(NULL,INT64_MAX);
  graphdemo_table_bit_put(&w,2,8);
  graphdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!graphdemo_meta_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!graphdemo_meta_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_graphdemo_meta_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  graphdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5891,7 +6057,11 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_save_messages(const graphdemo_meta_t
  w=graphdemo_table_bit_writer(buffer,capacity);
  graphdemo_table_bit_put(&w,2,8);
  graphdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!graphdemo_meta_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!graphdemo_meta_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_graphdemo_meta_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  graphdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5991,7 +6161,7 @@ static SCHEMA_UNUSED int graphdemo_meta_load_messages(graphdemo_meta_t * values,
 }
 static SCHEMA_UNUSED int schema_graphdemo_settings_wire_label_( graphdemo_table_writer_t * w, const graphdemo_settings_t * value )
 {
-    if ( value->label_length < 0 || value->label_length > 16 ) { return 0; }
+    schema_assert( 0 <= value->label_length && value->label_length <= 16 );
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -6007,7 +6177,7 @@ static SCHEMA_UNUSED int graphdemo_settings_save_body( graphdemo_table_writer_t 
         }
     }
     { /* label */
-        if ( value->label_length < 0 || value->label_length > 16 ) { return 0; }
+        schema_assert( 0 <= value->label_length && value->label_length <= 16 );
         if ( value->label_length != 0 )
         {
             graphdemo_table_writer_header_at( w, 6, 0x39f7fcec8fcb623dull, 12 );
@@ -6030,6 +6200,7 @@ static SCHEMA_UNUSED int graphdemo_settings_save_body( graphdemo_table_writer_t 
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_graphdemo_settings_write_admits_( const graphdemo_settings_t * value );
 static SCHEMA_UNUSED int64_t graphdemo_settings_measure( const graphdemo_settings_t * value )
 {
     graphdemo_table_write_ids_t vocabulary; graphdemo_table_writer_t w = graphdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -6179,10 +6350,10 @@ static SCHEMA_UNUSED int graphdemo_settings_save_message_body(graphdemo_table_bi
  }
  }
  { /* label */
- if(value->label_length<0 || value->label_length>16) return 0;
+ schema_assert( 0 <= value->label_length && value->label_length <= 16 );
  if(value->label_length != 0) {
   graphdemo_table_bit_put(w,4,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->label_length<0 || value->label_length>16) return 0;
+  schema_assert( 0 <= value->label_length && value->label_length <= 16 );
   graphdemo_table_bit_put(w,(uint64_t)value->label_length,5);
   graphdemo_table_bit_align_write(w);
   graphdemo_table_bit_putbytes(w,value->label,value->label_length);
@@ -6203,7 +6374,11 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_measure_messages(const graphdemo
  w=graphdemo_table_bit_writer(NULL,INT64_MAX);
  graphdemo_table_bit_put(&w,2,8);
  graphdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!graphdemo_settings_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!graphdemo_settings_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_graphdemo_settings_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  graphdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -6220,7 +6395,11 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_save_messages(const graphdemo_se
  w=graphdemo_table_bit_writer(buffer,capacity);
  graphdemo_table_bit_put(&w,2,8);
  graphdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!graphdemo_settings_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!graphdemo_settings_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_graphdemo_settings_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  graphdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -6320,7 +6499,7 @@ static SCHEMA_UNUSED int graphdemo_settings_load_messages(graphdemo_settings_t *
 }
 static SCHEMA_UNUSED int schema_graphdemo_list_node_wire_name_( graphdemo_table_writer_t * w, const graphdemo_list_node_t * value )
 {
-    if ( value->name_length < 0 || value->name_length > 12 ) { return 0; }
+    schema_assert( 0 <= value->name_length && value->name_length <= 12 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -6336,7 +6515,7 @@ static SCHEMA_UNUSED int graphdemo_list_node_save_body( graphdemo_table_writer_t
         }
     }
     { /* name */
-        if ( value->name_length < 0 || value->name_length > 12 ) { return 0; }
+        schema_assert( 0 <= value->name_length && value->name_length <= 12 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
@@ -6474,7 +6653,7 @@ static SCHEMA_UNUSED int graphdemo_list_node_load_body( graphdemo_table_reader_t
 
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_wire_label_( graphdemo_table_writer_t * w, const graphdemo_tree_node_t * value )
 {
-    if ( value->label_length < 0 || value->label_length > 12 ) { return 0; }
+    schema_assert( 0 <= value->label_length && value->label_length <= 12 );
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -6483,7 +6662,7 @@ static SCHEMA_UNUSED int graphdemo_tree_node_save_body( graphdemo_table_writer_t
 {
     (void) value;
     { /* label */
-        if ( value->label_length < 0 || value->label_length > 12 ) { return 0; }
+        schema_assert( 0 <= value->label_length && value->label_length <= 12 );
         if ( value->label_length != 0 )
         {
             graphdemo_table_writer_header_at( w, 6, 0x39f7fcec8fcb623dull, 12 );
@@ -6712,14 +6891,14 @@ static SCHEMA_UNUSED int graphdemo_layer_load_body( graphdemo_table_reader_t * r
 
 static SCHEMA_UNUSED int schema_graphdemo_scene_wire_name_( graphdemo_table_writer_t * w, const graphdemo_scene_t * value )
 {
-    if ( value->name_length < 0 || value->name_length > 24 ) { return 0; }
+    schema_assert( 0 <= value->name_length && value->name_length <= 24 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
 
 static SCHEMA_UNUSED int schema_graphdemo_scene_wire_layers_( graphdemo_table_writer_t * w, const graphdemo_scene_t * value )
 {
-    if ( value->layers_count < 0 || value->layers_count > 4 ) { return 0; }
+    schema_assert( 0 <= value->layers_count && value->layers_count <= 4 );
     int32_t i;
     graphdemo_table_writer_put8( w, 13 ); graphdemo_table_writer_leb( w, (uint64_t) value->layers_count );
     for ( i = 0; i < value->layers_count; i++ )
@@ -6745,7 +6924,7 @@ static SCHEMA_UNUSED int graphdemo_scene_save_body( graphdemo_table_writer_t * w
 {
     (void) value;
     { /* name */
-        if ( value->name_length < 0 || value->name_length > 24 ) { return 0; }
+        schema_assert( 0 <= value->name_length && value->name_length <= 24 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
@@ -6826,7 +7005,7 @@ static SCHEMA_UNUSED int graphdemo_scene_save_body( graphdemo_table_writer_t * w
         }
     }
     { /* layers */
-        if ( value->layers_count < 0 || value->layers_count > 4 ) { return 0; }
+        schema_assert( 0 <= value->layers_count && value->layers_count <= 4 );
         if ( value->layers_count > 0 )
         {
             graphdemo_table_writer_header_at( w, 10, 0x4554e34a747022dfull, 14 );
@@ -7093,7 +7272,7 @@ static SCHEMA_UNUSED int graphdemo_scene_load_body( graphdemo_table_reader_t * r
 #define SCHEMA_GRAPHDEMO_DEPOT_BANKS_AT(value,key) SCHEMA_GRAPHDEMO_TABLE_KEYED_AT((value).banks,(key),GRAPHDEMO_TIER_MAX)
 static SCHEMA_UNUSED int schema_graphdemo_depot_wire_name_( graphdemo_table_writer_t * w, const graphdemo_depot_t * value )
 {
-    if ( value->name_length < 0 || value->name_length > 12 ) { return 0; }
+    schema_assert( 0 <= value->name_length && value->name_length <= 12 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -7144,7 +7323,7 @@ static SCHEMA_UNUSED int graphdemo_depot_save_body( graphdemo_table_writer_t * w
 {
     (void) value;
     { /* name */
-        if ( value->name_length < 0 || value->name_length > 12 ) { return 0; }
+        schema_assert( 0 <= value->name_length && value->name_length <= 12 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
@@ -7269,13 +7448,16 @@ static SCHEMA_UNUSED int graphdemo_depot_load_body( graphdemo_table_reader_t * r
                 if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind; uint64_t count, i;
+                    uint8_t elem_kind; uint64_t count, i; uint8_t seen[512]; memset( seen, 0, sizeof( seen ) );
                     if ( !graphdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                     if ( elem_kind != 13 ) { if ( !(graphdemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; break; } r->report->widened++; }
                     for ( i = 0; i < count; i++ )
                     {
                         uint64_t key_ref, key; int32_t slot = -1; graphdemo_table_reader_t elem;
-                        if ( !graphdemo_table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || !graphdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                        if ( !graphdemo_table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || key_ref > 4096 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                        if ( seen[(key_ref-1)>>3] & (uint8_t)(1u << ((key_ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                        seen[(key_ref-1)>>3] |= (uint8_t)(1u << ((key_ref-1) & 7));
+                        if ( !graphdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                         key = graphdemo_table_reader_id_at( &sub, key_ref );
                         switch ( key )
                         {
@@ -7283,7 +7465,11 @@ static SCHEMA_UNUSED int graphdemo_depot_load_body( graphdemo_table_reader_t * r
                             case 0x9deeefd89ca8a81dull: slot = 1; break;
                             default: r->report->unknown++; break;
                         }
-                        if ( slot < 0 ) { continue; }
+                        if ( slot < 0 )
+                        {
+                            if ( !graphdemo_table_skip_framed( elem, elem_kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                            continue;
+                        }
                         graphdemo_layer_load_body( &elem, &value->banks[slot] );
                         if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; graphdemo_layer_reset(&value->banks[slot]); }
                     }
@@ -7332,7 +7518,7 @@ static SCHEMA_UNUSED int graphdemo_depot_load_body( graphdemo_table_reader_t * r
 
 static SCHEMA_UNUSED int schema_graphdemo_album_wire_name_( graphdemo_table_writer_t * w, const graphdemo_album_t * value )
 {
-    if ( value->name_length < 0 || value->name_length > 16 ) { return 0; }
+    schema_assert( 0 <= value->name_length && value->name_length <= 16 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -7341,7 +7527,7 @@ static SCHEMA_UNUSED int graphdemo_album_save_body( graphdemo_table_writer_t * w
 {
     (void) value;
     { /* name */
-        if ( value->name_length < 0 || value->name_length > 16 ) { return 0; }
+        schema_assert( 0 <= value->name_length && value->name_length <= 16 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
@@ -7626,6 +7812,39 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_setting
     }
 }
 
+/* Meta's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_meta_fixed_write_check_body_( const graphdemo_meta_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    (*out_of_range) += (int) ( value->build < 0 ) | (int) ( value->build > 1000 );
+    if ( value->tag_length >= 0 && value->tag_length <= 8 && !graphdemo_table_wire_utf8( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) )
+    {
+        (*damaged)++;
+    }
+}
+
+/* Settings's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_settings_fixed_write_check_body_( const graphdemo_settings_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    (*out_of_range) += (int) ( value->quality < 0 ) | (int) ( value->quality > 4 );
+    if ( value->label_length >= 0 && value->label_length <= 16 && !graphdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) )
+    {
+        (*damaged)++;
+    }
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value Meta holds is
+   one its declaration admits. Every writer of Meta asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_graphdemo_meta_write_admits_( const graphdemo_meta_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_graphdemo_meta_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -7682,8 +7901,9 @@ static SCHEMA_UNUSED const graphdemo_table_fixed_dst_t graphdemo_meta_fixed_dst[
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const graphdemo_table_fixed_entry_t graphdemo_meta_fixed_plan[] = {
     { 0u, 0u, 4u, 0u, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, GRAPHDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* build */
     { 4u, 16u, 8u, 4u, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, GRAPHDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tag */
@@ -7737,6 +7957,14 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_save( const graphdemo_meta_t *
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+       the header and layout are never written with no record behind them, and
+       an empty batch is the programmer's error, held as a debug assert (§5.1). */
+    schema_assert( count > 0 );
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_graphdemo_meta_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     memset( buffer, 0, (size_t) GRAPHDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = GRAPHDEMO_K_TABLE_FIXED_FORM;
     graphdemo_table_fixed_put64( buffer + GRAPHDEMO_K_TABLE_FIXED_HASH_AT, graphdemo_meta_fixed_hash );
@@ -7843,10 +8071,11 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_load( graphdemo_meta_t * value
     { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = graphdemo_meta_fixed_known[pick].record_bytes;
-    /* 9 and 10. the tail must be whole records, and they must fit the caller. */
+    /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
+       whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - GRAPHDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -7854,6 +8083,8 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_load( graphdemo_meta_t * value
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -7863,8 +8094,50 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_load( graphdemo_meta_t * value
     {
         int32_t rec_widened = report->widened;
         if ( graphdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const graphdemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != GRAPHDEMO_K_TABLE_FIXED_BOOL && p->op != GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const graphdemo_table_fixed_guard_link_t * l = ( const graphdemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( graphdemo_table_fixed_guard_link_t ) );
+                            if ( graphdemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD && graphdemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD && graphdemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == GRAPHDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { graphdemo_meta_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         graphdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        graphdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        graphdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { graphdemo_meta_reset( values + j ); } return -1; }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
@@ -7883,6 +8156,17 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_load( graphdemo_meta_t * value
     report->unknown += census_unknown;
     if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { graphdemo_meta_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value Settings holds is
+   one its declaration admits. Every writer of Settings asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_graphdemo_settings_write_admits_( const graphdemo_settings_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_graphdemo_settings_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -7941,8 +8225,9 @@ static SCHEMA_UNUSED const graphdemo_table_fixed_dst_t graphdemo_settings_fixed_
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const graphdemo_table_fixed_entry_t graphdemo_settings_fixed_plan[] = {
     { 0u, 0u, 4u, 0u, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, GRAPHDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* quality */
     { 4u, 24u, 16u, 4u, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, GRAPHDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
@@ -7996,6 +8281,14 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_save( const graphdemo_sett
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+       the header and layout are never written with no record behind them, and
+       an empty batch is the programmer's error, held as a debug assert (§5.1). */
+    schema_assert( count > 0 );
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_graphdemo_settings_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     memset( buffer, 0, (size_t) GRAPHDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = GRAPHDEMO_K_TABLE_FIXED_FORM;
     graphdemo_table_fixed_put64( buffer + GRAPHDEMO_K_TABLE_FIXED_HASH_AT, graphdemo_settings_fixed_hash );
@@ -8102,10 +8395,11 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_load( graphdemo_settings_t
     { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = graphdemo_settings_fixed_known[pick].record_bytes;
-    /* 9 and 10. the tail must be whole records, and they must fit the caller. */
+    /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
+       whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - GRAPHDEMO_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -8113,6 +8407,8 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_load( graphdemo_settings_t
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -8122,8 +8418,50 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_load( graphdemo_settings_t
     {
         int32_t rec_widened = report->widened;
         if ( graphdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const graphdemo_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != GRAPHDEMO_K_TABLE_FIXED_BOOL && p->op != GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const graphdemo_table_fixed_guard_link_t * l = ( const graphdemo_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( graphdemo_table_fixed_guard_link_t ) );
+                            if ( graphdemo_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD && graphdemo_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD && graphdemo_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == GRAPHDEMO_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { graphdemo_settings_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         graphdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        graphdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        graphdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { graphdemo_settings_reset( values + j ); } return -1; }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
@@ -8164,8 +8502,7 @@ static SCHEMA_UNUSED int schema_graphdemo_meta_wire_tag__retain( graphdemo_table
 {
     (void)retention;
 
-    if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0;
-    }
+    schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -8190,8 +8527,7 @@ static SCHEMA_UNUSED int graphdemo_meta_save_body_retain( graphdemo_table_writer
     }
     { /* tag */
     retention=graphdemo_table_retain_step(body_keep,1,0);
-        if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0;
-        }
+        schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
         if ( value->tag_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2;
@@ -8392,8 +8728,7 @@ static SCHEMA_UNUSED int schema_graphdemo_settings_wire_label__retain( graphdemo
 {
     (void)retention;
 
-    if ( value->label_length < 0 || value->label_length > 16 ) { return 0;
-    }
+    schema_assert( 0 <= value->label_length && value->label_length <= 16 );
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -8415,8 +8750,7 @@ static SCHEMA_UNUSED int graphdemo_settings_save_body_retain( graphdemo_table_wr
     }
     { /* label */
     retention=graphdemo_table_retain_step(body_keep,1,0);
-        if ( value->label_length < 0 || value->label_length > 16 ) { return 0;
-        }
+        schema_assert( 0 <= value->label_length && value->label_length <= 16 );
         if ( value->label_length != 0 )
         {
             graphdemo_table_retain_writer_id( w, 0x39f7fcec8fcb623dull , retention);
@@ -8614,8 +8948,7 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_wire_name__retain( graphdemo
 {
     (void)retention;
 
-    if ( value->name_length < 0 || value->name_length > 12 ) { return 0;
-    }
+    schema_assert( 0 <= value->name_length && value->name_length <= 12 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -8637,8 +8970,7 @@ static SCHEMA_UNUSED int graphdemo_list_node_save_body_retain( graphdemo_table_w
     }
     { /* name */
     retention=graphdemo_table_retain_step(body_keep,1,0);
-        if ( value->name_length < 0 || value->name_length > 12 ) { return 0;
-        }
+        schema_assert( 0 <= value->name_length && value->name_length <= 12 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_retain_writer_id( w, 0xc4bcadba8e631b86ull , retention);
@@ -8844,8 +9176,7 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_wire_label__retain( graphdem
 {
     (void)retention;
 
-    if ( value->label_length < 0 || value->label_length > 12 ) { return 0;
-    }
+    schema_assert( 0 <= value->label_length && value->label_length <= 12 );
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -8858,8 +9189,7 @@ static SCHEMA_UNUSED int graphdemo_tree_node_save_body_retain( graphdemo_table_w
     graphdemo_table_retain_walk_t body_keep=retention;
     { /* label */
     retention=graphdemo_table_retain_step(body_keep,0,0);
-        if ( value->label_length < 0 || value->label_length > 12 ) { return 0;
-        }
+        schema_assert( 0 <= value->label_length && value->label_length <= 12 );
         if ( value->label_length != 0 )
         {
             graphdemo_table_retain_writer_id( w, 0x39f7fcec8fcb623dull , retention);
@@ -9229,8 +9559,7 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_wire_name__retain( graphdemo_tab
 {
     (void)retention;
 
-    if ( value->name_length < 0 || value->name_length > 24 ) { return 0;
-    }
+    schema_assert( 0 <= value->name_length && value->name_length <= 24 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -9239,8 +9568,7 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_wire_layers__retain( graphdemo_t
 {
     (void)retention;
 
-    if ( value->layers_count < 0 || value->layers_count > 4 ) { return 0;
-    }
+    schema_assert( 0 <= value->layers_count && value->layers_count <= 4 );
     int32_t i;
     graphdemo_table_writer_put8( w, 13 );
     graphdemo_table_writer_leb( w, (uint64_t) value->layers_count );
@@ -9276,8 +9604,7 @@ static SCHEMA_UNUSED int graphdemo_scene_save_body_retain( graphdemo_table_write
     graphdemo_table_retain_walk_t body_keep=retention;
     { /* name */
     retention=graphdemo_table_retain_step(body_keep,0,0);
-        if ( value->name_length < 0 || value->name_length > 24 ) { return 0;
-        }
+        schema_assert( 0 <= value->name_length && value->name_length <= 24 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_retain_writer_id( w, 0xc4bcadba8e631b86ull , retention);
@@ -9394,8 +9721,7 @@ static SCHEMA_UNUSED int graphdemo_scene_save_body_retain( graphdemo_table_write
     }
     { /* layers */
     retention=graphdemo_table_retain_step(body_keep,7,0);
-        if ( value->layers_count < 0 || value->layers_count > 4 ) { return 0;
-        }
+        schema_assert( 0 <= value->layers_count && value->layers_count <= 4 );
         if ( value->layers_count > 0 )
         {
             graphdemo_table_retain_writer_id( w, 0x4554e34a747022dfull , retention);
@@ -9810,8 +10136,7 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_wire_name__retain( graphdemo_tab
 {
     (void)retention;
 
-    if ( value->name_length < 0 || value->name_length > 12 ) { return 0;
-    }
+    schema_assert( 0 <= value->name_length && value->name_length <= 12 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -9888,8 +10213,7 @@ static SCHEMA_UNUSED int graphdemo_depot_save_body_retain( graphdemo_table_write
     graphdemo_table_retain_walk_t body_keep=retention;
     { /* name */
     retention=graphdemo_table_retain_step(body_keep,0,0);
-        if ( value->name_length < 0 || value->name_length > 12 ) { return 0;
-        }
+        schema_assert( 0 <= value->name_length && value->name_length <= 12 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_retain_writer_id( w, 0xc4bcadba8e631b86ull , retention);
@@ -10083,6 +10407,8 @@ static SCHEMA_UNUSED int graphdemo_depot_load_body_retain( graphdemo_table_reade
                 {
                     uint8_t elem_kind;
                     uint64_t count, i;
+                    uint8_t seen[512];
+                    memset( seen, 0, sizeof( seen ) );
                     if ( !graphdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
                     break;
                     }
@@ -10095,7 +10421,14 @@ static SCHEMA_UNUSED int graphdemo_depot_load_body_retain( graphdemo_table_reade
                         uint64_t key_ref, key;
                         int32_t slot = -1;
                         graphdemo_table_reader_t elem;
-                        if ( !graphdemo_table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || !graphdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        if ( !graphdemo_table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || key_ref > 4096 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                        }
+                        if ( seen[(key_ref-1)>>3] & (uint8_t)(1u << ((key_ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                        }
+                        seen[(key_ref-1)>>3] |= (uint8_t)(1u << ((key_ref-1) & 7));
+                        if ( !graphdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
                         break;
                         }
                         key = graphdemo_table_reader_id_at( &sub, key_ref );
@@ -10109,7 +10442,12 @@ static SCHEMA_UNUSED int graphdemo_depot_load_body_retain( graphdemo_table_reade
                             r->report->retain_lost += retention.retain != NULL;
                             break;
                         }
-                        if ( slot < 0 ) { continue;
+                        if ( slot < 0 )
+                        {
+                            if ( !graphdemo_table_skip_framed( elem, elem_kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                            break;
+                            }
+                            continue;
                         }
                         retention=graphdemo_table_retain_index(retention,(uint32_t)(slot));
                         graphdemo_layer_load_body_retain( &elem, &value->banks[slot] , retention);
@@ -10185,8 +10523,7 @@ static SCHEMA_UNUSED int schema_graphdemo_album_wire_name__retain( graphdemo_tab
 {
     (void)retention;
 
-    if ( value->name_length < 0 || value->name_length > 16 ) { return 0;
-    }
+    schema_assert( 0 <= value->name_length && value->name_length <= 16 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -10199,8 +10536,7 @@ static SCHEMA_UNUSED int graphdemo_album_save_body_retain( graphdemo_table_write
     graphdemo_table_retain_walk_t body_keep=retention;
     { /* name */
     retention=graphdemo_table_retain_step(body_keep,0,0);
-        if ( value->name_length < 0 || value->name_length > 16 ) { return 0;
-        }
+        schema_assert( 0 <= value->name_length && value->name_length <= 16 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_retain_writer_id( w, 0xc4bcadba8e631b86ull , retention);
@@ -10846,7 +11182,7 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_graph_edges_( graphdemo_table_nu
     if (!graphdemo_table_number_slot(numbering,&value->settings,&schema_graphdemo_settings_node_type_)) { return 0; }
     if (!graphdemo_table_number_slot(numbering,&value->alias,&schema_graphdemo_list_node_node_type_)) { return 0; }
     if (!schema_graphdemo_layer_graph_edges_(numbering,&value->ground)) { return 0; }
-    if (value->layers_count<0 || value->layers_count>4) { return 0; }
+    schema_assert( 0 <= value->layers_count && value->layers_count <= 4 );
     { int32_t edge_i1; for (edge_i1=0; edge_i1<value->layers_count; edge_i1++) {
         if (!schema_graphdemo_layer_graph_edges_(numbering,&value->layers[edge_i1])) { return 0; }
     } }
@@ -10999,6 +11335,25 @@ static SCHEMA_UNUSED const graphdemo_table_node_type_t * schema_graphdemo_list_n
         default: return NULL;
     }
 }
+static SCHEMA_UNUSED int schema_graphdemo_list_node_node_declared_(uint64_t id)
+{
+    switch (id) {
+        case UINT64_C(0xd858c2cb7f1514cc):
+        case UINT64_C(0x327fe6dc702553fd):
+        case UINT64_C(0x9d167ef77aed79b6):
+        case UINT64_C(0xf60ec899a5a69fa9):
+        case UINT64_C(0xd6458a3eef83d457):
+        case UINT64_C(0x6dadeaaee49d6d18):
+        case UINT64_C(0x4a9a31623ab5f213):
+        case UINT64_C(0x9d8b8aa2b404c2c8):
+        case UINT64_C(0xae3b9113b7db93a4):
+        case UINT64_C(0x69ff34904242a73d):
+        case UINT64_C(0xb97e90a3784c431d):
+        case UINT64_C(0x2f2ec0474f1c4fe4):
+        case UINT64_C(0x704be0d8faaffc58): return 1;
+        default: return 0;
+    }
+}
 static SCHEMA_UNUSED int64_t graphdemo_list_node_measure_with_allocator(const graphdemo_table_ctx_t * ctx, const graphdemo_list_node_t * root, graphdemo_table_allocator_t allocator)
 {
     return graphdemo_table_graph_save(ctx,root,&schema_graphdemo_list_node_node_type_,NULL,INT64_MAX,allocator);
@@ -11030,7 +11385,7 @@ static SCHEMA_UNUSED int64_t graphdemo_list_node_load_measure_ex(const uint8_t *
 {
     graphdemo_table_report_t report; graphdemo_table_reader_t reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));
     if (attribution!=NULL) { *attribution=0; }
-    if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
+    if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && report.refuse_reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_list_node_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
     if(total>=0 && schema_graphdemo_list_node_wire_blob_shared_(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED; } return -1; }
@@ -11066,13 +11421,13 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_cycle_node_(graphdemo_table_
 static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_(graphdemo_table_reader_t * reader, graphdemo_list_node_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink)
 {
     graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;
-    graphdemo_list_node_reset(root);
+    graphdemo_list_node_reset(root); nodes->declared=schema_graphdemo_list_node_node_declared_;
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_list_node_node_lookup_(id);
         directory[k+1].type_id=id; directory[k+1].offset=UINT64_MAX;
         if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
         if (type!=NULL && type->blob==2 && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
-        if (type==NULL) { unknown++; }
+        if (type==NULL) { if(!nodes->declared(id)) { unknown++; } }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=graphdemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
@@ -11096,7 +11451,7 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_(graphdemo_table_
                 if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=graphdemo_table_align_up64(type->size); extent.capacity=graphdemo_table_node_wire_storage(type,&body); carve.region=&extent; }
                 nodes->sink=&carve; body.nodes=nodes;
                 switch(id) {
-                    case UINT64_C(0xf60ec899a5a69fa9): graphdemo_list_node_load_body(&body,(graphdemo_list_node_t *)value); break;
+                    case UINT64_C(0xf60ec899a5a69fa9): graphdemo_list_node_load_body(&body,(graphdemo_list_node_t *)value); if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; } break;
                     default: break;
                 }
                 nodes->sink=NULL; if(nodes->refused) { break; }
@@ -11135,7 +11490,7 @@ static SCHEMA_UNUSED const graphdemo_list_node_t * graphdemo_list_node_load(uint
         (void)schema_graphdemo_list_node_load_graph_(&reader,root,&nodes,directory,&sink);
         graphdemo_table_release(builder.arena.allocator,directory); graphdemo_table_release(builder.arena.allocator,nodes.blob_named); graphdemo_list_node_builder_shutdown(&builder);
         if(graphdemo_table_non_finite_refused(report,non_finite_before)) { report->refused=report->refused||refused_before; return NULL; }
-        if(nodes.refused && !report->refused) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refused=refused_before; return NULL; }
+        if(nodes.refused && !report->refused) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refused=1; return NULL; }
         report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return NULL;
     }
     if(region==NULL || region_bytes<total || ((uintptr_t)region & (GRAPHDEMO_K_TABLE_ALIGN-1))!=0) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return NULL; }
@@ -11256,6 +11611,25 @@ static SCHEMA_UNUSED const graphdemo_table_node_type_t * schema_graphdemo_tree_n
         default: return NULL;
     }
 }
+static SCHEMA_UNUSED int schema_graphdemo_tree_node_node_declared_(uint64_t id)
+{
+    switch (id) {
+        case UINT64_C(0xd858c2cb7f1514cc):
+        case UINT64_C(0x327fe6dc702553fd):
+        case UINT64_C(0x9d167ef77aed79b6):
+        case UINT64_C(0xf60ec899a5a69fa9):
+        case UINT64_C(0xd6458a3eef83d457):
+        case UINT64_C(0x6dadeaaee49d6d18):
+        case UINT64_C(0x4a9a31623ab5f213):
+        case UINT64_C(0x9d8b8aa2b404c2c8):
+        case UINT64_C(0xae3b9113b7db93a4):
+        case UINT64_C(0x69ff34904242a73d):
+        case UINT64_C(0xb97e90a3784c431d):
+        case UINT64_C(0x2f2ec0474f1c4fe4):
+        case UINT64_C(0x704be0d8faaffc58): return 1;
+        default: return 0;
+    }
+}
 static SCHEMA_UNUSED int64_t graphdemo_tree_node_measure_with_allocator(const graphdemo_table_ctx_t * ctx, const graphdemo_tree_node_t * root, graphdemo_table_allocator_t allocator)
 {
     return graphdemo_table_graph_save(ctx,root,&schema_graphdemo_tree_node_node_type_,NULL,INT64_MAX,allocator);
@@ -11287,7 +11661,7 @@ static SCHEMA_UNUSED int64_t graphdemo_tree_node_load_measure_ex(const uint8_t *
 {
     graphdemo_table_report_t report; graphdemo_table_reader_t reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));
     if (attribution!=NULL) { *attribution=0; }
-    if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
+    if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && report.refuse_reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_tree_node_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
     if(total>=0 && schema_graphdemo_tree_node_wire_blob_shared_(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED; } return -1; }
@@ -11323,13 +11697,13 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_cycle_node_(graphdemo_table_
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_(graphdemo_table_reader_t * reader, graphdemo_tree_node_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink)
 {
     graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;
-    graphdemo_tree_node_reset(root);
+    graphdemo_tree_node_reset(root); nodes->declared=schema_graphdemo_tree_node_node_declared_;
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_tree_node_node_lookup_(id);
         directory[k+1].type_id=id; directory[k+1].offset=UINT64_MAX;
         if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
         if (type!=NULL && type->blob==2 && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
-        if (type==NULL) { unknown++; }
+        if (type==NULL) { if(!nodes->declared(id)) { unknown++; } }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=graphdemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
@@ -11353,7 +11727,7 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_(graphdemo_table_
                 if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=graphdemo_table_align_up64(type->size); extent.capacity=graphdemo_table_node_wire_storage(type,&body); carve.region=&extent; }
                 nodes->sink=&carve; body.nodes=nodes;
                 switch(id) {
-                    case UINT64_C(0xb97e90a3784c431d): graphdemo_tree_node_load_body(&body,(graphdemo_tree_node_t *)value); break;
+                    case UINT64_C(0xb97e90a3784c431d): graphdemo_tree_node_load_body(&body,(graphdemo_tree_node_t *)value); if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; } break;
                     default: break;
                 }
                 nodes->sink=NULL; if(nodes->refused) { break; }
@@ -11392,7 +11766,7 @@ static SCHEMA_UNUSED const graphdemo_tree_node_t * graphdemo_tree_node_load(uint
         (void)schema_graphdemo_tree_node_load_graph_(&reader,root,&nodes,directory,&sink);
         graphdemo_table_release(builder.arena.allocator,directory); graphdemo_table_release(builder.arena.allocator,nodes.blob_named); graphdemo_tree_node_builder_shutdown(&builder);
         if(graphdemo_table_non_finite_refused(report,non_finite_before)) { report->refused=report->refused||refused_before; return NULL; }
-        if(nodes.refused && !report->refused) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refused=refused_before; return NULL; }
+        if(nodes.refused && !report->refused) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refused=1; return NULL; }
         report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return NULL;
     }
     if(region==NULL || region_bytes<total || ((uintptr_t)region & (GRAPHDEMO_K_TABLE_ALIGN-1))!=0) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return NULL; }
@@ -11513,6 +11887,25 @@ static SCHEMA_UNUSED const graphdemo_table_node_type_t * schema_graphdemo_layer_
         default: return NULL;
     }
 }
+static SCHEMA_UNUSED int schema_graphdemo_layer_node_declared_(uint64_t id)
+{
+    switch (id) {
+        case UINT64_C(0xd858c2cb7f1514cc):
+        case UINT64_C(0x327fe6dc702553fd):
+        case UINT64_C(0x9d167ef77aed79b6):
+        case UINT64_C(0xf60ec899a5a69fa9):
+        case UINT64_C(0xd6458a3eef83d457):
+        case UINT64_C(0x6dadeaaee49d6d18):
+        case UINT64_C(0x4a9a31623ab5f213):
+        case UINT64_C(0x9d8b8aa2b404c2c8):
+        case UINT64_C(0xae3b9113b7db93a4):
+        case UINT64_C(0x69ff34904242a73d):
+        case UINT64_C(0xb97e90a3784c431d):
+        case UINT64_C(0x2f2ec0474f1c4fe4):
+        case UINT64_C(0x704be0d8faaffc58): return 1;
+        default: return 0;
+    }
+}
 static SCHEMA_UNUSED int64_t graphdemo_layer_measure_with_allocator(const graphdemo_table_ctx_t * ctx, const graphdemo_layer_t * root, graphdemo_table_allocator_t allocator)
 {
     return graphdemo_table_graph_save(ctx,root,&schema_graphdemo_layer_node_type_,NULL,INT64_MAX,allocator);
@@ -11544,7 +11937,7 @@ static SCHEMA_UNUSED int64_t graphdemo_layer_load_measure_ex(const uint8_t * wir
 {
     graphdemo_table_report_t report; graphdemo_table_reader_t reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));
     if (attribution!=NULL) { *attribution=0; }
-    if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
+    if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && report.refuse_reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_layer_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
     if(total>=0 && schema_graphdemo_layer_wire_blob_shared_(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED; } return -1; }
@@ -11583,13 +11976,13 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_cycle_node_(graphdemo_table_cycl
 static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_(graphdemo_table_reader_t * reader, graphdemo_layer_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink)
 {
     graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;
-    graphdemo_layer_reset(root);
+    graphdemo_layer_reset(root); nodes->declared=schema_graphdemo_layer_node_declared_;
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_layer_node_lookup_(id);
         directory[k+1].type_id=id; directory[k+1].offset=UINT64_MAX;
         if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
         if (type!=NULL && type->blob==2 && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
-        if (type==NULL) { unknown++; }
+        if (type==NULL) { if(!nodes->declared(id)) { unknown++; } }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=graphdemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
@@ -11613,7 +12006,7 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_(graphdemo_table_read
                 if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=graphdemo_table_align_up64(type->size); extent.capacity=graphdemo_table_node_wire_storage(type,&body); carve.region=&extent; }
                 nodes->sink=&carve; body.nodes=nodes;
                 switch(id) {
-                    case UINT64_C(0xf60ec899a5a69fa9): graphdemo_list_node_load_body(&body,(graphdemo_list_node_t *)value); break;
+                    case UINT64_C(0xf60ec899a5a69fa9): graphdemo_list_node_load_body(&body,(graphdemo_list_node_t *)value); if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; } break;
                     default: break;
                 }
                 nodes->sink=NULL; if(nodes->refused) { break; }
@@ -11652,7 +12045,7 @@ static SCHEMA_UNUSED const graphdemo_layer_t * graphdemo_layer_load(uint8_t * re
         (void)schema_graphdemo_layer_load_graph_(&reader,root,&nodes,directory,&sink);
         graphdemo_table_release(builder.arena.allocator,directory); graphdemo_table_release(builder.arena.allocator,nodes.blob_named); graphdemo_layer_builder_shutdown(&builder);
         if(graphdemo_table_non_finite_refused(report,non_finite_before)) { report->refused=report->refused||refused_before; return NULL; }
-        if(nodes.refused && !report->refused) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refused=refused_before; return NULL; }
+        if(nodes.refused && !report->refused) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refused=1; return NULL; }
         report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return NULL;
     }
     if(region==NULL || region_bytes<total || ((uintptr_t)region & (GRAPHDEMO_K_TABLE_ALIGN-1))!=0) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return NULL; }
@@ -11775,6 +12168,25 @@ static SCHEMA_UNUSED const graphdemo_table_node_type_t * schema_graphdemo_scene_
         default: return NULL;
     }
 }
+static SCHEMA_UNUSED int schema_graphdemo_scene_node_declared_(uint64_t id)
+{
+    switch (id) {
+        case UINT64_C(0xd858c2cb7f1514cc):
+        case UINT64_C(0x327fe6dc702553fd):
+        case UINT64_C(0x9d167ef77aed79b6):
+        case UINT64_C(0xf60ec899a5a69fa9):
+        case UINT64_C(0xd6458a3eef83d457):
+        case UINT64_C(0x6dadeaaee49d6d18):
+        case UINT64_C(0x4a9a31623ab5f213):
+        case UINT64_C(0x9d8b8aa2b404c2c8):
+        case UINT64_C(0xae3b9113b7db93a4):
+        case UINT64_C(0x69ff34904242a73d):
+        case UINT64_C(0xb97e90a3784c431d):
+        case UINT64_C(0x2f2ec0474f1c4fe4):
+        case UINT64_C(0x704be0d8faaffc58): return 1;
+        default: return 0;
+    }
+}
 static SCHEMA_UNUSED int64_t graphdemo_scene_measure_with_allocator(const graphdemo_table_ctx_t * ctx, const graphdemo_scene_t * root, graphdemo_table_allocator_t allocator)
 {
     return graphdemo_table_graph_save(ctx,root,&schema_graphdemo_scene_node_type_,NULL,INT64_MAX,allocator);
@@ -11806,7 +12218,7 @@ static SCHEMA_UNUSED int64_t graphdemo_scene_load_measure_ex(const uint8_t * wir
 {
     graphdemo_table_report_t report; graphdemo_table_reader_t reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));
     if (attribution!=NULL) { *attribution=0; }
-    if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
+    if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && report.refuse_reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_scene_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
     if(total>=0 && schema_graphdemo_scene_wire_blob_shared_(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED; } return -1; }
@@ -11851,13 +12263,13 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_cycle_node_(graphdemo_table_cycl
 static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_(graphdemo_table_reader_t * reader, graphdemo_scene_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink)
 {
     graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;
-    graphdemo_scene_reset(root);
+    graphdemo_scene_reset(root); nodes->declared=schema_graphdemo_scene_node_declared_;
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_scene_node_lookup_(id);
         directory[k+1].type_id=id; directory[k+1].offset=UINT64_MAX;
         if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
         if (type!=NULL && type->blob==2 && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
-        if (type==NULL) { unknown++; }
+        if (type==NULL) { if(!nodes->declared(id)) { unknown++; } }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=graphdemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
@@ -11881,9 +12293,9 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_(graphdemo_table_read
                 if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=graphdemo_table_align_up64(type->size); extent.capacity=graphdemo_table_node_wire_storage(type,&body); carve.region=&extent; }
                 nodes->sink=&carve; body.nodes=nodes;
                 switch(id) {
-                    case UINT64_C(0xf60ec899a5a69fa9): graphdemo_list_node_load_body(&body,(graphdemo_list_node_t *)value); break;
-                    case UINT64_C(0xb97e90a3784c431d): graphdemo_tree_node_load_body(&body,(graphdemo_tree_node_t *)value); break;
-                    case UINT64_C(0x9d8b8aa2b404c2c8): graphdemo_settings_load_body(&body,(graphdemo_settings_t *)value); break;
+                    case UINT64_C(0xf60ec899a5a69fa9): graphdemo_list_node_load_body(&body,(graphdemo_list_node_t *)value); if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; } break;
+                    case UINT64_C(0xb97e90a3784c431d): graphdemo_tree_node_load_body(&body,(graphdemo_tree_node_t *)value); if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; } break;
+                    case UINT64_C(0x9d8b8aa2b404c2c8): graphdemo_settings_load_body(&body,(graphdemo_settings_t *)value); if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; } break;
                     default: break;
                 }
                 nodes->sink=NULL; if(nodes->refused) { break; }
@@ -11922,7 +12334,7 @@ static SCHEMA_UNUSED const graphdemo_scene_t * graphdemo_scene_load(uint8_t * re
         (void)schema_graphdemo_scene_load_graph_(&reader,root,&nodes,directory,&sink);
         graphdemo_table_release(builder.arena.allocator,directory); graphdemo_table_release(builder.arena.allocator,nodes.blob_named); graphdemo_scene_builder_shutdown(&builder);
         if(graphdemo_table_non_finite_refused(report,non_finite_before)) { report->refused=report->refused||refused_before; return NULL; }
-        if(nodes.refused && !report->refused) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refused=refused_before; return NULL; }
+        if(nodes.refused && !report->refused) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refused=1; return NULL; }
         report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return NULL;
     }
     if(region==NULL || region_bytes<total || ((uintptr_t)region & (GRAPHDEMO_K_TABLE_ALIGN-1))!=0) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return NULL; }
@@ -12043,6 +12455,25 @@ static SCHEMA_UNUSED const graphdemo_table_node_type_t * schema_graphdemo_depot_
         default: return NULL;
     }
 }
+static SCHEMA_UNUSED int schema_graphdemo_depot_node_declared_(uint64_t id)
+{
+    switch (id) {
+        case UINT64_C(0xd858c2cb7f1514cc):
+        case UINT64_C(0x327fe6dc702553fd):
+        case UINT64_C(0x9d167ef77aed79b6):
+        case UINT64_C(0xf60ec899a5a69fa9):
+        case UINT64_C(0xd6458a3eef83d457):
+        case UINT64_C(0x6dadeaaee49d6d18):
+        case UINT64_C(0x4a9a31623ab5f213):
+        case UINT64_C(0x9d8b8aa2b404c2c8):
+        case UINT64_C(0xae3b9113b7db93a4):
+        case UINT64_C(0x69ff34904242a73d):
+        case UINT64_C(0xb97e90a3784c431d):
+        case UINT64_C(0x2f2ec0474f1c4fe4):
+        case UINT64_C(0x704be0d8faaffc58): return 1;
+        default: return 0;
+    }
+}
 static SCHEMA_UNUSED int64_t graphdemo_depot_measure_with_allocator(const graphdemo_table_ctx_t * ctx, const graphdemo_depot_t * root, graphdemo_table_allocator_t allocator)
 {
     return graphdemo_table_graph_save(ctx,root,&schema_graphdemo_depot_node_type_,NULL,INT64_MAX,allocator);
@@ -12074,7 +12505,7 @@ static SCHEMA_UNUSED int64_t graphdemo_depot_load_measure_ex(const uint8_t * wir
 {
     graphdemo_table_report_t report; graphdemo_table_reader_t reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));
     if (attribution!=NULL) { *attribution=0; }
-    if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
+    if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && report.refuse_reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_depot_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
     if(total>=0 && schema_graphdemo_depot_wire_blob_shared_(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED; } return -1; }
@@ -12113,13 +12544,13 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_cycle_node_(graphdemo_table_cycl
 static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_(graphdemo_table_reader_t * reader, graphdemo_depot_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink)
 {
     graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;
-    graphdemo_depot_reset(root);
+    graphdemo_depot_reset(root); nodes->declared=schema_graphdemo_depot_node_declared_;
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_depot_node_lookup_(id);
         directory[k+1].type_id=id; directory[k+1].offset=UINT64_MAX;
         if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
         if (type!=NULL && type->blob==2 && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
-        if (type==NULL) { unknown++; }
+        if (type==NULL) { if(!nodes->declared(id)) { unknown++; } }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=graphdemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
@@ -12143,7 +12574,7 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_(graphdemo_table_read
                 if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=graphdemo_table_align_up64(type->size); extent.capacity=graphdemo_table_node_wire_storage(type,&body); carve.region=&extent; }
                 nodes->sink=&carve; body.nodes=nodes;
                 switch(id) {
-                    case UINT64_C(0xf60ec899a5a69fa9): graphdemo_list_node_load_body(&body,(graphdemo_list_node_t *)value); break;
+                    case UINT64_C(0xf60ec899a5a69fa9): graphdemo_list_node_load_body(&body,(graphdemo_list_node_t *)value); if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; } break;
                     default: break;
                 }
                 nodes->sink=NULL; if(nodes->refused) { break; }
@@ -12182,7 +12613,7 @@ static SCHEMA_UNUSED const graphdemo_depot_t * graphdemo_depot_load(uint8_t * re
         (void)schema_graphdemo_depot_load_graph_(&reader,root,&nodes,directory,&sink);
         graphdemo_table_release(builder.arena.allocator,directory); graphdemo_table_release(builder.arena.allocator,nodes.blob_named); graphdemo_depot_builder_shutdown(&builder);
         if(graphdemo_table_non_finite_refused(report,non_finite_before)) { report->refused=report->refused||refused_before; return NULL; }
-        if(nodes.refused && !report->refused) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refused=refused_before; return NULL; }
+        if(nodes.refused && !report->refused) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refused=1; return NULL; }
         report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return NULL;
     }
     if(region==NULL || region_bytes<total || ((uintptr_t)region & (GRAPHDEMO_K_TABLE_ALIGN-1))!=0) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return NULL; }
@@ -12305,6 +12736,25 @@ static SCHEMA_UNUSED const graphdemo_table_node_type_t * schema_graphdemo_album_
         default: return NULL;
     }
 }
+static SCHEMA_UNUSED int schema_graphdemo_album_node_declared_(uint64_t id)
+{
+    switch (id) {
+        case UINT64_C(0xd858c2cb7f1514cc):
+        case UINT64_C(0x327fe6dc702553fd):
+        case UINT64_C(0x9d167ef77aed79b6):
+        case UINT64_C(0xf60ec899a5a69fa9):
+        case UINT64_C(0xd6458a3eef83d457):
+        case UINT64_C(0x6dadeaaee49d6d18):
+        case UINT64_C(0x4a9a31623ab5f213):
+        case UINT64_C(0x9d8b8aa2b404c2c8):
+        case UINT64_C(0xae3b9113b7db93a4):
+        case UINT64_C(0x69ff34904242a73d):
+        case UINT64_C(0xb97e90a3784c431d):
+        case UINT64_C(0x2f2ec0474f1c4fe4):
+        case UINT64_C(0x704be0d8faaffc58): return 1;
+        default: return 0;
+    }
+}
 static SCHEMA_UNUSED int64_t graphdemo_album_measure_with_allocator(const graphdemo_table_ctx_t * ctx, const graphdemo_album_t * root, graphdemo_table_allocator_t allocator)
 {
     return graphdemo_table_graph_save(ctx,root,&schema_graphdemo_album_node_type_,NULL,INT64_MAX,allocator);
@@ -12336,7 +12786,7 @@ static SCHEMA_UNUSED int64_t graphdemo_album_load_measure_ex(const uint8_t * wir
 {
     graphdemo_table_report_t report; graphdemo_table_reader_t reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));
     if (attribution!=NULL) { *attribution=0; }
-    if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
+    if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && report.refuse_reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_album_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
     if(total>=0 && schema_graphdemo_album_wire_blob_shared_(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED; } return -1; }
@@ -12381,13 +12831,13 @@ static SCHEMA_UNUSED int schema_graphdemo_album_cycle_node_(graphdemo_table_cycl
 static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_(graphdemo_table_reader_t * reader, graphdemo_album_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink)
 {
     graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;
-    graphdemo_album_reset(root);
+    graphdemo_album_reset(root); nodes->declared=schema_graphdemo_album_node_declared_;
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_album_node_lookup_(id);
         directory[k+1].type_id=id; directory[k+1].offset=UINT64_MAX;
         if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }
         if (type!=NULL && type->blob==2 && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
-        if (type==NULL) { unknown++; }
+        if (type==NULL) { if(!nodes->declared(id)) { unknown++; } }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=graphdemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
@@ -12411,9 +12861,9 @@ static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_(graphdemo_table_read
                 if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=graphdemo_table_align_up64(type->size); extent.capacity=graphdemo_table_node_wire_storage(type,&body); carve.region=&extent; }
                 nodes->sink=&carve; body.nodes=nodes;
                 switch(id) {
-                    case UINT64_C(0x69ff34904242a73d): graphdemo_tally_load_body(&body,(graphdemo_tally_t *)value); break;
-                    case UINT64_C(0xd6458a3eef83d457): graphdemo_marker_load_body(&body,(graphdemo_marker_t *)value); break;
-                    case UINT64_C(0xf60ec899a5a69fa9): graphdemo_list_node_load_body(&body,(graphdemo_list_node_t *)value); break;
+                    case UINT64_C(0x69ff34904242a73d): graphdemo_tally_load_body(&body,(graphdemo_tally_t *)value); if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; } break;
+                    case UINT64_C(0xd6458a3eef83d457): graphdemo_marker_load_body(&body,(graphdemo_marker_t *)value); if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; } break;
+                    case UINT64_C(0xf60ec899a5a69fa9): graphdemo_list_node_load_body(&body,(graphdemo_list_node_t *)value); if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; } break;
                     default: break;
                 }
                 nodes->sink=NULL; if(nodes->refused) { break; }
@@ -12452,7 +12902,7 @@ static SCHEMA_UNUSED const graphdemo_album_t * graphdemo_album_load(uint8_t * re
         (void)schema_graphdemo_album_load_graph_(&reader,root,&nodes,directory,&sink);
         graphdemo_table_release(builder.arena.allocator,directory); graphdemo_table_release(builder.arena.allocator,nodes.blob_named); graphdemo_album_builder_shutdown(&builder);
         if(graphdemo_table_non_finite_refused(report,non_finite_before)) { report->refused=report->refused||refused_before; return NULL; }
-        if(nodes.refused && !report->refused) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refused=refused_before; return NULL; }
+        if(nodes.refused && !report->refused) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refused=1; return NULL; }
         report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return NULL;
     }
     if(region==NULL || region_bytes<total || ((uintptr_t)region & (GRAPHDEMO_K_TABLE_ALIGN-1))!=0) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return NULL; }
@@ -12503,6 +12953,7 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_retain_(graphdemo
     int32_t unknown=0;
     int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;
     graphdemo_list_node_reset(root);
+    nodes->declared=schema_graphdemo_list_node_node_declared_;
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_list_node_node_lookup_(id);
         directory[k+1].type_id=id;
@@ -12514,8 +12965,8 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_retain_(graphdemo
         k++;
         continue;
         }
-        if (type==NULL) { unknown++;
-        }
+        if (type==NULL) { if(!nodes->declared(id)) { unknown++;
+        } }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=graphdemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -12559,7 +13010,8 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_retain_(graphdemo
                 switch(id) {
                     case UINT64_C(0xf60ec899a5a69fa9):retention.path=graphdemo_table_retain_root(value,(uint32_t)k+2);
                     graphdemo_list_node_load_body_retain(&body,(graphdemo_list_node_t *)value, retention);
-                    break;
+                    if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    }break;
                     default: break;
                 }
                 nodes->sink=NULL;
@@ -12590,6 +13042,9 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_retain_(graphdemo
       if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0;
       }
       /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */
+      if(nodes->good && !nodes->refused && !graphdemo_table_nodes_all_named(reader,(uint64_t)(nodes->count-1))) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+      return 0;
+      }
       if(nodes->good && !nodes->refused && !graphdemo_table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,schema_graphdemo_list_node_cycle_ordinal_,schema_graphdemo_list_node_cycle_node_,schema_graphdemo_list_node_cycle_id_)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
       return 0;
       }
@@ -12660,7 +13115,7 @@ static SCHEMA_UNUSED const graphdemo_list_node_t * graphdemo_list_node_load_reta
   if(nodes.refused&&!report->refused){report->refused=1;
   report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
   report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
-  report->refused=refused_before;
+  report->refused=1;
   return NULL;
   }
   report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -12725,6 +13180,7 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_retain_(graphdemo
     int32_t unknown=0;
     int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;
     graphdemo_tree_node_reset(root);
+    nodes->declared=schema_graphdemo_tree_node_node_declared_;
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_tree_node_node_lookup_(id);
         directory[k+1].type_id=id;
@@ -12736,8 +13192,8 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_retain_(graphdemo
         k++;
         continue;
         }
-        if (type==NULL) { unknown++;
-        }
+        if (type==NULL) { if(!nodes->declared(id)) { unknown++;
+        } }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=graphdemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -12781,7 +13237,8 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_retain_(graphdemo
                 switch(id) {
                     case UINT64_C(0xb97e90a3784c431d):retention.path=graphdemo_table_retain_root(value,(uint32_t)k+2);
                     graphdemo_tree_node_load_body_retain(&body,(graphdemo_tree_node_t *)value, retention);
-                    break;
+                    if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    }break;
                     default: break;
                 }
                 nodes->sink=NULL;
@@ -12812,6 +13269,9 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_retain_(graphdemo
       if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0;
       }
       /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */
+      if(nodes->good && !nodes->refused && !graphdemo_table_nodes_all_named(reader,(uint64_t)(nodes->count-1))) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+      return 0;
+      }
       if(nodes->good && !nodes->refused && !graphdemo_table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,schema_graphdemo_tree_node_cycle_ordinal_,schema_graphdemo_tree_node_cycle_node_,schema_graphdemo_tree_node_cycle_id_)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
       return 0;
       }
@@ -12882,7 +13342,7 @@ static SCHEMA_UNUSED const graphdemo_tree_node_t * graphdemo_tree_node_load_reta
   if(nodes.refused&&!report->refused){report->refused=1;
   report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
   report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
-  report->refused=refused_before;
+  report->refused=1;
   return NULL;
   }
   report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -12947,6 +13407,7 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_retain_(graphdemo_tab
     int32_t unknown=0;
     int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;
     graphdemo_layer_reset(root);
+    nodes->declared=schema_graphdemo_layer_node_declared_;
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_layer_node_lookup_(id);
         directory[k+1].type_id=id;
@@ -12958,8 +13419,8 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_retain_(graphdemo_tab
         k++;
         continue;
         }
-        if (type==NULL) { unknown++;
-        }
+        if (type==NULL) { if(!nodes->declared(id)) { unknown++;
+        } }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=graphdemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -13003,7 +13464,8 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_retain_(graphdemo_tab
                 switch(id) {
                     case UINT64_C(0xf60ec899a5a69fa9):retention.path=graphdemo_table_retain_root(value,(uint32_t)k+2);
                     graphdemo_list_node_load_body_retain(&body,(graphdemo_list_node_t *)value, retention);
-                    break;
+                    if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    }break;
                     default: break;
                 }
                 nodes->sink=NULL;
@@ -13034,6 +13496,9 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_retain_(graphdemo_tab
       if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0;
       }
       /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */
+      if(nodes->good && !nodes->refused && !graphdemo_table_nodes_all_named(reader,(uint64_t)(nodes->count-1))) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+      return 0;
+      }
       if(nodes->good && !nodes->refused && !graphdemo_table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,schema_graphdemo_layer_cycle_ordinal_,schema_graphdemo_layer_cycle_node_,schema_graphdemo_layer_cycle_id_)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
       return 0;
       }
@@ -13104,7 +13569,7 @@ static SCHEMA_UNUSED const graphdemo_layer_t * graphdemo_layer_load_retain(uint8
   if(nodes.refused&&!report->refused){report->refused=1;
   report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
   report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
-  report->refused=refused_before;
+  report->refused=1;
   return NULL;
   }
   report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -13170,6 +13635,7 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_retain_(graphdemo_tab
     int32_t unknown=0;
     int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;
     graphdemo_scene_reset(root);
+    nodes->declared=schema_graphdemo_scene_node_declared_;
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_scene_node_lookup_(id);
         directory[k+1].type_id=id;
@@ -13181,8 +13647,8 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_retain_(graphdemo_tab
         k++;
         continue;
         }
-        if (type==NULL) { unknown++;
-        }
+        if (type==NULL) { if(!nodes->declared(id)) { unknown++;
+        } }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=graphdemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -13226,13 +13692,16 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_retain_(graphdemo_tab
                 switch(id) {
                     case UINT64_C(0xf60ec899a5a69fa9):retention.path=graphdemo_table_retain_root(value,(uint32_t)k+2);
                     graphdemo_list_node_load_body_retain(&body,(graphdemo_list_node_t *)value, retention);
-                    break;
+                    if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    }break;
                     case UINT64_C(0xb97e90a3784c431d):retention.path=graphdemo_table_retain_root(value,(uint32_t)k+2);
                     graphdemo_tree_node_load_body_retain(&body,(graphdemo_tree_node_t *)value, retention);
-                    break;
+                    if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    }break;
                     case UINT64_C(0x9d8b8aa2b404c2c8):retention.path=graphdemo_table_retain_root(value,(uint32_t)k+2);
                     graphdemo_settings_load_body_retain(&body,(graphdemo_settings_t *)value, retention);
-                    break;
+                    if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    }break;
                     default: break;
                 }
                 nodes->sink=NULL;
@@ -13263,6 +13732,9 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_retain_(graphdemo_tab
       if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0;
       }
       /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */
+      if(nodes->good && !nodes->refused && !graphdemo_table_nodes_all_named(reader,(uint64_t)(nodes->count-1))) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+      return 0;
+      }
       if(nodes->good && !nodes->refused && !graphdemo_table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,schema_graphdemo_scene_cycle_ordinal_,schema_graphdemo_scene_cycle_node_,schema_graphdemo_scene_cycle_id_)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
       return 0;
       }
@@ -13333,7 +13805,7 @@ static SCHEMA_UNUSED const graphdemo_scene_t * graphdemo_scene_load_retain(uint8
   if(nodes.refused&&!report->refused){report->refused=1;
   report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
   report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
-  report->refused=refused_before;
+  report->refused=1;
   return NULL;
   }
   report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -13401,6 +13873,7 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_retain_(graphdemo_tab
     int32_t unknown=0;
     int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;
     graphdemo_depot_reset(root);
+    nodes->declared=schema_graphdemo_depot_node_declared_;
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_depot_node_lookup_(id);
         directory[k+1].type_id=id;
@@ -13412,8 +13885,8 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_retain_(graphdemo_tab
         k++;
         continue;
         }
-        if (type==NULL) { unknown++;
-        }
+        if (type==NULL) { if(!nodes->declared(id)) { unknown++;
+        } }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=graphdemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -13457,7 +13930,8 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_retain_(graphdemo_tab
                 switch(id) {
                     case UINT64_C(0xf60ec899a5a69fa9):retention.path=graphdemo_table_retain_root(value,(uint32_t)k+2);
                     graphdemo_list_node_load_body_retain(&body,(graphdemo_list_node_t *)value, retention);
-                    break;
+                    if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    }break;
                     default: break;
                 }
                 nodes->sink=NULL;
@@ -13488,6 +13962,9 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_retain_(graphdemo_tab
       if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0;
       }
       /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */
+      if(nodes->good && !nodes->refused && !graphdemo_table_nodes_all_named(reader,(uint64_t)(nodes->count-1))) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+      return 0;
+      }
       if(nodes->good && !nodes->refused && !graphdemo_table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,schema_graphdemo_depot_cycle_ordinal_,schema_graphdemo_depot_cycle_node_,schema_graphdemo_depot_cycle_id_)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
       return 0;
       }
@@ -13558,7 +14035,7 @@ static SCHEMA_UNUSED const graphdemo_depot_t * graphdemo_depot_load_retain(uint8
   if(nodes.refused&&!report->refused){report->refused=1;
   report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
   report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
-  report->refused=refused_before;
+  report->refused=1;
   return NULL;
   }
   report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -13624,6 +14101,7 @@ static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_retain_(graphdemo_tab
     int32_t unknown=0;
     int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;
     graphdemo_album_reset(root);
+    nodes->declared=schema_graphdemo_album_node_declared_;
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_album_node_lookup_(id);
         directory[k+1].type_id=id;
@@ -13635,8 +14113,8 @@ static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_retain_(graphdemo_tab
         k++;
         continue;
         }
-        if (type==NULL) { unknown++;
-        }
+        if (type==NULL) { if(!nodes->declared(id)) { unknown++;
+        } }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=graphdemo_table_node_wire_storage(type,&body);
             if(size<0 || size>sink->region->capacity-at) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -13680,13 +14158,16 @@ static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_retain_(graphdemo_tab
                 switch(id) {
                     case UINT64_C(0x69ff34904242a73d):retention.path=graphdemo_table_retain_root(value,(uint32_t)k+2);
                     graphdemo_tally_load_body_retain(&body,(graphdemo_tally_t *)value, retention);
-                    break;
+                    if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    }break;
                     case UINT64_C(0xd6458a3eef83d457):retention.path=graphdemo_table_retain_root(value,(uint32_t)k+2);
                     graphdemo_marker_load_body_retain(&body,(graphdemo_marker_t *)value, retention);
-                    break;
+                    if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    }break;
                     case UINT64_C(0xf60ec899a5a69fa9):retention.path=graphdemo_table_retain_root(value,(uint32_t)k+2);
                     graphdemo_list_node_load_body_retain(&body,(graphdemo_list_node_t *)value, retention);
-                    break;
+                    if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    }break;
                     default: break;
                 }
                 nodes->sink=NULL;
@@ -13717,6 +14198,9 @@ static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_retain_(graphdemo_tab
       if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0;
       }
       /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */
+      if(nodes->good && !nodes->refused && !graphdemo_table_nodes_all_named(reader,(uint64_t)(nodes->count-1))) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+      return 0;
+      }
       if(nodes->good && !nodes->refused && !graphdemo_table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,schema_graphdemo_album_cycle_ordinal_,schema_graphdemo_album_cycle_node_,schema_graphdemo_album_cycle_id_)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
       return 0;
       }
@@ -13787,7 +14271,7 @@ static SCHEMA_UNUSED const graphdemo_album_t * graphdemo_album_load_retain(uint8
   if(nodes.refused&&!report->refused){report->refused=1;
   report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
   report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
-  report->refused=refused_before;
+  report->refused=1;
   return NULL;
   }
   report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -14183,7 +14667,7 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_body_pack_(struct graphdemo_tabl
     if(!graphdemo_table_cook_ref(n,at+56,&value->settings,order)) { return 0; }
     if(!graphdemo_table_cook_ref(n,at+64,&value->alias,order)) { return 0; }
     if(!schema_graphdemo_layer_body_pack_(n,at+72,&value->ground,order)) { return 0; }
-    { int32_t cook_i1; for(cook_i1=0;cook_i1<4;cook_i1++) {
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<value->layers_count && cook_i1<4;cook_i1++) {
         if(!schema_graphdemo_layer_body_pack_(n,at+88+cook_i1*16,&value->layers[cook_i1],order)) { return 0; }
     } }
     graphdemo_table_cook_put(at+88+64,(uint32_t)value->layers_count,4,order);

@@ -246,7 +246,7 @@ func validateSquirrelFixedCutRow(root, cut, line string, want []string) error {
 		}
 		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
 		if err != nil {
-			return fmt.Errorf("%s: read %s: %v", id, file, err)
+			return fmt.Errorf("%s: read %s: %w", id, file, err)
 		}
 		defined := false
 		for _, m := range squirrelGoTestFuncRx.FindAllStringSubmatch(string(src), -1) {

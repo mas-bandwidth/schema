@@ -67,23 +67,6 @@ local function utf8_seq(s, i)
   return want
 end
 
-local function utf8_decode(s)
-  local c = s:byte(1)
-  if c < 0x80 then return c end
-  local code, at
-  if c < 0xe0 then
-    code, at = c & 0x1f, 2
-  elseif c < 0xf0 then
-    code, at = c & 0x0f, 3
-  else
-    code, at = c & 0x07, 4
-  end
-  for i = 2, at do
-    code = (code << 6) | (s:byte(i) & 0x3f)
-  end
-  return code
-end
-
 ----------------------------------------------------------------------------
 -- the reader (§16.2)
 ----------------------------------------------------------------------------
@@ -2090,6 +2073,18 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
         x = nearest_f32(token, x, narrow)
       end
     end
+    -- a compressed float is held to its declared [min, max] as the wire read
+    -- holds it (docs/SPEC-TABLES.md §17.3, §16.2): a number past either end
+    -- counts outOfRange, which the strict read refuses, as place_integer does
+    if d.fmin ~= nil and d.fmax ~= nil then
+      if x < d.fmin then
+        x = d.fmin
+        report.outOfRange = report.outOfRange + 1
+      elseif x > d.fmax then
+        x = d.fmax
+        report.outOfRange = report.outOfRange + 1
+      end
+    end
     holder[key] = x
     return true
   elseif s == "wide" then
@@ -2911,8 +2906,9 @@ end
 function J.ToJson(T, name, v)
   local desc = T.Tables[name]
   if desc == nil or v == nil then return nil end
-  -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
-  local refused = D.refuse_deprecated(T, name, v)
+  -- a retired variant (docs/SPEC-TABLES.md §2.15) and a value off the write
+  -- contract (docs/SPEC.md §5.1) are refused, by name, before the first byte
+  local refused = D.refuse_write(T, name, v, true)
   if refused ~= nil then return nil, refused end
   local g = count_nodes(T, desc, v)
   if g == nil then return nil end

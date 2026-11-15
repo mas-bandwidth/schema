@@ -455,10 +455,10 @@ func (g *gen) emitReadFunction(name, low string, items []ir.Item) {
 	g.bpf("// verdict: false rejects the wire (bounds, ranges, wire constants, padding);\n")
 	g.bpf("// hostile bytes never throw. No slack past the payload is required.\n")
 	g.emitSignature("bool", "read"+name, []string{name + " value", "ByteData view", "int numBits"})
+	g.bpf("  if (numBits < 0 || numBits > view.lengthInBytes * 8) {\n")
+	g.bpf("    return false; // a read faces untrusted wire: refuse negative or past-buffer counts\n")
+	g.bpf("  }\n")
 	if g.usesRead {
-		g.bpf("  if (numBits > view.lengthInBytes * 8) {\n")
-		g.bpf("    return false; // the payload cannot exceed the buffer behind view\n")
-		g.bpf("  }\n")
 		g.bpf("  // the final 64-bit window, assembled once so every load stays inside\n")
 		g.bpf("  // the buffer (serialize.dart's own no-slack reader stance)\n")
 		g.bpf("  var tailBase = view.lengthInBytes - 8;\n")

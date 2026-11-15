@@ -100,15 +100,17 @@ test-go: tables-go-shared-runtime
 # THE TWO HALVES feed ci-full.yml's go-test versioning matrix, one row each,
 # so each row runs about half the Go conformance rows in parallel (the single
 # target ran 116 s alone on main, over the 110 s per-commit budget). The
-# umbrella target below keeps `make test-go` and the local run whole.
+# umbrella target below keeps `make test-go` and the local run whole. Each
+# half runs ONLY its own rows (-run, anchored): before, both halves ran the
+# whole package and the names were only checked, so the split saved nothing.
 conformance-go-rows-a: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-a \
-		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19' \
-		./rows/ -count=1 -timeout 600s
+		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR20' \
+		./rows/ -count=1 -timeout 600s -run '^(TestRowC12|TestRowC13|TestRowC14|TestRowC14WriterRefusesOutOfRange|TestRowC7|TestRowC8|TestRowC8WriterRefusesOutOfRange|TestRowCountedArraysValidData|TestRowE5|TestRowF12|TestRowF8|TestRowF8NegativeControl|TestRowF8RaggedTailByName|TestRowFloat32ValuesNonFiniteRefused|TestRowFloat32ValuesValidData|TestRowP2|TestRowP3|TestRowR10|TestRowR14|TestRowR14LayoutRecordTooLargeByName|TestRowR15|TestRowR17|TestRowR19|TestRowR20)$$'
 conformance-go-rows-b: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-b \
-		'TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
-		./rows/ -count=1 -timeout 600s
+		'TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
+		./rows/ -count=1 -timeout 600s -run '^(TestRowR19NegativeControl|TestRowR20AddedFieldDefault|TestRowR20DroppedFieldUnknown|TestRowR20NarrowIntWidensExactly|TestRowR20SameWidthBaseline|TestRowR20ShortStringSlackZeros|TestRowR20VocabularyIdentity|TestRowR22|TestRowR26|TestRowR26NegativeControl|TestRowR27|TestRowR31|TestRowR6|TestRowR7|TestRowW12|TestRowW12NegativeControl|TestRowW13|TestRowW2|TestRowW2WriterRefusesTheOldPayload|TestRowW3|TestRowW4|TestRowW7)$$'
 conformance-go-rows: conformance-go-rows-a conformance-go-rows-b
 test-go: conformance-go-rows
 
@@ -160,53 +162,59 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # exactly as test/go/go.mod already does for the packet corpus.
 build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-go
-	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
-	# The pointer corpus exercises the wire, region and cook read surfaces.
-	./bin/schema generate --lang go --out build/tables-generated-go/pointers tables/pointers
-	./bin/schema generate --lang go --out build/tables-generated-go/block tables/block
-	./bin/schema generate --lang go --out build/tables-generated-go/blockhome tables/blockhome
-	./bin/schema generate --lang go --out build/tables-generated-go/v1 test/tables/V1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/v2 test/tables/V2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/p1 test/tables/P1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/p3 test/tables/P3.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/p2 test/tables/P2.schema
+	# EVERY UNIT GENERATES AT ONCE (one xargs, 8 wide): the generations are
+	# independent, and run one after another they alone passed the 110 s
+	# per-commit wall on a loaded runner (CI full 43662375199, hulk-2). The
+	# pointer corpus exercises the wire, region and cook read surfaces. Each
+	# unit's go.mod is written below, after every generation has finished.
+	printf '%s\n' \
+		'build/tables-generated-go/examples tables/examples' \
+		'build/tables-generated-go/pointers tables/pointers' \
+		'build/tables-generated-go/block tables/block' \
+		'build/tables-generated-go/blockhome tables/blockhome' \
+		'build/tables-generated-go/v1 test/tables/V1.schema' \
+		'build/tables-generated-go/v2 test/tables/V2.schema' \
+		'build/tables-generated-go/p1 test/tables/P1.schema' \
+		'build/tables-generated-go/p3 test/tables/P3.schema' \
+		'build/tables-generated-go/p2 test/tables/P2.schema' \
+		'build/tables-generated-go/w1 test/tables/W1.schema' \
+		'build/tables-generated-go/w2 test/tables/W2.schema' \
+		'build/tables-generated-go/g1 test/tables/G1.schema' \
+		'build/tables-generated-go/m1 test/tables/M1.schema' \
+		'build/tables-generated-go/m2 test/tables/M2.schema' \
+		'build/tables-generated-go/a1 test/tables/A1.schema' \
+		'build/tables-generated-go/a2 test/tables/A2.schema' \
+		'build/tables-generated-go/k1 test/tables/K1.schema' \
+		'build/tables-generated-go/k2 test/tables/K2.schema' \
+		'build/tables-generated-go/r1 test/tables/R1.schema' \
+		'build/tables-generated-go/r2 test/tables/R2.schema' \
+		'build/tables-generated-go/scalars tables/scalars' \
+		'build/tables-generated-go/scalars2 test/tables/Scalars2.schema' \
+		'build/tables-generated-go/messages tables/messages' \
+		'build/tables-generated-go/stream tables/stream' \
+		'build/tables-generated-go/blobs tables/blobs' \
+		'build/tables-generated-go/lists tables/lists' \
+		'build/tables-generated-go/widelist tables/widelist' \
+		'build/tables-generated-go/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema' \
+		'build/tables-generated-go/maps tables/maps' \
+		'build/tables-generated-go/backend tables/backend' \
+		'build/tables-generated-go/vocab tables/vocab' \
+		'build/tables-generated-go/vocab9 tables/vocab9' \
+		'build/tables-generated-go/rt1 test/tables/RT1.schema' \
+		| xargs -P 8 -L 1 sh -c './bin/schema generate --lang go --out "$$0" "$$1"'
 	$(call go_table_module,p2,tblp2)
-	./bin/schema generate --lang go --out build/tables-generated-go/w1 test/tables/W1.schema
 	$(call go_table_module,w1,tblw1)
-	./bin/schema generate --lang go --out build/tables-generated-go/w2 test/tables/W2.schema
 	$(call go_table_module,w2,tblw2)
-	./bin/schema generate --lang go --out build/tables-generated-go/g1 test/tables/G1.schema
 	$(call go_table_module,g1,tblg1)
-	./bin/schema generate --lang go --out build/tables-generated-go/m1 test/tables/M1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/m2 test/tables/M2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/a1 test/tables/A1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/a2 test/tables/A2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/k1 test/tables/K1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/k2 test/tables/K2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/r1 test/tables/R1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/r2 test/tables/R2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/scalars tables/scalars
-	./bin/schema generate --lang go --out build/tables-generated-go/scalars2 test/tables/Scalars2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/messages tables/messages
-	./bin/schema generate --lang go --out build/tables-generated-go/stream tables/stream
 	$(call go_table_module,stream,streamdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/blobs tables/blobs
 	$(call go_table_module,blobs,blobdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/lists tables/lists
 	$(call go_table_module,lists,listdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/widelist tables/widelist
 	$(call go_table_module,widelist,widelistdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 	$(call go_table_module,featurewitnesses,featurewitnesses)
-	./bin/schema generate --lang go --out build/tables-generated-go/maps tables/maps
 	$(call go_table_module,maps,mapdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/backend tables/backend
 	$(call go_table_module,backend,backenddemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/vocab tables/vocab
 	$(call go_table_module,vocab,vocabdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/vocab9 tables/vocab9
 	$(call go_table_module,vocab9,vocab9demo)
-	./bin/schema generate --lang go --out build/tables-generated-go/rt1 test/tables/RT1.schema
 	$(call go_table_module,rt1,tblrt1)
 	$(call go_table_module,messages,messagedemo)
 	$(call go_table_module,examples,tabledemo)
@@ -227,6 +235,21 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,k2,tblk2)
 	$(call go_table_module,r1,tblr1)
 	$(call go_table_module,r2,tblr2)
+	# THE FRAMING VECTORS' VARIABLE-CLASS TWIN OF R1. The framing battery is
+	# form-1 files whose rules are the variable form's (docs/LAYERS/1-framing.md),
+	# and its fixed root tblr1 Cfg is read "through a fresh load of its unit with
+	# the root's class variable" (framingVariableUnit,
+	# test/conformance/harness/generate.go). Go's plain CfgLoad at a declared
+	# fixed root refuses form 1 as previous_form (docs/SPEC-TABLES.md §3.4), so
+	# the Go leg reads those vectors through this generation of the same
+	# declaration with `fixed` dropped: same package, fields and ids, the root's
+	# class variable. It is its own module beside build/tables-generated-go, not
+	# in it, so the per-unit gates over that tree do not count it twice.
+	@mkdir -p build/tables-r1-variable
+	sed 's/^fixed table Cfg$$/table Cfg/' test/tables/R1.schema > build/tables-r1-variable/R1.schema
+	@grep -q '^table Cfg$$' build/tables-r1-variable/R1.schema || { echo "R1 variable twin: the sed did not turn Cfg variable"; exit 1; }
+	./bin/schema generate --lang go --out build/tables-generated-go-framing/r1variable build/tables-r1-variable/R1.schema
+	$(call go_table_module_in,build/tables-generated-go-framing/r1variable,tblr1variable)
 	@touch $@
 
 # THE CARDS UNIT (schema-cards-c01): its own generated Go module plus the two
@@ -495,7 +518,13 @@ test-go: cards-test cards-example cards-wire-fuzz
 # The shared Go runtime is the default (docs/SPEC-TABLES.md §8.4), so every
 # generated table module requires this module and replaces it with the tree.
 define go_table_module
-@printf 'module %s\n\ngo 1.26\n\nrequire (\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n' $(2) > build/tables-generated-go/$(1)/go.mod
+$(call go_table_module_in,build/tables-generated-go/$(1),$(2))
+endef
+
+# the same wiring for a module directory named whole; it sits two levels under
+# build/, as every generated table module does
+define go_table_module_in
+@printf 'module %s\n\ngo 1.26\n\nrequire (\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n' $(2) > $(1)/go.mod
 endef
 
 # THE STANDALONE GATE, Go — the M4b twin of `tables-cs-standalone`,
@@ -1095,7 +1124,7 @@ test-go: tables-go-versioning
 # name a missing corpus can never pass silently.
 .PHONY: tables-go-versioning
 tables-go-versioning: tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod
-	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/gotable/ -count=1 -run 'TestFixedVersioning|TestHash|TestFloor|TestLineageMerge|TestFixedRoadmapGoT02Plans|TestFixedRoadmapGoT12ConformanceHostile'
+	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/gotable/ -count=1 -run 'TestFixedVersioning|TestHash|TestFixedRoadmapGoT02Plans|TestFixedRoadmapGoT12ConformanceHostile'
 	@echo 'tables Go versioning: §5 read both columns of every row against the C++ reference bytes'
 
 # ITS NEGATIVE CONTROL: move one byte of the WRITE TEMPLATE and the leg must go

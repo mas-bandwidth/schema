@@ -37,26 +37,6 @@ import (
 	"testing"
 )
 
-const deadCppWideSrc = `package probe
-
-fixed table Note
-{
-    title wstring(4)
-    tally int32
-}
-`
-
-// the nearest neighbour: kind 12 where the fixture above spells kind 33, and
-// nothing else moved.
-const deadCppNarrowSrc = `package probe
-
-fixed table Note
-{
-    title string(4)
-    tally int32
-}
-`
-
 const deadCppBlobSrc = `package probe
 
 table Note
@@ -80,14 +60,11 @@ table Note
 }
 `
 
-// the three wide-text helpers and the two blob thunks, by name.
-var (
-	deadCppWideSymbols = []string{"TableUtf16Unit", "TableUtf16Valid", "TableUtf16Clamp"}
-	deadCppBlobSymbols = []string{
-		"TableBlobMeasureThunk",
-		"TableBlobSaveThunk",
-	}
-)
+// the two blob thunks, by name.
+var deadCppBlobSymbols = []string{
+	"TableBlobMeasureThunk",
+	"TableBlobSaveThunk",
+}
 
 func deadCppHeader(t *testing.T, src string) (string, map[string][]byte) {
 	t.Helper()
@@ -103,6 +80,7 @@ func deadCppHeader(t *testing.T, src string) (string, map[string][]byte) {
 }
 
 func TestCppTableBlobThunksFollowTheCensus(t *testing.T) {
+	t.Parallel()
 	with, files := deadCppHeader(t, deadCppBlobSrc)
 	for _, sym := range deadCppBlobSymbols {
 		if !strings.Contains(with, sym) {

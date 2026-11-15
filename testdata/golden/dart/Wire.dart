@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 import 'dart:typed_data';
 
@@ -26,6 +26,18 @@ extension type const Weapon(int _value) implements int {
   static const Weapon laser = Weapon(1);
   static const Weapon missile = Weapon(2);
   static const Weapon railgun = Weapon(3);
+  static const Weapon flak = Weapon(4);
+  static const Weapon beam = Weapon(5);
+  static const Weapon plasma = Weapon(6);
+  static const Weapon torpedo = Weapon(7);
+  static const Weapon mine = Weapon(8);
+  static const Weapon drone = Weapon(9);
+  static const Weapon swarm = Weapon(10);
+  static const Weapon pulse = Weapon(11);
+  static const Weapon lance = Weapon(12);
+  static const Weapon comet = Weapon(13);
+  static const Weapon quake = Weapon(14);
+  static const Weapon arc = Weapon(15);
   static const int max = 15; // the exported extent (SPEC §4.2)
 }
 
@@ -41,6 +53,30 @@ String enumNameWeapon(int value) {
       return 'Missile';
     case Weapon.railgun:
       return 'Railgun';
+    case Weapon.flak:
+      return 'Flak';
+    case Weapon.beam:
+      return 'Beam';
+    case Weapon.plasma:
+      return 'Plasma';
+    case Weapon.torpedo:
+      return 'Torpedo';
+    case Weapon.mine:
+      return 'Mine';
+    case Weapon.drone:
+      return 'Drone';
+    case Weapon.swarm:
+      return 'Swarm';
+    case Weapon.pulse:
+      return 'Pulse';
+    case Weapon.lance:
+      return 'Lance';
+    case Weapon.comet:
+      return 'Comet';
+    case Weapon.quake:
+      return 'Quake';
+    case Weapon.arc:
+      return 'Arc';
     default:
       return '???';
   }
@@ -151,8 +187,8 @@ int writeProbeHeader(ProbeHeader value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeHeader(ProbeHeader value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -313,8 +349,8 @@ int writeProbeBits(ProbeBits value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeBits(ProbeBits value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -574,8 +610,8 @@ int writeProbeSample(ProbeSample value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeSample(ProbeSample value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -773,8 +809,8 @@ int writeProbeRing(ProbeRing value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeRing(ProbeRing value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -855,8 +891,8 @@ int writeProbeSlab(ProbeSlab value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeSlab(ProbeSlab value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -975,8 +1011,8 @@ int writeProbeShape(ProbeShape value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeShape(ProbeShape value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1182,8 +1218,8 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeCollider(ProbeCollider value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1421,8 +1457,8 @@ int writeProbeConfig(ProbeConfig value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeConfig(ProbeConfig value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1641,8 +1677,8 @@ int writeProbeArray(ProbeArray value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeArray(ProbeArray value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1856,6 +1892,9 @@ int writeHeartbeat(Heartbeat value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readHeartbeat(Heartbeat value, ByteData view, int numBits) {
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
   return true;
 }
 
@@ -1925,8 +1964,8 @@ int writeTest(Test value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTest(Test value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -2060,8 +2099,8 @@ int writeBlock(Block value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readBlock(Block value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -2202,8 +2241,8 @@ int writeChat(Chat value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readChat(Chat value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -2354,8 +2393,8 @@ int writeProbeReport(ProbeReport value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readProbeReport(ProbeReport value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -2819,8 +2858,8 @@ int writeTestData(TestData value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readTestData(TestData value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -3183,8 +3222,8 @@ int writeCompressedProbe(CompressedProbe value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readCompressedProbe(CompressedProbe value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)

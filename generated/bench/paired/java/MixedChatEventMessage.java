@@ -19,6 +19,7 @@ public final class MixedChatEventMessage {
         if (v == null) {
             return false;
         }
+        assert checkWrite(v);
         {
             if (v.channel != 0) {
                 w.put(29L, 7);
@@ -35,7 +36,27 @@ public final class MixedChatEventMessage {
         return !w.overflow;
     }
 
+    // checkWrite is saveMessageBody's contract walk, called once through `assert`.
+    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts.
+    private static boolean checkWrite(MixedChatEventFixed.Value v) {
+        assert v != null;
+        assert v.channel >= 0L;
+        assert v.channel <= 0x3L;
+        assert v.speaker >= 0 && v.speaker <= 4095L;
+        return true;
+    }
+
     public static boolean loadMessageBody(TableMessage.Reader r, MixedChatEventFixed.Value v) {
+        int seenFieldMark = r.seenMark();
+        try {
+            return loadMessageBodyFields(r, v, seenFieldMark);
+        } finally {
+            r.seenRollback(seenFieldMark);
+        }
+    }
+
+    private static boolean loadMessageBodyFields(
+            TableMessage.Reader r, MixedChatEventFixed.Value v, int seenFieldMark) {
         reset(v);
         while (true) {
             TableVocabulary.Entry entry = r.ref();
@@ -45,6 +66,10 @@ public final class MixedChatEventMessage {
             }
             if (entry == null) {
                 return true;
+            }
+            if (!r.seenAdd(seenFieldMark, entry.id)) {
+                r.report.damaged = true;
+                return false;
             }
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;

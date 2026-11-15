@@ -65,17 +65,29 @@ func TestPythonGeneratesAnEmptyUnitThroughTheDriver(t *testing.T) {
 	}
 }
 
-// TestPythonRefusesADeclarationThroughTheDriver: a declaration the skeleton
-// does not carry is refused by name at compile time, through the driver.
-func TestPythonRefusesADeclarationThroughTheDriver(t *testing.T) {
+// TestPythonCarriesThePacketCoreThroughTheDriver: a constant and a type of
+// carried kinds generate through the driver, and a field of an uncarried kind
+// is refused by name at compile time.
+func TestPythonCarriesThePacketCoreThroughTheDriver(t *testing.T) {
 	t.Parallel()
 	c := New()
-	u, err := c.Load(writeSchemas(t, map[string]string{"Game.schema": "package game\n\nconst MaxPlayers = 64\n"}))
+	u, err := c.Load(writeSchemas(t, map[string]string{"Game.schema": "package game\n\nconst MaxPlayers = 64\n\ntype Player\n{\n    health int16\n    alive bool\n}\n"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := c.Generate(u, "python", nil)
+	if err != nil {
+		t.Fatalf("the packet core was refused: %v", err)
+	}
+	if _, ok := files["game/Game.py"]; !ok {
+		t.Fatal("generate --lang python emitted no game/Game.py")
+	}
+	u, err = c.Load(writeSchemas(t, map[string]string{"Game.schema": "package game\n\ntype Probe\n{\n    small bits(9)\n}\n"}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = c.Generate(u, "python", nil)
-	if err == nil || !strings.Contains(err.Error(), "Game.schema declares const MaxPlayers, and the Python target does not carry constants yet") {
-		t.Fatalf("got %v, want the const refused by name", err)
+	if err == nil || !strings.Contains(err.Error(), "uses bits, which the Python target does not carry yet") {
+		t.Fatalf("got %v, want the bits field refused by name", err)
 	}
 }

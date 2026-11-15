@@ -42,6 +42,29 @@ func TestGeneratedOutputIsConfined(t *testing.T) {
 	}
 }
 
+func TestGeneratedWritesNestedPaths(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	files := map[string][]byte{
+		"a/b/c.txt": []byte("nested"),
+		"top.txt":   []byte("top"),
+	}
+	if err := writeGenerated(dir, files, "go", false, "", nil, false); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "a", "b", "c.txt"))
+	if err != nil || string(data) != "nested" {
+		t.Fatalf("nested file: %q, %v", data, err)
+	}
+	data, err = os.ReadFile(filepath.Join(dir, "top.txt"))
+	if err != nil || string(data) != "top" {
+		t.Fatalf("top file: %q, %v", data, err)
+	}
+	if err := writeGenerated(dir, map[string][]byte{"../x": []byte("no")}, "go", false, "", nil, false); err == nil {
+		t.Fatal("accepted ../x")
+	}
+}
+
 const messagePackSchemaV1 = `package msg
 
 fixed table Command {
@@ -212,13 +235,14 @@ func verifyRefusedMessagePackPreservesOutputs(t *testing.T, bin string, f messag
 
 // TestPackMessageAnnounceRefusalPreservesOutputs verifies that `schema pack --message --announce`
 // evaluates the report gate before writing either the announcement or the message:
-//   - a non-silent run (an unknown field) and a refused run (a value out of the
-//     declared range, docs/SPEC-TABLES.md §6.5) over a changed vocabulary each exit 1,
-//     preserve both pre-existing files byte-for-byte (still decodable as a pair), and
-//     leave neither fresh destination behind;
-//   - `--tolerate` accepts the non-silent run but never a refusal;
-//   - an accepted `--tolerate` run and a silent run both exit 0, publish both files,
-//     and decode cleanly against the new announcement;
+//   - a refused run (a value out of the declared range, docs/SPEC-TABLES.md §6.5)
+//     over a changed vocabulary exits 1, preserves both pre-existing files
+//     byte-for-byte (still decodable as a pair), and leaves neither fresh
+//     destination behind;
+//   - a report that counts only lawful evolution (an unknown field from a newer
+//     writer) exits 0, publishes both files, and decodes cleanly against the new
+//     announcement;
+//   - a silent run exits 0, publishes both files, and decodes cleanly;
 //   - a known-bad ordering control that writes `--announce` before checking the report
 //     fails the same preservation assertion.
 func TestPackMessageAnnounceRefusalPreservesOutputs(t *testing.T) {
@@ -230,10 +254,6 @@ func TestPackMessageAnnounceRefusalPreservesOutputs(t *testing.T) {
 		return runExit(t, bin, "pack", "--root", "Command", "--message",
 			"--announce", annPath, "--out", msgPath, treeDir, unitDir)
 	}
-	tolerateRunner := func(annPath, msgPath, treeDir, unitDir string) (int, string) {
-		return runExit(t, bin, "pack", "--root", "Command", "--message",
-			"--announce", annPath, "--out", msgPath, "--tolerate", treeDir, unitDir)
-	}
 
 	for _, tc := range []struct {
 		name    string
@@ -242,20 +262,8 @@ func TestPackMessageAnnounceRefusalPreservesOutputs(t *testing.T) {
 		want    []string
 	}{
 		{
-			name:    "unknown field refused",
-			run:     cliRunner,
-			treeDir: f.v2UnknownTree,
-			want:    []string{"report: unknown 1, widened 0", "schema: the report is not silent — pass --tolerate to accept it"},
-		},
-		{
 			name:    "out-of-range value refused",
 			run:     cliRunner,
-			treeDir: f.v2OutOfRangeTree,
-			want:    []string{"out_of_range"},
-		},
-		{
-			name:    "tolerate does not accept a refusal",
-			run:     tolerateRunner,
 			treeDir: f.v2OutOfRangeTree,
 			want:    []string{"out_of_range"},
 		},
@@ -267,22 +275,22 @@ func TestPackMessageAnnounceRefusalPreservesOutputs(t *testing.T) {
 		})
 	}
 
-	t.Run("tolerate publishes both and decodes with new announcement", func(t *testing.T) {
+	t.Run("an unknown field from a newer writer publishes both and decodes", func(t *testing.T) {
 		outDir := t.TempDir()
 		annPath := filepath.Join(outDir, "Command.ann")
 		msgPath := filepath.Join(outDir, "Command.msg")
-		// Seed with V1 outputs first to verify --tolerate replaces both cleanly.
+		// Seed with V1 outputs first to verify the newer pair replaces both cleanly.
 		run(t, bin, "pack", "--root", "Command", "--message", "--announce", annPath, "--out", msgPath, f.v1TreeDir, f.v1UnitDir)
 		v1Ann := stat(t, annPath)
 		v1Msg := stat(t, msgPath)
 
 		code, out := runExit(t, bin, "pack", "--root", "Command", "--message",
-			"--announce", annPath, "--out", msgPath, "--tolerate", f.v2UnknownTree, f.v2UnitDir)
+			"--announce", annPath, "--out", msgPath, f.v2UnknownTree, f.v2UnitDir)
 		if code != 0 {
-			t.Fatalf("pack --tolerate exited %d, want 0:\n%s", code, out)
+			t.Fatalf("pack of an unknown field exited %d, want 0:\n%s", code, out)
 		}
 		if !strings.Contains(out, "report: unknown 1, widened 0") {
-			t.Fatalf("pack --tolerate did not print the unknown report:\n%s", out)
+			t.Fatalf("pack did not print the unknown report:\n%s", out)
 		}
 		v2Ann := stat(t, annPath)
 		v2Msg := stat(t, msgPath)
@@ -294,13 +302,13 @@ func TestPackMessageAnnounceRefusalPreservesOutputs(t *testing.T) {
 		}
 		decoded, err := decodeMessageWithAnnouncement(f.v2UnitDir, "Command", annPath, msgPath)
 		if err != nil {
-			t.Fatalf("tolerated V2 outputs failed independent decode: %v", err)
+			t.Fatalf("V2 outputs failed independent decode: %v", err)
 		}
 		want := map[string]int{"speed": 55, "mode": 5, "tag": 777}
 		if decoded["speed"] != want["speed"] || decoded["mode"] != want["mode"] || decoded["tag"] != want["tag"] {
-			t.Fatalf("decoded tolerated V2 message = %v, want %v", decoded, want)
+			t.Fatalf("decoded V2 message = %v, want %v", decoded, want)
 		}
-		// Also verify CLI unpack --announce round-trips the tolerated pair.
+		// Also verify CLI unpack --announce round-trips the pair.
 		cliUnpackDir := t.TempDir()
 		run(t, bin, "unpack", "--root", "Command", "--in", msgPath, "--announce", annPath, "--one-file", cliUnpackDir, f.v2UnitDir)
 	})
@@ -325,7 +333,7 @@ func TestPackMessageAnnounceRefusalPreservesOutputs(t *testing.T) {
 	})
 
 	t.Run("known-bad ordering control fails preservation assertion", func(t *testing.T) {
-		// Simulate the pre-fix ordering: writing --announce before checking report.Silent().
+		// Simulate the pre-fix ordering: writing --announce before checking the refusal.
 		badOrderingRunner := func(annPath, msgPath, treeDir, unitDir string) (int, string) {
 			c := compiler.New()
 			paths, err := compiler.GatherPaths([]string{unitDir})
@@ -337,15 +345,15 @@ func TestPackMessageAnnounceRefusalPreservesOutputs(t *testing.T) {
 				t.Fatal(err)
 			}
 			wire, _, r, err := c.PackMessages(u, []compiler.MessageTree{{Root: "Command", Dir: treeDir}})
-			if err != nil {
-				t.Fatal(err)
-			}
 			// Pre-fix bug: writes announcement before checking whether the report refuses.
-			if err := writeAtomic(annPath, c.Announce(u)); err != nil {
-				t.Fatal(err)
+			if werr := writeAtomic(annPath, c.Announce(u)); werr != nil {
+				t.Fatal(werr)
+			}
+			if err != nil {
+				return 1, err.Error()
 			}
 			if !r.Silent() {
-				out := fmt.Sprintf("report: unknown %d, widened %d\nschema: the report is not silent — pass --tolerate to accept it\n",
+				out := fmt.Sprintf("report: unknown %d, widened %d\n",
 					r.Unknown, r.Widened)
 				return 1, out
 			}
@@ -356,7 +364,7 @@ func TestPackMessageAnnounceRefusalPreservesOutputs(t *testing.T) {
 		}
 
 		err := verifyRefusedMessagePackPreservesOutputs(t, bin, f, badOrderingRunner,
-			f.v2UnknownTree, "report: unknown 1, widened 0")
+			f.v2OutOfRangeTree, "out_of_range")
 		if err == nil {
 			t.Fatal("known-bad ordering control passed verifyRefusedMessagePackPreservesOutputs; the assertion is not sensitive to announcement-before-report ordering")
 		}

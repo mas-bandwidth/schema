@@ -260,7 +260,7 @@ func tlaModuleFiles(tlaDir, module string) ([]string, error) {
 
 func tlaExtends(src string) []string {
 	var out []string
-	for _, raw := range strings.Split(src, "\n") {
+	for raw := range strings.SplitSeq(src, "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "\\*") {
 			continue

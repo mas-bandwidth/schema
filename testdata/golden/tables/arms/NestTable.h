@@ -1811,7 +1811,7 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( f.packing == 0 ) { return true; }
         if ( f.packing == 1 && kind != 10 )
         {
-            if ( !TableMessageLeb( in, size, at, v ) || (int64_t) v > TableMessageKindBits( kind ) ) { return false; }
+            if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) TableMessageKindBits( kind ) ) { return false; }
             f.value_bits = (int64_t) v;
             if ( kind == 18 || kind == 19 || TableMessageFixedKind( kind ) )
             {
@@ -2841,6 +2841,13 @@ struct TableFixedEntry
     // length one and two). Zero count is "the two inline lanes only".
     uint32_t guard_count = 0;
     uint32_t guard_index = 0;
+    // elem IS A COPY ENTRY'S ELEMENT WIDTH IN BYTES (1, 2, 4 or 8; a 128-bit
+    // value rides as two 8-byte lanes). The wire is little-endian on every
+    // host (§3.4), so on a big-endian host a copy must reverse each element
+    // rather than land the wire bytes in host order. Zero is a raw byte copy,
+    // which is every non-copy op and every byte-sized element. It sits last
+    // so existing positional initializers keep their meaning.
+    uint8_t elem = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -2906,6 +2913,26 @@ inline uint64_t TableFixedGet64( const uint8_t * b )
     for ( int i = 0; i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
     return v;
 }
+// A LITTLE-ENDIAN LOAD OF 1..8 BYTES, zero-extended. The widen, ordinal and
+// const ops read their source through this, never through a memcpy into a
+// native word, which would read the wire in host order.
+inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
+{
+    uint64_t v = 0;
+    for ( uint32_t i = 0; i < size && i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
+    return v;
+}
+// THIS BUILD'S HOST ORDER, for the fixed form only. The wire is
+// little-endian on every host, so only a store into native storage consults
+// it. SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile
+// the big-endian path so a test can hold its byte image.
+#if defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN )
+constexpr bool TableFixedBigEndianHost = true;
+#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+constexpr bool TableFixedBigEndianHost = true;
+#else
+constexpr bool TableFixedBigEndianHost = false;
+#endif
 
 // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
 // byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
@@ -3008,6 +3035,66 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
     memcpy( d, s, n );
 }
 
+// A COPY FROM THE WIRE INTO NATIVE STORAGE. On a little-endian host the bulk
+// copy above IS the wire image and stays one copy. On a big-endian host each
+// element of elem bytes is reversed, so the value lands in this host's order
+// and not in the wire's. An elem of 0 or 1, or a size that is not a whole
+// number of elements, is a raw byte copy.
+inline void TableFixedCopyLe( uint8_t * dst, const uint8_t * src, uint32_t size, uint8_t elem )
+{
+    if ( TableFixedBigEndianHost && ( elem == 2 || elem == 4 || elem == 8 ) && size % elem == 0 )
+    {
+        for ( uint32_t i = 0; i < size; i += elem )
+        {
+            for ( uint8_t j = 0; j < elem; ++j ) { dst[i + j] = src[i + elem - 1 - j]; }
+        }
+        return;
+    }
+    TableFixedCopyRun( dst, src, size );
+}
+
+// A STORE OF ONE PLAN OP'S VALUE INTO NATIVE STORAGE. On a little-endian host
+// the destination width's own word IS the value and stays one copy; on a
+// big-endian host the value's bytes are written most-significant first, so the
+// native word holds the value and a forced build holds the same byte image the
+// copy path writes.
+inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
+{
+    if ( TableFixedBigEndianHost )
+    {
+        for ( uint32_t i = 0; i < size && i < 8; ++i ) { dst[i] = (uint8_t) ( v >> ( 8 * ( size - 1 - i ) ) ); }
+        return;
+    }
+    switch ( size )
+    {
+        case 1:
+        {
+            uint8_t t = (uint8_t) v;
+            memcpy( dst, &t, 1 );
+            break;
+        }
+        case 2:
+        {
+            uint16_t t = (uint16_t) v;
+            memcpy( dst, &t, 2 );
+            break;
+        }
+        case 4:
+        {
+            uint32_t t = (uint32_t) v;
+            memcpy( dst, &t, 4 );
+            break;
+        }
+        case 8:
+        {
+            uint64_t t = v;
+            memcpy( dst, &t, 8 );
+            break;
+        }
+        default: break;
+    }
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -3021,7 +3108,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
     {
         case kTableFixedCopy:
         {
-            TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
+            TableFixedCopyLe( dst + p.dst, src + p.src, p.size, p.elem );
             break;
         }
         case kTableFixedBool:
@@ -3065,7 +3152,9 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
-            TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
+            // text is bytes, so an elem of 1: a raw copy on either host, through
+            // the one wire-to-storage copy the bulk op takes too
+            TableFixedCopyLe( dst + p.aux, src + p.src + 4, p.size, 1 );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
@@ -3082,7 +3171,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
@@ -3094,13 +3183,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // tests THIS reader's own top value — which a remapped 0 never
             // trips, so the two never count the one event twice.
             else if ( raw != 0 ) { oor_count++; }
-            memcpy( dst + p.dst, &v, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, v, p.dstsize );
             break;
         }
         case kTableFixedWiden:
         {
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             if ( p.sign != 0 )
             {
                 // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
@@ -3109,14 +3198,19 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            memcpy( dst + p.dst, &raw, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, raw, p.dstsize );
             widened++;
             break;
         }
         case kTableFixedWidenF:
         {
+            // f32 INTO f64 (docs/FIXED-FORM-ALGORITHM.md §4's float rung): the
+            // bits are read little-endian, then the hardware cast.
             float f = 0.0f;
-            memcpy( &f, src + p.src, 4 );
+            {
+                const uint32_t bits = TableFixedGet32( src + p.src );
+                memcpy( &f, &bits, 4 );
+            }
             const double d = (double) f;
             memcpy( dst + p.dst, &d, 8 );
             widened++;
@@ -3128,13 +3222,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // bytes, and a memcpy of p.size out of the four-byte aux lane
             // reads the member beside it (§4.5, §5.8 row 7).
             const uint64_t lands = p.aux;
-            memcpy( dst + p.dst, &lands, p.size );
+            TableFixedStoreNative( dst + p.dst, lands, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
             // a tag past that set lands None (already written) and COUNTS.
             if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
             {
                 uint64_t raw = 0;
-                memcpy( &raw, src + p.src, p.size );
+                raw = TableFixedGetLe( src + p.src, p.size );
                 if ( raw > (uint64_t) p.dstsize ) { oor_count++; }
             }
             break;
@@ -3150,10 +3244,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // the payload copy above laid the wire's bytes down; when the flag
             // is 0 those bytes are slack and never a value, so the reader
             // overwrites them with the caller's own Reset image. Aux is the
-            // payload's storage offset and Size its storage bytes.
+            // payload's storage offset and Size its storage bytes. A plain
+            // memcpy and not the run mover: the mover's 32-byte moves let
+            // GCC's array-bounds pass form offsets past a small Reset image
+            // on a size branch no entry of this op reaches, and an absent
+            // payload is the cold path.
             const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
             dst[p.dst] = flag;
-            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }
             break;
         }
         default: break;
@@ -4361,6 +4459,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size;
                 e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
+                e.elem = (uint8_t) ( me.size == 16 ? 8 : me.size );
                 TableFixedPush( c, e );
             }
             else if ( te.size < me.size && me.size <= 8 )
@@ -4422,7 +4521,7 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
             plan[out - 1].guard == plan[i].guard && plan[out - 1].arg == plan[i].arg &&
             plan[out - 1].argw == plan[i].argw &&
             plan[out - 1].guard2 == plan[i].guard2 && plan[out - 1].arg2 == plan[i].arg2 &&
-            plan[out - 1].argw2 == plan[i].argw2 &&
+            plan[out - 1].argw2 == plan[i].argw2 && plan[out - 1].elem == plan[i].elem &&
             plan[out - 1].src + plan[out - 1].size == plan[i].src &&
             plan[out - 1].dst + plan[out - 1].size == plan[i].dst )
         {
@@ -5633,7 +5732,23 @@ struct TableNodeMap
     // it is one blob_shared event and resolves to the ONE decoded node. The Go
     // oracle is internal/codegen/gotable/regions.go (TableNodeMap.Once).
     bool once = false;
+    // DECLARED answers whether this reader declares a record's type id, so a
+    // record it placed no storage for can still be told apart: a type it does
+    // not declare reads null, and a type it declares that is not the slot's
+    // target is a wrong-type pointer target (docs/SPEC-TABLES.md §3.1).
+    bool ( *declared )( uint64_t type_id ) = NULL;
 };
+
+// TableNodeWrongTarget: a pointer naming a record of a type this reader
+// declares that is not the type its slot requires. It is damage, so every read,
+// the retaining one included, discards the whole load (docs/SPEC-TABLES.md
+// §3.1, §4); the reason stays the one the strict read has always named.
+inline void TableNodeWrongTarget( TableReport * report )
+{
+    report->damaged = true;
+    report->refused = true;
+    report->refuse_reason = kind_mismatch;
+}
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
 // is one of §4's events with the pointer left null. The declared TARGET type id
@@ -5654,7 +5769,13 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     {
         // a node whose type id this build could not name KEEPS ITS INDEX, and
         // every pointer naming it reads null. The unknown was counted once, at
-        // the node, not once per pointer.
+        // the node, not once per pointer. A node of a type this reader DOES
+        // declare that is not the slot's target is a wrong-type pointer
+        // target, below, though this root placed no storage for it.
+        if ( entry.type_id != target && map.declared != NULL && map.declared( entry.type_id ) )
+        {
+            TableNodeWrongTarget( report );
+        }
         return;
     }
     if ( entry.type_id != target )
@@ -5666,8 +5787,7 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true;
-            report->refuse_reason = kind_mismatch;
+            TableNodeWrongTarget( report );
             return;
         }
         report->refused = true;
@@ -5979,6 +6099,15 @@ inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint
         return false;
     }
     type_id = s.ids->at( ref );
+    // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+    // MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3): the node table, the build
+    // version and the vocabulary are transports, so no record's TYPE reference
+    // may resolve to one of their ids. The two blob type ids are lawful.
+    if ( type_id == kTableNodeTableFieldId || type_id == kTableBuildVersionFieldId || type_id == kTableMessageVocabularyFieldId )
+    {
+        s.damaged = true;
+        return false;
+    }
     uint64_t declared_length = 0;
     if ( !rec.getleb( declared_length ) )
     {
@@ -6005,6 +6134,373 @@ inline bool TableNodeScanWhole( TableNodeScan & s )
     if ( s.damaged ) { return false; }
     if ( !s.present ) { return true; } // no node table at all is not a broken one
     return s.declared == (uint64_t) s.records;
+}
+
+// ---- THE GRAPH, OVER EVERY KIND-17 PAYLOAD (docs/SPEC-TABLES.md §3.1, §6.5) ----
+//
+// The graph conditions are checked over the WHOLE input, not over the fields
+// this reader can name: every record body and the root body are walked by the
+// wire's own framing, every kind-17 payload is collected, and a cycle, an
+// unreachable record, a blob record named from two slots and an ill-formed
+// string blob record are judged wherever they sit. A record under a type id
+// this build cannot name still contributes its edges, so a cycle through it is
+// still refused; when it is reached and acyclic it reads null, which is
+// evolution and stays a read (§3.1, §4).
+//
+// THE POINTER WALK IS ITERATIVE: the scratch is the caller's node directory,
+// borrowed before it is filled, and carries the work list and its links, so a
+// legal chain of any length costs no recursion and no allocation. The nested
+// framing is the wire's own 128-level bound (§4), not a pointer edge.
+static const uint64_t kTableGraphBlob = 0x8000000000000000ull;      // scratch offset: a blob record
+static const uint64_t kTableGraphBodyMask = 0x7FFFFFFFFFFFFFFFull;  // scratch offset: the body's start
+static const uint64_t kTableGraphVisited = 0x8000000000000000ull;   // scratch type: reached
+static const uint64_t kTableGraphQueued = 0x8000000000000000ull;    // scratch type: on the work list
+static const uint64_t kTableGraphLinkMask = 0x7FFFFFFFFFFFFFFFull;  // scratch type: the next link
+static const int kTableGraphMaxDepth = 128;
+
+struct TableGraphCollect
+{
+    const TableIdTable * ids;
+    void * ctx;
+    bool ( *edge )( void * ctx, uint64_t index );
+    bool damaged;
+};
+
+inline int32_t TableGraphWidth( uint8_t kind )
+{
+    switch ( kind )
+    {
+        case 1: case 2: case 6: case 20: case 25: return 1;
+        case 3: case 7: case 21: case 26: return 2;
+        case 4: case 8: case 10: case 22: case 27: return 4;
+        case 5: case 9: case 11: case 23: case 28: case 36: return 8;
+        case 18: case 19: case 24: case 29: return 16;
+    }
+    return 0;
+}
+
+inline bool TableGraphUnion( TableGraphCollect & c, TableReader & r, int depth );
+inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t n, uint8_t kind, int depth );
+
+inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t kind, int depth )
+{
+    const int32_t width = TableGraphWidth( kind );
+    if ( width > 0 )
+    {
+        if ( !r.has( width ) ) { c.damaged = true; return false; }
+        r.offset += width;
+        return true;
+    }
+    switch ( kind )
+    {
+        case 17:
+        {
+            uint64_t index = 0;
+            if ( !r.getleb( index ) ) { c.damaged = true; return false; }
+            if ( !c.edge( c.ctx, index ) ) { c.damaged = true; return false; }
+            return true;
+        }
+        case 30:
+        {
+            uint64_t ref = 0;
+            if ( !r.getleb( ref ) || c.ids == NULL || ref > (uint64_t) c.ids->count ) { c.damaged = true; return false; }
+            return true;
+        }
+        case 15:
+            return TableGraphUnion( c, r, depth );
+        case 12: case 31: case 32: case 13: case 14: case 16:
+        {
+            uint64_t n = 0;
+            if ( !r.getleb( n ) || !r.room( n ) ) { c.damaged = true; return false; }
+            const uint8_t * b = r.buffer + r.offset;
+            r.offset += (int64_t) n;
+            return TableGraphContent( c, b, (int64_t) n, kind, depth );
+        }
+    }
+    c.damaged = true;
+    return false;
+}
+
+inline bool TableGraphBody( TableGraphCollect & c, const uint8_t * b, int64_t n, bool root, bool exact, int depth )
+{
+    if ( depth > kTableGraphMaxDepth ) { c.damaged = true; return false; }
+    TableReport ignored;
+    TableReader r( b, n, &ignored, c.ids );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.getleb( ref ) ) { c.damaged = true; return false; }
+        if ( ref == 0 ) { if ( exact && r.offset != n ) { c.damaged = true; return false; } return true; }
+        if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) ) { c.damaged = true; return false; }
+        const uint64_t id = c.ids->at( ref );
+        const uint8_t kind = r.get8();
+        if ( id == kTableNodeTableFieldId )
+        {
+            if ( !root || kind != 12 ) { c.damaged = true; return false; }
+            uint64_t len = 0;
+            if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+            r.offset += (int64_t) len;
+            continue;
+        }
+        if ( !TableGraphPayload( c, r, kind, depth ) ) { return false; }
+    }
+}
+
+inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t n, uint8_t kind, int depth )
+{
+    const int32_t width = TableGraphWidth( kind );
+    if ( width > 0 )
+    {
+        if ( n != width ) { c.damaged = true; return false; }
+        return true;
+    }
+    switch ( kind )
+    {
+        case 12:
+            if ( !TableUtf8Valid( b, (uint64_t) n ) ) { c.damaged = true; return false; }
+            return true;
+        case 31:
+            return true; // opaque: the one kind whose meaning a reader may not know (§3)
+        case 32:
+            if ( n != 0 ) { c.damaged = true; return false; }
+            return true;
+        case 13:
+            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+            return TableGraphBody( c, b, n, false, true, depth + 1 );
+        case 14:
+        {
+            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+            if ( n < 2 ) { c.damaged = true; return false; }
+            TableReport ignored;
+            TableReader r( b + 1, n - 1, &ignored, c.ids );
+            const uint8_t elem = b[0];
+            uint64_t count = 0;
+            if ( !r.getleb( count ) ) { c.damaged = true; return false; }
+            if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
+            for ( uint64_t i = 0; i < count; i++ ) { if ( !TableGraphPayload( c, r, elem, depth + 1 ) ) { return false; } }
+            return true;
+        }
+        case 16:
+        {
+            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+            if ( n < 2 ) { c.damaged = true; return false; }
+            TableReport ignored;
+            TableReader r( b + 1, n - 1, &ignored, c.ids );
+            const uint8_t elem = b[0];
+            uint64_t count = 0;
+            if ( !r.getleb( count ) ) { c.damaged = true; return false; }
+            if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
+            for ( uint64_t i = 0; i < count; i++ )
+            {
+                uint64_t key = 0;
+                if ( !r.getleb( key ) || key == 0 || c.ids == NULL || key > (uint64_t) c.ids->count ) { c.damaged = true; return false; }
+                uint64_t len = 0;
+                if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+                const uint8_t * eb = r.buffer + r.offset;
+                r.offset += (int64_t) len;
+                if ( !TableGraphContent( c, eb, (int64_t) len, elem, depth + 1 ) ) { return false; }
+            }
+            return true;
+        }
+        case 15:
+        {
+            TableReport ignored;
+            TableReader r( b, n, &ignored, c.ids );
+            return TableGraphUnion( c, r, depth );
+        }
+        case 17: case 30:
+        {
+            TableReport ignored;
+            TableReader r( b, n, &ignored, c.ids );
+            if ( !TableGraphPayload( c, r, kind, depth ) ) { return false; }
+            if ( r.offset != n ) { c.damaged = true; return false; }
+            return true;
+        }
+    }
+    c.damaged = true;
+    return false;
+}
+
+inline bool TableGraphUnion( TableGraphCollect & c, TableReader & r, int depth )
+{
+    uint64_t ref = 0;
+    if ( !r.getleb( ref ) ) { c.damaged = true; return false; }
+    if ( ref == 0 ) { return true; }
+    if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) ) { c.damaged = true; return false; }
+    const uint8_t kind = r.get8();
+    uint64_t len = 0;
+    if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+    const uint8_t * b = r.buffer + r.offset;
+    r.offset += (int64_t) len;
+    const bool structural = kind == 13 || kind == 14 || kind == 15 || kind == 16;
+    if ( structural )
+    {
+        if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+        if ( !TableGraphContent( c, b, (int64_t) len, kind, depth + 1 ) ) { return false; }
+    }
+    else if ( !TableGraphContent( c, b, (int64_t) len, kind, depth ) ) { return false; }
+    return true;
+}
+
+struct TableGraphCount
+{
+    TableNodeDirEntry * nodes;
+    int64_t count;
+    bool bad;
+};
+
+inline bool TableGraphCountEdge( void * ctx, uint64_t index )
+{
+    TableGraphCount * c = (TableGraphCount *) ctx;
+    if ( index == 0 ) { return true; }
+    if ( index - 1 >= (uint64_t) c->count ) { c->bad = true; return false; }
+    c->nodes[index - 1].type_id += 1;
+    return true;
+}
+
+struct TableGraphKahn
+{
+    TableNodeDirEntry * nodes;
+    int64_t count;
+    int64_t head;
+    uint64_t processed;
+    bool bad;
+};
+
+inline void TableGraphKahnPush( TableGraphKahn & k, int64_t p )
+{
+    k.nodes[p].type_id = kTableGraphQueued | (uint64_t) ( k.head + 1 );
+    k.head = p;
+}
+
+inline bool TableGraphKahnEdge( void * ctx, uint64_t index )
+{
+    TableGraphKahn * k = (TableGraphKahn *) ctx;
+    if ( index == 0 ) { return true; }
+    if ( index - 1 >= (uint64_t) k->count ) { k->bad = true; return false; }
+    TableNodeDirEntry & e = k->nodes[index - 1];
+    if ( ( e.type_id & kTableGraphQueued ) != 0 || e.type_id == 0 ) { k->bad = true; return false; }
+    e.type_id -= 1;
+    if ( e.type_id == 0 ) { TableGraphKahnPush( *k, (int64_t) index - 1 ); }
+    return true;
+}
+
+struct TableGraphReach
+{
+    TableNodeDirEntry * nodes;
+    int64_t count;
+    int64_t head;
+    int64_t tail;
+    bool bad;
+};
+
+inline bool TableGraphReachEdge( void * ctx, uint64_t index )
+{
+    TableGraphReach * r = (TableGraphReach *) ctx;
+    if ( index == 0 ) { return true; }
+    if ( index - 1 >= (uint64_t) r->count ) { r->bad = true; return false; }
+    const int64_t t = (int64_t) index - 1;
+    if ( ( r->nodes[t].type_id & kTableGraphVisited ) != 0 ) { return true; }
+    r->nodes[t].type_id = kTableGraphVisited;
+    if ( r->tail < 0 ) { r->head = t; }
+    else { r->nodes[r->tail].type_id = kTableGraphVisited | (uint64_t) ( t + 1 ); }
+    r->tail = t;
+    return true;
+}
+
+inline bool TableGraphParseNode( TableGraphCollect & c, const uint8_t * wire, int64_t wire_bytes, uint64_t start, bool root )
+{
+    if ( start > (uint64_t) wire_bytes ) { c.damaged = true; return false; }
+    return TableGraphBody( c, wire + start, wire_bytes - (int64_t) start, root, root, 0 );
+}
+
+inline bool TableGraphFail( TableReport * report )
+{
+    report->damaged = true;
+    report->refuse_reason = wire_damaged;
+    return false;
+}
+
+// TableGraphCheck judges the pointer graph over one form-1 file's root body.
+// The scratch holds count entries (the root plus every record) and may be the
+// caller's node directory before it is filled; a true answer leaves it
+// clobbered and a false answer is a refused load, so neither is observed.
+inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const TableIdTable * ids, TableNodeDirEntry * scratch, int64_t count, TableReport * report )
+{
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+    int64_t records = 0;
+    {
+        TableReport ignored;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, ids );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            const int64_t k = records + 1;
+            if ( k >= count ) { return true; } // a scan this check cannot frame is the typed read's to judge
+            scratch[k].offset = (uint64_t) ( body - wire );
+            if ( type_id == kTableStringTypeId || type_id == kTableBytesTypeId ) { scratch[k].offset |= kTableGraphBlob; }
+            if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, (uint64_t) length ) ) { return TableGraphFail( report ); }
+            records++;
+        }
+        if ( !TableNodeScanWhole( scan ) || records + 1 != count ) { return true; } // the typed read names the framing
+    }
+    scratch[0].offset = 0;
+    scratch[0].type_id = 0;
+    const int64_t n = count;
+
+    for ( int64_t i = 0; i < n; i++ ) { scratch[i].type_id = 0; }
+    {
+        TableGraphCount counts = { scratch, n, false };
+        TableGraphCollect collect = { ids, &counts, &TableGraphCountEdge, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[0].offset, true ) ) { return counts.bad ? TableGraphFail( report ) : true; }
+        for ( int64_t i = 1; i < n; i++ )
+        {
+            if ( ( scratch[i].offset & kTableGraphBlob ) != 0 ) { continue; }
+            if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[i].offset & kTableGraphBodyMask, false ) ) { return counts.bad ? TableGraphFail( report ) : true; }
+        }
+        for ( int64_t i = 1; i < n; i++ )
+        {
+            if ( ( scratch[i].offset & kTableGraphBlob ) != 0 && scratch[i].type_id > 1 )
+            {
+                report->refused = true;
+                report->refuse_reason = blob_shared;
+                return false;
+            }
+        }
+    }
+
+    TableGraphKahn kahn = { scratch, n, -1, 0, false };
+    for ( int64_t i = 0; i < n; i++ ) { if ( scratch[i].type_id == 0 ) { TableGraphKahnPush( kahn, i ); } }
+    while ( kahn.head >= 0 )
+    {
+        const int64_t p = kahn.head;
+        kahn.head = (int64_t) ( scratch[p].type_id & kTableGraphLinkMask ) - 1;
+        kahn.processed++;
+        if ( ( scratch[p].offset & kTableGraphBlob ) != 0 ) { continue; }
+        TableGraphCollect collect = { ids, &kahn, &TableGraphKahnEdge, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return kahn.bad ? TableGraphFail( report ) : true; }
+    }
+    if ( kahn.bad || kahn.processed != (uint64_t) n ) { return TableGraphFail( report ); }
+
+    for ( int64_t i = 0; i < n; i++ ) { scratch[i].type_id = 0; }
+    TableGraphReach reach = { scratch, n, 0, 0, false };
+    scratch[0].type_id = kTableGraphVisited;
+    while ( reach.head >= 0 )
+    {
+        const int64_t p = reach.head;
+        reach.head = (int64_t) ( scratch[p].type_id & kTableGraphLinkMask ) - 1;
+        if ( reach.head < 0 ) { reach.tail = -1; }
+        if ( ( scratch[p].offset & kTableGraphBlob ) != 0 ) { continue; }
+        TableGraphCollect collect = { ids, &reach, &TableGraphReachEdge, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return reach.bad ? TableGraphFail( report ) : true; }
+    }
+    if ( reach.bad ) { return TableGraphFail( report ); }
+    for ( int64_t i = 1; i < n; i++ )
+    {
+        if ( ( scratch[i].type_id & kTableGraphVisited ) == 0 ) { return TableGraphFail( report ); }
+    }
+    return true;
 }
 
 } // namespace armdemo
@@ -6381,10 +6877,10 @@ inline void TableRetainIdsWrite( TableWriter & w, const TableRetainIds & ids )
 //
 // A retained record's inner nesting is the WRITER's and not this build's, so
 // it is the one depth on this path a file can drive. The cap counts NESTED
-// BODIES, and a record past it is dropped on the same rule as any other shape
-// the walk cannot take. Time no longer rests on it: it is a small stated
-// constant and nothing more.
-static const int32_t kTableRetainWalkDepthMax = 64;
+// BODIES as §4 counts them, and a record past it is dropped on the same rule
+// as any other shape the walk cannot take. Time no longer rests on it: it is a
+// small stated constant and nothing more.
+static const int32_t kTableRetainWalkDepthMax = 128;
 
 // the three RESERVED ids (§3.1, §3.3). One inside a retained record's payload
 // would be re-emitted into a nested body, where it is malformed, so meeting
@@ -6402,6 +6898,7 @@ struct TableRetainIn
     const TableIdTable * ids;
     uint8_t * out;   // NULL: measuring, and nothing is written
     int64_t out_at;
+    bool too_deep;   // the walk met §4's nesting bound: the FILE is malformed
 };
 
 inline void TableRetainInRaw( TableRetainIn & s, const uint8_t * from, int64_t bytes )
@@ -6508,7 +7005,7 @@ inline int64_t TableRetainInFramed( TableRetainIn & s, uint8_t kind, int64_t len
 
 inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t length, int32_t depth )
 {
-    if ( depth > kTableRetainWalkDepthMax ) { return -1; }
+    if ( depth > kTableRetainWalkDepthMax ) { s.too_deep = true; return -1; }
     if ( length < 0 || s.at + length > s.size ) { return -1; }
     const int64_t end = s.at + length;
     const int64_t began = s.out_at;
@@ -6569,7 +7066,11 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
                 uint64_t slot_bytes = 0;
                 if ( !TableRetainInLebRead( s, slot_bytes ) ) { return -1; }
                 if ( slot_bytes > (uint64_t) ( end - s.at ) ) { return -1; }
-                if ( TableRetainInFramed( s, elem_kind, (int64_t) slot_bytes, depth + 1 ) < 0 ) { return -1; }
+                // The keyed entry's framing adds nothing by itself (§4): what
+                // it frames is its element, and only a structural element is a
+                // level.
+                const int32_t elem_depth = depth + ( elem_kind == 13 || elem_kind == 14 || elem_kind == 16 ? 1 : 0 );
+                if ( TableRetainInFramed( s, elem_kind, (int64_t) slot_bytes, elem_depth ) < 0 ) { return -1; }
             }
             break;
         }
@@ -6693,7 +7194,11 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
             if ( length > (uint64_t) ( s.size - s.at ) ) { return -1; }
-            if ( TableRetainInFramed( s, arm_kind, (int64_t) length, depth + 1 ) < 0 ) { return -1; }
+            // A UNION WHOSE ARM IS STRUCTURAL ADDS TWO LEVELS (§4): the union,
+            // then the table, array or keyed body inside it. A union arm that is
+            // another union adds one, and a scalar or None arm adds none.
+            const int32_t arm_depth = depth + ( arm_kind == 15 ? 1 : ( arm_kind == 13 || arm_kind == 14 || arm_kind == 16 ? 2 : 0 ) );
+            if ( TableRetainInFramed( s, arm_kind, (int64_t) length, arm_depth ) < 0 ) { return -1; }
             break;
         }
         case 30: // an ENUM's variant reference, zero for None
@@ -6743,7 +7248,15 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     probe.ids = r.ids;
     probe.out = NULL;
     probe.out_at = 0;
+    probe.too_deep = false;
     const int64_t payload = TableRetainInPayload( probe, kind, 0 );
+    if ( probe.too_deep )
+    {
+        // §4's ONE NESTING BOUND IS THE WALK'S VERDICT, not a retention
+        // capacity: a file past it is malformed, and the whole load refuses.
+        r.report->damaged = true;
+        return false;
+    }
     if ( payload < 0 || probe.at != wire_bytes )
     {
         r.report->retain_lost++;
@@ -6778,6 +7291,7 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     write.ids = r.ids;
     write.out = record + kTableRetainRecordHeader + 8 * (int64_t) path.depth;
     write.out_at = 0;
+    write.too_deep = false;
     if ( TableRetainInPayload( write, kind, 0 ) < 0 )
     {
         r.report->retain_lost++;
@@ -7025,7 +7539,10 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             for ( uint64_t i = 0; i < n; i++ )
             {
                 if ( !TableRetainOutRef( s ) ) { return false; }
-                if ( !TableRetainOutFramed( s, elem_kind, depth + 1 ) ) { return false; }
+                // The keyed entry's framing adds nothing by itself (§4), as on
+                // the capture side.
+                const int32_t elem_depth = depth + ( elem_kind == 13 || elem_kind == 14 || elem_kind == 16 ? 1 : 0 );
+                if ( !TableRetainOutFramed( s, elem_kind, elem_depth ) ) { return false; }
             }
             break;
         }
@@ -7131,7 +7648,10 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             if ( s.at >= s.size ) { return false; }
             const uint8_t arm_kind = s.in[s.at++];
             TableRetainOutRaw( s, &arm_kind, 1 );
-            if ( !TableRetainOutFramed( s, arm_kind, depth + 1 ) ) { return false; }
+            // A UNION WHOSE ARM IS STRUCTURAL ADDS TWO LEVELS (§4), as on the
+            // capture side.
+            const int32_t arm_depth = depth + ( arm_kind == 15 ? 1 : ( arm_kind == 13 || arm_kind == 14 || arm_kind == 16 ? 2 : 0 ) );
+            if ( !TableRetainOutFramed( s, arm_kind, arm_depth ) ) { return false; }
             break;
         }
         case 30:
@@ -10387,6 +10907,31 @@ inline int64_t TwigNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
     return -1;
 }
 
+// TwigNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool TwigNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x670377dcbe2f82b6ull: // Chain
+        case 0xb5877a7e05bbfed2ull: // Gate
+        case 0x58ba95d8757c67c0ull: // Hand
+        case 0xa1f526c44ead452full: // Holder
+        case 0xa5c085b4bb73d1b5ull: // Leaf
+        case 0x0fe46fc6a1b583abull: // Nest
+        case 0x66bd1cc6d2f6b68dull: // Node
+        case 0x31badbc06c5f0b97ull: // Only
+        case 0x986d012bd380b0b2ull: // Rack
+        case 0xdcea4d2bfa11ceebull: // Ring
+        case 0x85a6b5fb5284964dull: // Tray
+        case 0x9f8e22fb612a2f78ull: // Twig
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
+}
+
 // TwigNodePlace: start one record's node's lifetime in the storage pass one
 // reserved for it, holding exactly the declared defaults — a byte buffer's
 // header holds its length, and its bytes come in pass two.
@@ -10701,6 +11246,11 @@ inline const Twig * TwigLoadWalk( uint8_t * region, int64_t region_bytes, const 
             out->damaged = true;
             return NULL;
         }
+        if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+        {
+            table_release( allocator, directory );
+            return NULL;
+        }
         directory[0].offset = (uint64_t) builder.root_ref.value;
         directory[0].type_id = 0x9f8e22fb612a2f78ull;
         TableNodeMap nodes;
@@ -10710,6 +11260,7 @@ inline const Twig * TwigLoadWalk( uint8_t * region, int64_t region_bytes, const 
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = TwigNodeDeclared;
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
             int64_t k = 0;
@@ -10800,7 +11351,17 @@ inline const Twig * TwigLoadWalk( uint8_t * region, int64_t region_bytes, const 
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = TwigNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    // THE GRAPH IS CHECKED OVER EVERY KIND-17 PAYLOAD before the typed bodies
+    // are decoded: a cycle, an unreachable record, a shared blob or an
+    // ill-formed string blob refuses the whole load, declared or only skipped
+    // (docs/SPEC-TABLES.md §3.1, §6.5).
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        memset( region, 0, (size_t) region_bytes );
+        return NULL;
+    }
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x9f8e22fb612a2f78ull;
     Twig * root = new ( region ) Twig; // lifetime only: LoadBody's first act is TwigReset
@@ -11000,6 +11561,12 @@ inline bool TwigLoadBuilderWalk( TwigBuilder & builder, const uint8_t * wire_fil
         out->damaged = true;
         return false;
     }
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        if ( root != NULL ) { TwigReset( *root ); }
+        table_release( allocator, directory );
+        return false;
+    }
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0x9f8e22fb612a2f78ull;
     TableNodeMap nodes;
@@ -11009,6 +11576,7 @@ inline bool TwigLoadBuilderWalk( TwigBuilder & builder, const uint8_t * wire_fil
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = TwigNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
@@ -11340,6 +11908,31 @@ inline int64_t NestNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
     return -1;
 }
 
+// NestNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool NestNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x670377dcbe2f82b6ull: // Chain
+        case 0xb5877a7e05bbfed2ull: // Gate
+        case 0x58ba95d8757c67c0ull: // Hand
+        case 0xa1f526c44ead452full: // Holder
+        case 0xa5c085b4bb73d1b5ull: // Leaf
+        case 0x0fe46fc6a1b583abull: // Nest
+        case 0x66bd1cc6d2f6b68dull: // Node
+        case 0x31badbc06c5f0b97ull: // Only
+        case 0x986d012bd380b0b2ull: // Rack
+        case 0xdcea4d2bfa11ceebull: // Ring
+        case 0x85a6b5fb5284964dull: // Tray
+        case 0x9f8e22fb612a2f78ull: // Twig
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
+}
+
 // NestNodePlace: start one record's node's lifetime in the storage pass one
 // reserved for it, holding exactly the declared defaults — a byte buffer's
 // header holds its length, and its bytes come in pass two.
@@ -11654,6 +12247,11 @@ inline const Nest * NestLoadWalk( uint8_t * region, int64_t region_bytes, const 
             out->damaged = true;
             return NULL;
         }
+        if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+        {
+            table_release( allocator, directory );
+            return NULL;
+        }
         directory[0].offset = (uint64_t) builder.root_ref.value;
         directory[0].type_id = 0x0fe46fc6a1b583abull;
         TableNodeMap nodes;
@@ -11663,6 +12261,7 @@ inline const Nest * NestLoadWalk( uint8_t * region, int64_t region_bytes, const 
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = NestNodeDeclared;
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
             int64_t k = 0;
@@ -11753,7 +12352,17 @@ inline const Nest * NestLoadWalk( uint8_t * region, int64_t region_bytes, const 
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = NestNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    // THE GRAPH IS CHECKED OVER EVERY KIND-17 PAYLOAD before the typed bodies
+    // are decoded: a cycle, an unreachable record, a shared blob or an
+    // ill-formed string blob refuses the whole load, declared or only skipped
+    // (docs/SPEC-TABLES.md §3.1, §6.5).
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        memset( region, 0, (size_t) region_bytes );
+        return NULL;
+    }
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x0fe46fc6a1b583abull;
     Nest * root = new ( region ) Nest; // lifetime only: LoadBody's first act is NestReset
@@ -11953,6 +12562,12 @@ inline bool NestLoadBuilderWalk( NestBuilder & builder, const uint8_t * wire_fil
         out->damaged = true;
         return false;
     }
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        if ( root != NULL ) { NestReset( *root ); }
+        table_release( allocator, directory );
+        return false;
+    }
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0x0fe46fc6a1b583abull;
     TableNodeMap nodes;
@@ -11962,6 +12577,7 @@ inline bool NestLoadBuilderWalk( NestBuilder & builder, const uint8_t * wire_fil
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = NestNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
@@ -13200,6 +13816,11 @@ inline const Twig * TwigLoadRetain( uint8_t * region, int64_t region_bytes, cons
             out->damaged = true;
             return NULL;
         }
+        if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+        {
+            table_release( allocator, directory );
+            return NULL;
+        }
         directory[0].offset = (uint64_t) builder.root_ref.value;
         directory[0].type_id = 0x9f8e22fb612a2f78ull;
         TableNodeMap nodes;
@@ -13209,6 +13830,7 @@ inline const Twig * TwigLoadRetain( uint8_t * region, int64_t region_bytes, cons
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = TwigNodeDeclared;
         TableRetainReset( retain, nodes, NULL );
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -13305,7 +13927,17 @@ inline const Twig * TwigLoadRetain( uint8_t * region, int64_t region_bytes, cons
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = TwigNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    // THE GRAPH IS CHECKED OVER EVERY KIND-17 PAYLOAD before the typed bodies
+    // are decoded: a cycle, an unreachable record, a shared blob or an
+    // ill-formed string blob refuses the whole load, declared or only skipped
+    // (docs/SPEC-TABLES.md §3.1, §6.5).
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        memset( region, 0, (size_t) region_bytes );
+        return NULL;
+    }
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x9f8e22fb612a2f78ull;
     Twig * root = new ( region ) Twig; // lifetime only: LoadBody's first act is TwigReset
@@ -13656,6 +14288,11 @@ inline const Nest * NestLoadRetain( uint8_t * region, int64_t region_bytes, cons
             out->damaged = true;
             return NULL;
         }
+        if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+        {
+            table_release( allocator, directory );
+            return NULL;
+        }
         directory[0].offset = (uint64_t) builder.root_ref.value;
         directory[0].type_id = 0x0fe46fc6a1b583abull;
         TableNodeMap nodes;
@@ -13665,6 +14302,7 @@ inline const Nest * NestLoadRetain( uint8_t * region, int64_t region_bytes, cons
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = NestNodeDeclared;
         TableRetainReset( retain, nodes, NULL );
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -13761,7 +14399,17 @@ inline const Nest * NestLoadRetain( uint8_t * region, int64_t region_bytes, cons
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = NestNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    // THE GRAPH IS CHECKED OVER EVERY KIND-17 PAYLOAD before the typed bodies
+    // are decoded: a cycle, an unreachable record, a shared blob or an
+    // ill-formed string blob refuses the whole load, declared or only skipped
+    // (docs/SPEC-TABLES.md §3.1, §6.5).
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        memset( region, 0, (size_t) region_bytes );
+        return NULL;
+    }
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x0fe46fc6a1b583abull;
     Nest * root = new ( region ) Nest; // lifetime only: LoadBody's first act is NestReset

@@ -401,7 +401,7 @@ static class Program
         Check(Weapon.Railgun.ToString() == "Railgun", "Weapon.Railgun names itself, not an alias");
         Check(ProbeShapeType.Slab.ToString() == "Slab", "a union tag's last arm names itself, not an alias");
         Check(EnumNameWeapon(Weapon.Railgun) == "Railgun", "EnumName takes the enum");
-        Check(EnumNameWeapon(WeaponMax) == "???", "headroom past the last variant names as ???");
+        Check(EnumNameWeapon((Weapon)16) == "???", "a value past the last variant names as ???");
         Check((int)WeaponMax == 15 && (int)ProbeShapeTypeMax == 2 && (int)TeamMax == 2, "the exported extent");
         int enums = 0;
         foreach (Type t in typeof(Weapon).Assembly.GetTypes())

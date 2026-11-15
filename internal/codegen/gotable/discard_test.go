@@ -95,7 +95,9 @@ func goBytes(b []byte) string {
 // 0 with every value reset,
 // as does one with a stray byte after its last body; and malformed text leaves
 // the value, fixed or variable, at its defaults. Red if any read hands back
-// what it decoded.
+// what it decoded. Each read must REFUSE; which reason it names is diagnostic
+// detail the contract never compares (docs/SPEC-TABLES.md §6.5, "THE
+// CROSS-LANGUAGE CONTRACT IS ONE OF TWO OUTCOMES").
 func TestDamageDiscardsTheWholeLoadGo(t *testing.T) {
 	t.Parallel()
 	u := unitOf(t, discardUnit)
@@ -189,15 +191,16 @@ func TestDiscard(t *testing.T) {
 	if !AnnounceRead(&vocab, announcement, &arep) {
 		t.Fatalf("message: the announcement was refused: %%+v", arep)
 	}
-	decoded := make([]Root, 16)
+	decoded := make([]Root, 256)
 	var clean TableReport
 	if n, ok := RootLoadMessages(decoded, &vocab, batch, &clean); !ok || n != 2 || decoded[1].B != 8 {
 		t.Fatalf("message: the clean batch did not read: n=%%d ok=%%v %%+v", n, ok, clean)
 	}
+	// One body more than carried is not damage when the final pad holds a
+	// zero reference: that body is an empty one, every field elided (§3.3).
+	// 256 bodies declared, two carried, cannot all fit in a pad under a byte.
 	short := append([]byte(nil), batch...)
-	// One additional empty body can consume a terminator from the final zero
-	// padding; this count needs more bodies than the payload can pad.
-	short[1] = byte(len(decoded) - 1)
+	short[1] = 0xff
 	var mr TableReport
 	n, ok := RootLoadMessages(decoded, &vocab, short, &mr)
 	if ok || n != 0 {

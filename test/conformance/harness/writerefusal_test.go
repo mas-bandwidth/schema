@@ -54,7 +54,6 @@ func TestWriteRefusalSurfaceHoldsTheGoEngine(t *testing.T) {
 	}
 	u := newUnits(m)
 	for _, wr := range m.WriteRefusals {
-		wr := wr
 		t.Run(wr.Surface()+"/"+wr.Name, func(t *testing.T) {
 			answer, err := writeRefusalAnswer(root, m, u, wr)
 			if err != nil {
@@ -68,6 +67,70 @@ func TestWriteRefusalSurfaceHoldsTheGoEngine(t *testing.T) {
 			// manifest's verdict exactly: an `unrepresentable` or `absent`
 			// answer is a row the battery never actually ran, not a refusal.
 			t.Errorf("%s: the Go engine answered %q, the manifest owes %q", wr.Name, answer, wr.Verdict)
+		})
+	}
+}
+
+// TestWriteRefusalRowsLoadACurrentFormInstance holds each write-refusal row's
+// wire to the instance corpus: the file is one the manifest's `instance` lines
+// name, and it loads at the row's root through the root's own form read (form
+// 3 at a declared fixed root, form 1 at a variable one). The historical
+// form-1 files beside the current-form instances are different rows, and a
+// write-refusal row names the current form.
+func TestWriteRefusalRowsLoadACurrentFormInstance(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	m, err := ReadManifest(filepath.Join(root, defaultManifest), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Units {
+		for j, path := range m.Units[i].Paths {
+			if !filepath.IsAbs(path) {
+				m.Units[i].Paths[j] = filepath.Join(root, path)
+			}
+		}
+	}
+	current := map[string]bool{}
+	for _, inst := range m.Instances {
+		current[filepath.Clean(inst.Wire)] = true
+	}
+	if len(m.WriteRefusals) == 0 {
+		t.Fatal("the manifest carries no write-refusal rows")
+	}
+	u := newUnits(m)
+	for _, wr := range m.WriteRefusals {
+		t.Run(wr.Surface()+"/"+wr.Name, func(t *testing.T) {
+			t.Parallel()
+			if !current[filepath.Clean(wr.Wire)] {
+				t.Fatalf("%s: the row's wire %s is not an instance the manifest carries", wr.Name, wr.Wire)
+			}
+			unitKey := wr.Unit
+			if wr.Form == "message" {
+				conn, err := m.LookupConnection(wr.Unit)
+				if err != nil {
+					t.Fatal(err)
+				}
+				unitKey = conn.Unit
+			}
+			unit, err := u.get(unitKey)
+			if err != nil {
+				t.Fatal(err)
+			}
+			model := tabletext.NewModel(unit)
+			def := model.Lookup(wr.Root)
+			if def == nil {
+				t.Fatalf("%s: unit %s declares no root %q", wr.Name, unitKey, wr.Root)
+			}
+			wire, err := os.ReadFile(filepath.Join(root, wr.Wire))
+			if err != nil {
+				t.Fatal(err)
+			}
+			inst := model.New(def)
+			var report tabletext.Report
+			if ok, err := tablewire.Decode(model, inst, wire, &report); !ok || err != nil {
+				t.Fatalf("%s: the row's wire does not load as its root's current form: %v %+v", wr.Name, err, report)
+			}
 		})
 	}
 }
@@ -107,8 +170,15 @@ func writeRefusalAnswer(root string, m *Manifest, u *units, wr WriteRefusal) (st
 	}
 	inst := model.New(def)
 	var report tabletext.Report
-	if ok, err := tablewire.DecodeVariable(model, inst, wire, &report); !ok || err != nil {
-		return "", fmt.Errorf("%s: the wire did not load: %v %+v", wr.Name, err, report)
+	// THE ROOT'S OWN FILE-FORM READ: form 3 at a declared fixed root, form 1
+	// at a variable one. A previous-form file beside the current-form instance
+	// is a different row, and a write-refusal row names the current form.
+	ok, err := tablewire.Decode(model, inst, wire, &report)
+	if err != nil {
+		return "", fmt.Errorf("%s: the wire did not load as its root's own form: %w %+v", wr.Name, err, report)
+	}
+	if !ok {
+		return "", fmt.Errorf("%s: the wire did not load as its root's own form: %+v", wr.Name, report)
 	}
 	held, err := mutateWriteRefusal(model, inst, wr.Path, wr.Kind, wr.Value)
 	if err != nil {
@@ -119,7 +189,13 @@ func writeRefusalAnswer(root string, m *Manifest, u *units, wr WriteRefusal) (st
 	}
 	switch wr.Form {
 	case "":
-		if _, err := tablewire.EncodeVariable(model, inst); err != nil {
+		// THE ROOT'S OWN FORM'S WRITER, the one the row's verdict names: a
+		// fixed root is written by the fixed form, a variable root by form 1.
+		if def.FixedDeclared {
+			if _, err := tablewire.EncodeFixed(model, inst); err != nil {
+				return "refused", nil
+			}
+		} else if _, err := tablewire.EncodeVariable(model, inst); err != nil {
 			return "refused", nil
 		}
 		return "wrote", nil

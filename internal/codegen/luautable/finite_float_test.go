@@ -33,7 +33,7 @@ import (
 // refused on write and read, -0 and subnormals kept"). One probe answers one
 // row per rule and form, and every answer is held to schema-go's engine where
 // the engine has the form (internal/tablewire, internal/tablecook): the
-// variable read, tolerant and strict, and the variable save and measure; a
+// variable walk and strict read, and the variable save and measure; a
 // retained unknown float (ruling 3); the message batch read and writers; the
 // fixed form's read and write; the cook's open and write; the block accessor's
 // latch (ruling 2); and the JSON writer. A finite value of every form still
@@ -116,7 +116,7 @@ local J = require("./schema_json")
 
 local function row(name: string, answer: string) print(name .. " " .. answer) end
 local function report(): any
-	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+	return { malformed = false, refused = 0, unknown = 0, widened = 0 }
 end
 local function hex(b: buffer?): string
 	if b == nil then return "nil" end
@@ -153,7 +153,7 @@ local function twin(): any
 end
 local Var = St.lookup("Var")
 
--- THE VARIABLE READ: tolerant and strict, each refusing by name
+-- THE VARIABLE READ: the walk and the strict read, each refusing by name
 for _, w in { "varA", "varB", "varXs", "varYs" } do
 	local r = report()
 	local v = load.loadWalk("Var", inputs[w], r)
@@ -186,13 +186,14 @@ for _, w in writes do
 end
 row("var/write/twin", hex((save.save(Var, twin()))))
 
--- A RETAINED UNKNOWN FLOAT (ruling 3): the plain read skips it, the
--- retaining read refuses it
+-- AN UNKNOWN FLOAT (ruling 3): skipped is not unread (§4), so the plain read
+-- refuses a non-finite one as a wire-alone condition, and the retaining read
+-- names the field it kept
 do
 	local r = report()
-	row("retain/plain", if load.loadWalk("Var", inputs.retain, r) == nil then tostring(r.reason) else "loaded")
+	row("retain/plain", if load.load("Var", inputs.retain, r) == nil then tostring(r.reason) else "loaded")
 	local r2: any = report()
-	local v = Ret.LoadRetain("Var", inputs.retain, r2)
+	local v = Ret.loadRetainWalk("Var", inputs.retain, r2)
 	row("retain/read", if v == nil then tostring(r2.reason) .. " " .. tostring(r2.field) else "loaded")
 	local r3: any = report()
 	row("retain/twin", if Ret.LoadRetain("Var", inputs.retainTwin, r3) == nil then tostring(r3.reason) else "loaded")
@@ -311,7 +312,8 @@ var finiteControls = []finiteControl{
 	{"variable-read", "schema_load.luau",
 		[][2]string{{"if _nonFinite == nil then\n\t\t_nonFinite = _ownerName", "if false then\n\t\t_nonFinite = _ownerName"}},
 		[]string{"var/read/varA", "var/read/varB", "var/read/varXs", "var/read/varYs",
-			"var/strict/varA", "var/strict/varB", "var/strict/varXs", "var/strict/varYs"}},
+			"var/strict/varA", "var/strict/varB", "var/strict/varXs", "var/strict/varYs",
+			"retain/plain"}},
 	{"variable-write", "schema_save.luau",
 		[][2]string{
 			{"if bit32.band(bits, 0x7F800000) == 0x7F800000 then return refuse_non_finite(c, e) end", "-- SABOTAGED"},
@@ -549,10 +551,12 @@ func newFiniteFixture(t *testing.T) *finiteFixture {
 	in["retainTwin"] = newTwin
 	in["retain"] = mustPatch(t, newTwin, le64(twinZ), le64(snan64))
 	var rep tabletext.Report
-	if ok, derr := tablewire.Decode(m, m.New(m.Lookup("Var")), in["retain"], &rep); derr != nil || !ok {
-		t.Fatalf("the Go plain read refused an unknown non-finite float it skips: %v", derr)
+	ok, derr := tablewire.Decode(m, m.New(m.Lookup("Var")), in["retain"], &rep)
+	var rf *tablewire.NonFiniteRefusal
+	if ok || !errors.As(derr, &rf) {
+		t.Fatalf("the Go plain read did not refuse an unknown non-finite float: ok=%v err=%v", ok, derr)
 	}
-	fx.want["retain/plain"] = "loaded"
+	fx.want["retain/plain"] = "non_finite_float"
 	fx.want["retain/twin"] = "loaded"
 	// retain/read is held by pattern below: the id is the field-name hash
 

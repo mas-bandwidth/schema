@@ -7,10 +7,11 @@ package ci
 // On the fleet's Ubuntu 26.04 runners tee is Rust coreutils, and it panicked
 // mid-run (src/uu/tee/src/tee.rs:188, assertion `left == right` failed) in CI
 // run 42554833739, aborting the pipe on the lua and base-c-discard rows with
-// no control at fault. The step writes the log by redirecting make, then
-// prints it, so make's own status still reaches `exit $status` and the
-// NEGATIVE CONTROL grep still reads controls.log. This gate refuses a pipe of
-// that make back through tee in both workflows that run the step.
+// no control at fault. The step pipes make through awk instead, which prints
+// each line as it comes and writes controls.log, so the log still streams,
+// make's own status still reaches `exit $status` under pipefail, and the
+// refusal grep still reads controls.log. This gate refuses a pipe of that
+// make back through tee in both workflows that run the step.
 
 import (
 	"os"
@@ -112,13 +113,13 @@ func negativeControlsScripts(workflow string) []string {
 // command this gate refuses.
 func pipesMakeThroughTee(script string) bool {
 	joined := strings.ReplaceAll(script, "\\\n", " ")
-	for _, line := range strings.Split(joined, "\n") {
+	for line := range strings.SplitSeq(joined, "\n") {
 		code, _, _ := strings.Cut(line, "#")
 		compact := strings.ReplaceAll(code, " ", "")
 		if strings.Contains(compact, "|tee") || strings.Contains(compact, "|&tee") {
 			return true
 		}
-		for _, tok := range strings.Fields(code) {
+		for tok := range strings.FieldsSeq(code) {
 			base := tok
 			if i := strings.LastIndex(tok, "/"); i >= 0 {
 				base = tok[i+1:]

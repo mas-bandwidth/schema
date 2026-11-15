@@ -761,7 +761,7 @@ func (g *cookGen) emitAccessors(st *ir.Struct, ml *ir.MemberLayout) {
 		case f.Type.Pointer && f.Array == ir.ArrayNone:
 			continue
 		case f.Type.TextUnbounded():
-			g.hf("    public static ReadOnlySpan<byte> %s(%sRow* row) { byte* slot=(byte*)&row->%s; long delta=*(long*)slot; if(delta==0){return default;} byte* blob=slot+delta; return new ReadOnlySpan<byte>(blob+8,checked((int)*(uint*)blob)); }\n", member, name, member)
+			g.hf("    public static ReadOnlySpan<byte> %s(%sRow* row) { byte* slot = (byte*)&row->%s; long delta = *(long*)slot; if (delta == 0) { return default; } byte* blob = slot + delta; return new ReadOnlySpan<byte>(blob + 8, checked((int)*(uint*)blob)); }\n", member, name, member)
 		case f.Type.Kind == ir.TString:
 			g.hf("    // string(%d): the used bytes, without the zero tail (§7.2).\n", f.Type.Size)
 			g.hf("    public static ReadOnlySpan<byte> %s(%sRow* row)\n    {\n", member, name)

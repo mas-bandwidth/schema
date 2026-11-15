@@ -52,13 +52,14 @@ func ValidateRequiredValue(fv *Field) error {
 	for _, c := range cells {
 		if lo, hi, ok := ir.TableRawRange(f); ok {
 			var raw big.Int
-			if ir.TableKindWide(ir.TableScalarKind(f)) {
+			switch {
+			case ir.TableKindWide(ir.TableScalarKind(f)):
 				if c.Wide != nil {
 					raw.Set(c.Wide)
 				}
-			} else if f.Type.Signed {
+			case f.Type.Signed:
 				raw.SetInt64(int64(c.U))
-			} else {
+			default:
 				raw.SetUint64(c.U)
 			}
 			if raw.Cmp(lo) < 0 || raw.Cmp(hi) > 0 {

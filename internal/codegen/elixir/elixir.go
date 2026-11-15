@@ -69,8 +69,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	home := ir.ProtocolIdHome(u)
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, home: f.Base == home,
-			ns: ir.GoExportName(u.Package), helpers: map[string]string{}}
+			ns: ir.GoExportName(u.Package), helpers: map[string]string{},
+			helperPairs: map[string]helperPair{}}
 		g.emitFile()
+		if g.err != nil {
+			return nil, g.err
+		}
 		out[f.Base+".ex"] = g.assemble()
 	}
 	if unitNeedsRuntime(u) {
@@ -295,6 +299,8 @@ type gen struct {
 	// deduplicated by name; bodies are emitted after the public functions
 	helperOrder []string
 	helpers     map[string]string
+	helperPairs map[string]helperPair
+	err         error
 }
 
 func (g *gen) bpf(format string, args ...any) {

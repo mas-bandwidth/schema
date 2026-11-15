@@ -17,6 +17,7 @@ import (
 )
 
 func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
+	t.Parallel()
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 

@@ -3877,9 +3877,9 @@ is byte-stable.
 and one `<field>/<Variant>.json` per keyed slot, or one `<Root>.json` with
 `--one-file` — and PRUNES the files it owns
 and did not write, so a stale value cannot survive into a newer tree. Neither
-verb writes to your `.schema` sources, and both exit nonzero when the read
-report is not silent; `--tolerate` accepts it, `--verbose` prints it either way
-and names any hidden non-JSON file the walk passed over.
+verb writes to your `.schema` sources. Both exit nonzero when the read refuses
+the input, and a report that counts only lawful evolution exits 0; `--verbose`
+prints it either way and names any hidden non-JSON file the walk passed over.
 
 `pack` reads the texts with its own engine inside the compiler rather than by
 calling generated code — the compiler is a Go program — so the tree carries a
@@ -4477,7 +4477,7 @@ import 'GraphdemoWire.dart';
 
 final report = TableWireReport();
 final scene = sceneWireLoad(bytes, report); // never throws on hostile bytes
-if (report.malformed || report.refused) {
+if (report.refused) {
   // drop it: report.reason names why (wire_damaged, unknown_form)
 } else {
   for (var node = scene.head; node != null; node = node.next) {
@@ -4582,7 +4582,7 @@ func main() {
     if !loaded.Init() { panic("builder allocation failed") }
     defer loaded.Shutdown()
     var report graphdemo.TableReport
-    if !graphdemo.SceneLoadBuilder(&loaded, wire, &report) || report.Malformed {
+    if !graphdemo.SceneLoadBuilder(&loaded, wire, &report) || report.Err() != nil {
         panic("load failed")
     }
     if !loaded.Lock() { panic("packing failed") }
@@ -4775,9 +4775,8 @@ rbuf.set(buf.subarray(0, bytes));                       // (copy exactly-sized r
 const ok = ReadShipCreateFlat(new DataView(rbuf.buffer), bytes * 8, out);
 ```
 
-Reads validate in every mode; writes fork checked/production once at module
-load on `NODE_ENV` (bundlers tree-shake the checked writer out of production
-bundles).
+Reads validate in every mode; writers check in every build. The flat tier
+emits one writer per type and does not select a variant with `NODE_ENV`.
 
 The **runtime tier** (`Wire.js` + [serialize.js](https://github.com/mas-bandwidth/serialize.js)
 streams) is the diagnostic and reference surface: sticky latched errors that

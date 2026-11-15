@@ -694,8 +694,7 @@ func (g *Gen) Slots(f *ir.Field) []Slot {
 }
 
 func typeWord(t ir.FieldType) string {
-	switch t.Kind {
-	case ir.TString:
+	if t.Kind == ir.TString {
 		return fmt.Sprintf("string(%d)", t.Size)
 	}
 	return fmt.Sprintf("bytes(%d)", t.Size)

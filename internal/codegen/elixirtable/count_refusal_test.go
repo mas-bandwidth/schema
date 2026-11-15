@@ -39,6 +39,7 @@ table Root {
 // named classification; retaining loads start with nonzero history and an
 // occupied store, and a refusal clears that store.
 func TestWireCountRefusalElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	files, probe := countRefusalProbe(t)
 	out, err := runArmProbe(t, elixirBinary(t), files, probe)
@@ -50,6 +51,7 @@ func TestWireCountRefusalElixir(t *testing.T) {
 // Removing only the cap check must turn the same tiny payloads into body-short
 // damage, and the native oracle must reject that loss of the named refusal.
 func TestWireCountRefusalElixirNegativeControl(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	files, probe := countRefusalProbe(t)
 	elixirPatch(t, files, "throw({:count_over_extent_cap, report})", "report")
@@ -240,6 +242,7 @@ IO.puts("count refusal, reports, retention, admission, body-short and bounded co
 // A count above the extent cap refuses the whole load in both readers,
 // plain and retaining, before any element lands.
 func TestWireCountBoundedRetainElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	schema := filepath.Join(t.TempDir(), "Count.schema")
 	if err := os.WriteFile(schema, []byte(countRefusalSchema), 0600); err != nil {
@@ -307,6 +310,7 @@ if Process.get(:failed,false),do: System.halt(1)
 // A list inside a pointered node record whose count exceeds the element slice's
 // byte floor must be refused by load_measure (-1), matching FileRegionMeasure.
 func TestNodeRecordListCountRefusalElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	u := loadDirUnit(t, filepath.Join("..", "..", "..", "tables", "lists"))
 	root := u.Tables["Sheet"]

@@ -575,11 +575,11 @@ static SCHEMA_UNUSED int benchtable_table_skip_framed( benchtable_table_reader_t
         case 12: return benchtable_table_skip_utf8( sub.buffer, (uint64_t) sub.size );
         case 31: return 1;
         case 32: return sub.size == 0;
-        case 13: return benchtable_table_skip_body( sub, nodes, depth, 0 ) == sub.size;
+        case 13: return depth < 128 && benchtable_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size;
         case 14: case 16:
         {
             benchtable_table_reader_t rr = sub;
-            return benchtable_table_skip_array( &rr, kind == 16, nodes, depth );
+            return depth < 128 && benchtable_table_skip_array( &rr, kind == 16, nodes, depth + 1 );
         }
         case 15: case 17: case 30:
         {
@@ -669,14 +669,17 @@ static SCHEMA_UNUSED int benchtable_table_skip_value( benchtable_table_reader_t 
             if ( !benchtable_table_reader_has( r, 1 ) ) { return 0; }
             arm_kind = benchtable_table_reader_get8( r );
             if ( !benchtable_table_reader_span( r, &arm ) ) { return 0; }
-            return benchtable_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            /* a union is a level when its arm is structural (§4) */
+            if ( arm_kind == 13 || arm_kind == 14 || arm_kind == 15 || arm_kind == 16 )
+            {
+                return depth < 128 && benchtable_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            }
+            return benchtable_table_skip_framed( arm, arm_kind, nodes, depth );
         }
         case 12: case 13: case 14: case 16: case 31: case 32:
         {
             benchtable_table_reader_t sub;
             if ( !benchtable_table_reader_span( r, &sub ) ) { return 0; }
-            if ( kind == 13 ) { return depth < 128 && benchtable_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size; }
-            if ( kind == 14 || kind == 16 ) { return depth < 128 && benchtable_table_skip_array( &sub, kind == 16, nodes, depth + 1 ); }
             return benchtable_table_skip_framed( sub, kind, nodes, depth );
         }
         default:
@@ -837,7 +840,8 @@ enum
     BENCHTABLE_K_TABLE_FIXED_CONST   = 5, /* a constant this reader's own storage takes: a remapped union tag */
     BENCHTABLE_K_TABLE_FIXED_WIDEN_F  = 6, /* f32 into f64, §4's float rung */
     BENCHTABLE_K_TABLE_FIXED_PRESENT = 7, /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
-    BENCHTABLE_K_TABLE_FIXED_BOOL    = 8  /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    BENCHTABLE_K_TABLE_FIXED_BOOL    = 8, /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    BENCHTABLE_K_TABLE_FIXED_PRESENT_DEFAULTS = 9 /* a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read) */
 };
 
 /* meta on a kTableFixedText entry */
@@ -1233,6 +1237,29 @@ static SCHEMA_UNUSED void benchtable_table_fixed_copy_le( uint8_t * dst, const u
     benchtable_table_fixed_copy_run( dst, src, size );
 }
 
+/* A STORE OF ONE PLAN OP'S VALUE INTO NATIVE STORAGE. On a little-endian host
+   the destination width's own word IS the value and stays one copy; on a
+   big-endian host the value's bytes are written most-significant first, so the
+   native word holds the value and a forced build holds the same byte image the
+   copy path writes. */
+static SCHEMA_UNUSED void benchtable_table_fixed_store_native( uint8_t * dst, uint64_t v, uint32_t size )
+{
+    if ( benchtable_table_fixed_big_endian_host )
+    {
+        uint32_t i;
+        for ( i = 0; i < size && i < 8; ++i ) { dst[i] = (uint8_t) ( v >> ( 8 * ( size - 1 - i ) ) ); }
+        return;
+    }
+    switch ( size )
+    {
+        case 1: { uint8_t t = (uint8_t) v; memcpy( dst, &t, 1 ); break; }
+        case 2: { uint16_t t = (uint16_t) v; memcpy( dst, &t, 2 ); break; }
+        case 4: { uint32_t t = (uint32_t) v; memcpy( dst, &t, 4 ); break; }
+        case 8: { uint64_t t = v; memcpy( dst, &t, 8 ); break; }
+        default: break;
+    }
+}
+
 /* ---- THE ONE READ LOOP -----------------------------------------------------
 
    A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -1246,7 +1273,7 @@ static SCHEMA_UNUSED void benchtable_table_fixed_copy_le( uint8_t * dst, const u
 static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void benchtable_table_fixed_apply( const benchtable_table_fixed_entry_t * p, const uint8_t * base,
                                                       const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                                       uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                                      int32_t * out_of_range, int32_t * widened, int32_t * damaged )
+                                                      int32_t * out_of_range, int32_t * widened, const uint8_t * defaults )
 {
     switch ( p->op )
     {
@@ -1257,16 +1284,15 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void benchtable_table_fixed_
         }
         case BENCHTABLE_K_TABLE_FIXED_BOOL:
         {
-            /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE, not a
-               value out of range: no writer emits one, so it is neither
-               stored verbatim nor normalised to 1
-               (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 2). The byte still
-               lands normalised here; table_fixed_run turns damaged into
-               the wire_damaged refusal and the load resets every record. */
+            /* A BOOL LANDS AS byte != 0. A BOOL OR PRESENT BYTE OTHER THAN 0
+               OR 1 IS WIRE DAMAGE, and it never reaches this loop: the load's
+               check pass refuses it wire_damaged before the first destination
+               byte is written (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 2), the
+               same pass the C++ reference runs. */
             uint8_t * d = dst + p->dst;
             const uint8_t * s = src + p->src;
             uint32_t i;
-            for ( i = 0; i < p->size; ++i ) { if ( s[i] > 1 ) { (*damaged)++; } d[i] = (uint8_t) ( s[i] != 0 ); }
+            for ( i = 0; i < p->size; ++i ) { d[i] = (uint8_t) ( s[i] != 0 ); }
             break;
         }
         case BENCHTABLE_K_TABLE_FIXED_COUNT:
@@ -1284,7 +1310,9 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void benchtable_table_fixed_
             if ( v < 0 ) { v = 0; (*out_of_range)++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*out_of_range)++; }
             memcpy( dst + p->dst, &v, 4 );
-            benchtable_table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
+            /* text is bytes, so an elem of 1: a raw copy on either host, through
+               the one wire-to-storage copy the bulk op takes too */
+            benchtable_table_fixed_copy_le( dst + p->aux, src + p->src + 4, p->size, 1 );
             if ( p->meta != BENCHTABLE_K_TABLE_FIXED_TEXT_BYTES )
             {
                 /* the used length terminates the buffer, whose storage is one
@@ -1313,7 +1341,7 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void benchtable_table_fixed_
                tests THIS reader's own top value — which a remapped 0 never
                trips, so the two never count the one event twice. */
             else if ( raw != 0 ) { (*out_of_range)++; }
-            memcpy( dst + p->dst, &v, p->dstsize );
+            benchtable_table_fixed_store_native( dst + p->dst, v, p->dstsize );
             break;
         }
         case BENCHTABLE_K_TABLE_FIXED_WIDEN:
@@ -1328,7 +1356,7 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void benchtable_table_fixed_
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            memcpy( dst + p->dst, &raw, p->dstsize );
+            benchtable_table_fixed_store_native( dst + p->dst, raw, p->dstsize );
             (*widened)++;
             break;
         }
@@ -1350,7 +1378,7 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void benchtable_table_fixed_
                bytes, and a memcpy of p->size out of the four-byte aux lane
                reads the member beside it (§4.5, §5.8 row 7). */
             const uint64_t lands = p->aux;
-            memcpy( dst + p->dst, &lands, p->size );
+            benchtable_table_fixed_store_native( dst + p->dst, lands, p->size );
             /* AN UNGUARDED None CONST WITH dstsize = THE WRITER'S ARM COUNT:
                a tag past that set lands None (already written) and COUNTS, so
                the compiled plan counts it exactly as the identity plan's bounds
@@ -1372,6 +1400,22 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void benchtable_table_fixed_
             dst[p->dst] = 1;
             break;
         }
+        case BENCHTABLE_K_TABLE_FIXED_PRESENT_DEFAULTS:
+        {
+            /* THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
+               the payload copy above laid the wire's bytes down; when the flag
+               is 0 those bytes are slack and never a value, so the reader
+               overwrites them with the caller's own Reset image. Aux is the
+               payload's storage offset and Size its storage bytes. A plain
+               memcpy and not the run mover: the mover's 32-byte moves let
+               GCC's array-bounds pass form offsets past a small Reset image
+               on a size branch no entry of this op reaches, and an absent
+               payload is the cold path. */
+            const uint8_t flag = (uint8_t) ( src[p->src] != 0 );
+            dst[p->dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p->aux, defaults + p->aux, p->size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -1384,14 +1428,14 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void benchtable_table_fixed_
 static SCHEMA_UNUSED void benchtable_table_fixed_run( const benchtable_table_fixed_entry_t * plan, int32_t count, int32_t guarded,
                                            const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                            uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                           benchtable_table_report_t * report, const benchtable_table_fixed_guard_link_t * guard_pool )
+                                           benchtable_table_report_t * report, const benchtable_table_fixed_guard_link_t * guard_pool,
+                                           const uint8_t * defaults )
 {
     /* THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
        through is a pointer the compiler must assume aliases the destination,
        and every store to a field would then reload it. */
     int32_t out_of_range = 0;
     int32_t widened = 0;
-    int32_t damaged = 0;
     int32_t i;
     /* THE ORDINAL REMAP TABLES RIDE ABOVE THE ENTRIES IN THE SAME STORAGE, so
        the plan's own base is the base an ordinal entry's aux is measured from.
@@ -1400,7 +1444,7 @@ static SCHEMA_UNUSED void benchtable_table_fixed_run( const benchtable_table_fix
        alias the plan the loop is reading. */
     for ( i = 0; i < guarded; ++i )
     {
-        benchtable_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
+        benchtable_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults );
     }
     for ( i = guarded; i < count; ++i )
     {
@@ -1423,13 +1467,17 @@ static SCHEMA_UNUSED void benchtable_table_fixed_run( const benchtable_table_fix
         }
         else
         {
-            if ( benchtable_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
+            /* A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+               the deferred present-defaults entry must follow the guarded
+               payload it overwrites, so it rides after the split although
+               it answers to no tag. Its guard lane is SCHEMA_TABLE_FIXED_NO_GUARD
+               and must never be read as an offset. */
+            if ( p->guard != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD && benchtable_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
             if ( p->guard2 != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD && benchtable_table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
         }
-        benchtable_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
+        benchtable_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults );
     }
-    if ( damaged != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; }
-    else if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
     report->widened += widened;
 }
 
@@ -1518,6 +1566,7 @@ static SCHEMA_UNUSED void benchtable_table_fixed_entry_lands( const benchtable_t
         case BENCHTABLE_K_TABLE_FIXED_WIDEN_F: lands[1] = e->dst + 8u; break;
         case BENCHTABLE_K_TABLE_FIXED_WIDEN:
         case BENCHTABLE_K_TABLE_FIXED_ORDINAL: lands[1] = e->dst + e->dstsize; break;
+        case BENCHTABLE_K_TABLE_FIXED_PRESENT_DEFAULTS: lands[1] = e->dst + 1u; break; /* the flag; the payload's own entries land it */
         default: lands[1] = e->dst + e->size; break; /* copy, const */
     }
 }
@@ -1967,8 +2016,14 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compiler_init( benchtable_table
 static SCHEMA_UNUSED void benchtable_table_fixed_push( benchtable_table_fixed_compiler_t * c, benchtable_table_fixed_entry_t e )
 {
     /* THE WALK RUNS TWICE and each pass keeps its own half, which is how the
-       plan comes out partitioned without a second array to partition it in. */
-    if ( ( e.guard != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { return; }
+       plan comes out partitioned without a second array to partition it in.
+       THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+       no tag: it must run AFTER the guarded payload entries it overwrites, or
+       an absent optional whose payload holds a union would read the wire's
+       residue back over the defaults (§3.4). The run loop applies a guardless
+       entry in the second half unconditionally. */
+    const int second_half = ( e.guard != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD ) || e.op == BENCHTABLE_K_TABLE_FIXED_PRESENT_DEFAULTS;
+    if ( second_half != c->want_guarded ) { return; }
     /* EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
        side's whole defence: the plan's source offsets are arithmetic over sizes
        a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -2144,10 +2199,18 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
         {
             case 35: /* the OPTIONAL wrapper: the present byte, then the payload whole */
             {
-                benchtable_table_fixed_entry_t e = benchtable_table_fixed_entry_zero();
-                e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = BENCHTABLE_K_TABLE_FIXED_BOOL; e.arg = arg;
-                benchtable_table_fixed_push( c, e );
+                /* THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+                   when it is 0, the DECLARED DEFAULTS over the payload's slack
+                   (§3.4: an absent optional's payload is IGNORED on read). The
+                   payload's storage starts at the child's own destination and
+                   runs to the present companion, which the reader's layout puts
+                   after it. */
+                const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+                const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
                 benchtable_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+                benchtable_table_fixed_entry_t e = benchtable_table_fixed_entry_zero();
+                e.src = their_at; e.dst = aux_at; e.aux = payload_dst; e.size = payload_size; e.guard = guard; e.op = BENCHTABLE_K_TABLE_FIXED_PRESENT_DEFAULTS; e.arg = arg;
+                benchtable_table_fixed_push( c, e );
                 break;
             }
             case 13: /* a nested table: match its fields */
@@ -3275,10 +3338,20 @@ static SCHEMA_UNUSED int benchtable_table_message_skip(benchtable_table_message_
    path. Past 128 is damaged, and 128 itself still skips. */
 static SCHEMA_UNUSED int benchtable_table_message_skip_body(benchtable_table_message_reader_t * r)
 {
+ uint8_t seen[512];
+ /* one bit a reference, as the file form's body skip keeps */
  if(r->skip_depth>128)return 0;
+ memset(seen,0,sizeof(seen));
  for(;;) {const benchtable_table_message_entry_t * entry;
+ int64_t ref;
   if(!benchtable_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
+  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
+     reference is bounded where the file form bounds it, so the bitset fits. */
+  ref=entry-r->vocabulary->entries+1;
+  if(ref<1||ref>4096)return 0;
+  if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))return 0;
+  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
   if(!benchtable_table_message_skip(r,entry))return 0;
  }
 }
@@ -3294,6 +3367,7 @@ static SCHEMA_UNUSED int benchtable_table_message_skip(benchtable_table_message_
 {
  uint64_t n,i;
  const benchtable_table_message_entry_t * entry;
+ const uint8_t * text;
  int saved,ok;
  if(r->skip_depth>128)return 0;
  switch(e->kind) {
@@ -3310,23 +3384,68 @@ static SCHEMA_UNUSED int benchtable_table_message_skip(benchtable_table_message_
   if(!benchtable_table_message_ref(r,&entry,0))return 0;
   return entry==NULL || (entry->kind!=0 && benchtable_table_message_skip_deeper(r,entry));
  case 12:
+  /* A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its length
+     is inside the announced bound and its bytes are well-formed UTF-8 with no
+     zero byte. table_wire_utf8 is the check a named read applies. */
   if(!benchtable_table_bit_get(&r->bits,&n,benchtable_table_bits_required(0,e->max))||!benchtable_table_bit_align_read(&r->bits))return 0;
-  return benchtable_table_message_skip_run(r,n,8);
+  if(n>(uint64_t)e->max || n>INT64_MAX/8 || !benchtable_table_bit_has(&r->bits,(int64_t)n*8))return 0;
+  text=r->bits.buffer+(r->bits.offset>>3);
+  if(!benchtable_table_wire_utf8(text,n))return 0;
+  r->bits.offset+=(int64_t)n*8;
+  return 1;
  case 31:
   if(!benchtable_table_bit_align_read(&r->bits)||!benchtable_table_bit_get(&r->bits,&n,32))return 0;
   return benchtable_table_message_skip_run(r,n,8);
+ case 10:
+  /* A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS COUNT
+     (§3.3): the same raw-bits rule a named float read applies. */
+  if(!benchtable_table_bit_get(&r->bits,&n,e->value_bits))return 0;
+  if(e->packing==2)return n<=(uint64_t)e->qcount;
+  return benchtable_table_bits_finite32((uint32_t)n);
+ case 11:
+  if(!benchtable_table_bit_get(&r->bits,&n,64))return 0;
+  return benchtable_table_bits_finite64(n);
  case 14:case 16: {
   benchtable_table_message_entry_t elem=benchtable_table_message_element(e);
   if(!benchtable_table_message_count(r,e,&n))return 0;
-  if(elem.value_bits>=0||elem.kind==0||elem.kind==32) {
-   int64_t width=elem.value_bits>0?elem.value_bits:0;
-   if(e->kind==16)width+=r->vocabulary->ref_bits;
-   return benchtable_table_message_skip_run(r,n,width);
+  /* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3). */
+  if(n>(uint64_t)e->max)return 0;
+  /* A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3). A float, a ranged or
+     a quantized element carries a value condition, so it is walked; a keyed
+     entry carries a key reference, so it is walked too. */
+  if(e->kind==14 && elem.kind!=13 && elem.kind!=15 && elem.kind!=17 && elem.kind!=30) {
+   if(elem.kind==0||elem.kind==32)return 1;
+   if(elem.value_bits>0 && elem.kind!=10 && elem.kind!=11 && elem.packing!=1 && elem.packing!=2)
+    return benchtable_table_message_skip_run(r,n,(int64_t)elem.value_bits);
   }
-  for(i=0;i<n;i++) {
-   if(e->kind==16 && !benchtable_table_message_ref(r,&entry,1))return 0;
-   if(!benchtable_table_message_skip_deeper(r,&elem))return 0;
-  }return 1;
+  {
+   uint8_t seen[512];
+   int64_t before;
+   /* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
+      REPEATS (§3.2, §3.3): the name reference and the bitset hold it. */
+   if(e->kind==16)memset(seen,0,sizeof(seen));
+   for(i=0;i<n;i++) {
+    before=r->bits.offset;
+    if(e->kind==16) {
+     int64_t key;
+     if(!benchtable_table_message_ref(r,&entry,1)||entry==NULL)return 0;
+     key=entry-r->vocabulary->entries+1;
+     if(key<1||key>4096)return 0;
+     if(seen[(key-1)>>3]&(uint8_t)(1u<<((key-1)&7)))return 0;
+     seen[(key-1)>>3]|=(uint8_t)(1u<<((key-1)&7));
+    }
+    /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
+       its own value conditions at the array body's level; only a string, a
+       table, a nested array or keyed body, a union or an enum is walked one
+       level deeper. */
+    if(elem.value_bits>=0 || elem.kind==0 || elem.kind==32) {
+     if(!benchtable_table_message_skip(r,&elem))return 0;
+    } else if(!benchtable_table_message_skip_deeper(r,&elem))return 0;
+    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). */
+    if(r->bits.offset==before)return 0;
+   }
+   return 1;
+  }
  }
  default:return e->value_bits>=0 && benchtable_table_bit_skip(&r->bits,e->value_bits);
  }
@@ -3376,6 +3495,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_message_open(benchtable_table_mess
  }
  if(buffer[0]!=2){report->refused=1;
  report->reason=SCHEMA_BENCHTABLE_TABLE_NEWER_FORM;
+ report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_UNKNOWN_FORM;
  return -1;
  }
  if(v==NULL || !v->announced){report->refused=1;
@@ -3930,6 +4050,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_benchtable_table_entity_write_admits_( const benchtable_table_entity_t * value );
 static SCHEMA_UNUSED int64_t benchtable_table_entity_measure( const benchtable_table_entity_t * value )
 {
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -4764,7 +4885,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_measure_messages(const benc
  w=benchtable_table_bit_writer(NULL,INT64_MAX);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!benchtable_table_entity_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!benchtable_table_entity_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_benchtable_table_entity_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  benchtable_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -4781,7 +4906,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_save_messages(const benchta
  w=benchtable_table_bit_writer(buffer,capacity);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!benchtable_table_entity_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!benchtable_table_entity_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_benchtable_table_entity_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  benchtable_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5150,6 +5279,7 @@ static SCHEMA_UNUSED int benchtable_table_stat_save_body( benchtable_table_write
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_benchtable_table_stat_write_admits_( const benchtable_table_stat_t * value );
 static SCHEMA_UNUSED int64_t benchtable_table_stat_measure( const benchtable_table_stat_t * value )
 {
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -5311,7 +5441,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_measure_messages(const bencht
  w=benchtable_table_bit_writer(NULL,INT64_MAX);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!benchtable_table_stat_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!benchtable_table_stat_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_benchtable_table_stat_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  benchtable_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5328,7 +5462,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_save_messages(const benchtabl
  w=benchtable_table_bit_writer(buffer,capacity);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!benchtable_table_stat_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!benchtable_table_stat_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_benchtable_table_stat_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  benchtable_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -5423,7 +5561,7 @@ static SCHEMA_UNUSED int benchtable_table_stat_load_messages(benchtable_table_st
 }
 static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_entities_( benchtable_table_writer_t * w, const benchtable_table_mixed_t * value, int64_t * element_sizes )
 {
-    if ( value->entities_count < 0 || value->entities_count > 8 ) { return 0; }
+    schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
     int32_t i;
     benchtable_table_writer_put8( w, 13 ); benchtable_table_writer_leb( w, (uint64_t) value->entities_count );
     for ( i = 0; i < value->entities_count; i++ )
@@ -5465,7 +5603,7 @@ static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_entities_( benchtabl
 
 static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_stats_( benchtable_table_writer_t * w, const benchtable_table_mixed_t * value, int64_t * element_sizes )
 {
-    if ( value->stats_count < 0 || value->stats_count > 80 ) { return 0; }
+    schema_assert( 0 <= value->stats_count && value->stats_count <= 80 );
     int32_t i;
     benchtable_table_writer_put8( w, 13 ); benchtable_table_writer_leb( w, (uint64_t) value->stats_count );
     for ( i = 0; i < value->stats_count; i++ )
@@ -5518,14 +5656,14 @@ static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_loadout_( benchtable
 
 static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_player_name_( benchtable_table_writer_t * w, const benchtable_table_mixed_t * value )
 {
-    if ( value->player_name_length < 0 || value->player_name_length > 15 ) { return 0; }
+    schema_assert( 0 <= value->player_name_length && value->player_name_length <= 15 );
     benchtable_table_writer_raw( w, value->player_name, value->player_name_length );
     return !w->overflow;
 }
 
 static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_payload_( benchtable_table_writer_t * w, const benchtable_table_mixed_t * value )
 {
-    if ( value->payload_length < 0 || value->payload_length > 16 ) { return 0; }
+    schema_assert( 0 <= value->payload_length && value->payload_length <= 16 );
     benchtable_table_writer_put8( w, 6 ); benchtable_table_writer_leb( w, (uint64_t) value->payload_length );
     benchtable_table_writer_raw( w, value->payload, value->payload_length );
     return !w->overflow;
@@ -5606,7 +5744,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         }
     }
     { /* entities */
-        if ( value->entities_count < 0 || value->entities_count > 8 ) { return 0; }
+        schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
         if ( value->entities_count > 0 )
         {
             benchtable_table_writer_header_at( w, 46, 0x935d0fb07bb3822aull, 14 );
@@ -5627,7 +5765,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         }
     }
     { /* stats */
-        if ( value->stats_count < 0 || value->stats_count > 80 ) { return 0; }
+        schema_assert( 0 <= value->stats_count && value->stats_count <= 80 );
         if ( value->stats_count > 0 )
         {
             benchtable_table_writer_header_at( w, 73, 0xee639cad45b1994cull, 14 );
@@ -5676,7 +5814,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         }
     }
     { /* player_name */
-        if ( value->player_name_length < 0 || value->player_name_length > 15 ) { return 0; }
+        schema_assert( 0 <= value->player_name_length && value->player_name_length <= 15 );
         if ( value->player_name_length != 0 )
         {
             benchtable_table_writer_header_at( w, 7, 0x13a62f542cf8e86eull, 12 );
@@ -5696,7 +5834,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         }
     }
     { /* payload */
-        if ( value->payload_length < 0 || value->payload_length > 16 ) { return 0; }
+        schema_assert( 0 <= value->payload_length && value->payload_length <= 16 );
         if ( value->payload_length != 0 )
         {
             benchtable_table_writer_header_at( w, 67, 0xcfb8a9d063b5e9e5ull, 14 );
@@ -5809,6 +5947,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_benchtable_table_mixed_write_admits_( const benchtable_table_mixed_t * value );
 static SCHEMA_UNUSED int64_t benchtable_table_mixed_measure( const benchtable_table_mixed_t * value )
 {
     benchtable_table_write_ids_t vocabulary; benchtable_table_writer_t w = benchtable_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -7080,10 +7219,10 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_message_body(benchtable_tab
  }
  }
  { /* entities */
- if(value->entities_count<0 || value->entities_count>8) return 0;
+ schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
  if(value->entities_count>0) {
   benchtable_table_bit_put(w,31,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->entities_count<0 || value->entities_count>8) return 0;
+  schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
   benchtable_table_bit_put(w,(uint64_t)value->entities_count-1,3);
   { int32_t i;
   for(i=0;i<value->entities_count;i++) {
@@ -7092,10 +7231,10 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_message_body(benchtable_tab
  }
  }
  { /* stats */
- if(value->stats_count<0 || value->stats_count>80) return 0;
+ schema_assert( 0 <= value->stats_count && value->stats_count <= 80 );
  if(value->stats_count>0) {
   benchtable_table_bit_put(w,32,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->stats_count<0 || value->stats_count>80) return 0;
+  schema_assert( 0 <= value->stats_count && value->stats_count <= 80 );
   benchtable_table_bit_put(w,(uint64_t)value->stats_count-0,7);
   { int32_t i;
   for(i=0;i<value->stats_count;i++) {
@@ -7117,7 +7256,6 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_message_body(benchtable_tab
  } }
  if(rides) {
   benchtable_table_bit_put(w,34,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(4<0 || 4>4) return 0;
   benchtable_table_bit_put(w,(uint64_t)4-4,0);
   benchtable_table_bit_align_write(w);
   { int32_t i;
@@ -7127,20 +7265,20 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_message_body(benchtable_tab
  }
  }
  { /* player_name */
- if(value->player_name_length<0 || value->player_name_length>15) return 0;
+ schema_assert( 0 <= value->player_name_length && value->player_name_length <= 15 );
  if(value->player_name_length != 0) {
   benchtable_table_bit_put(w,35,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->player_name_length<0 || value->player_name_length>15) return 0;
+  schema_assert( 0 <= value->player_name_length && value->player_name_length <= 15 );
   benchtable_table_bit_put(w,(uint64_t)value->player_name_length,4);
   benchtable_table_bit_align_write(w);
   benchtable_table_bit_putbytes(w,value->player_name,value->player_name_length);
  }
  }
  { /* payload */
- if(value->payload_length<0 || value->payload_length>16) return 0;
+ schema_assert( 0 <= value->payload_length && value->payload_length <= 16 );
  if(value->payload_length != 0) {
   benchtable_table_bit_put(w,36,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->payload_length<0 || value->payload_length>16) return 0;
+  schema_assert( 0 <= value->payload_length && value->payload_length <= 16 );
   benchtable_table_bit_put(w,(uint64_t)value->payload_length,5);
   benchtable_table_bit_align_write(w);
   benchtable_table_bit_putbytes(w,value->payload,value->payload_length);
@@ -7245,7 +7383,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_measure_messages(const bench
  w=benchtable_table_bit_writer(NULL,INT64_MAX);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!benchtable_table_mixed_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!benchtable_table_mixed_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_benchtable_table_mixed_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  benchtable_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -7262,7 +7404,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_save_messages(const benchtab
  w=benchtable_table_bit_writer(buffer,capacity);
  benchtable_table_bit_put(&w,2,8);
  benchtable_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!benchtable_table_mixed_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!benchtable_table_mixed_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_benchtable_table_mixed_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  benchtable_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -9387,6 +9533,130 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     (*out_of_range) += (int) ( value->idle_ticks < 0 ) | (int) ( value->idle_ticks > 15 );
 }
 
+/* TableEntity's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_entity_fixed_write_check_body_( const benchtable_table_entity_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(12) width clamp */
+    (*out_of_range) += ( value->entity_id > 4095ull );
+    (*out_of_range) += (int) ( value->pos_x < -16383 ) | (int) ( value->pos_x > 16383 );
+    (*out_of_range) += (int) ( value->pos_y < -16383 ) | (int) ( value->pos_y > 16383 );
+    (*out_of_range) += (int) ( value->pos_z < -16383 ) | (int) ( value->pos_z > 16383 );
+    /* bits(9) width clamp */
+    (*out_of_range) += ( value->yaw > 511ull );
+    /* bits(9) width clamp */
+    (*out_of_range) += ( value->pitch > 511ull );
+    (*out_of_range) += (int) ( value->vel_x < -2048 ) | (int) ( value->vel_x > 2047 );
+    (*out_of_range) += (int) ( value->vel_y < -2048 ) | (int) ( value->vel_y > 2047 );
+    (*out_of_range) += (int) ( value->vel_z < -2048 ) | (int) ( value->vel_z > 2047 );
+    (*out_of_range) += (int) ( value->health < 0 ) | (int) ( value->health > 1000 );
+    if ( (uint64_t) value->weapon > 15u ) { (*out_of_range)++; }
+}
+
+/* TableStat's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_stat_fixed_write_check_body_( const benchtable_table_stat_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(8) width clamp */
+    (*out_of_range) += ( value->stat_id > 255ull );
+    (*out_of_range) += (int) ( value->delta < -512 ) | (int) ( value->delta > 511 );
+}
+
+/* TableHitEvent's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_hit_event_fixed_write_check_body_( const benchtable_table_hit_event_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(12) width clamp */
+    (*out_of_range) += ( value->target_id > 4095ull );
+    (*out_of_range) += (int) ( value->damage < 0 ) | (int) ( value->damage > 4095 );
+    (*out_of_range) += (int) ( value->hit_kind < 0 ) | (int) ( value->hit_kind > 7 );
+}
+
+/* TableChatEvent's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_chat_event_fixed_write_check_body_( const benchtable_table_chat_event_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    (*out_of_range) += (int) ( value->channel < 0 ) | (int) ( value->channel > 3 );
+    /* bits(12) width clamp */
+    (*out_of_range) += ( value->speaker > 4095ull );
+}
+
+/* TablePickupEvent's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_pickup_event_fixed_write_check_body_( const benchtable_table_pickup_event_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(10) width clamp */
+    (*out_of_range) += ( value->item_id > 1023ull );
+    (*out_of_range) += (int) ( value->amount < 0 ) | (int) ( value->amount > 255 );
+}
+
+/* TableMixed's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_mixed_fixed_write_check_body_( const benchtable_table_mixed_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    /* bits(16) width clamp */
+    (*out_of_range) += ( value->sequence > 65535ull );
+    (*out_of_range) += (int) ( value->ack_sequence < 0 ) | (int) ( value->ack_sequence > 65535 );
+    (*out_of_range) += (int) ( value->nonce < 1ull ) | (int) ( value->nonce > 9223372036854775807ull );
+    (*out_of_range) += (int) ( value->world_time < -1000000000000ll ) | (int) ( value->world_time > 1000000000000ll );
+    /* bits(48) width clamp */
+    (*out_of_range) += ( value->frame_tick > 281474976710655ull );
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->entities_count >= 0 && value->entities_count <= 8 ? (int64_t) value->entities_count : 0 ); ++i )
+        {
+            schema_benchtable_table_entity_fixed_write_check_body_( &value->entities[i], out_of_range, damaged );
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->stats_count >= 0 && value->stats_count <= 80 ? (int64_t) value->stats_count : 0 ); ++i )
+        {
+            schema_benchtable_table_stat_fixed_write_check_body_( &value->stats[i], out_of_range, damaged );
+        }
+    }
+    if ( (uint32_t) value->game_event.type > 3u ) { (*out_of_range)++; }
+    switch ( value->game_event.type )
+    {
+        case BENCHTABLE_TABLE_EVENT_TYPE_HIT:
+        {
+            schema_benchtable_table_hit_event_fixed_write_check_body_( &value->game_event.as.hit, out_of_range, damaged );
+            break;
+        }
+        case BENCHTABLE_TABLE_EVENT_TYPE_CHAT:
+        {
+            schema_benchtable_table_chat_event_fixed_write_check_body_( &value->game_event.as.chat, out_of_range, damaged );
+            break;
+        }
+        case BENCHTABLE_TABLE_EVENT_TYPE_PICKUP:
+        {
+            schema_benchtable_table_pickup_event_fixed_write_check_body_( &value->game_event.as.pickup, out_of_range, damaged );
+            break;
+        }
+        default: break;
+    }
+    if ( value->player_name_length >= 0 && value->player_name_length <= 15 && !benchtable_table_wire_utf8( (const uint8_t *) value->player_name, (uint64_t) value->player_name_length ) )
+    {
+        (*damaged)++;
+    }
+    (*out_of_range) += (int) ( value->flux < -1000000000000000000ll ) | (int) ( value->flux > 1000000000000000000ll );
+    /* bits(24) width clamp */
+    (*out_of_range) += ( value->crc_hint > 16777215ull );
+    (*out_of_range) += (int) ( value->extra < 0 ) | (int) ( value->extra > 255 );
+    (*out_of_range) += (int) ( value->idle_ticks < 0 ) | (int) ( value->idle_ticks > 15 );
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value TableEntity holds is
+   one its declaration admits. Every writer of TableEntity asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_benchtable_table_entity_write_admits_( const benchtable_table_entity_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_benchtable_table_entity_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -9499,8 +9769,9 @@ static SCHEMA_UNUSED const benchtable_table_fixed_dst_t benchtable_table_entity_
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_entity_fixed_plan[] = {
     { 0u, 0u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* entity_id */
     { 4u, 4u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* entity_id */
@@ -9565,6 +9836,14 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_save( const benchtabl
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+       the header and layout are never written with no record behind them, and
+       an empty batch is the programmer's error, held as a debug assert (§5.1). */
+    schema_assert( count > 0 );
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_benchtable_table_entity_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     memset( buffer, 0, (size_t) BENCHTABLE_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BENCHTABLE_K_TABLE_FIXED_FORM;
     benchtable_table_fixed_put64( buffer + BENCHTABLE_K_TABLE_FIXED_HASH_AT, benchtable_table_entity_fixed_hash );
@@ -9671,10 +9950,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_tabl
     { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = benchtable_table_entity_fixed_known[pick].record_bytes;
-    /* 9 and 10. the tail must be whole records, and they must fit the caller. */
+    /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
+       whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - BENCHTABLE_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -9682,6 +9962,8 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_tabl
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -9691,8 +9973,50 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_tabl
     {
         int32_t rec_widened = report->widened;
         if ( benchtable_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const benchtable_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != BENCHTABLE_K_TABLE_FIXED_BOOL && p->op != BENCHTABLE_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const benchtable_table_fixed_guard_link_t * l = ( const benchtable_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( benchtable_table_fixed_guard_link_t ) );
+                            if ( benchtable_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD && benchtable_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD && benchtable_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == BENCHTABLE_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { benchtable_table_entity_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { benchtable_table_entity_reset( values + j ); } return -1; }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
@@ -9711,6 +10035,17 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_tabl
     report->unknown += census_unknown;
     if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { benchtable_table_entity_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value TableStat holds is
+   one its declaration admits. Every writer of TableStat asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_benchtable_table_stat_write_admits_( const benchtable_table_stat_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_benchtable_table_stat_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -9769,8 +10104,9 @@ static SCHEMA_UNUSED const benchtable_table_fixed_dst_t benchtable_table_stat_fi
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_stat_fixed_plan[] = {
     { 0u, 0u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* stat_id */
     { 4u, 4u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* stat_id */
@@ -9823,6 +10159,14 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_save( const benchtable_
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+       the header and layout are never written with no record behind them, and
+       an empty batch is the programmer's error, held as a debug assert (§5.1). */
+    schema_assert( count > 0 );
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_benchtable_table_stat_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     memset( buffer, 0, (size_t) BENCHTABLE_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BENCHTABLE_K_TABLE_FIXED_FORM;
     benchtable_table_fixed_put64( buffer + BENCHTABLE_K_TABLE_FIXED_HASH_AT, benchtable_table_stat_fixed_hash );
@@ -9929,10 +10273,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_
     { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = benchtable_table_stat_fixed_known[pick].record_bytes;
-    /* 9 and 10. the tail must be whole records, and they must fit the caller. */
+    /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
+       whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - BENCHTABLE_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -9940,6 +10285,8 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -9949,8 +10296,50 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_
     {
         int32_t rec_widened = report->widened;
         if ( benchtable_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const benchtable_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != BENCHTABLE_K_TABLE_FIXED_BOOL && p->op != BENCHTABLE_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const benchtable_table_fixed_guard_link_t * l = ( const benchtable_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( benchtable_table_fixed_guard_link_t ) );
+                            if ( benchtable_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD && benchtable_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD && benchtable_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == BENCHTABLE_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { benchtable_table_stat_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { benchtable_table_stat_reset( values + j ); } return -1; }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
@@ -9969,6 +10358,17 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_
     report->unknown += census_unknown;
     if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { benchtable_table_stat_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value TableMixed holds is
+   one its declaration admits. Every writer of TableMixed asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_benchtable_table_mixed_write_admits_( const benchtable_table_mixed_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_benchtable_table_mixed_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -10175,8 +10575,9 @@ static SCHEMA_UNUSED const benchtable_table_fixed_dst_t benchtable_table_mixed_f
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_mixed_fixed_plan[] = {
     { 0u, 0u, 2u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* protocol_magic */
     { 2u, 4u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* sequence */
@@ -10550,6 +10951,14 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_save( const benchtable
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+       the header and layout are never written with no record behind them, and
+       an empty batch is the programmer's error, held as a debug assert (§5.1). */
+    schema_assert( count > 0 );
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_benchtable_table_mixed_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_benchtable_table_mixed_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
@@ -10661,10 +11070,11 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
     { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = benchtable_table_mixed_fixed_known[pick].record_bytes;
-    /* 9 and 10. the tail must be whole records, and they must fit the caller. */
+    /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
+       whole records, and they must fit the caller. */
     at = layout + layout_bytes;
     rest = bytes - BENCHTABLE_K_TABLE_FIXED_HEADER_BYTES - 4 - (int64_t) layout_bytes;
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
@@ -10672,6 +11082,8 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
        record, and only where there is a range to prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
+    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
+       absent payload reads as this Reset image, never as the wire's slack. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -10682,8 +11094,50 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
     {
         int32_t rec_widened = report->widened;
         if ( benchtable_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_NO_LAYOUT; return -1; }
+        /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
+           refused in this check pass before any byte of the record lands. */
+        {
+            int32_t i;
+            for ( i = 0; i < entry_count; ++i )
+            {
+                const benchtable_table_fixed_entry_t * p = &entries[i];
+                uint32_t bool_bytes, b;
+                if ( p->op != BENCHTABLE_K_TABLE_FIXED_BOOL && p->op != BENCHTABLE_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                if ( i >= entry_guarded )
+                {
+                    if ( p->guard_count > 0 )
+                    {
+                        int matches = 1;
+                        uint32_t j;
+                        for ( j = 0; j < p->guard_count; ++j )
+                        {
+                            const benchtable_table_fixed_guard_link_t * l = ( const benchtable_table_fixed_guard_link_t * ) ( const void * )
+                                ( ( const uint8_t * ) entry_guards + p->guard_index + j * (uint32_t) sizeof( benchtable_table_fixed_guard_link_t ) );
+                            if ( benchtable_table_fixed_tag_at( at + 8, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
+                        }
+                        if ( !matches ) { continue; }
+                    }
+                    else
+                    {
+                        if ( p->guard != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD && benchtable_table_fixed_tag_at( at + 8, p->guard, p->argw ) != p->arg ) { continue; }
+                        if ( p->guard2 != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD && benchtable_table_fixed_tag_at( at + 8, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
+                    }
+                }
+                bool_bytes = ( p->op == BENCHTABLE_K_TABLE_FIXED_BOOL ) ? p->size : 1u;
+                for ( b = 0; b < bool_bytes; ++b )
+                {
+                    if ( ( at + 8 )[p->src + b] > 1u )
+                    {
+                        int64_t j;
+                        for ( j = 0; j < k; ++j ) { benchtable_table_mixed_reset( values + j ); }
+                        memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
+                        return -1;
+                    }
+                }
+            }
+        }
         benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { benchtable_table_mixed_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
@@ -10917,11 +11371,11 @@ static SCHEMA_UNUSED int schema_benchtable_table_mixed_body_pack_(struct benchta
     benchtable_table_cook_put(at+40,(uint64_t)value->world_time,8,order);
     benchtable_table_cook_put(at+48,(uint64_t)value->frame_tick,8,order);
     { uint32_t bits; memcpy(&bits,&value->server_time,4); if(!benchtable_table_bits_finite32(bits)) { return 0; } benchtable_table_cook_put(at+56,bits,4,order); }
-    { int32_t cook_i1; for(cook_i1=0;cook_i1<8;cook_i1++) {
+    { int32_t cook_i1; for(cook_i1=0;cook_i1<value->entities_count && cook_i1<8;cook_i1++) {
         if(!schema_benchtable_table_entity_body_pack_(n,at+64+cook_i1*64,&value->entities[cook_i1],order)) { return 0; }
     } }
     benchtable_table_cook_put(at+64+512,(uint32_t)value->entities_count,4,order);
-    { int32_t cook_i2; for(cook_i2=0;cook_i2<80;cook_i2++) {
+    { int32_t cook_i2; for(cook_i2=0;cook_i2<value->stats_count && cook_i2<80;cook_i2++) {
         if(!schema_benchtable_table_stat_body_pack_(n,at+580+cook_i2*8,&value->stats[cook_i2],order)) { return 0; }
     } }
     benchtable_table_cook_put(at+580+640,(uint32_t)value->stats_count,4,order);

@@ -23,6 +23,12 @@ const depthBoundarySchema = `package depthprobe
 fixed table Root {
 	a int32
 }
+
+fixed table ZExtra {
+	b int32
+	c int32
+	d int32
+}
 `
 
 type depthBoundaryCase struct {
@@ -229,6 +235,7 @@ func runJavaDepthBoundaryProbe(t *testing.T, u *ir.Unit, ann []byte, cases []dep
 	var names []string
 	for name := range files {
 		keep := name == "TableFixed.java" ||
+			name == "TableVariable.java" ||
 			name == "TableVocabulary.java" ||
 			name == "TableMessage.java" ||
 			strings.HasSuffix(name, "Fixed.java") ||

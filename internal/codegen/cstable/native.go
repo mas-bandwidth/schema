@@ -91,7 +91,7 @@ const tableNativeSource = `
         public void Put(long at, UInt128 raw, int width)
         {
             if (Measure) { return; }
-            for (int i = 0; i < width; i++) { Bytes[checked((int)(Base + at + (Big ? width - 1 - i : i)))] = (byte)(raw >> (i * 8)); }
+            for (int i = 0; i < width; i++) { Bytes[checked((int)(Base + at + (Big ? width - 1 - i : i)))] = unchecked((byte)(raw >> (i * 8))); }
         }
         public void Raw(long at, ReadOnlySpan<byte> bytes)
         { if (!Measure) { bytes.CopyTo(Bytes.Slice(checked((int)(Base + at)))); } }
@@ -107,13 +107,13 @@ const tableNativeSource = `
         long at = record + f.NativeOffset;
         if (f.Optional) { w.Put(record + f.NativePresentOffset, f.GetPresent(value) ? 1u : 0u, 1); }
         int live = f.Counted ? f.GetCount(value) : f.IsArray ? f.ArrayBound : 1;
-        if (live < 0 || f.Counted && live > f.ArrayBound) { return false; }
+        System.Diagnostics.Debug.Assert(live >= 0 && (!f.Counted || live <= f.ArrayBound));
         if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
-        if(f.Unbounded)
+        if (f.Unbounded)
         {
-            if(live==0){w.Put(at,0,8);return true;}
-            extent=Align(extent,8);long start=extentAt+extent;extent+=Align(9L+live,8);
-            w.Put(at,unchecked((ulong)(start-at)),8);w.Put(start,(uint)live,4);w.Raw(start+8,f.GetBuffer(value).AsSpan(0,live));return true;
+            if (live == 0) { w.Put(at, 0, 8); return true; }
+            extent = Align(extent, 8); long start = extentAt + extent; extent += Align(9L + live, 8);
+            w.Put(at, unchecked((ulong)(start - at)), 8); w.Put(start, (uint)live, 4); w.Raw(start + 8, f.GetBuffer(value).AsSpan(0, live)); return true;
         }
         if (f.Kind == 12 && !f.TextList)
         { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }
@@ -206,14 +206,14 @@ const tableNativeSource = `
     { foreach (TableFieldInfo f in type.Fields) { if (!NativeExtentSize(value, f, ref at)) { return false; } } return true; }
     static bool NativeExtentSize(object value, TableFieldInfo f, ref long at)
     {
-        if(f.Unbounded){int length=f.GetCount(value);if(length<0||length>f.GetBuffer(value).Length){return false;}if(length>0){at=Align(at,8)+Align(9L+length,8);}return true;}
+        if (f.Unbounded) { int length = f.GetCount(value); System.Diagnostics.Debug.Assert(length >= 0 && length <= f.GetBuffer(value).Length); if (length > 0) { at = Align(at, 8) + Align(9L + length, 8); } return true; }
         if (f.Dynamic)
         {
-            int count = f.GetCount(value); if (count < 0) { return false; }
+            int count = f.GetCount(value); System.Diagnostics.Debug.Assert(count >= 0);
             at = Align(at, f.StorageAlign) + (long)count * f.StorageSize;
         }
         int n = f.IsArray ? Count(value, f) : 1;
-        if (n < 0 || n > f.ArrayBound && f.IsArray) { return false; }
+        System.Diagnostics.Debug.Assert(n >= 0 && (!f.IsArray || n <= f.ArrayBound));
         for (int i = 0; i < n; i++)
         {
             if (f.Kind == 13 || f.TextList) { if (!NativeExtentSize(f.GetChild(value, i), f.Table, ref at)) { return false; } }

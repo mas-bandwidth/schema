@@ -149,7 +149,7 @@ func t07C14(t *testing.T) {
 	body := t07Filter(t, out)
 	t07Has(t, body, "root_tiers_fixed_list(_bin, 0, c, m), do: {[], c, m}", "C14 the identity walk stops at the count")
 	t07Has(t, body, "R.past(c, f_e_0, 2)", "C14 an enum ordinal's bound runs only over live elements")
-	t07Has(t, body, "c = if(p_opt != 0, do: c_opt, else: c)", "C14 an optional's payload is held to a bound only when present")
+	t07Has(t, body, "c = if(p_opt, do: c_opt, else: c)", "C14 an optional's payload is held to a bound only when present")
 }
 
 // ---- elixir/W4 --------------------------------------------------------------
@@ -202,7 +202,7 @@ func t07W1(t *testing.T) {
 		t.Fatalf("W1: Generate: %v", err)
 	}
 	body := t07Filter(t, out)
-	t07Has(t, body, "0::size(R.text_slack(v_name, 8))-unit(8)", "W1 a short string pads its slack with zeros")
+	t07Has(t, body, "0::size(R.string_slack(v_name, 8))-unit(8)", "W1 a short string pads its slack with zeros")
 	t07Has(t, body, "0::size((4 - n_tiers) * 1)-unit(8)", "W1 a short counted array pads its unused slots with zeros")
 	t07Has(t, body, "0::size(8)-unit(8)", "W1 a union's unnamed arm is zeros at the widest width")
 }

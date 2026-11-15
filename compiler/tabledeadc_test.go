@@ -105,6 +105,7 @@ func compileAndRunC(t *testing.T, u *ir.Unit, mainSource string) {
 // probes emits zero check_default symbols across both header and source,
 // and that the resulting codecs compile and execute cleanly.
 func TestCTableDeadCheckDefault_Unprobed(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, deadCUnprobedSrc)
 	files, err := generateCUnqualified(u)
 	if err != nil {
