@@ -65,24 +65,39 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
                 byte[] data = System.IO.File.ReadAllBytes(System.IO.Path.Combine(corpus, f));
                 @TABLE@[] back = new @TABLE@[1];
                 back[0] = new @TABLE@();
-                // THE DESTINATION IS POISONED: a refusal must leave every one
-                // of these fields alone, including the absent optional's
-                // payload, which is dead and never a value to land.
+                // THE DESTINATION IS POISONED IN EVERY MEMBER AND EVERY
+                // ELEMENT: a refusal must leave the COMPLETE value alone,
+                // including the absent optional's payload, which is dead and
+                // never a value to land.
                 back[0].OptPresent = true;
                 back[0].Opt.N = 0x5A5A5A5A;
+                for (int i = 0; i < back[0].Opt.Label.Length; ++i) { back[0].Opt.Label[i] = (byte)(0xA0 + i); }
                 back[0].Opt.LabelLength = 3;
+                back[0].Opt.Heat = 123.5f;
+                back[0].Opt.Flag = true;
+                back[0].Opt.Kind = DeadKind.Gamma;
+                for (int i = 0; i < back[0].Opt.Nums.Length; ++i) { back[0].Opt.Nums[i] = (short)(100 + i); }
+                back[0].Opt.NumsCount = 2;
                 back[0].Opt.ChildPresent = true;
                 back[0].Opt.Child = 0x5A5A5A5A;
+                for (int i = 0; i < back[0].Arr.Length; ++i) { back[0].Arr[i] = (short)(200 + i); }
                 back[0].ArrCount = 2;
-                back[0].Arr[0] = 1234;
+                for (int i = 0; i < back[0].Objs.Length; ++i)
+                {
+                    back[0].Objs[i].X = 300 + i;
+                    back[0].Objs[i].Y = 400 + i;
+                }
                 back[0].ObjsCount = 2;
-                back[0].Objs[0].X = 4321;
+                for (int i = 0; i < back[0].Text.Length; ++i) { back[0].Text[i] = (byte)(65 + i); }
                 back[0].TextLength = 3;
-                back[0].Text[0] = 65;
+                for (int i = 0; i < back[0].Blob.Length; ++i) { back[0].Blob[i] = (byte)(90 + i); }
                 back[0].BlobLength = 2;
-                back[0].Blob[0] = 66;
-                back[0].Pick.Type = DeadPickType.Narrow;
+                back[0].Pick.Type = DeadPickType.Wide;
                 back[0].Pick.Narrow = 7;
+                back[0].Pick.Wide.A = 501;
+                back[0].Pick.Wide.B = 502;
+                back[0].Pick.Wide.C = 503;
+                string before = DestinationSnapshot.Take(back[0]);
                 TableReport r = new TableReport();
                 TableFixedEntry[] plan = new TableFixedEntry[8192];
                 long n = Schema.@TABLE@FixedLoad(back, data, plan, r);
@@ -107,21 +122,17 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
                     {
                         bad += ProbeLog.Fail(@NAME@, f + ": a non-zero dead byte must refuse the whole load: n=" + n + " verdict=" + r.Verdict + " reason=" + r.Reason);
                     }
-                    if (!(back[0].OptPresent && back[0].Opt.N == 0x5A5A5A5A && back[0].Opt.LabelLength == 3
-                          && back[0].Opt.ChildPresent && back[0].Opt.Child == 0x5A5A5A5A
-                          && back[0].ArrCount == 2 && back[0].Arr[0] == 1234
-                          && back[0].ObjsCount == 2 && back[0].Objs[0].X == 4321
-                          && back[0].TextLength == 3 && back[0].Text[0] == 65
-                          && back[0].BlobLength == 2 && back[0].Blob[0] == 66
-                          && back[0].Pick.Type == DeadPickType.Narrow && back[0].Pick.Narrow == 7))
+                    string after = DestinationSnapshot.Take(back[0]);
+                    if (after != before)
                     {
-                        bad += ProbeLog.Fail(@NAME@, f + ": a refusal wrote the caller's destination");
+                        bad += ProbeLog.Fail(@NAME@, f + ": a refusal wrote the caller's destination: " + before + " -> " + after);
                     }
                 }
             }
 `)
 
 	src := fmt.Sprintf(`using System;
+using System.Reflection;
 
 static class ProbeLog
 {
@@ -129,6 +140,67 @@ static class ProbeLog
     {
         Console.WriteLine("ROW " + row + ": FAILED " + what);
         return 1;
+    }
+}
+
+// DestinationSnapshot writes every public field of a destination value,
+// recursively through arrays and nested objects, so a refusal is held to the
+// COMPLETE value rather than a handpicked member list.
+static class DestinationSnapshot
+{
+    public static string Take(object value)
+    {
+        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+        Write(sb, value);
+        return sb.ToString();
+    }
+
+    private static void Write(System.Text.StringBuilder sb, object value)
+    {
+        if (value == null) { sb.Append("null"); return; }
+        Type t = value.GetType();
+        Array a = value as Array;
+        if (a != null)
+        {
+            sb.Append('[').Append(a.Length).Append(':');
+            for (int i = 0; i < a.Length; ++i)
+            {
+                if (i != 0) { sb.Append(','); }
+                Write(sb, a.GetValue(i));
+            }
+            sb.Append(']');
+            return;
+        }
+        if (t.IsEnum)
+        {
+            sb.Append(Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture));
+            return;
+        }
+        if (value is float f)
+        {
+            sb.Append(BitConverter.SingleToInt32Bits(f));
+            return;
+        }
+        if (value is double d)
+        {
+            sb.Append(BitConverter.DoubleToInt64Bits(d));
+            return;
+        }
+        if (t.IsPrimitive || value is string || value is decimal)
+        {
+            sb.Append(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture));
+            return;
+        }
+        sb.Append(t.FullName).Append('{');
+        FieldInfo[] fields = t.GetFields(BindingFlags.Public | BindingFlags.Instance);
+        Array.Sort(fields, (x, y) => string.CompareOrdinal(x.Name, y.Name));
+        for (int i = 0; i < fields.Length; ++i)
+        {
+            if (i != 0) { sb.Append(','); }
+            sb.Append(fields[i].Name).Append('=');
+            Write(sb, fields[i].GetValue(value));
+        }
+        sb.Append('}');
     }
 }
 
