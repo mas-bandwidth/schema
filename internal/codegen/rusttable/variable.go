@@ -739,7 +739,7 @@ impl TableNodeReader {
             14 => {
                 if depth + 1 > BINARY_MAX_DEPTH || content.len() < 2 { report.damaged = true; return; }
                 let ek = content[0];
-                if matches!(ek, 16 | 32) { report.damaged = true; return; }
+                if !table_array_element_kind_allowed(ek) { report.damaged = true; return; }
                 off = 1;
                 let Some(count) = leb_read(content, &mut off) else { report.damaged = true; return; };
                 if count > 0x7fffffff { let _ = self.refuse_count(report); return; }
@@ -754,7 +754,7 @@ impl TableNodeReader {
             16 => {
                 if depth + 1 > BINARY_MAX_DEPTH || content.len() < 2 { report.damaged = true; return; }
                 let ek = content[0];
-                if matches!(ek, 14 | 12 | 31 | 32) { report.damaged = true; return; }
+                if !table_keyed_element_kind_allowed(ek) { report.damaged = true; return; }
                 off = 1;
                 let Some(count) = leb_read(content, &mut off) else { report.damaged = true; return; };
                 if count > 0x7fffffff { let _ = self.refuse_count(report); return; }
@@ -894,6 +894,19 @@ pub fn table_kind_width(kind: u8) -> usize {
         18 | 19 | 24 | 29 => 16,
         _ => 0,
     }
+}
+
+/// THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body (kind
+/// 14) opens with 1–13, 15, 17 or 18–30; an enum-keyed body (kind 16) opens
+/// with 1–11, 13 or 18–30. Any other element kind is damage under ANY count,
+/// a count of 0 included, in a declared field and in an unknown one alike, so
+/// the header byte is judged before any comparison with the declaration.
+pub fn table_array_element_kind_allowed(kind: u8) -> bool {
+    matches!(kind, 1..=13 | 15 | 17 | 18..=30)
+}
+
+pub fn table_keyed_element_kind_allowed(kind: u8) -> bool {
+    matches!(kind, 1..=11 | 13 | 18..=30)
 }
 
 /// Whether a payload under kind decodes EXACTLY into a field declared at
