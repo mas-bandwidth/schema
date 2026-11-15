@@ -338,7 +338,7 @@ generated class per table and per map entry, each with its descriptor
 
   - `?map[K]V`: refused
 
-  - unions with table arms, and bounded arrays of them: carried
+  - unions with table arms, and arrays of them: carried
     ([the table unions](port-python/table-unions.md))
 
 - **A packet-typed field is carried by value.** A packet `type` in a table

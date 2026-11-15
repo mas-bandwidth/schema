@@ -13,13 +13,13 @@
   field whose arm reference is `0` reads as `None`, as the engine reads it; an
   arm this reader cannot name reads as `None`, counted unknown, and its
   payload is judged by the engine's wire-alone rules, as is any skipped field
-  (`load._check_content`, the port of `wirecheck.go`). The engine judges the
+  (`load._skip_content`, the table runtime's one port of `wirecheck.go`). The engine judges the
   whole file's framing before its decode compares a byte with a declaration,
   so a refusal that is not damage runs that walk over the file first, on the
   refusal path only, and damage anywhere outranks it. A count past the bound
   is `count_over_bound`; a counted array below its minimum is read as it
   stands, born empty when absent, and refused only by the writer.
-- **Elision is per element, never by `==`.** A counted array of unions is left
+- **Elision is per element, never by `==`.** A counted or unbounded array of unions is left
   out only when it is empty, a fixed one only when every element's selected
   arm is `None`, and a by-value table only when every field of it is left out,
   judged through the descriptors (`FieldDesc.is_default`), so an inactive arm
