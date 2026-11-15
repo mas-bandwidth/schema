@@ -2157,13 +2157,8 @@ func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, string) {
 	}
 	// 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
 	count := tableFixedGet32(bytes)
-	if count == 0 || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
+	if count == 0 || count > 0x7fffffff || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
 		return out, "layout_count_mismatch"
-	}
-	// Layout byte lengths are u32; 4 + 17*count must fit that wire length.
-	// Refuse counts outside the index domain before converting, never mask them.
-	if count > 0x7fffffff {
-		return out, "layout_tree_unclosed"
 	}
 	view := tableFixedLayoutView{Bytes: bytes, Count: int32(count)}
 	// 2. THE ROOT IS A TABLE, and its size is the record's body
