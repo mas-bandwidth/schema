@@ -4,9 +4,9 @@ output line, "REFUSE" or "OK <bits> <payload> <bits> <canonical>".
 
 It reads as the generated read() does, the reader and then serialize's end,
 so trailing input refuses as it does in the C++ oracle's reader, but over a
-ReadStream the driver keeps, so the consumed bits can be printed. The consumed and the written bits are printed apart, as
-the C++ driver prints them, so a disagreement is a verdict line, never a
-crash.
+ReadStream the driver keeps, so the consumed bits can be printed. The
+consumed and the written bits are printed apart, as the C++ driver prints
+them, so a disagreement is a verdict line, never a crash.
 """
 
 import sys
