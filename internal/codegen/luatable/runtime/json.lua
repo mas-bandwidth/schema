@@ -2495,8 +2495,12 @@ local function write_timestamp(w, ns)
   raw(w, 'Z"')
 end
 
+-- THE C LOCALE'S SPELLING (§16.14 W12): string.format follows the host's
+-- LC_NUMERIC, so a locale's decimal point (a comma, or several bytes) is
+-- written back as "."; %g of a finite value is otherwise only sign, digits
+-- and an exponent. The read side's tonumber accepts "." in every locale.
 local function format_g(v, prec)
-  return string.format("%." .. prec .. "g", v)
+  return (string.format("%." .. prec .. "g", v):gsub("[^%d%+%-e]+", "."))
 end
 
 local function float_text(v, single)
