@@ -354,7 +354,7 @@ func TestGoTableFloatRungIsTheOrdinaryConversion(t *testing.T) {
 	if strings.Contains(without, "tableWidenFloat") || strings.Contains(without, "float64(math.Float32frombits(b))") {
 		t.Error("the nearest neighbour declares no kind 11 and has no float rung")
 	}
-	if !strings.Contains(without, "func tableKindWidens") {
-		t.Error("tableKindWidens is every unit's and left one")
+	if !strings.Contains(without, "if b&0x7f800000 == 0x7f800000 {") || !strings.Contains(without, "v := math.Float32frombits(b)") {
+		t.Error("the nearest neighbour reads its float32 on the raw bits by the plain conversion")
 	}
 }

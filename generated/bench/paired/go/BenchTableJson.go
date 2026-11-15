@@ -2842,13 +2842,7 @@ func (g *tableJSONGraph) setLabel(key uint64, entry tableJSONLabel) bool {
 	g.labels[i] = entry
 	return true
 }
-func (g *tableJSONGraph) close() {
-	if g.memory != nil {
-		g.release(g.memory)
-		g.memory = nil
-		g.labels = nil
-	}
-}
+
 func tableJSONPointerAt(slot *int64) unsafe.Pointer {
 	if *slot == 0 {
 		return nil
@@ -3740,21 +3734,6 @@ func (e TableTimestampError) Error() string {
 	return "timestamp_out_of_range: " + e.Field + " " + e.Time.Format(time.RFC3339Nano) +
 		" is outside the years 1678 through 2262, which a count of nanoseconds since the Unix epoch can hold"
 }
-
-// tableTimestampNanos is the count of a time.Time, and false for a time whose
-// count UnixNano cannot represent. Go's zero Time{} is the zero time.
-func tableTimestampNanos(t time.Time) (int64, bool) {
-	if t.IsZero() {
-		return 0, true
-	}
-	if t.Before(time.Unix(0, -1<<63)) || t.After(time.Unix(0, 1<<63-1)) {
-		return 0, false
-	}
-	return t.UnixNano(), true
-}
-
-// tableTimestampTime is the UTC time of a count; every count is legal.
-func tableTimestampTime(n int64) time.Time { return time.Unix(0, n).UTC() }
 
 // ---- json walk: end ----
 
