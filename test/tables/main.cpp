@@ -8706,8 +8706,10 @@ static void test_blob_record_length_off_by_one()
 }
 
 // the type-id check both ways (§2.5, §3.1): a *string blob under a *bytes
-// slot is a kind mismatch, and a `bytes(N)` array under a `*bytes` slot is
-// kind 14 against kind 17 — mismatch in both directions, nothing misdecodes
+// slot is a wrong-type pointer target, damage whose reason the C++ read names kind_mismatch
+// (TableNodeWrongTarget; §2.5, §6.5), and a `bytes(N)`
+// array under a `*bytes` slot is kind 14 against kind 17 — a kind mismatch
+// in both directions; nothing misdecodes
 static void test_blob_kind_mismatch()
 {
     // a Catalog whose note (a *string blob) is named by thumb (*bytes):
@@ -8734,7 +8736,7 @@ static void test_blob_kind_mismatch()
     std::vector<uint8_t> region( (size_t) ( region_need > 0 ? region_need : 1 ) );
     blobdemo::TableReport report;
     const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, wire, (int64_t) n, &report );
-    CHECK( loaded == NULL && !report.damaged );
+    CHECK( loaded == NULL && report.damaged );
     CHECK( report.refuse_reason == blobdemo::kind_mismatch );
 
     // `bytes(N)` bytes arriving under the *bytes field id: kind 14 against 17

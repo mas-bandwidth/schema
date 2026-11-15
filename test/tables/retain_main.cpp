@@ -817,7 +817,7 @@ static void disjoint_occurrences()
 static int64_t deep_wire( uint8_t * out, int32_t depth )
 {
     WireBuilder b;
-    int64_t marks[ 128 ];
+    int64_t marks[ 130 ];
     b.field( "future", 13 );
     marks[0] = b.open_len();
     for ( int32_t d = 1; d < depth; d++ )
@@ -875,18 +875,26 @@ static void walk_is_linear()
         CHECK( save_report.retain_lost == 0 );
     }
 
-    // THE CAP IS A SMALL STATED CONSTANT and it counts NESTED BODIES: a record
-    // one past it is dropped on the same rule as any other shape the walk
-    // cannot take, and the last depth it admits still rides.
+    // THE WALK PERMITS §4's 128 FRAMED LEVELS (docs/SPEC-TABLES.md §6.6,
+    // retain_walk_depth): a depth is not a retention capacity, so a record as
+    // deep as the plain read accepts rides, and one level past it is the plain
+    // read's own refusal, never a dropped record.
     {
         uint8_t wire[ 4096 ];
-        const int64_t n = deep_wire( wire, 65 );
+        const int64_t n = deep_wire( wire, 128 );
         Loaded l;
         l.load( wire, n );
         CHECK( l.root != NULL );
         CHECK( whole( l.report ) );
-        CHECK( l.report.retained == 0 );
-        CHECK( l.report.retain_lost == 1 );
+        CHECK( l.report.retained == 1 );
+        CHECK( l.report.retain_lost == 0 );
+    }
+    {
+        uint8_t wire[ 4096 ];
+        const int64_t n = deep_wire( wire, 129 );
+        Loaded l;
+        l.load( wire, n );
+        CHECK( l.root == NULL );
     }
     {
         uint8_t wire[ 4096 ];

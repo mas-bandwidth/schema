@@ -306,3 +306,16 @@ WIP for every proof slug: none unless named here.
   decided on their own, as their bits are whole bits plus F), every leg
   holding it in the same change, then the variable set true and the skips
   dropped.
+
+- `relax/elixir-pointer-target-declared-types`: `TestPointerTargetKindsElixir`
+  (`internal/codegen/elixirtable/pointer_type_construct_test.go`) no longer
+  runs the Elixir probe for the three `... outside root closure` rows of
+  `testdata/conformance/feature-witnesses/pointer-targets/cases.json`. The
+  rows were re-pinned to the spec (now refused): a record of a type the unit
+  declares, or a reserved blob id, named by a slot of another type is damage
+  even when the reader's root cannot reach that type (docs/SPEC-TABLES.md
+  §2.5, §3.1 "a type this reader DOES declare"), and the engine (PR 3561)
+  refuses it. The engine oracle still judges all ten rows. The Elixir leg reads
+  such a pointer null by the root's closure. Re-enabling needs: the Elixir
+  plain and retaining reads refuse a wrong-type target of any declared type
+  (and of either blob id), then drop the `continue` at the site.
