@@ -2101,6 +2101,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
           if not node_ok, do: throw(:wire_damaged)
 
+          value = Map.merge(defaults(node_desc), value)
+
           {Map.put(records, idx, value), merge_report(report, own_report),
            Map.put(node_fields, idx, fields_of_node)}
 
@@ -3230,7 +3232,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
         if status == :halt or ends_early?(sub, ids),
           do: {:cont, %{}, throw(:wire_damaged)},
-          else: {:cont, value, report}
+          else: {:cont, Map.merge(defaults(desc), value), report}
 
       {:stop, fields, [], _remaining} ->
         # the element's body is damaged mid-walk or runs off its own end: the
@@ -3388,10 +3390,19 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # defaults is a field's declared default: what an absent field reads (§4). The
   # descriptor's own default column carries it, declared default first, so an
-  # int32 = 1 reads 1 and a text renders 1.
+  # int32 = 1 reads 1 and a text renders 1. A table nested by value reads the
+  # member's own defaults, as the reference's prefill does, so every body takes
+  # one shape whether the wire named its fields or not.
   defp defaults(desc) do
     Map.new(desc.fields, fn f ->
-      {f.name, Map.get(f, :default)}
+      value =
+        case f do
+          %{optional: true} -> Map.get(f, :default)
+          %{t: :table, elem: name} -> defaults(Map.fetch!(@tables, name))
+          _ -> Map.get(f, :default)
+        end
+
+      {f.name, value}
     end)
   end
 
@@ -7256,7 +7267,7 @@ const variableRetainSource = `
         # as the plain read's read_element holds it
         if status == :halt or ends_early?(body, ids),
           do: {:cont, %{}, throw(:wire_damaged), retain},
-          else: {:cont, value, report, retain}
+          else: {:cont, Map.merge(defaults(desc), value), report, retain}
 
       {:stop, fields, [], _} ->
         {_status, _value, _report, retain} =
@@ -7629,6 +7640,8 @@ const variableRetainSource = `
             end)
 
           if not node_ok, do: throw(:wire_damaged)
+
+          value = Map.merge(defaults(node_desc), value)
 
           {Map.put(records, idx, value), report, retain,
            Map.put(node_fields, idx, fields_of_node)}
