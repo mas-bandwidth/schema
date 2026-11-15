@@ -1531,11 +1531,58 @@ local function decimal_cmp(a: string, b: string): number
   return pa < pb and -1 or 1
 end
 
+-- the exact decimal of a positive finite double, as digits or digits-and-exponent
+-- that decimal_cmp reads. ax = sig·2^exp2 with sig an integer (math.frexp);
+-- a negative power of two is sig·5^(-exp2) / 10^(-exp2), in the base-10^7
+-- limbs above. string.format("%.99e") keeps only 100 significant digits, and
+-- a subnormal float32 midpoint is m·2^-150, whose exact decimal is longer, so
+-- a rounded midpoint compares one unit away from the token (docs/SPEC-TABLES.md
+-- §16.2 Numbers).
+local function double_exact_decimal(ax: number): string
+  local mant, e = math.frexp(ax)
+  local sig = mant * 2 ^ 53
+  local exp2 = e - 53
+  local a: { number } = {}
+  local x = sig
+  if x == 0 then
+    a[1] = 0
+  else
+    while x > 0 do
+      local q = math.floor(x / BN_BASE)
+      a[#a + 1] = x - q * BN_BASE
+      x = q
+    end
+  end
+  a = bn_norm(a)
+  if exp2 >= 0 then
+    local n = exp2
+    while n >= 16 do
+      a = bn_muladd(a, 65536, 0)
+      n -= 16
+    end
+    if n > 0 then a = bn_muladd(a, 2 ^ n, 0) end
+    return bn_digits(a)
+  end
+  local pow = -exp2
+  local n = pow
+  while n >= 6 do
+    a = bn_muladd(a, 15625, 0) -- 5^6, under bn_muladd's 65536 factor
+    n -= 6
+  end
+  if n > 0 then a = bn_muladd(a, 5 ^ n, 0) end
+  local digits = bn_digits(a)
+  -- trailing zeros are factors of ten the exponent can carry
+  local stripped = digits:match("^(.-)0*$")
+  local body = if stripped ~= nil and stripped ~= "" then stripped else "0"
+  local exp = -pow + (#digits - #body)
+  if exp == 0 then return body end
+  return body .. "e" .. tostring(exp)
+end
+
 -- A double that sits EXACTLY midway between two float32 values is a tie the
 -- double cannot break: its own rounding already chose one neighbour. The Go
 -- engine rounds the decimal TOKEN (ties to even), so the token's exact decimal
--- against the midpoint's decides. `string.format("%.99e", v)` gives the
--- double's exact leading decimal digits (a double is a finite decimal).
+-- against the midpoint's exact decimal decides.
 local function f32_tie(x: number, token: string): number?
   if x == 0 or x ~= x or x == math.huge or x == -math.huge then return nil end
   local ax = math.abs(x)
@@ -1548,7 +1595,7 @@ local function f32_tie(x: number, token: string): number?
   if q ~= math.floor(q) or math.floor(q) % 2 == 0 then return nil end
   local lo, hi = ax - half, ax + half
   local t = token:sub(1, 1) == "-" and token:sub(2) or token
-  local c = decimal_cmp(t, string.format("%.99e", ax))
+  local c = decimal_cmp(t, double_exact_decimal(ax))
   local mag
   if c > 0 then
     mag = hi
