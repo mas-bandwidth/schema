@@ -25,6 +25,7 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 
@@ -67,9 +68,7 @@ func main() {
 		"message-canonical.bin":  message,
 		"announcement.bin":       announcement,
 	}
-	for name, wire := range variableCases(u, m, canonical) {
-		files[name] = wire
-	}
+	maps.Copy(files, variableCases(u, m, canonical))
 	manifest := manifestText()
 
 	if err := os.MkdirAll(*out, 0o755); err != nil {
@@ -481,7 +480,7 @@ func parseNodes(payload []byte, ids []uint64) (*wireNodes, error) {
 
 func readLeb(data []byte, pos int) (uint64, int, error) {
 	var v uint64
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if pos >= len(data) {
 			return 0, 0, fmt.Errorf("unfinished LEB128")
 		}
