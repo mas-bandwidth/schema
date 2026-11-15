@@ -46,28 +46,29 @@ that page.
 
 | pin | what | from |
 |---|---|---|
-| `RUBY_FLOOR` | the oldest CRuby series still in normal maintenance on the pin day | the source tarball ruby-lang.org publishes for it, its sha256 checked before anything is unpacked |
-| `RUBY` | the newest stable CRuby release on the pin day | the source tarball ruby-lang.org publishes for it, its sha256 checked before anything is unpacked |
-| `RUBY_ANALYZERS` | RuboCop and Steep with RBS, at the lock's versions | `make/ruby-analyzers.lock`, one sha256 per gem |
+| `RUBY_FLOOR` | CRuby 3.4.12, the oldest CRuby series still in normal maintenance on the pin day | the source tarball ruby-lang.org publishes for it, sha256 `5e5d85ad93b0adcccbad47733680f4892bd0078e3342437f7babce01c1872479`, checked before anything is unpacked |
+| `RUBY` | CRuby 4.0.9, the newest stable CRuby release on the pin day | the source tarball ruby-lang.org publishes for it, sha256 `c35350682ff050b79702d57ade4516e7336063f510155d19fb2fb5b3f3909511`, checked before anything is unpacked |
+| `RUBY_ANALYZERS` | RuboCop 1.92.2, Steep 2.1.0 and RBS 4.2.0 | `make/ruby-gems.lock`, one sha256 per gem |
 
 The sums are the ones ruby-lang.org publishes for each tarball, and the
 download is checked against them before anything is unpacked: any other sha256
 is refused by name. Each interpreter is `./configure --prefix=dist/ruby-<v>`
-and `make`, with no optimization flags. The current pin is built with YJIT
-enabled when the release supports it, and every measurement runs it twice,
-with `--yjit` and with `--disable-yjit`; the floor is measured the same way
-where its release supports YJIT. YJIT's own build inputs are pinned with the
-interpreter and never fetched at run time. The leg needs the standard
-library's `string`, `array`, `hash`, `enumerator`, `io` and `encoding`
-modules, none of which needs an optional system library; the build needs a C
-compiler and, for YJIT, a Rust toolchain taken from the bench's offline
-registry.
+and `make`, with no optimization flags. A bench's SDK already carries both
+pins at `$NOVA_SDK/ruby-<v>`, built from the same tarballs; `make dist-ruby`
+stages a pin from there, with no download, when its interpreter reports
+exactly that release, and builds from the tarball only when it does not.
+YJIT measurement, with `--yjit` and with `--disable-yjit` on the same
+workload, belongs to R4. The leg needs the standard library's `string`,
+`array`, `hash`, `enumerator`, `io` and `encoding` modules, none of which
+needs an optional system library; the build needs a C compiler.
 
-The lock names every analyzer gem and its sha256. Bundler installs the lock
-offline (`bundle install --local --frozen`) into the pinned interpreter's gem
-directory. RuboCop checks the generated code and the runtime against the leg's
-config, and Steep checks them in strict mode against the RBS the emitter
-writes; a finding from either is a failure, as is one warning from `ruby -w`.
+The lock names every analyzer gem and its sha256. `dist-ruby` installs it
+offline into each pinned interpreter's gem directory with `gem install
+--local --ignore-dependencies`, and `ruby-toolchain-check` holds each
+installed analyzer's own `--version` to the lock. RuboCop checks the
+generated code and the runtime against the leg's config, and Steep checks
+them in strict mode against the RBS the emitter writes; a finding from either
+is a failure, as is one warning from `ruby -w`.
 
 Every interpreter the leg starts runs isolated: `RUBYOPT` is empty,
 `GEM_HOME` and `GEM_PATH` are unset, and the process starts with

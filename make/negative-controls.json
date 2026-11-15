@@ -3337,6 +3337,10 @@
     {
       "target": "roadmap-check-negative-control",
       "reason": "the roadmap gate's drift control (tools/roadmap/roadmap.mk): it needs SBCL and full git history for $(ROADMAP_BASE), which the shared negative-control rows on hosted ubuntu-latest runners neither install nor clone, so running it there would refuse at the missing tool before the control ran. It runs in its own gate, .github/workflows/roadmap.yml's `roadmap` job, which fetches full history and checks that sbcl is present before running `make roadmap-check-negative-control` beside the roadmap-check and roadmap-test gates on the fleet runner, on every push to main and on every pull request that touches the roadmap files."
+    },
+    {
+      "target": "ruby-toolchain-negative-control",
+      "reason": "the Ruby leg's toolchain control (make/ruby-toolchain.mk) needs the two pinned CRuby interpreters and their analyzers, which .github/actions/ruby restores into dist/. It runs in the leg's own workflow, .github/workflows/ruby-leg.yml, on every pull request and push that touches the leg, right beside the ruby-toolchain-check it controls; the shared negative-control rows carry no Ruby pin, so running it there would refuse at the missing interpreters before the control ran."
     }
   ]
 }
