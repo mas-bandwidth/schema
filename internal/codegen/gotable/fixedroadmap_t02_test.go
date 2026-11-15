@@ -342,8 +342,8 @@ func t02GoW14(t *testing.T) {
 	t02GoHas(t, src, "out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}",
 		"W14 the leaf's size is the element's sizeof")
 	dst := t02GoBlock(t, src, "var TFixedDst = []TableFixedDst{", "\n}")
-	t02GoHas(t, dst, "{uint32(unsafe.Offsetof(T{}.X)), 0, 0, 0, 0, 0}, // x", "W14 the storage row carries offsetof(x)")
-	t02GoHas(t, dst, "{uint32(unsafe.Offsetof(T{}.Y)), 0, 0, 0, 0, 0}, // y", "W14 the storage row carries offsetof(y)")
+	t02GoHas(t, dst, "{uint32(unsafe.Offsetof(T{}.X)), 0, 0, 0, 0, 0, 0}, // x", "W14 the storage row carries offsetof(x)")
+	t02GoHas(t, dst, "{uint32(unsafe.Offsetof(T{}.Y)), 0, 0, 0, 0, 0, 0}, // y", "W14 the storage row carries offsetof(y)")
 }
 
 // ---- go/R4 ------------------------------------------------------------------

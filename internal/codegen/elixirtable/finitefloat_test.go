@@ -18,8 +18,9 @@ package elixirtable
 //   - MESSAGE: the batch read refuses one wherever it sits in the bit stream,
 //     and save_messages/measure_messages refuse to write one.
 //   - FIXED: the load refuses one in every float slot, a compressed float
-//     before its bounds; an ABSENT optional's unspecified payload is not
-//     refused; the writer raises ArgumentError non_finite_float.
+//     before its bounds; an ABSENT optional's payload is DEAD, so a non-zero
+//     byte there refuses the whole load as wire_damaged; the writer raises
+//     ArgumentError non_finite_float.
 //
 // The probe saves finite SENTINELS, patches each one's bits into a NaN or an
 // infinity (five patterns per width: quiet, signalling, both infinities and a
@@ -336,12 +337,26 @@ defmodule FiniteProbe do
     end)
 
     row("json -0 keeps its sign", fn ->
-      {:ok, v, report} = V.from_json("Root", ~s({"a": -0, "n": -0, "ns": [-0]}))
+      {:ok, v, report} = V.from_json("Root", ~s({"a": -0}))
 
       expect(
-        same_bits?(v["a"], -0.0) and v["n"] == 0 and v["ns"] == [0] and true,
-        inspect({v["a"], v["n"], v["ns"], report})
+        same_bits?(v["a"], -0.0) and true,
+        inspect({v["a"], report})
       )
+    end)
+
+    row("json integer -0 is refused", fn ->
+      case V.from_json("Root", ~s({"n": -0})) do
+        {:error, _reason, _report} -> :ok
+        other -> {:fail, "an integer -0 was accepted: " <> inspect(other)}
+      end
+    end)
+
+    row("json integer element -0 is refused", fn ->
+      case V.from_json("Root", ~s({"ns": [-0]})) do
+        {:error, _reason, _report} -> :ok
+        other -> {:fail, "an integer element -0 was accepted: " <> inspect(other)}
+      end
     end)
 
     row("retained unknown float refuses", fn ->
@@ -428,11 +443,11 @@ defmodule FiniteProbe do
       end)
     end
 
-    row("fixed absent optional payload is not refused", fn ->
+    row("fixed absent optional payload dead bytes refuse", fn ->
       wire = patch(file, <<1>> <> bits(2.25, 4), <<0>> <> raw(0x7FC00000, 4))
 
       case F.rec_fixed_load(wire) do
-        {:ok, [%{o_present: false}], _} -> :ok
+        {:error, :wire_damaged, _} -> :ok
         other -> {:fail, inspect(other)}
       end
     end)
@@ -541,10 +556,10 @@ func runFiniteProbe(t *testing.T, edit func(map[string][]byte)) (pass, fail []st
 }
 
 // finiteRowCount is every row the probe prints: the variable form's 11 slots
-// at five patterns, its 5 retaining-read slots and its 12 other rows; the
+// at five patterns, its 5 retaining-read slots and its 14 other rows; the
 // message form's ten patterns and two rows; the fixed form's five slots at
 // five patterns and its five other rows.
-const finiteRowCount = 11*5 + 5 + 12 + 10 + 2 + 5*5 + 5
+const finiteRowCount = 11*5 + 5 + 14 + 10 + 2 + 5*5 + 5
 
 func TestElixirFiniteFloat(t *testing.T) {
 	t.Parallel()

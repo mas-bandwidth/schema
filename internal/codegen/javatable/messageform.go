@@ -121,7 +121,7 @@ public final class TableVocabulary {
     static final byte[] tableAnnouncement = %%ANNOUNCEMENT%%;
 
     // THE UNIT'S OWN BUILD VERSION is the fact a strict announcement compares
-    // the remote endpoint's against (docs/SPEC-TABLES.md §3.3).
+    // the endpoint's against (docs/SPEC-TABLES.md §3.3).
     private static final long tableBuildVersion = %%BUILDVERSION%%;
 
     public static int announceMeasure() {
@@ -168,8 +168,8 @@ public final class TableVocabulary {
         public String reason;
         public int unknown;
         public int widened;
-        // The remote endpoint's and the unit's own build versions a strict
-        // announcement refusal carries (docs/SPEC-TABLES.md §3.3).
+        // The endpoint's and the unit's own build versions a strict announcement
+        // refusal carries (docs/SPEC-TABLES.md §3.3).
         public long buildVersionRemote;
         public long buildVersionOwn;
 
@@ -379,9 +379,9 @@ public final class TableVocabulary {
         }
         // "STRICT MODE IS OPT-IN, and the default is unchanged." With 'strict'
         // set, an announcement whose build version is not the unit's own is
-        // refused by name, sets no vocabulary, keeps the remote endpoint's
-        // build version, moves no counter, is never damage, and is terminal
-        // like every refused first announcement (§3.3).
+        // refused by name, sets no vocabulary, keeps the endpoint's build version,
+        // moves no counter, is never damage, and is terminal like every
+        // refused first announcement (§3.3).
         if (v.strict && v.buildVersion != tableBuildVersion) {
             report.buildVersionRemote = v.buildVersion;
             report.buildVersionOwn = tableBuildVersion;
@@ -668,28 +668,17 @@ public final class TableVocabulary {
                 return false;
             }
             int elem = r.u8();
-            // AN ELEMENT KIND OF 12 IS AN ANNOUNCED SHAPE LIKE ANY OTHER
-            // (§3.3): a string element's shape is the max its kind names.
-            if (!knownKind(elem)) {
+            // AN ARRAY OR KEYED ELEMENT IS FRAMING DAMAGE (§3.3): no
+            // declaration produces a list of lists, so an element kind of 14
+            // or 16 is refused before the element shape is decoded.
+            if (!knownKind(elem) || elem == 14 || elem == 16) {
                 return false;
             }
+            // AN ELEMENT KIND OF 12 IS AN ANNOUNCED SHAPE LIKE ANY OTHER
+            // (§3.3): a string element's shape is the max its kind names.
             e.element = shapeRead(r, elem);
             if (e.element == null) {
                 return false;
-            }
-            if (elem == 14 || elem == 16) {
-                if (!r.has(1)) {
-                    return false;
-                }
-                int inner = r.u8();
-                if (!knownKind(inner)) {
-                    return false;
-                }
-                // The inner element's own shape follows its kind byte, and a
-                // kind 12 there reads its max like any other announced shape.
-                if (inner == 12 && shapeRead(r, inner) == null) {
-                    return false;
-                }
             }
         }
         return !r.err;

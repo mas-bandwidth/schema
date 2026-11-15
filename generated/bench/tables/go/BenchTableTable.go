@@ -1505,7 +1505,7 @@ const tableBinaryMaxDepth = 128
 
 type tableWireCheck struct {
 	depth   int32
-	ids     uint64
+	ids     int
 	nodes   uint64
 	records TableReader
 	graph   []uint64
@@ -1547,17 +1547,17 @@ func (c *tableWireCheck) edge(index uint64) bool {
 	}
 	at := &c.graph[2*(index-1)]
 	if !c.release {
-		if *at&0xffffffff == 0xffffffff {
+		if uint32(*at) == ^uint32(0) {
 			return c.fail(TableRefuseWireDamaged)
 		}
 		*at++
 		return true
 	}
-	if *at&0xffffffff == 0 {
+	if uint32(*at) == 0 {
 		return c.fail(TableRefuseWireDamaged)
 	}
 	*at--
-	if *at&0xffffffff == 0 {
+	if uint32(*at) == 0 {
 		*at |= c.head << 32
 		c.head = index + 1
 	}
@@ -1583,7 +1583,7 @@ func (c *tableWireCheck) body(r TableReader, root bool) (int64, bool) {
 		if ref == 0 {
 			break
 		}
-		if ref > c.ids || !probe.Has(1) {
+		if ref > uint64(c.ids) || !probe.Has(1) {
 			return 0, c.fail(TableRefuseWireDamaged)
 		}
 		if c.stamp[ref] == gen {
@@ -1652,7 +1652,7 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
 		}
 	case 30:
 		ref, ok := r.Leb()
-		if !ok || ref > c.ids {
+		if !ok || ref > uint64(c.ids) {
 			return 0, c.fail(TableRefuseWireDamaged)
 		}
 	case 15:
@@ -1729,7 +1729,7 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 	if count > math.MaxInt32 {
 		return 0, c.fail(TableRefuseCountOverExtentCap)
 	}
-	if sub.Offset < 0 || count > uint64(len(sub.Buffer))-uint64(sub.Offset) {
+	if count > uint64(len(sub.Buffer))-uint64(sub.Offset) {
 		return 0, c.fail(TableRefuseWireDamaged)
 	}
 	if !keyed {
@@ -1747,7 +1747,7 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 	probe := sub
 	for range count {
 		key, ok := probe.Leb()
-		if !ok || key == 0 || key > c.ids {
+		if !ok || key == 0 || key > uint64(c.ids) {
 			return 0, c.fail(TableRefuseWireDamaged)
 		}
 		if c.stamp[key] == gen {
@@ -1772,7 +1772,7 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 // arm's kind and its L-framed payload.
 func (c *tableWireCheck) union(r TableReader) (int64, bool) {
 	ref, ok := r.Leb()
-	if !ok || ref > c.ids {
+	if !ok || ref > uint64(c.ids) {
 		return 0, c.fail(TableRefuseWireDamaged)
 	}
 	if ref == 0 {
@@ -1829,7 +1829,7 @@ func (c *tableWireCheck) record(at int64) bool {
 // short scratch is allocated here, which only a file with a node table needs.
 func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 	var c tableWireCheck
-	c.ids = uint64(len(r.Ids)) / 8
+	c.ids = len(r.Ids) / 8
 	// the node table, found by the root's headers: a declared count, then that
 	// many records, each a type reference and an L-framed body, filling the field
 	probe := r
@@ -1869,7 +1869,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 		clear(c.graph)
 		rec := c.records
 		for i := uint64(2); i <= c.nodes+1; i++ {
-			c.graph[2*(i-1)+1] = uint64(rec.Offset & math.MaxInt64)
+			c.graph[2*(i-1)+1] = uint64(rec.Offset & 0x7fffffffffffffff)
 			ref, ok := rec.Leb()
 			if !ok {
 				return TableRefuseWireDamaged
@@ -1892,7 +1892,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 		return c.failed()
 	}
 	for i := uint64(2); i <= c.nodes+1; i++ {
-		if !c.record(int64(c.graph[2*(i-1)+1] & math.MaxInt64)) {
+		if !c.record(int64(c.graph[2*(i-1)+1])) {
 			return c.failed()
 		}
 	}
@@ -1901,9 +1901,9 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 	}
 	// a blob named twice is shared, and a record no pointer names is unreachable
 	for i := uint64(2); i <= c.nodes+1; i++ {
-		if c.graph[2*(i-1)]&0xffffffff > 1 {
+		if uint32(c.graph[2*(i-1)]&0xffffffff) > 1 {
 			rec := c.records
-			rec.Offset = int64(c.graph[2*(i-1)+1] & math.MaxInt64)
+			rec.Offset = int64(c.graph[2*(i-1)+1] & 0x7fffffffffffffff)
 			ref, _ := rec.Leb()
 			if id, _ := rec.Resolve(ref); id == tableWireBytesID || id == tableWireStringID {
 				return TableRefuseBlobShared
@@ -1911,7 +1911,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 		}
 	}
 	for i := uint64(2); i <= c.nodes+1; i++ {
-		if c.graph[2*(i-1)]&0xffffffff == 0 {
+		if uint32(c.graph[2*(i-1)]&0xffffffff) == 0 {
 			return TableRefuseWireDamaged
 		}
 	}
@@ -1926,7 +1926,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 		c.head = c.graph[2*(i-1)] >> 32
 		c.graph[2*(i-1)] &= 0xffffffff
 		visited++
-		if !c.record(int64(c.graph[2*(i-1)+1] & math.MaxInt64)) {
+		if !c.record(int64(c.graph[2*(i-1)+1])) {
 			return c.failed()
 		}
 	}
@@ -1941,7 +1941,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 // every condition the wire alone decides (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5).
 func tableWireSkipValue(r *TableReader, kind uint8) bool {
 	var c tableWireCheck
-	c.ids = uint64(len(r.Ids)) / 8
+	c.ids = len(r.Ids) / 8
 	c.depth = r.Depth
 	c.nodes = 0 // tableWireSkipNodes
 	at, ok := c.value(*r, kind)
@@ -1954,7 +1954,7 @@ func tableWireSkipValue(r *TableReader, kind uint8) bool {
 }
 func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
 	var c tableWireCheck
-	c.ids = uint64(len(r.Ids)) / 8
+	c.ids = len(r.Ids) / 8
 	c.depth = r.Depth
 	if arm && (kind == 13 || kind == 14 || kind == 16) {
 		c.depth--
@@ -1972,7 +1972,7 @@ func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
 // applies to a record it does name (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5). nodes is the
 // table's record count, which bounds every pointer index; mark, when not nil,
 // names a record a pointer reaches so the graph walk starts there too.
-func tableWireRecordCheck(body TableReader, ids uint64, nodes uint64, mark func(uint64)) TableRefuseReason {
+func tableWireRecordCheck(body TableReader, ids int, nodes uint64, mark func(uint64)) TableRefuseReason {
 	var c tableWireCheck
 	c.ids = ids
 	c.nodes = nodes
@@ -2145,7 +2145,7 @@ const tableFixedMaxDepth int32 = 64
 // tag 0x0101 is not arm 1. Arg is the arm ordinal and carries NO BYTE LANE
 // (§5.8 row 5): a 256-arm union's ordinal does not fit a byte.
 type TableFixedEntry struct {
-	Src, Dst, Size, Aux, Guard uint32
+	Src, Dst, Size, Aux, Guard, Min uint32
 	// Arg IS THE GUARD'S ORDINAL AT FULL WIDTH (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
 	// §4.1: arg : u64, "no byte lane anywhere"): a union past 255 arms or an
 	// enum past 65535 variants holds its ordinal whole in this lane, and the
@@ -2204,8 +2204,8 @@ func (p TableFixedEntry) chainHolds(plan []TableFixedEntry, src []byte) bool {
 }
 
 type TableFixedDst struct {
-	Dst, Stride, Aux   uint32
-	Counted, Arg, Meta uint8
+	Dst, Stride, Aux, Min uint32
+	Counted, Arg, Meta    uint8
 }
 
 // Arg's high bit marks a deprecated destination field: every compiled lineage
@@ -2784,7 +2784,7 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		switch p.Op {
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 || v > int32(p.Size) {
+			if v < 0 || int64(v) < int64(p.Min) || v > int32(p.Size) {
 				return TableRefuseCountOverBound.Error()
 			}
 			if p.Aux != 0 && uint32(v) < p.Size {
@@ -3133,12 +3133,12 @@ func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, string) {
 	var out tableFixedLayoutView
 	// THE RESIDUE: bytes that are not a layout at all — fewer than a header's
 	// worth of them — are layout_malformed and not one of the seven.
-	if int64(len(bytes)) < int64(tableFixedLayoutHeaderBytes) {
+	if int32(len(bytes)) < tableFixedLayoutHeaderBytes {
 		return out, "layout_malformed"
 	}
 	// 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
 	count := tableFixedGet32(bytes)
-	if count == 0 || count > 0x7fffffff || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
+	if count == 0 || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
 		return out, "layout_count_mismatch"
 	}
 	view := tableFixedLayoutView{Bytes: bytes, Count: int32(count)}
@@ -3420,7 +3420,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// bounded at 4 must land 4 and COUNT, not be admitted because this
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
-			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Min: d.Min, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
@@ -7870,14 +7870,14 @@ func TableMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 54, Dst: dst + uint32(unsafe.Offsetof(TableMixed{}.EntitiesCount)), Size: 8, Aux: 51, Guard: tableFixedNoGuard, Op: tableFixedCount} // entities count
+	out[n] = TableFixedEntry{Src: src + 54, Dst: dst + uint32(unsafe.Offsetof(TableMixed{}.EntitiesCount)), Size: 8, Min: 1, Aux: 51, Guard: tableFixedNoGuard, Op: tableFixedCount} // entities count
 	n++
 	for i := range uint32(8) {
 		es := src + 58 + i*51
 		ed := dst + uint32(unsafe.Offsetof(TableMixed{}.Entities)) + i*uint32(unsafe.Sizeof(TableEntity{}))
 		n += TableEntityFixedLeaves(out[n:], links[n:], es, ed)
 	}
-	out[n] = TableFixedEntry{Src: src + 466, Dst: dst + uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), Size: 80, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
+	out[n] = TableFixedEntry{Src: src + 466, Dst: dst + uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), Size: 80, Min: 0, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
 	n++
 	for i := range uint32(80) {
 		es := src + 470 + i*8
@@ -8357,7 +8357,7 @@ func TableMixedFixedCheckBody(value *TableMixed) bool {
 	if value.ServerTime != value.ServerTime || value.ServerTime < 0.0 || value.ServerTime > 65535.0 {
 		return false
 	}
-	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+	if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 		return false
 	}
 	for i := int64(value.EntitiesCount) - 1; i >= 0; i-- {
@@ -8476,7 +8476,7 @@ func TableMixedFixedCheckBodyExact(value *TableMixed) bool {
 	if value.ServerTime != value.ServerTime || value.ServerTime < 0.0 || value.ServerTime > 65535.0 {
 		return false
 	}
-	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+	if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 		return false
 	}
 	for i := int64(value.EntitiesCount) - 1; i >= 0; i-- {
@@ -8605,36 +8605,36 @@ var TableEntityFixedLayout = []byte{
 }
 
 var TableEntityFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // TableEntity
-	{uint32(unsafe.Offsetof(TableEntity{}.EntityID)), 0, 0, 0, 0, 0}, // entity_id
-	{uint32(unsafe.Offsetof(TableEntity{}.PosX)), 0, 0, 0, 0, 0},     // pos_x
-	{uint32(unsafe.Offsetof(TableEntity{}.PosY)), 0, 0, 0, 0, 0},     // pos_y
-	{uint32(unsafe.Offsetof(TableEntity{}.PosZ)), 0, 0, 0, 0, 0},     // pos_z
-	{uint32(unsafe.Offsetof(TableEntity{}.Yaw)), 0, 0, 0, 0, 0},      // yaw
-	{uint32(unsafe.Offsetof(TableEntity{}.Pitch)), 0, 0, 0, 0, 0},    // pitch
-	{uint32(unsafe.Offsetof(TableEntity{}.VelX)), 0, 0, 0, 0, 0},     // vel_x
-	{uint32(unsafe.Offsetof(TableEntity{}.VelY)), 0, 0, 0, 0, 0},     // vel_y
-	{uint32(unsafe.Offsetof(TableEntity{}.VelZ)), 0, 0, 0, 0, 0},     // vel_z
-	{uint32(unsafe.Offsetof(TableEntity{}.Health)), 0, 0, 0, 0, 0},   // health
-	{uint32(unsafe.Offsetof(TableEntity{}.Weapon)), 0, 0, 0, 0, 0},   // weapon
-	{0, 0, 0, 0, 0, 0}, // Fists
-	{0, 0, 0, 0, 0, 0}, // Pistol
-	{0, 0, 0, 0, 0, 0}, // Shotgun
-	{0, 0, 0, 0, 0, 0}, // Rifle
-	{0, 0, 0, 0, 0, 0}, // Sniper
-	{0, 0, 0, 0, 0, 0}, // Smg
-	{0, 0, 0, 0, 0, 0}, // Rocket
-	{0, 0, 0, 0, 0, 0}, // Grenade
-	{0, 0, 0, 0, 0, 0}, // Plasma
-	{0, 0, 0, 0, 0, 0}, // Railgun
-	{0, 0, 0, 0, 0, 0}, // Flamer
-	{0, 0, 0, 0, 0, 0}, // Mine
-	{0, 0, 0, 0, 0, 0}, // Turret
-	{0, 0, 0, 0, 0, 0}, // Drone
-	{0, 0, 0, 0, 0, 0}, // Repair
-	{uint32(unsafe.Offsetof(TableEntity{}.Damage)), 0, 0, 0, 0, 0}, // damage
-	{uint32(unsafe.Offsetof(TableEntity{}.Moving)), 0, 0, 0, 0, 0}, // moving
-	{uint32(unsafe.Offsetof(TableEntity{}.Firing)), 0, 0, 0, 0, 0}, // firing
+	{0, 0, 0, 0, 0, 0, 0}, // TableEntity
+	{uint32(unsafe.Offsetof(TableEntity{}.EntityID)), 0, 0, 0, 0, 0, 0}, // entity_id
+	{uint32(unsafe.Offsetof(TableEntity{}.PosX)), 0, 0, 0, 0, 0, 0},     // pos_x
+	{uint32(unsafe.Offsetof(TableEntity{}.PosY)), 0, 0, 0, 0, 0, 0},     // pos_y
+	{uint32(unsafe.Offsetof(TableEntity{}.PosZ)), 0, 0, 0, 0, 0, 0},     // pos_z
+	{uint32(unsafe.Offsetof(TableEntity{}.Yaw)), 0, 0, 0, 0, 0, 0},      // yaw
+	{uint32(unsafe.Offsetof(TableEntity{}.Pitch)), 0, 0, 0, 0, 0, 0},    // pitch
+	{uint32(unsafe.Offsetof(TableEntity{}.VelX)), 0, 0, 0, 0, 0, 0},     // vel_x
+	{uint32(unsafe.Offsetof(TableEntity{}.VelY)), 0, 0, 0, 0, 0, 0},     // vel_y
+	{uint32(unsafe.Offsetof(TableEntity{}.VelZ)), 0, 0, 0, 0, 0, 0},     // vel_z
+	{uint32(unsafe.Offsetof(TableEntity{}.Health)), 0, 0, 0, 0, 0, 0},   // health
+	{uint32(unsafe.Offsetof(TableEntity{}.Weapon)), 0, 0, 0, 0, 0, 0},   // weapon
+	{0, 0, 0, 0, 0, 0, 0}, // Fists
+	{0, 0, 0, 0, 0, 0, 0}, // Pistol
+	{0, 0, 0, 0, 0, 0, 0}, // Shotgun
+	{0, 0, 0, 0, 0, 0, 0}, // Rifle
+	{0, 0, 0, 0, 0, 0, 0}, // Sniper
+	{0, 0, 0, 0, 0, 0, 0}, // Smg
+	{0, 0, 0, 0, 0, 0, 0}, // Rocket
+	{0, 0, 0, 0, 0, 0, 0}, // Grenade
+	{0, 0, 0, 0, 0, 0, 0}, // Plasma
+	{0, 0, 0, 0, 0, 0, 0}, // Railgun
+	{0, 0, 0, 0, 0, 0, 0}, // Flamer
+	{0, 0, 0, 0, 0, 0, 0}, // Mine
+	{0, 0, 0, 0, 0, 0, 0}, // Turret
+	{0, 0, 0, 0, 0, 0, 0}, // Drone
+	{0, 0, 0, 0, 0, 0, 0}, // Repair
+	{uint32(unsafe.Offsetof(TableEntity{}.Damage)), 0, 0, 0, 0, 0, 0}, // damage
+	{uint32(unsafe.Offsetof(TableEntity{}.Moving)), 0, 0, 0, 0, 0, 0}, // moving
+	{uint32(unsafe.Offsetof(TableEntity{}.Firing)), 0, 0, 0, 0, 0, 0}, // firing
 }
 
 var TableEntityFixedPlan = tableFixedBuildPlan(TableEntityFixedLeaves, 14)
@@ -8867,7 +8867,7 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		}
 	}
 	for k := range values[:n] {
-		value, dst := &values[k], tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -8877,7 +8877,7 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !TableEntityFixedBounds(value) {
+		if !TableEntityFixedBounds(&values[k : k+1][0]) {
 			for j := range values[:k+1] {
 				TableEntityReset(&values[j])
 			}
@@ -8917,9 +8917,9 @@ var TableStatFixedLayout = []byte{
 }
 
 var TableStatFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // TableStat
-	{uint32(unsafe.Offsetof(TableStat{}.StatID)), 0, 0, 0, 0, 0}, // stat_id
-	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0, 0},  // delta
+	{0, 0, 0, 0, 0, 0, 0}, // TableStat
+	{uint32(unsafe.Offsetof(TableStat{}.StatID)), 0, 0, 0, 0, 0, 0}, // stat_id
+	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0, 0, 0},  // delta
 }
 
 var TableStatFixedPlan = tableFixedBuildPlan(TableStatFixedLeaves, 2)
@@ -9123,7 +9123,7 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		}
 	}
 	for k := range values[:n] {
-		value, dst := &values[k], tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -9133,7 +9133,7 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !TableStatFixedBounds(value) {
+		if !TableStatFixedBounds(&values[k : k+1][0]) {
 			for j := range values[:k+1] {
 				TableStatReset(&values[j])
 			}
@@ -9249,81 +9249,81 @@ var TableMixedFixedLayout = []byte{
 }
 
 var TableMixedFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // TableMixed
-	{uint32(unsafe.Offsetof(TableMixed{}.ProtocolMagic)), 0, 0, 0, 0, 0},                                                                                 // protocol_magic
-	{uint32(unsafe.Offsetof(TableMixed{}.Sequence)), 0, 0, 0, 0, 0},                                                                                      // sequence
-	{uint32(unsafe.Offsetof(TableMixed{}.AckSequence)), 0, 0, 0, 0, 0},                                                                                   // ack_sequence
-	{uint32(unsafe.Offsetof(TableMixed{}.AckBits)), 0, 0, 0, 0, 0},                                                                                       // ack_bits
-	{uint32(unsafe.Offsetof(TableMixed{}.SessionID)), 0, 0, 0, 0, 0},                                                                                     // session_id
-	{uint32(unsafe.Offsetof(TableMixed{}.ClientID)), 0, 0, 0, 0, 0},                                                                                      // client_id
-	{uint32(unsafe.Offsetof(TableMixed{}.Nonce)), 0, 0, 0, 0, 0},                                                                                         // nonce
-	{uint32(unsafe.Offsetof(TableMixed{}.WorldTime)), 0, 0, 0, 0, 0},                                                                                     // world_time
-	{uint32(unsafe.Offsetof(TableMixed{}.FrameTick)), 0, 0, 0, 0, 0},                                                                                     // frame_tick
-	{uint32(unsafe.Offsetof(TableMixed{}.ServerTime)), 0, 0, 0, 0, 0},                                                                                    // server_time
-	{uint32(unsafe.Offsetof(TableMixed{}.Entities)), uint32(unsafe.Sizeof(TableEntity{})), uint32(unsafe.Offsetof(TableMixed{}.EntitiesCount)), 1, 0, 0}, // entities
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(TableEntity{}.EntityID)), 0, 0, 0, 0, 0}, // entity_id
-	{uint32(unsafe.Offsetof(TableEntity{}.PosX)), 0, 0, 0, 0, 0},     // pos_x
-	{uint32(unsafe.Offsetof(TableEntity{}.PosY)), 0, 0, 0, 0, 0},     // pos_y
-	{uint32(unsafe.Offsetof(TableEntity{}.PosZ)), 0, 0, 0, 0, 0},     // pos_z
-	{uint32(unsafe.Offsetof(TableEntity{}.Yaw)), 0, 0, 0, 0, 0},      // yaw
-	{uint32(unsafe.Offsetof(TableEntity{}.Pitch)), 0, 0, 0, 0, 0},    // pitch
-	{uint32(unsafe.Offsetof(TableEntity{}.VelX)), 0, 0, 0, 0, 0},     // vel_x
-	{uint32(unsafe.Offsetof(TableEntity{}.VelY)), 0, 0, 0, 0, 0},     // vel_y
-	{uint32(unsafe.Offsetof(TableEntity{}.VelZ)), 0, 0, 0, 0, 0},     // vel_z
-	{uint32(unsafe.Offsetof(TableEntity{}.Health)), 0, 0, 0, 0, 0},   // health
-	{uint32(unsafe.Offsetof(TableEntity{}.Weapon)), 0, 0, 0, 0, 0},   // weapon
-	{0, 0, 0, 0, 0, 0}, // Fists
-	{0, 0, 0, 0, 0, 0}, // Pistol
-	{0, 0, 0, 0, 0, 0}, // Shotgun
-	{0, 0, 0, 0, 0, 0}, // Rifle
-	{0, 0, 0, 0, 0, 0}, // Sniper
-	{0, 0, 0, 0, 0, 0}, // Smg
-	{0, 0, 0, 0, 0, 0}, // Rocket
-	{0, 0, 0, 0, 0, 0}, // Grenade
-	{0, 0, 0, 0, 0, 0}, // Plasma
-	{0, 0, 0, 0, 0, 0}, // Railgun
-	{0, 0, 0, 0, 0, 0}, // Flamer
-	{0, 0, 0, 0, 0, 0}, // Mine
-	{0, 0, 0, 0, 0, 0}, // Turret
-	{0, 0, 0, 0, 0, 0}, // Drone
-	{0, 0, 0, 0, 0, 0}, // Repair
-	{uint32(unsafe.Offsetof(TableEntity{}.Damage)), 0, 0, 0, 0, 0},                                                                               // damage
-	{uint32(unsafe.Offsetof(TableEntity{}.Moving)), 0, 0, 0, 0, 0},                                                                               // moving
-	{uint32(unsafe.Offsetof(TableEntity{}.Firing)), 0, 0, 0, 0, 0},                                                                               // firing
-	{uint32(unsafe.Offsetof(TableMixed{}.Stats)), uint32(unsafe.Sizeof(TableStat{})), uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), 1, 0, 0}, // stats
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(TableStat{}.StatID)), 0, 0, 0, 0, 0}, // stat_id
-	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0, 0},  // delta
-	{uint32(unsafe.Offsetof(TableMixed{}.GameEvent)), 0, uint32(unsafe.Offsetof(TableMixed{}.GameEvent)) + uint32(unsafe.Offsetof(TableEvent{}.Type)), 0, 0, 0}, // game_event
-	{uint32(unsafe.Offsetof(TableEvent{}.Hit)), 0, 0, 0, 0, 0},                                   // hit
-	{uint32(unsafe.Offsetof(TableHitEvent{}.TargetID)), 0, 0, 0, 0, 0},                           // target_id
-	{uint32(unsafe.Offsetof(TableHitEvent{}.Damage)), 0, 0, 0, 0, 0},                             // damage
-	{uint32(unsafe.Offsetof(TableHitEvent{}.HitKind)), 0, 0, 0, 0, 0},                            // hit_kind
-	{uint32(unsafe.Offsetof(TableHitEvent{}.Crit)), 0, 0, 0, 0, 0},                               // crit
-	{uint32(unsafe.Offsetof(TableEvent{}.Chat)), 0, 0, 0, 0, 0},                                  // chat
-	{uint32(unsafe.Offsetof(TableChatEvent{}.Channel)), 0, 0, 0, 0, 0},                           // channel
-	{uint32(unsafe.Offsetof(TableChatEvent{}.Speaker)), 0, 0, 0, 0, 0},                           // speaker
-	{uint32(unsafe.Offsetof(TableEvent{}.Pickup)), 0, 0, 0, 0, 0},                                // pickup
-	{uint32(unsafe.Offsetof(TablePickupEvent{}.ItemID)), 0, 0, 0, 0, 0},                          // item_id
-	{uint32(unsafe.Offsetof(TablePickupEvent{}.Amount)), 0, 0, 0, 0, 0},                          // amount
-	{uint32(unsafe.Offsetof(TableMixed{}.Loadout)), uint32(unsafe.Sizeof(uint8(0))), 0, 0, 0, 0}, // loadout
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(TableMixed{}.PlayerNameLength)), 0, uint32(unsafe.Offsetof(TableMixed{}.PlayerName)), 0, 1, 1}, // player_name
-	{uint32(unsafe.Offsetof(TableMixed{}.Payload)), 1, uint32(unsafe.Offsetof(TableMixed{}.PayloadLength)), 1, 3, 3},       // payload
-	{0, 0, 0, 0, 0, 0}, // u8
-	{uint32(unsafe.Offsetof(TableMixed{}.AimX)), 0, 0, 0, 0, 0},      // aim_x
-	{uint32(unsafe.Offsetof(TableMixed{}.AimY)), 0, 0, 0, 0, 0},      // aim_y
-	{uint32(unsafe.Offsetof(TableMixed{}.AimZ)), 0, 0, 0, 0, 0},      // aim_z
-	{uint32(unsafe.Offsetof(TableMixed{}.Recoil)), 0, 0, 0, 0, 0},    // recoil
-	{uint32(unsafe.Offsetof(TableMixed{}.Drift)), 0, 0, 0, 0, 0},     // drift
-	{uint32(unsafe.Offsetof(TableMixed{}.WideKey)), 0, 0, 0, 0, 0},   // wide_key
-	{uint32(unsafe.Offsetof(TableMixed{}.Flux)), 0, 0, 0, 0, 0},      // flux
-	{uint32(unsafe.Offsetof(TableMixed{}.Ping)), 0, 0, 0, 0, 0},      // ping
-	{uint32(unsafe.Offsetof(TableMixed{}.CrcHint)), 0, 0, 0, 0, 0},   // crc_hint
-	{uint32(unsafe.Offsetof(TableMixed{}.HasExtra)), 0, 0, 0, 0, 0},  // has_extra
-	{uint32(unsafe.Offsetof(TableMixed{}.Extra)), 0, 0, 0, 0, 0},     // extra
-	{uint32(unsafe.Offsetof(TableMixed{}.IdleTicks)), 0, 0, 0, 0, 0}, // idle_ticks
+	{0, 0, 0, 0, 0, 0, 0}, // TableMixed
+	{uint32(unsafe.Offsetof(TableMixed{}.ProtocolMagic)), 0, 0, 0, 0, 0, 0},                                                                                 // protocol_magic
+	{uint32(unsafe.Offsetof(TableMixed{}.Sequence)), 0, 0, 0, 0, 0, 0},                                                                                      // sequence
+	{uint32(unsafe.Offsetof(TableMixed{}.AckSequence)), 0, 0, 0, 0, 0, 0},                                                                                   // ack_sequence
+	{uint32(unsafe.Offsetof(TableMixed{}.AckBits)), 0, 0, 0, 0, 0, 0},                                                                                       // ack_bits
+	{uint32(unsafe.Offsetof(TableMixed{}.SessionID)), 0, 0, 0, 0, 0, 0},                                                                                     // session_id
+	{uint32(unsafe.Offsetof(TableMixed{}.ClientID)), 0, 0, 0, 0, 0, 0},                                                                                      // client_id
+	{uint32(unsafe.Offsetof(TableMixed{}.Nonce)), 0, 0, 0, 0, 0, 0},                                                                                         // nonce
+	{uint32(unsafe.Offsetof(TableMixed{}.WorldTime)), 0, 0, 0, 0, 0, 0},                                                                                     // world_time
+	{uint32(unsafe.Offsetof(TableMixed{}.FrameTick)), 0, 0, 0, 0, 0, 0},                                                                                     // frame_tick
+	{uint32(unsafe.Offsetof(TableMixed{}.ServerTime)), 0, 0, 0, 0, 0, 0},                                                                                    // server_time
+	{uint32(unsafe.Offsetof(TableMixed{}.Entities)), uint32(unsafe.Sizeof(TableEntity{})), uint32(unsafe.Offsetof(TableMixed{}.EntitiesCount)), 1, 1, 0, 0}, // entities
+	{0, 0, 0, 0, 0, 0, 0}, // element
+	{uint32(unsafe.Offsetof(TableEntity{}.EntityID)), 0, 0, 0, 0, 0, 0}, // entity_id
+	{uint32(unsafe.Offsetof(TableEntity{}.PosX)), 0, 0, 0, 0, 0, 0},     // pos_x
+	{uint32(unsafe.Offsetof(TableEntity{}.PosY)), 0, 0, 0, 0, 0, 0},     // pos_y
+	{uint32(unsafe.Offsetof(TableEntity{}.PosZ)), 0, 0, 0, 0, 0, 0},     // pos_z
+	{uint32(unsafe.Offsetof(TableEntity{}.Yaw)), 0, 0, 0, 0, 0, 0},      // yaw
+	{uint32(unsafe.Offsetof(TableEntity{}.Pitch)), 0, 0, 0, 0, 0, 0},    // pitch
+	{uint32(unsafe.Offsetof(TableEntity{}.VelX)), 0, 0, 0, 0, 0, 0},     // vel_x
+	{uint32(unsafe.Offsetof(TableEntity{}.VelY)), 0, 0, 0, 0, 0, 0},     // vel_y
+	{uint32(unsafe.Offsetof(TableEntity{}.VelZ)), 0, 0, 0, 0, 0, 0},     // vel_z
+	{uint32(unsafe.Offsetof(TableEntity{}.Health)), 0, 0, 0, 0, 0, 0},   // health
+	{uint32(unsafe.Offsetof(TableEntity{}.Weapon)), 0, 0, 0, 0, 0, 0},   // weapon
+	{0, 0, 0, 0, 0, 0, 0}, // Fists
+	{0, 0, 0, 0, 0, 0, 0}, // Pistol
+	{0, 0, 0, 0, 0, 0, 0}, // Shotgun
+	{0, 0, 0, 0, 0, 0, 0}, // Rifle
+	{0, 0, 0, 0, 0, 0, 0}, // Sniper
+	{0, 0, 0, 0, 0, 0, 0}, // Smg
+	{0, 0, 0, 0, 0, 0, 0}, // Rocket
+	{0, 0, 0, 0, 0, 0, 0}, // Grenade
+	{0, 0, 0, 0, 0, 0, 0}, // Plasma
+	{0, 0, 0, 0, 0, 0, 0}, // Railgun
+	{0, 0, 0, 0, 0, 0, 0}, // Flamer
+	{0, 0, 0, 0, 0, 0, 0}, // Mine
+	{0, 0, 0, 0, 0, 0, 0}, // Turret
+	{0, 0, 0, 0, 0, 0, 0}, // Drone
+	{0, 0, 0, 0, 0, 0, 0}, // Repair
+	{uint32(unsafe.Offsetof(TableEntity{}.Damage)), 0, 0, 0, 0, 0, 0},                                                                               // damage
+	{uint32(unsafe.Offsetof(TableEntity{}.Moving)), 0, 0, 0, 0, 0, 0},                                                                               // moving
+	{uint32(unsafe.Offsetof(TableEntity{}.Firing)), 0, 0, 0, 0, 0, 0},                                                                               // firing
+	{uint32(unsafe.Offsetof(TableMixed{}.Stats)), uint32(unsafe.Sizeof(TableStat{})), uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), 0, 1, 0, 0}, // stats
+	{0, 0, 0, 0, 0, 0, 0}, // element
+	{uint32(unsafe.Offsetof(TableStat{}.StatID)), 0, 0, 0, 0, 0, 0}, // stat_id
+	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0, 0, 0},  // delta
+	{uint32(unsafe.Offsetof(TableMixed{}.GameEvent)), 0, uint32(unsafe.Offsetof(TableMixed{}.GameEvent)) + uint32(unsafe.Offsetof(TableEvent{}.Type)), 0, 0, 0, 0}, // game_event
+	{uint32(unsafe.Offsetof(TableEvent{}.Hit)), 0, 0, 0, 0, 0, 0},                                   // hit
+	{uint32(unsafe.Offsetof(TableHitEvent{}.TargetID)), 0, 0, 0, 0, 0, 0},                           // target_id
+	{uint32(unsafe.Offsetof(TableHitEvent{}.Damage)), 0, 0, 0, 0, 0, 0},                             // damage
+	{uint32(unsafe.Offsetof(TableHitEvent{}.HitKind)), 0, 0, 0, 0, 0, 0},                            // hit_kind
+	{uint32(unsafe.Offsetof(TableHitEvent{}.Crit)), 0, 0, 0, 0, 0, 0},                               // crit
+	{uint32(unsafe.Offsetof(TableEvent{}.Chat)), 0, 0, 0, 0, 0, 0},                                  // chat
+	{uint32(unsafe.Offsetof(TableChatEvent{}.Channel)), 0, 0, 0, 0, 0, 0},                           // channel
+	{uint32(unsafe.Offsetof(TableChatEvent{}.Speaker)), 0, 0, 0, 0, 0, 0},                           // speaker
+	{uint32(unsafe.Offsetof(TableEvent{}.Pickup)), 0, 0, 0, 0, 0, 0},                                // pickup
+	{uint32(unsafe.Offsetof(TablePickupEvent{}.ItemID)), 0, 0, 0, 0, 0, 0},                          // item_id
+	{uint32(unsafe.Offsetof(TablePickupEvent{}.Amount)), 0, 0, 0, 0, 0, 0},                          // amount
+	{uint32(unsafe.Offsetof(TableMixed{}.Loadout)), uint32(unsafe.Sizeof(uint8(0))), 0, 0, 0, 0, 0}, // loadout
+	{0, 0, 0, 0, 0, 0, 0}, // element
+	{uint32(unsafe.Offsetof(TableMixed{}.PlayerNameLength)), 0, uint32(unsafe.Offsetof(TableMixed{}.PlayerName)), 0, 0, 1, 1}, // player_name
+	{uint32(unsafe.Offsetof(TableMixed{}.Payload)), 1, uint32(unsafe.Offsetof(TableMixed{}.PayloadLength)), 0, 1, 3, 3},       // payload
+	{0, 0, 0, 0, 0, 0, 0}, // u8
+	{uint32(unsafe.Offsetof(TableMixed{}.AimX)), 0, 0, 0, 0, 0, 0},      // aim_x
+	{uint32(unsafe.Offsetof(TableMixed{}.AimY)), 0, 0, 0, 0, 0, 0},      // aim_y
+	{uint32(unsafe.Offsetof(TableMixed{}.AimZ)), 0, 0, 0, 0, 0, 0},      // aim_z
+	{uint32(unsafe.Offsetof(TableMixed{}.Recoil)), 0, 0, 0, 0, 0, 0},    // recoil
+	{uint32(unsafe.Offsetof(TableMixed{}.Drift)), 0, 0, 0, 0, 0, 0},     // drift
+	{uint32(unsafe.Offsetof(TableMixed{}.WideKey)), 0, 0, 0, 0, 0, 0},   // wide_key
+	{uint32(unsafe.Offsetof(TableMixed{}.Flux)), 0, 0, 0, 0, 0, 0},      // flux
+	{uint32(unsafe.Offsetof(TableMixed{}.Ping)), 0, 0, 0, 0, 0, 0},      // ping
+	{uint32(unsafe.Offsetof(TableMixed{}.CrcHint)), 0, 0, 0, 0, 0, 0},   // crc_hint
+	{uint32(unsafe.Offsetof(TableMixed{}.HasExtra)), 0, 0, 0, 0, 0, 0},  // has_extra
+	{uint32(unsafe.Offsetof(TableMixed{}.Extra)), 0, 0, 0, 0, 0, 0},     // extra
+	{uint32(unsafe.Offsetof(TableMixed{}.IdleTicks)), 0, 0, 0, 0, 0, 0}, // idle_ticks
 }
 
 var TableMixedFixedPlan = tableFixedBuildPlan(TableMixedFixedLeaves, 311)
@@ -9604,7 +9604,7 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		}
 	}
 	for k := range values[:n] {
-		value, dst := &values[k], tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -9612,7 +9612,7 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
-		if why := TableMixedFixedFiniteBody(value); why != "" {
+		if why := TableMixedFixedFiniteBody(&values[k : k+1][0]); why != "" {
 			for j := range values[:k+1] {
 				TableMixedReset(&values[j])
 			}
@@ -9622,7 +9622,7 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !TableMixedFixedBounds(value) {
+		if !TableMixedFixedBounds(&values[k : k+1][0]) {
 			for j := range values[:k+1] {
 				TableMixedReset(&values[j])
 			}
