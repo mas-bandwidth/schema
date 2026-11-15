@@ -4198,6 +4198,8 @@ def TableMixedFixedBoundsBody(v·:TableMixed) -> bool:
         return false
     if v·.ServerTime < 0.0 or v·.ServerTime > 65535.0:
         return false
+    if v·.ServerTime == 0.0:
+        v·.ServerTime = 0.0
     if v·.EntitiesCount < 1 or v·.EntitiesCount > 8:
         return false
     for(v·.EntitiesCount) i_bd_Entities·:
@@ -4232,14 +4234,20 @@ def TableMixedFixedBoundsBody(v·:TableMixed) -> bool:
         return false
     if v·.AimX < -1.0 or v·.AimX > 1.0:
         return false
+    if v·.AimX == 0.0:
+        v·.AimX = 0.0
     if not schema_rt.finite_f32(v·.AimY):
         return false
     if v·.AimY < -1.0 or v·.AimY > 1.0:
         return false
+    if v·.AimY == 0.0:
+        v·.AimY = 0.0
     if not schema_rt.finite_f32(v·.AimZ):
         return false
     if v·.AimZ < -1.0 or v·.AimZ > 1.0:
         return false
+    if v·.AimZ == 0.0:
+        v·.AimZ = 0.0
     if not schema_rt.finite_f32(v·.Recoil):
         return false
     if not schema_rt.finite_f64(v·.Drift):
@@ -4250,6 +4258,8 @@ def TableMixedFixedBoundsBody(v·:TableMixed) -> bool:
         return false
     if v·.Ping < 0.0 or v·.Ping > 250.0:
         return false
+    if v·.Ping == 0.0:
+        v·.Ping = 0.0
     if (schema_rt.ult(16777215, v·.CrcHint)):
         return false
     if (v·.Extra < -2147483648) or (v·.Extra > 2147483647):
