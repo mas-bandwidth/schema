@@ -901,9 +901,11 @@ inline void TableNonFiniteFloat( TableReport * report )
 // TableNonFiniteRefused is the load's own end: true when the walk met a
 // non-finite float since before, with the refusal stamped again over
 // whatever the walk met after it, because it outranks any damage (§3.3).
-inline bool TableNonFiniteRefused( TableReport * report, int32_t before )
+// wire is the strict walk's own finding (TableWireStrict): a NaN or an
+// infinity in a field this reader does not declare refuses the read too.
+inline bool TableNonFiniteRefused( TableReport * report, int32_t before, bool wire = false )
 {
-    if ( report->non_finite_floats == before ) { return false; }
+    if ( report->non_finite_floats == before && !wire ) { return false; }
     report->refused = true;
     report->reason = non_finite_float;
     report->refuse_reason = non_finite_float;
@@ -1708,7 +1710,7 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
         if ( !r.skip( r.get8() ) ) { return false; }
     }
 }
-
+` + tableWireStrictRuntime + `
 ` + messageForm + `` + keyedStorage + `inline float table_bits_to_float( uint32_t bits )
 {
     float f;

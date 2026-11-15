@@ -1119,6 +1119,13 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("        out->damaged = true; // a byte no field claims, before the table (§3)\n")
 	g.pf("        out->refuse_reason = wire_damaged;\n")
 	g.pf("        return false;\n    }\n")
+	g.pf("    // THE STRICT FORM-1 WALK, BEFORE ANY VALUE IS DECODED (§4, §6.5)\n")
+	g.pf("    bool wire_non_finite = false;\n")
+	g.pf("    const TableRefuseReason wire_verdict = TableWireStrict( wire_file + 1, body_bytes, ids_table, wire_non_finite );\n")
+	g.pf("    if ( wire_verdict != TableRefuseReason::ok )\n    {\n")
+	g.pf("        if ( wire_verdict != wire_damaged ) { out->damaged = damaged_before; }\n")
+	g.pf("        TableStrictWalk::stamp( out, wire_verdict );\n")
+	g.pf("        return false;\n    }\n")
 	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
 	g.pf("    const int64_t wire_bytes = body_bytes;\n")
 	g.pf("    %s * root = builder.GetRoot();\n", n)
@@ -1201,7 +1208,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 		g.pf("    bool ok = %sLoadBody( r, nodes, *root );\n", n)
 	}
 	g.pf("    // A NON-FINITE FLOAT REFUSES THE READ, the strict one too (§3.3)\n")
-	g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }\n")
+	g.pf("    if ( TableNonFiniteRefused( out, non_finite_before, wire_non_finite ) ) { ok = false; }\n")
 	g.pf("    if ( out->missing_required != missing_before ) { ok = false; }\n")
 	if g.anyExtent {
 		g.pf("    // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md\n")
@@ -1722,6 +1729,11 @@ func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct) {
 	g.pf("    // IS MALFORMED (docs/SPEC-TABLES.md §3): the two ends of the file have\n")
 	g.pf("    // met, nothing is decoded, and no region is sized from it.\n")
 	g.pf("    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) ) { return -1; }\n")
+	g.pf("    // THE STRICT FORM-1 WALK (docs/SPEC-TABLES.md §4, §6.5): a wire the\n")
+	g.pf("    // strict read refuses sizes no region, and the -1 carries its reason.\n")
+	g.pf("    bool wire_non_finite = false;\n")
+	g.pf("    const TableRefuseReason wire_verdict = TableWireStrict( wire_file + 1, body_bytes, ids_table, wire_non_finite );\n")
+	g.pf("    if ( wire_verdict != TableRefuseReason::ok )\n    {\n        if ( reason_out != NULL ) { *reason_out = wire_verdict; }\n        return -1;\n    }\n")
 	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
 	g.pf("    const int64_t wire_bytes = body_bytes;\n")
 	g.pf("    TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );\n")
@@ -1807,6 +1819,15 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )\n    {\n")
 	g.pf("        out->damaged = true; // a byte no field claims, before the table (§3)\n")
 	g.pf("        out->refuse_reason = wire_damaged;\n")
+	g.pf("        return NULL;\n    }\n")
+	g.pf("    // THE STRICT FORM-1 WALK, BEFORE ANY VALUE IS DECODED (§4, §6.5): every\n")
+	g.pf("    // condition decidable from the wire alone, in fields and records this\n")
+	g.pf("    // reader declares and in those it does not, refuses the whole load.\n")
+	g.pf("    bool wire_non_finite = false;\n")
+	g.pf("    const TableRefuseReason wire_verdict = TableWireStrict( wire_file + 1, body_bytes, ids_table, wire_non_finite );\n")
+	g.pf("    if ( wire_verdict != TableRefuseReason::ok )\n    {\n")
+	g.pf("        if ( wire_verdict != wire_damaged ) { out->damaged = damaged_before; }\n")
+	g.pf("        TableStrictWalk::stamp( out, wire_verdict );\n")
 	g.pf("        return NULL;\n    }\n")
 	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
 	g.pf("    const int64_t wire_bytes = body_bytes;\n")
@@ -1926,7 +1947,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		if g.retain {
 			g.pf("        TableRetainReset( retain, TableNodeMap(), NULL );\n")
 		}
-		g.pf("        if ( TableNonFiniteRefused( out, non_finite_before ) )\n        {\n            out->damaged = out->damaged || damaged_before;\n            return NULL;\n        }\n")
+		g.pf("        if ( TableNonFiniteRefused( out, non_finite_before, wire_non_finite ) )\n        {\n            out->damaged = out->damaged || damaged_before;\n            return NULL;\n        }\n")
 		g.pf("        if ( nodes.refused && !out->damaged )\n        {\n            out->refused = true;\n            out->reason = count_over_extent_cap;\n            out->refuse_reason = count_over_extent_cap;\n            out->damaged = damaged_before;\n            return NULL;\n        }\n")
 		g.pf("        out->damaged = true;\n")
 		g.pf("        return NULL;\n")
@@ -2041,9 +2062,9 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    // A NON-FINITE FLOAT REFUSES THE READ, the strict one too, and nothing\n")
 	g.pf("    // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)\n")
 	if g.retain {
-		g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) )\n    {\n        out->damaged = out->damaged || damaged_before;\n        memset( region, 0, (size_t) region_bytes );\n        TableRetainReset( retain, nodes, region );\n        return NULL;\n    }\n")
+		g.pf("    if ( TableNonFiniteRefused( out, non_finite_before, wire_non_finite ) )\n    {\n        out->damaged = out->damaged || damaged_before;\n        memset( region, 0, (size_t) region_bytes );\n        TableRetainReset( retain, nodes, region );\n        return NULL;\n    }\n")
 	} else {
-		g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) )\n    {\n        out->damaged = out->damaged || damaged_before;\n        memset( region, 0, (size_t) region_bytes );\n        return NULL;\n    }\n")
+		g.pf("    if ( TableNonFiniteRefused( out, non_finite_before, wire_non_finite ) )\n    {\n        out->damaged = out->damaged || damaged_before;\n        memset( region, 0, (size_t) region_bytes );\n        return NULL;\n    }\n")
 	}
 
 	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): no writer

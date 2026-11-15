@@ -2276,6 +2276,15 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("        to->damaged = true;\n")
 	g.pf("        to->refuse_reason = wire_damaged;\n")
 	g.pf("        return TableOpenDamaged;\n    }\n")
+	g.pf("    // THE STRICT FORM-1 WALK, BEFORE ANY VALUE IS DECODED (§4, §6.5): every\n")
+	g.pf("    // condition decidable from the wire alone, in fields this reader\n")
+	g.pf("    // declares and in those it does not, refuses the whole load.\n")
+	g.pf("    bool wire_non_finite = false;\n")
+	g.pf("    const TableRefuseReason wire = TableWireStrict( buffer + 1, body_bytes, table, wire_non_finite );\n")
+	g.pf("    if ( wire != TableRefuseReason::ok )\n    {\n")
+	g.pf("        %sReset( value );\n", st.Name)
+	g.pf("        TableStrictWalk::stamp( to, wire );\n")
+	g.pf("        return wire == wire_damaged ? TableOpenDamaged : TableOpenRefused;\n    }\n")
 	g.pf("    TableReader r( buffer + 1, body_bytes, to, &table );\n")
 	g.pf("    r.nested = false; // the ROOT body, the one that may carry a node table\n")
 	g.pf("    const int32_t non_finite_before = to->non_finite_floats;\n")
@@ -2284,7 +2293,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("    const bool whole = %sLoadBody( r, value );\n", st.Name)
 	// A NON-FINITE FLOAT REFUSES THE READ, the strict one too, and outranks
 	// any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing lands.
-	g.pf("    if ( TableNonFiniteRefused( to, non_finite_before ) )\n    {\n        to->damaged = to->damaged || damaged_before;\n        %[1]sReset( value );\n        return TableOpenRefused;\n    } // a NaN or an infinity: nothing lands (§3.3)\n", st.Name)
+	g.pf("    if ( TableNonFiniteRefused( to, non_finite_before, wire_non_finite ) )\n    {\n        to->damaged = to->damaged || damaged_before;\n        %[1]sReset( value );\n        return TableOpenRefused;\n    } // a NaN or an infinity: nothing lands (§3.3)\n", st.Name)
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing the
 	// walk decoded is handed back, and the verdict is the damage.
 	g.pf("    if ( to->damaged )\n    {\n        %[1]sReset( value );\n        return TableOpenDamaged;\n    } // damage discards the whole load (§4)\n", st.Name)

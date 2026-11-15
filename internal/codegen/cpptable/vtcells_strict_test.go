@@ -58,14 +58,14 @@ var cppVarCellAnchors = map[string]struct {
 			"r.report->refuse_reason = out_of_range;",
 		},
 	},
-	// vt/fixed-class: the conformance driver's form-1 read gates on the
-	// strict framing walk (framing_strict_ok); damage anywhere refuses the
-	// load before any value is decoded (D1).
+	// vt/fixed-class: the generated form-1 read gates on the strict wire
+	// walk (TableWireStrict); damage anywhere refuses the load before any
+	// value is decoded (D1).
 	"vt/fixed-class/cpp": {
-		src: "test/conformance/cpp/main.cpp",
+		src: "internal/codegen/cpptable/codecs.go",
 		want: []string{
-			"const bool framing_ok = !form1 || framing_strict_ok(",
-			"static bool framing_strict_ok(",
+			"const TableRefuseReason wire = TableWireStrict( buffer + 1, body_bytes, table, wire_non_finite );",
+			"if ( wire != TableRefuseReason::ok )",
 		},
 	},
 	// vt/doc-tags: the table's doc/tags negative controls plant the retired
@@ -97,15 +97,15 @@ var cppVarCellAnchors = map[string]struct {
 			`else if ( elem_kind != %[2]d )\n%[1]s    {\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = kind_mismatch;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }`,
 		},
 	},
-	// vt/id-table-wire: the conformance driver's form-1 framing walk refuses a
-	// repeated field id (R5, which is how a node table riding twice is caught)
-	// and a node record no pointer reaches (T1, node_index_null), so those
-	// id-table wiring damages refuse the whole load before any value decodes.
+	// vt/id-table-wire: the generated strict form-1 walk refuses a repeated
+	// field id (R5, which is how a node table riding twice is caught) and a
+	// node record no pointer reaches (T1, node_index_null), so those id-table
+	// wiring damages refuse the whole load before any value decodes.
 	"vt/id-table-wire/cpp": {
-		src: "test/conformance/cpp/main.cpp",
+		src: "internal/codegen/cpptable/wirestrict.go",
 		want: []string{
-			"for ( size_t k = 0; k < seen.size(); k++ ) if ( seen[k] == id ) return false; // R5",
-			"for ( size_t k = 1; k < n; k++ ) if ( mark[k] == 0 ) return false; // unreachable is damage",
+			"if ( ( seen[( ref - 1 ) >> 6] & bit ) != 0 ) { return false; } // the same field id twice in one body",
+			"if ( marks[k] == 0 ) { return wire_damaged; } // a node record no pointer reaches",
 		},
 	},
 	// vt/retain-unknown: a retaining read that cannot capture a field discards

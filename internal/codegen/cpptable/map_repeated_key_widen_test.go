@@ -8,7 +8,9 @@ import (
 // A repeated map key inside an entry body is damage under the strict-only
 // read (docs/plans/strict-only.md, decision 5): the load refuses the whole
 // value, including when one occurrence had an incompatible kind and another
-// uses a widening integer kind (docs/SPEC-TABLES.md §2.8, §3, §4).
+// uses a widening integer kind (docs/SPEC-TABLES.md §2.8, §3, §4). The
+// verdict is the contract (docs/rulings.json refusal-verdict-only): the
+// report says the load was refused, as damage or by name.
 func TestCppMapRepeatedKeyRefused(t *testing.T) {
 	u := loadUnitFromSource(t, `package probe
 table Root
@@ -68,7 +70,7 @@ static bool check_case( const char * name, const uint8_t * keys, int64_t keys_le
             printf( "%s: RootLoadBuilder accepted a repeated map key\n", name );
             return false;
         }
-        if ( !report.refused )
+        if ( !report.refused && !report.damaged )
         {
             printf( "%s builder: repeated key was not a refusal\n", name );
             return false;
@@ -80,7 +82,7 @@ static bool check_case( const char * name, const uint8_t * keys, int64_t keys_le
         alignas( 8 ) uint8_t region[4096];
         TableReport report;
         const Root * root = RootLoad( region, (int64_t) sizeof( region ), wire, wire_len, &report );
-        if ( root != NULL || !report.refused )
+        if ( root != NULL || ( !report.refused && !report.damaged ) )
         {
             printf( "%s region: repeated key was not refused\n", name );
             return false;

@@ -4,16 +4,19 @@ package cpptable
 // docs/SPEC-TABLES.md §4, §6.5): the strict read is one read — the whole
 // value or a refusal — and the framing battery's vectors are form-1 files,
 // so a root declared `fixed table` is read there through its form-1 read
-// with its class variable. Ten of the battery's rows are damaged wires the
-// generated C++ readers decoded as values: an inert array, keyed or map
-// body (H2), a repeated field id (R5), an unknown field whose skipped bytes
-// are themselves damage (R2), a node table riding twice (R5, T1), a node
-// record no pointer reaches (T1) and an unknown node table whose record's
-// type reference is 0 (T4). The driver now walks the whole wire by the
-// wire-alone rules before it decodes (test/conformance/cpp/main.cpp,
-// framing_strict_ok), and this test holds the built driver to every
-// framing row of the manifest: the verdict the row owes, the §16 text of
-// the value a read row leaves, and its canonical write-back wire.
+// with its class variable. THE GENERATED READER HOLDS THE ROWS: every
+// generated form-1 read runs the strict wire-alone walk (TableWireStrict,
+// emitted by wirestrict.go into every unit's runtime) before any value is
+// decoded, so an inert array, keyed or map body (H2), bytes left inside an
+// L past its count or after a record's terminator (L3, L6), a repeated field
+// id (R5), an unknown field whose skipped bytes are themselves damage (R2),
+// a node table riding twice (R5, T1), a node record no pointer reaches (T1)
+// and an unknown node table whose record's type reference is 0 (T4) each
+// refuse the whole load. The driver reads through that generated load alone
+// and reports its verdict (test/conformance/cpp/main.cpp, read_answer), and
+// this test holds the built driver to every framing row of the manifest:
+// the verdict the row owes, the §16 text of the value a read row leaves,
+// and its canonical write-back wire.
 //
 // It builds and runs the real driver, so it is a functional test: it skips
 // by name without SCHEMA_SLOW, and fails by name under
@@ -33,11 +36,10 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// cppFramingStrictRows are the form-1 rows that must refuse and did not:
-// the negative control below is held to turning exactly these back into
-// reads when the strict walk is taken out of the driver. The four rows of
-// bytes inside L past a count and after a record terminator (8ad2632bc) are
-// refused by the same walk.
+// cppFramingStrictRows are the form-1 rows the generated strict walk alone
+// refuses: the decode without it reads each of them as a value, and the
+// negative control below is held to turning exactly these back into reads
+// when the walk's verdict is discarded in the generated reader.
 var cppFramingStrictRows = []string{
 	"array_L0_inert",
 	"array_L1_inert",
@@ -215,41 +217,83 @@ func TestCppDriverRefusesFormOneFraming(t *testing.T) {
 	}
 }
 
+// cppStrictWalkAnchor is the generated strict walk's definition, as every
+// unit's runtime header spells it once (wirestrict.go). The negative control
+// below plants its fault there.
+const cppStrictWalkAnchor = "inline TableRefuseReason TableWireStrict( const uint8_t * body, int64_t bytes, const TableIdTable & ids, bool & non_finite )\n{\n"
+
+// cppStrictWalkPlant keeps the walk's own body under another name and answers
+// ok in its place: the walk still runs, and its verdict is discarded, so every
+// generated form-1 read decodes what the walk would have refused.
+const cppStrictWalkPlant = "inline TableRefuseReason TableWireStrictSabotaged( const uint8_t * body, int64_t bytes, const TableIdTable & ids, bool & non_finite );\n" +
+	"inline TableRefuseReason TableWireStrict( const uint8_t * body, int64_t bytes, const TableIdTable & ids, bool & non_finite )\n{\n" +
+	"    ( void ) TableWireStrictSabotaged( body, bytes, ids, non_finite ); // SABOTAGED: the walk runs and its verdict is discarded\n" +
+	"    return TableRefuseReason::ok;\n}\n" +
+	"inline TableRefuseReason TableWireStrictSabotaged( const uint8_t * body, int64_t bytes, const TableIdTable & ids, bool & non_finite )\n{\n"
+
 // TestCppDriverRefusesFormOneFramingNegativeControl plants its fault in
-// the real artifact: the strict form-1 walk is taken out of a COPY of the
-// driver (no tracked file is written to), the copy is built with the
-// Makefile's own flags against the driver's own table objects, and the
-// framing battery must go red on exactly the strict rows — each read again,
-// as the unsabotaged readers left them. A control that stayed green, or
-// went red anywhere else, would prove the walk is not what refuses them.
+// the generated reader: a scratch COPY of the generated C++ tree (no tracked
+// file is written to) has the strict walk's verdict discarded at its one
+// definition in every runtime header that carries it, the driver is built
+// against that copy with the Makefile's own flags, and the framing battery
+// must go red on exactly the strict rows — each read again, as the readers
+// decode them without the walk. A control that stayed green, or went red
+// anywhere else, would prove the generated walk is not what refuses them.
 func TestCppDriverRefusesFormOneFramingNegativeControl(t *testing.T) {
 	root := cppConformanceRoot(t)
 	rows := cppFramingManifestRows(t, root)
-	src, err := os.ReadFile(filepath.Join(root, "test", "conformance", "cpp", "main.cpp"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	const anchor = "framing_strict_ok( wire.data(), wire.size() )"
-	if n := bytes.Count(src, []byte(anchor)); n != 1 {
-		t.Fatalf("NEGATIVE CONTROL FAILED: the strict walk's call %q appears %d times in test/conformance/cpp/main.cpp, want 1: the plant below has nothing to take out", anchor, n)
-	}
-	planted := bytes.Replace(src, []byte(anchor), []byte("( framing_strict_ok( wire.data(), wire.size() ), true ) /* SABOTAGED: the walk runs and its verdict is discarded */"), 1)
+	cppConformanceMake(t, root, "build/conformance-cpp")
 
 	scratch, err := os.MkdirTemp(filepath.Join(root, "build"), "cpp-framing-negative-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(scratch) })
-	plantedSrc := filepath.Join(scratch, "main.cpp")
-	if err := os.WriteFile(plantedSrc, planted, 0o600); err != nil {
+	generated := filepath.Join(root, "build", "tables-generated")
+	copied := filepath.Join(scratch, "generated")
+	planted := 0
+	err = filepath.WalkDir(generated, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(generated, path)
+		if err != nil {
+			return err
+		}
+		to := filepath.Join(copied, rel)
+		if d.IsDir() {
+			return os.MkdirAll(to, 0o700)
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if n := bytes.Count(b, []byte(cppStrictWalkAnchor)); n > 0 {
+			if n != 1 {
+				return fmt.Errorf("NEGATIVE CONTROL FAILED: the strict walk's definition appears %d times in %s, want 1: the plant would not be the one fault", n, rel)
+			}
+			b = bytes.Replace(b, []byte(cppStrictWalkAnchor), []byte(cppStrictWalkPlant), 1)
+			planted++
+		}
+		return os.WriteFile(to, b, 0o600)
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
+	if planted == 0 {
+		t.Fatalf("NEGATIVE CONTROL FAILED: no generated header defines the strict walk %q: the plant has nothing to take out", cppStrictWalkAnchor)
+	}
+
 	bin := filepath.Join(scratch, "driver-bin")
 	mk := filepath.Join(scratch, "negative.mk")
-	// the planted main.cpp links the table objects the driver links (the
-	// Makefile's conformance-cpp-objects), so the control compiles one
-	// translation unit, not the driver's every table source over again
-	rule := fmt.Sprintf("%s: conformance-cpp-objects\n\t$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) %s $(CONFORMANCE_OBJECTS) -o %s\n", bin, plantedSrc, bin)
+	// the driver's own recipe over the planted copy: every table source is
+	// its own object under make's -j, compiled from the copy with the copy's
+	// headers first on the include path, then linked to the real main.cpp
+	rule := fmt.Sprintf("NEGATIVE_INCLUDES = $(subst build/tables-generated/,%[1]s/,$(CONFORMANCE_INCLUDES))\n"+
+		"NEGATIVE_OBJECTS = $(patsubst build/tables-generated/%%.cpp,%[2]s/objs/%%.o,$(CONFORMANCE_SOURCES))\n"+
+		"%[2]s/objs/%%.o: %[1]s/%%.cpp\n\t@mkdir -p $(@D)\n\t$(CXX) $(TABLES_CXXFLAGS) $(NEGATIVE_INCLUDES) -c $< -o $@\n"+
+		"%[3]s: $(NEGATIVE_OBJECTS)\n\t$(CXX) $(TABLES_CXXFLAGS) $(NEGATIVE_INCLUDES) test/conformance/cpp/main.cpp $(NEGATIVE_OBJECTS) -o %[3]s\n",
+		copied, scratch, bin)
 	if err := os.WriteFile(mk, []byte(rule), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -264,11 +308,11 @@ func TestCppDriverRefusesFormOneFramingNegativeControl(t *testing.T) {
 	}
 	for _, name := range cppFramingStrictRows {
 		if !got[name] {
-			t.Errorf("NEGATIVE CONTROL FAILED: with the strict walk taken out, framing %s did not go red: the walk is not what refuses it", name)
+			t.Errorf("NEGATIVE CONTROL FAILED: with the generated strict walk's verdict discarded, framing %s did not go red: the walk is not what refuses it", name)
 		}
 		delete(got, name)
 	}
 	for name := range got {
-		t.Errorf("NEGATIVE CONTROL FAILED: with the strict walk taken out, framing %s went red too, so the control does not localise the walk", name)
+		t.Errorf("NEGATIVE CONTROL FAILED: with the generated strict walk's verdict discarded, framing %s went red too, so the control does not localise the walk", name)
 	}
 }

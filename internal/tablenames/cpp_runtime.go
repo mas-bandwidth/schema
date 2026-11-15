@@ -31,7 +31,7 @@ func cppRuntimeNames() []Name {
 			"kTableJsonDecimalBand",
 		}},
 		{what: "a file's open verdict and the refusal path (docs/SPEC-TABLES.md §6.5, §7)", names: []string{
-			"TableBlockConstSpan", "TableBodyEndsEarly", "TableOpen",
+			"TableBlockConstSpan", "TableBodyEndsEarly", "TableOpen", "TableStrictWalk", "TableWireStrict",
 		}},
 		{what: "a lowercase byte helper of the cook, block or message runtime", names: []string{
 			"table_cook_byteswap64", "table_float_force_round_slot", "table_message_byteswap64",
