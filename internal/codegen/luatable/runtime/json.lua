@@ -569,6 +569,35 @@ local function zero_elem(T, e)
   return nil
 end
 
+-- the integer-shaped kinds whose storage is wider than 32 bits: int64, uint64,
+-- and the 64- and 128-bit fixed-point kinds (docs/SPEC-TABLES.md §16.2,
+-- docs/rulings.json json-wide-integers-are-strings)
+local function is_wide_integer_kind(kind)
+  return kind == 5 or kind == 9 or kind == 18 or kind == 19 or kind == 23 or kind == 24 or kind == 28 or kind == 29
+end
+
+-- integer_token reports whether text is the digits-and-optional-minus spelling
+-- of an integer — an optional `-`, then digits with no leading zero, and not
+-- `-0` — the one spelling an integer field takes (§16.2): no fraction, no
+-- exponent, no plus, no negative zero.
+local function integer_token(text)
+  local i = 1
+  local neg = false
+  if text:sub(i, i) == "-" then
+    neg = true
+    i = i + 1
+  end
+  if i > #text then return false end
+  if text:sub(i, i) == "0" then return not neg and i == #text end
+  local b = text:byte(i)
+  if b == nil or b < 49 or b > 57 then return false end
+  for j = i, #text do
+    local c = text:byte(j)
+    if c < 48 or c > 57 then return false end
+  end
+  return true
+end
+
 local function shape_of(d)
   local s = d.shape
   -- a timestamp's text is an RFC 3339 string, not a number (docs/SPEC-TABLES.md
@@ -596,6 +625,13 @@ local function expect_shape(T, d)
     if td ~= nil and td.array_root then return "a" end
   end
   return shape_of(d)
+end
+
+-- shape_ok reports whether a value of the given JSON shape satisfies d's row:
+-- a wide integer takes a string OR a number (docs/SPEC-TABLES.md §16.2).
+local function shape_ok(T, d, got)
+  if got == expect_shape(T, d) then return true end
+  return is_wide_integer_kind(d.kind) and got == "s"
 end
 
 -- the JSON shape of the value at the cursor, without consuming it (§16.2)
@@ -771,11 +807,14 @@ local function place_integer(fd, n, report)
   return n.mag
 end
 
--- one map key: the token is the whole string and must be a JSON number
+-- one map key: the token is the whole string and must be an integer token
+-- (docs/SPEC-TABLES.md §16.2): a fraction, an exponent or -0 is the wrong
+-- shape for the key's kind.
 local function map_int_key(fd, key)
   local probe = new_in(key)
   local token = scan_number(probe)
   if token == nil or probe.p ~= #key + 1 then return false, "malformed" end
+  if not integer_token(token) then return false, "mismatch" end
   local n = interpret_integer(token, true)
   if n.frac or n.sat then return false, "mismatch" end
   local width = fd.width or 8
@@ -1133,14 +1172,16 @@ local function wide_text(d, val)
 end
 
 -- one wide token into its storage (docs/SPEC-TABLES.md §16.2): a 128-bit
--- shape holds { lo, hi }, a narrower fixed kind holds its raw Lua integer
-local function read_wide(inp, d, holder, key, report)
-  local token = scan_number(inp)
-  if token == nil then
-    inp.bad = true
-    return false
+-- shape holds { lo, hi }, a narrower fixed kind holds its raw Lua integer. A
+-- wide integer reads as a string OR a number; a 128-bit integer takes an
+-- integer token only, while a fixed kind keeps its exact decimal.
+local function read_wide_token(token, d, holder, key, report)
+  local kind = d.kind or 0
+  if (kind == 18 or kind == 19) and not integer_token(token) then
+    report.kindChanged = report.kindChanged + 1
+    return true
   end
-  local value, exact, saturated = wide_parse(token, d.kind or 0, wide_frac(d))
+  local value, exact, saturated = wide_parse(token, kind, wide_frac(d))
   if not exact then
     report.kindChanged = report.kindChanged + 1
     return true
@@ -1155,6 +1196,22 @@ local function read_wide(inp, d, holder, key, report)
     holder[key] = value.lo
   end
   return true
+end
+
+local function read_wide(inp, d, holder, key, report)
+  local token
+  if is_wide_integer_kind(d.kind) and peek(inp) == '"' then
+    local text, _, ok = scan_string(inp, -1)
+    if not ok then return false end
+    token = text
+  else
+    token = scan_number(inp)
+    if token == nil then
+      inp.bad = true
+      return false
+    end
+  end
+  return read_wide_token(token, d, holder, key, report)
 end
 
 ----------------------------------------------------------------------------
@@ -1251,8 +1308,7 @@ local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
           v[fd.name] = nil
         end
       else
-        local want = expect_shape(T, fd)
-        if shape ~= want then
+        if not shape_ok(T, fd, shape) then
           report.kindChanged = report.kindChanged + 1
           if not skip_value(inp, depth + 1, graph) then return false end
         else
@@ -1531,7 +1587,7 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report, table_n
   local bound = fd.list and 0x7fffffff or fd.bound
   local placed = 0
   local vf = text_list_value(T, fd.elem)
-  local eshape = vf and shape_of(vf) or expect_shape(T, fd.elem)
+  local ed = vf or fd.elem
   while true do
     local c = peek(inp)
     local vs = value_shape(inp)
@@ -1555,7 +1611,7 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report, table_n
       literal(inp, "null")
       placed = placed + 1
       out[placed] = zero_elem(T, fd.elem)
-    elseif vs ~= eshape then
+    elseif not shape_ok(T, ed, vs) then
       report.kindChanged = report.kindChanged + 1
       if not skip_value(inp, depth + 1, graph) then return false end
       placed = placed + 1
@@ -1666,7 +1722,7 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
       and (vf.shape == "pointer" or vf.shape == "string_blob" or vf.shape == "bytes_blob")
     then
       null_ref = true
-    elseif not skip and value_shape(inp) ~= expect_shape(T, vf) then
+    elseif not skip and not shape_ok(T, vf, value_shape(inp)) then
       report.kindChanged = report.kindChanged + 1
       skip = true
     end
@@ -1714,7 +1770,6 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_n
   local seen = {}
   local seen_keys = {}
   local dup_unknown = false
-  local eshape = expect_shape(T, fd.elem)
   while true do
     local c = peek(inp)
     if c == "}" then
@@ -1750,7 +1805,7 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_n
     else
       if seen[slot] then report.repeatedKey = report.repeatedKey + 1 end
       seen[slot] = true
-      if value_shape(inp) ~= eshape then
+      if not shape_ok(T, fd.elem, value_shape(inp)) then
         report.kindChanged = report.kindChanged + 1
         if not skip_value(inp, depth + 1, graph) then return false end
       else
@@ -1825,7 +1880,7 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     -- reads `null` as the arm selected with a null reference
     literal(inp, "null")
     out.tag = tag
-  elseif value_shape(inp) ~= expect_shape(T, arm.field) then
+  elseif not shape_ok(T, arm.field, value_shape(inp)) then
     report.kindChanged = report.kindChanged + 1
     if not skip_value(inp, depth + 1, graph) then return nil end
   else
@@ -2117,13 +2172,26 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
       -- TEXT is the wide whole-unit spelling (§16.2)
       return read_wide(inp, d, holder, key, report)
     end
-    local token = scan_number(inp)
-    if token == nil then
-      inp.bad = true
-      return false
+    local token
+    if is_wide_integer_kind(d.kind) and peek(inp) == '"' then
+      local text, _, ok = scan_string(inp, -1)
+      if not ok then return false end
+      token = text
+    else
+      token = scan_number(inp)
+      if token == nil then
+        inp.bad = true
+        return false
+      end
     end
-    local integral = token:find("[%.eE]") == nil
-    local n = interpret_integer(token, integral)
+    -- AN INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (§16.2): digits with an
+    -- optional minus, no fraction, no exponent, not -0. The value is read
+    -- digit by digit and never passes through a double.
+    if not integer_token(token) then
+      report.kindChanged = report.kindChanged + 1
+      return true
+    end
+    local n = interpret_integer(token, true)
     local v = place_integer(d, n, report)
     if v ~= nil then holder[key] = v end
     return true
@@ -2877,21 +2945,31 @@ write_value = function(T, d, val, depth, g, w, _elem)
     raw(w, text)
     return true
   elseif s == "wide" then
-    raw(w, wide_text(d, val))
+    local text = wide_text(d, val)
+    if is_wide_integer_kind(d.kind) then
+      raw(w, '"' .. text .. '"')
+    else
+      raw(w, text)
+    end
     return true
   elseif s == "int" then
     if d.timestamp then
       write_timestamp(w, val)
       return true
     end
+    local text
     if d.kind ~= nil and d.kind >= 18 then
-      raw(w, wide_text(d, val))
-      return true
-    end
-    if d.signed then
-      raw(w, string.format("%d", val))
+      text = wide_text(d, val)
+    elseif d.signed then
+      text = string.format("%d", val)
     else
-      raw(w, u64_text(val))
+      text = u64_text(val)
+    end
+    -- an integer wider than 32 bits is written as a string of digits (§16.2)
+    if is_wide_integer_kind(d.kind) then
+      raw(w, '"' .. text .. '"')
+    else
+      raw(w, text)
     end
     return true
   end
