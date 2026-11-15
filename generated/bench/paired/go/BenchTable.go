@@ -2062,8 +2062,7 @@ const (
 // tableFixedPresent marks a bool entry as an optional's PRESENT byte (its
 // Meta); its Aux is the source bytes of the payload behind it. A count entry's
 // Aux is the source bytes of one element. The pre-scan reads both to know
-// which bytes are dead and must be zero (mas-bandwidth/schema docs/rulings.json
-// fixed-dead-bytes-are-zero; mas-bandwidth/schema docs/SPEC-TABLES.md §3.4).
+// dead bytes that must be zero (fixed-dead-bytes-are-zero; mas-bandwidth/schema docs/SPEC-TABLES.md §3.4).
 const tableFixedPresent uint8 = 1
 
 const tableFixedNoGuard uint32 = 0xFFFFFFFF
@@ -2634,10 +2633,8 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 
 // tableFixedTextIllFormed reports whether a text payload's USED units are the
 // text its kind says (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
-// with no zero byte for string. bytes(N) carries no text rule at all. Every
-// byte past the used units is dead; the pre-scan refuses a non-zero one as
-// wire_damaged
-// (mas-bandwidth/schema docs/rulings.json fixed-dead-bytes-are-zero; mas-bandwidth/schema docs/SPEC-TABLES.md §3.4). The used argument
+// with no zero byte for string. bytes(N) carries no text rule. Every byte past used units is dead;
+// the pre-scan refuses non-zero as wire_damaged (fixed-dead-bytes-are-zero; mas-bandwidth/schema docs/SPEC-TABLES.md §3.4). The used argument
 // is the clamped length in the flavour's own units. THE STRING RULE IS THE
 // PACKET READER'S EXACTLY: unicode/utf8.Valid over the used bytes, then no
 // interior zero (mas-bandwidth/schema internal/codegen/golang/functions.go, the TString arm), so
