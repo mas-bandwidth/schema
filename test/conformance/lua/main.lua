@@ -73,7 +73,7 @@ end
 local function readBytes(path)
   local f = io.open(path, "rb")
   if f == nil then return nil end
-  local data = f:read("a")
+  local data = f:read("*a")
   f:close()
   return data
 end
