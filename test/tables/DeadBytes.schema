@@ -1,0 +1,64 @@
+// DeadBytes.schema — the fixed form's DEAD-BYTE corpus
+// (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3; docs/SPEC-TABLES.md §3.4,
+// §13.10). Every dead byte in a fixed record is zero on write and a non-zero
+// one refuses the whole read.
+//
+// One root carries every kind of dead byte the rule names:
+//
+//   opt     ?DeadPayload   an absent optional's whole payload, and inside it
+//                          a ranged int, a string(4), a float32, a bool, an
+//                          enum, a counted array and a nested optional
+//   arr     [..3]int16     a counted array's element slots past its count
+//   objs    [..3]DeadSmall one of a small struct, whose dead element has fields
+//   text    string(8)      the bytes past its used length
+//   blob    bytes(4)       the same for bytes
+//   pick    DeadPick       an inactive arm under tag 0, and the span past a
+//                          narrower taken arm inside the wider arm's span
+package tbldead
+
+enum DeadKind
+{
+    Alpha
+    Beta
+    Gamma
+}
+
+fixed table DeadSmall
+{
+    x int32 = 0 | min = 0, max = 100
+    y int32 = 0 | min = 0, max = 100
+}
+
+fixed table DeadWide
+{
+    a int32 = 0 | min = 0, max = 100
+    b int32 = 0 | min = 0, max = 100
+    c int32 = 0 | min = 0, max = 100
+}
+
+union DeadPick
+{
+    narrow int32
+    wide DeadWide
+}
+
+fixed table DeadPayload
+{
+    n     int32 = 0 | min = 0, max = 100
+    label string(4)
+    heat  float32 = 0
+    flag  bool = false
+    kind  DeadKind = Alpha
+    nums  [..3]int16
+    child ?int32
+}
+
+fixed table DeadRoot
+{
+    opt  ?DeadPayload
+    arr  [..3]int16
+    objs [..3]DeadSmall
+    text string(8)
+    blob bytes(4)
+    pick DeadPick
+}

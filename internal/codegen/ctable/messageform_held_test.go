@@ -417,11 +417,39 @@ static int expect_bad(const char * row, const TableVocabulary * v, const uint8_t
     }
     return 0;
 }
+static void put_ref(uint8_t * buf, int * at, int width, uint64_t ref)
+{
+    int b;
+    for (b = 0; b < width; b++) {
+        if ((ref >> b) & 1) buf[*at >> 3] |= (uint8_t)(1u << (*at & 7));
+        (*at)++;
+    }
+}
+/* A keyed array of ONE element at depth TABLES: TABLES nested bodies, the
+   keyed entry (ref 2), its count (one, two bits for max three), a key naming
+   the kind-0 entry (ref 3), and the element payload. The terminators close
+   the element body where it has one, every nested body, and the root. */
+static int64_t pack_keyed_row(uint8_t * buf, int cap, int tables, int elem_bits, int elem_body)
+{
+    int at = 16, i;
+    if (cap < 2) return -1;
+    memset(buf, 0, (size_t)cap);
+    buf[0] = 2; buf[1] = 0;
+    for (i = 0; i < tables; i++) put_ref(buf, &at, 2, 1);
+    put_ref(buf, &at, 2, 2);
+    put_ref(buf, &at, 2, 1);
+    put_ref(buf, &at, 2, 3);
+    if (elem_body) put_ref(buf, &at, 2, 0);
+    else if (elem_bits > 0) put_ref(buf, &at, elem_bits, 0);
+    for (i = 0; i < tables; i++) put_ref(buf, &at, 2, 0);
+    put_ref(buf, &at, 2, 0);
+    return (int64_t)((at + 7) / 8);
+}
 int main(void)
 {
     uint8_t buf[128];
     int64_t n;
-    TableMessageEntry body, arm, arr[2], keyed6[2], keyed32[2], keyed13[2];
+    TableMessageEntry body, arm, arr[2], keyed6[3], keyed32[3], keyed13[3];
     TableVocabulary body_v, arm_v, arr_v, keyed6_v, keyed32_v, keyed13_v;
     fill_entry(&body, 13);
     body_v = vocab_of(&body, 1, 1);
@@ -440,19 +468,25 @@ int main(void)
     keyed6[1].max = 3;
     keyed6[1].elem_kind = 6;
     keyed6[1].elem_value_bits = 8;
-    keyed6_v = vocab_of(keyed6, 2, 2);
+    fill_entry(&keyed6[2], 0);
+    keyed6[2].id = 3;
+    keyed6_v = vocab_of(keyed6, 3, 2);
     fill_entry(&keyed32[0], 13);
     fill_entry(&keyed32[1], 16);
     keyed32[1].id = 2;
     keyed32[1].max = 3;
     keyed32[1].elem_kind = 32;
-    keyed32_v = vocab_of(keyed32, 2, 2);
+    fill_entry(&keyed32[2], 0);
+    keyed32[2].id = 3;
+    keyed32_v = vocab_of(keyed32, 3, 2);
     fill_entry(&keyed13[0], 13);
     fill_entry(&keyed13[1], 16);
     keyed13[1].id = 2;
     keyed13[1].max = 3;
     keyed13[1].elem_kind = 13;
-    keyed13_v = vocab_of(keyed13, 2, 2);
+    fill_entry(&keyed13[2], 0);
+    keyed13[2].id = 3;
+    keyed13_v = vocab_of(keyed13, 3, 2);
     n = pack_refs(buf, 128, 1, 127, 1, 0, 0, 128);
     if (n < 0 || expect_ok("skip_depth_body_below_128", &body_v, buf, n)) return 1;
     n = pack_refs(buf, 128, 1, 128, 1, 0, 0, 129);
@@ -475,11 +509,11 @@ int main(void)
     if (n < 0 || expect_ok("skip_depth_array_at_128", &arr_v, buf, n)) return 1;
     n = pack_refs(buf, 128, 2, 127, 1, 1, 2, 129);
     if (n < 0 || expect_bad("skip_depth_above_128 array", &arr_v, buf, n)) return 1;
-    n = pack_refs(buf, 128, 2, 128, 1, 2, 2, 139);
+    n = pack_keyed_row(buf, 128, 128, 8, 0);
     if (n < 0 || expect_ok("skip_depth_keyed_fixed_at_128", &keyed6_v, buf, n)) return 1;
-    n = pack_refs(buf, 128, 2, 128, 1, 2, 2, 131);
+    n = pack_keyed_row(buf, 128, 128, 0, 0);
     if (n < 0 || expect_ok("skip_depth_keyed_nopayload_at_128", &keyed32_v, buf, n)) return 1;
-    n = pack_refs(buf, 128, 2, 127, 1, 2, 2, 132);
+    n = pack_keyed_row(buf, 128, 127, 0, 1);
     if (n < 0 || expect_bad("skip_depth_above_128 keyed", &keyed13_v, buf, n)) return 1;
     return 0;
 }

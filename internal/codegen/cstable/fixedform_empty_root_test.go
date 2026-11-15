@@ -2,10 +2,10 @@ package cstable
 
 import "testing"
 
-// A ROOT READ IS ONE RECORD (docs/SPEC-TABLES.md §3.4): handed room for one
-// value, a fixed file of no record holds no value to read, and the engine
-// answers it truncated (internal/tablewire/fixed.go). A batch read of more
-// room may still read none.
+// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6,
+// docs/FIXED-FORM-ALGORITHM.md §5.3 step 9): a file whose header and layout are
+// followed by no record holds no value to read, and every fixed read entry
+// refuses it whatever capacity the caller offered.
 func TestCSharpFixedLoadRefusesAnEmptyRoot(t *testing.T) {
 	t.Parallel()
 	csEmittedRulesTest(t, `package emptyroot
@@ -17,7 +17,7 @@ fixed table Root
 `, []csEmittedRule{{
 		start: "public static long RootFixedLoad(\n",
 		end:   "public static long RootFixedLoad(Root[] values",
-		line:  "if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))",
-		why:   "a root read of a file with no record answers no refusal",
+		line:  "if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)",
+		why:   "a file whose header and layout are followed by no record is read as an empty batch",
 	}})
 }
