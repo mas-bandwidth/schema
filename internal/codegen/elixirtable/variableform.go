@@ -7443,6 +7443,7 @@ const variableRetainSource = `
             end)
 
           if not node_ok, do: throw(:wire_damaged)
+
           {Map.put(records, idx, value), report, retain,
            Map.put(node_fields, idx, fields_of_node)}
 
