@@ -9,6 +9,211 @@
   ],
   "relaxed": [
     {
+      "row": "surface json-hostile",
+      "lang": "cpp",
+      "slug": "relax/hostile-rows-cpp"
+    },
+    {
+      "row": "surface json-hostile",
+      "lang": "c",
+      "slug": "relax/hostile-rows-c"
+    },
+    {
+      "row": "surface json-hostile",
+      "lang": "cs",
+      "slug": "relax/hostile-rows-cs"
+    },
+    {
+      "row": "surface json-hostile",
+      "lang": "dart",
+      "slug": "relax/hostile-rows-dart"
+    },
+    {
+      "row": "surface json-hostile",
+      "lang": "elixir",
+      "slug": "relax/hostile-rows-elixir"
+    },
+    {
+      "row": "surface json-hostile",
+      "lang": "go",
+      "slug": "relax/hostile-rows-go"
+    },
+    {
+      "row": "surface json-hostile",
+      "lang": "goose",
+      "slug": "relax/hostile-rows-goose"
+    },
+    {
+      "row": "surface json-hostile",
+      "lang": "java",
+      "slug": "relax/hostile-rows-java"
+    },
+    {
+      "row": "surface json-hostile",
+      "lang": "js",
+      "slug": "relax/hostile-rows-js"
+    },
+    {
+      "row": "surface json-hostile",
+      "lang": "lobster",
+      "slug": "relax/hostile-rows-lobster"
+    },
+    {
+      "row": "surface json-hostile",
+      "lang": "lua",
+      "slug": "relax/hostile-rows-lua"
+    },
+    {
+      "row": "surface json-hostile",
+      "lang": "luau",
+      "slug": "relax/hostile-rows-luau"
+    },
+    {
+      "row": "surface json-hostile",
+      "lang": "moo",
+      "slug": "relax/hostile-rows-moo"
+    },
+    {
+      "row": "surface json-hostile",
+      "lang": "squirrel",
+      "slug": "relax/hostile-rows-squirrel"
+    },
+    {
+      "row": "surface cook-write",
+      "lang": "cpp",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "surface cook-write",
+      "lang": "cs",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "surface cook-write",
+      "lang": "dart",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "surface cook-write",
+      "lang": "go",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "surface cook-write",
+      "lang": "goose",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "surface cook-write",
+      "lang": "js",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "surface cook-write",
+      "lang": "lobster",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "surface cook-write",
+      "lang": "lua",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "surface cook-write",
+      "lang": "luau",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "surface cook-write",
+      "lang": "moo",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "surface cook-write",
+      "lang": "squirrel",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "cpp",
+      "slug": "relax/hostile-rows-cpp"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "c",
+      "slug": "relax/hostile-rows-c"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "cs",
+      "slug": "relax/hostile-rows-cs"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "elixir",
+      "slug": "relax/hostile-rows-elixir"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "go",
+      "slug": "relax/hostile-rows-go"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "js",
+      "slug": "relax/hostile-rows-js"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "lobster",
+      "slug": "relax/hostile-rows-lobster"
+    },
+    {
+      "row": "surface write-refusal-json",
+      "lang": "lua",
+      "slug": "relax/hostile-rows-lua"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "cpp",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "c",
+      "slug": "relax/hostile-rows-c"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "cs",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "elixir",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "go",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "js",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "lobster",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
+      "row": "cases tabledemo",
+      "lang": "lua",
+      "slug": "relax/cook-dead-slots-zero-ports"
+    },
+    {
       "row": "surface cook-write",
       "lang": "java",
       "slug": "relax/proof-cook-write-java"
