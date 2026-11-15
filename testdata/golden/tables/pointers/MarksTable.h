@@ -5783,7 +5783,23 @@ struct TableNodeMap
     // it is one blob_shared event and resolves to the ONE decoded node. The Go
     // oracle is internal/codegen/gotable/regions.go (TableNodeMap.Once).
     bool once = false;
+    // DECLARED answers whether this reader declares a record's type id, so a
+    // record it placed no storage for can still be told apart: a type it does
+    // not declare reads null, and a type it declares that is not the slot's
+    // target is a wrong-type pointer target (docs/SPEC-TABLES.md §3.1).
+    bool ( *declared )( uint64_t type_id ) = NULL;
 };
+
+// TableNodeWrongTarget: a pointer naming a record of a type this reader
+// declares that is not the type its slot requires. It is damage, so every read,
+// the retaining one included, discards the whole load (docs/SPEC-TABLES.md
+// §3.1, §4); the reason stays the one the strict read has always named.
+inline void TableNodeWrongTarget( TableReport * report )
+{
+    report->damaged = true;
+    report->refused = true;
+    report->refuse_reason = kind_mismatch;
+}
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
 // is one of §4's events with the pointer left null. The declared TARGET type id
@@ -5804,7 +5820,13 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     {
         // a node whose type id this build could not name KEEPS ITS INDEX, and
         // every pointer naming it reads null. The unknown was counted once, at
-        // the node, not once per pointer.
+        // the node, not once per pointer. A node of a type this reader DOES
+        // declare that is not the slot's target is a wrong-type pointer
+        // target, below, though this root placed no storage for it.
+        if ( entry.type_id != target && map.declared != NULL && map.declared( entry.type_id ) )
+        {
+            TableNodeWrongTarget( report );
+        }
         return;
     }
     if ( entry.type_id != target )
@@ -5816,8 +5838,7 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true;
-            report->refuse_reason = kind_mismatch;
+            TableNodeWrongTarget( report );
             return;
         }
         report->refused = true;
@@ -9514,6 +9535,30 @@ inline int64_t MarkerNodeStorage( uint64_t type_id, int64_t length, TableRefuseR
     return -1;
 }
 
+// MarkerNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool MarkerNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0xd858c2cb7f1514ccull: // Album
+        case 0x327fe6dc702553fdull: // Depot
+        case 0x9d167ef77aed79b6ull: // Layer
+        case 0xf60ec899a5a69fa9ull: // ListNode
+        case 0xd6458a3eef83d457ull: // Marker
+        case 0x6dadeaaee49d6d18ull: // Meta
+        case 0x4a9a31623ab5f213ull: // Scene
+        case 0x9d8b8aa2b404c2c8ull: // Settings
+        case 0xae3b9113b7db93a4ull: // Stamp
+        case 0x69ff34904242a73dull: // Tally
+        case 0xb97e90a3784c431dull: // TreeNode
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
+}
+
 // MarkerNodePlace: start one record's node's lifetime in the storage pass one
 // reserved for it, holding exactly the declared defaults — a byte buffer's
 // header holds its length, and its bytes come in pass two.
@@ -9822,6 +9867,7 @@ inline const Marker * MarkerLoadWalk( uint8_t * region, int64_t region_bytes, co
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = MarkerNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xd6458a3eef83d457ull;
@@ -10027,6 +10073,7 @@ inline bool MarkerLoadBuilderWalk( MarkerBuilder & builder, const uint8_t * wire
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = MarkerNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -10642,6 +10689,7 @@ inline const Marker * MarkerLoadRetain( uint8_t * region, int64_t region_bytes, 
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = MarkerNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xd6458a3eef83d457ull;

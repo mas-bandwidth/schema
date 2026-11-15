@@ -6055,7 +6055,23 @@ struct TableNodeMap
     // it is one blob_shared event and resolves to the ONE decoded node. The Go
     // oracle is internal/codegen/gotable/regions.go (TableNodeMap.Once).
     bool once = false;
+    // DECLARED answers whether this reader declares a record's type id, so a
+    // record it placed no storage for can still be told apart: a type it does
+    // not declare reads null, and a type it declares that is not the slot's
+    // target is a wrong-type pointer target (docs/SPEC-TABLES.md §3.1).
+    bool ( *declared )( uint64_t type_id ) = NULL;
 };
+
+// TableNodeWrongTarget: a pointer naming a record of a type this reader
+// declares that is not the type its slot requires. It is damage, so every read,
+// the retaining one included, discards the whole load (docs/SPEC-TABLES.md
+// §3.1, §4); the reason stays the one the strict read has always named.
+inline void TableNodeWrongTarget( TableReport * report )
+{
+    report->damaged = true;
+    report->refused = true;
+    report->refuse_reason = kind_mismatch;
+}
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
 // is one of §4's events with the pointer left null. The declared TARGET type id
@@ -6076,7 +6092,13 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     {
         // a node whose type id this build could not name KEEPS ITS INDEX, and
         // every pointer naming it reads null. The unknown was counted once, at
-        // the node, not once per pointer.
+        // the node, not once per pointer. A node of a type this reader DOES
+        // declare that is not the slot's target is a wrong-type pointer
+        // target, below, though this root placed no storage for it.
+        if ( entry.type_id != target && map.declared != NULL && map.declared( entry.type_id ) )
+        {
+            TableNodeWrongTarget( report );
+        }
         return;
     }
     if ( entry.type_id != target )
@@ -6088,8 +6110,7 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true;
-            report->refuse_reason = kind_mismatch;
+            TableNodeWrongTarget( report );
             return;
         }
         report->refused = true;
@@ -11027,6 +11048,58 @@ inline int64_t CellsNodeStorage( uint64_t type_id, int64_t length, TableRefuseRe
     return -1;
 }
 
+// CellsNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool CellsNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x1f781dc01a2b5152ull: // Cells
+        case 0x18691a70a0e3fe31ull: // CellsRowsEntry
+        case 0x816c207ba6213983ull: // Chunks
+        case 0xe1185043515c812bull: // ChunksBlobsEntry
+        case 0xc85b940060088651ull: // Crews
+        case 0xf03923dbb2943618ull: // CrewsMembersEntry
+        case 0x3231d0dc6fe30d4aull: // Depth
+        case 0x036ffe7360826852ull: // Docs
+        case 0x8ec370bd37dc5e06ull: // DocsPagesEntry
+        case 0xe8130af045a036f8ull: // EdgeRow
+        case 0x29cf72329075c5aaull: // EdgeRowIdsEntry
+        case 0x7d015e53d7cb2c7cull: // EdgeRowNamesEntry
+        case 0x0a53e00afba279afull: // Fleet
+        case 0xdcdbddf89c9310a1ull: // FleetByIdEntry
+        case 0xbc08b7f228c93506ull: // FleetLoadoutsEntry
+        case 0x9b18b54fbe8e2161ull: // FleetLoadoutsEntryValueEntry
+        case 0x610dcbb318a2e4faull: // FleetShipsEntry
+        case 0xfa903574575fc678ull: // FleetTiersEntry
+        case 0x52cfa1d198476806ull: // Item
+        case 0x1404200dab337086ull: // Pairs
+        case 0xde1c38d5bac1485dull: // PairsSlotsEntry
+        case 0xa013e119fec906fbull: // Row
+        case 0x8dc5f55c70e0f637ull: // RowEntriesEntry
+        case 0xea7bdd2b70c8c2bbull: // Runs
+        case 0xfedcb40b5d600538ull: // RunsSpansEntry
+        case 0x758252d2d1b14f0dull: // ShipConfig
+        case 0xf96b15cd3921d4a6ull: // Slots
+        case 0x3e8426f7e349c9dcull: // SlotsSeatsEntry
+        case 0x033de3f1246bba76ull: // Spans
+        case 0x8119d921e2250c6aull: // SpansTracksEntry
+        case 0xec07a2f760550a91ull: // Squad
+        case 0xaf05dfb30c5ca3deull: // SquadRosterEntry
+        case 0x2492f5fb1b05b45eull: // Text
+        case 0x11e7ec757c03c70aull: // TextBlobsEntry
+        case 0x5de00b6a76064442ull: // TextNamesEntry
+        case 0xb4578774a78fb150ull: // Trails
+        case 0x099d588c4981296dull: // TrailsStepsEntry
+        case 0xb413964e3571a316ull: // WideRow
+        case 0x0c2643993e3ece2eull: // WideRowEntriesEntry
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
+}
+
 // CellsNodePlace: start one record's node's lifetime in the storage pass one
 // reserved for it, holding exactly the declared defaults — a byte buffer's
 // header holds its length, and its bytes come in pass two.
@@ -11350,6 +11423,7 @@ inline const Cells * CellsLoadWalk( uint8_t * region, int64_t region_bytes, cons
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = CellsNodeDeclared;
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
             int64_t k = 0;
@@ -11440,6 +11514,7 @@ inline const Cells * CellsLoadWalk( uint8_t * region, int64_t region_bytes, cons
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = CellsNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x1f781dc01a2b5152ull;
@@ -11649,6 +11724,7 @@ inline bool CellsLoadBuilderWalk( CellsBuilder & builder, const uint8_t * wire_f
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = CellsNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
@@ -12556,6 +12632,7 @@ inline const Cells * CellsLoadRetain( uint8_t * region, int64_t region_bytes, co
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = CellsNodeDeclared;
         TableRetainReset( retain, nodes, NULL );
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -12652,6 +12729,7 @@ inline const Cells * CellsLoadRetain( uint8_t * region, int64_t region_bytes, co
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = CellsNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x1f781dc01a2b5152ull;

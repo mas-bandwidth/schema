@@ -7158,7 +7158,23 @@ struct TableNodeMap
     // it is one blob_shared event and resolves to the ONE decoded node. The Go
     // oracle is internal/codegen/gotable/regions.go (TableNodeMap.Once).
     bool once = false;
+    // DECLARED answers whether this reader declares a record's type id, so a
+    // record it placed no storage for can still be told apart: a type it does
+    // not declare reads null, and a type it declares that is not the slot's
+    // target is a wrong-type pointer target (docs/SPEC-TABLES.md §3.1).
+    bool ( *declared )( uint64_t type_id ) = NULL;
 };
+
+// TableNodeWrongTarget: a pointer naming a record of a type this reader
+// declares that is not the type its slot requires. It is damage, so every read,
+// the retaining one included, discards the whole load (docs/SPEC-TABLES.md
+// §3.1, §4); the reason stays the one the strict read has always named.
+inline void TableNodeWrongTarget( TableReport * report )
+{
+    report->damaged = true;
+    report->refused = true;
+    report->refuse_reason = kind_mismatch;
+}
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
 // is one of §4's events with the pointer left null. The declared TARGET type id
@@ -7179,7 +7195,13 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     {
         // a node whose type id this build could not name KEEPS ITS INDEX, and
         // every pointer naming it reads null. The unknown was counted once, at
-        // the node, not once per pointer.
+        // the node, not once per pointer. A node of a type this reader DOES
+        // declare that is not the slot's target is a wrong-type pointer
+        // target, below, though this root placed no storage for it.
+        if ( entry.type_id != target && map.declared != NULL && map.declared( entry.type_id ) )
+        {
+            TableNodeWrongTarget( report );
+        }
         return;
     }
     if ( entry.type_id != target )
@@ -7191,8 +7213,7 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true;
-            report->refuse_reason = kind_mismatch;
+            TableNodeWrongTarget( report );
             return;
         }
         report->refused = true;
@@ -9970,6 +9991,38 @@ inline int64_t PatrolNodeStorage( uint64_t type_id, int64_t length, TableRefuseR
     return -1;
 }
 
+// PatrolNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool PatrolNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x413e7bcf261bc3c7ull: // ArchiveConfig
+        case 0xffb1dfb1f6ce215bull: // GlobalSettings
+        case 0x5fcbe04615411b64ull: // GunnerConfig
+        case 0xb76842b2253337afull: // GunnerSettings
+        case 0x3066b130dfbd7890ull: // HullConfig
+        case 0xd6633ae4e94deecfull: // KeyedConfig
+        case 0xa6aa0caea28dcca1ull: // LoadoutConfig
+        case 0xd02d825db114336eull: // PackConfig
+        case 0x1c182e1c2529027bull: // Patrol
+        case 0x19fffcb7859da778ull: // ProfileConfig
+        case 0xec79751dda28be2eull: // RangedSigned
+        case 0x031ec0c4b7d28bf1ull: // RangedUnsigned
+        case 0xbf59694e9e4f5ed7ull: // RangedWidths
+        case 0x5f4843f6def45e87ull: // RootConfig
+        case 0x1d1a9911da171a29ull: // ShipEntry
+        case 0x1cf8555d11fb113aull: // TeamConfig
+        case 0x469dba0c16b2ad15ull: // TurretConfig
+        case 0x0577780d86c4b0c3ull: // WeaponConfig
+        case 0xab6a6961d3366451ull: // WideBlob
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
+}
+
 // PatrolNodePlace: start one record's node's lifetime in the storage pass one
 // reserved for it, holding exactly the declared defaults — a byte buffer's
 // header holds its length, and its bytes come in pass two.
@@ -10261,6 +10314,7 @@ inline const Patrol * PatrolLoadWalk( uint8_t * region, int64_t region_bytes, co
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = PatrolNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x1c182e1c2529027bull;
@@ -10466,6 +10520,7 @@ inline bool PatrolLoadBuilderWalk( PatrolBuilder & builder, const uint8_t * wire
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = PatrolNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -11125,6 +11180,7 @@ inline const Patrol * PatrolLoadRetain( uint8_t * region, int64_t region_bytes, 
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = PatrolNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x1c182e1c2529027bull;

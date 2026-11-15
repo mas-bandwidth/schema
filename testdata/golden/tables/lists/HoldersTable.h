@@ -5865,7 +5865,23 @@ struct TableNodeMap
     // it is one blob_shared event and resolves to the ONE decoded node. The Go
     // oracle is internal/codegen/gotable/regions.go (TableNodeMap.Once).
     bool once = false;
+    // DECLARED answers whether this reader declares a record's type id, so a
+    // record it placed no storage for can still be told apart: a type it does
+    // not declare reads null, and a type it declares that is not the slot's
+    // target is a wrong-type pointer target (docs/SPEC-TABLES.md §3.1).
+    bool ( *declared )( uint64_t type_id ) = NULL;
 };
+
+// TableNodeWrongTarget: a pointer naming a record of a type this reader
+// declares that is not the type its slot requires. It is damage, so every read,
+// the retaining one included, discards the whole load (docs/SPEC-TABLES.md
+// §3.1, §4); the reason stays the one the strict read has always named.
+inline void TableNodeWrongTarget( TableReport * report )
+{
+    report->damaged = true;
+    report->refused = true;
+    report->refuse_reason = kind_mismatch;
+}
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
 // is one of §4's events with the pointer left null. The declared TARGET type id
@@ -5886,7 +5902,13 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     {
         // a node whose type id this build could not name KEEPS ITS INDEX, and
         // every pointer naming it reads null. The unknown was counted once, at
-        // the node, not once per pointer.
+        // the node, not once per pointer. A node of a type this reader DOES
+        // declare that is not the slot's target is a wrong-type pointer
+        // target, below, though this root placed no storage for it.
+        if ( entry.type_id != target && map.declared != NULL && map.declared( entry.type_id ) )
+        {
+            TableNodeWrongTarget( report );
+        }
         return;
     }
     if ( entry.type_id != target )
@@ -5898,8 +5920,7 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true;
-            report->refuse_reason = kind_mismatch;
+            TableNodeWrongTarget( report );
             return;
         }
         report->refused = true;
@@ -14793,6 +14814,40 @@ inline int64_t RowNodeStorage( uint64_t type_id, int64_t length, TableRefuseReas
     return -1;
 }
 
+// RowNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool RowNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0xd858c2cb7f1514ccull: // Album
+        case 0x06e2378b553a9e84ull: // Army
+        case 0x0acac10912f5892aull: // Bounded
+        case 0xeeeea7adc131a244ull: // Bytes
+        case 0xd043187343bfcfe8ull: // Deck
+        case 0x91638659f8f6ad42ull: // Floats
+        case 0x2034c5d17c00ceb7ull: // Ints
+        case 0x52cfa1d198476806ull: // Item
+        case 0x5e781536ac58825full: // LogEntry
+        case 0xbb86c6c96f598bb8ull: // Mixed
+        case 0xf1a78dd2508964c3ull: // Photo
+        case 0x41f721f1b93aea80ull: // Placement
+        case 0x8a439296ced9ed11ull: // Point
+        case 0xa013e119fec906fbull: // Row
+        case 0xdc40d61254c70aa7ull: // Sample
+        case 0x33f85f24c0f5f008ull: // Save
+        case 0x0cc9e0af9a85fbc8ull: // Sheet
+        case 0xec07a2f760550a91ull: // Squad
+        case 0xaf05dfb30c5ca3deull: // SquadRosterEntry
+        case 0x2ec2f34386026d8bull: // Unbounded
+        case 0x8f26e0f086cc2787ull: // Unit
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
+}
+
 // RowNodePlace: start one record's node's lifetime in the storage pass one
 // reserved for it, holding exactly the declared defaults — a byte buffer's
 // header holds its length, and its bytes come in pass two.
@@ -15116,6 +15171,7 @@ inline const Row * RowLoadWalk( uint8_t * region, int64_t region_bytes, const ui
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = RowNodeDeclared;
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
             int64_t k = 0;
@@ -15206,6 +15262,7 @@ inline const Row * RowLoadWalk( uint8_t * region, int64_t region_bytes, const ui
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = RowNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xa013e119fec906fbull;
@@ -15415,6 +15472,7 @@ inline bool RowLoadBuilderWalk( RowBuilder & builder, const uint8_t * wire_file,
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = RowNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
@@ -15752,6 +15810,40 @@ inline int64_t SheetNodeStorage( uint64_t type_id, const uint8_t * body, int64_t
         default: break;
     }
     return -1;
+}
+
+// SheetNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool SheetNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0xd858c2cb7f1514ccull: // Album
+        case 0x06e2378b553a9e84ull: // Army
+        case 0x0acac10912f5892aull: // Bounded
+        case 0xeeeea7adc131a244ull: // Bytes
+        case 0xd043187343bfcfe8ull: // Deck
+        case 0x91638659f8f6ad42ull: // Floats
+        case 0x2034c5d17c00ceb7ull: // Ints
+        case 0x52cfa1d198476806ull: // Item
+        case 0x5e781536ac58825full: // LogEntry
+        case 0xbb86c6c96f598bb8ull: // Mixed
+        case 0xf1a78dd2508964c3ull: // Photo
+        case 0x41f721f1b93aea80ull: // Placement
+        case 0x8a439296ced9ed11ull: // Point
+        case 0xa013e119fec906fbull: // Row
+        case 0xdc40d61254c70aa7ull: // Sample
+        case 0x33f85f24c0f5f008ull: // Save
+        case 0x0cc9e0af9a85fbc8ull: // Sheet
+        case 0xec07a2f760550a91ull: // Squad
+        case 0xaf05dfb30c5ca3deull: // SquadRosterEntry
+        case 0x2ec2f34386026d8bull: // Unbounded
+        case 0x8f26e0f086cc2787ull: // Unit
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
 }
 
 // SheetNodePlace: start one record's node's lifetime in the storage pass one
@@ -16100,6 +16192,7 @@ inline const Sheet * SheetLoadWalk( uint8_t * region, int64_t region_bytes, cons
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = SheetNodeDeclared;
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
             int64_t k = 0;
@@ -16190,6 +16283,7 @@ inline const Sheet * SheetLoadWalk( uint8_t * region, int64_t region_bytes, cons
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = SheetNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x0cc9e0af9a85fbc8ull;
@@ -16399,6 +16493,7 @@ inline bool SheetLoadBuilderWalk( SheetBuilder & builder, const uint8_t * wire_f
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = SheetNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
@@ -16730,6 +16825,40 @@ inline int64_t SquadNodeStorage( uint64_t type_id, int64_t length, TableRefuseRe
     return -1;
 }
 
+// SquadNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool SquadNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0xd858c2cb7f1514ccull: // Album
+        case 0x06e2378b553a9e84ull: // Army
+        case 0x0acac10912f5892aull: // Bounded
+        case 0xeeeea7adc131a244ull: // Bytes
+        case 0xd043187343bfcfe8ull: // Deck
+        case 0x91638659f8f6ad42ull: // Floats
+        case 0x2034c5d17c00ceb7ull: // Ints
+        case 0x52cfa1d198476806ull: // Item
+        case 0x5e781536ac58825full: // LogEntry
+        case 0xbb86c6c96f598bb8ull: // Mixed
+        case 0xf1a78dd2508964c3ull: // Photo
+        case 0x41f721f1b93aea80ull: // Placement
+        case 0x8a439296ced9ed11ull: // Point
+        case 0xa013e119fec906fbull: // Row
+        case 0xdc40d61254c70aa7ull: // Sample
+        case 0x33f85f24c0f5f008ull: // Save
+        case 0x0cc9e0af9a85fbc8ull: // Sheet
+        case 0xec07a2f760550a91ull: // Squad
+        case 0xaf05dfb30c5ca3deull: // SquadRosterEntry
+        case 0x2ec2f34386026d8bull: // Unbounded
+        case 0x8f26e0f086cc2787ull: // Unit
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
+}
+
 // SquadNodePlace: start one record's node's lifetime in the storage pass one
 // reserved for it, holding exactly the declared defaults — a byte buffer's
 // header holds its length, and its bytes come in pass two.
@@ -17053,6 +17182,7 @@ inline const Squad * SquadLoadWalk( uint8_t * region, int64_t region_bytes, cons
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = SquadNodeDeclared;
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
             int64_t k = 0;
@@ -17143,6 +17273,7 @@ inline const Squad * SquadLoadWalk( uint8_t * region, int64_t region_bytes, cons
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = SquadNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xec07a2f760550a91ull;
@@ -17352,6 +17483,7 @@ inline bool SquadLoadBuilderWalk( SquadBuilder & builder, const uint8_t * wire_f
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = SquadNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
@@ -17683,6 +17815,40 @@ inline int64_t ArmyNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
     return -1;
 }
 
+// ArmyNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool ArmyNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0xd858c2cb7f1514ccull: // Album
+        case 0x06e2378b553a9e84ull: // Army
+        case 0x0acac10912f5892aull: // Bounded
+        case 0xeeeea7adc131a244ull: // Bytes
+        case 0xd043187343bfcfe8ull: // Deck
+        case 0x91638659f8f6ad42ull: // Floats
+        case 0x2034c5d17c00ceb7ull: // Ints
+        case 0x52cfa1d198476806ull: // Item
+        case 0x5e781536ac58825full: // LogEntry
+        case 0xbb86c6c96f598bb8ull: // Mixed
+        case 0xf1a78dd2508964c3ull: // Photo
+        case 0x41f721f1b93aea80ull: // Placement
+        case 0x8a439296ced9ed11ull: // Point
+        case 0xa013e119fec906fbull: // Row
+        case 0xdc40d61254c70aa7ull: // Sample
+        case 0x33f85f24c0f5f008ull: // Save
+        case 0x0cc9e0af9a85fbc8ull: // Sheet
+        case 0xec07a2f760550a91ull: // Squad
+        case 0xaf05dfb30c5ca3deull: // SquadRosterEntry
+        case 0x2ec2f34386026d8bull: // Unbounded
+        case 0x8f26e0f086cc2787ull: // Unit
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
+}
+
 // ArmyNodePlace: start one record's node's lifetime in the storage pass one
 // reserved for it, holding exactly the declared defaults — a byte buffer's
 // header holds its length, and its bytes come in pass two.
@@ -18006,6 +18172,7 @@ inline const Army * ArmyLoadWalk( uint8_t * region, int64_t region_bytes, const 
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = ArmyNodeDeclared;
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
             int64_t k = 0;
@@ -18096,6 +18263,7 @@ inline const Army * ArmyLoadWalk( uint8_t * region, int64_t region_bytes, const 
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = ArmyNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x06e2378b553a9e84ull;
@@ -18305,6 +18473,7 @@ inline bool ArmyLoadBuilderWalk( ArmyBuilder & builder, const uint8_t * wire_fil
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = ArmyNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
@@ -18636,6 +18805,40 @@ inline int64_t DeckNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
     return -1;
 }
 
+// DeckNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool DeckNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0xd858c2cb7f1514ccull: // Album
+        case 0x06e2378b553a9e84ull: // Army
+        case 0x0acac10912f5892aull: // Bounded
+        case 0xeeeea7adc131a244ull: // Bytes
+        case 0xd043187343bfcfe8ull: // Deck
+        case 0x91638659f8f6ad42ull: // Floats
+        case 0x2034c5d17c00ceb7ull: // Ints
+        case 0x52cfa1d198476806ull: // Item
+        case 0x5e781536ac58825full: // LogEntry
+        case 0xbb86c6c96f598bb8ull: // Mixed
+        case 0xf1a78dd2508964c3ull: // Photo
+        case 0x41f721f1b93aea80ull: // Placement
+        case 0x8a439296ced9ed11ull: // Point
+        case 0xa013e119fec906fbull: // Row
+        case 0xdc40d61254c70aa7ull: // Sample
+        case 0x33f85f24c0f5f008ull: // Save
+        case 0x0cc9e0af9a85fbc8ull: // Sheet
+        case 0xec07a2f760550a91ull: // Squad
+        case 0xaf05dfb30c5ca3deull: // SquadRosterEntry
+        case 0x2ec2f34386026d8bull: // Unbounded
+        case 0x8f26e0f086cc2787ull: // Unit
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
+}
+
 // DeckNodePlace: start one record's node's lifetime in the storage pass one
 // reserved for it, holding exactly the declared defaults — a byte buffer's
 // header holds its length, and its bytes come in pass two.
@@ -18959,6 +19162,7 @@ inline const Deck * DeckLoadWalk( uint8_t * region, int64_t region_bytes, const 
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = DeckNodeDeclared;
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
             int64_t k = 0;
@@ -19049,6 +19253,7 @@ inline const Deck * DeckLoadWalk( uint8_t * region, int64_t region_bytes, const 
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = DeckNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xd043187343bfcfe8ull;
@@ -19258,6 +19463,7 @@ inline bool DeckLoadBuilderWalk( DeckBuilder & builder, const uint8_t * wire_fil
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = DeckNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
@@ -21505,6 +21711,7 @@ inline const Row * RowLoadRetain( uint8_t * region, int64_t region_bytes, const 
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = RowNodeDeclared;
         TableRetainReset( retain, nodes, NULL );
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -21601,6 +21808,7 @@ inline const Row * RowLoadRetain( uint8_t * region, int64_t region_bytes, const 
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = RowNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xa013e119fec906fbull;
@@ -21965,6 +22173,7 @@ inline const Sheet * SheetLoadRetain( uint8_t * region, int64_t region_bytes, co
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = SheetNodeDeclared;
         TableRetainReset( retain, nodes, NULL );
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -22061,6 +22270,7 @@ inline const Sheet * SheetLoadRetain( uint8_t * region, int64_t region_bytes, co
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = SheetNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x0cc9e0af9a85fbc8ull;
@@ -22433,6 +22643,7 @@ inline const Squad * SquadLoadRetain( uint8_t * region, int64_t region_bytes, co
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = SquadNodeDeclared;
         TableRetainReset( retain, nodes, NULL );
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -22529,6 +22740,7 @@ inline const Squad * SquadLoadRetain( uint8_t * region, int64_t region_bytes, co
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = SquadNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xec07a2f760550a91ull;
@@ -22889,6 +23101,7 @@ inline const Army * ArmyLoadRetain( uint8_t * region, int64_t region_bytes, cons
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = ArmyNodeDeclared;
         TableRetainReset( retain, nodes, NULL );
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -22985,6 +23198,7 @@ inline const Army * ArmyLoadRetain( uint8_t * region, int64_t region_bytes, cons
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = ArmyNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x06e2378b553a9e84ull;
@@ -23345,6 +23559,7 @@ inline const Deck * DeckLoadRetain( uint8_t * region, int64_t region_bytes, cons
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = DeckNodeDeclared;
         TableRetainReset( retain, nodes, NULL );
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -23441,6 +23656,7 @@ inline const Deck * DeckLoadRetain( uint8_t * region, int64_t region_bytes, cons
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = DeckNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xd043187343bfcfe8ull;
