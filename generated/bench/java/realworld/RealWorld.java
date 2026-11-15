@@ -644,6 +644,9 @@ public final class RealWorld {
         assert value.f026Bits >= 0;
         assert value.f026Bits <= 511;
         assert value.f027Cf32 - value.f027Cf32 == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.f027Cf32 >= -2.0f;
+        assert value.f027Cf32 <= 2.0f;
         assert value.f028Bits >= 0;
         assert value.f028Bits <= 15;
         assert value.f030F32 - value.f030F32 == 0.0f; // finite: NaN and both infinities fail this
@@ -715,6 +718,9 @@ public final class RealWorld {
         assert value.f067Cf32 >= -100.0f;
         assert value.f067Cf32 <= 100.0f;
         assert value.f068Cf32 - value.f068Cf32 == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.f068Cf32 >= 0.0f;
+        assert value.f068Cf32 <= 2000.0f;
         assert value.f069Bits >= 0;
         assert value.f069Bits <= 2047;
         assert value.f070Uint >= 0;
