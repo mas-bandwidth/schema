@@ -476,9 +476,15 @@ local function scalar_at(r: any, fd: any, kind: number, report: any): any
 		elseif gt(x, hi) then x = hi; report.clamped = report.clamped + 1 end
 	end
 	if fd.bits ~= nil and fd.bits > 0 and fd.bits < width * 8 then
-		local bmax: any = 2 ^ fd.bits - 1
-		if typeof(x) == "integer" then bmax = integer.create(bmax) end
-		if cmp_gt(x, bmax) then x = bmax; report.clamped = report.clamped + 1 end
+		-- bits(N) is unsigned in [0, 2^N - 1] (docs/SPEC-TABLES.md §16.2): an
+		-- integer top is built exactly, not through a double, and compared unsigned.
+		local bmax: any
+		if typeof(x) == "integer" then
+			bmax = integer.sub(integer.lshift(1i, integer.create(fd.bits)), 1i)
+		else
+			bmax = 2 ^ fd.bits - 1
+		end
+		if ucmp_gt(x, bmax) then x = bmax; report.clamped = report.clamped + 1 end
 	end
 	return x
 end
