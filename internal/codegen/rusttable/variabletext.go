@@ -811,7 +811,7 @@ impl<'a> Jr<'a> {
         }
         match self.b[self.p] {
             b'"' => {
-                let _ = self.read_string();
+                let _ = self.read_text();
             }
              b'{' => {
                  if self.depth > JSON_DEPTH_CAP {
@@ -833,7 +833,7 @@ impl<'a> Jr<'a> {
                          self.depth -= 1;
                          return;
                      }
-                     let key = self.read_string();
+                     let key = self.read_text();
                      if self.damaged {
                          self.depth -= 1;
                          return;
@@ -1309,7 +1309,7 @@ func (g *gen) emitTextRead(b *strings.Builder, st *ir.Struct) {
 	emitRequiredJSONEnd(b, st, "                    ")
 	fmt.Fprintf(b, "                    jr.p += 1; return n;\n")
 	fmt.Fprintf(b, "                }\n")
-	fmt.Fprintf(b, "                let Some(k) = jr.read_string() else { jr.damaged = true; return n; };\n")
+	fmt.Fprintf(b, "                let Some(k) = jr.read_text() else { jr.damaged = true; return n; };\n")
 	fmt.Fprintf(b, "                jr.space();\n")
 	fmt.Fprintf(b, "                if jr.peek() != b':' { jr.damaged = true; return n; }\n")
 	fmt.Fprintf(b, "                jr.p += 1;\n")
@@ -1363,7 +1363,7 @@ func (g *gen) emitTextReadPointer(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                let _ = %s(jr, &mut v, None);\n", fn(st.Name, "json_fields"))
 	fmt.Fprintf(b, "                return Some(Rc::new(v));\n")
 	fmt.Fprintf(b, "            }\n")
-	fmt.Fprintf(b, "            let Some(key) = jr.read_string() else { jr.damaged = true; return None; };\n")
+	fmt.Fprintf(b, "            let Some(key) = jr.read_text() else { jr.damaged = true; return None; };\n")
 	fmt.Fprintf(b, "            if jr.peek() != b':' { jr.damaged = true; return None; }\n")
 	fmt.Fprintf(b, "            jr.p += 1;\n")
 	fmt.Fprintf(b, "            if key != \"&node\" {\n")

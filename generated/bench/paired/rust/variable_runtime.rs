@@ -2674,7 +2674,7 @@ impl<'a> Jr<'a> {
         }
         match self.b[self.p] {
             b'"' => {
-                let _ = self.read_string();
+                let _ = self.read_text();
             }
              b'{' => {
                  if self.depth > JSON_DEPTH_CAP {
@@ -2696,7 +2696,7 @@ impl<'a> Jr<'a> {
                          self.depth -= 1;
                          return;
                      }
-                     let key = self.read_string();
+                     let key = self.read_text();
                      if self.damaged {
                          self.depth -= 1;
                          return;

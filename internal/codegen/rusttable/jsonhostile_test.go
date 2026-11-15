@@ -19,9 +19,10 @@ import (
 //   - text_holds_zero: a U+0000 the read would PLACE in text storage refuses
 //     the read — a string(N) or *string value, a string map key
 //     (over its bound too) and an integer map key, whose key is a JSON string
-//     whatever its kind (text lists are not a Rust construct yet, §2.13). A zero the read only
-//     SKIPS (an unknown key's value, an object key) or compares is not the
-//     event, and `\u0001` is not affected.
+//     whatever its kind (text lists are not a Rust construct yet, §2.13). A
+//     value the read SKIPS (an unknown key's value) and every object key are
+//     held to the text rules a placed value is held to, so a U+0000 there
+//     refuses too, and `\u0001` is not affected.
 //   - string_not_utf8: bytes that are not well-formed UTF-8 refuse the read at
 //     every string site, before any clamp, never replaced by U+FFFD.
 //
@@ -118,8 +119,8 @@ fn main() {
         ("zero-map-key-over-bound", b"{\"names\": {\"aaaaaaaaa\\u0000\": 1}}", "refused"),
         ("zero-integer-map-key", b"{\"by_id\": {\"1\\u0000\": 1}}", "refused"),
         ("zero-after-lone-lead", b"{\"name\": \"\\ud800\\u0000\"}", "refused"),
-        ("zero-unknown-value", b"{\"nope\": \"a\\u0000b\"}", "accepted"),
-        ("zero-object-key", b"{\"a\\u0000b\": 1}", "accepted"),
+        ("zero-unknown-value", b"{\"nope\": \"a\\u0000b\"}", "refused"),
+        ("zero-object-key", b"{\"a\\u0000b\": 1}", "refused"),
         ("one-escape-stored", b"{\"name\": \"a\\u0001b\"}", "accepted"),
         ("illformed-at-bound", b"{\"name\": \"aaaaaaaa\xff\"}", "refused"),
         ("illformed-inside", b"{\"name\": \"a\xffb\"}", "refused"),

@@ -1076,7 +1076,7 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
         },
         12 => {
             let Some(n) = table_message_count(r, s) else { return false };
-            if !r.align() {
+            if n > s.max || !r.align() {
                 return false;
             }
             let start = (r.offset / 8) as usize;
@@ -1096,23 +1096,55 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
                 None => false,
             }
         }
+        10 => {
+            // A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS
+            // COUNT (§3.3): the same raw-bits rule a named float read applies.
+            let Some(raw) = r.get(table_message_value_bits(10, s) as u32) else { return false };
+            if s.packing == 2 {
+                raw <= s.qcount as u64
+            } else {
+                table_finite_f32(raw as u32)
+            }
+        }
+        11 => match r.get(64) {
+            Some(raw) => table_finite_f64(raw),
+            None => false,
+        },
         14 | 16 => {
             let Some(n) = table_message_count(r, s) else { return false };
-            if e.kind == 14 && s.elem == 6 && !r.align() {
+            // THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3).
+            if n > s.max || (e.kind == 14 && s.elem == 6 && !r.align()) {
                 return false;
             }
             let element = TableMessageEntry { id: 0, kind: s.elem, shape: e.element, element: TableMessageShape::default() };
-            let width = table_message_value_bits(element.kind, &element.shape);
-            if width >= 0 {
-                let mut w = width as u64;
-                if e.kind == 16 {
-                    w += v.ref_bits as u64;
+            // A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3): a float, a
+            // ranged or quantized element carries a value condition, and a
+            // keyed entry carries a key reference, so those are walked.
+            if e.kind == 14
+                && !matches!(element.kind, 10 | 11 | 13 | 15 | 17 | 30)
+                && element.shape.packing == 0
+            {
+                match table_message_value_bits(element.kind, &element.shape) {
+                    0 => return true,
+                    width if width > 0 => return r.skip(n * width as u64),
+                    _ => {}
                 }
-                return r.skip(n * w);
             }
+            let mut seen = [0u8; 512];
             for i in 0..n {
-                if e.kind == 16 && !r.skip(v.ref_bits as u64) {
-                    return false;
+                if e.kind == 16 {
+                    // A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND
+                    // NO KEY REPEATS (§3.2, §3.3): the name reference and the
+                    // bitset hold it.
+                    let Some(reference) = r.get(v.ref_bits) else { return false };
+                    if v.name(reference).is_none() || reference > 4096 {
+                        return false;
+                    }
+                    let slot = reference as usize - 1;
+                    if seen[slot >> 3] & (1u8 << (slot & 7)) != 0 {
+                        return false;
+                    }
+                    seen[slot >> 3] |= 1u8 << (slot & 7);
                 }
                 let at = r.offset;
                 if !table_message_skip(r, v, &element, depth + 1) {
@@ -1146,18 +1178,26 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
     if depth > 128 {
         return false;
     }
+    // A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped.
+    let mut seen = [0u8; 512];
     loop {
         match r.get(v.ref_bits) {
             None => return false,
             Some(0) => return true,
-            Some(reference) => match v.entry(reference).copied() {
-                Some(e) => {
-                    if !table_message_skip(r, v, &e, depth) {
-                        return false;
-                    }
+            Some(reference) => {
+                if reference > 4096 {
+                    return false;
                 }
-                None => return false,
-            },
+                let Some(e) = v.entry(reference).copied() else { return false };
+                let slot = reference as usize - 1;
+                if seen[slot >> 3] & (1u8 << (slot & 7)) != 0 {
+                    return false;
+                }
+                seen[slot >> 3] |= 1u8 << (slot & 7);
+                if !table_message_skip(r, v, &e, depth) {
+                    return false;
+                }
+            }
         }
     }
 }
