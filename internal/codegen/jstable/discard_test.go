@@ -434,7 +434,10 @@ for (const row of %s) {
 }
 `, js, js, overLoads))
 
-	// List, map, and false-guard pointer-slot cycles (§2.8, §2.9, §3.1).
+	// List, map, and guarded pointer-slot cycles (§2.8, §2.9, §3.1).
+	// The acyclic twin is the writer's own bytes. Storing the guard bool at
+	// its default is a spelling the variable read refuses, so the twin keeps
+	// the bool the writer emitted.
 	cu := loadSchemaString(t, "cycle.schema", `package cyclecheck
 table Node
 {
@@ -480,20 +483,6 @@ table Node
 		twin, err := tablewire.Encode(cm, nodes[0])
 		if err != nil {
 			t.Fatal(err)
-		}
-		if kind == "guard" {
-			for i := 0; i+2 < len(twin); i++ {
-				if twin[i+1] == byte(ir.TableKindBool) && twin[i+2] == 1 {
-					try := bytes.Clone(twin)
-					try[i+2] = 0
-					inst := cm.New(cm.Lookup("Node"))
-					var rep tabletext.Report
-					if ok, err := tablewire.Decode(cm, inst, try, &rep); ok && err == nil {
-						twin = try
-						break
-					}
-				}
-			}
 		}
 		cyc := bytes.Clone(twin)
 		if kind == "list" {
