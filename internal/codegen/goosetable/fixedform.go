@@ -19,10 +19,10 @@
 // then a straight-line scatter — laid down at build time as one function per
 // type: <T>'s _<T>FixedRead (the run, every byte of the image landed), its
 // _<T>FixedScan (§4.5's refusals, run over the whole batch before the first
-// landing), its _<T>FixedClamp (§4.6's bounds pass over the live extent) and,
-// on the write side, _<T>FixedCheck (§3.1's contract) and _<T>FixedWrite (the
-// live extent onto zero). The lineage plans are
-// schema-goose-fixed-form-evolution's.
+// landing), its _<T>FixedStrictRefuse (§4.6's read-side bounds pass over the
+// live extent, refusing out_of_range) and, on the write side, _<T>FixedCheck
+// (§3.1's contract) and _<T>FixedWrite (the live extent onto zero). The
+// lineage plans are schema-goose-fixed-form-evolution's.
 package goosetable
 
 import (

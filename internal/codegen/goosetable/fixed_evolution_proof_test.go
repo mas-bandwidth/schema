@@ -393,8 +393,8 @@ func TestGooseFixedProofOrdinals(t *testing.T) {
 	slowtest.Gate(t, "goose")
 	// C9: union tag past arms -> out_of_range on the identity plan (§4.6)
 	// C10: enum ordinal past top -> out_of_range on the identity plan (§4.6)
-	// R31: writer's variant count governs on compiled plan as well as identity plan
-	// (the compiled plan still counts and lands None; the strict identity read refuses)
+	// R31: writer's variant count governs on the compiled plan as on the identity
+	// plan: the read REFUSES out_of_range and lands the batch at its defaults.
 	const oldSchema = `package probe
 enum Tier { Bronze, Silver }
 union Pick {
@@ -426,7 +426,7 @@ fixed table Lineage {
 	if !ok {
 		t.Fatal("missing old Lineage")
 	}
-	// Build a 1-record old file where tier = 3 (Gold in new, but past old's max 2) and pick.Type = 3 (past old's max 2).
+	// Build a 1-record old file where tier = 3 (Gold in new, but past old's max 2) and pick.Type = 3 (past old's max 2); both plans refuse.
 	oldLayout, oldHash, _ := fixedRootFacts(fixedRootStruct(t, uOld, "Lineage"))
 	// Old body: tier (1 byte) + pick (1 byte tag + 4 byte arm = 5 bytes) + seq (4 bytes) = 10 bytes.
 	body := []byte{3, 3, 1, 0, 0, 0, 42, 0, 0, 0}
@@ -448,12 +448,12 @@ fixed table Lineage {
     var dst: probe::Lineage[1] = [probe::Lineage { .. }; 1];
     var rep = schema_rt::FixedEvolveReport { .. };
     let n = probe::LineageFixedEvolveLoad(dst, data, rep);
-    print(n, " ", rep.oor, " ", dst[0].Tier as u64, " ", dst[0].Pick.Type as u64, " ", dst[0].Seq);
+    print(n, " ", schema_rt::fixed_evolve_refusal_name(rep.reason), " ", rep.oor, " ", dst[0].Tier as u64, " ", dst[0].Pick.Type as u64, " ", dst[0].Seq);
 }
 `, map[string][]byte{"in.bin": file})
 
-	if gotOld != "-1 out_of_range 0 0 0 0" || gotNew != "1 2 0 0 42" {
-		t.Fatalf("Ordinals (C9/C10/R31): old=%q new=%q, want \"-1 out_of_range 0 0 0 0\" and \"1 2 0 0 42\"", gotOld, gotNew)
+	if gotOld != "-1 out_of_range 0 0 0 0" || gotNew != "-1 out_of_range 0 0 0 0" {
+		t.Fatalf("Ordinals (C9/C10/R31): old=%q new=%q, want both \"-1 out_of_range 0 0 0 0\"", gotOld, gotNew)
 	}
 }
 
