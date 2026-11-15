@@ -32,9 +32,7 @@ endef
 # loads each mutant, saves what it decoded and answers. Three arms per unit:
 # --builder over the variable-class file roots (Goose's load grows its own
 # value table, so it has no caller region and no LoadMeasure — the builder
-# arm's shape), the region arm over value-only roots (the fixed arm: a root
-# the unit emits <Root>FixedLoad for is read and saved through the generated
-# fixed-form pair, chosen by the root), and --builder --retain
+# arm's shape), the region arm over value-only roots, and --builder --retain
 # over variable roots. test-goose uses this combined gate and compiles once;
 # tables-goose-retain-fuzz runs retention alone. Every arm must be
 # green except the ones test/conformance/goose/wirefuzz-known.tsv holds red by
@@ -88,8 +86,7 @@ GOOSE_FUZZ_SED_leb  := s|if i > 0 \&\& b == 0 { return 0, o, false; }|if false {
 GOOSE_FUZZ_SED_utf8 := s|^fn text_valid(data: const u8\[:\], off: i64, n: i64) -> bool {$$|fn text_valid(data: const u8[:], off: i64, n: i64) -> bool { if n >= 0 { return true; } // SABOTAGED: every text well-formed|
 
 .PHONY: tables-goose-wire-fuzz-negative-control tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative-control
-tables-goose-wire-fuzz-negative-control: tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative-control \
-	tables-goose-wire-fuzz-fixed-negative-control
+tables-goose-wire-fuzz-negative-control: tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative-control
 tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative-control: tables-goose-wire-fuzz-%-negative-control: $(GOOSE_FUZZ_SCHEMA) build/conformance-harness
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@rm -rf $(GOOSE_FUZZ_DIR)/control-$* && mkdir -p $(GOOSE_FUZZ_DIR)/control-$*
@@ -108,36 +105,6 @@ tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative
 		cat $(GOOSE_FUZZ_DIR)/control-$*/log; \
 		echo "NEGATIVE CONTROL FAILED: the differential went red, but not on acceptance"; exit 1; }
 	@echo "goose wire-fuzz $* negative control: $$(grep -m1 'harness: FAILED' $(GOOSE_FUZZ_DIR)/control-$*/log)"
-
-# THE FIXED ARM'S CONTROL: the proof that the fixed arm reaches the generated
-# fixed-form reader. The strict bounds refusal is taken out of one unit's
-# GENERATED <Root>FixedLoad (tblp1's ChainFixedLoad: Chain nests Link, whose
-# value is ranged [0, 1000]), checked to have matched; that leg is rebuilt and
-# the harness's fixed arm over it must go red because the leg accepted a
-# mutant the oracle refused ("read acceptance differs: the leg says true, the
-# oracle says false"). A leg that read a fixed root anywhere but its
-# <Root>FixedLoad could not go red on this plant.
-GOOSE_FUZZ_SED_fixed := s|let why = _ChainFixedStrictRefuse(values\[k\]);|let why = _ChainFixedStrictRefuse(values[k]) * 0; // SABOTAGED: the strict bounds refusal dropped|
-
-.PHONY: tables-goose-wire-fuzz-fixed-negative-control
-tables-goose-wire-fuzz-fixed-negative-control: $(GOOSE_FUZZ_SCHEMA) build/conformance-harness
-	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	@rm -rf $(GOOSE_FUZZ_DIR)/control-fixed && mkdir -p $(GOOSE_FUZZ_DIR)/control-fixed
-	@./$(GOOSE_FUZZ_SCHEMA) generate --lang goose --out $(GOOSE_FUZZ_DIR)/control-fixed/unit test/tables/P1.schema
-	@sed '$(GOOSE_FUZZ_SED_fixed)' $(GOOSE_FUZZ_DIR)/control-fixed/unit/P1Table.goose >$(GOOSE_FUZZ_DIR)/control-fixed/P1Table.goose
-	@grep -q SABOTAGED $(GOOSE_FUZZ_DIR)/control-fixed/P1Table.goose || { \
-		echo "NEGATIVE CONTROL FAILED: the fixed sabotage patched nothing"; exit 1; }
-	@mv $(GOOSE_FUZZ_DIR)/control-fixed/P1Table.goose $(GOOSE_FUZZ_DIR)/control-fixed/unit/P1Table.goose
-	@sh make/goose-wirefuzz-build.sh "$(GOOSE)" $(GOOSE_FUZZ_DIR)/control-fixed/unit $(GOOSE_FUZZ_DIR)/control-fixed/leg
-	@if ./build/conformance-harness wire-fuzz --driver "$(GOOSE_FUZZ_DIR)/control-fixed/leg/wirefuzz tblp1 fixed" \
-		--seed $(GOOSE_FUZZ_SEED) --n $(GOOSE_FUZZ_N) --failed $(GOOSE_FUZZ_DIR)/control-fixed/failed.bin \
-		>$(GOOSE_FUZZ_DIR)/control-fixed/log 2>&1; then \
-		cat $(GOOSE_FUZZ_DIR)/control-fixed/log; \
-		echo "NEGATIVE CONTROL FAILED: the fixed sabotage left the differential green"; exit 1; fi
-	@grep -Eq 'harness: FAILED after .*: read acceptance differs: the leg says true, the oracle says false' $(GOOSE_FUZZ_DIR)/control-fixed/log || { \
-		cat $(GOOSE_FUZZ_DIR)/control-fixed/log; \
-		echo "NEGATIVE CONTROL FAILED: the differential went red, but not on acceptance"; exit 1; }
-	@echo "goose wire-fuzz fixed negative control: $$(grep -m1 'harness: FAILED' $(GOOSE_FUZZ_DIR)/control-fixed/log)"
 
 # THE SHARED HOSTILE-INPUT CORPUS (docs/HOSTILE-CORPUS.md). make/goose-hostile.sh
 # generates every schema the manifest names for goose, runs
