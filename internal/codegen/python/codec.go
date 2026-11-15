@@ -110,6 +110,12 @@ func fieldKind(f *ir.Field) string {
 			return "int"
 		}
 		return ""
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
+	case ir.TFixed:
+		return "fixed"
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -757,6 +763,16 @@ func (m *pyModule) fieldBits(f *ir.Field, seen map[string]bool) int64 {
 			return rangeBits64Big(f.IntMin, f.IntMax)
 		}
 		return int64(f.Type.Width)
+	case ir.TFloat32:
+		if f.HasFloatRange {
+			_, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+			return bits
+		}
+		return 32
+	case ir.TFloat64:
+		return 64
+	case ir.TFixed:
+		return fixedBits(f)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:

@@ -34,13 +34,13 @@ var runtimeFS embed.FS
 // least one table. A table-free unit generates nothing here; the packet layer
 // owns its files.
 //
-// A table field, array element or union arm whose type is a packet type is
-// carried by value on the form-1 table wire through the packet core's own
-// generated classes and their serialize-runtime codec (docs/PORT-PYTHON.md,
+// A table field, array element, union arm or map value whose type is a packet
+// type is carried by value on the form-1 table wire through the packet core's
+// own generated classes and their serialize-runtime codec (docs/PORT-PYTHON.md,
 // THE TABLE FRAME): the packet classes are emitted into the same per-file
 // module, the table runtime walks them as kind-13 bodies, and each one a table
-// reaches carries the table descriptor that names it. A map entry is not
-// carried here: maps are refused by name until the maps card carries them.
+// reaches carries the table descriptor that names it; a map value of the type
+// rides as its map entry's value field.
 // Every packet type and packet union of the unit is emitted, reached by a
 // table or not, so nothing the unit declares is dropped. A packet type whose
 // own fields use a packet kind the packet wire does not carry yet is refused
@@ -916,7 +916,13 @@ func codecOf(f *ir.Field) string {
 		}
 		return "unsupported"
 	}
-	if f.IsMap() || f.KeyEnum != "" || f.Type.Optional {
+	if f.IsMap() {
+		if f.Type.Optional {
+			return "unsupported"
+		}
+		return "map"
+	}
+	if f.KeyEnum != "" || f.Type.Optional {
 		return "unsupported"
 	}
 	if f.Array != ir.ArrayNone {
@@ -1077,6 +1083,8 @@ func descriptorDefault(f *ir.Field) string {
 			return f.DefInt.String()
 		}
 		return "0"
+	case "map":
+		return "{}"
 	}
 	return "None"
 }

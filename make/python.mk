@@ -15,8 +15,8 @@
 # generates into temp directories and runs the generated package under both
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
-.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-table-packet-types-negative-control
-test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control python-table-packet-types-negative-control
+.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-table-maps-negative-control
+test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
 update-goldens-python: ;
@@ -27,6 +27,33 @@ update-goldens-python: ;
 # because the probe runs under both pinned interpreters.
 python-packet-core-negative-control: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketCoreNegativeControl ./internal/codegen/python/
+
+# packet-finite-python: test/packet-finite, SPEC §4.3's finite floats, on the
+# Python packet wire. test/packet-finite/python/main.py runs every bare-float
+# position of its Finite.schema under both pinned interpreters: a NaN or an
+# infinity is refused on write as InvalidValue naming the field and on read by
+# its raw bits as Refused (non_finite_float); -0, the subnormals and the
+# largest finite values ride bit exact.
+#
+# packet-finite-python-negative-control: TestPythonPacketFloats/negative-control
+# removes the finite rule from a COPY of the generated tree, once per
+# direction (the bit layer's read checks; the field validators' and the bit
+# layer's write checks), and requires the driver to fail exactly the vectors
+# in test/packet-finite/python/<direction>.expected; beside them it cuts the
+# compressed float's range check from a copy of a generated validator and
+# requires the contract probe to name exactly the vectors that check holds,
+# and cuts the fixed point read's raw span check from a copy of the bit layer
+# and requires the probe to name exactly the headroom reads.
+.PHONY: packet-finite-python packet-finite-python-negative-control
+test-python: packet-finite-python
+packet-finite-python: build/schema-python python-toolchain-check
+	@rm -rf build/packet-finite/python && mkdir -p build/packet-finite/python
+	./build/schema-python generate --lang python --out build/packet-finite/python/generated test/packet-finite/python/Finite.schema
+	$(PYTHON) -W error -I -B test/packet-finite/python/main.py build/packet-finite/python/generated
+	$(PYTHON_FLOOR) -W error -I -B test/packet-finite/python/main.py build/packet-finite/python/generated
+
+packet-finite-python-negative-control: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonPacketFloats/negative-control' ./internal/codegen/python/
 
 # build/schema-python is the tagged compiler the conformance tree is generated
 # with; the ordinary bin/schema does not carry the target until the packet
@@ -61,13 +88,12 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 python-table-core-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonTableCoreNegativeControl' ./internal/codegen/pythontable/ -count=1
 
-# The packet-type controls: the nested body's length the generated table writer
-# emits is moved in a copy of the runtime, and the probe's byte compare against
-# the Go engine's wire must go red by name; and a packet type no table reaches
-# has its generated writer move a field in a copy of the module, and the probe's
-# byte compare against the Go reference's packet wire must go red by name.
-python-table-packet-types-negative-control:
-	SCHEMA_SLOW=1 go test -tags schema_leg_python -run '^TestPythonTablePacketTypes(Loose)?NegativeControl$$' ./internal/codegen/pythontable/ -count=1
+# The map cell's negative controls: the map runtime's writer sort is removed,
+# then the reader's duplicate check, then its descending check, then the
+# ascending order the save numbers a map's nodes in, each in a copy, and the
+# pinned probe must go red under each.
+python-table-maps-negative-control:
+	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonVtMapsNegativeControl' ./internal/codegen/pythontable/ -count=1
 
 generated/bench/tables/python/.stamp: ;
 

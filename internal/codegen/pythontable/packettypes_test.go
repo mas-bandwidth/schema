@@ -253,3 +253,73 @@ func hexString(data []byte) string {
 	}
 	return b.String()
 }
+
+// packetMapValueSchema is a packet type as the VALUE of a map: the maps cell
+// and this card meet here (docs/PORT-PYTHON.md, THE TABLE FRAME).
+const packetMapValueSchema = `package packetmapvalues
+
+type Leaf
+{
+    value int32
+    count uint16
+}
+
+table Holder
+{
+    by map[uint8]Leaf
+}
+`
+
+const packetMapValueText = `{"by":{"1":{"value":7,"count":9},"4":{"value":-2,"count":3}}}`
+
+// TestPythonTablePacketTypesMapValue holds what a packet type as a map's value
+// does after the maps cell and this card both landed: it is read by the
+// generated classes and written back byte-identical to the Go engine's wire,
+// under both pinned interpreters.
+func TestPythonTablePacketTypesMapValue(t *testing.T) {
+	t.Parallel()
+	u := loadUnit(t, packetMapValueSchema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("Generate refused a packet type as a map value: %v", err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup("Holder"))
+	var report tabletext.Report
+	if !m.Read(inst, []byte(packetMapValueText), &report) || !report.Silent() {
+		t.Fatalf("the Go engine did not place the value: %+v", report)
+	}
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatalf("the Go engine did not encode the value: %v", err)
+	}
+	probe := pyrun.ImportPrelude + `from packetmapvalues import Holder
+
+with open("wire.bin", "rb") as handle:
+    data = handle.read()
+value = Holder.load(data)
+print("value", sorted(value.by), value.by[1].value, value.by[1].count, value.by[4].value, value.by[4].count)
+written = value.save()
+if written != data:
+    raise SystemExit("wire differs: " + written.hex())
+print("OK")
+`
+	inputs := map[string][]byte{"main.py": []byte(probe), "wire.bin": wire}
+	got := string(pyrun.Run(t, dir, "main.py", inputs))
+	gotFloor := string(pyrun.RunFloor(t, dir, "main.py", inputs))
+	if got != gotFloor {
+		t.Fatalf("the two pinned interpreters disagree:\ncurrent:\n%s\nfloor:\n%s", got, gotFloor)
+	}
+	for _, line := range []string{"value [1, 4] 7 9 -2 3", "OK"} {
+		if !strings.Contains(got, line+"\n") {
+			t.Errorf("probe output lacks %q:\n%s", line, got)
+		}
+	}
+	for _, path := range []string{"packetmapvalues", "packetmapvalues/_schema"} {
+		if out, err := pyrun.Analyze(t, dir, path); err != nil {
+			t.Fatalf("mypy --strict over %s:\n%s", path, out)
+		}
+	}
+}

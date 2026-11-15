@@ -332,7 +332,7 @@ func buildGooseVtMessageVectors(t *testing.T, u *ir.Unit) (announce []byte, vali
 	scaleSlot := slotOf(ir.TableWireId("scale"))
 	keyedSlot := slotOf(ir.TableWireId("keyed"))
 	alphaSlot := slotOf(ir.TableWireId("alpha"))
-	unknownSlot := slotOf(ir.TableWireId("former")) // int32 field from Root, unknown to Config
+	unknownSlot := slotOf(ir.TableWireId("x")) // 32-bit float32 field of Spot: in the message closure, unknown to Config
 
 	// validBatch: Config body naming `scale` once.
 	validBatch = packBits(func(put func(uint64, int)) {
@@ -371,7 +371,7 @@ func buildGooseVtMessageVectors(t *testing.T, u *ir.Unit) (announce []byte, vali
 		put(0, refBits)
 	})
 
-	// damagedUnknownBatch: Config body naming an unknown field (`former`), then truncated before terminator.
+	// damagedUnknownBatch: Config body naming a field it does not know (`x`, from Spot), then truncated before terminator.
 	damagedUnknownBatch = packBits(func(put func(uint64, int)) {
 		put(2, 8)
 		put(0, 8)
