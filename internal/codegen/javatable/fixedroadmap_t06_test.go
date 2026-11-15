@@ -146,7 +146,7 @@ func t06W4(t *testing.T) {
 // whole-record copy that would overwrite a range the plan lands.
 func t06W9(t *testing.T) {
 	load := string(t06Files(t, t06Flat)["TFixed.java"])
-	t06Has(t, load, "final int holeN = TableFixed.holes(entries, made, cover, hole);",
+	t06Has(t, load, "final int holeN = pre.count;",
 		"W9 the prefill covers the plan's hole list")
 	t06Has(t, load, "for (int h = 0; h < holeN; h++) {",
 		"W9 the prefill runs over the hole list")
