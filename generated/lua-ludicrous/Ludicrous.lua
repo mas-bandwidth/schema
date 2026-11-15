@@ -438,7 +438,8 @@ function _M.WriteUnsignedProbe(stream, v)
   end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Locked }, 16, 16, 3, 3) then return false end
-  if math.type(v.Tail) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 255 then return false end
   if not stream:serializeBits({ value = v.Tail }, 8) then return false end -- the storage width
   return true
 end
@@ -514,7 +515,8 @@ function _M.WriteDegenerateProbe(stream, v)
   then
     return false
   end
-  if math.type(v.Tail) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 255 then return false end
   if not stream:serializeBits({ value = v.Tail }, 8) then return false end -- the storage width
   return true
 end
