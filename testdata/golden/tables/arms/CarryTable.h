@@ -942,10 +942,164 @@ struct TableReader
         return true;
     }
 
+    // THE CONTAINERS ARE OPENED FOR ONE QUESTION: is an inner array or keyed
+    // header off §3's closed element-kind list? An off-list header is damage
+    // under any count, a count of 0 included, so the walk follows a table,
+    // array, keyed body or union arm far enough to judge it. Framing damage is
+    // not this question and ends an inspection without a finding; the typed
+    // read names it where it declares the field. depth keeps the walk bounded.
+    bool badElementKindPayload( uint8_t kind, TableReader & r, int depth )
+    {
+        switch ( kind )
+        {
+            case 1:
+            case 2:
+            case 6:
+            case 20:
+            case 25: if ( r.has( 1 ) ) { r.offset += 1; } return false;
+            case 3:
+            case 7:
+            case 21:
+            case 26: if ( r.has( 2 ) ) { r.offset += 2; } return false;
+            case 4:
+            case 8:
+            case 10:
+            case 22:
+            case 27: if ( r.has( 4 ) ) { r.offset += 4; } return false;
+            case 5:
+            case 9:
+            case 11:
+            case 23:
+            case 28:
+            case 36: if ( r.has( 8 ) ) { r.offset += 8; } return false;
+            case 18:
+            case 19:
+            case 24:
+            case 29: if ( r.has( 16 ) ) { r.offset += 16; } return false;
+            case 17:
+            case 30:
+            {
+                uint64_t ignored = 0;
+                r.getleb( ignored );
+                return false;
+            }
+            case 12:
+            case 31:
+            case 32:
+            {
+                uint64_t n = 0;
+                if ( r.getleb( n ) && r.room( n ) ) { r.offset += (int64_t) n; }
+                return false;
+            }
+            case 13:
+            case 14:
+            case 16:
+            {
+                uint64_t n = 0;
+                if ( !r.getleb( n ) || !r.room( n ) ) return false;
+                const uint8_t * b = r.buffer + r.offset;
+                r.offset += (int64_t) n;
+                return badElementKindContent( kind, b, (int64_t) n, depth );
+            }
+            case 15: return badElementKindUnion( r, depth );
+        }
+        return false;
+    }
+
+    bool badElementKindContent( uint8_t kind, const uint8_t * b, int64_t n, int depth )
+    {
+        if ( depth >= 128 ) return false;
+        switch ( kind )
+        {
+            case 13: return badElementKindTable( b, n, depth + 1 );
+            case 14: return badElementKindArray( b, n, depth + 1 );
+            case 16: return badElementKindKeyed( b, n, depth + 1 );
+            case 15:
+            {
+                TableReader r( b, n, report, ids );
+                return badElementKindUnion( r, depth );
+            }
+        }
+        return false;
+    }
+
+    bool badElementKindTable( const uint8_t * b, int64_t n, int depth )
+    {
+        TableReader r( b, n, report, ids );
+        for ( ;; )
+        {
+            uint64_t ref = 0;
+            if ( !r.getleb( ref ) || ref == 0 ) return false;
+            if ( ids == NULL || ref > (uint64_t) ids->count || !r.has( 1 ) ) return false;
+            const uint8_t field_kind = r.get8();
+            const int64_t before = r.offset;
+            if ( badElementKindPayload( field_kind, r, depth ) ) return true;
+            if ( r.offset == before ) return false;
+        }
+    }
+
+    bool badElementKindArray( const uint8_t * b, int64_t n, int depth )
+    {
+        if ( n < 1 ) return false;
+        const uint8_t elem = b[0];
+        if ( !TableArrayElementKind( elem ) ) return true;
+        if ( n < 2 ) return false;
+        TableReader r( b + 1, n - 1, report, ids );
+        uint64_t count = 0;
+        if ( !r.getleb( count ) ) return false;
+        if ( count > (uint64_t) ( r.size - r.offset ) ) return false;
+        for ( uint64_t i = 0; i < count; i++ )
+        {
+            const int64_t before = r.offset;
+            if ( badElementKindPayload( elem, r, depth ) ) return true;
+            if ( r.offset == before ) return false;
+        }
+        return false;
+    }
+
+    bool badElementKindKeyed( const uint8_t * b, int64_t n, int depth )
+    {
+        if ( n < 1 ) return false;
+        const uint8_t elem = b[0];
+        if ( !TableKeyedElementKind( elem ) ) return true;
+        if ( n < 2 ) return false;
+        TableReader r( b + 1, n - 1, report, ids );
+        uint64_t count = 0;
+        if ( !r.getleb( count ) ) return false;
+        if ( count > (uint64_t) ( r.size - r.offset ) ) return false;
+        for ( uint64_t i = 0; i < count; i++ )
+        {
+            uint64_t key = 0;
+            if ( !r.getleb( key ) ) return false;
+            if ( key == 0 || ids == NULL || key > (uint64_t) ids->count ) return false;
+            uint64_t len = 0;
+            if ( !r.getleb( len ) || !r.room( len ) ) return false;
+            const uint8_t * eb = r.buffer + r.offset;
+            r.offset += (int64_t) len;
+            if ( badElementKindContent( elem, eb, (int64_t) len, depth ) ) return true;
+        }
+        return false;
+    }
+
+    bool badElementKindUnion( TableReader & r, int depth )
+    {
+        uint64_t arm = 0;
+        if ( !r.getleb( arm ) || arm == 0 ) return false;
+        if ( ids == NULL || arm > (uint64_t) ids->count || !r.has( 1 ) ) return false;
+        const uint8_t arm_kind = r.get8();
+        uint64_t n = 0;
+        if ( !r.getleb( n ) || !r.room( n ) ) return false;
+        const uint8_t * b = r.buffer + r.offset;
+        r.offset += (int64_t) n;
+        const bool structural = arm_kind == 13 || arm_kind == 14 || arm_kind == 15 || arm_kind == 16;
+        if ( !structural ) return false;
+        return badElementKindContent( arm_kind, b, (int64_t) n, depth );
+    }
+
     // skip one payload by kind; false = framing damage. FOUR RULES COVER THE
     // SET (docs/SPEC-TABLES.md §3), and a kind outside it is not skippable —
     // which is why the set is closed and why kind 31 exists.
-    bool skip( uint8_t kind )
+    bool skip( uint8_t kind, int depth = 0 )
     {
         switch ( kind )
         {
@@ -985,26 +1139,7 @@ struct TableReader
                 uint64_t ignored = 0;
                 return getleb( ignored );
             }
-            case 14: // an ARRAY body: its element kind is closed under any count (§3)
-            {
-                uint64_t n = 0;
-                if ( !getleb( n ) ) return false;
-                if ( !room( n ) ) return false;
-                if ( n > 0 && !TableArrayElementKind( buffer[offset] ) ) return false;
-                offset += (int64_t) n;
-                return true;
-            }
-            case 16: // an ENUM-KEYED body: its element kind has its own closed list (§3)
-            {
-                uint64_t n = 0;
-                if ( !getleb( n ) ) return false;
-                if ( !room( n ) ) return false;
-                if ( n > 0 && !TableKeyedElementKind( buffer[offset] ) ) return false;
-                offset += (int64_t) n;
-                return true;
-            }
-            case 12:
-            case 13:
+            case 12: // a string body: its L is opaque here
             case 31:
             case 32: // 31 is the ESCAPE, 32 the payload-free kind
             {
@@ -1012,16 +1147,30 @@ struct TableReader
                 if ( !getleb( n ) ) return false;
                 return room( n ) ? ( offset += (int64_t) n, true ) : false;
             }
+            case 13: // a TABLE body: open it for an off-list array or keyed header (§3, §4)
+            case 14: // an ARRAY body: its element kind is closed under any count (§3)
+            case 16: // an ENUM-KEYED body: its element kind has its own closed list (§3)
+            {
+                uint64_t n = 0;
+                if ( !getleb( n ) ) return false;
+                if ( !room( n ) ) return false;
+                const uint8_t * b = buffer + offset;
+                offset += (int64_t) n;
+                return !badElementKindContent( kind, b, (int64_t) n, depth );
+            }
             case 15: // union: the arm id reference, then its kind, its L and its payload (reference 0 = empty)
             {
                 uint64_t arm = 0;
                 if ( !getleb( arm ) ) return false;
                 if ( arm == 0 ) return true;
                 if ( !has( 1 ) ) return false;
-                offset += 1; // the arm's kind byte
+                const uint8_t arm_kind = get8();
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
-                return room( n ) ? ( offset += (int64_t) n, true ) : false;
+                if ( !room( n ) ) return false;
+                const uint8_t * b = buffer + offset;
+                offset += (int64_t) n;
+                return !badElementKindContent( arm_kind, b, (int64_t) n, depth );
             }
             // KIND 34 IS RESERVED FOR float16 AND IS NOT PART OF THIS MAJOR (§3):
             // no writer emits it and no reader has a rule for it, so a reader
@@ -6195,6 +6344,7 @@ struct TableGraphCollect
     void * ctx;
     bool ( *edge )( void * ctx, uint64_t index );
     bool damaged;
+    bool closed_kind; // an array or keyed header off §3's closed element-kind list
 };
 
 inline int32_t TableGraphWidth( uint8_t kind )
@@ -6307,7 +6457,7 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
             const uint8_t elem = b[0];
             // THE ELEMENT KIND IS CLOSED, judged before any element and under
             // a count of 0 (docs/SPEC-TABLES.md §3, §4).
-            if ( !TableArrayElementKind( elem ) ) { c.damaged = true; return false; }
+            if ( !TableArrayElementKind( elem ) ) { c.damaged = true; c.closed_kind = true; return false; }
             uint64_t count = 0;
             if ( !r.getleb( count ) ) { c.damaged = true; return false; }
             if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
@@ -6322,7 +6472,7 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
             TableReader r( b + 1, n - 1, &ignored, c.ids );
             const uint8_t elem = b[0];
             // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST (§3, §4).
-            if ( !TableKeyedElementKind( elem ) ) { c.damaged = true; return false; }
+            if ( !TableKeyedElementKind( elem ) ) { c.damaged = true; c.closed_kind = true; return false; }
             uint64_t count = 0;
             if ( !r.getleb( count ) ) { c.damaged = true; return false; }
             if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
@@ -6488,12 +6638,12 @@ inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const Tab
     for ( int64_t i = 0; i < n; i++ ) { scratch[i].type_id = 0; }
     {
         TableGraphCount counts = { scratch, n, false };
-        TableGraphCollect collect = { ids, &counts, &TableGraphCountEdge, false };
-        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[0].offset, true ) ) { return counts.bad ? TableGraphFail( report ) : true; }
+        TableGraphCollect collect = { ids, &counts, &TableGraphCountEdge, false, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[0].offset, true ) ) { return ( counts.bad || collect.closed_kind ) ? TableGraphFail( report ) : true; }
         for ( int64_t i = 1; i < n; i++ )
         {
             if ( ( scratch[i].offset & kTableGraphBlob ) != 0 ) { continue; }
-            if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[i].offset & kTableGraphBodyMask, false ) ) { return counts.bad ? TableGraphFail( report ) : true; }
+            if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[i].offset & kTableGraphBodyMask, false ) ) { return ( counts.bad || collect.closed_kind ) ? TableGraphFail( report ) : true; }
         }
         for ( int64_t i = 1; i < n; i++ )
         {
@@ -6514,8 +6664,8 @@ inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const Tab
         kahn.head = (int64_t) ( scratch[p].type_id & kTableGraphLinkMask ) - 1;
         kahn.processed++;
         if ( ( scratch[p].offset & kTableGraphBlob ) != 0 ) { continue; }
-        TableGraphCollect collect = { ids, &kahn, &TableGraphKahnEdge, false };
-        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return kahn.bad ? TableGraphFail( report ) : true; }
+        TableGraphCollect collect = { ids, &kahn, &TableGraphKahnEdge, false, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return ( kahn.bad || collect.closed_kind ) ? TableGraphFail( report ) : true; }
     }
     if ( kahn.bad || kahn.processed != (uint64_t) n ) { return TableGraphFail( report ); }
 
@@ -6528,8 +6678,8 @@ inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const Tab
         reach.head = (int64_t) ( scratch[p].type_id & kTableGraphLinkMask ) - 1;
         if ( reach.head < 0 ) { reach.tail = -1; }
         if ( ( scratch[p].offset & kTableGraphBlob ) != 0 ) { continue; }
-        TableGraphCollect collect = { ids, &reach, &TableGraphReachEdge, false };
-        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return reach.bad ? TableGraphFail( report ) : true; }
+        TableGraphCollect collect = { ids, &reach, &TableGraphReachEdge, false, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return ( reach.bad || collect.closed_kind ) ? TableGraphFail( report ) : true; }
     }
     if ( reach.bad ) { return TableGraphFail( report ); }
     for ( int64_t i = 1; i < n; i++ )

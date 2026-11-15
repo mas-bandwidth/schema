@@ -1465,6 +1465,7 @@ struct TableGraphCollect
     void * ctx;
     bool ( *edge )( void * ctx, uint64_t index );
     bool damaged;
+    bool closed_kind; // an array or keyed header off §3's closed element-kind list
 };
 
 inline int32_t TableGraphWidth( uint8_t kind )
@@ -1577,7 +1578,7 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
             const uint8_t elem = b[0];
             // THE ELEMENT KIND IS CLOSED, judged before any element and under
             // a count of 0 (docs/SPEC-TABLES.md §3, §4).
-            if ( !TableArrayElementKind( elem ) ) { c.damaged = true; return false; }
+            if ( !TableArrayElementKind( elem ) ) { c.damaged = true; c.closed_kind = true; return false; }
             uint64_t count = 0;
             if ( !r.getleb( count ) ) { c.damaged = true; return false; }
             if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
@@ -1592,7 +1593,7 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
             TableReader r( b + 1, n - 1, &ignored, c.ids );
             const uint8_t elem = b[0];
             // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST (§3, §4).
-            if ( !TableKeyedElementKind( elem ) ) { c.damaged = true; return false; }
+            if ( !TableKeyedElementKind( elem ) ) { c.damaged = true; c.closed_kind = true; return false; }
             uint64_t count = 0;
             if ( !r.getleb( count ) ) { c.damaged = true; return false; }
             if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
@@ -1758,12 +1759,12 @@ inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const Tab
     for ( int64_t i = 0; i < n; i++ ) { scratch[i].type_id = 0; }
     {
         TableGraphCount counts = { scratch, n, false };
-        TableGraphCollect collect = { ids, &counts, &TableGraphCountEdge, false };
-        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[0].offset, true ) ) { return counts.bad ? TableGraphFail( report ) : true; }
+        TableGraphCollect collect = { ids, &counts, &TableGraphCountEdge, false, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[0].offset, true ) ) { return ( counts.bad || collect.closed_kind ) ? TableGraphFail( report ) : true; }
         for ( int64_t i = 1; i < n; i++ )
         {
             if ( ( scratch[i].offset & kTableGraphBlob ) != 0 ) { continue; }
-            if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[i].offset & kTableGraphBodyMask, false ) ) { return counts.bad ? TableGraphFail( report ) : true; }
+            if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[i].offset & kTableGraphBodyMask, false ) ) { return ( counts.bad || collect.closed_kind ) ? TableGraphFail( report ) : true; }
         }
         for ( int64_t i = 1; i < n; i++ )
         {
@@ -1784,8 +1785,8 @@ inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const Tab
         kahn.head = (int64_t) ( scratch[p].type_id & kTableGraphLinkMask ) - 1;
         kahn.processed++;
         if ( ( scratch[p].offset & kTableGraphBlob ) != 0 ) { continue; }
-        TableGraphCollect collect = { ids, &kahn, &TableGraphKahnEdge, false };
-        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return kahn.bad ? TableGraphFail( report ) : true; }
+        TableGraphCollect collect = { ids, &kahn, &TableGraphKahnEdge, false, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return ( kahn.bad || collect.closed_kind ) ? TableGraphFail( report ) : true; }
     }
     if ( kahn.bad || kahn.processed != (uint64_t) n ) { return TableGraphFail( report ); }
 
@@ -1798,8 +1799,8 @@ inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const Tab
         reach.head = (int64_t) ( scratch[p].type_id & kTableGraphLinkMask ) - 1;
         if ( reach.head < 0 ) { reach.tail = -1; }
         if ( ( scratch[p].offset & kTableGraphBlob ) != 0 ) { continue; }
-        TableGraphCollect collect = { ids, &reach, &TableGraphReachEdge, false };
-        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return reach.bad ? TableGraphFail( report ) : true; }
+        TableGraphCollect collect = { ids, &reach, &TableGraphReachEdge, false, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return ( reach.bad || collect.closed_kind ) ? TableGraphFail( report ) : true; }
     }
     if ( reach.bad ) { return TableGraphFail( report ); }
     for ( int64_t i = 1; i < n; i++ )
