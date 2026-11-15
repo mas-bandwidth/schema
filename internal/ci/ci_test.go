@@ -1551,7 +1551,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			workflow:  "ci-full.yml",
 			oldSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n    # A pull request runs this file only when it carries the `full-ci` label —\n",
 			newSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n    branches: [ main, dev, fixed-table-form ]\n    # A pull request runs this file only when it carries the `full-ci` label —\n",
-			wantErr:   "PR into an unnamed base did not run ci-full.yml:pins",
+			wantErr:   "PR into an unnamed base did not run ci-full.yml:pr-select",
 		},
 		{
 			name:      "drop dev from ci-full push and pull_request branches",
