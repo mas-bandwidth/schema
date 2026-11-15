@@ -509,6 +509,7 @@ static SCHEMA_UNUSED void table_mark_framed( TableReader sub, uint8_t kind, Tabl
         case 14: case 16:
             if ( sub.size < 2 ) { return; }
             elem_kind = table_reader_get8( &sub );
+            if ( kind == 14 ? !table_array_element_kind_allowed( elem_kind ) : !table_keyed_element_kind_allowed( elem_kind ) ) { g->damaged = 1; return; }
             if ( !table_reader_leb( &sub, &count ) ) { return; }
             if ( count > 2147483647ull ) { return; }
             if ( count > (uint64_t)( sub.size - sub.offset ) ) { return; }

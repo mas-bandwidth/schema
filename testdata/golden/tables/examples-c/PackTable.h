@@ -531,6 +531,18 @@ static SCHEMA_UNUSED int tabledemo_table_reader_array_header( tabledemo_table_re
     ok = tabledemo_table_reader_leb( &header, count ); sub->offset = header.offset;
     return ok;
 }
+/* THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3, §4): an array body
+   (kind 14) opens with 1-13, 15, 17 or 18-30, and an enum-keyed body (kind
+   16) with 1-11, 13 or 18-30. Any other element kind is damage under any
+   count, a count of 0 included, in a declared field and an unknown one. */
+static SCHEMA_UNUSED int tabledemo_table_array_element_kind_allowed( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 13 ) || kind == 15 || kind == 17 || ( kind >= 18 && kind <= 30 );
+}
+static SCHEMA_UNUSED int tabledemo_table_keyed_element_kind_allowed( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 11 ) || kind == 13 || ( kind >= 18 && kind <= 30 );
+}
 static SCHEMA_UNUSED int tabledemo_table_reader_skip( tabledemo_table_reader_t * r, uint8_t kind )
 {
     int width = 0; uint64_t n;
@@ -631,6 +643,7 @@ static SCHEMA_UNUSED int tabledemo_table_skip_array( tabledemo_table_reader_t * 
     if ( sub->size < 2 ) { return 0; }
     elem_kind = tabledemo_table_reader_get8( sub );
     if ( !tabledemo_table_reader_leb( sub, &count ) ) { return 0; }
+    if ( keyed ? !tabledemo_table_keyed_element_kind_allowed( elem_kind ) : !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { return 0; }
     if ( count > 2147483647ull ) { return 0; }
     if ( count > (uint64_t)(sub->size - sub->offset) ) { return 0; }
     if ( !keyed )
@@ -3646,6 +3659,7 @@ static SCHEMA_UNUSED void tabledemo_table_mark_framed( tabledemo_table_reader_t 
         case 14: case 16:
             if ( sub.size < 2 ) { return; }
             elem_kind = tabledemo_table_reader_get8( &sub );
+            if ( kind == 14 ? !tabledemo_table_array_element_kind_allowed( elem_kind ) : !tabledemo_table_keyed_element_kind_allowed( elem_kind ) ) { g->damaged = 1; return; }
             if ( !tabledemo_table_reader_leb( &sub, &count ) ) { return; }
             if ( count > 2147483647ull ) { return; }
             if ( count > (uint64_t)( sub.size - sub.offset ) ) { return; }
@@ -6172,6 +6186,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_body( tabledemo_table_reader_
                     if ( !tabledemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
+                        if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                         if ( elem_kind != 4 )
                         {
                             if ( !(tabledemo_table_kind_widens(elem_kind,4)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
@@ -6784,6 +6799,7 @@ static SCHEMA_UNUSED int tabledemo_global_settings_load_body( tabledemo_table_re
                     if ( !tabledemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
+                        if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                         if ( elem_kind != 10 )
                         {
                             if ( !(tabledemo_table_kind_widens(elem_kind,10)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
@@ -7443,6 +7459,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body( tabledemo_table_reader
                 {
                     uint8_t elem_kind; uint64_t count, i; uint8_t seen[512]; memset( seen, 0, sizeof( seen ) );
                     if ( !tabledemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                    if ( !tabledemo_table_keyed_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                     if ( elem_kind != 13 ) { if ( !(tabledemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; break; } r->report->widened++; }
                     for ( i = 0; i < count; i++ )
                     {
@@ -7486,6 +7503,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body( tabledemo_table_reader
                 {
                     uint8_t elem_kind; uint64_t count, i; uint8_t seen[512]; memset( seen, 0, sizeof( seen ) );
                     if ( !tabledemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                    if ( !tabledemo_table_keyed_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                     if ( elem_kind != 4 ) { if ( !(tabledemo_table_kind_widens(elem_kind,4)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; break; } r->report->widened++; }
                     for ( i = 0; i < count; i++ )
                     {
@@ -7564,6 +7582,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body( tabledemo_table_reader
                     if ( !tabledemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
+                        if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                         if ( elem_kind != 13 )
                         {
                             if ( !(tabledemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
@@ -10391,6 +10410,9 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_body_retain( tabledemo_table_
                     }
                     else
                     {
+                        if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                        }
                         if ( elem_kind != 4 )
                         {
                             if ( !(tabledemo_table_kind_widens(elem_kind,4)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
@@ -10856,6 +10878,9 @@ static SCHEMA_UNUSED int tabledemo_global_settings_load_body_retain( tabledemo_t
                     }
                     else
                     {
+                        if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                        }
                         if ( elem_kind != 10 )
                         {
                             if ( !(tabledemo_table_kind_widens(elem_kind,10)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
@@ -11347,6 +11372,9 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body_retain( tabledemo_table
                     if ( !tabledemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
                     break;
                     }
+                    if ( !tabledemo_table_keyed_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    break;
+                    }
                     if ( elem_kind != 13 ) { if ( !(tabledemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
                     break;
                     } r->report->widened++;
@@ -11422,6 +11450,9 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body_retain( tabledemo_table
                     uint8_t seen[512];
                     memset( seen, 0, sizeof( seen ) );
                     if ( !tabledemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    break;
+                    }
+                    if ( !tabledemo_table_keyed_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
                     break;
                     }
                     if ( elem_kind != 4 ) { if ( !(tabledemo_table_kind_widens(elem_kind,4)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
@@ -11550,6 +11581,9 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body_retain( tabledemo_table
                     }
                     else
                     {
+                        if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                        }
                         if ( elem_kind != 13 )
                         {
                             if ( !(tabledemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
