@@ -23,15 +23,9 @@ name: Squirrel all-port differential
 #     -timeout 600s.
 
 on:
+  # PR gate is ci-fast (Glenn 2026-11-15: efficient on tiny PRs first); this runs on main, nightly, dispatch
   push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-    paths:
-      - 'make/schema-squirrel-all-port-differential.mk'
-      - '.github/workflows/schema-squirrel-all-port-differential.yml'
-      - 'internal/ci/schema_squirrel_all_port_differential_test.go'
-      - 'testdata/conformance/tables/**'
-      - 'internal/tablewire/**'
-  pull_request:
+    branches: [ main, dev, fixed-table-form ]
     paths:
       - 'make/schema-squirrel-all-port-differential.mk'
       - '.github/workflows/schema-squirrel-all-port-differential.yml'
