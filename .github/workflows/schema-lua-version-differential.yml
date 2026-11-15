@@ -13,18 +13,9 @@ name: Schema Lua version differential
 # the one-minute budget (a checkout, setup-go, and one package of Go tests).
 
 on:
+  # PR gate is ci-fast (Glenn 2026-11-15: efficient on tiny PRs first); this runs on main, nightly, dispatch
   push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-    paths:
-      - 'make/schema-lua-version-differential.mk'
-      - 'make/lua.mk'
-      - 'make/lua-conformance.mk'
-      - 'test/conformance/lua/**'
-      - 'internal/codegen/lua/**'
-      - 'internal/codegen/luatable/**'
-      - 'internal/ci/schema_lua_version_differential_test.go'
-      - '.github/workflows/schema-lua-version-differential.yml'
-  pull_request:
+    branches: [ main, dev, fixed-table-form ]
     paths:
       - 'make/schema-lua-version-differential.mk'
       - 'make/lua.mk'
