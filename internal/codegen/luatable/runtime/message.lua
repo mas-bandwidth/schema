@@ -672,7 +672,7 @@ read_value = function(R, T, f, holder, key, ctx, e)
     if d.keyed then
       local n, ok = R:get(bits_range(0, (e and e.max) or d.bound))
       if not ok then return false end
-      local out = {}
+      local out, seen = {}, {}
       for _ = 1, n do
         local kref, kok = R:get(ctx.refBits)
         if not kok or kref == 0 then return false end
@@ -686,6 +686,10 @@ read_value = function(R, T, f, holder, key, ctx, e)
         then
           return false
         end
+        -- A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (docs/SPEC-TABLES.md
+        -- §3.2, §3.3), a key this reader cannot name included.
+        if seen[ke.id] then return false end
+        seen[ke.id] = true
         local kidx = variant_index(d.keyed, ke.id)
         local ev = {}
         if not read_value(R, T, d.elem, ev, "v", ctx, inner) then return false end
@@ -785,12 +789,17 @@ end
 load_fields = function(R, T, name, value, ctx)
   local desc = T.Tables[name]
   if desc == nil then return false end
+  -- A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3),
+  -- whether this reader can name it or not.
+  local seen = {}
   while true do
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
     if ref == 0 then return true end
     local e = ctx.vocab[ref]
     if e == nil or e.id == NODE_ID or e.id == 0xfffffffffffffffe or e.id == 0xfffffffffffffffd then return false end
+    if seen[e.id] then return false end
+    seen[e.id] = true
     local f = field_by_id(T, desc, e.id)
     if f == nil then
       if not skip_entry(R, e, ctx) then return false end
