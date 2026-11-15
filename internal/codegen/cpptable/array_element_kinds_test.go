@@ -14,12 +14,15 @@ import (
 // TestCppArrayElementKindsClosed holds docs/SPEC-TABLES.md §3's closed element
 // kind lists on the C++ leg: an array body (kind 14) may carry 1–13, 15, 17,
 // 18–29 and 30, and any other element kind is damage under any count, a count
-// of 0 included, in an unknown field as in one this reader declares. Each
-// pinned vector runs through graphdemo Scene's strict load and the verdict
-// alone is compared (docs/rulings.json refusal-verdict-only); the kind-17
-// vectors are the read controls. The nested rows hold the same list under a
-// table, an array of tables, an array of unions, a keyed body of tables and a
-// union arm, through a unit with no pointers so the skip walk is the only walk.
+// of 0 included, in an unknown field as in one this reader declares. Every
+// array_elem_* vector runs through its root's strict load and the verdict alone
+// is compared (docs/rulings.json refusal-verdict-only); the kind-17 vectors
+// are the read controls. The graphdemo Scene rows ride an unknown field, the
+// tblr1 Cfg row an element kind the field does not declare, and the listdemo
+// Bounded rows an element whose frame or terminator runs past its body. The
+// nested rows hold the same list under a table, an array of tables, an array of
+// unions, a keyed body of tables and a union arm, through a unit with no
+// pointers so the skip walk is the only walk.
 func TestCppArrayElementKindsClosed(t *testing.T) {
 	t.Parallel()
 	repo, err := filepath.Abs("../../..")
@@ -79,6 +82,54 @@ func TestCppArrayElementKindsClosed(t *testing.T) {
 	out, err := cppHeldRun(t, u, body.String())
 	if err != nil {
 		t.Fatalf("the element-kind probe failed: %v\n%s", err, out)
+	}
+
+	fixed := []struct {
+		name string
+		u    *ir.Unit
+		root string
+		read []struct {
+			name string
+			read bool
+		}
+	}{
+		{"cfg", loadUnit(t, filepath.Join(repo, "test", "tables", "R1.schema")), "Cfg", []struct {
+			name string
+			read bool
+		}{
+			{"array_elem_kind_mismatch", false},
+		}},
+		{"bounded", loadGraphDirUnit(t, filepath.Join(repo, "tables", "lists")), "Bounded", []struct {
+			name string
+			read bool
+		}{
+			{"array_elem_terminator_early", false},
+			{"array_elem_L_past_body", false},
+		}},
+	}
+	for _, f := range fixed {
+		var fixedBody strings.Builder
+		for _, c := range f.read {
+			wire, err := os.ReadFile(filepath.Join(framing, c.name+".bin"))
+			if err != nil {
+				t.Fatalf("%s: the pinned vector is missing: %v", c.name, err)
+			}
+			fmt.Fprintf(&fixedBody, `
+    {
+        const uint8_t wire[] = { %s };
+        const bool want = %t;
+        %s v; %sReset( v );
+        TableReport g; memset( &g, 0, sizeof( g ) );
+        const bool ok = %sLoad( v, wire, (int64_t) sizeof( wire ), &g );
+        if ( ok != want ) { printf( "%s: the strict load reported the wrong verdict (ok=%%d want=%%d)\n", ok ? 1 : 0, (int) want ); return 1; }
+        if ( !want && !g.damaged && !g.refused ) { printf( "%s: a refused load reported neither damage nor a refusal\n" ); return 1; }
+    }
+`, cppBytes(wire), c.read, f.root, f.root, f.root, c.name, c.name)
+		}
+		out, err := cppHeldRun(t, f.u, fixedBody.String())
+		if err != nil {
+			t.Fatalf("the %s element-kind probe failed: %v\n%s", f.name, err, out)
+		}
 	}
 
 	nested := loadUnitFromSource(t, cppNestedElementKindsUnit)
