@@ -327,12 +327,17 @@ generated class per table and per map entry, each with its descriptor
   It is not a §2 construct, so the compiler registers no carry for it. The
   construct loaders for arms, elements and map keys land with the cards that
   carry those kinds, through the same `_accepts`/`_read` pair;
-  `TestPythonVtWidening/sites` holds the pair at each of those kinds now.
+  `TestPythonVtWideningSites` holds the pair at each of those kinds now.
   `TestPythonVtWidening` holds the ladder (13 declarations by 15 wire kinds,
-  both shapes, both pins) to the reference engine's read and write. The corpus
-  rows that widen sit on constructs not carried yet (a packet type in a table,
-  the fixed form, lists, maps), apart from `k1_as_k2`, which it holds; the test
-  asserts the rest stay un-carried and names each one. The bench
+  both shapes, both pins) to the reference engine's read and write. Of the
+  corpus rows that widen, it holds `k1_as_k2` to its reports.txt verdict. The
+  other seven are NOT proven yet: five rest on packet types in tables
+  (`field_scalar_widen`, `scalars_full_as_2`, `scalars_edges_as_2`,
+  `a1_arm_moved_width_as_a2`, `previous_form_wide_blob`) and two on lists and
+  maps (`list_scalar_widen`, `map_key_widen`). Each is skipped by name only
+  when its unit gives exactly its expected not-carried refusal, any other
+  refusal fails, and the held and skipped counts are asserted; the cards that
+  carry those kinds move each row to a held read. The bench
   (`TestPythonTableCoreShapeBench`, on the fleet host) moved by under 1% on
   every load figure, inside its run-to-run noise.
 - **A packet-typed field is refused by name.** A table field whose type is a

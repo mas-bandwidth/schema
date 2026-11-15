@@ -15,7 +15,9 @@ package pythontable
 //	          buffer exactly as they were
 //	manifest  every corpus row of testdata/conformance/tables that exercises
 //	          widening is read under the reference's verdict (reports.txt), or
-//	          named as resting on a construct this runtime does not carry yet
+//	          skipped by name, NOT proven, when its unit gives exactly its
+//	          expected "not carried yet" refusal; the held and skipped counts
+//	          are asserted, and any other refusal fails
 //
 // TestPythonVtWideningNegativeControl breaks the runtime's widen.py in a copy,
 // one rule at a time, and requires the ladder to go red on cells that name
@@ -33,6 +35,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
@@ -265,25 +268,40 @@ func widenUnit(t *testing.T, srcs map[string][]byte) *ir.Unit {
 	return u
 }
 
-// widenManifestHeld are the corpus widening rows this cut can read: tblk2
+// widenManifestHeld are the corpus widening rows this cut reads: tblk2
 // generates under the table frame, so its reports.txt verdict is held by a
 // read on both pins.
 var widenManifestHeld = []string{"k1_as_k2"}
 
-// widenManifestNotCarried are the corpus widening rows that rest on a
-// construct this cut does not carry: a packet type in a table (P4), the fixed
-// form (P5), table-side unions, lists and maps (P6). The test asserts that
-// state, so a later card that carries one moves the row to widenManifestHeld
-// rather than leaving it silently green.
-var widenManifestNotCarried = []string{
-	"field_scalar_widen", "scalars_full_as_2", "scalars_edges_as_2",
-	"a1_arm_moved_width_as_a2", "list_scalar_widen", "map_key_widen",
-	"previous_form_wide_blob",
+// widenNotCarried is one exact "not carried yet" refusal: Generate's error
+// carrying generate, or the read refusing with the runtime reason read.
+type widenNotCarried struct{ generate, read string }
+
+// The not-carried refusals this runtime gives today.
+var (
+	notCarriedPacketTypes = widenNotCarried{generate: "the Python target does not carry packet types yet"}
+	notCarriedKind        = widenNotCarried{read: "unsupported_kind"}
+)
+
+// widenManifestSkipped are the corpus widening rows whose units rest on a
+// construct this cut does not carry: packet types in tables, lists and maps.
+// They are NOT proven here. Each is skipped by name only when it gives
+// exactly its expected not-carried refusal; any other Generate error or read
+// verdict fails the test, so a card that carries the construct must move the
+// row to widenManifestHeld and hold its reports.txt verdict.
+var widenManifestSkipped = map[string]widenNotCarried{
+	"field_scalar_widen":       notCarriedPacketTypes,
+	"scalars_full_as_2":        notCarriedPacketTypes,
+	"scalars_edges_as_2":       notCarriedPacketTypes,
+	"a1_arm_moved_width_as_a2": notCarriedPacketTypes,
+	"previous_form_wide_blob":  notCarriedPacketTypes,
+	"list_scalar_widen":        notCarriedKind,
+	"map_key_widen":            notCarriedKind,
 }
 
-// notCarried are the refusal names the runtime raises for a construct it
-// does not carry yet: a verdict from them is not a verdict on widening.
-var notCarried = map[string]bool{"unsupported_kind": true, "fixed_form_as_file": true}
+// notCarriedReads are the runtime refusals that mean "not carried yet": a
+// held row refusing with one of them has not been read at all.
+var notCarriedReads = map[string]bool{"unsupported_kind": true, "fixed_form_as_file": true}
 
 type manifestRow struct{ unit, root, wire string }
 
@@ -360,18 +378,50 @@ func widenUnitFromPaths(t *testing.T, repo string, paths []string) *ir.Unit {
 	return widenUnit(t, srcs)
 }
 
+// widenManifestProbe reads the row's wire once with a report and a buffer the
+// caller owns: a refusal prints its reason and whether both are untouched, a
+// read prints the write-back.
 const widenManifestProbe = `import sys
-from %s import Refused, %s
+from %s import LoadReport, Refused, %s
 
 with open("wire", "rb") as f:
-    data = f.read()
+    data = bytearray(f.read())
+before = bytes(data)
+report = LoadReport()
+report.unknown = report.widened = report.retained = report.retain_lost = 7
 try:
-    value = %s.load(data)
+    value = %s.load(data, report)
 except Refused as err:
-    print("refused", err.reason)
+    untouched = (report.unknown, report.widened, report.retained, report.retain_lost) == (7, 7, 7, 7) and bytes(data) == before
+    print("refused", err.reason, untouched)
     sys.exit(0)
-print("read", value.save().hex())
+print("read", value.save().hex(), bytes(data) == before)
 `
+
+// widenManifestRun generates the row's unit and reads its wire on both pins.
+// A Generate error is returned, not reported: the caller decides whether it
+// is the row's expected not-carried refusal.
+func widenManifestRun(t *testing.T, repo string, units map[string][]string, row manifestRow) (string, error) {
+	t.Helper()
+	u := widenUnitFromPaths(t, repo, units[row.unit])
+	files, err := Generate(u)
+	if err != nil {
+		return "", err
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	wire, err := os.ReadFile(filepath.Join(repo, row.wire))
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe := pyrun.ImportPrelude + fmt.Sprintf(widenManifestProbe, u.Package, row.root, row.root)
+	inputs := map[string][]byte{"main.py": []byte(probe), "wire": wire}
+	got := strings.TrimSpace(string(pyrun.Run(t, dir, "main.py", inputs)))
+	if floor := strings.TrimSpace(string(pyrun.RunFloor(t, dir, "main.py", inputs))); floor != got {
+		t.Fatalf("%s: the pins disagree: %q and %q", row.unit, got, floor)
+	}
+	return got, nil
+}
 
 // TestPythonVtWidening holds widening on read to the reference engine.
 //
@@ -411,85 +461,113 @@ func TestPythonVtWidening(t *testing.T) {
 		t.Parallel()
 		repo := filepath.Join("..", "..", "..")
 		units, rows, expect := widenManifest(t, repo)
-		for _, name := range widenManifestHeld {
-			t.Run(name, func(t *testing.T) {
-				t.Parallel()
-				row, ok := rows[name]
-				if !ok {
-					t.Fatalf("the manifest carries no row %s", name)
-				}
-				want, ok := expect[name]
-				if !ok {
-					t.Fatalf("reports.txt carries no verdict for %s", name)
-				}
-				u := widenUnitFromPaths(t, repo, units[row.unit])
-				files, err := Generate(u)
-				if err != nil {
-					t.Fatalf("%s: the held unit %s is refused: %v", name, row.unit, err)
-				}
-				dir := t.TempDir()
-				writeTree(t, dir, files)
-				wire, err := os.ReadFile(filepath.Join(repo, row.wire))
-				if err != nil {
-					t.Fatal(err)
-				}
-				probe := pyrun.ImportPrelude + fmt.Sprintf(widenManifestProbe, u.Package, row.root, row.root)
-				inputs := map[string][]byte{"main.py": []byte(probe), "wire": wire}
-				got := strings.TrimSpace(string(pyrun.Run(t, dir, "main.py", inputs)))
-				if floor := strings.TrimSpace(string(pyrun.RunFloor(t, dir, "main.py", inputs))); floor != got {
-					t.Fatalf("%s: the pins disagree: %q and %q", name, got, floor)
-				}
-				verdict := strings.Fields(got)[0]
-				if verdict != want {
-					t.Fatalf("%s: python %s, reports.txt %s", name, got, want)
-				}
-				if verdict == "read" {
-					canon, err := os.ReadFile(filepath.Join(repo, "testdata", "conformance", "tables", "save-wire", name+".bin"))
+		var mu sync.Mutex
+		var held, skipped []string
+		// rows waits for every row before the tally below is taken
+		t.Run("rows", func(t *testing.T) {
+			for _, name := range widenManifestHeld {
+				t.Run(name, func(t *testing.T) {
+					t.Parallel()
+					row, ok := rows[name]
+					if !ok {
+						t.Fatalf("the manifest carries no row %s", name)
+					}
+					want, ok := expect[name]
+					if !ok {
+						t.Fatalf("reports.txt carries no verdict for %s", name)
+					}
+					got, err := widenManifestRun(t, repo, units, row)
 					if err != nil {
-						t.Fatal(err)
+						t.Fatalf("%s: the held unit %s is refused: %v", name, row.unit, err)
 					}
-					if saved := strings.Fields(got)[1]; saved != hex.EncodeToString(canon) {
-						t.Fatalf("%s: the write-back is not the canonical wire:\npython    %s\ncanonical %x", name, saved, canon)
+					fields := strings.Fields(got)
+					if len(fields) != 3 || fields[0] != want {
+						t.Fatalf("%s: python %q, reports.txt %s", name, got, want)
 					}
-				}
-				t.Logf("%s: held, %s", name, verdict)
-			})
+					switch want {
+					case "refused":
+						if notCarriedReads[fields[1]] {
+							t.Fatalf("%s: refused %s, a construct not carried yet, not a verdict on widening", name, fields[1])
+						}
+						if fields[2] != "True" {
+							t.Fatalf("%s: the refusal wrote the caller's report or buffer: %q", name, got)
+						}
+					case "read":
+						canon, err := os.ReadFile(filepath.Join(repo, "testdata", "conformance", "tables", "save-wire", name+".bin"))
+						if err != nil {
+							t.Fatal(err)
+						}
+						if fields[1] != hex.EncodeToString(canon) {
+							t.Fatalf("%s: the write-back is not the canonical wire:\npython    %s\ncanonical %x", name, fields[1], canon)
+						}
+						if fields[2] != "True" {
+							t.Fatalf("%s: the read wrote the caller's buffer: %q", name, got)
+						}
+					default:
+						t.Fatalf("%s: reports.txt verdict %q is neither read nor refused", name, want)
+					}
+					mu.Lock()
+					held = append(held, name)
+					mu.Unlock()
+					t.Logf("%s: held, %s", name, got)
+				})
+			}
+			names := make([]string, 0, len(widenManifestSkipped))
+			for name := range widenManifestSkipped {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			for _, name := range names {
+				nc := widenManifestSkipped[name]
+				t.Run(name, func(t *testing.T) {
+					t.Parallel()
+					row, ok := rows[name]
+					if !ok {
+						t.Fatalf("the manifest carries no row %s", name)
+					}
+					if _, ok := expect[name]; !ok {
+						t.Fatalf("reports.txt carries no verdict for %s", name)
+					}
+					got, err := widenManifestRun(t, repo, units, row)
+					var reason string
+					switch {
+					case nc.generate != "":
+						if err == nil {
+							t.Fatalf("%s: the unit %s now generates; move the row to widenManifestHeld and hold its reports.txt verdict", name, row.unit)
+						}
+						if !strings.Contains(err.Error(), nc.generate) {
+							t.Fatalf("%s: Generate refuses the unit %s for another reason than %q: %v", name, row.unit, nc.generate, err)
+						}
+						reason = err.Error()
+					default:
+						if err != nil {
+							t.Fatalf("%s: Generate refuses the unit %s: %v", name, row.unit, err)
+						}
+						fields := strings.Fields(got)
+						if len(fields) != 3 || fields[0] != "refused" || fields[1] != nc.read {
+							t.Fatalf("%s: python %q, want the not-carried refusal %s; if the construct is now carried, move the row to widenManifestHeld and hold its reports.txt verdict", name, got, nc.read)
+						}
+						if fields[2] != "True" {
+							t.Fatalf("%s: the refusal wrote the caller's report or buffer: %q", name, got)
+						}
+						reason = "the read refuses " + nc.read
+					}
+					mu.Lock()
+					skipped = append(skipped, name)
+					mu.Unlock()
+					t.Skipf("%s: NOT PROVEN, not carried yet: %s", name, reason)
+				})
+			}
+		})
+		if t.Failed() {
+			return
 		}
-		for _, name := range widenManifestNotCarried {
-			t.Run(name, func(t *testing.T) {
-				t.Parallel()
-				row, ok := rows[name]
-				if !ok {
-					t.Fatalf("the manifest carries no row %s", name)
-				}
-				if _, ok := expect[name]; !ok {
-					t.Fatalf("reports.txt carries no verdict for %s", name)
-				}
-				u := widenUnitFromPaths(t, repo, units[row.unit])
-				files, err := Generate(u)
-				if err != nil {
-					t.Logf("%s: not carried: the unit %s is refused at generate time: %v", name, row.unit, err)
-					return
-				}
-				dir := t.TempDir()
-				writeTree(t, dir, files)
-				wire, err := os.ReadFile(filepath.Join(repo, row.wire))
-				if err != nil {
-					t.Fatal(err)
-				}
-				probe := pyrun.ImportPrelude + fmt.Sprintf(widenManifestProbe, u.Package, row.root, row.root)
-				inputs := map[string][]byte{"main.py": []byte(probe), "wire": wire}
-				got := strings.TrimSpace(string(pyrun.Run(t, dir, "main.py", inputs)))
-				if floor := strings.TrimSpace(string(pyrun.RunFloor(t, dir, "main.py", inputs))); floor != got {
-					t.Fatalf("%s: the pins disagree: %q and %q", name, got, floor)
-				}
-				reason, isRefusal := strings.CutPrefix(got, "refused ")
-				if !isRefusal || !notCarried[reason] {
-					t.Fatalf("%s: now carried (%s); move it to widenManifestHeld and hold its reports.txt verdict", name, got)
-				}
-				t.Logf("%s: not carried, the read reaches %s", name, reason)
-			})
+		sort.Strings(held)
+		sort.Strings(skipped)
+		if len(held) != len(widenManifestHeld) || len(skipped) != len(widenManifestSkipped) {
+			t.Fatalf("manifest: %d held %v and %d skipped %v, want %d held and %d skipped", len(held), held, len(skipped), skipped, len(widenManifestHeld), len(widenManifestSkipped))
 		}
+		t.Logf("manifest: %d held by a read (%s), %d skipped as not carried yet and not proven (%s)", len(held), strings.Join(held, ", "), len(skipped), strings.Join(skipped, ", "))
 	})
 }
 
