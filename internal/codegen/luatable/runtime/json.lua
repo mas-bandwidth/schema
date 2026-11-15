@@ -16,7 +16,6 @@ local J = {}
 
 local MAX_DEPTH = 128
 local MAX_KEY = 255
-local MAX_NUMBER = 511
 local BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
 ----------------------------------------------------------------------------
@@ -421,7 +420,7 @@ local function scan_number(inp)
     end
   end
   local n = inp.p - start
-  if n <= 0 or n > MAX_NUMBER then return nil end
+  if n <= 0 then return nil end
   return inp.t:sub(start, inp.p - 1)
 end
 
