@@ -196,11 +196,13 @@ public final class Main {
         check(v[1].hulls[2].turrets[0].damage == 16.0f, "keyed: a keyed array nested in a keyed array");
         check(v[1].hulls[0].turrets[0].gunnerPresent, "keyed: an optional section that is PRESENT");
         check(!v[1].hulls[0].turrets[1].gunnerPresent, "keyed: an optional section that is ABSENT");
-        // ... and behind a false flag the payload that rides is the template's
-        // zeros (§3.4), not the writer's storage — the bool included, which is
-        // why `tracking` is asserted false beside the float.
-        check(v[1].hulls[0].turrets[1].gunner.reaction == 0.0f && !v[1].hulls[0].turrets[1].gunner.tracking,
-                "keyed: an ABSENT optional's payload rides WHOLE, and behind a false flag it is the template's zeros (§3.4)");
+        // ... and behind a false flag the payload is DEAD (rulings.json
+        // fixed-dead-bytes-are-zero): it rides as zeros and is never read as a
+        // value, so the absent section READS ITS DECLARED DEFAULTS, `reaction =
+        // 0.2` and `tracking` false, and neither the wire's zeros nor the
+        // writer's storage. The re-save below still puts zeros on the wire.
+        check(v[1].hulls[0].turrets[1].gunner.reaction == 0.2f && !v[1].hulls[0].turrets[1].gunner.tracking,
+                "keyed: an ABSENT optional reads its declared defaults (reaction = 0.2), never its dead payload (§3.4)");
         final byte[] back = new byte[tabledemo.KeyedConfigFixed.measure(n)];
         check(tabledemo.KeyedConfigFixed.save(v, n, back) == back.length, "keyed.bin: save fills what measure says");
         check(Arrays.equals(back, golden), "keyed.bin: the bytes are the C++ reference's, exactly");
