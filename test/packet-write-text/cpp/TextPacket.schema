@@ -1,0 +1,10 @@
+package packetwritetext
+
+// The shared packet text write shape. The declaring type is spelled
+// TextPacket because every target's name check refuses a field whose exported
+// name equals its enclosing type's name; the wire and the cases are the shared
+// ones.
+type TextPacket
+{
+    text string(8)
+}
