@@ -1099,13 +1099,11 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		case ref != nil && f.Type.Pointer:
 			g.emitCookRef(ind+"  ", fmt.Sprintf("at + %d + i * %d", offset, stride), fmt.Sprintf("i < %s.length ? %s[i] : null", expr, expr))
 		case ref != nil:
-			// a DEAD slot holds the element's declared defaults, as the
-			// reference's storage does (§7.6)
-			if line := fmt.Sprintf("%s  final e = i < %s.length ? %s[i] : wire.%s();", ind, expr, expr, ref.Name); len(line) <= 80 {
-				g.pf("%s\n", line)
-			} else {
-				g.pf("%s  final e = i < %s.length\n%s      ? %s[i]\n%s      : wire.%s();\n", ind, expr, ind, expr, ind, ref.Name)
-			}
+			// a DEAD slot is the zero the region was filled with, never the
+			// element's declared defaults (docs/SPEC-TABLES.md §7.2,
+			// docs/rulings.json fixed-dead-bytes-are-zero)
+			g.pf("%s  if (i >= %s.length) break;\n", ind, expr)
+			g.pf("%s  final e = %s[i];\n", ind, expr)
 			g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d)) return false;\n", ind, ref.Name, offset, stride)
 		case unionRef(f) != nil:
 			// an element that is a union: its own storage, a dead slot being

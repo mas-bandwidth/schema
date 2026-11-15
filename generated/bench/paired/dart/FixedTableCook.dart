@@ -1214,15 +1214,15 @@ final class FixedTableCookWire {
     if (value.entities.length > 8) return false;
     out?.setInt32(at + 576, value.entities.length, order);
     for (var i = 0; i < 8; i++) {
-      final e = i < value.entities.length
-          ? value.entities[i]
-          : wire.MixedEntity();
+      if (i >= value.entities.length) break;
+      final e = value.entities[i];
       if (!_cookMixedEntity(e, c, at + 64 + i * 64)) return false;
     }
     if (value.stats.length > 80) return false;
     out?.setInt32(at + 1220, value.stats.length, order);
     for (var i = 0; i < 80; i++) {
-      final e = i < value.stats.length ? value.stats[i] : wire.MixedStat();
+      if (i >= value.stats.length) break;
+      final e = value.stats[i];
       if (!_cookMixedStat(e, c, at + 580 + i * 8)) return false;
     }
     final gameEventArm = value.gameEvent.armTag;

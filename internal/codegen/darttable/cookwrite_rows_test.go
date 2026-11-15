@@ -61,25 +61,54 @@ func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
 	units := map[string]string{}
 	var rows []row
 	seen := map[string]bool{}
+	// THE DRIVER'S INPUT. The corpus's canonical text is what the conformance
+	// harness cooks (test/conformance/harness/cookinput.go): a row with no
+	// `input=` takes the instance's committed JSON, and a unit the corpus
+	// marks no-text keeps its wire. The manifest is copied with that recipe
+	// made explicit, so the driver reads the same inputs the harness does.
+	var driverManifest strings.Builder
 	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) >= 3 && fields[0] == "instance" {
 			units[fields[1]] = fields[2]
 		}
 		if len(fields) == 0 || fields[0] != "cook-write" {
+			driverManifest.WriteString(line + "\n")
 			continue
 		}
-		if len(fields) != 4 || seen[fields[1]] {
+		if len(fields) < 4 || len(fields) > 6 || seen[fields[1]] {
 			t.Fatalf("bad or duplicate cook-write row: %q", line)
+		}
+		hasInput := false
+		for _, option := range fields[4:] {
+			switch {
+			case strings.HasPrefix(option, "input="):
+				hasInput = true
+			case strings.HasPrefix(option, "share="):
+			default:
+				t.Fatalf("bad cook-write option %q: %q", option, line)
+			}
 		}
 		seen[fields[1]] = true
 		rows = append(rows, row{name: fields[1], little: fields[2], big: fields[3]})
+		driverManifest.WriteString(line)
+		if !hasInput {
+			text := "testdata/conformance/tables/json/" + fields[1] + ".json"
+			if _, err := os.Stat(filepath.Join(repo, text)); err == nil {
+				driverManifest.WriteString(" input=" + text)
+			}
+		}
+		driverManifest.WriteString("\n")
 	}
 	if len(rows) != 71 {
 		t.Fatalf("cook-write manifest has %d rows, want 71", len(rows))
 	}
 	outDir := t.TempDir()
-	cmd := exec.Command(dart, "--enable-asserts", "test/conformance/dart/main.dart", manifest, "cook-write", outDir)
+	driverData := filepath.Join(t.TempDir(), "MANIFEST.txt")
+	if err := os.WriteFile(driverData, []byte(driverManifest.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(dart, "--enable-asserts", "test/conformance/dart/main.dart", driverData, "cook-write", outDir)
 	cmd.Dir = repo
 	output, runErr := cmd.CombinedOutput()
 	if runErr != nil {

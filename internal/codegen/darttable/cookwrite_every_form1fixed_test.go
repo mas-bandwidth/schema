@@ -6,14 +6,15 @@ package darttable
 // root of tabledemo, tblv1, tblv2, tblp1, tblp3, tblm1 or tblm2, registered as
 // the `form1-<instance>` subtests of the shared guard.
 //
-// THE VALUE IS THE INSTANCE'S COMMITTED WIRE. The Dart probe loads it through
-// the form-1 wire library (<Home>Wire.dart, which carries fixed tables too,
-// §3) and cooks it with the root's form-1 cook writer, <Root>CookWire
-// (cookwrite_form1.go): measured, refused one byte short as `invalid_value`
-// (TableRefuseInvalidValue) without writing a byte, then written in each byte
-// order with no byte past the measured extent. mutate decodes the same wire
-// into the guard's value, so the shared driver compares the Dart bytes with
-// tablecook.Cook in both byte orders.
+// THE VALUE IS THE INSTANCE'S COMMITTED TEXT (the canonical JSON the
+// conformance harness writes from the current corpus). The Dart probe loads it
+// through the form-1 wire library's text read (<Home>Wire.dart, which carries
+// fixed tables too, §3) and cooks it with the root's form-1 cook writer,
+// <Root>CookWire (cookwrite_form1.go): measured, refused one byte short as
+// `invalid_value` (TableRefuseInvalidValue) without writing a byte, then
+// written in each byte order with no byte past the measured extent. mutate
+// reads the same text into the guard's value, so the shared driver compares
+// the Dart bytes with tablecook.Cook in both byte orders.
 //
 // AND THE ROW'S TWO GOLDENS. The shared driver's unit is the instance's
 // schema under `package probe` beside its Tier enum and a Root table, and §7's
@@ -32,7 +33,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // form1FixedInstances is each instance this family cooks, its unit's schema
@@ -45,7 +45,6 @@ var form1FixedInstances = []struct {
 	{"root_default", "RootConfig", form1Tabledemo},
 	{"profile_elide", "ProfileConfig", form1Tabledemo},
 	{"loadout_full", "LoadoutConfig", form1Tabledemo},
-	{"wide_blob", "WideBlob", form1Tabledemo},
 	{"archive", "ArchiveConfig", form1Tabledemo},
 	{"keyed_config", "KeyedConfig", form1Tabledemo},
 	{"keyed_default", "KeyedConfig", form1Tabledemo},
@@ -103,16 +102,16 @@ func form1ProbeUnit(sources []string, root, instance string) (string, string) {
 		}
 	}
 	b.WriteString(form1ProbeRoot)
-	wire, err := filepath.Abs(filepath.Join(form1Repo, "testdata", "wire", "tables", instance+".bin"))
+	text, err := filepath.Abs(filepath.Join(form1Repo, "testdata", "conformance", "tables", "json", instance+".json"))
 	if err != nil {
 		return b.String(), fmt.Sprintf("void main() { throw StateError(%q); }\n", err.Error())
 	}
-	probe := strings.NewReplacer("@WIRE@", wire, "@LOAD@", dartName(root)+"WireLoad", "@COOK@", root+"CookWire").Replace(form1Probe)
+	probe := strings.NewReplacer("@TEXT@", text, "@LOAD@", dartName(root)+"FromJson", "@COOK@", root+"CookWire").Replace(form1Probe)
 	return b.String(), probe
 }
 
-// form1Probe loads the committed wire and cooks it in both orders: measure
-// before write, a one-byte-short buffer refused by the reference's
+// form1Probe loads the instance's committed text and cooks it in both orders:
+// measure before write, a one-byte-short buffer refused by the reference's
 // `invalid_value` with no byte written, and no byte past the extent (§7.6).
 const form1Probe = `import 'dart:io';
 import 'dart:typed_data';
@@ -121,9 +120,9 @@ import 'ProbeCook.dart' as c;
 void check(bool ok,String what){if(!ok)throw StateError(what);}
 String hex(Uint8List b,int length)=>b.take(length).map((v)=>v.toRadixString(16).padLeft(2,'0')).join();
 void main(){
- final report=w.TableWireReport();
- final value=w.@LOAD@(File('@WIRE@').readAsBytesSync(),report);
- check(!report.refused,'the committed wire did not load');
+ final report=w.TableTextReport();
+ final value=w.@LOAD@(File('@TEXT@').readAsStringSync(),report);
+ check(!report.refused,'the committed text did not load');
  final size=c.@COOK@.cookMeasure(value);
  check(size>0,'the measure refused the value');
  for(final order in [Endian.little,Endian.big]){
@@ -144,7 +143,7 @@ void main(){
 func form1Mutate(instance, root string, sources []string) func(*testing.T, *tabletext.Model, *tabletext.Instance) {
 	return func(t *testing.T, m *tabletext.Model, v *tabletext.Instance) {
 		t.Helper()
-		data, err := os.ReadFile(filepath.Join(form1Repo, "testdata", "wire", "tables", instance+".bin"))
+		data, err := os.ReadFile(filepath.Join(form1Repo, "testdata", "conformance", "tables", "json", instance+".json"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -156,9 +155,8 @@ func form1Mutate(instance, root string, sources []string) func(*testing.T, *tabl
 			}
 			value := m.New(st)
 			var report tabletext.Report
-			ok, err := tablewire.Decode(m, value, data, &report)
-			if err != nil || !ok {
-				t.Fatalf("%s: the committed wire did not decode: ok=%v err=%v", instance, ok, err)
+			if !m.Read(value, data, &report) || report.Refused {
+				t.Fatalf("%s: the committed text did not decode: %+v", instance, report)
 			}
 			return value
 		}
