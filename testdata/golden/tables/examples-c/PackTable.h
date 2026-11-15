@@ -648,7 +648,12 @@ static SCHEMA_UNUSED int tabledemo_table_skip_array( tabledemo_table_reader_t * 
             if ( seen[(key-1)>>3] & (uint8_t)(1u << ((key-1) & 7)) ) { return 0; }
             seen[(key-1)>>3] |= (uint8_t)(1u << ((key-1) & 7));
             if ( !tabledemo_table_reader_span( sub, &elem ) ) { return 0; }
-            if ( !tabledemo_table_skip_framed( elem, elem_kind, nodes, depth ) ) { return 0; }
+            if ( elem_kind == 13 || elem_kind == 14 || elem_kind == 16 )
+            {
+                if ( depth >= 128 ) { return 0; }
+                if ( !tabledemo_table_skip_framed( elem, elem_kind, nodes, depth + 1 ) ) { return 0; }
+            }
+            else if ( !tabledemo_table_skip_framed( elem, elem_kind, nodes, depth ) ) { return 0; }
         }
         return sub->offset == sub->size;
     }
@@ -676,7 +681,17 @@ static SCHEMA_UNUSED int tabledemo_table_skip_value( tabledemo_table_reader_t * 
             if ( !tabledemo_table_reader_has( r, 1 ) ) { return 0; }
             arm_kind = tabledemo_table_reader_get8( r );
             if ( !tabledemo_table_reader_span( r, &arm ) ) { return 0; }
-            return tabledemo_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+            if ( arm_kind == 13 || arm_kind == 14 || arm_kind == 16 )
+            {
+                if ( depth >= 127 ) { return 0; }
+                return tabledemo_table_skip_framed( arm, arm_kind, nodes, depth + 2 );
+            }
+            if ( arm_kind == 15 )
+            {
+                if ( depth >= 128 ) { return 0; }
+                return tabledemo_table_skip_value( &arm, arm_kind, nodes, depth + 1 );
+            }
+            return tabledemo_table_skip_framed( arm, arm_kind, nodes, depth );
         }
         case 12: case 13: case 14: case 16: case 31: case 32:
         {
