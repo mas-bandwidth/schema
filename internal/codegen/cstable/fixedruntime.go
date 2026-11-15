@@ -1749,9 +1749,10 @@ public static class TableFixedWire
 
     // TextIllFormed reports whether a text payload's USED units are the text
     // its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
-    // with no zero byte for string. bytes(N) carries no text rule at all, and
-    // slack past the used bytes is unspecified and never a refusal
-    // (docs/SPEC-TABLES.md §3.4). The used argument is the clamped length.
+    // with no zero byte for string. bytes(N) carries no text rule at all. The
+    // bytes past the used length are dead: the dead-byte check pass refuses
+    // wire_damaged when one is not zero (docs/SPEC-TABLES.md §3.4). The used
+    // argument is the clamped length.
     public static bool TextIllFormed(byte meta, uint used, ReadOnlySpan<byte> p)
     {
         switch (meta)
