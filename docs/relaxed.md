@@ -245,19 +245,6 @@ Relaxed on 2026-11-15 to get the fast lane green on `main` after a day of
 landings with no gate; each site carries `RELAXED 2026-11-15 (get main
 green)` and its slug.
 
-- `relax/dart-announce-refuses-nested-element`:
-  `internal/codegen/darttable` TestDartAnnounceShapesAsTheEngine drops the
-  cases nested_array_wellformed and keyed_array_of_keyed_array. The engine
-  now refuses an announced list or keyed array whose element is itself a
-  list or keyed array (90b679296); the Dart announceRead still accepts it.
-  Real fix: the Dart announceRead refuses those shapes as the engine does,
-  the two cases want false, and the test's negative control is reworked.
-- `relax/dart-skip-progress-text-list-fixture`:
-  `internal/codegen/darttable` TestDartMessageSkipMakesProgress is skipped.
-  Its zero-progress fixture is a list of lists, which the engine now refuses
-  at announce time. Real fix: a fixture shape the engine admits, following
-  TestMessageSkipRefusesElementWithNoProgress (a text-list element with
-  length bound 0).
 - `relax/go-fixed-read-dead-bytes-zero`: `internal/codegen/gotable/fuzzunit`
   TestGeneratedFixedAgreesWithEngine and TestGeneratedFixedOneVerdictEveryByte
   hold (count and log, not compare) the inputs the generated Go fixed read

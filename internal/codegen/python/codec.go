@@ -153,6 +153,11 @@ func fieldKind(f *ir.Field) string {
 	return ""
 }
 
+// FieldKind is the registry key of a field the packet core carries, or "" when
+// no emitter carries it. A table emitter that hosts the packet classes uses it
+// to hold a packet type to the packet wire's own carried set.
+func FieldKind(f *ir.Field) string { return fieldKind(f) }
+
 // blockingKind names what a field is when the codec does not carry it.
 func blockingKind(f *ir.Field) string {
 	if f.Type.Pointer {
@@ -192,6 +197,10 @@ func blockingKind(f *ir.Field) string {
 	}
 	return "unknown"
 }
+
+// BlockingKind names what a field is when the packet core's codec does not
+// carry it.
+func BlockingKind(f *ir.Field) string { return blockingKind(f) }
 
 // firstBlockerItem returns the first wire item the codec does not carry, as
 // the kind's name, or "" when every item is carried.
