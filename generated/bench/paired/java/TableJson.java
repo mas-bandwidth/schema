@@ -876,80 +876,50 @@ public final class TableJson {
             return new String(t, start, p - start, java.nio.charset.StandardCharsets.US_ASCII);
         }
 
-        // integer reads one number into a long, clamping to the field's declared
-        // range and counting a genuinely fractional value as a kind mismatch
-        // (never coerced), a value past the range as a clamp (§16.2).
-        public long integer(boolean signed, long min, long max) {
+        // integer reads one integer token into a long. A wide kind (storage
+        // past 32 bits) takes a string of those digits or a number; a narrower
+        // kind takes a number. The token is digits and an optional minus — no
+        // fraction, no exponent, not -0 — parsed exactly, never through a
+        // double. A value past the declared range refuses (§16.2).
+        public long integer(boolean signed, boolean wide, long min, long max) {
             rejected = false;
-            boolean[] integral = new boolean[1];
-            String tok = scanNumber(integral);
-            if (bad) {
+            String tok;
+            if (wide && peek() == '"') {
+                tok = scanString();
+                if (bad || tok == null) {
+                    return 0;
+                }
+            } else {
+                boolean[] integral = new boolean[1];
+                tok = scanNumber(integral);
+                if (bad || tok == null) {
+                    return 0;
+                }
+            }
+            if (!TableJson.integerToken(tok)) {
+                rep.refuse("kind_mismatch");
+                rejected = true;
                 return 0;
             }
             long v;
-            if (integral[0]) {
-                if (signed) {
-                    try {
-                        v = Long.parseLong(tok);
-                    } catch (NumberFormatException e) {
-                        rep.refuse("out_of_range");
-                        return tok.charAt(0) == '-' ? min : max;
-                    }
-                } else {
-                    if (tok.charAt(0) == '-') {
-                        if (!"-0".equals(tok)) {
-                            rep.refuse("out_of_range");
-                            return min;
-                        }
-                        v = 0;
-                    } else {
-                        try {
-                            v = Long.parseUnsignedLong(tok);
-                        } catch (NumberFormatException e) {
-                            rep.refuse("out_of_range"); // past what sixty-four bits hold
-                            // the largest unsigned magnitude; the range checks below add
-                            // a second clamp when the bound is narrower than uint64
-                            v = -1L;
-                        }
-                    }
-                }
-            } else {
-                double d;
+            if (signed) {
                 try {
-                    d = Double.parseDouble(tok);
+                    v = Long.parseLong(tok);
                 } catch (NumberFormatException e) {
-                    bad = true;
-                    return 0;
+                    rep.refuse("out_of_range");
+                    return tok.charAt(0) == '-' ? min : max;
                 }
-                if (signed) {
-                    if (Double.isFinite(d) && d >= 9223372036854775808.0) {
-                        rep.refuse("out_of_range");
-                        return max;
-                    }
-                    if (!Double.isFinite(d) || d != (double) (long) d) {
-                        rep.refuse("kind_mismatch");
-                        rejected = true;
-                        return 0;
-                    }
-                    v = (long) d;
-                } else {
-                    if (!Double.isFinite(d) || Math.rint(d) != d) {
-                        rep.refuse("kind_mismatch");
-                        rejected = true;
-                        return 0;
-                    }
-                    if (d < 0.0) {
-                        rep.refuse("out_of_range");
-                        return min;
-                    }
-                    if (d >= 18446744073709551616.0) {
-                        rep.refuse("out_of_range");
-                        return max;
-                    }
-                    v =
-                            d < 9223372036854775808.0
-                                    ? (long) d
-                                    : (long) (d - 9223372036854775808.0) + Long.MIN_VALUE;
+            } else if (tok.charAt(0) == '-') {
+                rep.refuse("out_of_range");
+                return min;
+            } else {
+                try {
+                    v = Long.parseUnsignedLong(tok);
+                } catch (NumberFormatException e) {
+                    rep.refuse("out_of_range"); // past what sixty-four bits hold
+                    // the largest unsigned magnitude; the range checks below add
+                    // a second clamp when the bound is narrower than uint64
+                    v = -1L;
                 }
             }
             if (signed) {
@@ -1131,6 +1101,26 @@ public final class TableJson {
         }
     }
 
+    // integerToken is the digits-and-optional-minus spelling an integer takes:
+    // no fraction, no exponent, no plus, no leading zero, and not -0 (§16.2).
+    static boolean integerToken(String token) {
+        if (token == null || token.isEmpty()) return false;
+        int i = 0;
+        boolean negative = false;
+        if (token.charAt(0) == '-') {
+            negative = true;
+            i++;
+        }
+        if (i >= token.length()) return false;
+        if (token.charAt(i) == '0') return !negative && i + 1 == token.length();
+        if (token.charAt(i) < '1' || token.charAt(i) > '9') return false;
+        for (; i < token.length(); i++) {
+            char d = token.charAt(i);
+            if (d < '0' || d > '9') return false;
+        }
+        return true;
+    }
+
     static String wideText(java.math.BigInteger raw, int fraction, boolean fixed) {
         if (!fixed) return raw.toString();
         String text =
@@ -1147,15 +1137,51 @@ public final class TableJson {
     // The decimal point is placed by one scan of the token; only a bounded
     // run of significant digits reaches a big-number conversion (§15, §16.2).
     static java.math.BigInteger readWide(
-            In in, boolean signed, int fraction, java.math.BigInteger lo, java.math.BigInteger hi) {
+            In in,
+            boolean signed,
+            int fraction,
+            boolean integerOnly,
+            boolean stringOk,
+            java.math.BigInteger lo,
+            java.math.BigInteger hi) {
         int c = in.peek();
-        if (c != '-' && (c < '0' || c > '9')) {
+        String token;
+        if (stringOk && c == '"') {
+            token = in.scanString();
+            if (in.bad || token == null) return null;
+            if (integerOnly) {
+                if (!integerToken(token)) {
+                    in.rep.refuse("kind_mismatch");
+                    return null;
+                }
+            } else {
+                if (token.isEmpty() || Character.isWhitespace(token.charAt(0))) {
+                    in.rep.refuse("kind_mismatch");
+                    return null;
+                }
+                In probe =
+                        new In(
+                                token.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                                new TableVariable.Report());
+                String scanned = probe.scanNumber(new boolean[1]);
+                if (probe.bad || scanned == null || probe.p != probe.t.length) {
+                    in.rep.refuse("kind_mismatch");
+                    return null;
+                }
+                token = scanned;
+            }
+        } else if (c == '-' || (c >= '0' && c <= '9')) {
+            token = in.scanNumber(new boolean[1]);
+            if (in.bad || token == null) return null;
+            if (integerOnly && !integerToken(token)) {
+                in.rep.refuse("kind_mismatch");
+                return null;
+            }
+        } else {
             in.skipValue();
             in.rep.refuse("kind_mismatch");
             return null;
         }
-        String token = in.scanNumber(new boolean[1]);
-        if (in.bad || token == null) return null;
         java.math.BigInteger domainHi =
                 java.math.BigInteger.ONE
                         .shiftLeft(signed ? 127 : 128)
