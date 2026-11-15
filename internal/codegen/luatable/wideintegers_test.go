@@ -173,4 +173,203 @@ func TestLuaJsonWideIntegersAreStrings(t *testing.T) {
 			t.Errorf("%s: read or wrote the row differently\n got: %s\nwant: %s", row.name, line, wantValue)
 		}
 	}
+
+	t.Run("integer sites", func(t *testing.T) {
+		t.Parallel()
+		luaJsonIntegerSites(t)
+	})
+}
+
+// luaJsonSitesSchema holds every integer site the two rules reach that the
+// shared vectors' unit does not name: an array element (wide and bit-typed),
+// an enum-keyed slot, a wide map value, an optional and a union arm.
+const luaJsonSitesSchema = `package jsonsites
+
+enum Slot { A, B }
+
+flags Marks { X, Y }
+
+union Pick
+{
+    wide   int64
+    narrow int32
+}
+
+table Sites
+{
+    wide    int64
+    uwide   uint64
+    bits64  bits(64)
+    fixed64 fixed(48, 16) | min = -10, max = 10
+    counts  map[uint64]int64
+    list    [3]int64
+    ulist   [3]uint64
+    keyed   [Slot]int64
+    opt     ?int64
+    marks   Marks
+    pick    Pick
+}
+`
+
+// luaJsonSitesCanonical is the committed canonical text for the sites unit: a
+// wide integer at every site is a string of decimal digits, a narrow one a
+// number.
+const luaJsonSitesCanonical = `{
+  "wide": "-9007199254740993",
+  "uwide": "18446744073709551615",
+  "bits64": "18446744073709551615",
+  "fixed64": "-1.5",
+  "counts": {
+    "1": "-9007199254740993",
+    "9007199254740993": "9007199254740993"
+  },
+  "list": [
+    "-9007199254740993",
+    "0",
+    "9007199254740993"
+  ],
+  "ulist": [
+    "1",
+    "9007199254740993",
+    "18446744073709551615"
+  ],
+  "keyed": {
+    "A": "-42",
+    "B": "42"
+  },
+  "opt": "-9007199254740993",
+  "marks": [
+    "X"
+  ],
+  "pick": {
+    "wide": "-9007199254740993"
+  }
+}`
+
+// luaJsonSitesNumbers is the same value with every wide integer a bare number
+// token: it must read to the same values and write the canonical strings.
+const luaJsonSitesNumbers = `{
+  "wide": -9007199254740993,
+  "uwide": 18446744073709551615,
+  "bits64": 18446744073709551615,
+  "fixed64": -1.5,
+  "counts": {
+    "1": -9007199254740993,
+    "9007199254740993": 9007199254740993
+  },
+  "list": [
+    -9007199254740993,
+    0,
+    9007199254740993
+  ],
+  "ulist": [
+    1,
+    9007199254740993,
+    18446744073709551615
+  ],
+  "keyed": {
+    "A": -42,
+    "B": 42
+  },
+  "opt": -9007199254740993,
+  "marks": [
+    "X"
+  ],
+  "pick": {
+    "wide": -9007199254740993
+  }
+}`
+
+var luaJsonSitesRefused = map[string]string{
+	"list-fraction":        `{"list": [-1.5, "0", "9007199254740993"]}`,
+	"list-exponent":        `{"list": [1e3, "0", "9007199254740993"]}`,
+	"list-neg-zero":        `{"list": [-0, "0", "9007199254740993"]}`,
+	"list-string-fraction": `{"list": ["-1.5", "0", "9007199254740993"]}`,
+	"ulist-one-past":       `{"ulist": ["18446744073709551616", "0", "0"]}`,
+	"keyed-fraction":       `{"keyed": {"A": -1.5}}`,
+	"map-value-fraction":   `{"counts": {"1": -1.5}}`,
+	"optional-fraction":    `{"opt": -1.5}`,
+	"arm-fraction":         `{"pick": {"wide": -1.5}}`,
+	"flags-string":         `{"marks": "X"}`,
+}
+
+func luaJsonSitesProbe(module string, keys []string) string {
+	var b strings.Builder
+	b.WriteString(`local T = require("` + module + `")
+local J = require("json")
+local inputs = require("inputs")
+local keys = {
+`)
+	for _, key := range keys {
+		fmt.Fprintf(&b, "  %q,\n", key)
+	}
+	b.WriteString(`}
+local function hex(s)
+  if s == nil then return "nil" end
+  return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
+end
+for _, key in ipairs(keys) do
+  local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+  local v = J.FromJson(T, "Sites", inputs[key], report)
+  if v == nil then
+    print(key .. "|refused")
+  else
+    print(key .. "|ok|" .. hex(J.ToJson(T, "Sites", v)))
+  end
+end
+`)
+	return b.String()
+}
+
+// luaJsonIntegerSites holds the two rules at every integer site: a wide field,
+// an array element, an enum-keyed slot, a map value, an optional and a union
+// arm each take a string or a number and write the canonical string, and a
+// fraction, exponent, negative zero or a value past the range is refused.
+func luaJsonIntegerSites(t *testing.T) {
+	t.Helper()
+	work := t.TempDir()
+	schema := filepath.Join(work, "Sites.schema")
+	if err := os.WriteFile(schema, []byte(luaJsonSitesSchema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u := luarun.LoadUnit(t, schema)
+	files, err := generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	out := t.TempDir()
+	luarun.WriteFiles(t, out, files)
+
+	inputs := map[string][]byte{
+		"canonical": []byte(luaJsonSitesCanonical),
+		"numbers":   []byte(luaJsonSitesNumbers),
+	}
+	keys := []string{"canonical", "numbers"}
+	for key, body := range luaJsonSitesRefused {
+		inputs[key] = []byte(body)
+		keys = append(keys, key)
+	}
+	if err := os.WriteFile(filepath.Join(out, "main.lua"), []byte(luaJsonSitesProbe(ModuleName(u), keys)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := string(luarun.Run(t, out, "main.lua", inputs))
+	byRow := map[string]string{}
+	for line := range strings.SplitSeq(strings.TrimRight(got, "\n"), "\n") {
+		key, rest, ok := strings.Cut(line, "|")
+		if !ok {
+			t.Fatalf("probe line %q has no verdict", line)
+		}
+		byRow[key] = rest
+	}
+	want := "ok|" + hexBytes(append(append([]byte{}, luaJsonSitesCanonical...), '\n'))
+	for _, key := range []string{"canonical", "numbers"} {
+		if byRow[key] != want {
+			t.Errorf("%s: read or wrote the sites unit differently\n got: %s\nwant: %s", key, byRow[key], want)
+		}
+	}
+	for key := range luaJsonSitesRefused {
+		if byRow[key] != "refused" {
+			t.Errorf("%s: read accepted the row: %s", key, byRow[key])
+		}
+	}
 }
