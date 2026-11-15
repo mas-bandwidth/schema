@@ -1845,9 +1845,9 @@ static partial class Program
         // never a silent pass over zero suites.
         string shard = args.Length > 0 ? args[0] : "";
         bool All(string name) => shard.Length == 0 || shard == name;
-        if (shard.Length != 0 && shard != "wire" && shard != "core" && shard != "evolution" && shard != "fixed")
+        if (shard.Length != 0 && shard != "wire" && shard != "core" && shard != "evolution" && shard != "fixed" && shard != "regions")
         {
-            Console.WriteLine("FAILED: unknown cs tables shard \"" + shard + "\" (want wire, core, evolution or fixed)");
+            Console.WriteLine("FAILED: unknown cs tables shard \"" + shard + "\" (want wire, core, evolution, fixed or regions)");
             return 1;
         }
 
@@ -1862,11 +1862,16 @@ static partial class Program
             TestUnionContracts();
             TestCollections();
             TestSurfaces();
-            TestRegions();
             TestAllocators();
             TestBuilders();
             TestBlobJsonAllocation();
             TestCollectionEdges();
+        }
+        // TestRegions is its own shard: it measured 74 s of a Debug wire
+        // shard's 88 s on a loaded bench (2026-11-15), the rest of wire 14 s.
+        if (All("regions"))
+        {
+            TestRegions();
         }
         if (All("core"))
         {

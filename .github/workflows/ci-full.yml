@@ -2263,17 +2263,29 @@ jobs:
   # split was lost in the 66f8d4adf merge and restored 2026-11-15): even one
   # configuration measured 133 s in run 42554833739 (12 s corpus generation
   # + 106 s `run the leg`), over the fleet's 120 s per-commit kill, so each
-  # configuration is split by suite partition (wire, core, evolution,
-  # fixed; Program.cs runs one partition per invocation, all of them with
-  # no argument). This job runs all eight config x shard rows in parallel;
+  # configuration is split by suite partition (wire, core, evolution, fixed,
+  # regions; Program.cs runs one partition per invocation and all of them
+  # with no argument). Regions is TestRegions alone: it left wire on
+  # 2026-11-15, when it measured 74 s of a Debug wire shard's 88 s on a
+  # loaded bench. This job runs all ten config x shard rows in parallel;
   # nothing moves to nightly and nothing is dropped — the umbrella
   # `tables-cs-leg` target still runs both configurations whole.
+  #
+  # BUILT ONCE PER CONFIGURATION (2026-11-15). The leg's assembly is about
+  # 680k lines of generated C#, and the compile is most of a row's time.
+  # With every shard row compiling it, eight cold builds landed on the same
+  # runner hosts at once (PR #3641, run 43720354508) and six rows ran past
+  # 110 s inside `dotnet run` before a test printed. So cs-tables-build
+  # compiles each configuration once and hands test/cs-tables/bin to that
+  # configuration's shard rows, which run the built assembly
+  # (`make tables-cs-leg-built-<config>-<shard>`) and generate and compile
+  # nothing.
   #
   # internal/ci/tableslegs_test.go is what keeps this job from being quietly
   # deleted: TestEveryNamedTableLegRunsOnEveryPullRequest refuses a named leg
   # with no pull-request coverage.
-  cs-tables:
-    name: C# tables leg (${{ matrix.config }}-${{ matrix.shard }})
+  cs-tables-build:
+    name: C# tables leg build (${{ matrix.config }})
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
@@ -2284,7 +2296,6 @@ jobs:
       fail-fast: false
       matrix:
         config: [debug, release]
-        shard: [wire, core, evolution, fixed]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -2326,8 +2337,76 @@ jobs:
       - name: generate the C# table corpus once
         run: make -j"$(nproc)" bin/schema build/tables-generated-cs/.stamp
 
+      - name: build the leg once for every shard row
+        run: make tables-cs-leg-build-${{ matrix.config }}
+
+      - name: hand the built leg to the shard rows
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cs-tables-${{ matrix.config }}
+          path: test/cs-tables/bin
+          retention-days: 1
+          if-no-files-found: error
+
+  cs-tables:
+    name: C# tables leg (${{ matrix.config }}-${{ matrix.shard }})
+    needs: cs-tables-build
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [debug, release]
+        shard: [wire, core, evolution, fixed, regions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the serialize.cs runtime (pinned release)
+        run: |
+          rm -rf "../serialize.cs"
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git ../serialize.cs
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        if: runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cs-tables-${{ matrix.config }}
+          path: test/cs-tables/bin
+
       - name: run the leg
-        run: make tables-cs-leg-${{ matrix.config }}-${{ matrix.shard }}
+        run: make tables-cs-leg-built-${{ matrix.config }}-${{ matrix.shard }}
 
 
   # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is

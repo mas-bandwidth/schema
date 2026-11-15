@@ -587,14 +587,14 @@ tables-cs-leg-release: build/tables-generated-cs/.stamp
 # unsplit leg measured 133 s per configuration in CI run 42554833739
 # (12 s corpus generation + 106 s `run the leg`), over the fleet's 120 s
 # per-commit kill (110 s budget). Program.cs partitions its suites into
-# wire, core, evolution and fixed; each shard target below runs one
-# partition in one configuration, and ci-full.yml runs all eight as
-# parallel matrix rows, so a row pays generation + build + one quarter
-# of the suites instead of the whole leg. Nothing is dropped: with no
+# wire, core, evolution, fixed and regions (TestRegions alone, split out
+# of wire 2026-11-15); each shard target below runs one partition in one
+# configuration, and ci-full.yml runs all ten as parallel matrix rows from
+# one build per configuration. Nothing is dropped: with no
 # shard argument the binary still runs every suite, `tables-cs-leg`
 # still runs both configurations whole for `make test` and certify, and
 # every shard is also reachable through the umbrella targets.
-.PHONY: tables-cs-leg-debug-wire tables-cs-leg-debug-core tables-cs-leg-debug-evolution tables-cs-leg-debug-fixed tables-cs-leg-release-wire tables-cs-leg-release-core tables-cs-leg-release-evolution tables-cs-leg-release-fixed
+.PHONY: tables-cs-leg-debug-wire tables-cs-leg-debug-core tables-cs-leg-debug-evolution tables-cs-leg-debug-fixed tables-cs-leg-debug-regions tables-cs-leg-release-wire tables-cs-leg-release-core tables-cs-leg-release-evolution tables-cs-leg-release-fixed tables-cs-leg-release-regions
 tables-cs-leg-debug-wire: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -- wire
 tables-cs-leg-debug-core: build/tables-generated-cs/.stamp
@@ -603,6 +603,8 @@ tables-cs-leg-debug-evolution: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -- evolution
 tables-cs-leg-debug-fixed: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -- fixed
+tables-cs-leg-debug-regions: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -- regions
 tables-cs-leg-release-wire: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- wire
 tables-cs-leg-release-core: build/tables-generated-cs/.stamp
@@ -611,6 +613,24 @@ tables-cs-leg-release-evolution: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- evolution
 tables-cs-leg-release-fixed: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- fixed
+tables-cs-leg-release-regions: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -c Release -- regions
+
+# BUILD ONCE, RUN THE SHARDS FROM THE BUILD (ci-full.yml cs-tables-build ->
+# cs-tables). The compile is most of a shard row's time, so CI builds each
+# configuration once with tables-cs-leg-build-<config> and hands
+# test/cs-tables/bin to the shard rows, which run the built assembly with
+# tables-cs-leg-built-<config>-<shard> (wire, core, evolution, fixed or
+# regions). The built targets compile nothing: run them only after the matching build.
+.PHONY: tables-cs-leg-build-debug tables-cs-leg-build-release
+tables-cs-leg-build-debug: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) build -v q --nologo
+tables-cs-leg-build-release: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) build -c Release -v q --nologo
+tables-cs-leg-built-debug-%:
+	cd test/cs-tables && $(DOTNET) bin/Debug/net10.0/schematablestest.dll $*
+tables-cs-leg-built-release-%:
+	cd test/cs-tables && $(DOTNET) bin/Release/net10.0/schematablestest.dll $*
 
 # THE LEG'S NEGATIVE CONTROLS (docs/PORTING.md M5, M6, M10, M14, M17 and M19,
 # and the native region writer's shared-blob refusal, docs/SPEC-TABLES.md §2.5).

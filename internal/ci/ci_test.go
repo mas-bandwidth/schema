@@ -1269,6 +1269,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-full.yml:cpp-lock",
 		"ci-full.yml:cs-fuzz",
 		"ci-full.yml:cs-tables",
+		"ci-full.yml:cs-tables-build",
 		"ci-full.yml:dart-fuzz",
 		"ci-full.yml:generated",
 		"ci-full.yml:go-test",
