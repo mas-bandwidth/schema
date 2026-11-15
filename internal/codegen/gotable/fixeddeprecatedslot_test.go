@@ -16,7 +16,7 @@ func TestFixedDeprecatedFieldIsCarried(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, `package probe
 
-type Child {
+fixed table Child {
     retired uint8 = 7 | deprecated
     value uint16 = 9
 }
