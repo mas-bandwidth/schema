@@ -289,8 +289,9 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
-  the kinds this cut carries. A later card adds its module and one registration
+  `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_table.py` and
+  `kind_pointer.py` register the kinds this cut carries. A later card adds its
+  module and one registration
   line, never an edit to the body walk. `kind_unsupported.py` is the named
   placeholder for a construct whose descriptor exists but whose codec has not
   landed; a read or write that reaches it refuses by name.
@@ -307,11 +308,19 @@ generated class per table and per map entry, each with its descriptor
   `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
+- **Maps are dicts, written sorted.** A `map[K]V` is a `dict` born empty; the
+  save writes its entries in ascending key order (text by its UTF-8 bytes,
+  integers by value), and the read refuses a descending or a repeated key as
+  `Refused("wire_damaged")`, because no conforming writer emits either. A
+  request that does not arrive in that order is not a map this leg accepts;
+  the whole read refuses and returns nothing. `kind_map.py` owns the entry
+  framing, the sort and the order check.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
-  `kind_unsupported.py` until their cards land.
+  by-value tables, `*T` pointers to tables and `map[K]V` for the base key and
+  value kinds, for both the fixed and the variable class. `*bytes`, `*string`,
+  `?T`, `[]T`, `[E]T`, `?map[K]V` and unions with table arms have descriptors
+  in this cut and refuse by name through `kind_unsupported.py` until their
+  cards land.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.
