@@ -3241,7 +3241,7 @@
     {
       "name": "python-packet-ranged-bits",
       "when": "pull-request",
-      "why": "the ranged integer and bits kinds' control (docs/PORT-PYTHON.md, THE HARNESS): a copy of the generated ProbeBits reader lands its first bits field one too low and TestPythonPacketRangedBitsNegativeControl must go red on the write-back marker. One SCHEMA_SLOW go test under the pinned interpreter, the cost of the pin cache restore rather than the run.",
+      "why": "the ranged integer and bits kinds' control (docs/PORT-PYTHON.md, THE HARNESS): a copy of the generated ProbeBits reader lands its first bits field one too low and TestPythonPacketRangedBitsNegativeControl must go red on the write-back marker; and a copy of the generated fixture module moves WithCore's int64 range minimum by one and TestPythonPacketRangedBitsGoReferenceNegativeControl must go red on the Go reference marker. One SCHEMA_SLOW go test under the pinned interpreter plus one build of the generated Go reference, the cost of the pin cache restore rather than the run.",
       "targets": [
         "python-packet-ranged-bits-negative-control"
       ],

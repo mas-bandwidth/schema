@@ -636,7 +636,19 @@ func rangedBitsGoReference(t *testing.T, u *ir.Unit, root string) map[string][]b
 	fmt.Fprintf(&oracle, "package %s\n\nimport (\n\t\"fmt\"\n\t\"testing\"\n\n\t\"github.com/mas-bandwidth/serialize.go/v2\"\n)\n\n", u.Package)
 	oracle.WriteString("func TestRangedBitsGoReference(t *testing.T) {\n")
 	for _, c := range rangedBitsCases {
-		fmt.Fprintf(&oracle, "\t{\n\t\tv := New%s()\n", c.typ)
+		// the Go emitter births a type with a declared default through
+		// New<T>, and every other type is its zero value
+		hasNew := false
+		for _, data := range files {
+			if strings.Contains(string(data), "func New"+c.typ+"() "+c.typ+" {") {
+				hasNew = true
+			}
+		}
+		if hasNew {
+			fmt.Fprintf(&oracle, "\t{\n\t\tv := New%s()\n", c.typ)
+		} else {
+			fmt.Fprintf(&oracle, "\t{\n\t\tvar v %s\n", c.typ)
+		}
 		for _, s := range c.set {
 			parts := strings.Split(s[0], ".")
 			for i, p := range parts {
@@ -755,5 +767,44 @@ func TestPythonPacketRangedBitsNegativeControl(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(out, "FAILED: write-back differs") {
 		t.Fatalf("the planted bits reader edit did not go red on the write-back marker (err %v):\nstdout:\n%s\nstderr:\n%s", err, out, stderr)
+	}
+}
+
+// TestPythonPacketRangedBitsGoReferenceNegativeControl moves the declared
+// minimum of WithCore's int64 range by one in a copy of the generated Python
+// module (the width is unchanged, so only the offset moves), and requires the
+// go-reference probe to go red on its Go reference marker.
+func TestPythonPacketRangedBitsGoReferenceNegativeControl(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "RangedBits.schema"), []byte(rangedBitsFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u := loadPythonUnit(t, src)
+	want := rangedBitsGoReference(t, u, root)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	module := u.Package + "/" + u.DeclFile["WithCore"] + ".py"
+	text := string(files[module])
+	marker := "-5000000000, 5000000000"
+	if !strings.Contains(text, marker) {
+		t.Fatalf("the generated WithCore module names no %s range:\n%s", marker, text)
+	}
+	files[module] = []byte(strings.ReplaceAll(text, marker, "-5000000001, 5000000000"))
+	var cases strings.Builder
+	for _, c := range rangedBitsCases {
+		fmt.Fprintf(&cases, "%s|%x\n", c.name, want[c.name])
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	out, stderr, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", map[string][]byte{
+		"main.py":   []byte(rangedBitsReferenceProbe(u.Package)),
+		"cases.txt": []byte(cases.String()),
+	})
+	if err == nil || !strings.Contains(out, ", the Go reference writes ") {
+		t.Fatalf("the planted range edit did not go red on the Go reference marker (err %v):\nstdout:\n%s\nstderr:\n%s", err, out, stderr)
 	}
 }

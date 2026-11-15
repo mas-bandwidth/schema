@@ -31,9 +31,12 @@ python-packet-core-negative-control: python-toolchain-check
 # python-packet-ranged-bits-negative-control: the ranged integer and bits
 # kinds' control. It edits a COPY of the generated ProbeBits reader so its
 # first bits field lands one too low, and requires
-# TestPythonPacketRangedBitsNegativeControl to find the write-back marker red.
-python-packet-ranged-bits-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonPacketRangedBitsNegativeControl' ./internal/codegen/python/
+# TestPythonPacketRangedBitsNegativeControl to find the write-back marker red;
+# and it moves one declared range minimum in a COPY of the generated fixture
+# module, and requires TestPythonPacketRangedBitsGoReferenceNegativeControl to
+# find the Go reference marker red.
+python-packet-ranged-bits-negative-control: python-toolchain-check $(SERIALIZE_GO_RUNTIME)/go.mod
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketRangedBits(GoReference)?NegativeControl$$' ./internal/codegen/python/
 
 # TestPythonPacketRangedBits writes its own fixture with the generated Go code
 # as the byte reference, so the leg's package run needs the Go runtime.
