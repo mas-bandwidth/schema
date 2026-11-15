@@ -149,18 +149,6 @@ def t_parse_value(p:TextParser) -> TNode?:
     t_set_fail(p, "text_syntax")
     return nil
 
-def t_int(tok:string) -> int:
-    var i = 0
-    var neg = false
-    if i < length(tok) and tok[i] == 45:
-        neg = true
-        i++
-    var v = 0
-    while i < length(tok):
-        v = v * 10 + (tok[i] - 48)
-        i++
-    return if neg: -v else: v
-
 def t_field_of(d:TableDescriptor, key:string) -> FieldDescriptor?:
     for(d.fields) f:
         if f.json == key:
@@ -248,16 +236,8 @@ def text_flags_of(f:FieldDescriptor) -> [string]:
     return []
 
 // THE INT128 LANES (docs/PORT-LOBSTER.md, THE NUMBER MODEL). Lobster's int
-// is a 64-bit word, so a 128-bit value is two lanes and every operation that
-// can carry is done lane by lane.
-def i128_add(a:Int128, b:Int128) -> Int128:
-    let lo = a.lo + b.lo
-    let carry = if ult(lo, a.lo): 1 else: 0
-    return Int128 { lo, a.hi + b.hi + carry }
-
-def i128_neg(a:Int128) -> Int128:
-    return i128_add(Int128 { a.lo ^ -1, a.hi ^ -1 }, Int128 { 1, 0 })
-
+// is a 64-bit word, so a 128-bit value is two lanes and an order compares them
+// lane by lane.
 def i128_cmp(a:Int128, b:Int128, signed:bool) -> int:
     if a.hi == b.hi and a.lo == b.lo:
         return 0
@@ -268,172 +248,6 @@ def i128_cmp(a:Int128, b:Int128, signed:bool) -> int:
     if a.hi != b.hi:
         return if ult(a.hi, b.hi): -1 else: 1
     return if ult(a.lo, b.lo): -1 else: 1
-
-// i128_mul_small multiplies by a factor below 2^32 (a decimal digit, or a
-// small base), splitting each lane into 32-bit halves so no product leaves
-// the 64-bit word.
-def i128_mul_small(a:Int128, m:int) -> Int128:
-    let lo0 = a.lo & 0xFFFFFFFF
-    let lo1 = shr(a.lo, 32) & 0xFFFFFFFF
-    let p0 = lo0 * m
-    let p1 = lo1 * m + shr(p0, 32)
-    let newlo = shl(p1, 32) | (p0 & 0xFFFFFFFF)
-    let carry = shr(p1, 32)
-    let hi0 = a.hi & 0xFFFFFFFF
-    let hi1 = shr(a.hi, 32) & 0xFFFFFFFF
-    let q0 = hi0 * m + carry
-    let q1 = hi1 * m + shr(q0, 32)
-    return Int128 { newlo, shl(q1, 32) | (q0 & 0xFFFFFFFF) }
-
-def i128_bit(a:Int128, i:int) -> int:
-    if i < 64:
-        return shr(a.lo, i) & 1
-    return shr(a.hi, i - 64) & 1
-
-def i128_setbit(a:Int128, i:int, on:bool) -> Int128:
-    if i < 64:
-        let m = shl(1, i)
-        if on:
-            return Int128 { a.lo | m, a.hi }
-        return Int128 { a.lo & (m ^ -1), a.hi }
-    let m = shl(1, i - 64)
-    if on:
-        return Int128 { a.lo, a.hi | m }
-    return Int128 { a.lo, a.hi & (m ^ -1) }
-
-// i128_div_small is long division by a positive divisor below 2^62: the
-// quotient and the remainder, both exact.
-def i128_div_small(a:Int128, d:int) -> Int128, int:
-    var q = Int128 { 0, 0 }
-    var r = 0
-    var i = 127
-    while i >= 0:
-        r = r * 2 + i128_bit(a, i)
-        if r >= d:
-            r -= d
-            q = i128_setbit(q, i, true)
-        i--
-    return q, r
-
-// t_dec is a decimal token split into its magnitude's digits and the
-// power of ten the value carries (docs/SPEC-TABLES.md §16.9.2: exact
-// integral decimal and exponent spellings, parsed without a binary float).
-class TextDec:
-    neg:bool
-    digits:string
-    exp:int
-    ok:bool
-
-def t_dec(tok:string) -> TextDec:
-    var i = 0
-    var neg = false
-    let n = length(tok)
-    if n == 0:
-        return TextDec { neg: false, digits: "", exp: 0, ok: false }
-    if tok[0] == 45:
-        neg = true
-        i++
-    elif tok[0] == 43:
-        i++
-    var digits = ""
-    var dot = -1
-    var exp = 0
-    var exp_neg = false
-    var in_exp = false
-    var exp_set = false
-    while i < n:
-        let c = tok[i]
-        if c >= 48 and c <= 57:
-            if in_exp:
-                exp = exp * 10 + (c - 48)
-                exp_set = true
-            else:
-                digits += substring(tok, i, 1)
-        elif c == 46 and not in_exp and dot < 0:
-            dot = length(digits)
-        elif (c == 101 or c == 69) and not in_exp:
-            in_exp = true
-        elif c == 45 and in_exp and not exp_set:
-            exp_neg = true
-        elif c == 43 and in_exp and not exp_set:
-            exp_neg = false
-        else:
-            return TextDec { neg: neg, digits: "", exp: 0, ok: false }
-        i++
-    if dot < 0:
-        dot = length(digits)
-    let e = (if exp_neg: -exp else: exp) - (length(digits) - dot)
-    if length(digits) == 0:
-        return TextDec { neg: neg, digits: "", exp: 0, ok: false }
-    return TextDec { neg: neg, digits: digits, exp: e, ok: true }
-
-def t_dec_value(d:TextDec) -> Int128:
-    var v = Int128 { 0, 0 }
-    for(length(d.digits)) i:
-        v = i128_mul_small(v, 10)
-        v = i128_add(v, Int128 { d.digits[i] - 48, 0 })
-    return if d.neg: i128_neg(v) else: v
-
-// t_int_token is a number of exact integral value (§16.9.2): a fractional
-// spelling whose fraction is nonzero is text_kind_mismatch.
-def t_int_token(tok:string) -> Int128, bool:
-    let d = t_dec(tok)
-    if not d.ok:
-        return Int128 { 0, 0 }, false
-    var digits = d.digits
-    var e = d.exp
-    if e > 0:
-        for(e):
-            digits += "0"
-        e = 0
-    elif e < 0:
-        let cut = -e
-        if cut >= length(digits):
-            // zero only when every digit is zero, else a fraction
-            var allzero = true
-            for(length(digits)) i:
-                if digits[i] != 48:
-                    allzero = false
-            if not allzero:
-                return Int128 { 0, 0 }, false
-            digits = "0"
-        else:
-            var j = length(digits) - cut
-            while j < length(digits):
-                if digits[j] != 48:
-                    return Int128 { 0, 0 }, false
-                j++
-            digits = substring(digits, 0, length(digits) - cut)
-    let dd = TextDec { neg: d.neg, digits: digits, exp: 0, ok: true }
-    return t_dec_value(dd), true
-
-// t_fixed_token scales a Q(I.F) token by 2^F without an intermediate float
-// (§16.9.2): a fraction not on the grid is text_kind_mismatch.
-def t_fixed_token(tok:string, fbits:int) -> Int128, bool:
-    let d = t_dec(tok)
-    if not d.ok:
-        return Int128 { 0, 0 }, false
-    var digits = d.digits
-    var e = d.exp
-    if e > 0:
-        for(e):
-            digits += "0"
-        e = 0
-    var value = t_dec_value(TextDec { neg: d.neg, digits: digits, exp: 0, ok: true })
-    if e < 0:
-        let n = -e
-        if n > 18:
-            return Int128 { 0, 0 }, false
-        // the fraction must be on the Q grid: value * 2^F / 10^n exact
-        value = i128_shl(value, fbits)
-        var den = 1
-        for(n):
-            den *= 10
-        let q, r = i128_div_small(value, den)
-        if r != 0:
-            return Int128 { 0, 0 }, false
-        return q, true
-    return i128_shl(value, fbits), true
 
 // t_int_store places a parsed raw value, wide or at 64 bits or fewer, and
 // checks the declared range and bits width before publishing (§16.9.2).

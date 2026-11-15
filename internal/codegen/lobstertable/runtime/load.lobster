@@ -434,14 +434,6 @@ def text_valid(b:string, at:int, n:int) -> bool:
         i += 1 + need
     return true
 
-def text_boundary(b:string, at:int, n:int, bound:int) -> int:
-    if n <= bound:
-        return n
-    var cut = bound
-    while cut > 0 and (b[at + cut] & 0xC0) == 0x80:
-        cut--
-    return cut
-
 // THE INT128 ORDER (docs/PORT-LOBSTER.md, THE NUMBER MODEL): the high lane
 // first, signed or unsigned, then the low lane unsigned.
 def i128_lt(a:Int128, b:Int128, signed:bool) -> bool:
@@ -1060,8 +1052,8 @@ class PointerShape : Shape
 
 let pointer_shape = register_shape(PointerShape { key: "ptr" })
 
-// THE STRING (§3): ill-formed text is damage and reads the declared
-// default; a clamp cuts at a code point boundary and counts.
+// THE STRING (§3): ill-formed text or a missing extent is damage; a length
+// past the declared bound refuses as length_over_bound. Nothing is clamped.
 class StringShape : Shape
     def field(r:Reader, sl:Slot) -> bool:
         let rep = r.st.report
@@ -1192,11 +1184,15 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
     else:
         if f.array == "list":
             sl.elems = []
-        let es = shape(elem_key(f))
+        let element_shape = elem_key(f)
+        let es = shape(element_shape)
         var i = 0
         while i < count:
             if f.array == "list":
-                push(sl.elems, element_zero(f))
+                if element_shape == "tab":
+                    push(sl.elems, Value {})
+                else:
+                    push(sl.elems, element_zero(f))
             if not es.element(sr, sl, i, ek):
                 return false, false
             i++

@@ -865,8 +865,7 @@ def save(rec:Record) -> string:
 
 // save_reasoned is save with the refusal's name beside the bytes: "cycle",
 // "blob_shared", "invalid_value" (the write contract, wc_body),
-// "non_finite_float" (Go's TableRefuseReason spellings), or ""
-// when it wrote.
+// "non_finite_float", or "" when it wrote.
 def save_reasoned(rec:Record) -> string, string:
     if rec.d.fixed:
         return fixed_record_codec(rec.d.name).write_fixed(rec)
