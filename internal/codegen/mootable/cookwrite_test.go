@@ -441,10 +441,15 @@ v.Next = v`, "refuse cycle Node"},
 v = T.NewHolder()
 v.RefsCount = 2
 v.Refs[2] = T.NewNode()`, "cooked"},
+	// A COUNTED ARRAY'S DEAD SLOT IS NEVER READ (§7.2; docs/rulings.json
+	// fixed-dead-bytes-are-zero): what it holds, a pointer or a map's
+	// entries, is ignored, and the cook is the one of the value without it
 	{"a pointer in a dead slot", `local root = "Holder"
 v = T.NewHolder()
 v.RefsCount = 1
-v.Refs[2] = T.NewNode()`, "refuse unnumbered_reference Holder.refs"},
+v.Refs[2] = T.NewNode()
+other = T.NewHolder()
+other.RefsCount = 1`, "cooked same"},
 	{"a count past its bound", `local root = "Holder"
 v = T.NewHolder()
 v.RefsCount = 3`, "refuse invalid_value Holder.refs"},
@@ -470,7 +475,9 @@ v.Squads[2].Roster = { entry(4, 40) }`, "cooked"},
 	{"a map in a dead slot", `local root = "Teams"
 v = T.NewTeams()
 v.SquadsCount = 1
-v.Squads[2].Roster = { entry(4, 40) }`, "refuse invalid_value Teams.squads"},
+v.Squads[2].Roster = { entry(4, 40) }
+other = T.NewTeams()
+other.SquadsCount = 1`, "cooked same"},
 	// A FIELD THE SAVE ELIDES IS NOT REACHED (§2.3, §7.6): an absent optional
 	// and a field under a false guard keep their slot zero, so a list in
 	// either names bytes the region will not hold
@@ -548,11 +555,11 @@ end
 
 // TestMooCookWriteRefusals: a value outside the cook's contract is refused by
 // name, never written partly (§7.6): a non-finite float of either width, a
-// data cycle, a pointer or a map's entries in a dead counted slot (storage
-// the numbering does not reach), a list under an absent optional or a false
-// guard, and a map whose keys repeat (a cook Find cannot search, §7.4). Each
-// asked of a clean value first, which cooks; and a map's entries are cooked
-// in key order whatever order the value holds them in.
+// data cycle, a list under an absent optional or a false guard, and a map
+// whose keys repeat (a cook Find cannot search, §7.4). Each asked of a clean
+// value first, which cooks; a map's entries are cooked in key order whatever
+// order the value holds them in; and a pointer or a map's entries in a dead
+// counted slot are ignored, the cook equal to the value's without them.
 func TestMooCookWriteRefusals(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_cookwrite.moo)")
 	t.Parallel()
