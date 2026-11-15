@@ -690,8 +690,17 @@ defmodule Bench.Bench do
   @spec read_bench_packet(binary(), non_neg_integer()) :: {:ok, Bench.BenchPacket.t()} | :error
   def read_bench_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_bench_packet_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -950,8 +959,17 @@ defmodule Bench.Bench do
   @spec read_bench_ints(binary(), non_neg_integer()) :: {:ok, Bench.BenchInts.t()} | :error
   def read_bench_ints(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_bench_ints_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1105,8 +1123,17 @@ defmodule Bench.Bench do
   @spec read_bench_bits(binary(), non_neg_integer()) :: {:ok, Bench.BenchBits.t()} | :error
   def read_bench_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_bench_bits_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1501,8 +1528,17 @@ defmodule Bench.Bench do
   @spec read_mixed_entity(binary(), non_neg_integer()) :: {:ok, Bench.MixedEntity.t()} | :error
   def read_mixed_entity(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_entity_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1600,8 +1636,17 @@ defmodule Bench.Bench do
   @spec read_mixed_stat(binary(), non_neg_integer()) :: {:ok, Bench.MixedStat.t()} | :error
   def read_mixed_stat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_stat_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1732,8 +1777,17 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedHitEvent.t()} | :error
   def read_mixed_hit_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_hit_event_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1832,8 +1886,17 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedChatEvent.t()} | :error
   def read_mixed_chat_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_chat_event_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1934,8 +1997,17 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedPickupEvent.t()} | :error
   def read_mixed_pickup_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_pickup_event_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -2187,8 +2259,17 @@ defmodule Bench.Bench do
   @spec read_mixed_event(binary(), non_neg_integer()) :: {:ok, Bench.MixedEvent.t()} | :error
   def read_mixed_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_event_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -2989,8 +3070,17 @@ defmodule Bench.Bench do
   @spec read_bench_mixed(binary(), non_neg_integer()) :: {:ok, Bench.BenchMixed.t()} | :error
   def read_bench_mixed(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_bench_mixed_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 

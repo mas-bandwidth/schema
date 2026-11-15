@@ -1217,12 +1217,21 @@ defmodule SchemaTestElixir do
               "read_probe_header_bits: the count is the written bits"
             )
 
+            n = div(bits_read + 7, 8)
+            object = binary_part(acc, 0, n)
+
             check(
-              Example.Wire.read_probe_header(acc, byte_size(acc) * 8) == {:ok, got},
-              "read_probe_header/2 is the same read with the count dropped"
+              Example.Wire.read_probe_header(object, byte_size(object) * 8) == {:ok, got},
+              "read_probe_header/2 reads the object's own bytes"
             )
 
-            n = div(bits_read + 7, 8)
+            if byte_size(acc) > n do
+              check(
+                Example.Wire.read_probe_header(acc, byte_size(acc) * 8) == :error,
+                "read_probe_header/2 refuses bytes left after the object"
+              )
+            end
+
             binary_part(acc, n, byte_size(acc) - n)
 
           :error ->

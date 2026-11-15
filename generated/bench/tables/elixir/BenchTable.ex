@@ -453,8 +453,17 @@ defmodule Benchtable.BenchTable do
           {:ok, Benchtable.TableHitEvent.t()} | :error
   def read_table_hit_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_table_hit_event_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -554,8 +563,17 @@ defmodule Benchtable.BenchTable do
           {:ok, Benchtable.TableChatEvent.t()} | :error
   def read_table_chat_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_table_chat_event_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -656,8 +674,17 @@ defmodule Benchtable.BenchTable do
           {:ok, Benchtable.TablePickupEvent.t()} | :error
   def read_table_pickup_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_table_pickup_event_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -914,8 +941,17 @@ defmodule Benchtable.BenchTable do
   @spec read_table_event(binary(), non_neg_integer()) :: {:ok, Benchtable.TableEvent.t()} | :error
   def read_table_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_table_event_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 end

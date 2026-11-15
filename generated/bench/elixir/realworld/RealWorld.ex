@@ -2088,8 +2088,17 @@ defmodule Realworld.RealWorld do
   @spec read_real_packet(binary(), non_neg_integer()) :: {:ok, Realworld.RealPacket.t()} | :error
   def read_real_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_real_packet_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 end
