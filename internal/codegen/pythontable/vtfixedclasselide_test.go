@@ -106,7 +106,7 @@ var vtElideCases = []vtElideCase{
 	{"neg_zero_compressed", "Holder", `{"inner": {"cf": -0.0}}`, `v.inner.cf = -0.0`},
 	{"two_deep", "Holder", `{"mid": {"deep": {"d": 6}}}`, `v.mid.deep.d = 6`},
 	{"two_deep_inner_default", "Holder", `{"mid": {"m": 2.0}}`, `v.mid.m = 2.0`},
-	{"fixed_array_rides", "Packed", `{"cnt": {"c": [0]}}`, ``},
+	{"fixed_array_rides", "Packed", `{"cnt": {"c": [0]}}`, `v.cnt.c = [0]`},
 }
 
 // vtElideEngineWire is the Go engine's form-1 bytes for one case.
