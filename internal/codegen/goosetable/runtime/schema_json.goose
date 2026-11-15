@@ -1162,13 +1162,15 @@ fn json_b64_sextet(c: u8) -> i64 {
     return -1;
 }
 
-// json_read_bytes places a bytes(N) from base64: the string's escapes are
-// undone first, the body is held to the grammar (standard alphabet, padded or
-// not), a body outside it is kind_mismatch with the field at its default, and
-// past N clamps and counts (§16.2).
+// json_read_bytes places a bytes(N) from CANONICAL base64 (§16.2, §16.8): the
+// string's escapes are undone first, and the body must be the standard
+// alphabet, padded, with zero pad bits — exactly the text the writer writes. A
+// body outside that grammar is kind_mismatch with the field at its default,
+// and past N clamps and counts.
 fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
     var symbols: i64 = 0;
     var pads: i64 = 0;
+    var last: i64 = -1;
     var bad = false;
     let start = jr.pos;
     let ok = json_scan(jr, false) { unit, n =>
@@ -1181,6 +1183,7 @@ fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
                 } else if pads > 0 || json_b64_sextet(c) < 0 {
                     bad = true;
                 } else {
+                    last = json_b64_sextet(c);
                     symbols += 1;
                 }
             }
@@ -1190,8 +1193,14 @@ fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
     if !ok { return false; }
     if !bad {
         if pads > 0 {
-            if pads > 2 || (symbols + pads) % 4 != 0 || symbols % 4 < 2 { bad = true; }
-        } else if symbols % 4 == 1 {
+            if pads > 2 || (symbols + pads) % 4 != 0 || symbols % 4 < 2 {
+                bad = true;
+            } else if pads == 1 && (last & 3) != 0 {
+                bad = true;
+            } else if pads == 2 && (last & 15) != 0 {
+                bad = true;
+            }
+        } else if symbols % 4 != 0 {
             bad = true;
         }
     }
