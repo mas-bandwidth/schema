@@ -27,6 +27,13 @@ func cppRuntimeNames() []Name {
 			"TableCycleIsVertex", "TableCycleNode", "TableCycleOrdinal", "TableCyclePush", "TableCycleRestore",
 			"TableMapVisitStored", "kTableCycleAbsent", "kTableCycleOffsetMask", "kTableCycleOrdinalShift", "kTableCycleVertex",
 		}},
+		{what: "the pointer graph's wire-alone check: the framing walk, its work list and its verdicts (docs/SPEC-TABLES.md §3.1, §6.5)", names: []string{
+			"TableGraphBody", "TableGraphCheck", "TableGraphCollect", "TableGraphContent", "TableGraphCount",
+			"TableGraphCountEdge", "TableGraphFail", "TableGraphKahn", "TableGraphKahnEdge", "TableGraphKahnPush",
+			"TableGraphParseNode", "TableGraphPayload", "TableGraphReach", "TableGraphReachEdge", "TableGraphUnion",
+			"TableGraphWidth", "kTableGraphBlob", "kTableGraphBodyMask", "kTableGraphLinkMask", "kTableGraphMaxDepth",
+			"kTableGraphQueued", "kTableGraphVisited",
+		}},
 		{what: "a bound of the text form's JSON walk (§16)", names: []string{
 			"kTableJsonDecimalBand",
 		}},

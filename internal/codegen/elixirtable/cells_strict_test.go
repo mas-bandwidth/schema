@@ -177,8 +177,7 @@ type cellsVector struct {
 	wire []byte
 	want bool
 	// framing vectors carry a collection body too short for its header
-	// or a node no pointer reaches: tolerated by the value load (§4, H2),
-	// refused on the framing read.
+	// or a node no pointer reaches: damage that refuses every read (§3, §4).
 	framing bool
 }
 
