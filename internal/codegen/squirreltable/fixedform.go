@@ -319,7 +319,7 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 		// emitted with the declaring function, so a keyless unit carries none.
 		emitFixedCRC32C(m)
 		m.Printf("  local n = b.tell();\n")
-		m.Printf("  _rt_fixed.puti32(b, n, crc32c(b, n));\n")
+		m.Printf("  b.writen(crc32c(b, n), 'i');\n")
 		m.Printf("  return n + 4;\n")
 	} else {
 		m.Printf("  return b.tell();\n")
