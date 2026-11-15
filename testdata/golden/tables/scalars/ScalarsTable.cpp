@@ -516,8 +516,8 @@ struct TableJsonOut
     int64_t capacity;
     int64_t offset;
     bool overflow;
-    // storage that is not text (ill-formed UTF-8, an unpaired surrogate)
-    // refuses the whole write (docs/SPEC-TABLES.md §16.14 W0)
+    // storage that is not text (ill-formed UTF-8, a zero byte, an unpaired
+    // surrogate) refuses the whole write (docs/SPEC-TABLES.md §16.14 W0)
     bool invalid;
     void * graph; // the pointered write's identity map (§16.7); NULL for a fixed table
 
@@ -918,8 +918,11 @@ inline int32_t TableJsonEncodeUtf8( uint32_t code, char * unit )
 // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). No wire and no text can
 // put ill-formed UTF-8 into a narrow field, so storage that holds it was put
 // there by a program, and the WRITE REFUSES (docs/SPEC-TABLES.md §16.14 W0):
-// a silent U+FFFD would make two different strings one text. The sink is
-// marked invalid and the write answers -1; nothing it wrote is a text.
+// a silent U+FFFD would make two different strings one text. A zero byte is
+// storage that is not text here too: the reader refuses a placed U+0000
+// (§16.3), so the writer refuses it rather than spelling a text its own
+// reader refuses. The sink is marked invalid and the write answers -1;
+// nothing it wrote is a text.
 inline void TableJsonWriteString( TableJsonOut & out, const char * s, int32_t length )
 {
     static const char hex[] = "0123456789abcdef";
@@ -937,6 +940,12 @@ inline void TableJsonWriteString( TableJsonOut & out, const char * s, int32_t le
             case '\r': out.raw( "\\r", 2 ); break;
             case '\t': out.raw( "\\t", 2 ); break;
             default:
+                if ( c == 0 )
+                {
+                    out.invalid = true; // not text: the write refuses (§16.14 W0)
+                    out.put( '"' );
+                    return;
+                }
                 if ( c < 0x20 )
                 {
                     char escape[6] = { '\\', 'u', '0', '0', hex[c >> 4], hex[c & 0xf] };
