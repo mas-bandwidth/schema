@@ -558,7 +558,7 @@ func (e *fixedEmit) scanField(ind int, f *ir.Field, off string) {
 		e.p(ind, "if b[%s] == 1 {", off)
 		e.scanValue(ind+1, f, off+" + 1")
 		e.p(ind, "} else {")
-		e.p(ind+1, "r = schema_rt::fixed_scan_zero(b, %s, %d);", off, payloadBytes(f))
+		e.p(ind+1, "r = schema_rt::fixed_scan_zero(b, %s + 1, %d);", off, payloadBytes(f))
 		e.p(ind+1, "if r != 0 { return r; }")
 		e.p(ind, "}")
 		return
