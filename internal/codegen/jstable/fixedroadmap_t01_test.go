@@ -102,12 +102,15 @@ for (let k = layoutAt; k < layoutAt + L; k++) {
   const n = TLoad(back, back.length, cut, cut.length, plan, r);
   total("cut at " + k, n, r, "LayoutMalformed", 0n, back, plan);
 }
-// 20 + L == len(file) is NOT past the file: the layout and no record reads zero records
+// 20 + L == len(file) is NOT past the file, but the header and layout are
+// followed by no record and a fixed-form file holds at least one (§5.3 step 9)
 {
   const cut = copy(data, layoutAt + L);
+  poison(back, plan);
   const r = new TableFixedReport();
   const n = TLoad(back, back.length, cut, cut.length, plan, r);
-  if (n !== 0 || r.refused !== 0 || r.damaged) { fail("20 + L == len is not past the file: n=" + n + " " + reason(r)); }
+  if (n !== -1 || !r.damaged || r.refused !== 0) { fail("20 + L == len holds no record and is refused: n=" + n + " " + reason(r)); }
+  untouched("no record", back, plan);
 }
 // the declared L one past the bytes that are there, and the largest u32 (no wrap)
 for (const declared of [data.length - layoutAt + 1, 0xFFFFFFFF]) {
