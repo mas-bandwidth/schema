@@ -8,7 +8,7 @@ damage anywhere refuses the whole file and returns nothing.
 from typing import Any, TypeVar
 
 from . import InvalidValue, LoadReport, Refused
-from . import descriptor, kinds
+from . import descriptor, kinds, widen
 from . import kind_bool, kind_int, kind_pointer, kind_table, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
@@ -108,11 +108,12 @@ class Reader:
 
 
 class Ctx:
-    __slots__ = ("ids", "unknown", "pending", "current", "root", "nodes", "saw_node")
+    __slots__ = ("ids", "unknown", "widened", "pending", "current", "root", "nodes", "saw_node")
 
     def __init__(self, ids: list[int]) -> None:
         self.ids = ids
         self.unknown = 0
+        self.widened = 0
         self.pending: list[tuple[Any, str, int]] = []
         self.current: Any = None
         self.root: Any = None
@@ -133,7 +134,7 @@ def load_table(cls: type[_T], data: Any, report: LoadReport | None = None) -> _T
     _resolve(ctx)
     if report is not None:
         report.unknown = ctx.unknown
-        report.widened = 0
+        report.widened = ctx.widened
         report.retained = 0
         report.retain_lost = 0
     return obj
@@ -212,11 +213,14 @@ def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool) -> None:
             raise Refused("wire_damaged", "a body carries one field twice")
         seen.add(field.field_id)
         if kind != field.kind:
-            raise Refused(
-                "kind_mismatch",
-                f"{descriptor_.name}.{field.name} rides under kind {kind}, not {field.kind}",
-            )
-        value = kinds._REGISTRY[field.codec].read(reader, field, ctx)
+            if not widen._accepts(field, kind):
+                raise Refused(
+                    "kind_mismatch",
+                    f"{descriptor_.name}.{field.name} rides under kind {kind}, not {field.kind}",
+                )
+            value = widen._read(reader, field, kind, ctx)
+        else:
+            value = kinds._REGISTRY[field.codec].read(reader, field, ctx)
         setattr(obj, field.name, value)
     ctx.current = previous
 

@@ -1,0 +1,495 @@
+package pythontable
+
+// WIDENING ON READ for the Python table runtime (docs/SPEC-TABLES.md §4;
+// docs/PORT-PYTHON.md, THE TABLE FRAME), held to the reference engine's read
+// (internal/tablewire Decode and Encode), which shares no code with the
+// generated runtime:
+//
+//	ladder    every integer declaration the runtime carries (the ten widths,
+//	          a ranged int64 and a bits field) under every scalar wire kind,
+//	          each with a payload whose top bit is set and one that is small,
+//	          through both code shapes (the straight-line pair and the
+//	          descriptor walk) and both pinned interpreters: the one read's
+//	          verdict, value, widened count and saved bytes are the
+//	          reference's; a refused read leaves the caller's report and
+//	          buffer exactly as they were
+//	manifest  every corpus row of testdata/conformance/tables that exercises
+//	          widening is read under the reference's verdict (reports.txt), or
+//	          named as resting on a construct this runtime does not carry yet
+//
+// TestPythonVtWideningNegativeControl breaks the runtime's widen.py in a copy,
+// one rule at a time, and requires the ladder to go red on cells that name
+// the broken rule.
+
+import (
+	"bufio"
+	"encoding/binary"
+	"encoding/hex"
+	"fmt"
+	"maps"
+	"math"
+	"math/big"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+// widenDecls are the integer declarations the runtime carries.
+var widenDecls = []string{
+	"int8", "int16", "int32", "int64",
+	"int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727",
+	"uint8", "uint16", "uint32", "uint64", "uint128",
+	// a widened value is held to the reader's range, and its sign is the
+	// WIRE kind's, never the range's
+	"int64 | min = 0, max = 1000",
+	// bits(N) grown across a storage width: kind 7, so kind 6 widens into it
+	"bits(12)",
+}
+
+// widenWireKinds are the scalar wire kinds a cell rides under: the integer
+// ladders, the bool, the floats, a fixed-point kind and the timestamp.
+var widenWireKinds = []byte{1, 2, 3, 4, 5, 18, 6, 7, 8, 9, 19, 10, 11, 20, 36}
+
+var widenWidth = map[byte]int{1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 18: 16, 6: 1, 7: 2, 8: 4, 9: 8, 19: 16, 10: 4, 11: 8, 20: 1, 36: 8}
+
+// widenPayloads is a payload under kind whose top bit is set, so a widening
+// that extends by the wrong signedness is seen, and one that is small, so a
+// widened value lands inside a narrow declared range.
+func widenPayloads(kind byte) map[string][]byte {
+	switch kind {
+	case 1:
+		return map[string][]byte{"true": {1}}
+	case 10:
+		return map[string][]byte{"neg": binary.LittleEndian.AppendUint32(nil, math.Float32bits(-1.5))}
+	case 11:
+		return map[string][]byte{"neg": binary.LittleEndian.AppendUint64(nil, math.Float64bits(-2.25))}
+	}
+	w := widenWidth[kind]
+	top := make([]byte, w)
+	for i := range top {
+		top[i] = 0xFF
+	}
+	top[0] = 0xFD
+	small := make([]byte, w)
+	small[0] = 5
+	return map[string][]byte{"top": top, "small": small}
+}
+
+// widenOneFieldWire is a form-1 file of one root field: the form byte, the
+// field's reference, kind and payload, the terminator, and the id table.
+func widenOneFieldWire(fieldID uint64, kind byte, payload []byte) []byte {
+	wire := append([]byte{1, 1, kind}, payload...)
+	wire = append(wire, 0)
+	wire = binary.LittleEndian.AppendUint64(wire, fieldID)
+	return binary.LittleEndian.AppendUint64(wire, 1)
+}
+
+type widenCell struct {
+	name string
+	wire []byte
+}
+
+// widenShapes are the two code shapes a Root takes: all scalars, so the
+// straight-line pair, and a pointer beside the scalar, so the descriptor walk.
+var widenShapes = []struct{ name, tail string }{
+	{"straight", ""},
+	{"walk", "    next *Root\n"},
+}
+
+func widenProbe(n int) string {
+	return pyrun.ImportPrelude + fmt.Sprintf(`from probe import LoadReport, Refused, Root
+
+for i in range(%d):
+    with open("w%%d" %% i, "rb") as f:
+        data = bytearray(f.read())
+    before = bytes(data)
+    report = LoadReport()
+    report.unknown = report.widened = report.retained = report.retain_lost = 7
+    try:
+        value = Root.load(data, report)
+    except Refused:
+        print("refused", report.unknown, report.widened, report.retained, report.retain_lost, bytes(data) == before)
+        continue
+    saved = value.save()
+    print("read", value.value, report.widened, report.unknown, saved.hex(), value.measure() == len(saved), bytes(data) == before)
+`, n)
+}
+
+// widenRefValue is the reference's value of Root.value.
+func widenRefValue(inst *tabletext.Instance) string {
+	c := inst.Fields[0].Cell
+	f := inst.Fields[0].Def
+	switch {
+	case ir.TableWireFieldKind(f) == 18 || ir.TableWireFieldKind(f) == 19:
+		if c.Wide == nil {
+			return "0"
+		}
+		return c.Wide.String()
+	case f.Type.Kind == ir.TInt && f.Type.Signed:
+		return fmt.Sprint(c.I)
+	}
+	return new(big.Int).SetUint64(c.U).String()
+}
+
+type widenRun struct {
+	faults  map[string]string
+	widened int
+	cells   int
+}
+
+// widenLadder runs every cell under one declaration and one shape, with
+// mutate applied to the generated files when set, under the current pin and,
+// when floor is set, the floor pin as well.
+func widenLadder(t *testing.T, decl string, shape int, mutate func(*testing.T, map[string][]byte), floor, analyze bool) widenRun {
+	t.Helper()
+	src := fmt.Sprintf("package probe\n\ntable Root\n{\n    value %s\n%s}\n", decl, widenShapes[shape].tail)
+	u := widenUnit(t, map[string][]byte{"Probe.schema": []byte(src)})
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("%s: Generate refuses: %v", decl, err)
+	}
+	files = maps.Clone(files)
+	if mutate != nil {
+		mutate(t, files)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	st := u.Tables["Root"]
+	fieldID := ir.TableFieldWireId(st.Fields[0])
+	var cells []widenCell
+	for _, kind := range widenWireKinds {
+		payloads := widenPayloads(kind)
+		names := make([]string, 0, len(payloads))
+		for name := range payloads {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			cells = append(cells, widenCell{fmt.Sprintf("kind %d %s", kind, name), widenOneFieldWire(fieldID, kind, payloads[name])})
+		}
+	}
+	inputs := map[string][]byte{"main.py": []byte(widenProbe(len(cells)))}
+	for i, c := range cells {
+		inputs[fmt.Sprintf("w%d", i)] = c.wire
+	}
+	outs := []string{string(pyrun.Run(t, dir, "main.py", inputs))}
+	if floor {
+		outs = append(outs, string(pyrun.RunFloor(t, dir, "main.py", inputs)))
+	}
+	if analyze {
+		if out, err := pyrun.Analyze(t, dir, "probe"); err != nil {
+			t.Fatalf("mypy --strict over the generated package:\n%s", out)
+		}
+		if out, err := pyrun.Analyze(t, dir, "probe/_schema"); err != nil {
+			t.Fatalf("mypy --strict over the runtime:\n%s", out)
+		}
+	}
+	m := tabletext.NewModel(u)
+	run := widenRun{faults: map[string]string{}, cells: len(cells)}
+	for pin, out := range outs {
+		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+		if len(lines) != len(cells) {
+			t.Fatalf("%s (%s): %d lines for %d cells:\n%s", decl, widenShapes[shape].name, len(lines), len(cells), out)
+		}
+		for i, c := range cells {
+			inst := m.New(m.Lookup("Root"))
+			var r tabletext.Report
+			ok, err := tablewire.Decode(m, inst, c.wire, &r)
+			want := "refused 7 7 7 7 True"
+			if ok && err == nil && !r.Refused {
+				saved, err := tablewire.Encode(m, inst)
+				if err != nil {
+					t.Fatalf("%s under %s: the reference cannot save what it read: %v", c.name, decl, err)
+				}
+				want = fmt.Sprintf("read %s %d 0 %s True True", widenRefValue(inst), r.Widened, hex.EncodeToString(saved))
+				if pin == 0 {
+					run.widened += r.Widened
+				}
+			}
+			if lines[i] != want {
+				key := fmt.Sprintf("%s under %s (%s, pin %d)", c.name, decl, widenShapes[shape].name, pin)
+				run.faults[key] = fmt.Sprintf("python %q, the reference %q", lines[i], want)
+			}
+		}
+	}
+	return run
+}
+
+// widenUnit parses and checks schema files given by name.
+func widenUnit(t *testing.T, srcs map[string][]byte) *ir.Unit {
+	t.Helper()
+	names := make([]string, 0, len(srcs))
+	for name := range srcs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	files := make([]check.SourceFile, 0, len(names))
+	for _, name := range names {
+		ast, perrs := parser.Parse(name, srcs[name])
+		if len(perrs) > 0 {
+			t.Fatalf("parse %s: %v", name, perrs[0])
+		}
+		files = append(files, check.SourceFile{
+			Path: name, Name: filepath.Base(name), Base: strings.TrimSuffix(filepath.Base(name), ".schema"),
+			Bytes: srcs[name], AST: ast,
+		})
+	}
+	u, cerrs := check.Unit(files)
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+	return u
+}
+
+// widenManifestRows are the corpus rows that exercise widening: a field, an
+// arm, a list element and a map key read wider than written, and the
+// reverse pairs that must refuse.
+var widenManifestRows = []string{
+	"field_scalar_widen", "scalars_full_as_2", "scalars_edges_as_2",
+	"a1_arm_moved_width_as_a2", "list_scalar_widen", "map_key_widen",
+	"k1_as_k2", "previous_form_wide_blob",
+}
+
+// notCarried are the refusal names the runtime raises for a construct it
+// does not carry yet: a verdict from them is not a verdict on widening.
+var notCarried = map[string]bool{"unsupported_kind": true, "fixed_form_as_file": true}
+
+type manifestRow struct{ unit, root, wire string }
+
+func widenManifest(t *testing.T, repo string) (map[string][]string, map[string]manifestRow, map[string]string) {
+	t.Helper()
+	f, err := os.Open(filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	units := map[string][]string{}
+	rows := map[string]manifestRow{}
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		fields := strings.Fields(sc.Text())
+		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
+			continue
+		}
+		switch {
+		case fields[0] == "unit" && len(fields) >= 3:
+			units[fields[1]] = fields[2:]
+		case (fields[0] == "report" || fields[0] == "instance") && len(fields) >= 5:
+			rows[fields[1]] = manifestRow{unit: fields[2], root: fields[3], wire: fields[4]}
+		}
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatal(err)
+	}
+	expect := map[string]string{}
+	data, err := os.ReadFile(filepath.Join(repo, "testdata", "conformance", "tables", "reports.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && !strings.HasPrefix(fields[0], "#") {
+			expect[fields[0]] = fields[1]
+		}
+	}
+	return units, rows, expect
+}
+
+func widenUnitFromPaths(t *testing.T, repo string, paths []string) *ir.Unit {
+	t.Helper()
+	srcs := map[string][]byte{}
+	for _, p := range paths {
+		full := filepath.Join(repo, p)
+		info, err := os.Stat(full)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		if info.IsDir() {
+			entries, err := os.ReadDir(full)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, e := range entries {
+				if !e.IsDir() && strings.HasSuffix(e.Name(), ".schema") {
+					names = append(names, filepath.Join(full, e.Name()))
+				}
+			}
+		} else {
+			names = append(names, full)
+		}
+		for _, name := range names {
+			data, err := os.ReadFile(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			srcs[name] = data
+		}
+	}
+	return widenUnit(t, srcs)
+}
+
+const widenManifestProbe = `import sys
+from %s import Refused, %s
+
+with open("wire", "rb") as f:
+    data = f.read()
+try:
+    value = %s.load(data)
+except Refused as err:
+    print("refused", err.reason)
+    sys.exit(0)
+print("read", value.save().hex())
+`
+
+// TestPythonVtWidening holds widening on read to the reference engine.
+//
+// Functional (pyrun): run with SCHEMA_SLOW=1.
+func TestPythonVtWidening(t *testing.T) {
+	t.Parallel()
+	t.Run("ladder", func(t *testing.T) {
+		t.Parallel()
+		for di, decl := range widenDecls {
+			for shape := range widenShapes {
+				t.Run(fmt.Sprintf("%s/%s", strings.Fields(decl)[0]+fmt.Sprint(di), widenShapes[shape].name), func(t *testing.T) {
+					t.Parallel()
+					run := widenLadder(t, decl, shape, nil, true, di == 0)
+					keys := make([]string, 0, len(run.faults))
+					for k := range run.faults {
+						keys = append(keys, k)
+					}
+					sort.Strings(keys)
+					for _, k := range keys {
+						t.Errorf("%s: %s", k, run.faults[k])
+					}
+					t.Logf("%s (%s): %d cells, %d widened by the reference", decl, widenShapes[shape].name, run.cells, run.widened)
+				})
+			}
+		}
+	})
+	t.Run("ladder-widens", func(t *testing.T) {
+		t.Parallel()
+		// the grid must exercise widening, or the ladder is green by holding
+		// nothing: int16 alone takes kind 2 under both payloads
+		run := widenLadder(t, "int16", 0, nil, false, false)
+		if run.widened != 2 {
+			t.Fatalf("int16 widened %d cells under the reference, want 2", run.widened)
+		}
+	})
+	t.Run("manifest", func(t *testing.T) {
+		t.Parallel()
+		repo := filepath.Join("..", "..", "..")
+		units, rows, expect := widenManifest(t, repo)
+		for _, name := range widenManifestRows {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				row, ok := rows[name]
+				if !ok {
+					t.Fatalf("the manifest carries no row %s", name)
+				}
+				want, ok := expect[name]
+				if !ok {
+					t.Fatalf("reports.txt carries no verdict for %s", name)
+				}
+				u := widenUnitFromPaths(t, repo, units[row.unit])
+				files, err := Generate(u)
+				if err != nil {
+					t.Logf("%s: not carried: the unit %s is refused: %v", name, row.unit, err)
+					return
+				}
+				dir := t.TempDir()
+				writeTree(t, dir, files)
+				wire, err := os.ReadFile(filepath.Join(repo, row.wire))
+				if err != nil {
+					t.Fatal(err)
+				}
+				probe := pyrun.ImportPrelude + fmt.Sprintf(widenManifestProbe, u.Package, row.root, row.root)
+				inputs := map[string][]byte{"main.py": []byte(probe), "wire": wire}
+				got := strings.TrimSpace(string(pyrun.Run(t, dir, "main.py", inputs)))
+				if floor := strings.TrimSpace(string(pyrun.RunFloor(t, dir, "main.py", inputs))); floor != got {
+					t.Fatalf("%s: the pins disagree: %q and %q", name, got, floor)
+				}
+				if reason, isRefusal := strings.CutPrefix(got, "refused "); isRefusal && notCarried[reason] {
+					t.Logf("%s: not carried: the read reaches %s", name, reason)
+					return
+				}
+				verdict := strings.Fields(got)[0]
+				if verdict != want {
+					t.Fatalf("%s: python %s, reports.txt %s", name, got, want)
+				}
+				if verdict == "read" {
+					canon, err := os.ReadFile(filepath.Join(repo, "testdata", "conformance", "tables", "save-wire", name+".bin"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if saved := strings.Fields(got)[1]; saved != hex.EncodeToString(canon) {
+						t.Fatalf("%s: the write-back is not the canonical wire:\npython    %s\ncanonical %x", name, saved, canon)
+					}
+				}
+				t.Logf("%s: held, %s", name, verdict)
+			})
+		}
+	})
+}
+
+// TestPythonVtWideningNegativeControl breaks one rule of widen.py at a time,
+// in a copy of the runtime, and requires the ladder to go red on a cell the
+// rule decides.
+//
+// Functional (pyrun): run with SCHEMA_SLOW=1.
+func TestPythonVtWideningNegativeControl(t *testing.T) {
+	t.Parallel()
+	const path = "probe/_schema/widen.py"
+	plant := func(from, to string) func(*testing.T, map[string][]byte) {
+		return func(t *testing.T, files map[string][]byte) {
+			src := string(files[path])
+			if strings.Count(src, from) != 1 {
+				t.Fatalf("%s carries %q %d times, want 1: the control would be vacuous", path, from, strings.Count(src, from))
+			}
+			files[path] = []byte(strings.Replace(src, from, to, 1))
+		}
+	}
+	for _, ctl := range []struct {
+		name, decl, cell string
+		mutate           func(*testing.T, map[string][]byte)
+	}{
+		// the signed ladder zero-extended: a negative int8 lands as 253
+		{"signed-ladder", "int16", "kind 2 top", plant("signed=kind in _SIGNED", "signed=False")},
+		// no rung accepted: every widening refuses as a kind mismatch
+		{"rungs-closed", "uint64", "kind 6 small", plant(`return fd.codec == "int" and kind in _RUNGS.get(fd.kind, _NONE)`, "return False")},
+		// the rung read but not counted
+		{"widened-count", "int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727", "kind 5 top",
+			plant("    ctx.widened += 1\n", "")},
+		// a narrowing accepted: a wider kind under a narrower declaration
+		{"narrowing", "int8", "kind 3 small", plant("    3: frozenset({2}),\n", "    2: frozenset({3}),\n    3: frozenset({2}),\n")},
+	} {
+		for shape := range widenShapes {
+			t.Run(ctl.name+"/"+widenShapes[shape].name, func(t *testing.T) {
+				t.Parallel()
+				run := widenLadder(t, ctl.decl, shape, ctl.mutate, false, false)
+				if len(run.faults) == 0 {
+					t.Fatalf("NEGATIVE CONTROL FAILED: %s left the ladder green under %s", ctl.name, ctl.decl)
+				}
+				named := false
+				for k := range run.faults {
+					if strings.HasPrefix(k, ctl.cell+" ") {
+						named = true
+					}
+				}
+				if !named {
+					t.Fatalf("NEGATIVE CONTROL FAILED: %s went red, but not on %s: %v", ctl.name, ctl.cell, run.faults)
+				}
+				t.Logf("%s (%s): %d red cells, %s among them", ctl.name, widenShapes[shape].name, len(run.faults), ctl.cell)
+			})
+		}
+	}
+}
