@@ -2350,7 +2350,14 @@ local readFlags = function(d, r, depth) {
       if (name == null) return null;
       local found = false;
       for (local bit = 0; bit < names.len(); bit++) {
-        if (names[bit] == name) { bits = bits | (1 << bit); found = true; break; }
+        if (names[bit] == name) {
+          // A KNOWN NAME IS WRITTEN ONCE (§16.2): a bit already set is a
+          // repeated name, and the read refuses as a repeated key does
+          if ((bits & (1 << bit)) != 0) { r.bad = true; return null; }
+          bits = bits | (1 << bit);
+          found = true;
+          break;
+        }
       }
       if (!found) r.report.unknown++;
     }
