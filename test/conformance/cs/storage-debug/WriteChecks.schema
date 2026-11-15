@@ -34,3 +34,16 @@ fixed table Flat
 {
     v float32
 }
+
+// A variable table: its region Save numbers the graph first, and that walk
+// holds the count check on the Save side.
+table Node
+{
+    value int32
+}
+
+table Graph
+{
+    next  *Node
+    items [..2]int32
+}

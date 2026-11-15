@@ -3103,7 +3103,7 @@
     {
       "name": "write-refusal-storage-debug-cs",
       "when": "pull-request",
-      "why": "The C# debug write gate (docs/SPEC.md §5.1) requires assertions for an overlong counted array and string and for each table writer value check (a NaN or infinity in the variable, cook and fixed writers, an enum or union tag no variant names, ill-formed text, a negative text-list element length, a text-list total past its bound, a required value off its range). Its control removes the generated assertions and requires every probe to turn red.",
+      "why": "The C# debug write gate (docs/SPEC.md §5.1) requires assertions for an overlong counted array and string and for each table writer value check (a NaN or infinity in the variable, cook and fixed writers, an enum or union tag no variant names, ill-formed text, a negative text-list element length, a text-list total past its bound, a required value off its range, a count past its bound in the region Save). Its control removes the generated assertions and requires every probe to turn red.",
       "targets": [
         "write-refusal-storage-debug-cs-negative-control"
       ]

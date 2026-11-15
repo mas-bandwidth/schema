@@ -36,6 +36,17 @@ internal static class StorageDebug
         return false;
     }
 
+    // The region Save's graph walk: a count past its bound (2) in a builder's
+    // native row.
+    private static unsafe long RegionCount()
+    {
+        using (var builder = new W.GraphBuilder())
+        {
+            builder.GetRoot()->ItemsCount = 3;
+            return builder.Save(new byte[256]);
+        }
+    }
+
     // A Probe every check admits: x is required on [0.25, 1].
     private static W.Probe Valid() { return new W.Probe { X = 0.5f }; }
 
@@ -69,6 +80,7 @@ internal static class StorageDebug
         ok &= Asserted("text-list total", () => W.Schema.ProbeSave(total, buffer));
         W.Probe range = Valid(); range.X = 2.0f;
         ok &= Asserted("required range", () => W.Schema.ProbeSave(range, buffer));
+        ok &= Asserted("region count", RegionCount);
         if (ok) { Console.WriteLine("storage debug gate: every storage and value write assertion fired"); }
         return ok ? 0 : 1;
     }

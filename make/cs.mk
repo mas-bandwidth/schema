@@ -1496,7 +1496,7 @@ write-refusal-storage-debug-cs-negative-control: bin/schema $(STORAGE_RELEASE_SC
 		echo 'NEGATIVE CONTROL FAILED: removing storage assertions left the debug gate green'; \
 		exit 1; \
 	fi
-	@for check in count length finite 'cook finite' 'fixed finite' enum 'union tag' text 'text-list length' 'text-list total' 'required range'; do \
+	@for check in count length finite 'cook finite' 'fixed finite' enum 'union tag' text 'text-list length' 'text-list total' 'required range' 'region count'; do \
 		grep -q "FAIL storage debug: $$check " $(STORAGE_DEBUG_CS)-negative/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the $$check assert"; cat $(STORAGE_DEBUG_CS)-negative/log; exit 1; }; \
 	done
