@@ -472,8 +472,7 @@ func goReference(t *testing.T, u *ir.Unit) []byte {
 	out, err := cmd.Output()
 	if err != nil {
 		msg := ""
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 			msg = string(ee.Stderr)
 		}
 		t.Fatalf("the Go reference: %v\n%s", err, msg)
