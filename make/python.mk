@@ -63,7 +63,7 @@ python-table-core-negative-control:
 
 # The timestamp controls: one fault per probe check (the kind-36 width, the
 # kind_mismatch reason, the second widening direction, the cut-body reason, the
-# int check and the range) is planted in a copy of the generated runtime, and
+# int check and the range) is planted in a copy of the generated package, and
 # the interpreter probe must go red naming that check's case. It needs the pins, so test-python depends on it and it is registered in
 # make/negative-controls.json as a gate test-python runs.
 python-vt-timestamp-negative-control: python-toolchain-check

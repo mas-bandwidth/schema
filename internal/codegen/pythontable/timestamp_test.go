@@ -272,13 +272,17 @@ func TestPythonVtTimestamp(t *testing.T) {
 }
 
 // TestPythonVtTimestampNegativeControl plants one fault per check of the
-// probe in a COPY of the generated runtime, and each must turn the probe red
-// naming the case that check covers.
+// probe in a COPY of the generated package (its runtime, or the generated
+// module whose straight-line loaders carry the kind check), and each must turn
+// the probe red naming the case that check covers. A control's path "" is the
+// generated module holding the loaders; sites is how many times its anchor
+// stands there, every one of them planted.
 func TestPythonVtTimestampNegativeControl(t *testing.T) {
 	t.Parallel()
 	controls := []struct {
 		name    string
 		path    string
+		sites   int
 		anchor  string
 		planted string
 		red     string
@@ -287,6 +291,7 @@ func TestPythonVtTimestampNegativeControl(t *testing.T) {
 			// Every eight-byte count is read four bytes short.
 			name:    "width",
 			path:    "stamp/_schema/kind_int.py",
+			sites:   1,
 			anchor:  "    36: 8,",
 			planted: "    36: 4,",
 			red:     "vt_timestamp positive:",
@@ -294,24 +299,27 @@ func TestPythonVtTimestampNegativeControl(t *testing.T) {
 		{
 			// A kind mismatch is refused under the wrong reason.
 			name:    "reason",
-			path:    "stamp/_schema/load.py",
-			anchor:  "                \"kind_mismatch\",\n",
-			planted: "                \"out_of_range\",\n",
+			path:    "",
+			sites:   4, // two fields in each of the two loaders
+			anchor:  "raise Refused(\"kind_mismatch\", ",
+			planted: "raise Refused(\"out_of_range\", ",
 			red:     "vt_timestamp kind_int64: refused out_of_range, want kind_mismatch",
 		},
 		{
 			// An int64 field takes a timestamp wire: the second widening
 			// direction §2.11 closes is opened, the first stays closed.
 			name:    "widen_reverse",
-			path:    "stamp/_schema/load.py",
-			anchor:  "        if kind != field.kind:\n",
-			planted: "        if kind != field.kind and not (kind == 36 and field.kind == 5):\n",
+			path:    "",
+			sites:   2, // the at field in each of the two loaders
+			anchor:  "if kind != fields[0].kind:\n",
+			planted: "if kind != fields[0].kind and not (kind == 36 and fields[0].kind == 5):\n",
 			red:     "vt_timestamp timestamp_wire_as_int64: accepted, want refused kind_mismatch",
 		},
 		{
 			// A payload cut inside its body is refused under the wrong reason.
 			name:    "payload_cut",
 			path:    "stamp/_schema/load.py",
+			sites:   1,
 			anchor:  "raise Refused(\"wire_damaged\", \"a length runs past its body\")",
 			planted: "raise Refused(\"past_end\", \"a length runs past its body\")",
 			red:     "vt_timestamp payload_cut: refused past_end, want wire_damaged",
@@ -320,6 +328,7 @@ func TestPythonVtTimestampNegativeControl(t *testing.T) {
 			// A bool passes the int check.
 			name:    "write_type",
 			path:    "stamp/_schema/kind_int.py",
+			sites:   1,
 			anchor:  "        if type(value) is not int:\n",
 			planted: "        if not isinstance(value, int):\n",
 			red:     "vt_timestamp write_type_bool: True was written",
@@ -328,6 +337,7 @@ func TestPythonVtTimestampNegativeControl(t *testing.T) {
 			// The range check lets one count past the top through.
 			name:    "write_range",
 			path:    "stamp/_schema/kind_int.py",
+			sites:   1,
 			anchor:  "        if value < fd.lo or value > fd.hi:\n",
 			planted: "        if value < fd.lo or value > fd.hi + 1:\n",
 			red:     "vt_timestamp write_range_max:",
@@ -339,6 +349,15 @@ func TestPythonVtTimestampNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	module := ""
+	for name, data := range files {
+		if strings.Contains(string(data), "def _s_load_Event(") {
+			module = name
+		}
+	}
+	if module == "" {
+		t.Fatal("no generated module holds Event's loader")
+	}
 	for _, control := range controls {
 		t.Run(control.name, func(t *testing.T) {
 			t.Parallel()
@@ -346,11 +365,15 @@ func TestPythonVtTimestampNegativeControl(t *testing.T) {
 			for name, data := range files {
 				sabotaged[name] = data
 			}
-			text := string(sabotaged[control.path])
-			if strings.Count(text, control.anchor) != 1 {
-				t.Fatalf("the negative control's anchor %q is not in %s exactly once", control.anchor, control.path)
+			path := control.path
+			if path == "" {
+				path = module
 			}
-			sabotaged[control.path] = []byte(strings.Replace(text, control.anchor, control.planted, 1))
+			text := string(sabotaged[path])
+			if got := strings.Count(text, control.anchor); got != control.sites {
+				t.Fatalf("the negative control's anchor %q stands %d times in %s, want %d", control.anchor, got, path, control.sites)
+			}
+			sabotaged[path] = []byte(strings.ReplaceAll(text, control.anchor, control.planted))
 			dir := t.TempDir()
 			writeTree(t, dir, sabotaged)
 
