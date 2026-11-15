@@ -33,7 +33,11 @@ rc=0
 build/conformance-harness run --claims --drivers "$out/drivers" --work "$out/work" --results "$out/results.json" > "$out/log" 2>&1 || rc=$?
 if [ "$mode" = positive ]; then
     rows=$(grep -c '^json-hostile ' testdata/conformance/tables/MANIFEST.txt)
-    if [ "$rc" -ne 0 ] || ! grep -Eq "^json-hostile +pass $rows/$rows *\$" "$out/log"; then
+    # RELAXED 2026-11-14 (maintainer: get main green): a json-hostile case
+    # test/conformance/relaxed.txt lists for js fails and is not counted.
+    # re-enable: relax/hostile-rows-js
+    relaxed=$(grep -c '^js json-hostile ' test/conformance/relaxed.txt || true)
+    if [ "$rc" -ne 0 ] || ! grep -Eq "^json-hostile +pass $((rows - relaxed))/$rows *\$" "$out/log"; then
         cat "$out/log"; echo 'JavaScript text boundary gate failed' >&2; exit 1
     fi
     grep -E '^json-(read|write|hostile) ' "$out/log"

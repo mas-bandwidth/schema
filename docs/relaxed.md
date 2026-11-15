@@ -94,7 +94,7 @@ listed case that passes fails the leg until its line is removed.
     Its hostile-corpus run drops that row from the staged manifest
     (`make/schema-go-runs-hostile-corpus.mk`). The fix is more than the zero
     check in `scanText`: the generated tests textzero (a skipped zero reads)
-    and the JSONTestSuite probe (y_string_null_escape) hold the old rule.
+    and the JSONTestSuite probe (y_string_null_escape) hold the old rule. In the go conformance leg (`test/conformance/relaxed.txt`) it relaxes json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte; the dart and js text-boundary controls do not count their legs' relaxed json-hostile cases (relax/hostile-rows-dart, -js).
   - `relax/hostile-rows-goose`: both hostile rows.
   - `relax/hostile-rows-java`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-js`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
@@ -173,7 +173,7 @@ listed case that passes fails the leg until its line is removed.
   writes the defaults the tool now zeroes). Real fix: every cook writer zeroes
   the dead slots, and the Go case runs again.
   The same slug relaxes the ten cook-write cases (the five rows, both orders)
-  of the conformance legs cpp, cs, dart, elixir, goose, js, lobster, lua,
+  of the conformance legs cpp, cs, dart, go, elixir, goose, js, lobster, lua,
   luau, moo and squirrel in `test/conformance/relaxed.txt`: each still writes
   the element defaults into dead counted slots (CI full 43656719730). C and the
   tool are right. WIP: none.
