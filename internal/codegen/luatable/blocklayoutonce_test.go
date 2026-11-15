@@ -86,4 +86,62 @@ print("layout calls during 100 opens: " .. calls)
 			}
 		})
 	}
+	// A declared type is not block-eligible, so the seal used to leave its
+	// block_row unset. Opening a block whose out-of-line element is that type
+	// must read the row, and must not call B.Layout to do it.
+	t.Run("declared element", func(t *testing.T) {
+		t.Parallel()
+		const src = "package blockrow\n" +
+			"type Inner { value uint128 }\n" +
+			"fixed table Frame { rows [..2]Inner }\n"
+		dir := t.TempDir()
+		schema := filepath.Join(dir, "Blockrow.schema")
+		if err := os.WriteFile(schema, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		u := luarun.LoadUnit(t, schema)
+		files, err := Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		luarun.WriteFiles(t, dir, files)
+		probe := fmt.Sprintf(`local T = require(%q)
+local B = require("block")
+local W = require("blockbuild")
+local built, why = W.Begin(T, "Frame", {rows=1})
+assert(built ~= nil, "Begin refused: " .. tostring(why))
+local at = built.arrays[1].offset
+local mark = 0x1122334455667788
+local bytes = built.bytes:sub(1, at) .. string.pack("=I8", mark) .. built.bytes:sub(at + 9)
+local layout = B.Layout
+local calls = 0
+B.Layout = function(...)
+  calls = calls + 1
+  return layout(...)
+end
+local dump
+for i = 1, 100 do
+  local h, open_why = B.BlockOpen(T, "Frame", bytes)
+  assert(h ~= nil, "BlockOpen refused open " .. i .. ": " .. tostring(open_why))
+  dump = B.Dump(h)
+end
+B.Layout = layout
+local want = "value = " .. string.format("%%d", mark)
+assert(string.find(dump, "array rows Inner", 1, true), dump)
+assert(string.find(dump, "\nrow 0 @", 1, true), dump)
+assert(string.find(dump, want, 1, true), dump)
+print("layout calls during 100 opens: " .. calls)
+print(dump)
+`, ModuleName(u))
+		if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got := string(luarun.Run(t, dir, "main.lua", nil))
+		if !strings.HasPrefix(got, "layout calls during 100 opens: 0\n") {
+			t.Fatalf("BlockOpen rebuilds the out-of-line row layout: %q", got)
+		}
+		if !strings.Contains(got, "array rows Inner") || !strings.Contains(got, "\nrow 0 @") || !strings.Contains(got, "value = ") {
+			t.Fatalf("the opened block did not read the declared-type row: %q", got)
+		}
+	})
 }

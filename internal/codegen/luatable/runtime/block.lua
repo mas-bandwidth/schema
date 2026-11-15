@@ -222,13 +222,22 @@ end
 
 -- THE BLOCK GRAPH IS A CONSTANT (docs/PORTING.md M13). D.prepare calls this
 -- once for each table with a fixed block form, when the module's descriptors
--- are sealed: the table's projection layout and its row layout, the one an
--- out-of-line array of it is read through, are built here and kept on its
--- descriptor before the seal freezes it. BlockOpen reads them and derives
--- nothing from the descriptors.
+-- are sealed. The projection is built only for that eligible table. The row
+-- layout BlockOpen reads for an out-of-line array is also built here for every
+-- record that can be such an element: a declared type, or a table whose forms
+-- leave block out, is not block-eligible, so nothing else stores its
+-- block_row. BlockOpen reads the stored layouts and derives nothing.
 function B.prepare(T, name, d)
   d.block_projection = B.Layout(T, name, true, d)
   d.block_row = B.Layout(T, name, false, d)
+  for _, f in ipairs(d.fields) do
+    if out_of_line(f) then
+      local elem = T.Tables[f.elem.target]
+      if elem.block_row == nil then
+        elem.block_row = B.Layout(T, f.elem.target, false)
+      end
+    end
+  end
 end
 
 -- BlockOpen checks once and points, and this is the WHOLE check, in §19.2's
