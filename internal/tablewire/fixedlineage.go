@@ -239,7 +239,7 @@ func (d *lineageDecoder) payload(w *fixedNode, b []byte, fv *tabletext.Field) st
 		n := theirs
 		if f.Array == ir.ArrayCounted {
 			count := int32(binary.LittleEndian.Uint32(b))
-			if count < 0 || int64(count) > theirs || int64(count) > f.ArrayBound {
+			if count < 0 || int64(count) < f.ArrayMin || int64(count) > theirs || int64(count) > f.ArrayBound {
 				return FixedReasonCountOverBound
 			}
 			if reason := fixedDead(b[head+int64(count)*elem.size : w.size]); reason != "" {
