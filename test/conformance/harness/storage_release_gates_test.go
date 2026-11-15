@@ -15,7 +15,9 @@ func TestReleaseStorageGatesAreDefined(t *testing.T) {
 	root := conformanceRoot(t)
 	// Dart is not here: an assert leg's storage check is a debug assert
 	// (docs/SPEC.md §5.1), held by write-refusal-storage-debug-dart.
-	for _, lang := range []string{} {
+	// C and Java are not here: their storage checks are debug asserts,
+	// held by write-check-storage-debug-c and write-refusal-storage-debug-java.
+	for _, lang := range []string{"cpp", "cs", "rust"} {
 		t.Run(lang, func(t *testing.T) {
 			body, err := os.ReadFile(filepath.Join(root, "make", lang+".mk"))
 			if err != nil {

@@ -366,5 +366,19 @@ export async function fixedCodec(generated, load, unit, root, variablePath, code
       const out = new Uint8Array(fixedMeasure(1));
       return fixedSave([x], 1, out) === out.length ? out : null;
     },
+    // THE FIXED VALUE ITSELF, for the write-refusal surfaces (writerefusal.mjs):
+    // a value the declaration does not admit cannot pass through the bridge
+    // above, which places only what a variable value can hold, so those rows
+    // load, set and save the generated class with nothing in between.
+    fixedValue: {
+      load: (wire) => {
+        const x = fresh();
+        const r = new T.TableFixedReport();
+        const n = fixedLoad([x], 1, wire, wire.length, plan, r);
+        return n === 1 && r.refused === 0 && !r.damaged ? x : null;
+      },
+      // the bytes written, or -1 where the generated writer refused
+      save: (x) => fixedSave([x], 1, new Uint8Array(fixedMeasure(1))),
+    },
   };
 }

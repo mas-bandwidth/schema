@@ -87,7 +87,7 @@ macro_rules! arm {
         let mut report = TableReport::default();
         let mut reply = Reply { measure: $measure(wire), ..Default::default() };
         if $retain {
-            let mut store = TableRetain { bytes: Vec::with_capacity(RETAIN_BYTES), ids: Vec::with_capacity(RETAIN_IDS) };
+            let mut store = TableRetain { bytes: Vec::with_capacity(RETAIN_BYTES), ids: Vec::with_capacity(RETAIN_IDS), nodes: Default::default() };
             let value = $load_retain(wire, &mut store, &mut report);
             reply.loaded = value.is_some();
             // THE REPORT ACCUMULATES ACROSS THE PAIR (§6.6): one report is
@@ -243,8 +243,10 @@ const ROOTS: &[(&str, &str)] = &[
     ("widelist", "Wide"),
 ];
 
-// A fixed-class root still has a form-1 file codec, but the harness holds
-// its caller-owned region even when load refuses damaged framing (§3, §4.2).
+// A declared fixed root reads form 3 and refuses every other form by name
+// (§3, §3.4): its arm is the generated fixed codec, never the variable one.
+// The harness holds its caller-owned region even when the read refuses
+// damaged framing (§3, §4.2).
 const FIXED_ROOTS: &[(&str, &str)] = &[
     ("backenddemo", "LoginRequest"),
     ("backenddemo", "MatchResult"),
@@ -275,7 +277,119 @@ const FIXED_ROOTS: &[(&str, &str)] = &[
     ("vocabdemo", "Wide09"),
 ];
 
+// THE FIXED FORM (docs/SPEC-TABLES.md §3.4): every file of a declared
+// fixed-class root is read by the root's generated <root>_fixed_load, which
+// reads form 3 and refuses every other form by name, and a read one is written
+// back by <root>_fixed_save over <Root>Row records, as the conformance
+// driver's fixed_read does (main.rs).
+//
+// A ROOT IS ONE RECORD, as the oracle's engine reads a file into one instance
+// (internal/tablewire/fixed.go): the read is handed room for one record, so a
+// batch of more is the generated reader's own batch_too_large refusal, and a
+// batch of none holds no value to read, which is truncated framing damage.
+// room the read is handed: one record, and the plan's capacity declaration
+const FIXED_RECORDS: usize = 1;
+const FIXED_PLAN: usize = 1 << 14;
+
+macro_rules! fixed_arm {
+    ($unit:ident, $load:ident, $save:ident, $measure:ident, $row:ident, $wire:expr) => {{
+        use $unit::*;
+        let mut values = vec![$row::default(); FIXED_RECORDS];
+        let mut plan = vec![TableFixedEntry::default(); FIXED_PLAN];
+        let mut remap = vec![0u16; FIXED_PLAN];
+        let mut report = TableFixedReport::default();
+        let read = $load(&mut values, $wire, &mut plan, &mut remap, &mut report);
+        let read = read.filter(|_| !report.refused && !report.damaged);
+        // a file of no record is truncated: there is no root to read
+        let empty = read == Some(0);
+        let read = read.filter(|_| !empty);
+        let mut reply = Reply { loaded: read.is_some(), ..Default::default() };
+        reply.unknown = u64::from(report.unknown);
+        reply.widened = u64::from(report.widened);
+        reply.damaged = report.damaged || empty;
+        reply.refused = report.refused;
+        match read {
+            Some(n) => {
+                let mut buffer = vec![0u8; $measure(n)];
+                match $save(&values[..n], &mut buffer) {
+                    Some(written) => {
+                        buffer.truncate(written);
+                        reply.measure = written as i64;
+                        reply.saved = buffer;
+                    }
+                    None => reply.save_fail = true,
+                }
+            }
+            None => {
+                reply.measure = -1;
+                reply.save_fail = true;
+            }
+        }
+        Some(reply)
+    }};
+}
+
+// WideBlob is past the fixed form's record ceiling, so its fixed reader
+// refuses every form and no fixed save is emitted (§3.4).
+macro_rules! fixed_load_only_arm {
+    ($unit:ident, $load:ident, $row:ident, $wire:expr) => {{
+        use $unit::*;
+        let mut values = vec![$row::default(); FIXED_RECORDS];
+        let mut plan = vec![TableFixedEntry::default(); FIXED_PLAN];
+        let mut remap = vec![0u16; FIXED_PLAN];
+        let mut report = TableFixedReport::default();
+        let read = $load(&mut values, $wire, &mut plan, &mut remap, &mut report);
+        let read = read.filter(|_| !report.refused && !report.damaged);
+        let mut reply = Reply { loaded: read.is_some(), measure: -1, save_fail: true, ..Default::default() };
+        reply.unknown = u64::from(report.unknown);
+        reply.widened = u64::from(report.widened);
+        reply.damaged = report.damaged;
+        reply.refused = report.refused;
+        Some(reply)
+    }};
+}
+
+// drive_fixed reads a wire of a declared fixed root through the (unit, root)
+// fixed codec, whatever its form byte: the fixed reader refuses every form but
+// 3 by name (§3, §3.4), so the variable codec is never selected at one. None
+// when this leg reaches no fixed codec for the root.
+fn drive_fixed(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
+    match (unit, root) {
+        ("backenddemo", "LoginRequest") => fixed_arm!(backenddemo, login_request_fixed_load, login_request_fixed_save, login_request_fixed_measure, LoginRequestRow, wire),
+        ("backenddemo", "MatchResult") => fixed_arm!(backenddemo, match_result_fixed_load, match_result_fixed_save, match_result_fixed_measure, MatchResultRow, wire),
+        ("backenddemo", "StorePurchase") => fixed_arm!(backenddemo, store_purchase_fixed_load, store_purchase_fixed_save, store_purchase_fixed_measure, StorePurchaseRow, wire),
+        ("messagedemo", "ToolMessage") => fixed_arm!(messagedemo, tool_message_fixed_load, tool_message_fixed_save, tool_message_fixed_measure, ToolMessageRow, wire),
+        ("scalars", "SimState") => fixed_arm!(scalars, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, wire),
+        ("tblscalars2", "SimState") => fixed_arm!(tblscalars2, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, wire),
+        ("tabledemo", "ArchiveConfig") => fixed_arm!(tabledemo, archive_config_fixed_load, archive_config_fixed_save, archive_config_fixed_measure, ArchiveConfigRow, wire),
+        ("tabledemo", "KeyedConfig") => fixed_arm!(tabledemo, keyed_config_fixed_load, keyed_config_fixed_save, keyed_config_fixed_measure, KeyedConfigRow, wire),
+        ("tabledemo", "LoadoutConfig") => fixed_arm!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, wire),
+        ("tabledemo", "ProfileConfig") => fixed_arm!(tabledemo, profile_config_fixed_load, profile_config_fixed_save, profile_config_fixed_measure, ProfileConfigRow, wire),
+        ("tabledemo", "RootConfig") => fixed_arm!(tabledemo, root_config_fixed_load, root_config_fixed_save, root_config_fixed_measure, RootConfigRow, wire),
+        ("tabledemo", "WideBlob") => fixed_load_only_arm!(tabledemo, wide_blob_fixed_load, WideBlobRow, wire),
+        ("tbla2", "Root") => fixed_arm!(tbla2, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire),
+        ("tblk1", "Root") => fixed_arm!(tblk1, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire),
+        ("tblk2", "Root") => fixed_arm!(tblk2, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, wire),
+        ("tblm1", "Msg") => fixed_arm!(tblm1, msg_fixed_load, msg_fixed_save, msg_fixed_measure, MsgRow, wire),
+        ("tblm2", "Msg") => fixed_arm!(tblm2, msg_fixed_load, msg_fixed_save, msg_fixed_measure, MsgRow, wire),
+        ("tblp1", "Chain") => fixed_arm!(tblp1, chain_fixed_load, chain_fixed_save, chain_fixed_measure, ChainRow, wire),
+        ("tblp3", "Chain") => fixed_arm!(tblp3, chain_fixed_load, chain_fixed_save, chain_fixed_measure, ChainRow, wire),
+        ("tblr1", "Cfg") => fixed_arm!(tblr1, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire),
+        ("tblr2", "Cfg") => fixed_arm!(tblr2, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire),
+        ("tblv1", "Cfg") => fixed_arm!(tblv1, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire),
+        ("tblv2", "Cfg") => fixed_arm!(tblv2, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, wire),
+        ("vocabdemo", "Wide00") => fixed_arm!(vocabdemo, wide00_fixed_load, wide00_fixed_save, wide00_fixed_measure, Wide00Row, wire),
+        ("vocabdemo", "Wide09") => fixed_arm!(vocabdemo, wide09_fixed_load, wide09_fixed_save, wide09_fixed_measure, Wide09Row, wire),
+        ("vocab9demo", "Wide00") => fixed_arm!(vocab9demo, wide00_fixed_load, wide00_fixed_save, wide00_fixed_measure, Wide00Row, wire),
+        ("vocab9demo", "Wide19") => fixed_arm!(vocab9demo, wide19_fixed_load, wide19_fixed_save, wide19_fixed_measure, Wide19Row, wire),
+        _ => None,
+    }
+}
+
 fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
+    if FIXED_ROOTS.iter().any(|(u, r)| *u == unit && *r == root) {
+        return drive_fixed(unit, root, wire);
+    }
     match (unit, root) {
         ("backenddemo", "LoginRequest") => arm!(backenddemo, login_request_load, login_request_load_retain, login_request_save, login_request_save_checked, login_request_save_retain, login_request_load_measure, wire, retain),
         ("backenddemo", "MatchResult") => arm!(backenddemo, match_result_load, match_result_load_retain, match_result_save, match_result_save_checked, match_result_save_retain, match_result_load_measure, wire, retain),

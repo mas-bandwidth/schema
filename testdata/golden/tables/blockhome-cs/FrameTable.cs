@@ -1047,6 +1047,7 @@ namespace Blockhome
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             PartRowFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -11270,6 +11271,7 @@ namespace Blockhome
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             PartFrameFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }

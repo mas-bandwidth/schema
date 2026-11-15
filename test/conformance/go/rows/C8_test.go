@@ -17,98 +17,93 @@ func TestRowC8(t *testing.T) {
 	// ================================================================
 	// PART 1: bits(N) past 2^N - 1 refuses
 	// ================================================================
-	// RangedWidths has bits(12) (max 2^12-1 = 4095) and bits(48)
-	// (max 2^48-1 = 281474976710655). The variable-form save writes raw
-	// storage; a load past the bit width refuses (docs/SPEC-TABLES.md §4).
+	// RangedWidths is a FIXED-CLASS root (docs/SPEC-TABLES.md §3.4), so its
+	// file is form 3: this row forges the fixed record's raw lanes, and a
+	// load past the bit width refuses (docs/FIXED-FORM-ALGORITHM.md §4).
+	// The variable-form read it used to drive was retired with the tolerant
+	// wire (docs/plans/strict-only.md): a fixed root refuses a form-1 file
+	// as previous_form.
 
 	{
 		val := tabledemo.RangedWidths{
 			B12: 3000,
 			B48: 0x123456789ABC,
 		}
-		buf := make([]byte, tabledemo.RangedWidthsMeasure(&val))
-		n := tabledemo.RangedWidthsSave(&val, buf)
-		if n < 0 {
-			t.Fatal("RangedWidthsSave failed")
+		buf := make([]byte, tabledemo.RangedWidthsFixedMeasure(1))
+		if n := tabledemo.RangedWidthsFixedSave([]tabledemo.RangedWidths{val}, buf); n < 0 {
+			t.Fatal("RangedWidthsFixedSave failed")
+		}
+		bodyAt := tabledemo.TableFixedHeaderBytes + 4 + len(tabledemo.RangedWidthsFixedLayout) + 8
+
+		load := func(wire []byte) (tabledemo.RangedWidths, int64, tabledemo.TableReport) {
+			var got [1]tabledemo.RangedWidths
+			plan := make([]tabledemo.TableFixedEntry, 64)
+			var report tabledemo.TableReport
+			n := tabledemo.RangedWidthsFixedLoad(got[:], wire, plan, &report)
+			return got[0], n, report
 		}
 
-		var back tabledemo.RangedWidths
-		var report tabledemo.TableReport
-		ok := tabledemo.RangedWidthsLoad(&back, buf[:n], &report)
-		if !ok {
-			t.Fatal("RangedWidthsLoad failed")
+		back, n, report := load(buf)
+		if n != 1 || report.Err() != nil {
+			t.Fatalf("RangedWidthsFixedLoad failed: n=%d %+v", n, report)
 		}
-		if back.B12 != 3000 {
-			t.Fatalf("bits(N): value=3000 was clean; got B12=%d %+v", back.B12, report)
+		if back.B12 != 3000 || back.B48 != 0x123456789ABC {
+			t.Fatalf("bits(N): clean value; got B12=%d B48=%d %+v", back.B12, back.B48, report)
 		}
 
 		// bits(12): the writer REFUSES 4096 (the writer-refusal test below
 		// pins that half of the rule), so hand-forge a wire that reads 4096
-		// and check the load refuses it. The B12 lane is a
-		// little-endian 16-bit field; save it at its in-range maximum (4095
-		// = 0x0FFF, bytes ff 0f) and overwrite those two bytes with 4096
-		// = 0x1000 (bytes 00 10).
+		// and check the load refuses it. The B12 lane is a little-endian
+		// 32-bit slot in the fixed record; save it at its in-range maximum
+		// (4095 = 0x0FFF) and overwrite the low two bytes with 4096.
 		v12 := tabledemo.RangedWidths{B12: 4095} // in-range maximum
-		buf2 := make([]byte, tabledemo.RangedWidthsMeasure(&v12))
-		n2 := tabledemo.RangedWidthsSave(&v12, buf2)
-		if n2 < 0 {
-			t.Fatal("RangedWidthsSave b12 max failed")
+		buf2 := make([]byte, tabledemo.RangedWidthsFixedMeasure(1))
+		if tabledemo.RangedWidthsFixedSave([]tabledemo.RangedWidths{v12}, buf2) < 0 {
+			t.Fatal("RangedWidthsFixedSave b12 max failed")
 		}
-		off12 := findBytes(buf2[:n2], []byte{0xFF, 0x0F})
+		off12 := findBytes(buf2[bodyAt:], []byte{0xFF, 0x0F, 0x00, 0x00})
 		if off12 < 0 {
 			t.Fatal("b12 value bytes not found")
 		}
-		buf2[off12] = 0x00
-		buf2[off12+1] = 0x10
+		buf2[bodyAt+off12] = 0x00
+		buf2[bodyAt+off12+1] = 0x10
 
-		var back2 tabledemo.RangedWidths
-		var report2 tabledemo.TableReport
-		if tabledemo.RangedWidthsLoad(&back2, buf2[:n2], &report2) || report2.Err() == nil {
-			t.Fatalf("bits(N): forged 4096 read: %+v", report2)
+		if _, n2, report2 := load(buf2); n2 != -1 || report2.Err() == nil {
+			t.Fatalf("bits(N): forged 4096 read: n=%d %+v", n2, report2)
 		}
 
 		// bits(48): max 2^48-1 = 281474976710655; same hand-forge for a
 		// wire that reads 300000000000000. The B48 lane is a little-endian
-		// 64-bit field; save it at its in-range maximum (281474976710655 =
-		// 0x0000FFFFFFFFFFFF, bytes ff ff ff ff ff ff 00 00) and overwrite
-		// those eight bytes with 300000000000000 = 0x000110D9316EC000
-		// (bytes 00 c0 6e 31 d9 10 01 00, LE).
+		// 64-bit slot; save it at its in-range maximum (0x0000FFFFFFFFFFFF)
+		// and overwrite those eight bytes with 0x000110D9316EC000.
 		v48 := tabledemo.RangedWidths{B48: 281474976710655} // in-range maximum
-		buf3 := make([]byte, tabledemo.RangedWidthsMeasure(&v48))
-		n3 := tabledemo.RangedWidthsSave(&v48, buf3)
-		if n3 < 0 {
-			t.Fatal("RangedWidthsSave b48 max failed")
+		buf3 := make([]byte, tabledemo.RangedWidthsFixedMeasure(1))
+		if tabledemo.RangedWidthsFixedSave([]tabledemo.RangedWidths{v48}, buf3) < 0 {
+			t.Fatal("RangedWidthsFixedSave b48 max failed")
 		}
-		off48 := findBytes(buf3[:n3], []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00})
+		off48 := findBytes(buf3[bodyAt:], []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00})
 		if off48 < 0 {
 			t.Fatal("b48 value bytes not found")
 		}
 		over := []byte{0x00, 0xC0, 0x6E, 0x31, 0xD9, 0x10, 0x01, 0x00}
-		for i, b := range over {
-			buf3[off48+i] = b
-		}
+		copy(buf3[bodyAt+off48:], over)
 
-		var back3 tabledemo.RangedWidths
-		var report3 tabledemo.TableReport
-		if tabledemo.RangedWidthsLoad(&back3, buf3[:n3], &report3) || report3.Err() == nil {
-			t.Fatalf("bits(N): forged 300000000000000 read: %+v", report3)
+		if _, n3, report3 := load(buf3); n3 != -1 || report3.Err() == nil {
+			t.Fatalf("bits(N): forged 300000000000000 read: n=%d %+v", n3, report3)
 		}
 
 		// bits(32) fills its lane exactly and reads (negative control)
 		val.B48 = 0
 		val.B12 = 0
 		val.B32 = 0xFFFFFFFF
-		buf4 := make([]byte, tabledemo.RangedWidthsMeasure(&val))
-		n4 := tabledemo.RangedWidthsSave(&val, buf4)
-		if n4 < 0 {
-			t.Fatal("RangedWidthsSave b32 max failed")
+		buf4 := make([]byte, tabledemo.RangedWidthsFixedMeasure(1))
+		if tabledemo.RangedWidthsFixedSave([]tabledemo.RangedWidths{val}, buf4) < 0 {
+			t.Fatal("RangedWidthsFixedSave b32 max failed")
 		}
 
-		var back4 tabledemo.RangedWidths
-		var report4 tabledemo.TableReport
-		ok4 := tabledemo.RangedWidthsLoad(&back4, buf4[:n4], &report4)
-		if !ok4 {
-			t.Fatal("RangedWidthsLoad b32 max failed")
+		back4, n4, report4 := load(buf4)
+		if n4 != 1 || report4.Err() != nil {
+			t.Fatalf("RangedWidthsFixedLoad b32 max failed: n=%d %+v", n4, report4)
 		}
 		if back4.B32 != 0xFFFFFFFF {
 			t.Fatalf("bits(N): bits(32) filling its lane; B32=%d %+v", back4.B32, report4)

@@ -16,7 +16,7 @@ import (
 
 func TestInertArrayHeadersElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir array bodies shorter than their two-byte header are inert in both read modes")
+	slowtest.Gate(t, "Elixir array bodies shorter than their two-byte header refuse in both read modes")
 	u := unitFrom(t, `package inertarray
  enum Key { A, B }
  table Inner { value int32 }
@@ -53,26 +53,18 @@ check=fn yes,msg->unless yes,do: Process.put(:failures,[msg|Process.get(:failure
 			if ok || !tablewire.ReadRefusal(e) || !report.Refused || report.Reason == "" {
 				t.Fatalf("%s/%x oracle: %v %v %+v", f.name, body, ok, e, report)
 			}
-			text, e := m.Write(m.New(u.Tables["Root"]))
-			if e != nil {
-				t.Fatal(e)
-			}
+			// THE LEG FOLLOWS THE ORACLE ABOVE: every one of these bodies
+			// refuses, in both read modes (§3, §4; docs/plans/strict-only.md).
+			// A body shorter than its two-byte header used to read as an
+			// empty, inert field, a tolerant read the one strict read retired.
 			fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
  report=elem(result,2)
- if %t do
-  check.(elem(result,0)==:error and report.reason != "",%q<>inspect(result))
- else
-  check.(elem(result,0)==:ok and report.reason == "",%q<>inspect(result))
-  if elem(result,0)==:ok do
-   {:ok,text}=T.to_json("Root",elem(result,1))
-   check.(text==%q,"inert values "<>text)
-  end
- end
+ check.(elem(result,0)==:error and report.reason != "",%q<>inspect(result))
 end
-`, hex.EncodeToString(wire), len(body) == 2, fmt.Sprintf("%s/%x ", f.name, body), fmt.Sprintf("%s/%x ", f.name, body), string(text)+"\n")
+`, hex.EncodeToString(wire), fmt.Sprintf("%s/%x ", f.name, body))
 		}
 	}
 	probe.WriteString(`case Process.get(:failures) do
