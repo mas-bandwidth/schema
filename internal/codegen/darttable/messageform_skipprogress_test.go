@@ -72,7 +72,8 @@ func skipProgressAnnouncement(t *testing.T, u *ir.Unit) (announcement []byte, sl
 }
 
 // skipProgressBatch is one body: the hostile reference, its 2^24 count at the
-// announced width, the zero reference that ends the body, and the pad.
+// announced width, the zero reference that ends the body, the pad, and one
+// zero byte.
 func skipProgressBatch(slot uint64, refBits int, width int, count uint64) []byte {
 	out := []byte{ir.TableWireMessageForm, 0}
 	var acc uint64
@@ -95,7 +96,10 @@ func skipProgressBatch(slot uint64, refBits int, width int, count uint64) []byte
 	if at > 0 {
 		out = append(out, byte(acc))
 	}
-	return out
+	// A ZERO BYTE PAST THE PAD: a walk without the progress test aligns at
+	// its first string(0) element and reads the body's terminator there, so
+	// the control's unguarded walk finishes the count rather than running out
+	return append(out, 0)
 }
 
 func skipProgressBody(announcement, wire []byte) string {
