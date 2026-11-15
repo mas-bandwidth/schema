@@ -362,7 +362,7 @@ local function scalar_at(r: any, fd: any, kind: number, report: any, named: any)
 		local bits = buffer.readu32(b, at)
 		if not V.finite32(bits) then
 			non_finite(report, named)
-			return fd.def or 0
+			return nil
 		end
 		if fd.k == 11 then
 			-- f32 WIDENED into f64 (§4): every finite float32 is exact, and a
@@ -372,12 +372,9 @@ local function scalar_at(r: any, fd: any, kind: number, report: any, named: any)
 		end
 		if fd.flo ~= nil then
 			local lo, hi = V.f32to64(bits)
-			if V.cmp64(lo, hi, fd.flo[1], fd.flo[2]) < 0 then
+			if V.cmp64(lo, hi, fd.flo[1], fd.flo[2]) < 0 or V.cmp64(lo, hi, fd.fhi[1], fd.fhi[2]) > 0 then
 				over(report)
-				return fd.flo32
-			elseif V.cmp64(lo, hi, fd.fhi[1], fd.fhi[2]) > 0 then
-				over(report)
-				return fd.fhi32
+				return nil
 			elseif bits == 0x80000000 then
 				return 0 -- a -0 lands as +0, uncounted (§3.3)
 			end
@@ -388,7 +385,7 @@ local function scalar_at(r: any, fd: any, kind: number, report: any, named: any)
 		local hi = buffer.readu32(b, at + 4)
 		if not V.finite64(lo, hi) then
 			non_finite(report, named)
-			return fd.def or V.Uint64.new(0, 0)
+			return nil
 		end
 		return V.Uint64.new(lo, hi)
 	end
@@ -399,20 +396,15 @@ local function scalar_at(r: any, fd: any, kind: number, report: any, named: any)
 		x = V.widen(x, kw, signed)
 	end
 	local lo, hi = fd.lo, fd.hi
-	if lo ~= nil then
-		if V.rawCmp(x, lo, kw, signed) < 0 then
-			x = lo
-			over(report)
-		elseif V.rawCmp(x, hi, kw, signed) > 0 then
-			x = hi
-			over(report)
-		end
+	if lo ~= nil and (V.rawCmp(x, lo, kw, signed) < 0 or V.rawCmp(x, hi, kw, signed) > 0) then
+		over(report)
+		return nil
 	end
 	if fd.bits ~= nil and fd.bits < kw * 8 then
 		local cap = V.bitsCap(fd.bits, kw)
 		if V.rawCmp(x, cap, kw, false) > 0 then
-			x = cap
 			over(report)
+			return nil
 		end
 	end
 	if fd.cls == nil then
@@ -866,14 +858,9 @@ local function read_keyed_inner(fd: any, r: any, report: any, v: any): boolean
 				end
 				read_body(d, payload, inst, true)
 				if payload.at ~= payload.e then
-					-- A SLOT WHOSE BODY DID NOT SPEND ITS L RESETS TO ITS DECLARED
-					-- DEFAULTS (§3.2, §5)
+					-- A SLOT WHOSE BODY DID NOT SPEND ITS L IS DAMAGE (§3.2, §5)
 					damage(report)
-					if _retain ~= nil then
-						_retain.refill(d, inst) -- damage is not a later occurrence (§6.6)
-					else
-						inst = d.new()
-					end
+					break
 				end
 				x = inst
 			elseif e.s == "enum" then
@@ -989,16 +976,16 @@ local function array_body(fd: any, sub: any, report: any, v: any): boolean
 		holder = v
 	end
 	if fd.s == "bytes" then
-		-- bytes(N) rides as an array of u8 (§2.5)
-		local have = keep
-		if sub.at + have > sub.e then
-			have = sub.e - sub.at
+		-- bytes(N) rides as an array of u8 (§2.5); a body shorter than its
+		-- count is damage, never a payload cut to what the body holds
+		if sub.at + keep > sub.e then
 			damage(report)
+			return false
 		end
 		if holder ~= nil then
-			store_buffer(holder, slot, sub.b, sub.at, have, have)
+			store_buffer(holder, slot, sub.b, sub.at, keep, keep)
 		end
-		sub.at += have
+		sub.at += keep
 		if sub.at ~= sub.e then
 			damage(report)
 		end
@@ -1119,12 +1106,9 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		local inst = d.new()
 		read_body(d, sub, inst, true)
 		if sub.at ~= sub.e then
+			-- AN ELEMENT BODY THAT DID NOT SPEND ITS L IS DAMAGE
 			damage(report)
-			if _retain ~= nil then
-				_retain.refill(d, inst) -- damage is not a later occurrence (§6.6)
-			else
-				inst = d.new()
-			end
+			return false
 		end
 		r.at += n
 		dst[i] = inst
@@ -1154,12 +1138,11 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 			r.at += n
 			return false
 		end
-		local keep = n
-		if s == "str" and e.bound ~= nil and e.bound > 0 and keep > e.bound then
-			keep = e.bound
+		if s == "str" and e.bound ~= nil and e.bound > 0 and n > e.bound then
 			over(report)
+			return false
 		end
-		dst[i] = buffer.readstring(r.b, r.at, keep)
+		dst[i] = buffer.readstring(r.b, r.at, n)
 		r.at += n
 		return true
 	end
@@ -1334,8 +1317,8 @@ read_union = function(fd: any, r: any, report: any, holder: any, key: any): (any
 end
 
 -- ONE FIELD (§3): every value read is stored in its slot in the shape
--- docs/PORT-MOO.md names; a string is bounded at a whole code point and a wide
--- string at a whole code unit.
+-- docs/PORT-MOO.md names; a string past its declared bound refuses the load,
+-- never a cut inside its text.
 -- It answers (ok, selected, intact): ok false stops the body; selected false
 -- is an array of a FOREIGN ELEMENT KIND (§3); intact false is a payload
 -- damaged inside its own L, which a field answers with its declared default
@@ -1362,13 +1345,12 @@ read_field = function(fd: any, r: any, v: any): ...any
 			r.at += n
 			return true, nil, false
 		end
-		local keep = n
 		if fd.bound ~= nil and n > fd.bound then
-			keep = fd.bound
 			over(_report)
+			return false
 		end
 		if fd.slot ~= nil and v ~= nil then
-			v[fd.slot] = buffer.readstring(r.b, r.at, keep)
+			v[fd.slot] = buffer.readstring(r.b, r.at, n)
 		end
 		r.at += n
 		return true
@@ -1425,20 +1407,12 @@ read_field = function(fd: any, r: any, v: any): ...any
 		end
 		read_body(d, sub, inst, true)
 		if sub.at ~= sub.e then
-			-- A NESTED BODY THAT DID NOT SPEND ITS L FALLS BACK ON ITS DECLARED
-			-- DEFAULTS (§3, §5)
+			-- A NESTED BODY THAT DID NOT SPEND ITS L IS DAMAGE (§3, §5): the
+			-- load refuses, it does not refill the body with its defaults; the
+			-- damage names the field around the body
 			_ctx = prior
 			damage(_report)
-			if _retain ~= nil then
-				_retain.refill(d, inst) -- damage is not a later occurrence (§6.6)
-			else
-				inst = d.new()
-			end
-			if fd.slot ~= nil and v ~= nil then
-				v[fd.slot] = inst
-			end
-			r.at += n
-			return true, nil, false
+			return false
 		end
 		_ctx = prior
 		r.at += n
