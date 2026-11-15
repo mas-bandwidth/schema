@@ -2519,7 +2519,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `FixedSave`: 1–8 every build (`FixedSave`, which `FixedSaveChecked` calls with a caller buffer)
 
-  - `SaveMessages`: 1–8 every build
+  - `SaveMessages`: 1–8 and 10 every build
 
   - packet `Write`: 1–6 debug; 7 traps
 
