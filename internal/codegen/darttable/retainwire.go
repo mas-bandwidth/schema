@@ -631,6 +631,11 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tif (r.wireCycle()) { r.report.refuse('wire_damaged'); }\n")
 	g.pf("\tif (r.wireStringBlobBad()) { r.report.refuse('wire_damaged'); }\n")
 	g.pf("\tif (r.wireFramingBad()) { r.report.refuse('wire_damaged'); }\n")
+	// an id table out of first-use order, or with an entry no reference
+	// names, is a spelling no conforming writer produces (§3), judged by
+	// that same walk
+	g.pf("\tif (r.idsNotFirstUse) { r.report.refuse('wire_damaged'); }\n")
+
 	g.pf("\tif (r.wireBlobShared()) { r.report.refuse('blob_shared'); }\n")
 	g.pf("\tif (r.wireBadPointerIndex()) { r.report.refuse('wire_damaged'); }\n")
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4, §6.6): nothing
