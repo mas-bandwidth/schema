@@ -2235,3 +2235,42 @@ conformance-negative-control-c-write-refusal-fixed: build/conformance-harness bu
 .PHONY: conformance-negative-control-c-write-refusal-message
 conformance-negative-control-c-write-refusal-message: build/conformance-harness build/tables-generated-c/.stamp
 	$(call conformance-negative-control-c-wref,write-refusal-message,schema_assert( 0 <= value->sku_length && value->sku_length <= 32 );,(void) 0; /* SABOTAGED: no message length check */,SABOTAGED: no message length check,write-refusal-message,message)
+
+# The packet Write's compressed-float rule (docs/SPEC.md §5.1 row 10,
+# docs/PACKET-WIRE-ALGORITHM.md §2.5): the generated writer asserts the value
+# finite and inside [min, max] before quantizing. The driver runs one child per
+# shared case and reads the debug assert's abort as the refusal.
+build/packet-write-cfloat/c/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema
+	@mkdir -p build/packet-write-cfloat/c
+	./bin/schema generate --lang c --out build/packet-write-cfloat/c test/packet-write-cfloat/CFloat.schema
+	@touch $@
+
+build/packet-write-cfloat/c-test: build/packet-write-cfloat/c/.stamp test/packet-write-cfloat/c/main.c $(SERIALIZE_C)/serialize.h $(SERIALIZE_C)/serialize.c
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O2 -ffp-contract=off -Ibuild/packet-write-cfloat/c -I$(SERIALIZE_C) \
+		test/packet-write-cfloat/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
+.PHONY: packet-write-cfloat-c packet-write-cfloat-c-negative-control
+packet-write-cfloat-c: build/packet-write-cfloat/c-test
+	./build/packet-write-cfloat/c-test test/packet-write-cfloat/cases.txt
+
+packet-write-cfloat-c-negative-control: packet-write-cfloat-c
+	@mkdir -p build/packet-write-cfloat/c-negative
+	go run ./tools/sabotage -name packet-write-cfloat-c-write-range \
+		-out build/packet-write-cfloat/c-negative/fields.gotext internal/codegen/c/fields.go
+	@printf '{"Replace":{"%s/internal/codegen/c/fields.go":"%s/build/packet-write-cfloat/c-negative/fields.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-write-cfloat/c-negative/overlay.json
+	go run -overlay=build/packet-write-cfloat/c-negative/overlay.json ./cmd/schema generate --lang c --out build/packet-write-cfloat/c-negative/generated test/packet-write-cfloat/CFloat.schema
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O2 -ffp-contract=off -Ibuild/packet-write-cfloat/c-negative/generated -I$(SERIALIZE_C) \
+		test/packet-write-cfloat/c/main.c $(SERIALIZE_C)/serialize.c -o build/packet-write-cfloat/c-negative/checker -lm
+	@if ./build/packet-write-cfloat/c-negative/checker test/packet-write-cfloat/cases.txt > build/packet-write-cfloat/c-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the C compressed-float writer without its range check stayed green'; \
+		cat build/packet-write-cfloat/c-negative/log; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-cfloat above-max: refused case was written' build/packet-write-cfloat/c-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the C driver went red, but not on above-max'; \
+		  cat build/packet-write-cfloat/c-negative/log; exit 1; }
+	@grep -Fm1 'FAILED: packet-write-cfloat above-max' build/packet-write-cfloat/c-negative/log
+	@echo 'packet compressed-float C negative control: removing the writer check lets an off-range value through'
+
+test-c: packet-write-cfloat-c packet-write-cfloat-c-negative-control

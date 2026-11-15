@@ -130,7 +130,8 @@
       "targets": [
         "packet-defaults-c-negative-control",
         "packet-defaults-go-negative-control",
-        "packet-finite-go-negative-control"
+        "packet-finite-go-negative-control",
+        "packet-write-cfloat-c-negative-control"
       ]
     },
     {
