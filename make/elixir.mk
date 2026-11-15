@@ -2218,6 +2218,7 @@ packet-end-elixir-negative-control: packet-end-elixir
 	@grep -Fq 'FAILED: packet-end verdict trailing.bin' build/packet-end/elixir-negative/log && \
 		grep -Fq 'FAILED: packet-end verdict padding.bin' build/packet-end/elixir-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the packet-end gate went red, but not on the trailing and padding vectors'; cat build/packet-end/elixir-negative/log; exit 1; }
+	@if grep -Fq 'FAILED: packet-end verdict exact.bin' build/packet-end/elixir-negative/log; then cat build/packet-end/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: the exact packet went red with the end check removed'; exit 1; fi
 	@if grep -F 'FAILED: ' build/packet-end/elixir-negative/log | grep -Fvq 'FAILED: packet-end verdict '; then cat build/packet-end/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the packet-end verdict went red'; exit 1; fi
 	@echo 'packet end Elixir negative control: removing the end check accepts the trailing and padding vectors'
 
