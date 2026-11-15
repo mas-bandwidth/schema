@@ -1460,28 +1460,17 @@ public final class TableVocabulary {
                 return false;
             }
             int elem = r.u8();
-            // AN ELEMENT KIND OF 12 IS AN ANNOUNCED SHAPE LIKE ANY OTHER
-            // (§3.3): a string element's shape is the max its kind names.
-            if (!knownKind(elem)) {
+            // AN ARRAY OR KEYED ELEMENT IS FRAMING DAMAGE (§3.3): no
+            // declaration produces a list of lists, so an element kind of 14
+            // or 16 is refused before the element shape is decoded.
+            if (!knownKind(elem) || elem == 14 || elem == 16) {
                 return false;
             }
+            // AN ELEMENT KIND OF 12 IS AN ANNOUNCED SHAPE LIKE ANY OTHER
+            // (§3.3): a string element's shape is the max its kind names.
             e.element = shapeRead(r, elem);
             if (e.element == null) {
                 return false;
-            }
-            if (elem == 14 || elem == 16) {
-                if (!r.has(1)) {
-                    return false;
-                }
-                int inner = r.u8();
-                if (!knownKind(inner)) {
-                    return false;
-                }
-                // The inner element's own shape follows its kind byte, and a
-                // kind 12 there reads its max like any other announced shape.
-                if (inner == 12 && shapeRead(r, inner) == null) {
-                    return false;
-                }
             }
         }
         return !r.err;
