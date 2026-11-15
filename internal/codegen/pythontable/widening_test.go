@@ -99,10 +99,12 @@ type widenCell struct {
 }
 
 // widenShapes are the two code shapes a Root takes: all scalars, so the
-// straight-line pair, and a pointer beside the scalar, so the descriptor walk.
+// straight-line pair, and a pointer beside them, so the descriptor walk. The
+// bool beside the integer keeps the straight-line load's typed branches under
+// the analyzer.
 var widenShapes = []struct{ name, tail string }{
-	{"straight", ""},
-	{"walk", "    next *Root\n"},
+	{"straight", "    flag  bool\n"},
+	{"walk", "    flag  bool\n    next  *Root\n"},
 }
 
 func widenProbe(n int) string {

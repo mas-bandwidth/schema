@@ -450,6 +450,12 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 		b.WriteString("                raise Refused(\"wire_damaged\", \"a body carries one field twice\")\n")
 		b.WriteString("            seen.add(field_id)\n")
 		fmt.Fprintf(b, "            if kind != fields[%d].kind:\n", i)
+		if codecOf(f) != "int" {
+			// a bool widens into nothing (docs/SPEC-TABLES.md §4)
+			fmt.Fprintf(b, "                raise Refused(\"kind_mismatch\", f\"{obj.descriptor.name}.{fields[%d].name} rides under kind {kind}, not {fields[%d].kind}\")\n", i, i)
+			fmt.Fprintf(b, "            obj.%s = _s_kinds._REGISTRY[fields[%d].codec].read(reader, fields[%d], ctx)\n", f.Name, i, i)
+			continue
+		}
 		fmt.Fprintf(b, "                if not _s_widen._accepts(fields[%d], kind):\n", i)
 		fmt.Fprintf(b, "                    raise Refused(\"kind_mismatch\", f\"{obj.descriptor.name}.{fields[%d].name} rides under kind {kind}, not {fields[%d].kind}\")\n", i, i)
 		fmt.Fprintf(b, "                obj.%s = _s_widen._read(reader, fields[%d], kind, ctx)\n", f.Name, i)
