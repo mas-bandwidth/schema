@@ -1004,14 +1004,17 @@ tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
 # the refusal (docs/plans/strict-only.md), so the leg accepts a mutant the
 # oracle refuses as damaged. The mutant must be the plant's own: the clean
 # all-roots driver, replayed on it, must agree with the oracle, so a red the
-# clean leg shares never passes for this control's.
+# clean leg shares never passes for this control's. The pointer-edge note that
+# runs before the range check holds the same bound (target past wire_edges),
+# so its verdict is taken away too, or it alone keeps the leg right.
 .PHONY: tables-rust-wire-fuzz-negative-control
 tables-rust-wire-fuzz-negative-control: build/conformance-harness build/conformance-rust-all
 	@rm -rf build/rust-wire-fuzz-control && mkdir -p build/rust-wire-fuzz-control
-	@sed '/index - 2 >= self.slots.len() as u64 {/{n;s|report.damaged = true;|/* SABOTAGED */|;}' \
+	@sed -e '/index - 2 >= self.slots.len() as u64 {/{n;s|report.damaged = true;|/* SABOTAGED */|;}' \
+		-e '/if target >= self.wire_edges.len() {/{n;s|report.damaged = true;|/* SABOTAGED */|;}' \
 		internal/codegen/rusttable/variable.go > build/rust-wire-fuzz-control/variable.go.txt
-	@test "$$(grep -c SABOTAGED build/rust-wire-fuzz-control/variable.go.txt)" = 2 || \
-		{ echo "NEGATIVE CONTROL: the node-index sabotage did not apply twice"; exit 1; }
+	@test "$$(grep -c SABOTAGED build/rust-wire-fuzz-control/variable.go.txt)" = 3 || \
+		{ echo "NEGATIVE CONTROL: the node-index sabotage did not apply three times"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/variable.go":"%s/build/rust-wire-fuzz-control/variable.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-wire-fuzz-control/overlay.json
 	go build -overlay=build/rust-wire-fuzz-control/overlay.json -o build/rust-wire-fuzz-control/schema ./cmd/schema
