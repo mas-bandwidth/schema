@@ -107,7 +107,7 @@ func cppRuntimeNames() []Name {
 			"TableDeclRef", "TableNodeScanBegin", "TableNodeScanNext", "TableNodeScanOpen",
 			"TableNodeScanWhole", "TableNodeTableMeasure", "TableNodeTableMeasureRetain", "TableNodeTablePayload",
 			"TableNodeTablePayloadRetain", "TableNodeTableSave", "TableNodeTableSaveRetain", "TableNumberingAppend",
-			"TableNumberingIndex", "TableNumberingInit", "TableNumberingShutdown", "TablePackMapClose",
+			"TableNumberingIndex", "TableNumberingInit", "TableNumberingShutdown", "TableNumberingWorkPush", "TablePackMapClose",
 			"TablePackMapFind", "TablePackMapGrow", "TablePackMapInit", "TablePackMapReach", "TablePackMapReset",
 			"TablePackMapShutdown", "TablePackMapSlot", "kTableNodeAbsent", "kTableNodeIndexNull",
 			"kTableNodeIndexRoot", "kTableNodeRefused", "kTableNodeTableFieldId",
