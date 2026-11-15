@@ -104,6 +104,10 @@ int writeBenchPacket(BenchPacket value, ByteData view) {
   assert(value.b <= 65535);
   assert(value.c >= -1000000);
   assert(value.c <= 1000000);
+  assert(value.bits7 >= 0);
+  assert(value.bits7 <= 127);
+  assert(value.bits13 >= 0);
+  assert(value.bits13 <= 8191);
   v =
       ((value.a + 100) & 0xff) |
       ((value.b & 0xffff) << 8) |
@@ -111,6 +115,8 @@ int writeBenchPacket(BenchPacket value, ByteData view) {
       ((value.bits7 & 0x7f) << 45);
   scratch |= v << scratchBits;
   scratchBits += 52;
+  assert(value.bits23 >= 0);
+  assert(value.bits23 <= 8388607);
   v =
       (value.bits13 & 0x1fff) |
       ((value.bits23 & 0x7fffff) << 13) |
@@ -637,6 +643,16 @@ int writeBenchBits(BenchBits value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.b7 >= 0);
+  assert(value.b7 <= 127);
+  assert(value.b13 >= 0);
+  assert(value.b13 <= 8191);
+  assert(value.b23 >= 0);
+  assert(value.b23 <= 8388607);
+  assert(value.b3 >= 0);
+  assert(value.b3 <= 7);
+  assert(value.b32 >= 0);
+  assert(value.b32 <= 4294967295);
   v =
       (value.b7 & 0x7f) |
       ((value.b13 & 0x1fff) << 7) |
@@ -644,6 +660,12 @@ int writeBenchBits(BenchBits value, ByteData view) {
       ((value.b3 & 0x7) << 43);
   scratch |= v << scratchBits;
   scratchBits += 46;
+  assert(value.b11 >= 0);
+  assert(value.b11 <= 2047);
+  assert(value.b19 >= 0);
+  assert(value.b19 <= 524287);
+  assert(value.b48 >= 0);
+  assert(value.b48 <= 281474976710655);
   v =
       (value.b32 & 0xffffffff) |
       ((value.b11 & 0x7ff) << 32) |
@@ -972,12 +994,16 @@ int writeMixedEntity(MixedEntity value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.entityId >= 0);
+  assert(value.entityId <= 4095);
   assert(value.posX >= -16383);
   assert(value.posX <= 16383);
   assert(value.posY >= -16383);
   assert(value.posY <= 16383);
   assert(value.posZ >= -16383);
   assert(value.posZ <= 16383);
+  assert(value.yaw >= 0);
+  assert(value.yaw <= 511);
   v =
       (value.entityId & 0xfff) |
       (((value.posX + 16383) & 0x7fff) << 12) |
@@ -985,6 +1011,8 @@ int writeMixedEntity(MixedEntity value, ByteData view) {
       (((value.posZ + 16383) & 0x7fff) << 42);
   scratch |= v << scratchBits;
   scratchBits += 57;
+  assert(value.pitch >= 0);
+  assert(value.pitch <= 511);
   assert(value.velX >= -2048);
   assert(value.velX <= 2047);
   assert(value.velY >= -2048);
@@ -1174,6 +1202,8 @@ int writeMixedStat(MixedStat value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.statId >= 0);
+  assert(value.statId <= 255);
   assert(value.delta >= -512);
   assert(value.delta <= 511);
   v = (value.statId & 0xff) | (((value.delta + 512) & 0x3ff) << 8);
@@ -1278,6 +1308,8 @@ int writeMixedHitEvent(MixedHitEvent value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.targetId >= 0);
+  assert(value.targetId <= 4095);
   assert(value.damage >= 0);
   assert(value.damage <= 4095);
   assert(value.hitKind >= 0);
@@ -1389,6 +1421,8 @@ int writeMixedChatEvent(MixedChatEvent value, ByteData view) {
   var v = 0;
   assert(value.channel >= 0);
   assert(value.channel <= 3);
+  assert(value.speaker >= 0);
+  assert(value.speaker <= 4095);
   v = (value.channel & 0x3) | ((value.speaker & 0xfff) << 2);
   scratch |= v << scratchBits;
   scratchBits += 14;
@@ -1484,6 +1518,8 @@ int writeMixedPickupEvent(MixedPickupEvent value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.itemId >= 0);
+  assert(value.itemId <= 1023);
   assert(value.amount >= 0);
   assert(value.amount <= 255);
   v = (value.itemId & 0x3ff) | ((value.amount & 0xff) << 10);
@@ -1612,6 +1648,8 @@ int writeMixedEvent(MixedEvent value, ByteData view) {
   scratchBits += 2;
   switch (value.type) {
     case MixedEventType.hit:
+      assert(value.hit.targetId >= 0);
+      assert(value.hit.targetId <= 4095);
       assert(value.hit.damage >= 0);
       assert(value.hit.damage <= 4095);
       assert(value.hit.hitKind >= 0);
@@ -1626,10 +1664,14 @@ int writeMixedEvent(MixedEvent value, ByteData view) {
     case MixedEventType.chat:
       assert(value.chat.channel >= 0);
       assert(value.chat.channel <= 3);
+      assert(value.chat.speaker >= 0);
+      assert(value.chat.speaker <= 4095);
       v = (value.chat.channel & 0x3) | ((value.chat.speaker & 0xfff) << 2);
       scratch |= v << scratchBits;
       scratchBits += 14;
     case MixedEventType.pickup:
+      assert(value.pickup.itemId >= 0);
+      assert(value.pickup.itemId <= 1023);
       assert(value.pickup.amount >= 0);
       assert(value.pickup.amount <= 255);
       v = (value.pickup.itemId & 0x3ff) | ((value.pickup.amount & 0xff) << 10);
@@ -1889,8 +1931,12 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.sequence >= 0);
+  assert(value.sequence <= 65535);
   assert(value.ackSequence >= 0);
   assert(value.ackSequence <= 65535);
+  assert(value.ackBits >= 0);
+  assert(value.ackBits <= 4294967295);
   v =
       49374 |
       ((value.sequence & 0xffff) << 16) |
@@ -1935,6 +1981,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
+  assert(value.frameTick >= 0);
+  assert(value.frameTick <= 281474976710655);
   v = (value.worldTime + 1000000000000) & 0x1ffffffffff;
   scratch |= v << scratchBits;
   scratchBits += 41;
@@ -1968,12 +2016,16 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   }
   for (var i0 = 0; i0 < value.entitiesCount; i0++) {
     final e0 = value.entities[i0];
+    assert(e0.entityId >= 0);
+    assert(e0.entityId <= 4095);
     assert(e0.posX >= -16383);
     assert(e0.posX <= 16383);
     assert(e0.posY >= -16383);
     assert(e0.posY <= 16383);
     assert(e0.posZ >= -16383);
     assert(e0.posZ <= 16383);
+    assert(e0.yaw >= 0);
+    assert(e0.yaw <= 511);
     v =
         (e0.entityId & 0xfff) |
         (((e0.posX + 16383) & 0x7fff) << 12) |
@@ -1987,6 +2039,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (57 - scratchBits);
     }
+    assert(e0.pitch >= 0);
+    assert(e0.pitch <= 511);
     assert(e0.velX >= -2048);
     assert(e0.velX <= 2047);
     assert(e0.velY >= -2048);
@@ -2042,12 +2096,18 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     var i0 = 0;
     for (; i0 + 3 <= value.statsCount; i0 += 3) {
       final e0 = value.stats[i0];
+      assert(e0.statId >= 0);
+      assert(e0.statId <= 255);
       assert(e0.delta >= -512);
       assert(e0.delta <= 511);
       final e0g1 = value.stats[i0 + 1];
+      assert(e0g1.statId >= 0);
+      assert(e0g1.statId <= 255);
       assert(e0g1.delta >= -512);
       assert(e0g1.delta <= 511);
       final e0g2 = value.stats[i0 + 2];
+      assert(e0g2.statId >= 0);
+      assert(e0g2.statId <= 255);
       assert(e0g2.delta >= -512);
       assert(e0g2.delta <= 511);
       v =
@@ -2068,6 +2128,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     }
     for (; i0 < value.statsCount; i0++) {
       final e0 = value.stats[i0];
+      assert(e0.statId >= 0);
+      assert(e0.statId <= 255);
       assert(e0.delta >= -512);
       assert(e0.delta <= 511);
       v = (e0.statId & 0xff) | (((e0.delta + 512) & 0x3ff) << 8);
@@ -2094,6 +2156,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   }
   switch (value.gameEvent.type) {
     case MixedEventType.hit:
+      assert(value.gameEvent.hit.targetId >= 0);
+      assert(value.gameEvent.hit.targetId <= 4095);
       assert(value.gameEvent.hit.damage >= 0);
       assert(value.gameEvent.hit.damage <= 4095);
       assert(value.gameEvent.hit.hitKind >= 0);
@@ -2114,6 +2178,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     case MixedEventType.chat:
       assert(value.gameEvent.chat.channel >= 0);
       assert(value.gameEvent.chat.channel <= 3);
+      assert(value.gameEvent.chat.speaker >= 0);
+      assert(value.gameEvent.chat.speaker <= 4095);
       v =
           (value.gameEvent.chat.channel & 0x3) |
           ((value.gameEvent.chat.speaker & 0xfff) << 2);
@@ -2126,6 +2192,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
         scratch = v >>> (14 - scratchBits);
       }
     case MixedEventType.pickup:
+      assert(value.gameEvent.pickup.itemId >= 0);
+      assert(value.gameEvent.pickup.itemId <= 1023);
       assert(value.gameEvent.pickup.amount >= 0);
       assert(value.gameEvent.pickup.amount <= 255);
       v =
@@ -2396,6 +2464,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       }
     }
   }
+  assert(value.crcHint >= 0);
+  assert(value.crcHint <= 16777215);
   assert(value.extra >= 0);
   assert(value.extra <= 255);
   assert(value.idleTicks >= 0);

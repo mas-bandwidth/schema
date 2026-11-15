@@ -58,18 +58,26 @@ int writeArmsAgree(ArmsAgree value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.lead >= 0);
+  assert(value.lead <= 31);
   v = (value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5);
   scratch |= v << scratchBits;
   scratchBits += 6;
   if (value.flag) {
+    assert(value.a >= 0);
+    assert(value.a <= 2047);
     v = value.a & 0x7ff;
     scratch |= v << scratchBits;
     scratchBits += 11;
   } else {
+    assert(value.b >= 0);
+    assert(value.b <= 2047);
     v = value.b & 0x7ff;
     scratch |= v << scratchBits;
     scratchBits += 11;
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 127);
   v = value.tail & 0x7f;
   scratch |= v << scratchBits;
   scratchBits += 7;
@@ -209,18 +217,26 @@ int writeArmsDisagree(ArmsDisagree value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.lead >= 0);
+  assert(value.lead <= 31);
   v = (value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5);
   scratch |= v << scratchBits;
   scratchBits += 6;
   if (value.flag) {
+    assert(value.a >= 0);
+    assert(value.a <= 2047);
     v = value.a & 0x7ff;
     scratch |= v << scratchBits;
     scratchBits += 11;
   } else {
+    assert(value.b >= 0);
+    assert(value.b <= 7);
     v = value.b & 0x7;
     scratch |= v << scratchBits;
     scratchBits += 3;
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 127);
   v = value.tail & 0x7f;
   scratch |= v << scratchBits;
   scratchBits += 7;
@@ -363,14 +379,20 @@ int writeArmEmpty(ArmEmpty value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.lead >= 0);
+  assert(value.lead <= 31);
   v = (value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5);
   scratch |= v << scratchBits;
   scratchBits += 6;
   if (value.flag) {
+    assert(value.a >= 0);
+    assert(value.a <= 524287);
     v = value.a & 0x7ffff;
     scratch |= v << scratchBits;
     scratchBits += 19;
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 127);
   v = value.tail & 0x7f;
   scratch |= v << scratchBits;
   scratchBits += 7;
@@ -519,6 +541,8 @@ int writeArmsNested(ArmsNested value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.lead >= 0);
+  assert(value.lead <= 7);
   v = (value.lead & 0x7) | ((value.outer ? 1 : 0) << 3);
   scratch |= v << scratchBits;
   scratchBits += 4;
@@ -527,19 +551,27 @@ int writeArmsNested(ArmsNested value, ByteData view) {
     scratch |= v << scratchBits;
     scratchBits += 1;
     if (value.inner) {
+      assert(value.x >= 0);
+      assert(value.x <= 536870911);
       v = value.x & 0x1fffffff;
       scratch |= v << scratchBits;
       scratchBits += 29;
     } else {
+      assert(value.y >= 0);
+      assert(value.y <= 31);
       v = value.y & 0x1f;
       scratch |= v << scratchBits;
       scratchBits += 5;
     }
   } else {
+    assert(value.z >= 0);
+    assert(value.z <= 8191);
     v = value.z & 0x1fff;
     scratch |= v << scratchBits;
     scratchBits += 13;
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 63);
   v = value.tail & 0x3f;
   scratch |= v << scratchBits;
   scratchBits += 6;
@@ -723,6 +755,8 @@ int writeArmAlign(ArmAlign value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.lead >= 0);
+  assert(value.lead <= 31);
   v = (value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5);
   scratch |= v << scratchBits;
   scratchBits += 6;
@@ -768,10 +802,14 @@ int writeArmAlign(ArmAlign value, ByteData view) {
       }
     }
   } else {
+    assert(value.b >= 0);
+    assert(value.b <= 1023);
     v = value.b & 0x3ff;
     scratch |= v << scratchBits;
     scratchBits += 10;
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 127);
   v = value.tail & 0x7f;
   scratch |= v << scratchBits;
   scratchBits += 7;
@@ -964,6 +1002,8 @@ int writeArmArray(ArmArray value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.lead >= 0);
+  assert(value.lead <= 31);
   v = (value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5);
   scratch |= v << scratchBits;
   scratchBits += 6;
@@ -1013,10 +1053,14 @@ int writeArmArray(ArmArray value, ByteData view) {
       }
     }
   } else {
+    assert(value.b >= 0);
+    assert(value.b <= 511);
     v = value.b & 0x1ff;
     scratch |= v << scratchBits;
     scratchBits += 9;
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 127);
   v = value.tail & 0x7f;
   scratch |= v << scratchBits;
   scratchBits += 7;
@@ -1190,6 +1234,8 @@ int writeNarrow(Narrow value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.n >= 0);
+  assert(value.n <= 7);
   v = value.n & 0x7;
   scratch |= v << scratchBits;
   scratchBits += 3;
@@ -1278,6 +1324,8 @@ int writeWide(Wide value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.w >= 0);
+  assert(value.w <= 137438953471);
   v = value.w & 0x1fffffffff;
   scratch |= v << scratchBits;
   scratchBits += 37;
@@ -1397,10 +1445,14 @@ int writeUneven(Uneven value, ByteData view) {
   scratchBits += 2;
   switch (value.type) {
     case UnevenType.narrow:
+      assert(value.narrow.n >= 0);
+      assert(value.narrow.n <= 7);
       v = value.narrow.n & 0x7;
       scratch |= v << scratchBits;
       scratchBits += 3;
     case UnevenType.wide:
+      assert(value.wide.w >= 0);
+      assert(value.wide.w <= 137438953471);
       v = value.wide.w & 0x1fffffffff;
       scratch |= v << scratchBits;
       scratchBits += 37;
@@ -1528,6 +1580,8 @@ int writeHoldsUneven(HoldsUneven value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.lead >= 0);
+  assert(value.lead <= 31);
   assert(value.u.type >= 0);
   assert(value.u.type <= 2);
   v = (value.lead & 0x1f) | ((value.u.type & 0x3) << 5);
@@ -1535,14 +1589,20 @@ int writeHoldsUneven(HoldsUneven value, ByteData view) {
   scratchBits += 7;
   switch (value.u.type) {
     case UnevenType.narrow:
+      assert(value.u.narrow.n >= 0);
+      assert(value.u.narrow.n <= 7);
       v = value.u.narrow.n & 0x7;
       scratch |= v << scratchBits;
       scratchBits += 3;
     case UnevenType.wide:
+      assert(value.u.wide.w >= 0);
+      assert(value.u.wide.w <= 137438953471);
       v = value.u.wide.w & 0x1fffffffff;
       scratch |= v << scratchBits;
       scratchBits += 37;
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 2047);
   v = value.tail & 0x7ff;
   scratch |= v << scratchBits;
   scratchBits += 11;
@@ -1693,6 +1753,8 @@ int writeArrUneven(ArrUneven value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.lead >= 0);
+  assert(value.lead <= 31);
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 3);
   v = (value.lead & 0x1f) | ((value.itemsCount & 0x3) << 5);
@@ -1713,6 +1775,8 @@ int writeArrUneven(ArrUneven value, ByteData view) {
     }
     switch (e0.type) {
       case UnevenType.narrow:
+        assert(e0.narrow.n >= 0);
+        assert(e0.narrow.n <= 7);
         v = e0.narrow.n & 0x7;
         scratch |= v << scratchBits;
         scratchBits += 3;
@@ -1723,6 +1787,8 @@ int writeArrUneven(ArrUneven value, ByteData view) {
           scratch = v >>> (3 - scratchBits);
         }
       case UnevenType.wide:
+        assert(e0.wide.w >= 0);
+        assert(e0.wide.w <= 137438953471);
         v = e0.wide.w & 0x1fffffffff;
         scratch |= v << scratchBits;
         scratchBits += 37;
@@ -1734,6 +1800,8 @@ int writeArrUneven(ArrUneven value, ByteData view) {
         }
     }
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 7);
   v = value.tail & 0x7;
   scratch |= v << scratchBits;
   scratchBits += 3;
@@ -1917,6 +1985,8 @@ int writeRegainAfterAlign(RegainAfterAlign value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.lead >= 0);
+  assert(value.lead <= 31);
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 3);
   v = (value.lead & 0x1f) | ((value.itemsCount & 0x3) << 5);
@@ -2013,6 +2083,12 @@ int writeRegainAfterAlign(RegainAfterAlign value, ByteData view) {
       }
     }
   }
+  assert(value.p >= 0);
+  assert(value.p <= 4294967295);
+  assert(value.q >= 0);
+  assert(value.q <= 536870911);
+  assert(value.r >= 0);
+  assert(value.r <= 524287);
   v = (value.p & 0xffffffff) | ((value.q & 0x1fffffff) << 32);
   scratch |= v << scratchBits;
   scratchBits += 61;
@@ -2022,6 +2098,8 @@ int writeRegainAfterAlign(RegainAfterAlign value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (61 - scratchBits);
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 15);
   v = (value.r & 0x7ffff) | ((value.tail & 0xf) << 19);
   scratch |= v << scratchBits;
   scratchBits += 23;

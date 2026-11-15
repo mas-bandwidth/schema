@@ -210,6 +210,8 @@ int writeTableHitEvent(TableHitEvent value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.targetId >= 0);
+  assert(value.targetId <= 4095);
   assert(value.damage >= 0);
   assert(value.damage <= 4095);
   assert(value.hitKind >= 0);
@@ -321,6 +323,8 @@ int writeTableChatEvent(TableChatEvent value, ByteData view) {
   var v = 0;
   assert(value.channel >= 0);
   assert(value.channel <= 3);
+  assert(value.speaker >= 0);
+  assert(value.speaker <= 4095);
   v = (value.channel & 0x3) | ((value.speaker & 0xfff) << 2);
   scratch |= v << scratchBits;
   scratchBits += 14;
@@ -416,6 +420,8 @@ int writeTablePickupEvent(TablePickupEvent value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.itemId >= 0);
+  assert(value.itemId <= 1023);
   assert(value.amount >= 0);
   assert(value.amount <= 255);
   v = (value.itemId & 0x3ff) | ((value.amount & 0xff) << 10);
@@ -544,6 +550,8 @@ int writeTableEvent(TableEvent value, ByteData view) {
   scratchBits += 2;
   switch (value.type) {
     case TableEventType.hit:
+      assert(value.hit.targetId >= 0);
+      assert(value.hit.targetId <= 4095);
       assert(value.hit.damage >= 0);
       assert(value.hit.damage <= 4095);
       assert(value.hit.hitKind >= 0);
@@ -558,10 +566,14 @@ int writeTableEvent(TableEvent value, ByteData view) {
     case TableEventType.chat:
       assert(value.chat.channel >= 0);
       assert(value.chat.channel <= 3);
+      assert(value.chat.speaker >= 0);
+      assert(value.chat.speaker <= 4095);
       v = (value.chat.channel & 0x3) | ((value.chat.speaker & 0xfff) << 2);
       scratch |= v << scratchBits;
       scratchBits += 14;
     case TableEventType.pickup:
+      assert(value.pickup.itemId >= 0);
+      assert(value.pickup.itemId <= 1023);
       assert(value.pickup.amount >= 0);
       assert(value.pickup.amount <= 255);
       v = (value.pickup.itemId & 0x3ff) | ((value.pickup.amount & 0xff) << 10);

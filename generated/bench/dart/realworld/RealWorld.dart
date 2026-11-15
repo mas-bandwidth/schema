@@ -606,6 +606,8 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (32 - scratchBits);
   }
+  assert(value.f011Bits >= 0);
+  assert(value.f011Bits <= 1023);
   v = (value.f011Bits & 0x3ff) | ((value.f012Bool ? 1 : 0) << 10);
   scratch |= v << scratchBits;
   scratchBits += 11;
@@ -703,6 +705,8 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (32 - scratchBits);
   }
+  assert(value.f023Bits >= 0);
+  assert(value.f023Bits <= 33554431);
   v = value.f023Bits & 0x1ffffff;
   scratch |= v << scratchBits;
   scratchBits += 25;
@@ -725,6 +729,8 @@ int writeRealPacket(RealPacket value, ByteData view) {
   }
   assert(value.f025Fixed >= -30464);
   assert(value.f025Fixed <= 30464);
+  assert(value.f026Bits >= 0);
+  assert(value.f026Bits <= 511);
   v = ((value.f025Fixed + 30464) & 0xffff) | ((value.f026Bits & 0x1ff) << 16);
   scratch |= v << scratchBits;
   scratchBits += 25;
@@ -754,6 +760,8 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (5 - scratchBits);
   }
+  assert(value.f028Bits >= 0);
+  assert(value.f028Bits <= 15);
   v = value.f028Bits & 0xf;
   scratch |= v << scratchBits;
   scratchBits += 4;
@@ -783,14 +791,20 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (32 - scratchBits);
   }
+  assert(value.f031Bits >= 0);
+  assert(value.f031Bits <= 1);
   assert(value.f032Int >= -3);
   assert(value.f032Int <= 3);
   assert(value.f033Uint >= 0);
   assert(value.f033Uint <= 142780);
   assert(value.f034Uint >= 0);
   assert(value.f034Uint <= 14149);
+  assert(value.f035Bits >= 0);
+  assert(value.f035Bits <= 511);
   assert(value.f036Enum >= 0);
   assert(value.f036Enum <= 5);
+  assert(value.f039Bits >= 0);
+  assert(value.f039Bits <= 524287);
   v =
       (value.f031Bits & 0x1) |
       (((value.f032Int + 3) & 0x7) << 1) |
@@ -812,6 +826,8 @@ int writeRealPacket(RealPacket value, ByteData view) {
   assert(value.f040Fixed <= 20480);
   assert(value.f041Int >= -55);
   assert(value.f041Int <= 55);
+  assert(value.f042Bits >= 0);
+  assert(value.f042Bits <= 1073741823);
   v =
       (value.f039Bits & 0x7ffff) |
       (((value.f040Fixed + 20480) & 0xffff) << 19) |
@@ -845,6 +861,8 @@ int writeRealPacket(RealPacket value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (32 - scratchBits);
     }
+    assert(value.f045Bits >= 0);
+    assert(value.f045Bits <= 4095);
     assert(value.f046Uint >= 0);
     assert(value.f046Uint <= 76063);
     assert(value.f047Int >= -430976);
@@ -946,6 +964,8 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratch = v >>> (32 - scratchBits);
   }
   assert(value.f059F64.isFinite);
+  assert(value.f060Bits >= 0);
+  assert(value.f060Bits <= 255);
   v = Schema.float64BitsFromDouble(value.f059F64);
   scratch |= v << scratchBits;
   scratchBits += 64;
@@ -1086,6 +1106,8 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (11 - scratchBits);
   }
+  assert(value.f069Bits >= 0);
+  assert(value.f069Bits <= 2047);
   assert(value.f070Uint >= 0);
   assert(value.f070Uint <= 2);
   v = (value.f069Bits & 0x7ff) | ((value.f070Uint & 0x3) << 11);
@@ -1162,6 +1184,8 @@ int writeRealPacket(RealPacket value, ByteData view) {
     }
     assert(value.f077Int >= -17);
     assert(value.f077Int <= 17);
+    assert(value.f078Bits >= 0);
+    assert(value.f078Bits <= 511);
     assert(value.f079Uint >= 0);
     assert(value.f079Uint <= 17);
     v =
@@ -1178,6 +1202,10 @@ int writeRealPacket(RealPacket value, ByteData view) {
       scratch = v >>> (36 - scratchBits);
     }
   }
+  assert(value.f081Bits >= 0);
+  assert(value.f081Bits <= 536870911);
+  assert(value.f082Bits >= 0);
+  assert(value.f082Bits <= 33554431);
   assert(value.f083Enum >= 0);
   assert(value.f083Enum <= 5);
   assert(value.f084Ufixed >= 0);
@@ -1195,6 +1223,8 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (58 - scratchBits);
   }
+  assert(value.f085Bits >= 0);
+  assert(value.f085Bits <= 2097151);
   assert(value.f086Uint >= 0);
   assert(value.f086Uint <= 399);
   assert(value.f087F64.isFinite);
@@ -1221,6 +1251,8 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
+  assert(value.f089Bits >= 0);
+  assert(value.f089Bits <= 281474976710655);
   assert(value.f090Uint >= 0);
   assert(value.f090Uint <= 214);
   v =
@@ -1258,6 +1290,10 @@ int writeRealPacket(RealPacket value, ByteData view) {
   }
   assert(value.f095Fixed >= -103350272);
   assert(value.f095Fixed <= 103350272);
+  assert(value.f096Bits >= 0);
+  assert(value.f096Bits <= 262143);
+  assert(value.f097Bits >= 0);
+  assert(value.f097Bits <= 4095);
   v =
       (value.f094Bool ? 1 : 0) |
       (((value.f095Fixed + 103350272) & 0xfffffff) << 1) |
