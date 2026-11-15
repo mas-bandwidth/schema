@@ -5188,11 +5188,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_object_p(bin, depth) do
     case json_skip(bin) do
       <<"}", rest::binary>> -> {:ok, {:obj, []}, rest}
-      _ -> json_object_pairs(bin, [], depth)
+      _ -> json_object_pairs(bin, [], MapSet.new(), depth)
     end
   end
 
-  defp json_object_pairs(bin, acc, depth) do
+  # every object of the text carries one set of its decoded keys, placed or
+  # skipped (§16.2, §16.12): a repeated key refuses the read.
+  defp json_object_pairs(bin, acc, seen, depth) do
     case json_skip(bin) do
       <<"}", rest::binary>> ->
         {:ok, {:obj, Enum.reverse(acc)}, rest}
@@ -5200,9 +5202,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       <<"\"", rest::binary>> ->
         with {:ok, key, r1} <- json_string(rest, []),
              <<":", r2::binary>> <- json_skip(r1),
+             false <- MapSet.member?(seen, key),
              {:ok, val, r3} <- json_object_val(key, acc, r2, depth + 1) do
+          seen = MapSet.put(seen, key)
+
           case json_skip(r3) do
-            <<",", r4::binary>> -> json_object_pairs(r4, [{key, val} | acc], depth)
+            <<",", r4::binary>> -> json_object_pairs(r4, [{key, val} | acc], seen, depth)
             <<"}", r4::binary>> -> {:ok, {:obj, Enum.reverse([{key, val} | acc])}, r4}
             _ -> :error
           end
