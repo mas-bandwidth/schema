@@ -337,6 +337,28 @@ def widens(kind:int, declared:int) -> bool:
         return kind == 10
     return false
 
+// The element kind an array body (kind 14) may carry is the closed list of
+// §3: 1-13, 15, 17 and 18-30. Any other kind is damage under any count.
+def array_element_kind_allowed(kind:int) -> bool:
+    if kind >= 1 and kind <= 13:
+        return true
+    if kind == 15 or kind == 17:
+        return true
+    if kind >= 18 and kind <= 30:
+        return true
+    return false
+
+// The element kind an enum-keyed body (kind 16) may carry is its own closed
+// list (§3): 1-11, 13 and 18-30. Any other kind is damage under any count.
+def keyed_element_kind_allowed(kind:int) -> bool:
+    if kind >= 1 and kind <= 11:
+        return true
+    if kind == 13:
+        return true
+    if kind >= 18 and kind <= 30:
+        return true
+    return false
+
 // skip steps past a field this reader cannot name (§3): the kind byte is
 // all it needs. Kind 34 (float16) is reserved and, like every kind the set
 // does not hold, is not skippable.
@@ -1150,6 +1172,10 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
     let count, good = leb(sr)
     if not good:
         return read_refuse(rep, "wire_damaged"), false
+    // THE ELEMENT KIND IS CLOSED, judged under any count before any comparison
+    // with the reader's declaration (§3, §4).
+    if not array_element_kind_allowed(ek):
+        return read_refuse(rep, "wire_damaged"), false
     if ek != f.ek and not widens(ek, f.ek):
         return read_refuse(rep, "kind_mismatch"), false
     if count < 0 or count > 0x7FFFFFFF:
@@ -1208,6 +1234,10 @@ class KeyedShape : Shape
         let ek = u8(sr)
         let count, good = leb(sr)
         if not good or count < 0 or count > 0x7FFFFFFF:
+            return read_refuse(rep, "wire_damaged")
+        // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under
+        // any count before the reader's declaration (§3, §4).
+        if not keyed_element_kind_allowed(ek):
             return read_refuse(rep, "wire_damaged")
         if ek != f.ek:
             if not widens(ek, f.ek):
@@ -1429,6 +1459,10 @@ class MapShape : Shape
         let ek = u8(sr)
         let count, good = leb(sr)
         if not good:
+            return read_refuse(rep, "wire_damaged")
+        // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind is
+        // held to the array list first, under any count (§3, §4).
+        if not array_element_kind_allowed(ek):
             return read_refuse(rep, "wire_damaged")
         if ek != 13:
             return read_refuse(rep, "kind_mismatch")
@@ -1673,7 +1707,9 @@ class NodeRecord:
 
 // scan_node_records is THE AUTHORITATIVE RECORD SCAN (§3.1; Go's
 // scanNodeRecords): records until the payload is consumed, and a node_count
-// that disagrees with the scan is malformed.
+// that disagrees with the scan is malformed. A RESERVED ID IN ANY BODY BUT
+// THE ONE WHOSE TRANSPORT IT IS, IS MALFORMED: a record typed by the
+// node-table, build-version or vocabulary id refuses the load.
 def scan_node_records(st:LoadState, plo:int, phi:int) -> [NodeRecord], bool:
     let data = st.data
     let declared, first, ok = read_leb(data, plo, phi)
@@ -1685,12 +1721,15 @@ def scan_node_records(st:LoadState, plo:int, phi:int) -> [NodeRecord], bool:
         let ref, next, good = read_leb(data, off, phi)
         if not good or ref == 0 or ult(length(st.ids), ref):
             return [], false
+        let tid = st.ids[ref - 1]
+        if tid == node_table_id or tid == build_version_id or tid == message_vocabulary_id:
+            return [], false
         let size, after, lgood = read_leb(data, next, phi)
         if not lgood:
             return [], false
         if size < 0 or size > phi - after:
             return [], false
-        push(records, NodeRecord { tid: st.ids[ref - 1], lo: after, hi: after + size })
+        push(records, NodeRecord { tid: tid, lo: after, hi: after + size })
         off = after + size
     if off != phi or declared != length(records):
         return [], false
@@ -1966,7 +2005,17 @@ def wire_payload(c:WireCheck, r:Reader, kind:int) -> bool:
         let n, framed = leb(r)
         if not framed or not has(r, n):
             return read_refuse(c.st.report, "wire_damaged")
-        if not wire_content(c, sub(r, n), ak):
+        // a union is a level when its arm is structural; the arm's own
+        // payload is the next level (docs/SPEC-TABLES.md §4)
+        let level = ak >= 13 and ak <= 16
+        if level:
+            if c.depth >= binary_max_depth:
+                return read_refuse(c.st.report, "depth_over_bound")
+            c.depth++
+        let good = wire_content(c, sub(r, n), ak)
+        if level:
+            c.depth--
+        if not good:
             return false
         r.off += n
         return true
@@ -1981,7 +2030,7 @@ def wire_payload(c:WireCheck, r:Reader, kind:int) -> bool:
     return read_refuse(c.st.report, "wire_damaged")
 
 def wire_content(c:WireCheck, r:Reader, kind:int) -> bool:
-    let nested = kind >= 13 and kind <= 16
+    let nested = kind == 13 or kind == 14 or kind == 16
     if nested:
         if c.depth >= binary_max_depth:
             return read_refuse(c.st.report, "depth_over_bound")
@@ -1991,8 +2040,9 @@ def wire_content(c:WireCheck, r:Reader, kind:int) -> bool:
         c.depth--
     return ok
 
-// Structured kinds 13 through 16 add a level, including a nested union.
-// A scalar arm's length adds none. Pointer records start at depth zero.
+// Framed kinds 13, 14 and 16 add a level; a union adds one in wire_payload
+// when its arm is structural, and its frame adds none of its own. A scalar
+// arm's length adds none. Pointer records start at depth zero.
 def wire_content_at(c:WireCheck, r:Reader, kind:int) -> bool:
     if kind == 12:
         if not text_valid(r.b, r.off, r.hi - r.off):
@@ -2008,6 +2058,13 @@ def wire_content_at(c:WireCheck, r:Reader, kind:int) -> bool:
         if not has(r, 2):
             return read_refuse(c.st.report, "wire_damaged")
         let ek = u8(r)
+        // THE ELEMENT KIND IS CLOSED, judged under ANY count, a count of 0
+        // included (§3, §4).
+        if kind == 16:
+            if not keyed_element_kind_allowed(ek):
+                return read_refuse(c.st.report, "wire_damaged")
+        elif not array_element_kind_allowed(ek):
+            return read_refuse(c.st.report, "wire_damaged")
         let count, ok = leb(r)
         if not ok:
             return read_refuse(c.st.report, "wire_damaged")

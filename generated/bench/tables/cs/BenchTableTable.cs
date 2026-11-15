@@ -1590,7 +1590,7 @@ namespace Benchtable
                     return ReadTable(text, ref input, empty, f.Table, depth + 1);
                 }
                 Span<byte> key = stackalloc byte[MaxName];
-                if (!ScanString(text, ref input, key, true, out int used)) { return false; }
+                if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                 input.Pos++;
                 if (!Same(key.Slice(0, used), "&node"))
@@ -2174,8 +2174,9 @@ namespace Benchtable
                             return RefuseText(ref input, "string_not_utf8");
                         }
                     }
-                    // Only stored text rejects NUL; skipped values and object field
-                    // names still accept that escape. Map keys opt in before length checks.
+                    // A placed string, an object key and a skipped value take one
+                    // rule (docs/SPEC-TABLES.md §16.3): a text that decodes to U+0000
+                    // refuses the read. Map keys opt in before length checks.
                     if (stored && unitLength == 1 && unit[0] == 0) { return RefuseText(ref input, "text_holds_zero"); }
                     if (measure)
                     {
@@ -2442,7 +2443,7 @@ namespace Benchtable
                     if (c == 0) { input.Bad = true; return false; }
                     if (close == '}')
                     {
-                        if (!ScanString(text, ref input, key, true, out int used)) { return false; }
+                        if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
                         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                         input.Pos++;
                         keys ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
@@ -2477,7 +2478,7 @@ namespace Benchtable
                     case (byte)'"':
                         {
                             int ignored;
-                            return ScanString(text, ref input, Span<byte>.Empty, false, out ignored);
+                            return ScanString(text, ref input, Span<byte>.Empty, false, out ignored, stored: true);
                         }
                     case (byte)'t': return Literal(text, ref input, "true");
                     case (byte)'f': return Literal(text, ref input, "false");
@@ -2544,7 +2545,7 @@ namespace Benchtable
                     if (Peek(text, ref input) == '}') { input.Pos++; return true; }
                     Span<byte> key = stackalloc byte[MaxName];
                     int keyLength;
-                    if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                    if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                     input.Pos++;
                     int tag = 0;
@@ -2954,7 +2955,7 @@ namespace Benchtable
                         if (c == '}') { input.Pos++; break; }
                         if (c == 0) { input.Bad = true; return false; }
                         int keyLength;
-                        if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                        if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                         input.Pos++;
                         int slot = -1;
@@ -3083,7 +3084,7 @@ namespace Benchtable
                     if (c == '}') { input.Pos++; return TableWire.RequireSeen(value, info, seen, input.Report); }
                     if (c == 0) { input.Bad = true; return false; }
                     int keyLength;
-                    if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                    if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                     input.Pos++;
                     int index = -1;
@@ -4766,14 +4767,16 @@ namespace Benchtable
                         bool nested = shape.Elem == 13 || shape.Elem == 14 || shape.Elem == 15 || shape.Elem == 16 || shape.Elem == 17 || shape.Elem == 30;
                         Span<ulong> few = stackalloc ulong[16];
                         int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+                        // a walked element of no fixed width that consumes no bits
+                        // refuses the read (docs/SPEC-TABLES.md §3.3), as the
+                        // reference's walk does: a count alone never buys the walk
+                        bool walked = shape.Elem != 0 && shape.Elem != 32 && Width(shape.Elem) == 0;
                         for (ulong i = 0; i < n; i++)
                         {
-                            long at = r.At;
                             if (kind == 16 && (!MessageName(ref r, d, out _, out TableMessageEntry key) || !SeenOnce(few, ref count, ref more, key.Id))) { return false; }
+                            long at = r.At;
                             if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, nested ? depth + 1 : depth)) { return false; }
-                            // an element that consumed no bits is the rest of the run
-                            // too: a remaining count the bits left cannot back is damage
-                            if (r.At == at) { return n - i - 1 <= (ulong)(r.End - r.At); }
+                            if (walked && r.At == at) { return false; }
                         }
                         return true;
                     case 10:

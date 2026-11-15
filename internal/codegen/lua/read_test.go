@@ -386,8 +386,13 @@ local serialize = require("serialize")
 if name == "degenerate" then
   local D = require("Degenerate")
   local names = { "Vec2", "SpanF64", "SpanU64", "SpanI64", "SpanOne", "SpanChunk", "SpanTail", "SpanTwice", "Trio", "TrioSole", "TrioFirst", "TrioStraddle" }
-  local s = serialize.ReadStream.new(inputs[name])
-  for _, n in ipairs(names) do
+  local shapeBits = { 128, 128, 128, 128, 64, 64, 160, 256, 64, 64, 80, 408 }
+  local at = 1
+  for i, n in ipairs(names) do
+    local len = math.ceil(shapeBits[i] / 8)
+    local chunk = string.sub(inputs[name], at, at + len - 1)
+    at = at + len
+    local s = serialize.ReadStream.new(chunk)
     if not D["Read" .. n](s, D["New" .. n]()) then print("refused " .. name); os.exit(0) end
   end
   print("read " .. name)
@@ -545,7 +550,8 @@ do
   v.Config.Retries = 3; v.Config.Preferred = Wire.Weapon.Missile
   check("probearray", Wire, "ProbeArray", v)
 end
--- degenerate: the twelve shapes of the one pinned stream, read back to back
+-- degenerate: the twelve shapes of the one pinned stream, each its own flushed
+-- stream (SPEC §5: the end check runs once, after the top-level object)
 do
   local vec2 = D.NewVec2(); vec2.X, vec2.Y = 1.5, -2.25
   local sf = D.NewSpanF64(); sf.Values[1], sf.Values[2] = 3.5, -4.75
@@ -564,9 +570,14 @@ do
   tr.Inner.A, tr.Inner.B, tr.Inner.C = 0x11111, 0x22222, 0x33333
   local want = { vec2, sf, su, si, so, sc, st, sw, trio, ts, tf, tr }
   local names = { "Vec2", "SpanF64", "SpanU64", "SpanI64", "SpanOne", "SpanChunk", "SpanTail", "SpanTwice", "Trio", "TrioSole", "TrioFirst", "TrioStraddle" }
-  local s = serialize.ReadStream.new(inputs["degenerate"])
+  local shapeBits = { 128, 128, 128, 128, 64, 64, 160, 256, 64, 64, 80, 408 }
+  local at = 1
   local ok = true
   for i, n in ipairs(names) do
+    local len = math.ceil(shapeBits[i] / 8)
+    local chunk = string.sub(inputs["degenerate"], at, at + len - 1)
+    at = at + len
+    local s = serialize.ReadStream.new(chunk)
     local got = D["New" .. n]()
     if not D["Read" .. n](s, got) then print("degenerate REFUSED " .. n); ok = false; break end
     if dump(got) ~= dump(want[i]) then print("degenerate MISMATCH " .. n .. " got " .. dump(got) .. " want " .. dump(want[i])); ok = false; break end
