@@ -2152,10 +2152,6 @@ type TableFixedDst struct {
 	Counted, Arg, Meta    uint8
 }
 
-// Arg's high bit marks a deprecated destination field: every compiled lineage
-// plan leaves it uncovered so the reset-image prefill supplies its default.
-const tableFixedDstDeprecated uint8 = 0x80
-
 type tableFixedPlan struct {
 	Entries []TableFixedEntry
 	Count   int32
@@ -3303,9 +3299,6 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
-	if d.Arg&tableFixedDstDeprecated != 0 {
-		return
-	}
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
 	if te.Kind != me.Kind && !(me.Kind == 35) {
@@ -7911,9 +7904,21 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	copy(b[1126:][4:], value.PlayerName[:min(uint32(value.PlayerNameLength), 15)])
 	tableFixedPut32(b[1145:], uint32(value.PayloadLength))
 	copy(b[1145:][4:], value.Payload[:min(uint32(value.PayloadLength), 16)])
-	tableFixedPutF32(b[1165:], value.AimX)
-	tableFixedPutF32(b[1169:], value.AimY)
-	tableFixedPutF32(b[1173:], value.AimZ)
+	if value.AimX == 0 {
+		tableFixedPutF32(b[1165:], 0)
+	} else {
+		tableFixedPutF32(b[1165:], value.AimX)
+	}
+	if value.AimY == 0 {
+		tableFixedPutF32(b[1169:], 0)
+	} else {
+		tableFixedPutF32(b[1169:], value.AimY)
+	}
+	if value.AimZ == 0 {
+		tableFixedPutF32(b[1173:], 0)
+	} else {
+		tableFixedPutF32(b[1173:], value.AimZ)
+	}
 	tableFixedPutF32(b[1177:], value.Recoil)
 	tableFixedPutF64(b[1181:], value.Drift)
 	tableFixedPut128(b[1189:], value.WideKey.Lo, value.WideKey.Hi)
