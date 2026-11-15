@@ -180,6 +180,14 @@ def j_kind(f:FieldDescriptor) -> int:
         return if f.signed: 18 else: 19
     return if f.signed: 2 + w else: 6 + w
 
+// j_wide_integer_kind is an integer-shaped kind whose storage is wider than
+// 32 bits — int64 (5), uint64 (9), int128 (18), uint128 (19), and the 64- and
+// 128-bit fixed-point kinds (23, 24, 28, 29). The JSON form writes one as a
+// STRING of decimal digits (docs/SPEC-TABLES.md §16.2, §16.14;
+// docs/rulings.json json-wide-integers-are-strings).
+def j_wide_integer_kind(kind:int) -> bool:
+    return kind == 5 or kind == 9 or kind == 18 or kind == 19 or kind == 23 or kind == 24 or kind == 28 or kind == 29
+
 // j_storage_bytes is the field's own storage width (Go's StorageBytes).
 def j_storage_bytes(f:FieldDescriptor) -> int:
     if f.s == "enum":
@@ -230,9 +238,19 @@ def j_element_shape(f:FieldDescriptor) -> int:
         return 'a'
     if s == "int" and f.timestamp:
         return 's'
+    if s == "int" and j_wide_integer_kind(j_kind(f)):
+        return 'N'
     if s == "bool":
         return 'b'
     return 'n'
+
+// j_shape_matches reports whether a value of the given shape satisfies the
+// shape a declaration takes. A wide integer declares 'N' and reads a string
+// OR a number; every other shape is exact (docs/SPEC-TABLES.md §16.2).
+def j_shape_matches(want:int, got:int) -> bool:
+    if want == got:
+        return true
+    return want == 'N' and (got == 's' or got == 'n')
 
 def j_enum_value(vs:[EnumVariant], name:string) -> int:
     if name == "None":
@@ -1172,6 +1190,29 @@ def j_decode_utf8(u:string) -> int:
 def j_is_digit(c:int) -> bool:
     return c >= '0' and c <= '9'
 
+// j_integer_token reports whether text is the digits-and-optional-minus
+// spelling of an integer — an optional `-`, then digits with no leading zero,
+// and not `-0` — the one spelling an integer field takes (docs/SPEC-TABLES.md
+// §16.2): no fraction, no exponent, no plus, no negative zero.
+def j_integer_token(text:string) -> bool:
+    var i = 0
+    let n = length(text)
+    var negative = false
+    if i < n and text[i] == '-':
+        negative = true
+        i++
+    if i >= n:
+        return false
+    if text[i] == '0':
+        return (not negative) and i + 1 == n
+    if text[i] < '1' or text[i] > '9':
+        return false
+    while i < n:
+        if text[i] < '0' or text[i] > '9':
+            return false
+        i++
+    return true
+
 // j_walk_number steps over ONE RFC 8259 number (Go's walkNumber): whether
 // it was integral in form, and whether it is one.
 def j_walk_number(r:JsonReader) -> bool, bool:
@@ -1439,7 +1480,7 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
                     return false
                 reset_slot(sl)
             else:
-                if shape != j_shape(sl.fd):
+                if not j_shape_matches(j_shape(sl.fd), shape):
                     return j_refuse(r, "kind_mismatch")
                 if not j_read_field(r, sl, depth):
                     j_name_zero(r, rec.d.name, sl)
@@ -1597,7 +1638,7 @@ def j_read_array(r:JsonReader, sl:Slot, depth:int) -> bool:
                 return false
             sl.elems[placed] = Value {}
             placed++
-        elif j_value_shape(r) != shape:
+        elif not j_shape_matches(shape, j_value_shape(r)):
             return j_refuse(r, "kind_mismatch")
         else:
             if not j_read_scalar(r, sl.elems[placed], e, depth + 1, true):
@@ -1713,7 +1754,7 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
             r.report.unknown++
             if not j_skip_value(r, depth + 1):
                 return false
-        elif j_value_shape(r) != shape:
+        elif not j_shape_matches(shape, j_value_shape(r)):
             return j_refuse(r, "kind_mismatch")
         elif not j_read_scalar(r, sl.elems[slot], e, depth + 1, true):
             return false
@@ -1782,18 +1823,46 @@ def j_read_scalar(r:JsonReader, cell:Value, f:FieldDescriptor, depth:int, elem:b
             return false
         cell.b = false
         return true
-    let token, integral, ok = j_scan_number(r)
-    if not ok:
-        r.bad = true
-        return false
     let kind = j_kind(f)
     if kind == 10 or kind == 11:
+        let token, _, ok = j_scan_number(r)
+        if not ok:
+            r.bad = true
+            return false
         j_place_float(r, cell, f, token, kind == 10)
         return not r.bad
+    if j_wide_integer_kind(kind):
+        // a wide integer reads as a STRING of digits OR a number, the same
+        // digits (docs/SPEC-TABLES.md §16.2)
+        var token = ""
+        if j_value_shape(r) == 's':
+            let text, _, ok = j_scan_string(r, -1)
+            if not ok:
+                return false
+            token = text
+        else:
+            let scanned, _, ok = j_scan_number(r)
+            if not ok:
+                r.bad = true
+                return false
+            token = scanned
+        if kind == 5 or kind == 9:
+            j_place_integer(r, cell, f, token, true, kind)
+        else:
+            j_place_wide(r, cell, f, token, kind)
+        return not r.bad
     if kind_wide(kind):
+        let token, _, ok = j_scan_number(r)
+        if not ok:
+            r.bad = true
+            return false
         j_place_wide(r, cell, f, token, kind)
         return not r.bad
     if kind >= 2 and kind <= 9:
+        let token, integral, ok = j_scan_number(r)
+        if not ok:
+            r.bad = true
+            return false
         j_place_integer(r, cell, f, token, integral, kind)
         return not r.bad
     r.bad = true
@@ -1960,8 +2029,14 @@ def j_in_domain(n:JsonInt, signed:bool, bytes:int) -> int, bool:
     return mag, moved
 
 def j_place_integer(r:JsonReader, cell:Value, f:FieldDescriptor, token:string, integral:bool, kind:int):
+    // AN INTEGER FIELD TAKES AN INTEGER TOKEN ONLY (docs/SPEC-TABLES.md
+    // §16.2): digits with an optional minus, no fraction, no exponent, no
+    // negative zero — and the value never passes through a double.
+    if not integral or not j_integer_token(token):
+        j_refuse(r, "kind_mismatch")
+        return
     let signed = kind >= 2 and kind <= 5
-    let number = j_interpret_integer(token, integral)
+    let number = j_interpret_integer(token, true)
     if not number.finite or number.fractional:
         j_refuse(r, "kind_mismatch")
         return
@@ -1984,6 +2059,11 @@ def j_place_integer(r:JsonReader, cell:Value, f:FieldDescriptor, token:string, i
 
 
 def j_place_wide(r:JsonReader, cell:Value, f:FieldDescriptor, token:string, kind:int):
+    // a 128-bit integer takes the integer token rule; the fixed-point kinds
+    // keep their exact decimal (docs/SPEC-TABLES.md §16.2)
+    if (kind == 18 or kind == 19) and not j_integer_token(token):
+        j_refuse(r, "kind_mismatch")
+        return
     let raw, exact, saturated = j_parse_wide(token, kind, f.fbits)
     if not exact:
         j_refuse(r, "kind_mismatch")
@@ -2054,7 +2134,7 @@ def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> boo
                     return false
                 cell.i = tag
                 cell.arm = fv
-            elif shape != j_shape(a):
+            elif not j_shape_matches(j_shape(a), shape):
                 return j_refuse(r, "kind_mismatch")
             else:
                 if not j_read_field(r, fv, depth + 1):
@@ -2258,7 +2338,7 @@ def j_read_map_value(r:JsonReader, sl:Slot, depth:int) -> bool:
             return false
         reset_slot(sl)
         return true
-    if j_value_shape(r) != j_shape(sl.fd):
+    if not j_shape_matches(j_shape(sl.fd), j_value_shape(r)):
         return j_refuse(r, "kind_mismatch")
     if not j_read_field(r, sl, depth):
         return false
@@ -2281,6 +2361,8 @@ def j_place_map_key(entry:Record, kf:FieldDescriptor, key:string) -> int:
     let _, ok = j_walk_number(key_reader)
     if not ok or key_reader.pos != length(key):
         return 2
+    if not j_integer_token(key):
+        return 1
     let number = j_interpret_exact(key)
     if number.fractional or number.saturated:
         return 1
@@ -2603,6 +2685,8 @@ def j_write_map(w:JsonWriter, sl:Slot, depth:int) -> bool:
                 j_write_string(w, k.cell.s)
             elif kf.s == "int" and kf.signed and not j_is_fixed(kf):
                 j_write_string(w, string(k.cell.i))
+            elif kf.s == "int" and not j_is_fixed(kf):
+                j_write_string(w, j_bn_to_dec(j_bn_u64(k.cell.i)))
             else:
                 j_write_string(w, number_to_string(k.cell.i, 10, 1))
             j_raw(w, ": ")
@@ -2710,8 +2794,20 @@ def j_write_scalar(w:JsonWriter, cell:Value, f:FieldDescriptor, depth:int) -> bo
         j_raw(w, "]")
         return true
     let kind = j_kind(f)
+    if kind == 5:
+        // int64 is wider than 32 bits: written as a string of digits (§16.2)
+        j_write_string(w, string(cell.i))
+        return true
+    if kind == 9:
+        // uint64 above int64's range is its two's-complement bit pattern
+        j_write_string(w, j_bn_to_dec(j_bn_u64(cell.i)))
+        return true
     if kind_wide(kind):
-        j_raw(w, j_format_wide(cell.w, kind, f.fbits))
+        let text = j_format_wide(cell.w, kind, f.fbits)
+        if j_wide_integer_kind(kind):
+            j_write_string(w, text)
+        else:
+            j_raw(w, text)
         return true
     if kind == 1:
         j_raw(w, if cell.b: "true" else: "false")
