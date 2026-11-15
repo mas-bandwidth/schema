@@ -380,9 +380,11 @@ recursive fn cook_field(c: CookCtx&, s: i64, d: const FieldDesc&, col: const Coo
     if d.array == ArrayList { return true; }
     let e = d.elem;
     guard e else { return cook_refuse(c); }
-    // every slot is written: the storage is allocate-max, and a slot past the
-    // live count holds the value-initialized element
-    for k in d.bound {
+    // a slot past a counted array's live count is storage the walk does not
+    // reach: the zero-filled extent already holds it (§7.6)
+    var live = d.bound;
+    if d.array == ArrayCounted { live = cook_live(c, s, d); }
+    for k in live {
         if !cook_value(c, cook_elem(c, s, k), e, col, at + col.off + k * col.stride) { return false; }
     }
     if d.array == ArrayCounted { cook_put_at(c, at + col.len_off, cook_live(c, s, d) as! u64, 4); }

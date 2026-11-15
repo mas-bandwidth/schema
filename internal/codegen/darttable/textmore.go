@@ -120,14 +120,21 @@ bool _jsonName(String name, TableTextReport r) {
 
 // _jsonSkipNames walks a value the read skips and holds every object key in it
 // to the same 255-byte cap (§16.2): an unknown key's value is still an object
-// whose keys are schema names, however deep it sits.
+// whose keys are schema names, however deep it sits. A skipped string is
+// validated too (docs/rulings.json skipped-value-is-validated): a zero
+// decodes to U+0000 and refuses the read (text_holds_zero, §16.3).
 void _jsonSkipNames(dynamic val, TableTextReport r) {
   final entries = _jsonEntries(val);
   if (entries != null) {
     for (final entry in entries) {
       _jsonName(entry.key, r);
+      if (entry.key.contains('\u0000')) r.refuse('text_holds_zero');
       _jsonSkipNames(entry.value, r);
     }
+    return;
+  }
+  if (val is String) {
+    if (val.contains('\u0000')) r.refuse('text_holds_zero');
     return;
   }
   if (val is List) {

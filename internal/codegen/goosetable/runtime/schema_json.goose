@@ -823,9 +823,13 @@ fn json_scan_into(jr: JsonIn&, dst: u8[:], store: bool) -> i64, bool {
     return placed, true;
 }
 
-// json_skip_string scans past a string and keeps nothing.
+// json_skip_string scans past a string and keeps nothing. The skipped value is
+// still validated (docs/rulings.json skipped-value-is-validated): a U+0000
+// escape refuses the read (text_holds_zero, §16.3).
 fn json_skip_string(jr: JsonIn&) -> bool {
-    return json_scan(jr, false) { unit, n => };
+    let ok = json_scan(jr, true) { unit, n => };
+    if !ok && jr.zero && jr.rep.reason == 0 { jr.rep.reason = JsonReasonHoldsZero; }
+    return ok;
 }
 
 // json_key scans an object key or a variant name into a key buffer: a name is

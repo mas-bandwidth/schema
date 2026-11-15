@@ -187,8 +187,14 @@ func (w *cookWriter) field(f *ir.Field, src, dst string, offset int64, ordinal i
 			w.cl(1, "if %s { %sCount = %s::cook_loaded_count(vals, %s, %d); }", ride, dst, rt, slot, f.ArrayBound)
 		}
 		i := w.fresh("idx")
-		w.pl(1, "for %s in %d {", i, f.ArrayBound)
-		w.cl(1, "for %s in %d {", i, f.ArrayBound)
+		slots := fmt.Sprintf("%d", f.ArrayBound)
+		if f.Array == ir.ArrayCounted {
+			// a slot past the live count is storage the walk does not reach:
+			// the zero-filled extent already holds it (§7.6)
+			slots = src + "Count as! i64"
+		}
+		w.pl(1, "for %s in %s {", i, slots)
+		w.cl(1, "for %s in %s {", i, slots)
 		es := w.fresh("el")
 		w.cl(2, "let %s = %s::cook_loaded_elem(vals, %s, %s);", es, rt, slot, i)
 		w.value(f, src+"["+i+"]", dst+"["+i+"]", fmt.Sprintf("%d + %s * %d", pieces[0].Offset, i, facts.ElemSize), es, 2)
@@ -335,8 +341,14 @@ func (w *cookWriter) union(un *ir.Union, src, dst, at, s string, ind int) {
 				w.cl(ind+1, "if %s::cook_loaded_rode(vals, %s) { %sCount = %s::cook_loaded_count(vals, %s, %d); }", rt, payload, d, rt, payload, af.ArrayBound)
 			}
 			i := w.fresh("idx")
-			w.pl(ind+1, "for %s in %d {", i, af.ArrayBound)
-			w.cl(ind+1, "for %s in %d {", i, af.ArrayBound)
+			slots := fmt.Sprintf("%d", af.ArrayBound)
+			if af.Array == ir.ArrayCounted {
+				// a slot past the live count is storage the walk does not
+				// reach: the zero-filled extent already holds it (§7.6)
+				slots = a + "Count as! i64"
+			}
+			w.pl(ind+1, "for %s in %s {", i, slots)
+			w.cl(ind+1, "for %s in %s {", i, slots)
 			es := w.fresh("el")
 			w.cl(ind+2, "let %s = %s::cook_loaded_elem(vals, %s, %s);", es, rt, payload, i)
 			w.value(&af, a+"["+i+"]", d+"["+i+"]", fmt.Sprintf("%s + %d + %s * %d", at, armOffset+pieces[0].Offset, i, facts.ElemSize), es, ind+2)
