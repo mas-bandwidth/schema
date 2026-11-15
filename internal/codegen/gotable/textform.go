@@ -1192,8 +1192,18 @@ func (r *tableTextFormResolver) float(v *tableTextFormNode, f *TableFieldInfo) b
 	if math.IsInf(value, 0) {
 		return r.fail(TableTextFormBound, v, v.start)
 	}
-	if f.HasRange && (value < f.RangeMin || value > f.RangeMax) {
-		return r.fail(TableTextFormBound, v, v.start)
+	if f.HasRange {
+		// a float32 field's ends are held at float32 too (docs/SPEC-TABLES.md
+		// §16.9.2): the token is already the nearest float32, so rounding the
+		// declared ends the same way compares like with like rather than
+		// against their float64 spellings.
+		low, high := f.RangeMin, f.RangeMax
+		if size == 32 {
+			low, high = float64(float32(low)), float64(float32(high))
+		}
+		if value < low || value > high {
+			return r.fail(TableTextFormBound, v, v.start)
+		}
 	}
 	if size == 32 {
 		v.canon = strconv.FormatUint(uint64(math.Float32bits(float32(value))), 16)

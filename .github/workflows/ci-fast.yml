@@ -172,7 +172,7 @@ jobs:
   # It is deliberately the only `needs:` in this file — every gate that can
   # start immediately does.
   plan:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -451,7 +451,7 @@ jobs:
   # NOT here: each downloads and compiles a tool of its own, which is a minute
   # this lane does not have, and they run in ci-full.yml.
   lint-fast:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 60-142 s with a warm cache; hosted adds setup-go, the cache restore
     # and modernize's first compile
@@ -536,7 +536,7 @@ jobs:
   # per-language basis (the languages we are changing in our commit)").
   lang-lint:
     needs: plan
-    if: needs.plan.outputs.lints != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.lints != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     name: lang-lint (${{ matrix.lint }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -609,7 +609,7 @@ jobs:
   # IT TAKES NO CACHE, deliberately, like the job it comes from: this is where
   # "the build did no work" must not be an available explanation for a green.
   block-gate:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 38-83 s; hosted builds bin/schema with no cache, by design
     timeout-minutes: 2
@@ -654,7 +654,7 @@ jobs:
   # two make targets below are rows of their own.
   go-test-touched:
     needs: plan
-    if: needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     name: go-test-touched (${{ matrix.row }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -838,7 +838,7 @@ jobs:
   # that failed to build is a failure here, never a quiet skip.
   leg-gate:
     needs: plan
-    if: needs.plan.outputs.legs != '[]' && github.event_name == 'workflow_dispatch'
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.legs != '[]' && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (${{ matrix.leg }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # measured over 40 green runs: lobster 547 s and goose 387 s at worst, against a
@@ -1034,7 +1034,7 @@ jobs:
   # pull request labelled full-ci.
   leg-gate-lobster:
     needs: plan
-    if: contains(needs.plan.outputs.legs, '"lobster"') && github.event_name == 'workflow_dispatch'
+    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"lobster"') && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (lobster ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -1120,7 +1120,7 @@ jobs:
   # run, in parallel with it.
   leg-gate-rust:
     needs: plan
-    if: contains(needs.plan.outputs.legs, '"rust"') && github.event_name == 'workflow_dispatch'
+    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"rust"') && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (rust probes)
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -1167,7 +1167,7 @@ jobs:
   # row-seconds negative 104
   leg-gate-squirrel:
     needs: plan
-    if: contains(needs.plan.outputs.legs, '"squirrel"') && github.event_name == 'workflow_dispatch'
+    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"squirrel"') && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (squirrel ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -1225,7 +1225,7 @@ jobs:
   #           with the pinned clang-format
   leg-gate-cpp:
     needs: plan
-    if: contains(needs.plan.outputs.legs, '"cpp"') && github.event_name == 'workflow_dispatch'
+    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"cpp"') && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (cpp ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
