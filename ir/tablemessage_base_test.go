@@ -1,8 +1,10 @@
-// A RANGED INTEGER'S BASE LIES INSIDE THE ANNOUNCED KIND
-// (docs/SPEC-TABLES.md §3.3 SECURITY): a width the kind holds is not enough,
-// because a base near the kind's edge names values past it. DecodeShape holds
-// both the base and the top of its range, base + 2^bits - 1, to the kind's own
-// domain, signed and unsigned, 128-bit included.
+// A RANGED BASE LIES INSIDE THE ANNOUNCED KIND
+// (docs/SPEC-TABLES.md §3.3 SECURITY): the base is the declaration's own
+// minimum, so it must be a value the announced kind can hold, signed and
+// unsigned, 128-bit included. The offset's width is bounded by the kind
+// separately; its spellable top, base + 2^bits - 1, is not the declaration's
+// top, because `bits` is the width of `max - min` and an offset past the
+// sender's own `max` refuses `out_of_range` when the body is read.
 package ir
 
 import (
@@ -50,10 +52,8 @@ func TestDecodeShapeRangedBaseInsideKind(t *testing.T) {
 		TableKindI128,
 	}
 	for _, kind := range kinds {
-		kind := kind
 		bits := TableMessageKindBits(kind)
 		lawful := highestLawfulBase(kind, bits)
-		past := new(big.Int).Add(lawful, big.NewInt(1))
 
 		t.Run("lawful edge", func(t *testing.T) {
 			t.Parallel()
@@ -72,18 +72,35 @@ func TestDecodeShapeRangedBaseInsideKind(t *testing.T) {
 				t.Errorf("kind %d: DecodeShape bits = %d, want %d", kind, got.Bits, bits)
 			}
 		})
-
-		t.Run("one past", func(t *testing.T) {
-			t.Parallel()
-			if _, ok := decodeEncodedShape(t, kind, TableMessageShape{
-				Packing: TableMessageRanged,
-				Bits:    bits,
-				Base:    past,
-			}); ok {
-				t.Errorf("kind %d: DecodeShape accepted base %s at %d bits, whose top is past the kind", kind, past, bits)
-			}
-		})
 	}
+
+	t.Run("a base outside the kind", func(t *testing.T) {
+		t.Parallel()
+		rows := []struct {
+			name string
+			kind uint8
+		}{
+			{"int8", TableKindI8},
+			{"uint8", TableKindU8},
+			{"int32", TableKindI32},
+			{"uint32", TableKindU32},
+		}
+		for _, row := range rows {
+			row := row
+			t.Run(row.name, func(t *testing.T) {
+				t.Parallel()
+				_, hi := kindDomain(row.kind)
+				past := new(big.Int).Add(hi, big.NewInt(1))
+				if _, ok := decodeEncodedShape(t, row.kind, TableMessageShape{
+					Packing: TableMessageRanged,
+					Bits:    1,
+					Base:    past,
+				}); ok {
+					t.Errorf("kind %d: DecodeShape accepted base %s past the kind", row.kind, past)
+				}
+			})
+		}
+	})
 
 	t.Run("negative base for an unsigned kind", func(t *testing.T) {
 		t.Parallel()
@@ -94,10 +111,9 @@ func TestDecodeShapeRangedBaseInsideKind(t *testing.T) {
 			base *big.Int
 		}{
 			{"uint8", TableKindU8, 8, big.NewInt(-1)},
-			{"uint128", TableKindU128, 8, big.NewInt(-1)},
+			{"uint32", TableKindU32, 8, big.NewInt(-1)},
 		}
 		for _, row := range rows {
-			row := row
 			t.Run(row.name, func(t *testing.T) {
 				t.Parallel()
 				if _, ok := decodeEncodedShape(t, row.kind, TableMessageShape{
@@ -136,13 +152,14 @@ func TestDecodeShapeRangedBaseInsideKind(t *testing.T) {
 		if got.Base == nil || got.Base.Cmp(high) != 0 {
 			t.Errorf("DecodeShape base = %v, want %s", got.Base, high)
 		}
-		_, hi := kindDomain(TableKindU128)
+		// A WIDTH ABOVE THE KIND is still refused, and that is the offset's
+		// whole bound: the kind holds the base, not the width's spellable top.
 		if _, ok := decodeEncodedShape(t, TableKindU128, TableMessageShape{
 			Packing: TableMessageRanged,
-			Bits:    1,
-			Base:    hi,
+			Bits:    TableMessageKindBits(TableKindU128) + 1,
+			Base:    high,
 		}); ok {
-			t.Errorf("DecodeShape accepted the uint128 base %s at 1 bit, whose top is past the kind", hi)
+			t.Errorf("DecodeShape accepted %d bits over a uint128", TableMessageKindBits(TableKindU128)+1)
 		}
 	})
 }

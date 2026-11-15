@@ -6,7 +6,7 @@ package ci
 // It holds the three things a nightly that ran nowhere would still look green
 // without: the target and its time budget, the corpus file's provenance from
 // the Makefile's own SCHEMAS_* variables, and a workflow whose fuzz job is
-// scheduled and never per push. Each property is checked by the same function
+// nightly and dispatch only, never per push or pull request. Each property is checked by the same function
 // that a planted copy must FAIL, so the gate is shown capable of going red.
 
 import (
@@ -39,13 +39,15 @@ func nightlyFuzzProblems(mk, wf string) []string {
 	want(mk, "TextJSON", "the text/JSON reader kind is not driven")
 	want(mk, "tool missing: sq", "a missing interpreter would not be named")
 	want(mk, "schema-squirrel-nightly-fuzz-negative-control", "the control is not defined")
-	// THE WORKFLOW: nightly and dispatch run the campaign; a pull request runs
-	// only the structural half, so the fuzz never becomes per-push CI.
+	// THE WORKFLOW: nightly and dispatch only (the owner, 2026-11-15: "I want
+	// everything that is not light moved to nightly test now." "no
+	// exceptions."); no push and no pull request starts it, and the campaign
+	// job is confined to the nightly triggers.
 	want(wf, "schedule:", "the workflow has no schedule trigger")
 	want(wf, "workflow_dispatch:", "the workflow has no dispatch trigger")
 	want(wf, "make schema-squirrel-nightly-fuzz\n", "the workflow does not run the campaign")
 	want(wf, "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", "the campaign is not confined to the nightly triggers")
-	want(wf, "pull_request:", "the workflow has no pull-request replay")
+	bad = append(bad, nightlyOnlyTriggerProblems(wf)...)
 	return bad
 }
 
@@ -76,7 +78,9 @@ func TestSquirrelNightlyFuzz(t *testing.T) {
 		{"no strict reader", strings.Replace(string(mk), "Strict", "", 1), string(wf), "strict"},
 		{"no text/json reader", strings.Replace(string(mk), "TextJSON", "", 1), string(wf), "text/json"},
 		{"no schedule", string(mk), strings.Replace(string(wf), "schedule:", "", 1), "schedule"},
-		{"campaign on every push", string(mk), strings.Replace(string(wf), "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", "", 1), "trigger"},
+		{"campaign unguarded", string(mk), strings.Replace(string(wf), "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", "", 1), "trigger"},
+		{"pull request restored", string(mk), strings.Replace(string(wf), "\non:\n", "\non:\n  pull_request:\n", 1), "pull_request"},
+		{"push restored", string(mk), strings.Replace(string(wf), "\non:\n", "\non:\n  push:\n", 1), "push"},
 	}
 	for _, p := range plants {
 		bad := nightlyFuzzProblems(p.mk, p.wf)

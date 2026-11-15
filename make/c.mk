@@ -2086,11 +2086,10 @@ test-c: tables-c-discard
 # (table_cycle_acyclic, internal/codegen/ctable/graph.go), using temporary
 # 1-based directory indices during construction and resolving offsets once
 # acyclicity holds. The first control drops the cycle verdict in a copy of
-# graph.go so a cyclic graph loads, and TestPointerNamingAnOpenNodeIsRefusedC
-# must go red on it: the region and builder reads refuse the probe's wire by
-# the reachability rule too, so the control's red line is the retaining read,
-# the one leg the cycle verdict alone gates. The linear control stacks a node
-# at every slot naming it rather than the last, and
+# graph.go so a cyclic graph loads, and TestCyclicWireIsRefusedC must go red on
+# it: its reachable-cycle case leaves no record for the reachability rule to
+# refuse first, so the cycle verdict alone gates it. The linear control stacks a
+# node at every slot naming it rather than the last, and
 # TestDiamondChainLoadsLinearC must go red on it.
 C_CYCLE_NC := build/c-cycle-nc
 C_CYCLE_LINEAR_NC := build/c-cycle-linear-nc
@@ -2106,23 +2105,23 @@ tables-c-cycle-negative-control:
 	@rm -rf $(C_CYCLE_NC) && mkdir -p $(C_CYCLE_NC)
 	@n=$$(grep -F -c 'if ( !c.broken && c.processed == c.vertices )' internal/codegen/ctable/graph.go); \
 		if [ "$$n" != "1" ]; then echo "NEGATIVE CONTROL: the C cycle verdict appears $$n times, expected exactly 1"; exit 1; fi
-	@m=$$(grep -F -c 'cycle: the retaining load handed back a cyclic graph' internal/codegen/ctable/discard_test.go); \
-		if [ "$$m" != "1" ]; then echo "NEGATIVE CONTROL: the cycle gate's retaining refusal appears $$m times, expected exactly 1"; exit 1; fi
+	@m=$$(grep -F -c 'cycle: a reachable cycle loaded' internal/codegen/ctable/discard_test.go); \
+		if [ "$$m" != "1" ]; then echo "NEGATIVE CONTROL: the cycle gate's reachable refusal appears $$m times, expected exactly 1"; exit 1; fi
 	@sed -e 's#if ( !c.broken && c.processed == c.vertices )#if ( !c.broken ) /* NEGATIVE CONTROL: the cycle verdict is gone */#' \
 		internal/codegen/ctable/graph.go > $(C_CYCLE_NC)/graph.go.txt
 	@cmp -s internal/codegen/ctable/graph.go $(C_CYCLE_NC)/graph.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C cycle sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/ctable/graph.go":"%s/$(C_CYCLE_NC)/graph.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(C_CYCLE_NC)/overlay.json
-	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(C_CYCLE_NC)/overlay.json -run '^TestPointerNamingAnOpenNodeIsRefusedC$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(C_CYCLE_NC)/overlay.json -run '^Test(PointerNamingAnOpenNodeIsRefusedC|CyclicWireIsRefusedC)$$' \
 			./internal/codegen/ctable > $(C_CYCLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the C cycle verdict is gone and the gate stayed green"; \
 		cat $(C_CYCLE_NC)/log; exit 1; \
 	fi
-	@grep -q "cycle: the retaining load handed back a cyclic graph" $(C_CYCLE_NC)/log || \
+	@grep -q "cycle: a reachable cycle loaded" $(C_CYCLE_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(C_CYCLE_NC)/log; exit 1; }
-	@grep -m1 "cyclic graph" $(C_CYCLE_NC)/log
+	@grep -m1 "reachable cycle" $(C_CYCLE_NC)/log
 	@echo "negative control: removing the C cycle verdict turns the cycle gate RED"
 tables-c-cycle-linear-negative-control:
 	@rm -rf $(C_CYCLE_LINEAR_NC) && mkdir -p $(C_CYCLE_LINEAR_NC)
@@ -2235,3 +2234,46 @@ conformance-negative-control-c-write-refusal-fixed: build/conformance-harness bu
 .PHONY: conformance-negative-control-c-write-refusal-message
 conformance-negative-control-c-write-refusal-message: build/conformance-harness build/tables-generated-c/.stamp
 	$(call conformance-negative-control-c-wref,write-refusal-message,schema_assert( 0 <= value->sku_length && value->sku_length <= 32 );,(void) 0; /* SABOTAGED: no message length check */,SABOTAGED: no message length check,write-refusal-message,message)
+
+# The packet-end corpus (docs/SPEC.md §5, "Read termination"): the generated
+# public read is the one-packet read, so exact.bin is accepted as the value 3
+# and the trailing byte and non-zero final padding are refused.
+PACKET_END_SCHEMA := test/packet-end/End.schema
+PACKET_END_C := build/packet-end/c
+
+build/packet-end/c/.stamp: bin/schema $(PACKET_END_SCHEMA) make/c.mk
+	@mkdir -p $(PACKET_END_C)
+	./bin/schema generate --lang c --out $(PACKET_END_C) $(PACKET_END_SCHEMA)
+	@touch $@
+
+build/packet-end-c-test: build/packet-end/c/.stamp test/packet-end/c/main.c $(SERIALIZE_C)/serialize.h $(SERIALIZE_C)/serialize.c
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O2 -ffp-contract=off -I$(PACKET_END_C) -I$(SERIALIZE_C) \
+		test/packet-end/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
+.PHONY: packet-end-c packet-end-c-negative-control
+packet-end-c: build/packet-end-c-test
+	./build/packet-end-c-test testdata/wire/packet-end
+
+packet-end-c-negative-control: packet-end-c
+	@mkdir -p build/packet-end/c-negative
+	go run ./tools/sabotage -name packet-end-c-read \
+		-out build/packet-end/c-negative/c.gotext internal/codegen/c/c.go
+	@printf '{"Replace":{"%s/internal/codegen/c/c.go":"%s/build/packet-end/c-negative/c.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-end/c-negative/overlay.json
+	go build -overlay=build/packet-end/c-negative/overlay.json -o build/packet-end/c-negative/schema ./cmd/schema
+	./build/packet-end/c-negative/schema generate --lang c --out build/packet-end/c-negative/generated $(PACKET_END_SCHEMA)
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O2 -ffp-contract=off -Ibuild/packet-end/c-negative/generated -I$(SERIALIZE_C) \
+		test/packet-end/c/main.c $(SERIALIZE_C)/serialize.c -o build/packet-end/c-negative/checker -lm
+	@if ./build/packet-end/c-negative/checker testdata/wire/packet-end > build/packet-end/c-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a C read without the end check passed'; exit 1; fi
+	@grep -Fxm1 'FAILED: packet-end trailing refused' build/packet-end/c-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the C read without the end check did not fail on trailing data'; \
+		  cat build/packet-end/c-negative/log; exit 1; }
+	@grep -Fxm1 'FAILED: packet-end padding refused' build/packet-end/c-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the C read without the end check did not fail on final padding'; \
+		  cat build/packet-end/c-negative/log; exit 1; }
+	@echo 'packet end C negative control: removing the end check accepts trailing data and final padding'
+
+test-c: packet-end-c packet-end-c-negative-control

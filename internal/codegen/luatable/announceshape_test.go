@@ -185,7 +185,7 @@ end
 `, ModuleName(unit), luaNameList(names)))
 	out := luarun.Run(t, dir, "main.lua", inputs)
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		name, verdict, ok := strings.Cut(line, "=")
 		if !ok {
 			t.Fatalf("unexpected probe line %q", line)

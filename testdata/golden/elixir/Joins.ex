@@ -247,6 +247,15 @@ defmodule Example.Joins do
   @spec write_arms_agree!(Example.ArmsAgree.t()) :: binary()
   def write_arms_agree!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
+
+    if value_lead < 0 do
+      raise ArgumentError, "value.lead is below the wire minimum"
+    end
+
+    if value_lead > 31 do
+      raise ArgumentError, "value.lead is above the wire maximum"
+    end
+
     v = value_lead &&& 0x1F
     scratch = v
     v = if value_flag, do: 1, else: 0
@@ -255,18 +264,42 @@ defmodule Example.Joins do
 
     {data, scratch} =
       if value_flag do
+        if value.a < 0 do
+          raise ArgumentError, "value.a is below the wire minimum"
+        end
+
+        if value.a > 2047 do
+          raise ArgumentError, "value.a is above the wire maximum"
+        end
+
         v = value.a &&& 0x7FF
         scratch = scratch ||| v <<< 6
         data = <<data::binary, scratch::little-size(2)-unit(8)>>
         scratch = scratch >>> 16
         {data, scratch}
       else
+        if value.b < 0 do
+          raise ArgumentError, "value.b is below the wire minimum"
+        end
+
+        if value.b > 2047 do
+          raise ArgumentError, "value.b is above the wire maximum"
+        end
+
         v = value.b &&& 0x7FF
         scratch = scratch ||| v <<< 6
         data = <<data::binary, scratch::little-size(2)-unit(8)>>
         scratch = scratch >>> 16
         {data, scratch}
       end
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 127 do
+      raise ArgumentError, "value.tail is above the wire maximum"
+    end
 
     v = value_tail &&& 0x7F
     scratch = scratch ||| v <<< 1
@@ -341,8 +374,17 @@ defmodule Example.Joins do
   @spec read_arms_agree(binary(), non_neg_integer()) :: {:ok, Example.ArmsAgree.t()} | :error
   def read_arms_agree(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arms_agree_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -374,6 +416,15 @@ defmodule Example.Joins do
   @spec write_arms_disagree!(Example.ArmsDisagree.t()) :: binary()
   def write_arms_disagree!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
+
+    if value_lead < 0 do
+      raise ArgumentError, "value.lead is below the wire minimum"
+    end
+
+    if value_lead > 31 do
+      raise ArgumentError, "value.lead is above the wire maximum"
+    end
+
     v = value_lead &&& 0x1F
     scratch = v
     v = if value_flag, do: 1, else: 0
@@ -382,18 +433,42 @@ defmodule Example.Joins do
 
     {data, scratch} =
       if value_flag do
+        if value.a < 0 do
+          raise ArgumentError, "value.a is below the wire minimum"
+        end
+
+        if value.a > 2047 do
+          raise ArgumentError, "value.a is above the wire maximum"
+        end
+
         v = value.a &&& 0x7FF
         scratch = scratch ||| v <<< 6
         data = <<data::binary, scratch::little-size(2)-unit(8)>>
         scratch = scratch >>> 16
         {data, scratch}
       else
+        if value.b < 0 do
+          raise ArgumentError, "value.b is below the wire minimum"
+        end
+
+        if value.b > 7 do
+          raise ArgumentError, "value.b is above the wire maximum"
+        end
+
         v = value.b &&& 0x7
         scratch = scratch ||| v <<< 6
         data = <<data::binary, scratch::little-size(1)-unit(8)>>
         scratch = scratch >>> 8
         {data, scratch}
       end
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 127 do
+      raise ArgumentError, "value.tail is above the wire maximum"
+    end
 
     v = value_tail &&& 0x7F
     scratch = scratch ||| v <<< 1
@@ -472,8 +547,17 @@ defmodule Example.Joins do
           {:ok, Example.ArmsDisagree.t()} | :error
   def read_arms_disagree(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arms_disagree_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -505,6 +589,15 @@ defmodule Example.Joins do
   @spec write_arm_empty!(Example.ArmEmpty.t()) :: binary()
   def write_arm_empty!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
+
+    if value_lead < 0 do
+      raise ArgumentError, "value.lead is below the wire minimum"
+    end
+
+    if value_lead > 31 do
+      raise ArgumentError, "value.lead is above the wire maximum"
+    end
+
     v = value_lead &&& 0x1F
     scratch = v
     v = if value_flag, do: 1, else: 0
@@ -513,6 +606,14 @@ defmodule Example.Joins do
 
     {data, scratch, scratch_bits} =
       if value_flag do
+        if value.a < 0 do
+          raise ArgumentError, "value.a is below the wire minimum"
+        end
+
+        if value.a > 524_287 do
+          raise ArgumentError, "value.a is above the wire maximum"
+        end
+
         v = value.a &&& 0x7FFFF
         scratch = scratch ||| v <<< 6
         data = <<data::binary, scratch::little-size(3)-unit(8)>>
@@ -523,6 +624,14 @@ defmodule Example.Joins do
         scratch_bits = 6
         {data, scratch, scratch_bits}
       end
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 127 do
+      raise ArgumentError, "value.tail is above the wire maximum"
+    end
 
     v = value_tail &&& 0x7F
     scratch = scratch ||| v <<< scratch_bits
@@ -600,8 +709,17 @@ defmodule Example.Joins do
   @spec read_arm_empty(binary(), non_neg_integer()) :: {:ok, Example.ArmEmpty.t()} | :error
   def read_arm_empty(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arm_empty_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -635,6 +753,15 @@ defmodule Example.Joins do
   @spec write_arms_nested!(Example.ArmsNested.t()) :: binary()
   def write_arms_nested!(value) do
     %{lead: value_lead, outer: value_outer, tail: value_tail} = value
+
+    if value_lead < 0 do
+      raise ArgumentError, "value.lead is below the wire minimum"
+    end
+
+    if value_lead > 7 do
+      raise ArgumentError, "value.lead is above the wire maximum"
+    end
+
     v = value_lead &&& 0x7
     scratch = v
     v = if value_outer, do: 1, else: 0
@@ -648,12 +775,28 @@ defmodule Example.Joins do
 
         {data, scratch} =
           if value.inner do
+            if value.x < 0 do
+              raise ArgumentError, "value.x is below the wire minimum"
+            end
+
+            if value.x > 536_870_911 do
+              raise ArgumentError, "value.x is above the wire maximum"
+            end
+
             v = value.x &&& 0x1FFFFFFF
             scratch = scratch ||| v <<< 5
             data = <<data::binary, scratch::little-size(4)-unit(8)>>
             scratch = scratch >>> 32
             {data, scratch}
           else
+            if value.y < 0 do
+              raise ArgumentError, "value.y is below the wire minimum"
+            end
+
+            if value.y > 31 do
+              raise ArgumentError, "value.y is above the wire maximum"
+            end
+
             v = value.y &&& 0x1F
             scratch = scratch ||| v <<< 5
             data = <<data::binary, scratch::little-size(1)-unit(8)>>
@@ -664,6 +807,14 @@ defmodule Example.Joins do
         scratch_bits = 2
         {data, scratch, scratch_bits}
       else
+        if value.z < 0 do
+          raise ArgumentError, "value.z is below the wire minimum"
+        end
+
+        if value.z > 8191 do
+          raise ArgumentError, "value.z is above the wire maximum"
+        end
+
         v = value.z &&& 0x1FFF
         scratch = scratch ||| v <<< 4
         data = <<data::binary, scratch::little-size(2)-unit(8)>>
@@ -671,6 +822,14 @@ defmodule Example.Joins do
         scratch_bits = 1
         {data, scratch, scratch_bits}
       end
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 63 do
+      raise ArgumentError, "value.tail is above the wire maximum"
+    end
 
     v = value_tail &&& 0x3F
     scratch = scratch ||| v <<< scratch_bits
@@ -784,8 +943,17 @@ defmodule Example.Joins do
   @spec read_arms_nested(binary(), non_neg_integer()) :: {:ok, Example.ArmsNested.t()} | :error
   def read_arms_nested(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arms_nested_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -817,6 +985,15 @@ defmodule Example.Joins do
   @spec write_arm_align!(Example.ArmAlign.t()) :: binary()
   def write_arm_align!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
+
+    if value_lead < 0 do
+      raise ArgumentError, "value.lead is below the wire minimum"
+    end
+
+    if value_lead > 31 do
+      raise ArgumentError, "value.lead is above the wire maximum"
+    end
+
     v = value_lead &&& 0x1F
     scratch = v
     v = if value_flag, do: 1, else: 0
@@ -848,12 +1025,28 @@ defmodule Example.Joins do
         scratch = 0
         {data, scratch}
       else
+        if value.b < 0 do
+          raise ArgumentError, "value.b is below the wire minimum"
+        end
+
+        if value.b > 1023 do
+          raise ArgumentError, "value.b is above the wire maximum"
+        end
+
         v = value.b &&& 0x3FF
         scratch = scratch ||| v <<< 6
         data = <<data::binary, scratch::little-size(2)-unit(8)>>
         scratch = 0
         {data, scratch}
       end
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 127 do
+      raise ArgumentError, "value.tail is above the wire maximum"
+    end
 
     v = value_tail &&& 0x7F
     scratch = scratch ||| v
@@ -943,8 +1136,17 @@ defmodule Example.Joins do
   @spec read_arm_align(binary(), non_neg_integer()) :: {:ok, Example.ArmAlign.t()} | :error
   def read_arm_align(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arm_align_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -976,6 +1178,15 @@ defmodule Example.Joins do
   @spec write_arm_array!(Example.ArmArray.t()) :: binary()
   def write_arm_array!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
+
+    if value_lead < 0 do
+      raise ArgumentError, "value.lead is below the wire minimum"
+    end
+
+    if value_lead > 31 do
+      raise ArgumentError, "value.lead is above the wire maximum"
+    end
+
     v = value_lead &&& 0x1F
     scratch = v
     v = if value_flag, do: 1, else: 0
@@ -1001,6 +1212,14 @@ defmodule Example.Joins do
 
         {data, scratch, scratch_bits}
       else
+        if value.b < 0 do
+          raise ArgumentError, "value.b is below the wire minimum"
+        end
+
+        if value.b > 511 do
+          raise ArgumentError, "value.b is above the wire maximum"
+        end
+
         v = value.b &&& 0x1FF
         scratch = scratch ||| v <<< 6
         data = <<data::binary, scratch::little-size(1)-unit(8)>>
@@ -1008,6 +1227,14 @@ defmodule Example.Joins do
         scratch_bits = 7
         {data, scratch, scratch_bits}
       end
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 127 do
+      raise ArgumentError, "value.tail is above the wire maximum"
+    end
 
     v = value_tail &&& 0x7F
     scratch = scratch ||| v <<< scratch_bits
@@ -1091,8 +1318,17 @@ defmodule Example.Joins do
   @spec read_arm_array(binary(), non_neg_integer()) :: {:ok, Example.ArmArray.t()} | :error
   def read_arm_array(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arm_array_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1123,6 +1359,14 @@ defmodule Example.Joins do
   """
   @spec write_narrow!(Example.Narrow.t()) :: binary()
   def write_narrow!(value) do
+    if value.n < 0 do
+      raise ArgumentError, "value.n is below the wire minimum"
+    end
+
+    if value.n > 7 do
+      raise ArgumentError, "value.n is above the wire maximum"
+    end
+
     v = value.n &&& 0x7
     scratch = v
     # the residual byte, statically known to be there
@@ -1174,8 +1418,17 @@ defmodule Example.Joins do
   @spec read_narrow(binary(), non_neg_integer()) :: {:ok, Example.Narrow.t()} | :error
   def read_narrow(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_narrow_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1206,6 +1459,14 @@ defmodule Example.Joins do
   """
   @spec write_wide!(Example.Wide.t()) :: binary()
   def write_wide!(value) do
+    if value.w < 0 do
+      raise ArgumentError, "value.w is below the wire minimum"
+    end
+
+    if value.w > 137_438_953_471 do
+      raise ArgumentError, "value.w is above the wire maximum"
+    end
+
     v = value.w &&& 0xFFFFFFFF
     scratch = v
     v = value.w >>> 32 &&& 0x1F
@@ -1264,8 +1525,17 @@ defmodule Example.Joins do
   @spec read_wide(binary(), non_neg_integer()) :: {:ok, Example.Wide.t()} | :error
   def read_wide(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_wide_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1329,12 +1599,28 @@ defmodule Example.Joins do
     {data, scratch, scratch_bits} =
       case value do
         {:narrow, value_narrow} ->
+          if value_narrow.n < 0 do
+            raise ArgumentError, "value.narrow.n is below the wire minimum"
+          end
+
+          if value_narrow.n > 7 do
+            raise ArgumentError, "value.narrow.n is above the wire maximum"
+          end
+
           v = value_narrow.n &&& 0x7
           scratch = scratch ||| v <<< 2
           scratch_bits = 5
           {data, scratch, scratch_bits}
 
         {:wide, value_wide} ->
+          if value_wide.w < 0 do
+            raise ArgumentError, "value.wide.w is below the wire minimum"
+          end
+
+          if value_wide.w > 137_438_953_471 do
+            raise ArgumentError, "value.wide.w is above the wire maximum"
+          end
+
           v = value_wide.w &&& 0xFFFFFFFF
           scratch = scratch ||| v <<< 2
           v = value_wide.w >>> 32 &&& 0x1F
@@ -1428,8 +1714,17 @@ defmodule Example.Joins do
   @spec read_uneven(binary(), non_neg_integer()) :: {:ok, Example.Uneven.t()} | :error
   def read_uneven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_uneven_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1461,6 +1756,15 @@ defmodule Example.Joins do
   @spec write_holds_uneven!(Example.HoldsUneven.t()) :: binary()
   def write_holds_uneven!(value) do
     %{lead: value_lead, u: value_u, tail: value_tail} = value
+
+    if value_lead < 0 do
+      raise ArgumentError, "value.lead is below the wire minimum"
+    end
+
+    if value_lead > 31 do
+      raise ArgumentError, "value.lead is above the wire maximum"
+    end
+
     v = value_lead &&& 0x1F
     scratch = v
 
@@ -1485,6 +1789,14 @@ defmodule Example.Joins do
     {data, scratch, scratch_bits} =
       case value_u do
         {:narrow, value_u_narrow} ->
+          if value_u_narrow.n < 0 do
+            raise ArgumentError, "value.u.narrow.n is below the wire minimum"
+          end
+
+          if value_u_narrow.n > 7 do
+            raise ArgumentError, "value.u.narrow.n is above the wire maximum"
+          end
+
           v = value_u_narrow.n &&& 0x7
           scratch = scratch ||| v <<< 7
           data = <<data::binary, scratch::little-size(1)-unit(8)>>
@@ -1493,6 +1805,14 @@ defmodule Example.Joins do
           {data, scratch, scratch_bits}
 
         {:wide, value_u_wide} ->
+          if value_u_wide.w < 0 do
+            raise ArgumentError, "value.u.wide.w is below the wire minimum"
+          end
+
+          if value_u_wide.w > 137_438_953_471 do
+            raise ArgumentError, "value.u.wide.w is above the wire maximum"
+          end
+
           v = value_u_wide.w &&& 0xFFFFFFFF
           scratch = scratch ||| v <<< 7
           v = value_u_wide.w >>> 32 &&& 0x1F
@@ -1507,6 +1827,14 @@ defmodule Example.Joins do
           scratch_bits = 7
           {data, scratch, scratch_bits}
       end
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 2047 do
+      raise ArgumentError, "value.tail is above the wire maximum"
+    end
 
     v = value_tail &&& 0x7FF
     scratch = scratch ||| v <<< scratch_bits
@@ -1602,8 +1930,17 @@ defmodule Example.Joins do
   @spec read_holds_uneven(binary(), non_neg_integer()) :: {:ok, Example.HoldsUneven.t()} | :error
   def read_holds_uneven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_holds_uneven_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1635,6 +1972,15 @@ defmodule Example.Joins do
   @spec write_arr_uneven!(Example.ArrUneven.t()) :: binary()
   def write_arr_uneven!(value) do
     %{lead: value_lead, items: value_items, tail: value_tail} = value
+
+    if value_lead < 0 do
+      raise ArgumentError, "value.lead is below the wire minimum"
+    end
+
+    if value_lead > 31 do
+      raise ArgumentError, "value.lead is above the wire maximum"
+    end
+
     v = value_lead &&& 0x1F
     scratch = v
     n = length(value_items)
@@ -1647,6 +1993,15 @@ defmodule Example.Joins do
     scratch = scratch ||| v <<< 5
     scratch_bits = 7
     {data, scratch, scratch_bits} = wZarr_unevenZitems(value_items, <<>>, scratch, scratch_bits)
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 7 do
+      raise ArgumentError, "value.tail is above the wire maximum"
+    end
+
     v = value_tail &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
@@ -1711,8 +2066,17 @@ defmodule Example.Joins do
   @spec read_arr_uneven(binary(), non_neg_integer()) :: {:ok, Example.ArrUneven.t()} | :error
   def read_arr_uneven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arr_uneven_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1755,6 +2119,14 @@ defmodule Example.Joins do
       tail: value_tail
     } = value
 
+    if value_lead < 0 do
+      raise ArgumentError, "value.lead is below the wire minimum"
+    end
+
+    if value_lead > 31 do
+      raise ArgumentError, "value.lead is above the wire maximum"
+    end
+
     v = value_lead &&& 0x1F
     scratch = v
     n = length(value_items)
@@ -1793,13 +2165,49 @@ defmodule Example.Joins do
     data = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
     # the used bytes ride whole — the stream is byte-aligned here
     data = <<data::binary, value_s::binary>>
+
+    if value_p < 0 do
+      raise ArgumentError, "value.p is below the wire minimum"
+    end
+
+    if value_p > 4_294_967_295 do
+      raise ArgumentError, "value.p is above the wire maximum"
+    end
+
     v = value_p &&& 0xFFFFFFFF
     scratch = v
+
+    if value_q < 0 do
+      raise ArgumentError, "value.q is below the wire minimum"
+    end
+
+    if value_q > 536_870_911 do
+      raise ArgumentError, "value.q is above the wire maximum"
+    end
+
     v = value_q &&& 0x1FFFFFFF
     sc0 = scratch
     scratch = v
+
+    if value_r < 0 do
+      raise ArgumentError, "value.r is below the wire minimum"
+    end
+
+    if value_r > 524_287 do
+      raise ArgumentError, "value.r is above the wire maximum"
+    end
+
     v = value_r &&& 0x7FFFF
     scratch = scratch ||| v <<< 29
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 15 do
+      raise ArgumentError, "value.tail is above the wire maximum"
+    end
+
     v = value_tail &&& 0xF
     scratch = scratch ||| v <<< 48
     data = <<data::binary, sc0::little-size(4)-unit(8), scratch::little-size(6)-unit(8)>>
@@ -1912,8 +2320,17 @@ defmodule Example.Joins do
           {:ok, Example.RegainAfterAlign.t()} | :error
   def read_regain_after_align(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_regain_after_align_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -2042,6 +2459,14 @@ defmodule Example.Joins do
     {data, scratch, scratch_bits} =
       case e do
         {:narrow, e_narrow} ->
+          if e_narrow.n < 0 do
+            raise ArgumentError, "e.narrow.n is below the wire minimum"
+          end
+
+          if e_narrow.n > 7 do
+            raise ArgumentError, "e.narrow.n is above the wire maximum"
+          end
+
           v = e_narrow.n &&& 0x7
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 3
@@ -2052,6 +2477,14 @@ defmodule Example.Joins do
           {data, scratch, scratch_bits}
 
         {:wide, e_wide} ->
+          if e_wide.w < 0 do
+            raise ArgumentError, "e.wide.w is below the wire minimum"
+          end
+
+          if e_wide.w > 137_438_953_471 do
+            raise ArgumentError, "e.wide.w is above the wire maximum"
+          end
+
           v = e_wide.w &&& 0xFFFFFFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 32

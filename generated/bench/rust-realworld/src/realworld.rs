@@ -631,6 +631,13 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
 
 #[inline]
 pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> Result {
+    read_real_packet_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_real_packet_body(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: f001_int[0..21], f002_f64[0..11]
     stream.serialize_bits(&mut c, 32)?;

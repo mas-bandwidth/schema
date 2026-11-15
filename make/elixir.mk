@@ -2192,6 +2192,38 @@ tables-elixir-region-closure: toolchain-elixir
 
 test-elixir: tables-elixir-region-closure
 
+# Packet read termination (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3): the
+# generated one-packet read refuses a whole byte left after the top-level
+# object and non-zero unused bits in the final byte. The _bits form stays
+# composable and runs no end check. The driver reads the shared vectors.
+build/packet-end/elixir/.stamp: bin/schema test/packet-end/End.schema make/elixir.mk
+	@mkdir -p build/packet-end/elixir
+	./bin/schema generate --lang elixir --out build/packet-end/elixir test/packet-end/End.schema
+	@touch $@
+
+.PHONY: packet-end-elixir packet-end-elixir-negative-control
+packet-end-elixir: build/packet-end/elixir/.stamp
+	$(MIX) format --check-formatted build/packet-end/elixir/*.ex test/packet-end/elixir/*.exs
+	@mkdir -p build/packet-end/elixir-beam
+	$(ELIXIRC_STRICT) -o build/packet-end/elixir-beam build/packet-end/elixir/*.ex
+	$(ELIXIR) test/packet-end/elixir/main.exs testdata/wire/packet-end
+
+packet-end-elixir-negative-control: packet-end-elixir
+	@mkdir -p build/packet-end/elixir-negative/beam
+	go run ./tools/sabotage -name packet-end-elixir-read -out build/packet-end/elixir-negative/functions.gotext internal/codegen/elixir/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/elixir/functions.go":"%s/build/packet-end/elixir-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-end/elixir-negative/overlay.json
+	go run -overlay=build/packet-end/elixir-negative/overlay.json ./cmd/schema generate --lang elixir --out build/packet-end/elixir-negative/generated test/packet-end/End.schema
+	$(ELIXIRC_STRICT) -o build/packet-end/elixir-negative/beam build/packet-end/elixir-negative/generated/*.ex
+	@if $(ELIXIR) test/packet-end/elixir/main.exs testdata/wire/packet-end "$(CURDIR)/build/packet-end/elixir-negative/generated" > build/packet-end/elixir-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: removing the one-packet end check left the packet-end gate green'; exit 1; fi
+	@grep -Fq 'FAILED: packet-end verdict trailing.bin' build/packet-end/elixir-negative/log && \
+		grep -Fq 'FAILED: packet-end verdict padding.bin' build/packet-end/elixir-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the packet-end gate went red, but not on the trailing and padding vectors'; cat build/packet-end/elixir-negative/log; exit 1; }
+	@if grep -Fq 'FAILED: packet-end verdict exact.bin' build/packet-end/elixir-negative/log; then cat build/packet-end/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: the exact packet went red with the end check removed'; exit 1; fi
+	@if grep -F 'FAILED: ' build/packet-end/elixir-negative/log | grep -Fvq 'FAILED: packet-end verdict '; then cat build/packet-end/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the packet-end verdict went red'; exit 1; fi
+	@echo 'packet end Elixir negative control: removing the end check accepts the trailing and padding vectors'
+
+test-elixir: packet-end-elixir packet-end-elixir-negative-control
+
 # PACKET WRITE text content (docs/SPEC.md §5.1 row 8, docs/PACKET-WIRE-ALGORITHM.md
 # §2.4 and §3.6): the writer holds the used bytes of string(N) to no zero byte
 # and to well-formed UTF-8, refusing in every build with ArgumentError from
@@ -2203,9 +2235,9 @@ test-elixir: tables-elixir-region-closure
 build/packet-write-text/elixir/.stamp: bin/schema test/packet-write-text/Text.schema make/elixir.mk
 	@rm -rf build/packet-write-text/elixir
 	@mkdir -p build/packet-write-text/elixir/source
-	sed 's/^type Text$$/type Packet/' test/packet-write-text/Text.schema > build/packet-write-text/elixir/source/Text.schema
+	sed 's/^type TextPacket$$/type Packet/' test/packet-write-text/Text.schema > build/packet-write-text/elixir/source/Text.schema
 	@grep -q '^type Packet$$' build/packet-write-text/elixir/source/Text.schema || \
-		{ echo 'packet-write-text-elixir: the shared schema no longer names type Text'; exit 1; }
+		{ echo 'packet-write-text-elixir: the shared schema no longer names type TextPacket'; exit 1; }
 	./bin/schema generate --lang elixir --out build/packet-write-text/elixir build/packet-write-text/elixir/source/Text.schema
 	@touch $@
 
