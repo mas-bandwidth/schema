@@ -12983,7 +12983,7 @@ inline int64_t DeckMeasureBody( const Ctx & ctx, const TableNumbering & numberin
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.hands_count < 0 || value.hands_count > 3 ) { return -1; } // storage invariant
+    schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.hands_count > 0 )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );
@@ -13006,7 +13006,7 @@ inline bool DeckSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
 {
     (void) ctx;
     (void) numbering;
-    if ( value.hands_count < 0 || value.hands_count > 3 ) { return false; } // storage invariant
+    schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.hands_count > 0 )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );
@@ -21955,7 +21955,7 @@ inline int64_t DeckMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.hands_count < 0 || value.hands_count > 3 ) { return -1; } // storage invariant
+    schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.hands_count > 0 )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );
@@ -21979,7 +21979,7 @@ inline bool DeckSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
 {
     (void) ctx;
     (void) numbering;
-    if ( value.hands_count < 0 || value.hands_count > 3 ) { return false; } // storage invariant
+    schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.hands_count > 0 )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );

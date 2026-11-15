@@ -10023,7 +10023,7 @@ inline int64_t RangedSignedMeasureBody( TableIds & ids, const RangedSigned & val
     if ( value.i64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 16, 0x1cce6617419771dbull ) ) + 1 + 8; } // i64_low
     if ( value.i64_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x3b54fa60620b5597ull ) ) + 1 + 8; } // i64_high
     if ( value.i64_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 128, 0xd308fcb98ece5d23ull ) ) + 1 + 8; } // i64_inside
-    if ( value.edges_count < 0 || value.edges_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.edges_count > 0 )
     {
         const uint64_t ref_edges = ids.ref_at( 117, 0xc70cde6b85b6197dull );
@@ -10127,7 +10127,7 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBody( TableWriter & w, TableIds & id
         w.header( ids.ref_at( 128, 0xd308fcb98ece5d23ull ), 5 ); // i64_inside
         w.put64( uint64_t( value.i64_inside ) );
     }
-    if ( value.edges_count < 0 || value.edges_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.edges_count > 0 )
     {
         const uint64_t ref_edges = ids.ref_at( 117, 0xc70cde6b85b6197dull );
@@ -11239,7 +11239,7 @@ inline int64_t RangedSignedMeasureMessageBody( int64_t at, const RangedSigned & 
         bits += kTableMessageRefBitsHere;
         bits += 64;
     }
-    if ( value.edges_count < 0 || value.edges_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.edges_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -11336,7 +11336,7 @@ inline bool RangedSignedSaveMessageBody( TableBitWriter & w, const RangedSigned 
         w.put( 60, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.i64_inside ) - 9223372036854775809ull, 64 );
     }
-    if ( value.edges_count < 0 || value.edges_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.edges_count > 0 )
     {
         w.put( 61, kTableMessageRefBitsHere );
@@ -12816,7 +12816,7 @@ inline int64_t RangedUnsignedMeasureBody( TableIds & ids, const RangedUnsigned &
     if ( value.u64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 0, 0x0117ad66e0fff227ull ) ) + 1 + 8; } // u64_low
     if ( value.u64_high != 1ull ) { bytes += TableLebBytes( ids.ref_at( 144, 0xf2b45af3b50689dbull ) ) + 1 + 8; } // u64_high
     if ( value.u64_inside != 1ull ) { bytes += TableLebBytes( ids.ref_at( 62, 0x713e12017eebcaf7ull ) ) + 1 + 8; } // u64_inside
-    if ( value.counts_count < 0 || value.counts_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.counts_count > 0 )
     {
         const uint64_t ref_counts = ids.ref_at( 112, 0xc341febe5aae51e5ull );
@@ -12920,7 +12920,7 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBody( TableWriter & w, TableIds & 
         w.header( ids.ref_at( 62, 0x713e12017eebcaf7ull ), 9 ); // u64_inside
         w.put64( uint64_t( value.u64_inside ) );
     }
-    if ( value.counts_count < 0 || value.counts_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.counts_count > 0 )
     {
         const uint64_t ref_counts = ids.ref_at( 112, 0xc341febe5aae51e5ull );
@@ -14032,7 +14032,7 @@ inline int64_t RangedUnsignedMeasureMessageBody( int64_t at, const RangedUnsigne
         bits += kTableMessageRefBitsHere;
         bits += 64;
     }
-    if ( value.counts_count < 0 || value.counts_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.counts_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -14129,7 +14129,7 @@ inline bool RangedUnsignedSaveMessageBody( TableBitWriter & w, const RangedUnsig
         w.put( 77, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.u64_inside ) - 1ull, 64 );
     }
-    if ( value.counts_count < 0 || value.counts_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.counts_count > 0 )
     {
         w.put( 78, kTableMessageRefBitsHere );
@@ -18365,7 +18365,7 @@ inline int64_t RangedSignedMeasureBodyRetain( TableRetainIds & ids, const Ranged
     if ( value.i64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 16, 0x1cce6617419771dbull ) ) + 1 + 8; } // i64_low
     if ( value.i64_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x3b54fa60620b5597ull ) ) + 1 + 8; } // i64_high
     if ( value.i64_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 128, 0xd308fcb98ece5d23ull ) ) + 1 + 8; } // i64_inside
-    if ( value.edges_count < 0 || value.edges_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.edges_count > 0 )
     {
         const uint64_t ref_edges = ids.ref_at( 117, 0xc70cde6b85b6197dull );
@@ -18460,7 +18460,7 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBodyRetain( TableWriter & w, TableRe
         w.header( ids.ref_at( 128, 0xd308fcb98ece5d23ull ), 5 ); // i64_inside
         w.put64( uint64_t( value.i64_inside ) );
     }
-    if ( value.edges_count < 0 || value.edges_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.edges_count > 0 )
     {
         const uint64_t ref_edges = ids.ref_at( 117, 0xc70cde6b85b6197dull );
@@ -19399,7 +19399,7 @@ inline int64_t RangedUnsignedMeasureBodyRetain( TableRetainIds & ids, const Rang
     if ( value.u64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 0, 0x0117ad66e0fff227ull ) ) + 1 + 8; } // u64_low
     if ( value.u64_high != 1ull ) { bytes += TableLebBytes( ids.ref_at( 144, 0xf2b45af3b50689dbull ) ) + 1 + 8; } // u64_high
     if ( value.u64_inside != 1ull ) { bytes += TableLebBytes( ids.ref_at( 62, 0x713e12017eebcaf7ull ) ) + 1 + 8; } // u64_inside
-    if ( value.counts_count < 0 || value.counts_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.counts_count > 0 )
     {
         const uint64_t ref_counts = ids.ref_at( 112, 0xc341febe5aae51e5ull );
@@ -19494,7 +19494,7 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBodyRetain( TableWriter & w, Table
         w.header( ids.ref_at( 62, 0x713e12017eebcaf7ull ), 9 ); // u64_inside
         w.put64( uint64_t( value.u64_inside ) );
     }
-    if ( value.counts_count < 0 || value.counts_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.counts_count > 0 )
     {
         const uint64_t ref_counts = ids.ref_at( 112, 0xc341febe5aae51e5ull );
