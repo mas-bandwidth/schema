@@ -1053,7 +1053,9 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteInt(f, name, ind)
 	case ir.TBits:
 		w := int64(f.Type.Width)
+		max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
 		if w <= 32 {
+			g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < 0 || %s > %s", name, name, name, max.String()), "", ind)
 			if w == 32 {
 				g.chunkAdd(fmt.Sprintf("(%s >>> 0)", name), w, ind)
 			} else {
@@ -1061,6 +1063,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 			}
 			return
 		}
+		g.guard(fmt.Sprintf("%s < 0n || %s > %sn", name, name, max.String()), "", ind)
 		g.emitWriteWideOffset(name, w, ind)
 	case ir.TBool:
 		g.chunkAdd(fmt.Sprintf("(%s ? 1 : 0)", name), 1, ind)
