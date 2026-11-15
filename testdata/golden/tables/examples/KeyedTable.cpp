@@ -2674,6 +2674,40 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
     return true;
 }
 
+// TableJsonSeenKeys is ONE object's key spellings, so a key named twice refuses
+// in every object of the text, the objects this walk skips included
+// (docs/SPEC-TABLES.md §16.2, §16.12). The storage is fixed, so the walk
+// allocates nothing; an object with more keys than this still reads, its
+// repeats simply stop being counted.
+static const int32_t kTableJsonSeenKeySlots = 512;
+static const int32_t kTableJsonSeenKeyBytes = 8192;
+
+struct TableJsonSeenKeys
+{
+    char text[kTableJsonSeenKeyBytes];
+    int32_t off[kTableJsonSeenKeySlots];
+    int32_t len[kTableJsonSeenKeySlots];
+    int32_t count = 0;
+    int32_t used = 0;
+};
+
+inline bool TableJsonKeyOnce( TableJsonSeenKeys & keys, const char * key, int32_t key_length )
+{
+    for ( int32_t i = 0; i < keys.count; i++ )
+    {
+        if ( keys.len[i] == key_length && memcmp( keys.text + keys.off[i], key, (size_t) key_length ) == 0 ) { return false; }
+    }
+    if ( keys.count < kTableJsonSeenKeySlots && keys.used + key_length <= kTableJsonSeenKeyBytes )
+    {
+        memcpy( keys.text + keys.used, key, (size_t) key_length );
+        keys.off[keys.count] = keys.used;
+        keys.len[keys.count] = key_length;
+        keys.count++;
+        keys.used += key_length;
+    }
+    return true;
+}
+
 inline bool TableJsonSkipValue( TableJsonIn & in, int32_t depth );
 
 inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth )
@@ -2685,6 +2719,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
     }
     in.pos++; // the opening bracket
     bool first = true;
+    TableJsonSeenKeys keys;
     for ( ;; )
     {
         char c = TableJsonPeek( in );
@@ -2709,6 +2744,11 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
             int32_t key_length = 0;
             if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
+            if ( !TableJsonKeyOnce( keys, key, key_length ) )
+            {
+                in.report->refused = true;
+                in.report->refuse_reason = malformed;
+            }
             if ( TableJsonPeek( in ) != ':' )
             {
                 in.bad = true;
@@ -2765,7 +2805,7 @@ inline bool TableJsonSkipValue( TableJsonIn & in, int32_t depth )
     {
         case '{': return TableJsonSkipContainer( in, '}', depth );
         case '[': return TableJsonSkipContainer( in, ']', depth );
-        case '"': return TableJsonScanString( in, NULL, 0, NULL );
+        case '"': return TableJsonScanString( in, NULL, 0, NULL, NULL, true );
         case 't': return TableJsonLiteral( in, "true" );
         case 'f': return TableJsonLiteral( in, "false" );
         case 'n': return TableJsonLiteral( in, "null" );
@@ -3877,8 +3917,10 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
 inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key, int32_t first_key_length )
 {
     // repeated tracking, allocation-free: the bitmap is sized to the unit's
-    // widest table, so every field index this table declares is tracked
+    // widest table, so every field index this table declares is tracked. The
+    // keys this table does NOT name are tracked beside it (§16.2).
     uint64_t seen[kTableJsonFieldSeenWords] = {};
+    TableJsonSeenKeys unknown_keys;
     for ( ;; )
     {
         char key[kTableJsonMaxKey];
@@ -3936,6 +3978,11 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
         }
         if ( index < 0 )
         {
+            if ( !TableJsonKeyOnce( unknown_keys, key, key_length ) )
+            {
+                in.report->refused = true;
+                in.report->refuse_reason = malformed;
+            }
             in.report->unknown++;
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         }

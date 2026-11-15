@@ -149,9 +149,17 @@ function _M.ZeroFixedProbe(value)
   end
 end
 
--- ReadFixedProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadFixedProbe reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadFixedProbe(stream, value)
+  if not _M.ReadFixedProbeBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadFixedProbeBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadFixedProbeBody(stream, value)
   if not stream:serializeFixed(BITS, 16, 16, -180, 180) then return false end
   value.Angle = BITS.value
   if not stream:serializeFixed(BIG, 48, 16, -30000, 30000) then return false end
@@ -180,9 +188,17 @@ function _M.ZeroUnsignedProbe(value)
   value.Tail = 0
 end
 
--- ReadUnsignedProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadUnsignedProbe reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadUnsignedProbe(stream, value)
+  if not _M.ReadUnsignedProbeBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadUnsignedProbeBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadUnsignedProbeBody(stream, value)
   if not stream:serializeFixed(BITS, 16, 16, 0, 360) then return false end
   value.Angle = BITS.value
   if not stream:serializeFixed(BIG, 48, 16, 0, 281474976710655) then return false end
@@ -210,9 +226,17 @@ function _M.ZeroWideProbe(value)
   value.Seed = { lo = 0, hi = 0 }
 end
 
--- ReadWideProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadWideProbe reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadWideProbe(stream, value)
+  if not _M.ReadWideProbeBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadWideProbeBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadWideProbeBody(stream, value)
   if not stream:serializeUint128(WIDE) then return false end
   value.EntityId = WIDE.value
   if
@@ -263,13 +287,21 @@ function _M.ZeroLudicrousState(value)
   value.TargetId = { lo = 0, hi = 0 }
 end
 
--- ReadLudicrousState reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadLudicrousState reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadLudicrousState(stream, value)
+  if not _M.ReadLudicrousStateBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadLudicrousStateBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadLudicrousStateBody(stream, value)
   if not stream:serializeInt(BITS, 0, 3) then return false end
   value.Mode = BITS.value
-  if not _M.ReadFixedProbe(stream, value.Probe) then return false end
-  if not _M.ReadWideProbe(stream, value.Wide) then return false end
+  if not _M.ReadFixedProbeBody(stream, value.Probe) then return false end
+  if not _M.ReadWideProbeBody(stream, value.Wide) then return false end
   if not stream:serializeInt(BITS, 0, 4) then -- the count guards the loop (SPEC §6.3)
     return false
   end
@@ -297,9 +329,17 @@ function _M.ZeroDegenerateProbe(value)
   value.Tail = 0
 end
 
--- ReadDegenerateProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadDegenerateProbe reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadDegenerateProbe(stream, value)
+  if not _M.ReadDegenerateProbeBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadDegenerateProbeBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadDegenerateProbeBody(stream, value)
   value.LockedFixed = -196608 -- degenerate range: zero bits (SPEC §4.6)
   value.LockedInt = 7 -- degenerate range: zero bits (SPEC §4.6)
   value.LockedWide = { lo = 0xfffff4c58c31d00e, hi = 0xffffffffffffffff } -- degenerate range: zero bits (SPEC §4.6)
@@ -315,9 +355,17 @@ function _M.ZeroFixedVec(value)
   value.Z = 0
 end
 
--- ReadFixedVec reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadFixedVec reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadFixedVec(stream, value)
+  if not _M.ReadFixedVecBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadFixedVecBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadFixedVecBody(stream, value)
   if not stream:serializeFixed(BIG, 48, 16, -100000, 100000) then return false end
   value.X = BIG.value
   if not stream:serializeFixed(BIG, 48, 16, -100000, 100000) then return false end
@@ -335,9 +383,17 @@ function _M.ZeroFixedQuat(value)
   value.W = 0
 end
 
--- ReadFixedQuat reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadFixedQuat reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadFixedQuat(stream, value)
+  if not _M.ReadFixedQuatBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadFixedQuatBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadFixedQuatBody(stream, value)
   if not stream:serializeFixed(BITS, 2, 30, -1, 1) then return false end
   value.X = BITS.value
   if not stream:serializeFixed(BITS, 2, 30, -1, 1) then return false end
