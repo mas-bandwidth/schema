@@ -416,14 +416,43 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 	}
 }
 
+// zeroMode is what a string scan does with a U+0000 it decodes
+// (docs/SPEC-TABLES.md §16.3).
+type zeroMode int
+
+const (
+	// zeroNone is a string the walk only COMPARES: an enum, flag or union
+	// name, a base64 body, a timestamp. A U+0000 there is not the placed-text
+	// rule; the value's own row decides.
+	zeroNone zeroMode = iota
+	// zeroStored is a string the walk PLACES in text storage: a string(N) or
+	// *string value, a text-list element, a map key. A U+0000 refuses the read
+	// and names the field that held it.
+	zeroStored
+	// zeroSkipped is an object key or a string the walk only SKIPS: the value
+	// of an unknown key. On the table walk it is held to the placed-text rule
+	// and a U+0000 refuses the read; the JSON LAYER (§16.12) parses a whole
+	// value with no table and is not the table walk, so a U+0000 there stays.
+	zeroSkipped
+)
+
 // scanString reads one JSON string, appending ONE CODE POINT AT A TIME — an
 // escape's encoding, or a UTF-8 sequence read whole. capacity < 0 is
 // unbounded; the returned bool is whether the scan succeeded, and over whether
 // the string is longer than capacity, which the caller refuses.
-// scanString is for a string the walk only COMPARES or SKIPS — an object key,
-// an enum, flag or union name, a skipped value — and stores nothing.
+// scanString is for a string the walk only COMPARES — an enum, flag or union
+// name, a base64 body, a timestamp — and stores nothing.
 func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
-	return in.scanText(capacity, false)
+	return in.scanText(capacity, zeroNone)
+}
+
+// scanKey reads an object key or a string the walk only SKIPS, and holds it to
+// the U+0000 rule a placed string is held to (docs/SPEC-TABLES.md §16.2,
+// §16.3): a skipped value and every object key are held to the text rules of a
+// placed value, so a key or skipped string that decodes to U+0000 refuses the
+// read. No field holds it, so the refusal is plain malformed.
+func (in *reader) scanKey(capacity int) (out []byte, clamped bool, ok bool) {
+	return in.scanText(capacity, zeroSkipped)
 }
 
 // scanStored scans a string the walk PLACES in text storage: a string(N) or
@@ -436,10 +465,10 @@ func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
 // \u0000 escape can produce one; a raw control byte is already not JSON. The
 // generated Go walk's scanText holds the same rule.
 func (in *reader) scanStored(capacity int) (out []byte, clamped bool, ok bool) {
-	return in.scanText(capacity, true)
+	return in.scanText(capacity, zeroStored)
 }
 
-func (in *reader) scanText(capacity int, store bool) (out []byte, clamped bool, ok bool) {
+func (in *reader) scanText(capacity int, zero zeroMode) (out []byte, clamped bool, ok bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return nil, false, false
@@ -453,8 +482,11 @@ func (in *reader) scanText(capacity int, store bool) (out []byte, clamped bool, 
 		if done {
 			break
 		}
-		if store && len(unit) == 1 && unit[0] == 0 {
-			in.zero = true // §16.3: a zero bound for text storage
+		if len(unit) == 1 && unit[0] == 0 &&
+			(zero == zeroStored || (zero == zeroSkipped && in.m != nil)) {
+			if zero == zeroStored {
+				in.zero = true // §16.3: a zero bound for text storage
+			}
 			in.bad = true
 			return nil, false, false
 		}
@@ -554,7 +586,7 @@ func (in *reader) skipValue(depth int) bool {
 	case '[':
 		return in.skipContainer(']', depth)
 	case '"':
-		_, _, ok := in.scanString(0)
+		_, _, ok := in.scanKey(0)
 		return ok
 	case 't':
 		return in.literal("true")
@@ -600,9 +632,12 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 			// not hold, and the numbering has to survive the drop (§16.7).
 			// Anywhere but first, the prefix is the reserved key out of place
 			// — in a pointered root; a fixed root skips the value whole.
-			key, _, ok := in.scanString(maxJsonKey)
+			key, tooLong, ok := in.scanKey(maxJsonKey)
 			if !ok {
 				return false
+			}
+			if tooLong {
+				return in.fail("length_over_bound: JSON key")
 			}
 			if in.peek() != ':' {
 				in.bad = true
@@ -711,7 +746,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 				return false
 			}
 			var ok, tooLong bool
-			key, tooLong, ok = in.scanString(maxJsonKey)
+			key, tooLong, ok = in.scanKey(maxJsonKey)
 			if !ok {
 				return false
 			}
@@ -952,7 +987,7 @@ func (in *reader) readPointerCell(cell *Cell, st *ir.Struct, depth int) bool {
 		in.bad = true
 		return false
 	}
-	key, tooLong, ok := in.scanString(maxJsonKey)
+	key, tooLong, ok := in.scanKey(maxJsonKey)
 	if !ok {
 		return false
 	}
@@ -1113,6 +1148,21 @@ func (in *reader) readBase64(fv *Field) bool {
 	}
 	if malformed {
 		return in.fail("base64_damaged: " + fv.Def.Name)
+	}
+	// JSON bytes use the same canonical spelling as the writer: padded
+	// standard base64 with zero pad bits (§16.2). The walk above deliberately
+	// accepts decodable unpadded input, so distinguish it from damaged input.
+	canonical := symbols%4 == 0
+	switch pad {
+	case 1:
+		last := strings.IndexByte(alphabet, raw[len(raw)-2])
+		canonical = last >= 0 && last&0x03 == 0
+	case 2:
+		last := strings.IndexByte(alphabet, raw[len(raw)-3])
+		canonical = last >= 0 && last&0x0f == 0
+	}
+	if !canonical {
+		return in.fail("base64_not_canonical: " + fv.Def.Name)
 	}
 	var out []byte
 	var accumulator uint32
@@ -1354,7 +1404,7 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		key, tooLong, ok := in.scanString(maxJsonKey)
+		key, tooLong, ok := in.scanKey(maxJsonKey)
 		if !ok {
 			return false
 		}
@@ -1423,9 +1473,12 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 		return in.readTable(cell.Tab, depth+1)
 	}
 	if e := EnumOf(f); e != nil {
-		name, _, ok := in.scanString(maxJsonKey)
+		name, tooLong, ok := in.scanString(maxJsonKey)
 		if !ok {
 			return false
+		}
+		if tooLong {
+			return in.fail("length_over_bound: JSON key")
 		}
 		if v := EnumValue(e, string(name)); v >= 0 {
 			if VariantDeprecated(e, v) {
@@ -1689,9 +1742,12 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 		in.pos++
 		return true
 	}
-	key, _, ok := in.scanString(maxJsonKey)
+	key, tooLong, ok := in.scanKey(maxJsonKey)
 	if !ok {
 		return false
+	}
+	if tooLong {
+		return in.fail("length_over_bound: JSON key")
 	}
 	if in.peek() != ':' {
 		in.bad = true
@@ -1794,9 +1850,12 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 		if c != '"' {
 			return in.fail("kind_mismatch: " + fl.Name)
 		} else {
-			name, _, ok := in.scanString(maxJsonKey)
+			name, tooLong, ok := in.scanString(maxJsonKey)
 			if !ok {
 				return false
+			}
+			if tooLong {
+				return in.fail("length_over_bound: JSON key")
 			}
 			found := false
 			for bit, v := range fl.Variants {

@@ -47,11 +47,11 @@ func TestWireIdentityMapDartNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	dart := dartBinary(t)
-	const open = "    if (open.contains(obj)) {\n"
+	const open = "      if (active.contains(obj)) {\n"
 	blind := func(f map[string][]byte) {
 		for name, src := range f {
 			if s := string(src); strings.Contains(s, open) {
-				f[name] = []byte(strings.Replace(s, open, "    if (open.contains(obj) && obj is! Object) {\n", 1))
+				f[name] = []byte(strings.Replace(s, open, "      if (active.contains(obj) && obj is! Object) {\n", 1))
 			}
 		}
 	}

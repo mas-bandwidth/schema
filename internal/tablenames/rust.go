@@ -110,6 +110,11 @@ func init() {
 		Name{Name: "TableNodeReader", What: "the node table a load gathers before any body (§3.1)"},
 		Name{Name: "TableRefuseReason", What: "the variable form's refused-by-name result (§5), using the Go reference's names"},
 		Name{Name: "TableNodeSlot", What: "one record's state in a load's numbering (§3.1)"},
+		// the iterative Drop of a table that reaches its own type through a
+		// pointer (§3.1, §4): the trait, and its one method (table_unlink),
+		// which is reached through the trait and so claims nothing
+		Name{Name: "TableDropUnlink", What: "the iterative unlink a self-reaching table's Drop walks (§3.1, §4)"},
+		Name{Name: "TableUnlink", What: "TableDropUnlink's method, table_unlink (§3.1, §4)", Scoped: true},
 		Name{Name: "TableKindWidth", What: "a fixed-width kind's payload size (§3)", Scoped: true},
 		Name{Name: "TableKindWidens", What: "the widening ladder: a narrower kind decoded exactly into a wider declaration (§4)", Scoped: true},
 		Name{Name: "TableScalarRead", What: "one scalar read at its kind's own width (§3, §4)", Scoped: true},

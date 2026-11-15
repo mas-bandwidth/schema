@@ -261,6 +261,19 @@ defmodule Bench.FixedRuntime do
   def damage_check(_report, true), do: throw({:refuse, :wire_damaged})
 
   @doc """
+  A BOOL OR A PRESENT BYTE IS 0 OR 1 (docs/SPEC-TABLES.md §3.4): any other
+  byte is damage, and the whole read refuses `wire_damaged`.
+  """
+  def flag(0), do: false
+  def flag(1), do: true
+  def flag(_byte), do: throw({:refuse, :wire_damaged})
+
+  # AN ABSENT OPTIONAL'S PAYLOAD IS UNSPECIFIED (§3.4): nobody wrote it, so
+  # its byte is not a bool any read refuses.
+  def flag(byte, true), do: flag(byte)
+  def flag(byte, false), do: byte != 0
+
+  @doc """
   ONE VALUE AGAINST ONE PAIR OF BOUNDS: `acc` and one more when the value lies
   outside them, `acc` unchanged when it does not.
 
@@ -349,6 +362,19 @@ defmodule Bench.FixedRuntime do
 
   def text_slack(bytes, n) when is_binary(bytes) do
     raise ArgumentError, "value is #{byte_size(bytes)} bytes, past the declared bound of #{n}"
+  end
+
+  @doc """
+  text_slack for a STRING, which must also be well-formed UTF-8 with no zero
+  byte, or ArgumentError: the fixed reader refuses either as text_ill_formed,
+  and a writer never produces bytes its own reader refuses (docs/SPEC.md §5.1).
+  """
+  def string_slack(text, n) when is_binary(text) do
+    if not String.valid?(text) or :binary.match(text, <<0>>) != :nomatch do
+      raise ArgumentError, "value is not well-formed UTF-8 text with no zero byte"
+    end
+
+    text_slack(text, n)
   end
 
   # ---------------------------------------------------------------------------

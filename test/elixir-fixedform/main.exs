@@ -1750,14 +1750,26 @@ Leg.eq(
 # the verdict is a REFUSAL BY NAME (§4.5 fix 11): `:text_ill_formed` refuses the
 # whole read without setting `malformed`.
 #
-# THE POISON IS WRITTEN THROUGH THE WRITER, because it can be: the write side's
-# bounds are the used length and the live count, and neither is a content rule.
+# THE POISON IS LAID INTO A WRITTEN IMAGE, because the writer refuses it: a
+# string that is not UTF-8 or holds a zero byte is a value the declaration
+# does not admit (docs/SPEC.md §5.1 row 8). The writer saves a placeholder of
+# the same length twice, with two different fillers; the bytes where the two
+# images differ are the label's, and the poison takes their place.
 Leg.section("ill-formed text: refuses by name (:text_ill_formed)")
 
 poison = fn bytes ->
-  Tblfx1.FX1Fixed.fx_root_fixed_save([
-    %Tblfx1.FxRoot{keep: 1234, nested: %Tblfx1.FxNested{a: 7, b: 2}, label: bytes}
-  ])
+  save = fn label ->
+    Tblfx1.FX1Fixed.fx_root_fixed_save([
+      %Tblfx1.FxRoot{keep: 1234, nested: %Tblfx1.FxNested{a: 7, b: 2}, label: label}
+    ])
+  end
+
+  n = byte_size(bytes)
+  a = save.(:binary.copy("a", n))
+  b = save.(:binary.copy("b", n))
+  at = Enum.find(0..(byte_size(a) - 1), fn i -> :binary.at(a, i) != :binary.at(b, i) end)
+  <<pre::binary-size(at), _label::binary-size(n), post::binary>> = a
+  pre <> bytes <> post
 end
 
 for {bytes, what} <- [

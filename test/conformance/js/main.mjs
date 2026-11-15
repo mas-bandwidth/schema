@@ -27,6 +27,7 @@ import { existsSync, readFileSync, writeFileSync, readSync, writeSync } from "no
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { fixedCodec, fixedRoots } from "./fixed.mjs";
+import { surfaceWriteRefusal } from "./writerefusal.mjs";
 
 // The generated tree is a PATH, not a static import, for one reason: the
 // harness's negative control points this same driver at a sabotaged copy of
@@ -637,6 +638,17 @@ async function surfaceMessage(lines, outDir) {
   }
 }
 
+// messageVerbs answers a message row's Measure/Save pair for the write-refusal
+// message surface (writerefusal.mjs), or null where the root has no message form.
+async function messageVerbs(unit, root) {
+  const row = messageRow(unit, root);
+  if (row === null) { return null; }
+  const m = await load(row[3]);
+  const measure = m[root + "MeasureMessages"], save = m[root + "SaveMessages"];
+  if (typeof measure !== "function" || typeof save !== "function") { return null; }
+  return { measure, save };
+}
+
 // ---- the WIRE-CARRYING surfaces (docs/SPEC-TABLES.md §3, §3.1, §4, §16, §16.7)
 //
 // The variable form, form byte 1, over the roots this leg's variable wire
@@ -1052,6 +1064,8 @@ async function surfaceJsonHostile(lines, outDir) {
 // Every cook-write row in the manifest loads through its unit's
 // <Package>Variable.js and writes through its CookMeasure / CookFrom verbs.
 const cookWriteRows = [
+  // the feature witnesses (SPEC-TABLES §2.13.1): non-empty unbounded text
+  ["featurewitnesses", "Root", "features/FeaturewitnessesVariable.js"],
   ["tabledemo", "RootConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "ProfileConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "LoadoutConfig", "examples/TabledemoVariable.js"],
@@ -1469,7 +1483,7 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
-  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
+  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -1501,5 +1515,11 @@ switch (surface) {
   case "cook-forgery": surfaceCookForgery(lines, outDir); break;
   case "cook-reason": surfaceReason("cook", lines, outDir); break;
   case "block-reason": surfaceReason("block", lines, outDir); break;
+  case "write-refusal":
+  case "write-refusal-fixed":
+  case "write-refusal-message":
+  case "write-refusal-json":
+    await surfaceWriteRefusal(surface, lines, outDir, textCodec, messageVerbs);
+    break;
   default: process.exit(2);
 }

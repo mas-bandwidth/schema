@@ -71,10 +71,10 @@ func cppRuntimeNames() []Name {
 		}},
 		{what: "the fixed form's runtime: plan compile, layout read and the read loop (docs/SPEC-TABLES.md §3.4)", names: []string{
 			"TableFixedPut128",
-			"TableFixedApply", "TableFixedClampKnownRanges", "TableFixedCopyRun", "TableFixedDepth",
-			"TableFixedEntryAt", "TableFixedEntryLands", "TableFixedFills", "TableFixedGet32", "TableFixedGet64",
+			"TableFixedApply", "TableFixedBigEndianHost", "TableFixedClampKnownRanges", "TableFixedCopyLe", "TableFixedCopyRun", "TableFixedDepth",
+			"TableFixedEntryAt", "TableFixedEntryLands", "TableFixedFills", "TableFixedGet32", "TableFixedGet64", "TableFixedGetLe",
 			"TableFixedKnownRange", "TableFixedLayFills", "TableFixedLayTable", "TableFixedPut16", "TableFixedPut32",
-			"TableFixedPut64", "TableFixedPut8", "TableFixedPutF32", "TableFixedPutF64", "TableFixedRefuseScan",
+			"TableFixedPut64", "TableFixedPut8", "TableFixedPutF32", "TableFixedPutF64", "TableFixedRefuseScan", "TableFixedStoreNative",
 		}},
 		{what: "the id vocabulary and the announcement (docs/SPEC-TABLES.md §3.3)", names: []string{
 			"TableIdTable", "TableIdsBytes", "TableIdsWrite", "TableLebBytes", "TableVocabularyEntryAt",

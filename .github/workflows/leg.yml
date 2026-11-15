@@ -114,6 +114,8 @@ jobs:
           node-version: ${{ matrix.node }}
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
         if: matrix.rust != ''
 
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
