@@ -14,16 +14,13 @@ import (
 // example, between its <!-- rust-table-usage --> markers, is compiled against
 // the tables/examples crate this generator emits and RUN, so the documented
 // surface goes red with the code rather than drifting from it. A FUNCTIONAL
-// test: it compiles Rust, and fails by name when SCHEMA_REQUIRE_CORPUS is set
-// and rustc is missing.
+// test: it compiles Rust, so once the slow gate has selected it a missing
+// rustc fails it by name rather than skipping the run it was asked to make.
 func TestUsageRust(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "rustc (it compiles and runs docs/USAGE.md's Rust example)")
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH, so docs/USAGE.md's Rust example cannot be built or run: %v", err)
 	}
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
