@@ -851,7 +851,8 @@ jobs:
           set -euo pipefail
           case "$TARGET" in
             tables-go-fixedform) make tables-go-fixedform ;;
-            conformance-go-rows) make conformance-go-rows ;;
+            conformance-go-rows-a) make conformance-go-rows-a ;;
+            conformance-go-rows-b) make conformance-go-rows-b ;;
             *) echo "::error::go-test-touched has no make row '$TARGET'"; exit 1 ;;
           esac
 
