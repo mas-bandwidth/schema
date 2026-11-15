@@ -113,7 +113,7 @@ public final class MixedEntityFixed {
      */
     static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
         v.entityId = TableFixed.get32(b, at + 0);
-        if (v.entityId > 4095L) {
+        if (Integer.compareUnsigned(v.entityId, 4095) > 0) {
             v.entityId = (int) (4095L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
@@ -165,14 +165,14 @@ public final class MixedEntityFixed {
             v.posZ = (int) (q);
         }
         v.yaw = TableFixed.get32(b, at + 16);
-        if (v.yaw > 511L) {
+        if (Integer.compareUnsigned(v.yaw, 511) > 0) {
             v.yaw = (int) (511L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
         } // bits(9) clamps to 2^N - 1
         v.pitch = TableFixed.get32(b, at + 20);
-        if (v.pitch > 511L) {
+        if (Integer.compareUnsigned(v.pitch, 511) > 0) {
             v.pitch = (int) (511L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);

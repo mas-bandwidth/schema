@@ -68,6 +68,49 @@ var NegativeZero = []Vector{
 	{File: NegativeZeroFile, Name: "negative_zero", Root: "NegZero"},
 }
 
+// DeadVector names one dead-byte vector (docs/FIXED-FORM-ALGORITHM.md §3.1,
+// §4.5, §5.3; docs/SPEC-TABLES.md §3.4, §13.10): its corpus file, a Name that
+// tells it from the others (a leg's subtest), the fixed root it reads, and
+// whether the reference's line says the file reads. Reads is true for a control
+// — the same record with every dead byte zero — whose manifest line carries
+// `expect=`, and false for a file with one changed dead region, which the line
+// says the reference refused whole.
+type DeadVector struct {
+	File, Name, Root string
+	Reads            bool
+}
+
+// DeadBytes is every dead-byte vector, the list each leg runs. The changed
+// files are one per dead region the rule names: an absent optional's payload
+// (its ranged int, its string length, its bytes, its float, its bool, its enum,
+// its array, its nested optional), a counted array's slots past its count, a
+// text or bytes span past its used length, and an inactive union arm. Each
+// control is the same record with every dead byte zero.
+var DeadBytes = []DeadVector{
+	{File: "dead_absent_zero.bin", Name: "absent_zero", Root: "DeadRoot", Reads: true},
+	{File: "dead_absent_range.bin", Name: "absent_range", Root: "DeadRoot"},
+	{File: "dead_absent_string_over.bin", Name: "absent_string_over", Root: "DeadRoot"},
+	{File: "dead_absent_string_neg.bin", Name: "absent_string_neg", Root: "DeadRoot"},
+	{File: "dead_absent_string_utf8.bin", Name: "absent_string_utf8", Root: "DeadRoot"},
+	{File: "dead_absent_lawful.bin", Name: "absent_lawful", Root: "DeadRoot"},
+	{File: "dead_absent_nan.bin", Name: "absent_nan", Root: "DeadRoot"},
+	{File: "dead_absent_bool.bin", Name: "absent_bool", Root: "DeadRoot"},
+	{File: "dead_absent_enum.bin", Name: "absent_enum", Root: "DeadRoot"},
+	{File: "dead_absent_array_count.bin", Name: "absent_array_count", Root: "DeadRoot"},
+	{File: "dead_absent_nested.bin", Name: "absent_nested", Root: "DeadRoot"},
+	{File: "dead_array_zero.bin", Name: "array_zero", Root: "DeadRoot", Reads: true},
+	{File: "dead_array_tail_first.bin", Name: "array_tail_first", Root: "DeadRoot"},
+	{File: "dead_array_tail_last.bin", Name: "array_tail_last", Root: "DeadRoot"},
+	{File: "dead_array_tail_struct.bin", Name: "array_tail_struct", Root: "DeadRoot"},
+	{File: "dead_text_zero.bin", Name: "text_zero", Root: "DeadRoot", Reads: true},
+	{File: "dead_text_tail.bin", Name: "text_tail", Root: "DeadRoot"},
+	{File: "dead_bytes_tail.bin", Name: "bytes_tail", Root: "DeadRoot"},
+	{File: "dead_union_zero.bin", Name: "union_zero", Root: "DeadRoot", Reads: true},
+	{File: "dead_union_arm.bin", Name: "union_arm", Root: "DeadRoot"},
+	{File: "dead_union_narrow_zero.bin", Name: "union_narrow_zero", Root: "DeadRoot", Reads: true},
+	{File: "dead_union_narrow_tail.bin", Name: "union_narrow_tail", Root: "DeadRoot"},
+}
+
 // Expect is one vector's answer: Refused when the reference refused the whole
 // load (the line carries no `expect=`), else the landed integer values by
 // manifest path (`r0.v`, `r0.vals[2]`) in the manifest's order. Clamped is

@@ -125,6 +125,49 @@ quantized index"), so min, max and resolution are DEFINITIONS in the digest: the
 float whatever the bounds say, which is exactly why the range may WIDEN and the resolution may REFINE here
 and may not there.
 
+## The dead-byte vectors
+
+**Every dead byte in a fixed record is zero on write and refused if non-zero on read**
+(`FIXED-FORM-ALGORITHM.md` §3.1, §4.5, §5.3; `SPEC-TABLES.md` §3.4, §13.10;
+`docs/rulings.json` `fixed-dead-bytes-are-zero`). The dead bytes are an absent optional's payload, a counted
+array's element slots past its live count, a string(N)'s or bytes(N)'s bytes past its used length, and an
+inactive union arm — the arm bytes under tag `0`, and the bytes past a narrower taken arm inside the widest
+arm's span.
+
+`DeadBytes.schema` carries one root with every region: an optional of a type holding a ranged int32, a
+`string(4)`, a `float32`, a `bool`, an enum, a counted array and a nested optional; a `[..3]int16` and a
+`[..3]` small struct; a `string(8)` and a `bytes(4)`; and a union of a narrow and a wide arm.
+`fixedform_dump.cpp` writes one record per file under `build/fixedform-corpus`. Each control is the reference
+writer's file with every dead byte zero, and each changed file is a control with one dead region made
+non-zero. The changed files carry no `expect=` in `manifest.txt` — the rule refuses the whole load — and each
+control carries its `expect=` values and reads, saving back byte for byte. `internal/fixedvector.DeadBytes`
+names every file and its verdict; `TestDeadBytesVectors` holds each manifest line to it.
+
+| file | dead region | verdict |
+|---|---|---|
+| `dead_absent_zero.bin` | absent optional, payload zero | reads |
+| `dead_absent_range.bin` | absent optional's ranged int outside its range | refused |
+| `dead_absent_string_over.bin` | absent optional's string length past its bound | refused |
+| `dead_absent_string_neg.bin` | absent optional's string length `-1` | refused |
+| `dead_absent_string_utf8.bin` | absent optional's string bytes not UTF-8 under a zero length | refused |
+| `dead_absent_lawful.bin` | a lawful payload under the clear flag | refused |
+| `dead_absent_nan.bin` | a NaN's bits in the absent optional's float | refused |
+| `dead_absent_bool.bin` | the absent optional's bool byte `2` | refused |
+| `dead_absent_enum.bin` | the absent optional's enum ordinal past its top | refused |
+| `dead_absent_array_count.bin` | the absent optional's counted array count `1` | refused |
+| `dead_absent_nested.bin` | the absent optional's nested present byte `2` | refused |
+| `dead_array_zero.bin` | counted arrays count `1`, dead slots zero | reads |
+| `dead_array_tail_first.bin` | first slot past the count non-zero | refused |
+| `dead_array_tail_last.bin` | last slot past the count non-zero | refused |
+| `dead_array_tail_struct.bin` | a dead struct element's nested field non-zero | refused |
+| `dead_text_zero.bin` | short text and bytes, slack zero | reads |
+| `dead_text_tail.bin` | a `string(8)` byte past its used length non-zero | refused |
+| `dead_bytes_tail.bin` | a `bytes(4)` byte past its used length non-zero | refused |
+| `dead_union_zero.bin` | tag `0`, arm span zero | reads |
+| `dead_union_arm.bin` | tag `0` with a non-zero byte in the arm span | refused |
+| `dead_union_narrow_zero.bin` | the narrow arm taken, the rest of the wide span zero | reads |
+| `dead_union_narrow_tail.bin` | the narrow arm taken with a non-zero byte past it | refused |
+
 ## The compressed float's negative zero: one shared vector
 
 `docs/SPEC-TABLES.md` §3.3 rules that a compressed float's `-0` lands as `+0`,
