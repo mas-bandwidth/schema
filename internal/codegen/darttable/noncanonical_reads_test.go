@@ -220,12 +220,15 @@ func TestDartReadsRefuseNonCanonical(t *testing.T) {
 			if fields["retain"] != boolWord(row.verdict == "refused") {
 				t.Errorf("%s: retaining load refused=%s, want %s: %s", row.file, fields["retain"], boolWord(row.verdict == "refused"), line)
 			}
+			// The measure sizes a region before a load and answers no
+			// verdict on a good-value spelling: like the reference
+			// tablewire.FileRegionMeasure it reads the trailer and the
+			// framing only, so a wire the load refuses for its content (an
+			// explicit null pointer, an unreached record) still measures.
+			// It is held to a positive extent on the canonical file.
 			measure, _ := strconv.Atoi(fields["measure"])
 			if row.verdict == "read" && measure <= 0 {
 				t.Errorf("%s: measure=%d, want a positive extent: %s", row.file, measure, line)
-			}
-			if row.verdict == "refused" && measure > 0 {
-				t.Errorf("%s: measure=%d, want a refusal: %s", row.file, measure, line)
 			}
 			if row.verdict == "read" && fields["saved"] != canonicalSave {
 				t.Errorf("%s: re-save = %s, want %s", row.file, fields["saved"], canonicalSave)

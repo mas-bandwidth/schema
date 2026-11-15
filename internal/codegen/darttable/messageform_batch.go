@@ -239,6 +239,13 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3, §4),
 	// known or unknown: this body's own seen level starts clear.
 	g.pf("  r.seenReset();\n")
+	// THE WRITER'S ORDER IS THE READER'S RULE (docs/SPEC-TABLES.md §3.3, §4;
+	// docs/rulings.json reads-refuse-non-canonical): nextField is one past
+	// the ordinal of the last declared field this body carried. An unknown
+	// field's place is its newer writer's and is not judged.
+	if len(st.Fields) > 0 {
+		g.pf("  var nextField = 0;\n")
+	}
 	g.pf("  while (true) {\n")
 	g.pf("    final ref = r.bits.get(r.vocabulary.refBits);\n")
 	g.pf("    if (r.bits.failed) { r.report.Damage(); return false; }\n")
@@ -257,11 +264,24 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	g.pf("    final shape = entry.shape;\n")
 	g.pf("    if (shape == null) { r.report.Damage(); return false; }\n")
 	g.pf("    switch (entry.id) {\n")
-	for _, f := range st.Fields {
+	for i, f := range st.Fields {
 		entry := ir.TableFieldEntry(f)
+		expr := "value." + dartName(f.Name)
 		g.pf("      case %s: {\n", dartU64Literal(entry.Id))
+		g.pf("        if (nextField > %d) { r.report.Damage(); return false; } // out of the writer's order (§3.3)\n", i)
+		g.pf("        nextField = %d;\n", i+1)
 		g.emitMessageCompatibility(f, entry, "entry", "shape", "        ")
-		g.emitMessageReadValue(f, entry, "value."+dartName(f.Name), "        ", "shape", "entry.kind")
+		held := g.messageHoldsElision(f, entry)
+		if held {
+			g.pf("        final unknownAt = r.report.unknown;\n")
+			if _, nested := f.Type.Ref.(*ir.Struct); nested && f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone {
+				g.pf("        final bitsAt = r.bits.offset;\n")
+			}
+		}
+		g.emitMessageReadValue(f, entry, expr, "        ", "shape", "entry.kind")
+		if held {
+			g.emitMessageElidedCheck(f, expr, "        ")
+		}
 		g.pf("        break;\n      }\n")
 	}
 	g.pf("      default:\n")
@@ -277,6 +297,35 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	g.pf("          r.report.Damage();\n          return false;\n        }\n")
 	g.pf("        break;\n")
 	g.pf("    }\n  }\n}\n\n")
+}
+
+// messageHoldsElision reports whether a body field is held to its writer's
+// elision (emitSaveMessageBody's messageRides; docs/SPEC-TABLES.md §3.3, §4,
+// a field stored at its default): every field that elides at all, but an
+// optional one, whose presence is its payload, and a compressed float, whose
+// writer rides on the value before its step rounds.
+func (g *fixedModule) messageHoldsElision(f *ir.Field, entry ir.TableVocabularyEntry) bool {
+	if f.Type.Optional || f.Array == ir.ArrayFixed || f.KeyEnum != "" {
+		return false
+	}
+	return !(f.Type.Kind == ir.TFloat32 && entry.Shape.Packing == ir.TableMessageQuantized)
+}
+
+// emitMessageElidedCheck refuses a field the read just decoded at a value its
+// writer's own elision test would not have written: a spelling no conforming
+// writer produces (docs/rulings.json reads-refuse-non-canonical), the union's
+// arm reference 0 included. A nested body is judged on the bits it took (its
+// terminator alone is the all-default body its writer elides), and a field
+// whose read met a name this reader cannot place (an enum variant, a union
+// arm, a nested field) reads its default lawfully and is not held to it.
+func (g *fixedModule) emitMessageElidedCheck(f *ir.Field, expr, ind string) {
+	rides := ""
+	if st, ok := f.Type.Ref.(*ir.Struct); ok && st != nil && f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone {
+		rides = "r.bits.offset - bitsAt > r.vocabulary.refBits"
+	} else {
+		rides = g.messageRides(f, expr, ind)
+	}
+	g.pf("%sif (r.report.unknown == unknownAt && !(%s)) { r.report.Damage(); return false; } // a field stored at its default (§4)\n", ind, rides)
 }
 
 // emitMessageCompatibility refuses an announced kind that is neither the

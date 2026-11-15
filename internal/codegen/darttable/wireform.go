@@ -319,6 +319,11 @@ type wireGen struct {
 	lenientPayload bool
 	// optHad names the presence local of the optional field being emitted
 	optHad string
+	// strictBody is set while a table's own body read (<name>WireLoadBody) is
+	// emitted, where the field walk holds the writer's order and elision
+	// (docs/rulings.json reads-refuse-non-canonical); a map entry's key read
+	// is not that walk.
+	strictBody bool
 	// enums are the packet enums this library spells by name: their
 	// extension types are imported, with `show`, from the declaring library
 	enums map[string]bool
@@ -1227,6 +1232,14 @@ final class TableWireReader {
   // record (a record no slot targets is never walked, exactly as in
   // internal/tablewire's body walk).
   final Set<int> trailingBodies;
+  // nodeTypeRefs holds each placed record's type reference, in index order,
+  // for the id table's first-use walk (wireFramingBad).
+  List<int> nodeTypeRefs = <int>[];
+  // _useNext is the id-table reference a first use names next while the
+  // framing walk holds the table's order (wireFramingBad), 0 otherwise, and
+  // _useBad records a reference that named an entry before its turn.
+  int _useNext = 0;
+  bool _useBad = false;
 
   TableWireReader(this.data, this.limit)
     : pos = 0,
@@ -1736,7 +1749,9 @@ final class TableWireReader {
     limit = tableEnd;
     pos = tableStart;
     final count = readLeb();
-    if (count == null) {
+    // AN EMPTY NODE TABLE is one no writer produces (§3.1; docs/rulings.json
+    // reads-refuse-non-canonical): a wire with no record carries no table.
+    if (count == null || count == 0) {
       limit = bodyLimit;
       report.refuse('wire_damaged');
       nodeTableGood = false;
@@ -1748,6 +1763,7 @@ final class TableWireReader {
     var read = 0;
     var framed = true;
     final scanTypes = <int>[];
+    final scanRefs = <int>[];
     final scanBytes = <Uint8List>[];
     while (pos < tableEnd) {
       final typeRef = readLeb();
@@ -1769,6 +1785,7 @@ final class TableWireReader {
       scanBytes.add(Uint8List.fromList(data.sublist(pos, pos + blen)));
       pos += blen;
       scanTypes.add(refToId[typeRef] ?? 0);
+      scanRefs.add(typeRef);
       read++;
     }
     if (!framed || pos != tableEnd || read != count) {
@@ -1795,6 +1812,8 @@ final class TableWireReader {
           nodeTypes.add(typeId);
         }
         nodes.add(bytes);
+        nodeTypeRefs.add(scanRefs[i]);
+
         decoded.add(null);
       }
     }
@@ -1980,11 +1999,13 @@ final class TableWireReader {
       case 30:
         final p = _wireLeb(buf, off);
         if (p == null || p.$1 < 0 || p.$1 > entryCount) return -1;
+        if (p.$1 != 0) _use(p.$1);
         return p.$2;
       case 15:
         final arm = _wireLeb(buf, off);
         if (arm == null || arm.$1 < 0 || arm.$1 > entryCount) return -1;
         if (arm.$1 == 0) return arm.$2;
+        _use(arm.$1);
         if (arm.$2 >= buf.length) return -1;
         final akind = buf[arm.$2];
         final alen = _wireLeb(buf, arm.$2 + 1);
@@ -2047,6 +2068,7 @@ final class TableWireReader {
         for (var i = 0; i < head.$1; i++) {
           final key = _wireLeb(b, off);
           if (key == null || key.$1 < 1 || key.$1 > entryCount || !seenKeys.add(key.$1)) return false;
+          _use(key.$1);
           final len = _wireLeb(b, key.$2);
           if (len == null || len.$1 < 0 || len.$1 > b.length - len.$2) return false;
           if (!_wireContent(b.sublist(len.$2, len.$2 + len.$1), b[0], out, depth + 1)) return false;
@@ -2059,6 +2081,18 @@ final class TableWireReader {
         return _wirePayload(b, 0, kind, out, depth) == b.length;
     }
     return _wirePayload(b, 0, kind, out, depth) == b.length;
+  }
+
+  // _use notes one id-table reference in wire order while wireFramingBad
+  // holds the table's order: the next new entry advances the turn, an entry
+  // already named is a later use, and one past the turn is out of order.
+  void _use(int ref) {
+    if (_useNext == 0) return;
+    if (ref == _useNext) {
+      _useNext++;
+    } else if (ref > _useNext) {
+      _useBad = true;
+    }
   }
 
   // _wireBody walks one body to its terminator, adding every kind-17 index
@@ -2075,6 +2109,7 @@ final class TableWireReader {
       if (ref == null) return false;
       off = ref.$2;
       if (ref.$1 == 0) return off == buf.length;
+      _use(ref.$1);
       final id = refToId[ref.$1];
       if (id == null || (!root && !seenIds.add(id)) || off >= buf.length) return false;
       final kind = buf[off];
@@ -2242,19 +2277,35 @@ final class TableWireReader {
   // elements, or a body whose terminator is not its last byte are damage
   // (docs/SPEC-TABLES.md §4), in fields this reader declares and in fields
   // it only skips alike.
+  //
+  // THE SAME WALK HOLDS THE ID TABLE TO FIRST-USE ORDER, EVERY ENTRY USED
+  // (docs/SPEC-TABLES.md §3; docs/rulings.json reads-refuse-non-canonical):
+  // it meets every reference — a field's, an enum variant's, a union arm's,
+  // a keyed slot's and a node record's type — in the wire's own order, the
+  // root body first and the node table, its last field, after it, so an
+  // entry named before its turn, or one no reference names, is a table no
+  // conforming writer produces. The walk stays one pass over the input.
   bool wireFramingBad() {
     if (entryCount == 0 || data.isEmpty || data[0] != 1) return false;
     final bodyEnd = data.length - (entryCount * 8 + 8);
     if (bodyEnd < 1 || bodyEnd > data.length) return false;
     final sink = <int>[];
-    if (!_wireBody(data.sublist(1, bodyEnd), true, sink, 0)) return true;
-    for (var rec = 0; rec < nodes.length; rec++) {
-      final typeId = nodeTypes[rec];
-      if (typeId == _kStringBlobId || typeId == _kBytesBlobId) continue;
-      if (!_wireBody(nodes[rec], false, sink, 0)) return true;
+    _useNext = 1;
+    _useBad = false;
+    try {
+      if (!_wireBody(data.sublist(1, bodyEnd), true, sink, 0)) return true;
+      for (var rec = 0; rec < nodes.length; rec++) {
+        if (rec < nodeTypeRefs.length) _use(nodeTypeRefs[rec]);
+        final typeId = nodeTypes[rec];
+        if (typeId == _kStringBlobId || typeId == _kBytesBlobId) continue;
+        if (!_wireBody(nodes[rec], false, sink, 0)) return true;
+      }
+      return _useBad || _useNext != entryCount + 1;
+    } finally {
+      _useNext = 0;
     }
-    return false;
   }
+
 }
 
 // _kindWidens reports whether a payload kind is a smaller kind on the same
@@ -2823,6 +2874,18 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	// decision 5; internal/tablewire wirecheck, the Go leg's seen bitmap in
 	// internal/codegen/gotable/read.go): the read refuses the whole load.
 	g.pf("\tfinal seenRefs = <int>{};\n")
+	// THE WRITER'S ORDER IS THE READER'S RULE (docs/SPEC-TABLES.md §4;
+	// docs/rulings.json reads-refuse-non-canonical): nextField is one past
+	// the ordinal of the last declared field this body carried, so a declared
+	// field after one declared later refuses, as the repeat check above does.
+	// An unknown field's place is its newer writer's and is not judged.
+	g.pf("\tvar nextField = 0;\n")
+	variableRoot := ir.VariableTables(g.unit)[n]
+	if variableRoot {
+		// THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1): a field after
+		// it is a node table out of its place.
+		g.pf("\tvar nodeTableSeen = false;\n")
+	}
 	g.pf("\twhile (true) {\n")
 	g.pf("\t\tfinal ref = r.readLeb();\n")
 	g.pf("\t\tif (ref == null) { r.report.refuse('wire_damaged'); return; }\n")
@@ -2832,6 +2895,9 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 		g.pf("\t\t\treturn;\n\t\t}\n")
 	} else {
 		g.pf("\t\tif (ref == 0) return;\n")
+	}
+	if variableRoot {
+		g.pf("\t\tif (nodeTableSeen) { r.report.refuse('wire_damaged'); return; }\n")
 	}
 	g.pf("\t\tif (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }\n")
 	g.pf("\t\tfinal id = r.refToId[ref];\n")
@@ -2844,19 +2910,22 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	// (a fixed-class body) counts it unknown like any other id it does not
 	// know, which is §4's counter, so it falls to the switch below; inside a
 	// nested body it is malformed in either class.
-	if ir.VariableTables(g.unit)[n] {
+	if variableRoot {
 		g.pf("\t\tif (id == _kNodeTableId) {\n")
 		g.pf("\t\t\tif (nested) { r.report.refuse('wire_damaged'); return; }\n")
 		g.pf("\t\t\tif (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }\n")
+		g.pf("\t\t\tnodeTableSeen = true;\n")
 		g.pf("\t\t\tcontinue;\n")
 		g.pf("\t\t}\n")
 	} else {
 		g.pf("\t\tif (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }\n")
 	}
 	g.pf("\t\tswitch (id) {\n")
+	g.strictBody = true
 	for i, f := range st.Fields {
 		g.emitLoadField(f, "\t\t\t", i)
 	}
+	g.strictBody = false
 	g.pf("\t\t\tdefault:\n")
 	g.pf("\t\t\t\tr.report.unknown++;\n")
 	g.pf("\t\t\t\tif (r.retain != null) {\n")
@@ -2894,10 +2963,34 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\t}\n}\n\n")
 }
 
+// holdsElision reports whether the field being emitted is held to the
+// writer's own elision (docs/SPEC-TABLES.md §4, a field stored at its
+// declared default; docs/rulings.json reads-refuse-non-canonical): every
+// field of a body read but a required one, which always rides, and an
+// optional one, whose presence is its payload (§2.3).
+func (g *wireGen) holdsElision(f *ir.Field) bool {
+	return g.strictBody && g.optHad == "" && !f.Required && !f.Type.Optional
+}
+
+// refuseElided emits the refusal of a spelling no conforming writer
+// produces: cond holds when the value the field read is one its writer's
+// elision test would not have written (emitSaveField), so the whole load is
+// refused before the value lands.
+func (g *wireGen) refuseElided(f *ir.Field, ind, cond string) {
+	if !g.holdsElision(f) {
+		return
+	}
+	g.pf("%sif (%s) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)\n", ind, cond)
+}
+
 func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	id := fieldId(f)
 	g.pf("%scase %s:\n", ind, dartU64Literal(id))
+	if g.strictBody && g.optHad == "" {
+		g.pf("%s\tif (nextField > %d) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)\n", ind, ordinal)
+		g.pf("%s\tnextField = %d;\n", ind, ordinal+1)
+	}
 	if f.Required {
 		g.pf("%s\tif (%s) requiredSeen[%d] = 1;\n", ind, requiredKindCondition(f), ordinal)
 	}
@@ -2949,6 +3042,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.emitLoadArray(g.cur, f, ind)
 	case isUnionField(f): // kind 15, the arm header in place (§2.6, §3)
 		g.pf("%s\tif (kind != %d) { r.report.refuse('kind_mismatch'); return; }\n", ind, wireKindUnion)
+		// arm reference 0 is the empty union, which its writer elides
+		// (§2.6): the reference is the one LEB128 byte 0
+		g.refuseElided(f, ind+"\t", "r.pos < r.limit && r.data[r.pos] == 0")
 		g.pf("%s\tif (!%s(r, v.%s)) { r.report.refuse('wire_damaged'); return; }\n", ind, unionFn(unionRef(f), "LoadArm"), name)
 		g.pf("%s\tbreak;\n", ind)
 	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
@@ -2956,6 +3052,8 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal idx = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (idx == null) { r.report.refuse('wire_damaged'); return; }\n", ind)
+		// an explicit null pointer: a null slot's writer elides it (§3.1)
+		g.refuseElided(f, ind+"\t\t", "idx == 0")
 		if f.Type.Kind == ir.TString {
 			g.pf("%s\t\tr.resolveString(idx, v, %q);\n", ind, name)
 		} else {
@@ -2969,6 +3067,8 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal idx = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (idx == null) { r.report.refuse('wire_damaged'); return; }\n", ind)
+		// an explicit null pointer: a null slot's writer elides it (§3.1)
+		g.refuseElided(f, ind+"\t\t", "idx == 0")
 		g.pf("%s\t\tv.%s = r.resolveTable(idx, %s) as %s?;\n", ind, name, typeConst(ref), ref.Name)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
@@ -2978,6 +3078,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }\n", ind)
+		// a body that is its terminator alone is the all-default table its
+		// writer elides (emitSaveByValue)
+		g.refuseElided(f, ind+"\t\t", "len == 1")
 		g.pf("%s\t\tfinal sub = TableWireReader.sub(r, r.pos, r.pos + len);\n", ind)
 		g.pf("%s\t\tif (%s) { r.retain?.forget(v.%s); v.%s = %s(); }\n", ind, seenName(f), name, name, ref.Name)
 		g.pf("%s\t\t%s = true;\n", ind, seenName(f))
@@ -2993,6 +3096,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 		et := g.listElemType(f)
+		// an empty list is its declared default, and its writer elides it
+		// (§2.9): no header, or a count of 0
+		g.refuseElided(f, ind+"\t\t", "end - r.pos < 2")
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 		// THE ARRAY'S HEADER IS READ AGAINST THE PARENT BUFFER, not against the
 		// body's own L: a count LEB128 spelled wide enough leaves the cursor past
@@ -3017,6 +3123,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		// standing rather than wiping it.
 		// Superseded by-value bodies stop owning retained records. The
 		// existing forget walk leaves pointer nodes independently accountable.
+		g.refuseElided(f, ind+"\t\t", "count == 0")
 		if declKind == wireKindTable || declKind == wireKindUnion {
 			g.pf("%s\t\tif (r.retain != null) { for (final old in v.%s) { r.retain!.forget(old); } }\n", ind, name)
 		}
@@ -3098,7 +3205,13 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tif (!_lebValid(r.data, r.pos, len)) { r.report.refuse('wire_damaged'); v.%s = %s; r.pos += len; break; }\n", ind, name, g.stringDefault(f))
 		g.pf("%s\t\tfinal keep = _textBoundary(r.data, r.pos, len, %d);\n", ind, textBound(f))
 		g.pf("%s\t\tif (keep != len) { r.report.refuse('length_over_bound'); return; }\n", ind)
-		g.pf("%s\t\tv.%s = _decodeText(r.data, r.pos, r.pos + keep);\n", ind, name)
+		if g.holdsElision(f) {
+			g.pf("%s\t\tfinal text = _decodeText(r.data, r.pos, r.pos + keep);\n", ind)
+			g.refuseElided(f, ind+"\t\t", "text == "+g.stringDefault(f))
+			g.pf("%s\t\tv.%s = text;\n", ind, name)
+		} else {
+			g.pf("%s\t\tv.%s = _decodeText(r.data, r.pos, r.pos + keep);\n", ind, name)
+		}
 		g.pf("%s\t\tr.pos += len;\n", ind)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
@@ -3107,7 +3220,15 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	case f.Type.Kind == ir.TBool:
 		g.pf("%s\tif (kind != %d) { r.report.refuse('kind_mismatch'); return; }\n", ind, wireKindBool)
 		g.pf("%s\tif (!r.has(1)) { r.report.refuse('wire_damaged'); return; }\n", ind)
-		g.pf("%s\tv.%s = r.readBool();\n", ind, name)
+		if g.holdsElision(f) {
+			g.pf("%s\t{\n", ind)
+			g.pf("%s\t\tfinal flag = r.readBool();\n", ind)
+			g.refuseElided(f, ind+"\t\t", fmt.Sprintf("flag == %v", f.HasDefault && f.DefBool))
+			g.pf("%s\t\tv.%s = flag;\n", ind, name)
+			g.pf("%s\t}\n", ind)
+		} else {
+			g.pf("%s\tv.%s = r.readBool();\n", ind, name)
+		}
 		g.pf("%s\tbreak;\n", ind)
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || isFlags(f):
 		// An int/bits field's declared kind is §3's integer kind for its width
@@ -3190,6 +3311,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			lit := dartU64Literal(uint64(1)<<f.Type.Width - 1)
 			g.pf("%s\t\tif (_u64Above(value, %s)) { r.report.refuse('out_of_range'); return; }\n", ind, lit)
 		}
+		// a widened payload is held too: its writer's elision compares the
+		// value, not the kind it rode
+		g.refuseElided(f, ind+"\t\t", "value == "+g.intDefault(f))
 		g.pf("%s\t\tv.%s = value;\n", ind, name)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
@@ -3228,6 +3352,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\t\t\tr.report.refuse('kind_mismatch'); return;\n", ind)
 		g.pf("%s\t\t}\n", ind)
 		g.pf("%s\t\tif (r.report.nonFiniteFloat.isNotEmpty) return;\n", ind)
+		// the writer's elision compares BITS (§3.3), on the value as it rode,
+		// before a compressed float's -0 lands as +0
+		g.refuseElided(f, ind+"\t\t", "!("+wireFloatRides(f, "d", g.floatDefault(f))+")")
 		if f.HasFloatRange {
 			// one past an end clamps and counts, and a -0 lands as +0,
 			// uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES)
@@ -3244,6 +3371,8 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
+		// no header leaves the declared default, which its writer elides
+		g.refuseElided(f, ind+"\t\t", "end - r.pos < 2")
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 		// bytes(N) takes \u00a73's list header under the same rule as every other
 		// list: the count is read against the PARENT (internal/tablewire
@@ -3259,7 +3388,13 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tvar take = keep;\n", ind)
 		g.pf("%s\t\tif (take > arr.limit - arr.pos) take = arr.limit - arr.pos;\n", ind)
 		g.pf("%s\t\tif (take < keep) r.report.refuse('wire_damaged');\n", ind)
-		g.pf("%s\t\tv.%s = latin1.decode(arr.data.sublist(arr.pos, arr.pos + take));\n", ind, name)
+		if g.holdsElision(f) {
+			g.pf("%s\t\tfinal bytes = latin1.decode(arr.data.sublist(arr.pos, arr.pos + take));\n", ind)
+			g.refuseElided(f, ind+"\t\t", "bytes == "+g.stringDefault(f))
+			g.pf("%s\t\tv.%s = bytes;\n", ind, name)
+		} else {
+			g.pf("%s\t\tv.%s = latin1.decode(arr.data.sublist(arr.pos, arr.pos + take));\n", ind, name)
+		}
 		// Bytes left inside the array's L after its elements are damage
 		// (docs/SPEC-TABLES.md §4; internal/tablewire/wirecheck.go array).
 		g.pf("%s\t\tif (arr.pos + take != arr.limit) { r.report.refuse('wire_damaged'); }\n", ind)
@@ -3272,9 +3407,26 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal ref2 = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (ref2 == null) { r.report.refuse('wire_damaged'); return; }\n", ind)
+		// the declared default variant, None or a named one, is the value
+		// its writer elides (§4); a variant this reader cannot name is a
+		// newer writer's and reads the default lawfully
+		def := 0
+		if f.HasDefault && f.DefVariant != "" {
+			for i, v := range e.Variants {
+				if v == f.DefVariant {
+					def = i + 1
+				}
+			}
+		}
+		if def == 0 {
+			g.refuseElided(f, ind+"\t\t", "ref2 == 0")
+		}
 		g.pf("%s\t\tif (ref2 == 0) { v.%s = %s; break; }\n", ind, name, g.enumConst(e, 0))
 		g.pf("%s\t\tfinal vid = r.refToId[ref2];\n", ind)
 		g.pf("%s\t\tif (vid == null) { r.report.refuse('wire_damaged'); return; }\n", ind)
+		if def != 0 {
+			g.refuseElided(f, ind+"\t\t", "vid == "+dartU64Literal(ir.TableWireId(e.VariantWireName(def-1))))
+		}
 		g.pf("%s\t\tswitch (vid) {\n", ind)
 		for i := range e.Variants {
 			vid := ir.TableWireId(e.VariantWireName(i))

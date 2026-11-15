@@ -148,6 +148,9 @@ func (g *wireGen) emitLoadWide(f *ir.Field, ind string) {
 	g.pf("%s\t\t{\n", ind)
 	g.pf("%s\t\t\tvar x = value;\n", ind)
 	g.emitWideClamp(f, "x", "r", ind+"\t\t\t")
+	// a value at the declared default, at any kind it rode, is one its
+	// writer elides (emitSaveWide; docs/SPEC-TABLES.md §4)
+	g.refuseElided(f, ind+"\t\t\t", "x == "+g.wideDefault(f))
 	g.pf("%s\t\t\tv.%s = x;\n", ind, name)
 	g.pf("%s\t\t}\n", ind)
 	g.pf("%s\t}\n", ind)

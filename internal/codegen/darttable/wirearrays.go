@@ -366,7 +366,29 @@ func (g *wireGen) emitKeyedHelper(st *ir.Struct, f *ir.Field) {
 	g.pf("\t\t\tp.report.unknown++;\n")
 	g.pf("\t\t\tif (p.retain != null) p.report.retainLost++;\n")
 	g.pf("\t\t} else {\n")
+	// A SLOT AT ITS DEFAULT is one its writer elides (emitSaveKeyed;
+	// docs/SPEC-TABLES.md §4): a table slot whose body is its terminator
+	// alone, or a slot whose value is the element default. A value this
+	// reader cannot name (an enum variant) reads the default lawfully.
+	slotRides := ""
+	if !f.Type.Optional {
+		switch ek {
+		case wireKindTable:
+			g.pf("\t\t\tif (n <= 1) { p.report.refuse('wire_damaged'); break; } // a field stored at its default (§4)\n")
+		case wireKindUnion, wireKindPtr:
+		case wireKindF32, wireKindF64:
+			slotRides = wireFloatRides(singleOf(f), "slots[slot]", g.elemDefault(f))
+		default:
+			slotRides = "slots[slot] != " + g.elemDefault(f)
+		}
+	}
+	if slotRides != "" {
+		g.pf("\t\t\tfinal unknownAt = p.report.unknown;\n")
+	}
 	g.pf("\t\t\t%s(TableWireReader.sub(p, p.pos, p.pos + n), slots, slot, elemKind);\n", elem)
+	if slotRides != "" {
+		g.pf("\t\t\tif (!p.report.refused && p.report.unknown == unknownAt && !(%s)) { p.report.refuse('wire_damaged'); break; } // a field stored at its default (§4)\n", slotRides)
+	}
 	g.pf("\t\t}\n")
 	g.pf("\t\tp.pos += n;\n")
 	g.pf("\t}\n")
@@ -386,6 +408,27 @@ func (g *wireGen) emitLoadArray(st *ir.Struct, f *ir.Field, ind string) {
 	g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 	g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 	g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
+	// AN ARRAY AT ITS DEFAULT is one its writer elides (emitSaveKeyed,
+	// emitSaveFixed; docs/SPEC-TABLES.md §4): no header, a keyed body with
+	// no pair, or a positional array of non-table elements every one at the
+	// element default. A fixed array of tables always rides.
+	fixedRides := ""
+	if !isKeyed(f) {
+		switch ek := arrayElemKind(f); {
+		case ek == wireKindTable || f.Type.Pointer:
+		case ek == wireKindUnion:
+			fixedRides = fmt.Sprintf("v.%s.any((e) => e.armTag != 0)", fieldMember(f))
+		case ek == wireKindF32 || ek == wireKindF64:
+			fixedRides = fmt.Sprintf("v.%s.any((e) => %s)", fieldMember(f), wireFloatRides(singleOf(f), "e", g.elemDefault(f)))
+		default:
+			fixedRides = fmt.Sprintf("v.%s.any((e) => e != %s)", fieldMember(f), g.elemDefault(f))
+		}
+		if fixedRides != "" {
+			g.refuseElided(f, ind+"\t\t", "end - r.pos < 2")
+		}
+	} else {
+		g.refuseElided(f, ind+"\t\t", "end - r.pos < 2")
+	}
 	g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 	// Both arrays read their header against the parent: a count past the
 	// body's own L still reads, a positional count clamps at the bound
@@ -397,7 +440,18 @@ func (g *wireGen) emitLoadArray(st *ir.Struct, f *ir.Field, ind string) {
 	g.pf("%s\t\tfinal elemKind = r.readByte();\n", ind)
 	g.pf("%s\t\tfinal count = r.readLeb();\n", ind)
 	g.pf("%s\t\tif (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }\n", ind)
+	if isKeyed(f) {
+		g.refuseElided(f, ind+"\t\t", "count == 0")
+	}
+	if fixedRides != "" && g.holdsElision(f) {
+		// an element this reader cannot name (an enum variant, a union arm)
+		// reads its default lawfully and is not held to it
+		g.pf("%s\t\tfinal unknownAt = r.report.unknown;\n", ind)
+	}
 	g.pf("%s\t\t%s(TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end), v, elemKind, count%s);\n", ind, helper, g.hadArg())
+	if fixedRides != "" {
+		g.refuseElided(f, ind+"\t\t", "!r.report.refused && r.report.unknown == unknownAt && !"+fixedRides)
+	}
 	g.pf("%s\t\tr.pos = end;\n", ind)
 	g.pf("%s\t}\n", ind)
 	g.pf("%s\tbreak;\n", ind)

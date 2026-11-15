@@ -1097,6 +1097,8 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 	g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 	g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
+	// an empty map is its declared default, and its writer elides it (§2.8)
+	g.refuseElided(f, ind+"\t\t", "end - r.pos < 2")
 	g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 	// THE MAP'S HEADER IS READ AGAINST THE PARENT, as every array's is
 	// (internal/tablewire mapField, subTo; docs/SPEC-TABLES.md §2.8, §3):
@@ -1107,6 +1109,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\tif (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }\n", ind)
 	g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);\n", ind)
 	g.pf("%s\t\tif (elemKind != %d) { r.report.refuse('kind_mismatch'); r.pos = end; break; }\n", ind, wireKindTable)
+	g.refuseElided(f, ind+"\t\t", "count == 0")
 	// Commit a replacement only after its array header is readable and
 	// compatible (internal/tablewire/decode.go mapField): a skipped repeat
 	// preserves the earlier occurrence (§3, §4).
