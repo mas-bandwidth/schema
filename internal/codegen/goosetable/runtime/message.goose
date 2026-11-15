@@ -831,10 +831,16 @@ recursive fn msg_skip(r: MsgReader&, e: i64) -> bool {
         let arm = msg_arm(r);
         if !r.ok { return false; }
         if arm < 0 { return true; }
-        r.depth += 1;
-        let ok = msg_skip(r, arm);
-        r.depth -= 1;
-        return ok;
+        // A SCALAR ARM ADDS NO LEVEL (§3.3): only a structural arm — a
+        // nested body, an array, a keyed array or a union — descends.
+        let arm_kind = r.voc.entries[arm].kind;
+        if arm_kind == 13 || arm_kind == 14 || arm_kind == 15 || arm_kind == 16 {
+            r.depth += 1;
+            let ok = msg_skip(r, arm);
+            r.depth -= 1;
+            return ok;
+        }
+        return msg_skip(r, arm);
     }
     if kind == 13 {
         r.depth += 1;
@@ -878,7 +884,77 @@ recursive fn msg_skip(r: MsgReader&, e: i64) -> bool {
     }
     let width = r.voc.entries[e].bits;
     if width < 0 { return false; }
+    if width == 0 { return true; }
+    // A RANGED INTEGER'S OFFSET IS RECONSTRUCTED onto its base and held to the
+    // KIND'S OWN DOMAIN: the offset's bits can spell a value past the sender's
+    // maximum whenever the range is not one less than a power of two, and no
+    // conforming writer emits one (§3.3, §4). A width of zero is arithmetic.
+    if r.voc.entries[e].packing == 1 {
+        return msg_skip_ranged(r, e, width);
+    }
     return msg_skip_bits(r, width);
+}
+
+// msg_kind_signed reports whether an integer-shaped kind's bytes are two's
+// complement (ir.TableKindSigned), the 128-bit pair included.
+fn msg_kind_signed(k: u8) -> bool {
+    return (k >= 2 && k <= 5) || k == 18 || (k >= 20 && k <= 24);
+}
+
+// msg_skip_ranged reads a ranged integer's offset, adds its announced base
+// across both lanes, and refuses out_of_range where the value falls outside
+// its kind (§3.3, §4). A value wider than the kind is out of range, not a
+// wrapped one.
+fn msg_skip_ranged(r: MsgReader&, e: i64, width: i64) -> bool {
+    let kind = r.voc.entries[e].kind;
+    let wide = msg_wide_kind(kind);
+    var lo: u64 = 0;
+    var hi: u64 = 0;
+    if wide && width > 64 {
+        lo = msg_get(r, 64);
+        hi = msg_get(r, width - 64);
+    } else {
+        lo = msg_get(r, width);
+    }
+    if !r.ok { return false; }
+    let base_lo = r.voc.entries[e].base_lo;
+    var base_hi: u64 = 0;
+    if wide {
+        base_hi = r.voc.entries[e].base_hi;
+    } else if msg_kind_signed(kind) && (base_lo as! i64) < 0 {
+        base_hi = 0xFFFFFFFFFFFFFFFF;
+    }
+    let off_lo = lo;
+    lo = off_lo + base_lo;
+    let carry: u64 = if lo < off_lo { 1 } else { 0 };
+    hi = hi + base_hi + carry;
+    if !msg_kind_lanes_hold(kind, lo, hi) {
+        return msg_refuse_read(r, MsgRefuseOutOfRange);
+    }
+    return true;
+}
+
+// msg_kind_lanes_hold reports whether a reconstructed value's two's-complement
+// lanes lie in its kind's own domain, the widest range a declaration of that
+// kind can announce (§3.3). A narrow kind's lanes must show the 64-bit sum
+// whole — a sign extension or a zero high lane — so a carry past 64 bits
+// cannot wrap back inside the range.
+fn msg_kind_lanes_hold(k: u8, lo: u64, hi: u64) -> bool {
+    let bits = msg_kind_bits(k);
+    if msg_kind_signed(k) {
+        if bits >= 128 { return true; }
+        let sign: u64 = if (lo >> 63) != 0 { 0xFFFFFFFFFFFFFFFF } else { 0 };
+        if hi != sign { return false; }
+        if bits == 64 { return true; }
+        let v = lo as! i64;
+        let half: i64 = 1 << ((bits - 1) as! u64);
+        return v >= -half && v <= half - 1;
+    }
+    if bits >= 128 { return true; }
+    if hi != 0 { return false; }
+    if bits == 64 { return true; }
+    let top: u64 = (1 << (bits as! u64)) - 1;
+    return lo <= top;
 }
 
 // msg_skip_seen records one id in the skip walk's scratch from `mark`, and
@@ -946,10 +1022,11 @@ fn msg_skip_array(r: MsgReader&, e: i64) -> bool {
             ok = elem == 0 || elem == 32;
         }
         if !ok { break; }
-        // A WALKED ELEMENT THAT CONSUMED NO BITS: the rest of the run is
-        // stepped in one, and a count the bits left cannot back is damage
+        // A WALKED ELEMENT THAT CONSUMED NO BITS REFUSES THE READ: a count
+        // the bits left cannot back is damage, even when the remaining count
+        // would fit in the batch's padding (§3.3).
         if r.pos == at {
-            if n - i - 1 > (r.end - r.pos) as! u64 { ok = false; }
+            ok = false;
             break;
         }
         i += 1;
@@ -962,6 +1039,7 @@ fn msg_skip_array(r: MsgReader&, e: i64) -> bool {
 // its ids to the rules a named body's read applies: no reserved id and no id
 // twice (§3.1, §3.3, §4).
 fn msg_skip_body(r: MsgReader&) -> bool {
+    if r.depth > 128 { return false; }
     let mark = r.seen.len;
     var ok = true;
     loop {

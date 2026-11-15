@@ -818,6 +818,36 @@ fn json_name_is(name: const u8[:], key: const u8[:]) -> bool {
     return name == key;
 }
 
+// json_key_hash hashes one DECODED key: two spellings that decode equal are
+// one key, so a repeated name is found in every object the read walks,
+// skipped ones included (§16.2, §16.12).
+fn json_key_hash(key: const u8[:]) -> u64 {
+    var h: u64 = 0xcbf29ce484222325;
+    var i: i64 = 0;
+    while i < key.len {
+        let b: u64 = key[i];
+        h = (h ^ b) * 0x100000001b3;
+        i += 1;
+    }
+    return h;
+}
+
+// json_key_repeat records a decoded key's hash in a fixed-size set and answers
+// whether it was already there (the scratch a recursive walk can carry).
+fn json_key_repeat(seen: u64[64]&, n: i64&, key: const u8[:]) -> bool {
+    let h = json_key_hash(key);
+    var i: i64 = 0;
+    while i < n {
+        if seen[i] == h { return true; }
+        i += 1;
+    }
+    if n < 64 {
+        seen[n] = h;
+        n += 1;
+    }
+    return false;
+}
+
 // json_walk_number scans one number to RFC 8259's own production, so `1-2`,
 // `+1`, `01`, `.5` and `3.` are malformed rather than values (§16.2).
 fn json_walk_number(jr: JsonIn&) -> bool, bool {
@@ -869,6 +899,8 @@ recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
         if depth > JsonMaxDepth { return json_fail(jr); }
         let closing: u8 = if c == '{' { '}' } else { ']' };
         jr.pos += 1;
+        var seen_unk: u64[64] = [0; 64];
+        var seen_unk_n: i64 = 0;
         loop {
             let d = json_peek(jr);
             if d == closing {
@@ -877,7 +909,13 @@ recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
             }
             if d == 0 { return json_fail(jr); }
             if closing == '}' {
-                if !json_skip_string(jr) { return false; }
+                var key: u8[256] = [0; 256];
+                let n, ok = json_key(jr, key);
+                if !ok { return false; }
+                if json_key_repeat(seen_unk, seen_unk_n, key[..n]) {
+                    jr.rep.repeated += 1;
+                    return json_fail(jr);
+                }
                 if !json_expect(jr, ':') { return false; }
             }
             if !json_skip_value(jr, depth + 1) { return false; }
@@ -1480,6 +1518,8 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
     }
     if !json_expect(jr, '{') { return false; }
     var seen: u64[8] = [0; 8];
+    var seen_unk: u64[64] = [0; 64];
+    var seen_unk_n: i64 = 0;
     loop {
         let c = json_peek(jr);
         if c == '}' {
@@ -1505,6 +1545,10 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
             return json_fail(jr);
         }
         if index < 0 {
+            if json_key_repeat(seen_unk, seen_unk_n, key[..n]) {
+                jr.rep.repeated += 1;
+                return json_fail(jr);
+            }
             jr.rep.unknown += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
         } else {
