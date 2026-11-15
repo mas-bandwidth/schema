@@ -2086,6 +2086,9 @@ def j_read_flags(r:JsonReader, cell:Value, names:[string], depth:int) -> bool:
             var found = false
             for(names) v, bit:
                 if not found and v == name:
+                    // a flags name twice in one array is a repeated key (§16.2)
+                    if (bits & shl(1, bit)) != 0:
+                        return j_refuse(r, "malformed")
                     bits = bits | shl(1, bit)
                     found = true
             if not found:
