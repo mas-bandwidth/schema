@@ -222,10 +222,27 @@ public final class BenchMixedFixed {
     // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,
     // which is what makes a save one template and a straight line of stores.
     private static boolean checkWrite(Value v) {
+        assert (v.sequence & 0xffffffffffff0000L) == 0;
+        assert v.ackSequence >= 0L && v.ackSequence <= 65535L;
+        assert Long.compareUnsigned(v.nonce, 0x0L) >= 0 && Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) <= 0;
+        assert v.worldTime >= -1000000000000L && v.worldTime <= 1000000000000L;
+        assert (v.frameTick & 0xffff000000000000L) == 0;
+        assert v.serverTime >= 0L && v.serverTime <= 16776960L;
         assert v.entitiesCount >= 1 && v.entitiesCount <= 8;
         assert v.statsCount >= 0 && v.statsCount <= 80;
         assert v.playerNameLength >= 0 && v.playerNameLength <= 15;
+        assert TableFixed.textOk(TableFixed.textUtf8, v.playerName, 0, v.playerNameLength);
         assert v.payloadLength >= 0 && v.payloadLength <= 16;
+        {
+            final Int128 min = new Int128(0xfffffff000000000L, 0L);
+            final Int128 max = new Int128(0x1000000000L, 0L);
+            assert v.flux.compareTo(min) >= 0;
+            assert v.flux.compareTo(max) <= 0;
+        }
+        assert (v.ping & 0xFFFF) >= 0L && (v.ping & 0xFFFF) <= 64000L;
+        assert (v.crcHint & 0xffffffffff000000L) == 0;
+        assert v.extra >= 0L && v.extra <= 255L;
+        assert v.idleTicks >= 0L && v.idleTicks <= 15L;
         return true;
     }
 

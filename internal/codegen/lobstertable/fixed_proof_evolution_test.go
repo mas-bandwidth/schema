@@ -346,8 +346,8 @@ r[1].Pick.Narrow = 7
 r[1].Pick.Wide = -1
 `, u.Package)
 		if scenario == "writing_slack_unzeroed" {
-			target := "    var body = \"\"\n    for(values) v: body += schema_rt.fixed_record(TFixedHash, TFixedPut(schema_rt.zeros(35), 0, v))"
-			repl := "    var body = \"\"\n    var scratch = schema_rt.zeros(35)\n    for(values) v:\n        scratch = TFixedPut(scratch, 0, v)\n        body += schema_rt.fixed_record(TFixedHash, scratch)"
+			target := "    var body· = \"\"\n    for(values·) v·: body· += schema_rt.fixed_record(TFixedHash, TFixedPut(schema_rt.zeros(35), 0, v·))"
+			repl := "    var body· = \"\"\n    var scratch = schema_rt.zeros(35)\n    for(values·) v·:\n        scratch = TFixedPut(scratch, 0, v·)\n        body· += schema_rt.fixed_record(TFixedHash, scratch)"
 			for name, data := range files {
 				if strings.Contains(string(data), target) {
 					files[name] = []byte(strings.ReplaceAll(string(data), target, repl))
