@@ -248,6 +248,9 @@ public final class FixedTableFixed {
             return -1;
         }
         assert count <= values.length;
+        // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§22.6): the write
+        // contract refuses an empty batch in a debug build.
+        assert count > 0;
         final int need = measure(count);
         if (need < 0 || buffer.length < need) {
             return -1;
@@ -385,10 +388,11 @@ public final class FixedTableFixed {
         final long recordSize = known_.recordBytes;
 
         // STEPS 9 AND 10: the file's own tail arithmetic — a record size of eight
-        // or less and a ragged tail are framing damage and have no name — and the
-        // caller's capacity, which does.
+        // or less, a header and layout followed by no record, and a ragged tail
+        // are framing damage and have no name — and the caller's capacity, which
+        // does.
         final long rest = data.length - head.recordsAt;
-        if (recordSize <= 8 || rest % recordSize != 0) {
+        if (recordSize <= 8 || rest == 0 || rest % recordSize != 0) {
             report.damaged = true;
             return -1;
         }
