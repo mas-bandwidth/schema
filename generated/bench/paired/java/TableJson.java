@@ -1160,7 +1160,12 @@ public final class TableJson {
                     return null;
                 }
             } else {
-                if (token.isEmpty() || Character.isWhitespace(token.charAt(0))) {
+                // The string holds the number and nothing around it: the scan
+                // steps over whitespace and comments, so the first byte must
+                // already be the token's own (§16.2).
+                if (token.isEmpty()
+                        || (token.charAt(0) != '-'
+                                && (token.charAt(0) < '0' || token.charAt(0) > '9'))) {
                     in.rep.refuse("kind_mismatch");
                     return null;
                 }

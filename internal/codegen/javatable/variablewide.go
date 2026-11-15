@@ -178,7 +178,10 @@ const variableWideJsonRuntime = `
             if(integerOnly){
                 if(!integerToken(token)){in.rep.refuse("kind_mismatch");return null;}
             }else{
-                if(token.isEmpty()||Character.isWhitespace(token.charAt(0))){in.rep.refuse("kind_mismatch");return null;}
+                // The string holds the number and nothing around it: the scan
+                // steps over whitespace and comments, so the first byte must
+                // already be the token's own (§16.2).
+                if(token.isEmpty()||(token.charAt(0)!='-'&&(token.charAt(0)<'0'||token.charAt(0)>'9'))){in.rep.refuse("kind_mismatch");return null;}
                 In probe=new In(token.getBytes(java.nio.charset.StandardCharsets.UTF_8),new TableVariable.Report());
                 String scanned=probe.scanNumber(new boolean[1]);
                 if(probe.bad||scanned==null||probe.p!=probe.t.length){in.rep.refuse("kind_mismatch");return null;}
