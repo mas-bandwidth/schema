@@ -69,6 +69,22 @@ listed case that passes fails the leg until its line is removed.
   Files: `test/conformance/relaxed.txt`. Real fix: debug asserts of the write
   contract in `internal/codegen/rusttable/fixedform.go` and the message
   writer. WIP: none.
+- `relax/c-cook-write-dead-slots`: 10 cases of the C leg (cook-write archive,
+  loadout_full, profile_elide, root_default, root_full, each in both orders),
+  and the proof cells `surface cook-write / c` and `cases tabledemo / c`. PR
+  3424 made the C cook writer and the Go tool leave a counted array's slots
+  past its live count zero (docs/rulings.json fixed-dead-bytes-are-zero,
+  docs/SPEC-TABLES.md §7.2), but the committed
+  `testdata/conformance/tables/cook-write/*.cook` files were not regenerated
+  and still carry the element type's declared defaults there (WeaponConfig's
+  21.0, 500.0, 1). C is right by the ruling; `make conformance-generate`
+  rewrites exactly these ten files to zeros, and then every other leg that
+  cooks (C++, Dart and the rest, checked on hulk for C++ and Dart) goes red
+  on the same ten cases, because their cook writers still write the dead
+  slots. Files: `test/conformance/relaxed.txt`,
+  `test/proof/in-progress.json`. Real fix: every leg's cook writer leaves dead
+  counted slots zero, the ten files are regenerated, and these lines are
+  removed. WIP: none.
 - `relax/deprecated-carried`: `test/conformance/go/rows/R20_test.go`, clause 2
   (`TestRowR20DroppedFieldUnknown`). The header is restored to the
   maintainer's ruling of 2026-11-10 (a `| deprecated` fixed-form field is
