@@ -431,11 +431,11 @@ func TestRequiredCookInactiveEdgesElixir(t *testing.T) {
  tags map[uint8]int32 } }
  `)
 	probe := `alias Probe.Table,as: T
-for v<-[%{"on"=>false,"values"=>[1]},%{"on"=>false,"child"=>%{"items"=>[1]}},%{"on"=>false,"ptr"=>%{"x"=>7}},%{"on"=>false,"tags"=>%{"1"=>1}}] do
+for v<-[%{"on"=>false,"values"=>[1]},%{"on"=>false,"child"=>%{"items"=>[1]}},{%{"on"=>false,"ptr"=>2},{%{"x"=>7}}},%{"on"=>false,"tags"=>%{"1"=>1}}] do
  if T.cook_measure("Graph",v)!=-1, do: raise("unreached inactive storage accepted: "<>inspect(v))
  if T.cook_from("Graph",v,:binary.copy(<<0>>,1024),:little)!=false, do: raise("unreached inactive write accepted")
 end
-for v<-[%{"on"=>false,"values"=>[],"child"=>%{"items"=>[]},"tags"=>%{}},%{"on"=>true,"values"=>[1],"ptr"=>%{"x"=>7}}] do
+for v<-[%{"on"=>false,"values"=>[],"child"=>%{"items"=>[]},"tags"=>%{}},{%{"on"=>true,"values"=>[1],"ptr"=>2},{%{"x"=>7}}}] do
  if T.cook_measure("Graph",v)<=0, do: raise("live or empty storage refused: "<>inspect(v))
 end
 IO.puts("COOK_INACTIVE_EDGES_OK")

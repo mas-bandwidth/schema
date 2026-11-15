@@ -184,6 +184,12 @@ func RangedSignedMeasureMessages(values []*RangedSigned, report *TableReport) in
 	if w.Overflow {
 		return -1
 	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
+		return -1
+	}
 	return 2 + w.Bits/8
 }
 func RangedSignedSaveMessages(values []*RangedSigned, buffer []byte, report *TableReport) int64 {
@@ -1092,6 +1098,12 @@ func RangedUnsignedMeasureMessages(values []*RangedUnsigned, report *TableReport
 	if w.Overflow {
 		return -1
 	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
+		return -1
+	}
 	return 2 + w.Bits/8
 }
 func RangedUnsignedSaveMessages(values []*RangedUnsigned, buffer []byte, report *TableReport) int64 {
@@ -1899,6 +1911,12 @@ func RangedWidthsMeasureMessages(values []*RangedWidths, report *TableReport) in
 	}
 	w.Align()
 	if w.Overflow {
+		return -1
+	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
 		return -1
 	}
 	return 2 + w.Bits/8
