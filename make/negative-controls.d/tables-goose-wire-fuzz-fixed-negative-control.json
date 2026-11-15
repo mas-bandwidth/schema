@@ -1,0 +1,6 @@
+{
+  "group": "goose-wire",
+  "targets": [
+    "tables-goose-wire-fuzz-fixed-negative-control"
+  ]
+}
