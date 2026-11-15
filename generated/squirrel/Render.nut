@@ -61,13 +61,13 @@ _M.WriteRenderSprite <- function(stream, value) {
   if (typeof value.SortKey != "integer") return false;
   _h.value = value.SortKey;
   if (!stream.serializeBits64(_h, 64)) return false;
-  if (typeof value.MeshId != "integer") return false;
+  if (typeof value.MeshId != "integer" || value.MeshId < 0 || value.MeshId > 4294967295) return false;
   _h.value = value.MeshId;
   if (!stream.serializeBits(_h, 32)) return false;
-  if (typeof value.MaterialId != "integer") return false;
+  if (typeof value.MaterialId != "integer" || value.MaterialId < 0 || value.MaterialId > 4294967295) return false;
   _h.value = value.MaterialId;
   if (!stream.serializeBits(_h, 32)) return false;
-  if (typeof value.Layer != "integer") return false;
+  if (typeof value.Layer != "integer" || value.Layer < 0 || value.Layer > 255) return false;
   _h.value = value.Layer;
   if (!stream.serializeBits(_h, 8)) return false;
   if (typeof value.Team != "integer" || value.Team < 0 || value.Team > 2) return false;
@@ -118,10 +118,10 @@ _M.ReadRenderBlock <- function(stream, value) {
 
 // WriteRenderBlock writes value in declared order; false on a refused value.
 _M.WriteRenderBlock <- function(stream, value) {
-  if (typeof value.WorkerIndex != "integer") return false;
+  if (typeof value.WorkerIndex != "integer" || value.WorkerIndex < 0 || value.WorkerIndex > 4294967295) return false;
   _h.value = value.WorkerIndex;
   if (!stream.serializeBits(_h, 32)) return false;
-  if (typeof value.SpriteCountHint != "integer") return false;
+  if (typeof value.SpriteCountHint != "integer" || value.SpriteCountHint < 0 || value.SpriteCountHint > 4294967295) return false;
   _h.value = value.SpriteCountHint;
   if (!stream.serializeBits(_h, 32)) return false;
   if (typeof value.SpritesCount != "integer" || value.SpritesCount < 0 || value.SpritesCount > 64) return false;
