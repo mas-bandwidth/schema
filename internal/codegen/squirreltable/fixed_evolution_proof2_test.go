@@ -23,9 +23,11 @@ const sqEvoArrayOld = "package probe\nfixed table A\n{\n    lead uint32 = 1\n   
 // TestSquirrelFixedEvolutionArrayBounds is array-bounds (C1, C2, R11): the
 // plan carries the WRITER's bound. A counted array the old writer bounded at 4
 // and the reader at 8 refuses count_over_bound for a count of -1 and of 7 on
-// the compiled plan, and reads at exactly 4 and at 0; the reader's own
-// identity plan refuses 9 and reads 8. The negative control bounds the
-// compiled plan's count by the reader's 8.
+// the compiled plan, and reads at exactly 4; a count of 0 over non-zero slots
+// refuses wire_damaged because those slots are dead (docs/rulings.json
+// fixed-dead-bytes-are-zero). The reader's own identity plan refuses 9 and
+// reads 8. The negative control bounds the compiled plan's count by the
+// reader's 8.
 func TestSquirrelFixedEvolutionArrayBounds(t *testing.T) {
 	sqrun.Require(t)
 	t.Parallel()
@@ -51,7 +53,7 @@ func TestSquirrelFixedEvolutionArrayBounds(t *testing.T) {
 		{"C2 count 7, past the writer's 4", sqEvoFile(eo.Wire, eo.Layout, body(7, 4)), refused("count_over_bound")},
 		{"C2 count 5, one past the writer's 4", sqEvoFile(eo.Wire, eo.Layout, body(5, 4)), refused("count_over_bound")},
 		{"R11 count 4, the writer's bound", sqEvoFile(eo.Wire, eo.Layout, body(4, 4)), "ok 1 w0"},
-		{"count 0", sqEvoFile(eo.Wire, eo.Layout, body(0, 4)), "ok 1 w0"},
+		{"count 0 over non-zero slots", sqEvoFile(eo.Wire, eo.Layout, body(0, 4)), refused("wire_damaged")},
 		{"the reader's own 9 of 8", sqEvoFile(en.Wire, en.Layout, body(9, 8)), refused("count_over_bound")},
 		{"the reader's own 8 of 8", sqEvoFile(en.Wire, en.Layout, body(8, 8)), "ok 1 w0"},
 	} {
@@ -74,8 +76,9 @@ func TestSquirrelFixedEvolutionArrayBounds(t *testing.T) {
 // field's capacity, or below zero, refuses length_over_bound; ill-formed UTF-8
 // or a zero in the USED bytes, and an unpaired surrogate (high or low) or a
 // zero unit in a wstring's used units, refuse text_ill_formed; a hostile byte
-// or unit in the slack past the used length is not read and not a refusal. On
-// a compiled plan the WRITER's capacity bounds the length: string(4) read by a
+// or unit in the slack past the used length is dead, and a non-zero one
+// refuses wire_damaged (docs/rulings.json fixed-dead-bytes-are-zero). On a
+// compiled plan the WRITER's capacity bounds the length: string(4) read by a
 // string(8) reader refuses 5. The negative controls drop the UTF-8 check, the
 // narrow and the wide length checks, and the wide-unit check.
 func TestSquirrelFixedEvolutionText(t *testing.T) {
@@ -98,15 +101,15 @@ func TestSquirrelFixedEvolutionText(t *testing.T) {
 		{"C4 0xff in the used bytes", cut(func(b []byte) { b[body+4] = 0xff }), refused("text_ill_formed")},
 		{"C4 a zero in the used bytes", cut(func(b []byte) { b[body+5] = 0 }), refused("text_ill_formed")},
 		{"C4 a truncated two-byte sequence", cut(func(b []byte) { b[body+5] = 0xc3 }), refused("text_ill_formed")},
-		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), "ok 1 w0"},
+		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), refused("wire_damaged")},
 	}
 	for _, c := range cases {
 		if got := g.load(t, "T", c.file); !strings.HasPrefix(got.head, c.want) {
 			t.Errorf("%s: %s, want %s", c.name, got.head, c.want)
 		}
 	}
-	if got := g.load(t, "T", cases[5].file); got.dump["r0.s"] != `"ab"` {
-		t.Errorf("R24: the used text with poisoned slack: %v", got.dump)
+	if got := g.load(t, "T", cases[5].file); len(got.dump) != 0 {
+		t.Errorf("R24: the poisoned slack landed values: %v", got.dump)
 	}
 
 	// the writer's capacity governs a compiled plan
@@ -126,7 +129,7 @@ func TestSquirrelFixedEvolutionText(t *testing.T) {
 		t.Errorf("the negative control: ill-formed UTF-8 still refuses without the check: %s", got.head)
 	}
 	gc = sqEvoGenerate(t, u, nil)
-	gc.plant(t, "    if (n < 0 || n > 4) return \"length_over_bound\";\n    if (_rt_fixed.textIllFormed", "    if (_rt_fixed.textIllFormed")
+	gc.plant(t, "    if (n < 0 || n > 4) return \"length_over_bound\";\n", "")
 	if got := gc.load(t, "T", cases[0].file); strings.HasPrefix(got.head, refused("length_over_bound")) {
 		t.Errorf("the negative control: a narrow length past capacity still refuses without the check: %s", got.head)
 	}
@@ -139,8 +142,9 @@ const sqEvoNormalOld = "package probe\nfixed table T\n{\n    flag bool\n    opt 
 // present byte of 0 or 1 land as false and true; any other byte — 0x02, 0x5a,
 // 0x7f, 0x80, 0xff — refuses wire_damaged, neither stored verbatim nor
 // normalized, on the identity plan and on a compiled plan; an absent optional's
-// payload bytes are not read. The negative controls drop the bool check and the
-// present-byte check.
+// payload is dead, so a non-zero byte there refuses wire_damaged
+// (docs/rulings.json fixed-dead-bytes-are-zero). The negative controls drop the
+// bool check and the present-byte check.
 func TestSquirrelFixedEvolutionNormalization(t *testing.T) {
 	sqrun.Require(t)
 	t.Parallel()
@@ -163,8 +167,8 @@ func TestSquirrelFixedEvolutionNormalization(t *testing.T) {
 		if got := gg.load(t, "T", with(0, 1, 42)); got.head != "ok 1 w0" || got.dump["r0.flag"] != "0" || got.dump["r0.opt"] != "42" {
 			t.Errorf("%s, false and present: %s %v", name, got.head, got.dump)
 		}
-		if got := gg.load(t, "T", with(1, 0, 0xFFFFFFFF)); got.head != "ok 1 w0" || got.dump["r0.opt_present"] != "0" {
-			t.Errorf("%s, an absent optional over a poisoned payload: %s %v", name, got.head, got.dump)
+		if got := gg.load(t, "T", with(1, 0, 0xFFFFFFFF)); !strings.HasPrefix(got.head, refused("wire_damaged")) || !strings.Contains(got.head, "untouched") {
+			t.Errorf("%s, an absent optional over a poisoned payload: %s %v, want wire_damaged untouched", name, got.head, got.dump)
 		}
 		for _, x := range []byte{0x02, 0x5a, 0x7f, 0x80, 0xff} {
 			if got := gg.load(t, "T", with(x, 1, 42)); !strings.HasPrefix(got.head, refused("wire_damaged")) {

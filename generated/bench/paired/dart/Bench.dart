@@ -19,6 +19,10 @@
 // tags — and NEVER throw on hostile bytes. No slack past the payload is
 // required: the reader prices its 64-bit windows inside the buffer.
 //
+// read<Name>Bits(value, view, numBits, bitOffset) -> the bits consumed, or
+// -1 on the same refusals: the framing entry, read from a bit offset with
+// no end-of-packet check, so several objects read in turn from one buffer.
+//
 // zero<Name>(value) -> the §5 zero form. There is no measure function
 // (SPEC §6.1): write returns the size, <name>MaxBytes sizes buffers.
 
@@ -104,6 +108,10 @@ int writeBenchPacket(BenchPacket value, ByteData view) {
   assert(value.b <= 65535);
   assert(value.c >= -1000000);
   assert(value.c <= 1000000);
+  assert(value.bits7 >= 0);
+  assert(value.bits7 <= 127);
+  assert(value.bits13 >= 0);
+  assert(value.bits13 <= 8191);
   v =
       ((value.a + 100) & 0xff) |
       ((value.b & 0xffff) << 8) |
@@ -111,6 +119,8 @@ int writeBenchPacket(BenchPacket value, ByteData view) {
       ((value.bits7 & 0x7f) << 45);
   scratch |= v << scratchBits;
   scratchBits += 52;
+  assert(value.bits23 >= 0);
+  assert(value.bits23 <= 8388607);
   v =
       (value.bits13 & 0x1fff) |
       ((value.bits23 & 0x7fffff) << 13) |
@@ -215,8 +225,38 @@ int writeBenchPacket(BenchPacket value, ByteData view) {
 // and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
+  final bitsRead = readBenchPacketBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readBenchPacketBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readBenchPacket does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readBenchPacketBits(
+  BenchPacket value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -230,12 +270,12 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 249 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -245,7 +285,7 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
   v = window & 0xff;
   bitsRead += 8;
   if (v > 200) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.a = -100 + v;
   v = (window >>> 8) & 0xffff;
@@ -254,7 +294,7 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
   v = (window >>> 24) & 0x1fffff;
   bitsRead += 21;
   if (v > 2000000) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.c = -1000000 + v;
   v = (window >>> 45) & 0x7f;
@@ -282,7 +322,7 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   if ((v & 0x7f800000) == 0x7f800000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   Schema.u32[0] = v;
   value.x = Schema.f32[0];
@@ -294,7 +334,7 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   if ((v & 0x7f800000) == 0x7f800000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   Schema.u32[0] = v;
   value.y = Schema.f32[0];
@@ -306,7 +346,7 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   if ((v & 0x7f800000) == 0x7f800000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   Schema.u32[0] = v;
   value.z = Schema.f32[0];
@@ -331,16 +371,16 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
     final pad = bitsRead & 7;
     if (pad != 0) {
       if (bitsRead + (8 - pad) > numBits) {
-        return false;
+        return -1;
       }
       if (view.getUint8(bitsRead >>> 3) >>> pad != 0) {
-        return false; // nonzero padding is refused (SPEC §4.3)
+        return -1; // nonzero padding is refused (SPEC §4.3)
       }
       bitsRead += 8 - pad;
     }
   }
   if (bitsRead + 136 > numBits) {
-    return false;
+    return -1;
   }
   for (var i0 = 0; i0 < 17; i0++) {
     if (bitsRead >>> 3 < tailBase) {
@@ -352,18 +392,7 @@ bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
     bitsRead += 8;
     value.blob[i0] = v;
   }
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type BenchInts
@@ -487,8 +516,38 @@ int writeBenchInts(BenchInts value, ByteData view) {
 // and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readBenchInts(BenchInts value, ByteData view, int numBits) {
+  final bitsRead = readBenchIntsBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readBenchIntsBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readBenchInts does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readBenchIntsBits(
+  BenchInts value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -502,11 +561,11 @@ bool readBenchInts(BenchInts value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 110 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -516,7 +575,7 @@ bool readBenchInts(BenchInts value, ByteData view, int numBits) {
   v = window & 0xff;
   bitsRead += 8;
   if (v > 200) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f0 = -100 + v;
   v = (window >>> 8) & 0xffff;
@@ -525,7 +584,7 @@ bool readBenchInts(BenchInts value, ByteData view, int numBits) {
   v = (window >>> 24) & 0x1fffff;
   bitsRead += 21;
   if (v > 2000000) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f2 = -1000000 + v;
   v = (window >>> 45) & 0x3;
@@ -534,7 +593,7 @@ bool readBenchInts(BenchInts value, ByteData view, int numBits) {
   v = (window >>> 47) & 0x1f;
   bitsRead += 5;
   if (v > 30) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f4 = -15 + v;
   if (bitsRead >>> 3 < tailBase) {
@@ -545,7 +604,7 @@ bool readBenchInts(BenchInts value, ByteData view, int numBits) {
   v = window & 0x3ff;
   bitsRead += 10;
   if (v > 1000) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f5 = v;
   v = (window >>> 10) & 0xfff;
@@ -557,7 +616,7 @@ bool readBenchInts(BenchInts value, ByteData view, int numBits) {
   v = (window >>> 30) & 0x1fffff;
   bitsRead += 21;
   if (v > 1200000) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f8 = -600000 + v;
   if (bitsRead >>> 3 < tailBase) {
@@ -568,21 +627,10 @@ bool readBenchInts(BenchInts value, ByteData view, int numBits) {
   v = window & 0x7f;
   bitsRead += 7;
   if (v > 100) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.f9 = v;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type BenchBits
@@ -637,6 +685,16 @@ int writeBenchBits(BenchBits value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.b7 >= 0);
+  assert(value.b7 <= 127);
+  assert(value.b13 >= 0);
+  assert(value.b13 <= 8191);
+  assert(value.b23 >= 0);
+  assert(value.b23 <= 8388607);
+  assert(value.b3 >= 0);
+  assert(value.b3 <= 7);
+  assert(value.b32 >= 0);
+  assert(value.b32 <= 4294967295);
   v =
       (value.b7 & 0x7f) |
       ((value.b13 & 0x1fff) << 7) |
@@ -644,6 +702,12 @@ int writeBenchBits(BenchBits value, ByteData view) {
       ((value.b3 & 0x7) << 43);
   scratch |= v << scratchBits;
   scratchBits += 46;
+  assert(value.b11 >= 0);
+  assert(value.b11 <= 2047);
+  assert(value.b19 >= 0);
+  assert(value.b19 <= 524287);
+  assert(value.b48 >= 0);
+  assert(value.b48 <= 281474976710655);
   v =
       (value.b32 & 0xffffffff) |
       ((value.b11 & 0x7ff) << 32) |
@@ -676,8 +740,38 @@ int writeBenchBits(BenchBits value, ByteData view) {
 // and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readBenchBits(BenchBits value, ByteData view, int numBits) {
+  final bitsRead = readBenchBitsBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readBenchBitsBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readBenchBits does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readBenchBitsBits(
+  BenchBits value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -691,12 +785,12 @@ bool readBenchBits(BenchBits value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 156 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -742,18 +836,7 @@ bool readBenchBits(BenchBits value, ByteData view, int numBits) {
   lo = window & 0xffffffffffff;
   bitsRead += 48;
   value.b48 = lo;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
@@ -972,12 +1055,16 @@ int writeMixedEntity(MixedEntity value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.entityId >= 0);
+  assert(value.entityId <= 4095);
   assert(value.posX >= -16383);
   assert(value.posX <= 16383);
   assert(value.posY >= -16383);
   assert(value.posY <= 16383);
   assert(value.posZ >= -16383);
   assert(value.posZ <= 16383);
+  assert(value.yaw >= 0);
+  assert(value.yaw <= 511);
   v =
       (value.entityId & 0xfff) |
       (((value.posX + 16383) & 0x7fff) << 12) |
@@ -985,6 +1072,8 @@ int writeMixedEntity(MixedEntity value, ByteData view) {
       (((value.posZ + 16383) & 0x7fff) << 42);
   scratch |= v << scratchBits;
   scratchBits += 57;
+  assert(value.pitch >= 0);
+  assert(value.pitch <= 511);
   assert(value.velX >= -2048);
   assert(value.velX <= 2047);
   assert(value.velY >= -2048);
@@ -1035,8 +1124,38 @@ int writeMixedEntity(MixedEntity value, ByteData view) {
 // and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedEntity(MixedEntity value, ByteData view, int numBits) {
+  final bitsRead = readMixedEntityBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readMixedEntityBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readMixedEntity does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readMixedEntityBits(
+  MixedEntity value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1050,11 +1169,11 @@ bool readMixedEntity(MixedEntity value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 135 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1067,19 +1186,19 @@ bool readMixedEntity(MixedEntity value, ByteData view, int numBits) {
   v = (window >>> 12) & 0x7fff;
   bitsRead += 15;
   if (v > 32766) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.posX = -16383 + v;
   v = (window >>> 27) & 0x7fff;
   bitsRead += 15;
   if (v > 32766) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.posY = -16383 + v;
   v = (window >>> 42) & 0x7fff;
   bitsRead += 15;
   if (v > 32766) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.posZ = -16383 + v;
   if (bitsRead >>> 3 < tailBase) {
@@ -1110,7 +1229,7 @@ bool readMixedEntity(MixedEntity value, ByteData view, int numBits) {
   v = window & 0x3ff;
   bitsRead += 10;
   if (v > 1000) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.health = v;
   v = (window >>> 10) & 0xf;
@@ -1125,18 +1244,7 @@ bool readMixedEntity(MixedEntity value, ByteData view, int numBits) {
   v = (window >>> 23) & 0x1;
   bitsRead += 1;
   value.firing = v != 0;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type MixedStat
@@ -1174,6 +1282,8 @@ int writeMixedStat(MixedStat value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.statId >= 0);
+  assert(value.statId <= 255);
   assert(value.delta >= -512);
   assert(value.delta <= 511);
   v = (value.statId & 0xff) | (((value.delta + 512) & 0x3ff) << 8);
@@ -1190,8 +1300,38 @@ int writeMixedStat(MixedStat value, ByteData view) {
 // and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedStat(MixedStat value, ByteData view, int numBits) {
+  final bitsRead = readMixedStatBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readMixedStatBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readMixedStat does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readMixedStatBits(
+  MixedStat value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1205,11 +1345,11 @@ bool readMixedStat(MixedStat value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 18 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1222,18 +1362,7 @@ bool readMixedStat(MixedStat value, ByteData view, int numBits) {
   v = (window >>> 8) & 0x3ff;
   bitsRead += 10;
   value.delta = -512 + v;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type MixedHitEvent
@@ -1278,6 +1407,8 @@ int writeMixedHitEvent(MixedHitEvent value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.targetId >= 0);
+  assert(value.targetId <= 4095);
   assert(value.damage >= 0);
   assert(value.damage <= 4095);
   assert(value.hitKind >= 0);
@@ -1300,8 +1431,38 @@ int writeMixedHitEvent(MixedHitEvent value, ByteData view) {
 // and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedHitEvent(MixedHitEvent value, ByteData view, int numBits) {
+  final bitsRead = readMixedHitEventBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readMixedHitEventBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readMixedHitEvent does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readMixedHitEventBits(
+  MixedHitEvent value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1315,11 +1476,11 @@ bool readMixedHitEvent(MixedHitEvent value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 28 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1338,18 +1499,7 @@ bool readMixedHitEvent(MixedHitEvent value, ByteData view, int numBits) {
   v = (window >>> 27) & 0x1;
   bitsRead += 1;
   value.crit = v != 0;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type MixedChatEvent
@@ -1389,6 +1539,8 @@ int writeMixedChatEvent(MixedChatEvent value, ByteData view) {
   var v = 0;
   assert(value.channel >= 0);
   assert(value.channel <= 3);
+  assert(value.speaker >= 0);
+  assert(value.speaker <= 4095);
   v = (value.channel & 0x3) | ((value.speaker & 0xfff) << 2);
   scratch |= v << scratchBits;
   scratchBits += 14;
@@ -1403,8 +1555,38 @@ int writeMixedChatEvent(MixedChatEvent value, ByteData view) {
 // and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedChatEvent(MixedChatEvent value, ByteData view, int numBits) {
+  final bitsRead = readMixedChatEventBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readMixedChatEventBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readMixedChatEvent does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readMixedChatEventBits(
+  MixedChatEvent value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1418,11 +1600,11 @@ bool readMixedChatEvent(MixedChatEvent value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 14 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1435,18 +1617,7 @@ bool readMixedChatEvent(MixedChatEvent value, ByteData view, int numBits) {
   v = (window >>> 2) & 0xfff;
   bitsRead += 12;
   value.speaker = v;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type MixedPickupEvent
@@ -1484,6 +1655,8 @@ int writeMixedPickupEvent(MixedPickupEvent value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.itemId >= 0);
+  assert(value.itemId <= 1023);
   assert(value.amount >= 0);
   assert(value.amount <= 255);
   v = (value.itemId & 0x3ff) | ((value.amount & 0xff) << 10);
@@ -1500,8 +1673,38 @@ int writeMixedPickupEvent(MixedPickupEvent value, ByteData view) {
 // and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedPickupEvent(MixedPickupEvent value, ByteData view, int numBits) {
+  final bitsRead = readMixedPickupEventBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readMixedPickupEventBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readMixedPickupEvent does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readMixedPickupEventBits(
+  MixedPickupEvent value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1515,11 +1718,11 @@ bool readMixedPickupEvent(MixedPickupEvent value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 18 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1532,18 +1735,7 @@ bool readMixedPickupEvent(MixedPickupEvent value, ByteData view, int numBits) {
   v = (window >>> 10) & 0xff;
   bitsRead += 8;
   value.amount = v;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -1612,6 +1804,8 @@ int writeMixedEvent(MixedEvent value, ByteData view) {
   scratchBits += 2;
   switch (value.type) {
     case MixedEventType.hit:
+      assert(value.hit.targetId >= 0);
+      assert(value.hit.targetId <= 4095);
       assert(value.hit.damage >= 0);
       assert(value.hit.damage <= 4095);
       assert(value.hit.hitKind >= 0);
@@ -1626,10 +1820,14 @@ int writeMixedEvent(MixedEvent value, ByteData view) {
     case MixedEventType.chat:
       assert(value.chat.channel >= 0);
       assert(value.chat.channel <= 3);
+      assert(value.chat.speaker >= 0);
+      assert(value.chat.speaker <= 4095);
       v = (value.chat.channel & 0x3) | ((value.chat.speaker & 0xfff) << 2);
       scratch |= v << scratchBits;
       scratchBits += 14;
     case MixedEventType.pickup:
+      assert(value.pickup.itemId >= 0);
+      assert(value.pickup.itemId <= 1023);
       assert(value.pickup.amount >= 0);
       assert(value.pickup.amount <= 255);
       v = (value.pickup.itemId & 0x3ff) | ((value.pickup.amount & 0xff) << 10);
@@ -1647,8 +1845,38 @@ int writeMixedEvent(MixedEvent value, ByteData view) {
 // and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
+  final bitsRead = readMixedEventBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readMixedEventBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readMixedEvent does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readMixedEventBits(
+  MixedEvent value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1662,11 +1890,11 @@ bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   if (bitsRead + 2 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1679,7 +1907,7 @@ bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
   switch (value.type) {
     case MixedEventType.hit:
       if (bitsRead + 28 > numBits) {
-        return false;
+        return -1;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -1701,7 +1929,7 @@ bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
       value.hit.crit = v != 0;
     case MixedEventType.chat:
       if (bitsRead + 14 > numBits) {
-        return false;
+        return -1;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -1717,7 +1945,7 @@ bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
       value.chat.speaker = v;
     case MixedEventType.pickup:
       if (bitsRead + 18 > numBits) {
-        return false;
+        return -1;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -1732,18 +1960,7 @@ bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
       bitsRead += 8;
       value.pickup.amount = v;
   }
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
+  return bitsRead - bitOffset;
 }
 
 // type BenchMixed
@@ -1889,8 +2106,12 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.sequence >= 0);
+  assert(value.sequence <= 65535);
   assert(value.ackSequence >= 0);
   assert(value.ackSequence <= 65535);
+  assert(value.ackBits >= 0);
+  assert(value.ackBits <= 4294967295);
   v =
       49374 |
       ((value.sequence & 0xffff) << 16) |
@@ -1935,6 +2156,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
+  assert(value.frameTick >= 0);
+  assert(value.frameTick <= 281474976710655);
   v = (value.worldTime + 1000000000000) & 0x1ffffffffff;
   scratch |= v << scratchBits;
   scratchBits += 41;
@@ -1968,12 +2191,16 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   }
   for (var i0 = 0; i0 < value.entitiesCount; i0++) {
     final e0 = value.entities[i0];
+    assert(e0.entityId >= 0);
+    assert(e0.entityId <= 4095);
     assert(e0.posX >= -16383);
     assert(e0.posX <= 16383);
     assert(e0.posY >= -16383);
     assert(e0.posY <= 16383);
     assert(e0.posZ >= -16383);
     assert(e0.posZ <= 16383);
+    assert(e0.yaw >= 0);
+    assert(e0.yaw <= 511);
     v =
         (e0.entityId & 0xfff) |
         (((e0.posX + 16383) & 0x7fff) << 12) |
@@ -1987,6 +2214,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (57 - scratchBits);
     }
+    assert(e0.pitch >= 0);
+    assert(e0.pitch <= 511);
     assert(e0.velX >= -2048);
     assert(e0.velX <= 2047);
     assert(e0.velY >= -2048);
@@ -2042,12 +2271,18 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     var i0 = 0;
     for (; i0 + 3 <= value.statsCount; i0 += 3) {
       final e0 = value.stats[i0];
+      assert(e0.statId >= 0);
+      assert(e0.statId <= 255);
       assert(e0.delta >= -512);
       assert(e0.delta <= 511);
       final e0g1 = value.stats[i0 + 1];
+      assert(e0g1.statId >= 0);
+      assert(e0g1.statId <= 255);
       assert(e0g1.delta >= -512);
       assert(e0g1.delta <= 511);
       final e0g2 = value.stats[i0 + 2];
+      assert(e0g2.statId >= 0);
+      assert(e0g2.statId <= 255);
       assert(e0g2.delta >= -512);
       assert(e0g2.delta <= 511);
       v =
@@ -2068,6 +2303,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     }
     for (; i0 < value.statsCount; i0++) {
       final e0 = value.stats[i0];
+      assert(e0.statId >= 0);
+      assert(e0.statId <= 255);
       assert(e0.delta >= -512);
       assert(e0.delta <= 511);
       v = (e0.statId & 0xff) | (((e0.delta + 512) & 0x3ff) << 8);
@@ -2094,6 +2331,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   }
   switch (value.gameEvent.type) {
     case MixedEventType.hit:
+      assert(value.gameEvent.hit.targetId >= 0);
+      assert(value.gameEvent.hit.targetId <= 4095);
       assert(value.gameEvent.hit.damage >= 0);
       assert(value.gameEvent.hit.damage <= 4095);
       assert(value.gameEvent.hit.hitKind >= 0);
@@ -2114,6 +2353,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     case MixedEventType.chat:
       assert(value.gameEvent.chat.channel >= 0);
       assert(value.gameEvent.chat.channel <= 3);
+      assert(value.gameEvent.chat.speaker >= 0);
+      assert(value.gameEvent.chat.speaker <= 4095);
       v =
           (value.gameEvent.chat.channel & 0x3) |
           ((value.gameEvent.chat.speaker & 0xfff) << 2);
@@ -2126,6 +2367,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
         scratch = v >>> (14 - scratchBits);
       }
     case MixedEventType.pickup:
+      assert(value.gameEvent.pickup.itemId >= 0);
+      assert(value.gameEvent.pickup.itemId <= 1023);
       assert(value.gameEvent.pickup.amount >= 0);
       assert(value.gameEvent.pickup.amount <= 255);
       v =
@@ -2142,6 +2385,11 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   }
   assert(value.playerNameLength >= 0);
   assert(value.playerNameLength <= 15);
+  assert(Schema.utf8Valid(value.playerName, value.playerNameLength));
+  // an interior null is content the write refuses (SPEC §4.7)
+  for (var i0 = 0; i0 < value.playerNameLength; i0++) {
+    assert(value.playerName[i0] != 0);
+  }
   v =
       value.loadout[0] |
       (value.loadout[1] << 8) |
@@ -2252,6 +2500,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   {
     final x = Schema.fround(value.aimX);
     assert(x.isFinite);
+    assert(x >= -1.0 && x <= 1.0); // SPEC §5.1 row 10
     var n = Schema.fround(Schema.fround(x + 1.0) / 2.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -2272,6 +2521,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   {
     final x = Schema.fround(value.aimY);
     assert(x.isFinite);
+    assert(x >= -1.0 && x <= 1.0); // SPEC §5.1 row 10
     var n = Schema.fround(Schema.fround(x + 1.0) / 2.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -2292,6 +2542,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   {
     final x = Schema.fround(value.aimZ);
     assert(x.isFinite);
+    assert(x >= -1.0 && x <= 1.0); // SPEC §5.1 row 10
     var n = Schema.fround(Schema.fround(x + 1.0) / 2.0);
     if (!(n >= 0.0)) {
       n = 0.0;
@@ -2396,6 +2647,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       }
     }
   }
+  assert(value.crcHint >= 0);
+  assert(value.crcHint <= 16777215);
   assert(value.extra >= 0);
   assert(value.extra <= 255);
   assert(value.idleTicks >= 0);
@@ -2424,8 +2677,38 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
 // and a whole byte or unused final-byte bits left after the object);
 // hostile bytes never throw. No slack past the payload is required.
 bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
+  final bitsRead = readBenchMixedBits(value, view, numBits, 0);
+  if (bitsRead < 0) return false;
+  final endByte = (numBits + 7) >>> 3;
+  if (((bitsRead + 7) >>> 3) != endByte) {
+    return false; // a whole byte is left after the object (SPEC §5)
+  }
+  if (bitsRead < endByte * 8) {
+    final unusedBits = endByte * 8 - bitsRead;
+    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
+    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
+      return false; // non-zero unused bits in the final byte (SPEC §5)
+    }
+  }
+  return true;
+}
+
+// readBenchMixedBits decodes value starting at bit bitOffset of view, reading no
+// further than numBits, and returns the bits it consumed (SPEC §5) — or -1
+// when it refuses the wire, exactly as readBenchMixed does. It is the framing
+// entry: it runs no end-of-packet check, so several objects read in turn
+// from one buffer, each at the previous offset plus its bits consumed.
+int readBenchMixedBits(
+  BenchMixed value,
+  ByteData view,
+  int numBits,
+  int bitOffset,
+) {
   if (numBits < 0 || numBits > view.lengthInBytes * 8) {
-    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
+    return -1; // a read faces untrusted wire: refuse negative or past-buffer counts
+  }
+  if (bitOffset < 0 || bitOffset > numBits) {
+    return -1; // the start lies inside the bits the caller vouches for
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -2439,13 +2722,13 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
       tailWord = (tailWord << 8) | view.getUint8(i);
     }
   }
-  var bitsRead = 0;
+  var bitsRead = bitOffset;
   var window = 0;
   var v = 0;
   var lo = 0;
   var hi = 0;
   if (bitsRead + 353 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2455,7 +2738,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = window & 0xffff;
   bitsRead += 16;
   if (v != 49374) {
-    return false; // a read rejects any other value (SPEC §4.3)
+    return -1; // a read rejects any other value (SPEC §4.3)
   }
   v = (window >>> 16) & 0xffff;
   bitsRead += 16;
@@ -2521,7 +2804,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   lo = window & 0x1ffffffffff;
   bitsRead += 41;
   if (lo > 2000000000000) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.worldTime = -1000000000000 + lo;
   if (bitsRead >>> 3 < tailBase) {
@@ -2540,17 +2823,17 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = window & 0xffffff;
   bitsRead += 24;
   if (v > 16776960) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.serverTime = v;
   if (bitsRead + 3 > numBits) {
-    return false;
+    return -1;
   }
   v = (window >>> 24) & 0x7;
   bitsRead += 3;
   value.entitiesCount = v + 1;
   if (bitsRead + value.entitiesCount * 135 > numBits) {
-    return false;
+    return -1;
   }
   for (var i0 = 0; i0 < value.entitiesCount; i0++) {
     final e0 = value.entities[i0];
@@ -2565,19 +2848,19 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
     v = (window >>> 12) & 0x7fff;
     bitsRead += 15;
     if (v > 32766) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     e0.posX = -16383 + v;
     v = (window >>> 27) & 0x7fff;
     bitsRead += 15;
     if (v > 32766) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     e0.posY = -16383 + v;
     v = (window >>> 42) & 0x7fff;
     bitsRead += 15;
     if (v > 32766) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     e0.posZ = -16383 + v;
     if (bitsRead >>> 3 < tailBase) {
@@ -2608,7 +2891,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
     v = window & 0x3ff;
     bitsRead += 10;
     if (v > 1000) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
     e0.health = v;
     v = (window >>> 10) & 0xf;
@@ -2625,7 +2908,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
     e0.firing = v != 0;
   }
   if (bitsRead + 7 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2635,11 +2918,11 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = window & 0x7f;
   bitsRead += 7;
   if (v > 80) {
-    return false; // the count guards the loop — reject, never clamp
+    return -1; // the count guards the loop — reject, never clamp
   }
   value.statsCount = v;
   if (bitsRead + value.statsCount * 18 > numBits) {
-    return false;
+    return -1;
   }
   {
     var i0 = 0;
@@ -2689,7 +2972,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
     }
   }
   if (bitsRead + 2 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2702,7 +2985,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   switch (value.gameEvent.type) {
     case MixedEventType.hit:
       if (bitsRead + 28 > numBits) {
-        return false;
+        return -1;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -2724,7 +3007,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
       value.gameEvent.hit.crit = v != 0;
     case MixedEventType.chat:
       if (bitsRead + 14 > numBits) {
-        return false;
+        return -1;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -2740,7 +3023,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
       value.gameEvent.chat.speaker = v;
     case MixedEventType.pickup:
       if (bitsRead + 18 > numBits) {
-        return false;
+        return -1;
       }
       if (bitsRead >>> 3 < tailBase) {
         window =
@@ -2756,7 +3039,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
       value.gameEvent.pickup.amount = v;
   }
   if (bitsRead + 32 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2776,7 +3059,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   bitsRead += 8;
   value.loadout[3] = v;
   if (bitsRead + 4 > numBits) {
-    return false;
+    return -1;
   }
   v = (window >>> 32) & 0xf;
   bitsRead += 4;
@@ -2785,16 +3068,16 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
     final pad = bitsRead & 7;
     if (pad != 0) {
       if (bitsRead + (8 - pad) > numBits) {
-        return false;
+        return -1;
       }
       if (view.getUint8(bitsRead >>> 3) >>> pad != 0) {
-        return false; // nonzero padding is refused (SPEC §4.3)
+        return -1; // nonzero padding is refused (SPEC §4.3)
       }
       bitsRead += 8 - pad;
     }
   }
   if (bitsRead + value.playerNameLength * 8 > numBits) {
-    return false;
+    return -1;
   }
   {
     final base = bitsRead >>> 3;
@@ -2804,15 +3087,15 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   }
   bitsRead += value.playerNameLength * 8;
   if (!Schema.utf8Valid(value.playerName, value.playerNameLength)) {
-    return false;
+    return -1;
   }
   for (var i0 = 0; i0 < value.playerNameLength; i0++) {
     if (value.playerName[i0] == 0) {
-      return false; // an interior null is content the read refuses (SPEC §4.7)
+      return -1; // an interior null is content the read refuses (SPEC §4.7)
     }
   }
   if (bitsRead + 5 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2822,23 +3105,23 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = window & 0x1f;
   bitsRead += 5;
   if (v > 16) {
-    return false; // the length guards the slice — reject, never clamp
+    return -1; // the length guards the slice — reject, never clamp
   }
   value.payloadLength = v;
   {
     final pad = bitsRead & 7;
     if (pad != 0) {
       if (bitsRead + (8 - pad) > numBits) {
-        return false;
+        return -1;
       }
       if (view.getUint8(bitsRead >>> 3) >>> pad != 0) {
-        return false; // nonzero padding is refused (SPEC §4.3)
+        return -1; // nonzero padding is refused (SPEC §4.3)
       }
       bitsRead += 8 - pad;
     }
   }
   if (bitsRead + value.payloadLength * 8 > numBits) {
-    return false;
+    return -1;
   }
   {
     final base = bitsRead >>> 3;
@@ -2848,7 +3131,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   }
   bitsRead += value.payloadLength * 8;
   if (bitsRead + 370 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -2858,7 +3141,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = window & 0xff;
   bitsRead += 8;
   if (v > 200) {
-    return false; // headroom above the quantum count is refused
+    return -1; // headroom above the quantum count is refused
   }
   {
     final q = Schema.fround(Schema.fround(v.toDouble()) / 200.0);
@@ -2867,7 +3150,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = (window >>> 8) & 0xff;
   bitsRead += 8;
   if (v > 200) {
-    return false; // headroom above the quantum count is refused
+    return -1; // headroom above the quantum count is refused
   }
   {
     final q = Schema.fround(Schema.fround(v.toDouble()) / 200.0);
@@ -2876,7 +3159,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = (window >>> 16) & 0xff;
   bitsRead += 8;
   if (v > 200) {
-    return false; // headroom above the quantum count is refused
+    return -1; // headroom above the quantum count is refused
   }
   {
     final q = Schema.fround(Schema.fround(v.toDouble()) / 200.0);
@@ -2885,7 +3168,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = (window >>> 24) & 0xffffffff;
   bitsRead += 32;
   if ((v & 0x7f800000) == 0x7f800000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   Schema.u32[0] = v;
   value.recoil = Schema.f32[0];
@@ -2906,7 +3189,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   bitsRead += 32;
   lo |= v << 32;
   if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
-    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    return -1; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
   value.drift = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
@@ -2972,7 +3255,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   {
     const diff = UInt128(137438953472, 0);
     if (diff < UInt128(hi, lo)) {
-      return false; // a smuggled offset is refused
+      return -1; // a smuggled offset is refused
     }
   }
   {
@@ -2982,7 +3265,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = (window >>> 38) & 0xffff;
   bitsRead += 16;
   if (v > 64000) {
-    return false; // a smuggled offset is refused
+    return -1; // a smuggled offset is refused
   }
   value.ping = v;
   if (bitsRead >>> 3 < tailBase) {
@@ -2993,22 +3276,22 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = window & 0xf;
   bitsRead += 4;
   if (v != 0) {
-    return false; // reserved bits must read zero (SPEC §4.3)
+    return -1; // reserved bits must read zero (SPEC §4.3)
   }
   {
     final pad = bitsRead & 7;
     if (pad != 0) {
       if (bitsRead + (8 - pad) > numBits) {
-        return false;
+        return -1;
       }
       if (view.getUint8(bitsRead >>> 3) >>> pad != 0) {
-        return false; // nonzero padding is refused (SPEC §4.3)
+        return -1; // nonzero padding is refused (SPEC §4.3)
       }
       bitsRead += 8 - pad;
     }
   }
   if (bitsRead + 37 > numBits) {
-    return false;
+    return -1;
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -3027,16 +3310,5 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = (window >>> 33) & 0xf;
   bitsRead += 4;
   value.idleTicks = v;
-  final endByte = (numBits + 7) >>> 3;
-  if (((bitsRead + 7) >>> 3) != endByte) {
-    return false; // a whole byte is left after the object (SPEC §5)
-  }
-  if (bitsRead < endByte * 8) {
-    final unusedBits = endByte * 8 - bitsRead;
-    final unusedMask = ((1 << unusedBits) - 1) << (bitsRead & 7);
-    if ((view.getUint8(endByte - 1) & unusedMask) != 0) {
-      return false; // non-zero unused bits in the final byte (SPEC §5)
-    }
-  }
-  return true;
+  return bitsRead - bitOffset;
 }

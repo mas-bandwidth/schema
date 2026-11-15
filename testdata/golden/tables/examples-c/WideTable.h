@@ -531,6 +531,18 @@ static SCHEMA_UNUSED int tabledemo_table_reader_array_header( tabledemo_table_re
     ok = tabledemo_table_reader_leb( &header, count ); sub->offset = header.offset;
     return ok;
 }
+/* THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3, §4): an array body
+   (kind 14) opens with 1-13, 15, 17 or 18-30, and an enum-keyed body (kind
+   16) with 1-11, 13 or 18-30. Any other element kind is damage under any
+   count, a count of 0 included, in a declared field and an unknown one. */
+static SCHEMA_UNUSED int tabledemo_table_array_element_kind_allowed( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 13 ) || kind == 15 || kind == 17 || ( kind >= 18 && kind <= 30 );
+}
+static SCHEMA_UNUSED int tabledemo_table_keyed_element_kind_allowed( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 11 ) || kind == 13 || ( kind >= 18 && kind <= 30 );
+}
 static SCHEMA_UNUSED int tabledemo_table_reader_skip( tabledemo_table_reader_t * r, uint8_t kind )
 {
     int width = 0; uint64_t n;
@@ -631,6 +643,7 @@ static SCHEMA_UNUSED int tabledemo_table_skip_array( tabledemo_table_reader_t * 
     if ( sub->size < 2 ) { return 0; }
     elem_kind = tabledemo_table_reader_get8( sub );
     if ( !tabledemo_table_reader_leb( sub, &count ) ) { return 0; }
+    if ( keyed ? !tabledemo_table_keyed_element_kind_allowed( elem_kind ) : !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { return 0; }
     if ( count > 2147483647ull ) { return 0; }
     if ( count > (uint64_t)(sub->size - sub->offset) ) { return 0; }
     if ( !keyed )
@@ -1033,9 +1046,32 @@ typedef struct tabledemo_table_fixed_entry_t
        value rides as two 8-byte lanes). The wire is little-endian on every
        host (§3.4), so on a big-endian host a copy must reverse each element
        rather than land the wire bytes in host order. Zero is a raw byte copy,
-       which is every non-copy op and every byte-sized element. It sits last
-       so existing positional initializers keep their meaning. */
+       which is every non-copy op and every byte-sized element. */
     uint8_t elem;
+    /* dead IS THIS ENTRY'S DEAD-BYTE FACT, and it depends on the op: a COUNT
+       entry's wire bytes per element, a PRESENT-DEFAULTS entry's wire payload
+       bytes, and a union's tag entry (a COPY or CONST) the widest arm's wire
+       bytes. The spans it closes are DEAD and the check pass holds every one of
+       their bytes to zero (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step
+       11; docs/SPEC-TABLES.md §3.4, §13.10). */
+    uint32_t dead;
+    /* arm IS A UNION ARM ENTRY'S WIRE BYTES, from the writer's layout, so the
+       bytes past a narrower TAKEN arm inside the widest arm's span are dead. */
+    uint32_t arm;
+    /* arm_count IS A UNION TAG ENTRY'S WRITER ARM COUNT, so a tag past the set
+       is left to the bounds pass's out_of_range rather than read as an inactive
+       arm's dead bytes. */
+    uint32_t arm_count;
+    /* tagw IS A UNION TAG ENTRY'S WRITER TAG WIDTH, the width the tag is read
+       at to decide which arm is live. */
+    uint8_t tagw;
+    /* present IS THE ENCLOSING OPTIONAL'S PRESENT BYTE, plus one, for an entry
+       inside that optional's payload — zero when the entry is under no optional.
+       The bytes are DEAD when the flag is 0 (docs/rulings.json
+       fixed-dead-bytes-are-zero; docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
+       §5.3 step 11): such an entry does not run and validates nothing, and the
+       present-defaults entry's dead span judges the whole payload instead. */
+    uint32_t present;
 } tabledemo_table_fixed_entry_t;
 
 /* C HAS NO DEFAULT MEMBER INITIALIZERS, so the C++ struct's own defaults — zero
@@ -1173,6 +1209,119 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_fixed_tag_at( const uint8_t * src,
     return v;
 }
 
+/* THE DEAD BYTES ARE ZERO (docs/rulings.json fixed-dead-bytes-are-zero;
+   docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11; docs/SPEC-TABLES.md
+   §3.4, §13.10). A count, a length, a present flag and a tag decide which bytes
+   of a record are live; everything past that extent is DEAD, and a non-zero
+   dead byte refuses the whole load as wire_damaged in the check pass, before
+   any record lands. The four kinds are a counted array's slots past its count,
+   a string(N)'s or bytes(N)'s bytes past its used length, an absent optional's
+   payload, and an inactive union arm (under tag 0, and past a narrower TAKEN
+   arm inside the widest arm's span). */
+static SCHEMA_UNUSED int tabledemo_table_fixed_entry_runs( const tabledemo_table_fixed_entry_t * p, int32_t index, int32_t guarded,
+                                                 const uint8_t * src, const tabledemo_table_fixed_guard_link_t * guard_pool )
+{
+    int32_t j;
+    if ( p->present != 0 && src[p->present - 1u] == 0 ) { return 0; }
+    if ( index < guarded ) { return 1; }
+    if ( p->guard_count > 0 )
+    {
+        for ( j = 0; j < (int32_t) p->guard_count; ++j )
+        {
+            const tabledemo_table_fixed_guard_link_t * l = ( const tabledemo_table_fixed_guard_link_t * ) ( const void * )
+                ( ( const uint8_t * ) guard_pool + p->guard_index + j * (int32_t) sizeof( tabledemo_table_fixed_guard_link_t ) );
+            if ( tabledemo_table_fixed_tag_at( src, l->guard, l->argw ) != l->arg ) { return 0; }
+        }
+        return 1;
+    }
+    if ( p->guard != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD && tabledemo_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { return 0; }
+    if ( p->guard2 != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD && tabledemo_table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { return 0; }
+    return 1;
+}
+
+static SCHEMA_UNUSED int tabledemo_table_fixed_span_zero( const uint8_t * src, uint32_t from, uint32_t to )
+{
+    uint32_t i;
+    for ( i = from; i < to; ++i ) { if ( src[i] != 0 ) { return 0; } }
+    return 1;
+}
+
+static SCHEMA_UNUSED int tabledemo_table_fixed_dead_refuses( const tabledemo_table_fixed_entry_t * plan, int32_t count, int32_t guarded,
+                                                   const uint8_t * src, const tabledemo_table_fixed_guard_link_t * guard_pool )
+{
+    int32_t i;
+    for ( i = 0; i < count; ++i )
+    {
+        const tabledemo_table_fixed_entry_t * p = &plan[i];
+        if ( !tabledemo_table_fixed_entry_runs( p, i, guarded, src, guard_pool ) ) { continue; }
+        switch ( p->op )
+        {
+            case TABLEDEMO_K_TABLE_FIXED_COUNT:
+            {
+                int32_t v;
+                uint32_t from, to;
+                if ( p->dead == 0 ) { break; }
+                v = (int32_t) tabledemo_table_fixed_get32( src + p->src );
+                /* A count past its bound is another check's refusal; do no
+                   arithmetic past this record's body on its way there. */
+                if ( v < 0 || (uint32_t) v > p->size ) { break; }
+                from = p->src + 4u + (uint32_t) v * p->dead;
+                to = p->src + 4u + p->size * p->dead;
+                if ( !tabledemo_table_fixed_span_zero( src, from, to ) ) { return 1; }
+                break;
+            }
+            case TABLEDEMO_K_TABLE_FIXED_TEXT:
+            {
+                int32_t v;
+                uint32_t from, to;
+                v = (int32_t) tabledemo_table_fixed_get32( src + p->src );
+                if ( v < 0 || (uint32_t) v > p->size ) { break; }
+                from = p->src + 4u + (uint32_t) v;
+                to = p->src + 4u + p->size;
+                if ( !tabledemo_table_fixed_span_zero( src, from, to ) ) { return 1; }
+                break;
+            }
+            case TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS:
+            {
+                if ( src[p->src] == 0 && p->dead != 0 )
+                {
+                    if ( !tabledemo_table_fixed_span_zero( src, p->src + 1u, p->src + 1u + p->dead ) ) { return 1; }
+                }
+                break;
+            }
+            case TABLEDEMO_K_TABLE_FIXED_COPY:
+            case TABLEDEMO_K_TABLE_FIXED_CONST:
+            {
+                uint64_t tag;
+                uint32_t arm = 0, from, to;
+                int32_t q;
+                if ( p->dead == 0 || p->tagw == 0 ) { break; }
+                tag = tabledemo_table_fixed_get_le( src + p->src, p->tagw );
+                /* A TAG PAST THE WRITER'S SET NAMES NO ARM: the bounds pass
+                   refuses it out_of_range, so no arm span is dead here. */
+                if ( p->arm_count != 0 && tag > p->arm_count ) { break; }
+                if ( tag != 0 )
+                {
+                    for ( q = 0; q < count; ++q )
+                    {
+                        if ( plan[q].arm != 0 && plan[q].guard == p->src && plan[q].arg == tag )
+                        {
+                            arm = plan[q].arm;
+                            break;
+                        }
+                    }
+                }
+                from = p->src + p->tagw + arm;
+                to = p->src + p->tagw + p->dead;
+                if ( !tabledemo_table_fixed_span_zero( src, from, to ) ) { return 1; }
+                break;
+            }
+            default: break;
+        }
+    }
+    return 0;
+}
+
 /* THE HASH is fnv1a64 over the layout's bytes exactly as written (§3.4). */
 static SCHEMA_UNUSED uint64_t tabledemo_table_fixed_hash_of( const uint8_t * layout, int64_t bytes )
 {
@@ -1307,6 +1456,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void tabledemo_table_fixed_ap
                                                       uint8_t * SCHEMA_TABLE_RESTRICT dst,
                                                       int32_t * out_of_range, int32_t * widened, const uint8_t * defaults )
 {
+    if ( p->present != 0 && src[p->present - 1u] == 0 ) { return; }
     switch ( p->op )
     {
         case TABLEDEMO_K_TABLE_FIXED_COPY:
@@ -2032,6 +2182,7 @@ typedef struct tabledemo_table_fixed_compiler_t
     int overflow;
     int hostile;
     uint8_t argw;      /* the CURRENT union's tag width, stamped onto every guarded push */
+    uint32_t present;  /* the CURRENT optional's present byte plus one, 0 when none */
     tabledemo_table_report_t * report;
 } tabledemo_table_fixed_compiler_t;
 
@@ -2078,6 +2229,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_push( tabledemo_table_fixed_comp
     }
     const int32_t room = c->capacity - ( c->pool + (int32_t) sizeof( tabledemo_table_fixed_entry_t ) - 1 ) / (int32_t) sizeof( tabledemo_table_fixed_entry_t );
     if ( c->count >= room ) { c->overflow = 1; return; }
+    e.present = c->present;
     c->plan[c->count++] = e;
 }
 
@@ -2239,9 +2391,13 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                    after it. */
                 const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
                 const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
+                const uint32_t outer_present = c->present;
+                c->present = their_at + 1u;
                 tabledemo_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+                c->present = outer_present;
                 tabledemo_table_fixed_entry_t e = tabledemo_table_fixed_entry_zero();
                 e.src = their_at; e.dst = aux_at; e.aux = payload_dst; e.size = payload_size; e.guard = guard; e.op = TABLEDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS; e.arg = arg;
+                e.dead = te.size > 0u ? te.size - 1u : 0u; /* the WRITER's payload bytes, the absent optional's dead span */
                 tabledemo_table_fixed_push( c, e );
                 break;
             }
@@ -2277,6 +2433,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                        legal widening. */
                     tabledemo_table_fixed_entry_t e = tabledemo_table_fixed_entry_zero();
                     e.src = their_at; e.dst = aux_at; e.size = n; e.guard = guard; e.op = TABLEDEMO_K_TABLE_FIXED_COUNT; e.arg = arg;
+                    e.dead = tel.size; /* the WRITER's element bytes: the slots past the count are dead */
                     tabledemo_table_fixed_push( c, e );
                 }
                 for ( i = 0; i < n; ++i )
@@ -2334,6 +2491,9 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                     tabledemo_table_fixed_entry_t none = tabledemo_table_fixed_entry_zero();
                     none.src = their_at; none.dst = aux_at; none.size = my_tag;
                     none.aux = 0; none.guard = guard; none.op = TABLEDEMO_K_TABLE_FIXED_CONST; none.arg = arg;
+                    none.dead = te.size - their_tag; /* the WIDEST arm's wire span; past the taken arm is dead */
+                    none.tagw = (uint8_t) their_tag;
+                    none.arm_count = te.children;
                     /* Writer arm count, for a tag past the old set (bill §12.5). */
                     if ( te.children > 0 && te.children <= 255u ) { none.dstsize = (uint8_t) te.children; }
                     tabledemo_table_fixed_push( c, none );
@@ -2355,6 +2515,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                             tag.src = their_at; tag.dst = aux_at; tag.size = my_tag;
                             tag.aux = k + 1; tag.guard = their_at; tag.op = TABLEDEMO_K_TABLE_FIXED_CONST; tag.arg = (uint64_t) j + 1u;
                             tag.argw = c->argw;
+                            tag.arm = ta.size; /* the WRITER's arm bytes, for the span past a narrower taken arm */
                             tabledemo_table_fixed_push( c, tag );
                             tabledemo_table_fixed_compile_entry( c, theirs, their_arm, their_at + their_tag,
                                                        mine, my_arm, dst, at, their_at, (uint64_t) j + 1u, census );
@@ -2731,13 +2892,13 @@ static SCHEMA_UNUSED int tabledemo_table_report_finish( tabledemo_table_report_t
 
 #ifndef SCHEMA_TABLEDEMO_TABLE_ALLOCATOR_RUNTIME
 #define SCHEMA_TABLEDEMO_TABLE_ALLOCATOR_RUNTIME
-#ifndef schema_tabledemo_allocate
+#ifndef schema_allocate
 #include <stdlib.h>
-#define schema_tabledemo_allocate(bytes) calloc(1,(size_t)(bytes))
+#define schema_allocate(bytes) calloc(1,(size_t)(bytes))
 #endif
-#ifndef schema_tabledemo_release
+#ifndef schema_release
 #include <stdlib.h>
-#define schema_tabledemo_release(pointer) free(pointer)
+#define schema_release(pointer) free(pointer)
 #endif
 typedef struct tabledemo_table_allocator_t
 {
@@ -2746,9 +2907,9 @@ typedef struct tabledemo_table_allocator_t
     void * context;
 } tabledemo_table_allocator_t;
 static SCHEMA_UNUSED void * tabledemo_table_default_allocate(void * context,int64_t bytes)
-{ (void)context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_tabledemo_allocate(bytes) : NULL; }
+{ (void)context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_allocate(bytes) : NULL; }
 static SCHEMA_UNUSED void tabledemo_table_default_release(void * context,void * pointer)
-{ (void)context; schema_tabledemo_release(pointer); }
+{ (void)context; schema_release(pointer); }
 static SCHEMA_UNUSED tabledemo_table_allocator_t tabledemo_table_default_allocator(void)
 {
     tabledemo_table_allocator_t allocator={tabledemo_table_default_allocate,tabledemo_table_default_release,NULL}; return allocator;
@@ -3646,6 +3807,7 @@ static SCHEMA_UNUSED void tabledemo_table_mark_framed( tabledemo_table_reader_t 
         case 14: case 16:
             if ( sub.size < 2 ) { return; }
             elem_kind = tabledemo_table_reader_get8( &sub );
+            if ( kind == 14 ? !tabledemo_table_array_element_kind_allowed( elem_kind ) : !tabledemo_table_keyed_element_kind_allowed( elem_kind ) ) { g->damaged = 1; return; }
             if ( !tabledemo_table_reader_leb( &sub, &count ) ) { return; }
             if ( count > 2147483647ull ) { return; }
             if ( count > (uint64_t)( sub.size - sub.offset ) ) { return; }
@@ -5685,6 +5847,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_body( tabledemo_table_reader_t
                     if ( !tabledemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
+                        if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                         if ( elem_kind != 6 )
                         {
                             if ( !(tabledemo_table_kind_widens(elem_kind,6)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
@@ -5732,6 +5895,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_body( tabledemo_table_reader_t
                     if ( !tabledemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
+                        if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                         if ( elem_kind != 7 )
                         {
                             if ( !(tabledemo_table_kind_widens(elem_kind,7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
@@ -6213,6 +6377,9 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_body_retain( tabledemo_table_r
                     }
                     else
                     {
+                        if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                        }
                         if ( elem_kind != 6 )
                         {
                             if ( !(tabledemo_table_kind_widens(elem_kind,6)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
@@ -6278,6 +6445,9 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_body_retain( tabledemo_table_r
                     }
                     else
                     {
+                        if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                        }
                         if ( elem_kind != 7 )
                         {
                             if ( !(tabledemo_table_kind_widens(elem_kind,7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;

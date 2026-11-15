@@ -35,6 +35,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -357,12 +358,11 @@ func jobIfCondition(data, job string) string {
 // PR gate only. #1421 put both on every pull request because a pull request
 // into fixed-table-form ran neither (#1395 landed a stale
 // generated/bench/paired/rust/fixed_runtime.rs). Now a stale tree or pin that
-// a pull request lets through is caught on the merge, so this test refuses
-// either guard leaving the merge, the nightly or a dispatch: both must run on
-// a push to main, dev and fixed-table-form, on the schedule and on
-// workflow_dispatch. On a pull request, generated runs with the full-ci label
-// (the sprint's card gate runs make generated-current) and pins when
-// pr-select finds its paths; checkCIFullPRSelection holds that half.
+// a pull request lets through is caught by the nightly. Since the owner,
+// 2026-11-15 ("I want everything that is not light moved to nightly test
+// now." "no exceptions."), ci-full.yml runs nightly and on dispatch only, so
+// this test refuses either guard leaving the schedule or a dispatch. The
+// sprint's card gate runs make generated-current on every card.
 func TestGeneratedTreeAndPinsRunAfterTheMerge(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-full.yml"))
 	if err != nil {
@@ -374,17 +374,13 @@ func TestGeneratedTreeAndPinsRunAfterTheMerge(t *testing.T) {
 }
 
 // guardsMissingAfterTheMerge names each of generated, pins and cs-tables that
-// does not run on a push to main, dev or fixed-table-form, the schedule or a
-// dispatch. pins and cs-tables need pr-select, which runs on pull requests
+// does not run on the schedule or a dispatch. pins and cs-tables need pr-select, which runs on pull requests
 // only, so it is their `always() && !cancelled()` that keeps them here; the
 // model skips a job whose need was skipped unless its `if:` names a status
 // function.
 func guardsMissingAfterTheMerge(wf string) []string {
 	var errs []string
 	events := []ciEvent{
-		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
-		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
-		{Name: "push", Branch: "fixed-table-form", Repo: "mas-bandwidth/schema"},
 		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
 		{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
 	}
@@ -400,7 +396,7 @@ func guardsMissingAfterTheMerge(wf string) []string {
 
 // TestGeneratedTreeAndPinsRunAfterTheMergeNegativeControl: pins or cs-tables
 // with `always() && !cancelled()` taken out of its `if:` is skipped on every
-// push, nightly and dispatch, because pr-select (its need) is skipped there,
+// nightly and dispatch, because pr-select (its need) is skipped there,
 // and the check above must name it.
 func TestGeneratedTreeAndPinsRunAfterTheMergeNegativeControl(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-full.yml"))
@@ -419,7 +415,7 @@ func TestGeneratedTreeAndPinsRunAfterTheMergeNegativeControl(t *testing.T) {
 		mutated := strings.Replace(wf, old, "    if: (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs."+tc.output+" == 'yes'", 1)
 		found := false
 		for _, e := range guardsMissingAfterTheMerge(mutated) {
-			if strings.Contains(e, fmt.Sprintf("%q job does not run on push main", tc.job)) {
+			if strings.Contains(e, fmt.Sprintf("%q job does not run on schedule main", tc.job)) {
 				found = true
 			}
 		}
@@ -868,7 +864,26 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 	if len(tok) >= 2 && ((tok[0] == '\'' && tok[len(tok)-1] == '\'') || (tok[0] == '"' && tok[len(tok)-1] == '"')) {
 		return tok[1 : len(tok)-1], nil
 	}
+	// startsWith(<token>, '<prefix>'), case-insensitive as in Actions, reads
+	// as the literal true or false (the card-branch skip, cardbranch_test.go)
+	if inner, ok := strings.CutPrefix(tok, "startsWith("); ok && strings.HasSuffix(inner, ")") {
+		arg, prefix, ok := strings.Cut(strings.TrimSuffix(inner, ")"), ",")
+		if !ok {
+			return "", fmt.Errorf("malformed startsWith() in %q", tok)
+		}
+		v, err := resolveCIToken(arg, ev)
+		if err != nil {
+			return "", err
+		}
+		p, err := resolveCIToken(prefix, ev)
+		if err != nil {
+			return "", err
+		}
+		return strconv.FormatBool(strings.HasPrefix(strings.ToLower(v), strings.ToLower(p))), nil
+	}
 	switch tok {
+	case "true", "false":
+		return tok, nil
 	case "github.event_name":
 		return ev.Name, nil
 	case "github.repository":
@@ -1023,76 +1038,6 @@ func jobSelectsSelfHosted(wfData, job string, ev ciEvent) (bool, error) {
 	return true, nil
 }
 
-// prOffHeavyWorkflows start on no pull request: the PR gate is ci-fast.yml
-// (the owner, 2026-11-15: "I'd rather that we got more efficient on tiny PRs").
-// Each runs on push to main, dev and fixed-table-form, nightly and on
-// dispatch, and checkWorkflowPolicy refuses a pull_request or a card-branch
-// push trigger on any of them.
-var prOffHeavyWorkflows = []string{
-	"schema-c-runs-hostile-corpus.yml",
-	"schema-cpp-runs-hostile-corpus.yml",
-	"schema-cs-runs-hostile-corpus.yml",
-	"schema-dart-runs-hostile-corpus.yml",
-	"schema-elixir-runs-hostile-corpus.yml",
-	"schema-java-runs-hostile-corpus.yml",
-	"schema-js-runs-hostile-corpus.yml",
-	"schema-luau-runs-hostile-corpus.yml",
-	"schema-rust-runs-hostile-corpus.yml",
-	"schema-shared-hostile-corpus.yml",
-	"schema-squirrel-runs-hostile-corpus.yml",
-	"schema-squirrel-all-port-differential.yml",
-	"schema-lua-version-differential.yml",
-	"schema-dart-generated-strict-analyze-gate.yml",
-	"schema-dart-nightly-fuzz.yml",
-	"schema-go-generated-golangci-lint-gate.yml",
-	"schema-lua-generated-luacheck-gate.yml",
-	"schema-luau-nightly-fuzz.yml",
-	"schema-luau-resource-bounds.yml",
-	"schema-moo-nightly-fuzz.yml",
-}
-
-// checkCIFullPRSelection holds ci-full.yml's three per-PR jobs to the owner,
-// 2026-11-15: heavy suite failure on main is fine, like a hierarchical merge.
-// On an unlabelled same-repository pull request: generated never runs (the
-// sprint's card gate runs make generated-current; the merge runs this job);
-// pins runs only when pr-select says the diff touches what pins protect;
-// cs-tables only when pr-select selects the C# leg; pr-select itself runs.
-// The full-ci label selects all three.
-func checkCIFullPRSelection(wfs map[string]string, what string, pr ciEvent) []string {
-	var errs []string
-	wf := wfs["ci-full.yml"]
-	pr.PRPins, pr.PRCS, pr.Labels = "no", "no", nil
-	if ok, err := jobSelectsSelfHosted(wf, "pr-select", pr); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("%s did not run ci-full.yml:pr-select (err=%v)", what, err))
-	}
-	for _, job := range []string{"generated", "pins", "cs-tables"} {
-		if ok, err := jobSelectsSelfHosted(wf, job, pr); err != nil || ok {
-			errs = append(errs, fmt.Sprintf("%s with nothing selected ran ci-full.yml:%s (ok=%v err=%v); on a pull request it runs only on its own paths or the full-ci label", what, job, ok, err))
-		}
-	}
-	pins := pr
-	pins.PRPins = "yes"
-	if ok, err := jobSelectsSelfHosted(wf, "pins", pins); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("%s touching what pins protect did not run ci-full.yml:pins (err=%v)", what, err))
-	}
-	if ok, _ := jobSelectsSelfHosted(wf, "cs-tables", pins); ok {
-		errs = append(errs, fmt.Sprintf("%s touching only pin paths ran ci-full.yml:cs-tables", what))
-	}
-	cs := pr
-	cs.PRCS = "yes"
-	if ok, err := jobSelectsSelfHosted(wf, "cs-tables", cs); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("%s selecting the C# leg did not run ci-full.yml:cs-tables (err=%v)", what, err))
-	}
-	labeled := pr
-	labeled.Labels = []string{"full-ci"}
-	for _, job := range []string{"generated", "pins", "cs-tables"} {
-		if ok, err := jobSelectsSelfHosted(wf, job, labeled); err != nil || !ok {
-			errs = append(errs, fmt.Sprintf("%s labelled full-ci did not run ci-full.yml:%s (err=%v)", what, job, err))
-		}
-	}
-	return errs
-}
-
 // checkWorkflowPolicy validates that the workflow map satisfies all self-hosted
 // admission and stream-to-dev / dev-push / main-promotion trigger invariants.
 // Returning an error slice lets negative-control mutation tests prove that
@@ -1144,8 +1089,17 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
+	// The leg gates (fixed form + versioning, every leg) are not light: they
+	// run on dispatch only (the owner, 2026-11-15, "no exceptions"); the
+	// nightly ci-full.yml runs every leg.
+	for _, job := range []string{"leg-gate", "leg-gate-cpp", "leg-gate-lobster", "leg-gate-rust", "leg-gate-squirrel"} {
+		pr := sameRepoMainUnlabeled
+		pr.PlanLegs = `["cpp","go","lobster","rust","squirrel"]`
+		if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], job, pr); ok {
+			errs = append(errs, fmt.Sprintf("same-repo PR into main ran ci-fast.yml:%s; the leg gates run on dispatch only", job))
+		}
+	}
 	for _, wantKey := range []string{
-		"ci-fast.yml:leg-gate",
 		"ci-fast.yml:lang-lint",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
@@ -1154,41 +1108,17 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 			errs = append(errs, fmt.Sprintf("same-repo PR into main did not select self-hosted %s (err=%v)", wantKey, err))
 		}
 	}
-	// THE PR GATE IS ci-fast (the owner, 2026-11-15: "Let us be efficient first,
-	// then scale up if we need only"). The per-language heavy workflows start
-	// on no pull request; they run on push to main, dev and fixed-table-form,
-	// nightly and on dispatch (step 5 and 6 below hold that half).
-	for _, wfName := range prOffHeavyWorkflows {
-		for _, base := range []string{"main", "dev", "fixed-table-form", "sprint/schema-main"} {
-			pr := sameRepoMainUnlabeled
-			pr.Branch = base
-			if workflowTriggersOn(wfs[wfName], pr) {
-				errs = append(errs, fmt.Sprintf("%s triggers on a pull request into %s; the PR gate is ci-fast.yml, and this file runs after the merge", wfName, base))
-			}
-		}
-		for _, branch := range []string{"sprint/schema-main", "sprint/schema-luau"} {
-			if workflowTriggersOn(wfs[wfName], ciEvent{Name: "push", Branch: branch, Repo: repo}) {
-				errs = append(errs, fmt.Sprintf("%s triggers on a push to %s; a card branch's PR gate is ci-fast.yml", wfName, branch))
-			}
-		}
-	}
-	errs = append(errs, checkCIFullPRSelection(wfs, "same-repo PR into main", sameRepoMainUnlabeled)...)
-	if ok, _ := jobSelectsSelfHosted(wfs["ci-full.yml"], "go-test", sameRepoMainUnlabeled); ok {
-		errs = append(errs, "ci-full.yml:go-test ran on unlabeled pull_request")
-	}
-
-	sameRepoMainLabeled := sameRepoMainUnlabeled
-	sameRepoMainLabeled.Labels = []string{"full-ci"}
-	if ok, err := jobSelectsSelfHosted(wfs["ci-full.yml"], "go-test", sameRepoMainLabeled); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("labeled same-repo PR did not select ci-full.yml:go-test (err=%v)", err))
-	}
-
+	// ONLY THE FAST LANE RUNS ON A PUSH OR A PULL REQUEST (the owner,
+	// 2026-11-15: "I want everything that is not light moved to nightly test
+	// now." "no exceptions."): every other workflow runs nightly and on
+	// dispatch (nightly_test.go).
+	errs = append(errs, nightlyOnlyErrors(wfs)...)
 	// 4. Stream-to-dev PR (sprint/schema-* -> dev): automatically covered by
 	// ci-fast.yml (lang-lint included) and ci-full.yml's per-PR jobs.
 	streamToDevPR := ciEvent{
 		Name:     "pull_request",
 		Branch:   "dev",
-		HeadRef:  "sprint/schema-elixir",
+		HeadRef:  "sprint-group/schema-elixir",
 		Repo:     repo,
 		HeadRepo: repo,
 		PlanPkgs: planPkgs,
@@ -1216,48 +1146,43 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	}
 	// the Rust probe row runs exactly when the plan selects the Rust leg
 	rustIntoMain := sameRepoMainUnlabeled
+	rustIntoMain.Name = "workflow_dispatch"
 	rustIntoMain.PlanLegs = `["rust"]`
 	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-rust", rustIntoMain); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("same-repo PR into main selecting the Rust leg did not run ci-fast.yml:leg-gate-rust (err=%v)", err))
+		errs = append(errs, fmt.Sprintf("a dispatch selecting the Rust leg did not run ci-fast.yml:leg-gate-rust (err=%v)", err))
 	}
 	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-rust", sameRepoMainUnlabeled); ok {
 		errs = append(errs, "ci-fast.yml:leg-gate-rust ran with no Rust leg in the plan")
 	}
 	// the C++ parts run exactly when the plan selects the C++ leg
 	cppIntoMain := sameRepoMainUnlabeled
+	cppIntoMain.Name = "workflow_dispatch"
 	cppIntoMain.PlanLegs = `["cpp"]`
 	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-cpp", cppIntoMain); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("same-repo PR into main selecting the C++ leg did not run ci-fast.yml:leg-gate-cpp (err=%v)", err))
+		errs = append(errs, fmt.Sprintf("a dispatch selecting the C++ leg did not run ci-fast.yml:leg-gate-cpp (err=%v)", err))
 	}
 	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-cpp", sameRepoMainUnlabeled); ok {
 		errs = append(errs, "ci-fast.yml:leg-gate-cpp ran with no C++ leg in the plan")
 	}
 	// the Lobster rows run exactly when the plan selects the Lobster leg
 	lobsterIntoMain := sameRepoMainUnlabeled
+	lobsterIntoMain.Name = "workflow_dispatch"
 	lobsterIntoMain.PlanLegs = `["lobster"]`
 	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-lobster", lobsterIntoMain); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("same-repo PR into main selecting the Lobster leg did not run ci-fast.yml:leg-gate-lobster (err=%v)", err))
+		errs = append(errs, fmt.Sprintf("a dispatch selecting the Lobster leg did not run ci-fast.yml:leg-gate-lobster (err=%v)", err))
 	}
 	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-lobster", sameRepoMainUnlabeled); ok {
 		errs = append(errs, "ci-fast.yml:leg-gate-lobster ran with no Lobster leg in the plan")
 	}
 	// the Squirrel card rows run exactly when the plan selects the Squirrel leg
 	squirrelIntoMain := sameRepoMainUnlabeled
+	squirrelIntoMain.Name = "workflow_dispatch"
 	squirrelIntoMain.PlanLegs = `["squirrel"]`
 	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-squirrel", squirrelIntoMain); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("same-repo PR into main selecting the Squirrel leg did not run ci-fast.yml:leg-gate-squirrel (err=%v)", err))
+		errs = append(errs, fmt.Sprintf("a dispatch selecting the Squirrel leg did not run ci-fast.yml:leg-gate-squirrel (err=%v)", err))
 	}
 	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-squirrel", sameRepoMainUnlabeled); ok {
 		errs = append(errs, "ci-fast.yml:leg-gate-squirrel ran with no Squirrel leg in the plan")
-	}
-	errs = append(errs, checkCIFullPRSelection(wfs, "stream-to-dev PR", streamToDevPR)...)
-	if ok, _ := jobRunsInWorkflow(wfs["ci-full.yml"], "go-test", streamToDevPR); ok {
-		errs = append(errs, "unlabeled stream-to-dev PR ran ci-full.yml:go-test (would serialize full CI on stream PRs)")
-	}
-	streamToDevLabeled := streamToDevPR
-	streamToDevLabeled.Labels = []string{"full-ci"}
-	if ok, err := jobSelectsSelfHosted(wfs["ci-full.yml"], "go-test", streamToDevLabeled); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("labeled stream-to-dev PR did not select ci-full.yml:go-test (err=%v)", err))
 	}
 	for _, wantKey := range []string{
 		"ci-fast.yml:lang-lint",
@@ -1274,7 +1199,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	unnamedBase := ciEvent{
 		Name:     "pull_request",
 		Branch:   "feature/not-a-named-base",
-		HeadRef:  "sprint/schema/shared-2856-ci-every-base-2",
+		HeadRef:  "sprint-group/schema",
 		Repo:     repo,
 		HeadRepo: repo,
 		PlanPkgs: planPkgs,
@@ -1288,19 +1213,10 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", unnamedBase); ok {
 		errs = append(errs, "PR into an unnamed base ran ci-fast.yml:leg-gate below main")
 	}
-	errs = append(errs, checkCIFullPRSelection(wfs, "PR into an unnamed base", unnamedBase)...)
-	if ok, _ := jobRunsInWorkflow(wfs["ci-full.yml"], "go-test", unnamedBase); ok {
-		errs = append(errs, "unlabeled PR into an unnamed base ran ci-full.yml:go-test")
-	}
-	unnamedLabeled := unnamedBase
-	unnamedLabeled.Labels = []string{"full-ci"}
-	if ok, err := jobSelectsSelfHosted(wfs["ci-full.yml"], "go-test", unnamedLabeled); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("labeled PR into an unnamed base did not select ci-full.yml:go-test (err=%v)", err))
-	}
 	forkUnnamed := unnamedBase
 	forkUnnamed.HeadRepo = forkRepo
 	forkUnnamed.Labels = []string{"full-ci"}
-	for _, wfName := range []string{"ci-fast.yml", "ci-full.yml"} {
+	for _, wfName := range []string{"ci-fast.yml"} {
 		if branches := workflowTriggerBranches(wfs[wfName])["pull_request"]; len(branches) != 0 {
 			errs = append(errs, fmt.Sprintf("%s pull_request filters bases %v; it must run whatever the base is", wfName, branches))
 		}
@@ -1313,42 +1229,6 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 				errs = append(errs, fmt.Sprintf("%s eval error on fork PR into an unnamed base: %v", sh.Key(), err))
 			} else if ok {
 				errs = append(errs, fmt.Sprintf("%s admits fork PR into an unnamed base onto self-hosted runner", sh.Key()))
-			}
-		}
-	}
-
-	// 5 & 6. Dev push (stream landing on dev) and main push (main promotion
-	// landing) run the full merge gate and per-language fast gates.
-	for _, branch := range []string{"dev", "main"} {
-		pushEv := ciEvent{
-			Name:     "push",
-			Branch:   branch,
-			Repo:     repo,
-			PlanPkgs: planPkgs,
-			PlanLegs: planLegs,
-		}
-		for _, wantKey := range []string{
-			"ci-full.yml:go-test",
-			"ci-full.yml:leg-tagged",
-			"ci-full.yml:pins",
-			"schema-cs-runs-hostile-corpus.yml:corpus",
-			"schema-dart-generated-strict-analyze-gate.yml:fast",
-			"schema-elixir-runs-hostile-corpus.yml:corpus",
-			"schema-go-generated-golangci-lint-gate.yml:gate",
-			"schema-java-runs-hostile-corpus.yml:corpus",
-			"schema-luau-nightly-fuzz.yml:replay",
-			"schema-luau-resource-bounds.yml:luau-resource-bounds",
-			"schema-luau-runs-hostile-corpus.yml:corpus",
-			"schema-rust-runs-hostile-corpus.yml:corpus",
-		} {
-			wfName, jobName, _ := strings.Cut(wantKey, ":")
-			if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, pushEv); err != nil || !ok {
-				errs = append(errs, fmt.Sprintf("push to %s did not select self-hosted %s (err=%v)", branch, wantKey, err))
-			}
-		}
-		for _, fullJob := range []string{"generated", "conformance", "cs-fuzz", "js-fuzz", "cs-tables", "big-endian", "lint", "vuln", "windows", "msvc", "shape-gate", "cpp-lock", "negative-controls"} {
-			if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], fullJob, pushEv); err != nil || !ok {
-				errs = append(errs, fmt.Sprintf("push to %s did not run ci-full.yml:%s (err=%v)", branch, fullJob, err))
 			}
 		}
 	}
@@ -1592,8 +1472,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		{
 			name:      "drop ci-fast plan same-repo PR guard",
 			workflow:  "ci-fast.yml",
-			oldSubstr: "  plan:\n    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n",
-			newSubstr: "  plan:\n",
+			oldSubstr: "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)\n",
+			newSubstr: "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false\n",
 			wantErr:   "ci-fast.yml:plan admits fork PR",
 		},
 		{
@@ -1608,82 +1488,37 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			workflow:  "schema-dart-generated-strict-analyze-gate.yml",
 			oldSubstr: "\non:\n",
 			newSubstr: "\non:\n  pull_request:\n",
-			wantErr:   "schema-dart-generated-strict-analyze-gate.yml triggers on a pull request into main",
+			wantErr:   "schema-dart-generated-strict-analyze-gate.yml triggers on pull_request",
 		},
 		{
 			name:      "restore a pull_request trigger on the Elixir hostile corpus",
 			workflow:  "schema-elixir-runs-hostile-corpus.yml",
 			oldSubstr: "\non:\n",
 			newSubstr: "\non:\n  pull_request:\n    branches: [ main, dev, fixed-table-form, 'sprint/**' ]\n",
-			wantErr:   "schema-elixir-runs-hostile-corpus.yml triggers on a pull request into sprint/schema-main",
+			wantErr:   "schema-elixir-runs-hostile-corpus.yml triggers on pull_request",
 		},
 		{
-			name:      "restore a card-branch push on the Java hostile corpus",
+			name:      "restore a push to main on the Java hostile corpus",
 			workflow:  "schema-java-runs-hostile-corpus.yml",
-			oldSubstr: "branches: [ main, dev, fixed-table-form ]",
-			newSubstr: "branches: [ main, dev, fixed-table-form, 'sprint/*' ]",
-			wantErr:   "schema-java-runs-hostile-corpus.yml triggers on a push to sprint/schema-main",
+			oldSubstr: "\non:\n",
+			newSubstr: "\non:\n  push:\n    branches: [ main ]\n",
+			wantErr:   "schema-java-runs-hostile-corpus.yml triggers on push",
 		},
-		{
-			name:      "drop ci-full pins same-repo PR guard",
-			workflow:  "ci-full.yml",
-			oldSubstr: "(github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.pins == 'yes'",
-			newSubstr: "((needs.pr-select.outputs.pins == 'yes'",
-			wantErr:   "ci-full.yml:pins admits fork PR",
-		},
-		// the owner, 2026-11-15: heavy suite failure on main is fine, like a
-		// hierarchical merge. Each of ci-full's three per-PR jobs put back on
-		// every unlabelled pull request is refused by name.
-		{
-			name:      "run ci-full generated on every pull request again",
-			workflow:  "ci-full.yml",
-			oldSubstr: "    name: generated (${{ matrix.row }})\n    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))\n",
-			newSubstr: "    name: generated (${{ matrix.row }})\n    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n",
-			wantErr:   "with nothing selected ran ci-full.yml:generated",
-		},
-		{
-			name:      "run ci-full pins on every pull request again",
-			workflow:  "ci-full.yml",
-			oldSubstr: "needs.pr-select.outputs.pins == 'yes'",
-			newSubstr: "github.event_name == 'pull_request'",
-			wantErr:   "with nothing selected ran ci-full.yml:pins",
-		},
-		{
-			name:      "run ci-full cs-tables on every pull request again",
-			workflow:  "ci-full.yml",
-			oldSubstr: "needs.pr-select.outputs.cs == 'yes'",
-			newSubstr: "github.event_name == 'pull_request'",
-			wantErr:   "with nothing selected ran ci-full.yml:cs-tables",
-		},
-		// pr-select is skipped on a push: pins and cs-tables without
-		// always() && !cancelled() would be skipped with it on main.
+		// pr-select is skipped on a nightly or a dispatch: pins and cs-tables
+		// without always() && !cancelled() would be skipped with it.
 		{
 			name:      "drop always() from ci-full pins",
 			workflow:  "ci-full.yml",
 			oldSubstr: "    if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.pins == 'yes'",
 			newSubstr: "    if: (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.pins == 'yes'",
-			wantErr:   "push to dev did not select self-hosted ci-full.yml:pins",
+			wantErr:   "workflow_dispatch did not select self-hosted ci-full.yml:pins",
 		},
 		{
 			name:      "drop always() from ci-full cs-tables",
 			workflow:  "ci-full.yml",
 			oldSubstr: "    if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.cs == 'yes'",
 			newSubstr: "    if: (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.cs == 'yes'",
-			wantErr:   "push to dev did not run ci-full.yml:cs-tables",
-		},
-		{
-			name:      "cs-tables reads the pins selection",
-			workflow:  "ci-full.yml",
-			oldSubstr: "needs.pr-select.outputs.cs == 'yes'",
-			newSubstr: "needs.pr-select.outputs.pins == 'yes'",
-			wantErr:   "selecting the C# leg did not run ci-full.yml:cs-tables",
-		},
-		{
-			name:      "drop ci-full labeled go-test same-repo PR guard",
-			workflow:  "ci-full.yml",
-			oldSubstr: "if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))",
-			newSubstr: "if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')",
-			wantErr:   "ci-full.yml:go-test admits fork PR (base=main, labels=[full-ci])",
+			wantErr:   "workflow_dispatch did not select self-hosted ci-full.yml:cs-tables",
 		},
 		{
 			name:      "restore a named-base filter on ci-fast pull_request",
@@ -1691,34 +1526,6 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			oldSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n  workflow_dispatch:\n",
 			newSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n    branches: [ main, dev, fixed-table-form ]\n  workflow_dispatch:\n",
 			wantErr:   "PR into an unnamed base did not run ci-fast.yml:plan",
-		},
-		{
-			name:      "restore a named-base filter on ci-full pull_request",
-			workflow:  "ci-full.yml",
-			oldSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n    # A pull request runs this file only when it carries the `full-ci` label —\n",
-			newSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n    branches: [ main, dev, fixed-table-form ]\n    # A pull request runs this file only when it carries the `full-ci` label —\n",
-			wantErr:   "PR into an unnamed base did not run ci-full.yml:pr-select",
-		},
-		{
-			name:      "drop dev from ci-full push and pull_request branches",
-			workflow:  "ci-full.yml",
-			oldSubstr: "branches: [ main, dev, fixed-table-form ]",
-			newSubstr: "branches: [ main, fixed-table-form ]",
-			wantErr:   "push to dev did not select self-hosted ci-full.yml:go-test",
-		},
-		{
-			name:      "drop dev from Elixir hostile-corpus triggers",
-			workflow:  "schema-elixir-runs-hostile-corpus.yml",
-			oldSubstr: "branches: [ main, dev, fixed-table-form ]",
-			newSubstr: "branches: [ main ]",
-			wantErr:   "push to dev did not select self-hosted schema-elixir-runs-hostile-corpus.yml:corpus",
-		},
-		{
-			name:      "drop dev from Java hostile-corpus triggers",
-			workflow:  "schema-java-runs-hostile-corpus.yml",
-			oldSubstr: "branches: [ main, dev, fixed-table-form ]",
-			newSubstr: "branches: [ main ]",
-			wantErr:   "push to dev did not select self-hosted schema-java-runs-hostile-corpus.yml:corpus",
 		},
 		{
 			name:      "serialize ci-fast concurrency across refs",
