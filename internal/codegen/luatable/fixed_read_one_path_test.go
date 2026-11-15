@@ -38,9 +38,9 @@ local function point(x, y)
   return p
 end
 local one = T.FixedSave("Point", { point(7, -7) })
-local zero = T.FixedSave("Point", {})
+local layoutLen = string.unpack("<I4", one, 17)
+local zero = one:sub(1, 20 + layoutLen)
 local two = T.FixedSave("Point", { point(7, -7), point(8, -8) })
-local layoutLen = string.unpack("<I4", two, 17)
 local rec = (#two - 20 - layoutLen) // 2
 local at = 21 + layoutLen + rec
 two = two:sub(1, at - 1) .. string.char(two:byte(at) ~ 0xff) .. two:sub(at + 1)
