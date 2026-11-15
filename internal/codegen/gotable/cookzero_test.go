@@ -98,6 +98,77 @@ func TestZeroDeadAndAbsent(t *testing.T) {
 			runCookZeroProbe(t, u, lineage, probe)
 		})
 	}
+	t.Run("optional_pointer_closure", func(t *testing.T) {
+		t.Parallel()
+		runGenerated(t, `package probe
+
+table Inner
+{
+    text *string
+}
+
+table Root
+{
+    inner ?Inner
+    values [..4]uint32
+}
+`, `package probe
+
+import "testing"
+
+func TestDeadSlots(t *testing.T) {
+	var b RootBuilder
+	if !b.Init() {
+		t.Fatal("init")
+	}
+	defer b.Shutdown()
+	v := b.GetRoot()
+	v.InnerPresent = true
+	TableStringEmplace(&b.Main, &v.Inner.Text, []byte("stale"))
+	if v.Inner.Text == 0 {
+		t.Fatal("the absent value lost its stale pointer; the case proves nothing")
+	}
+	v.InnerPresent = false
+	v.ValuesCount = 1
+	v.Values[0] = 7
+	v.Values[1] = 99
+	v.Values[2] = 99
+	v.Values[3] = 99
+	fields := RootTableType().Fields
+	var inner, values *TableFieldInfo
+	for i := range fields {
+		switch fields[i].Name {
+		case "inner":
+			inner = &fields[i]
+		case "values":
+			values = &fields[i]
+		}
+	}
+	if inner == nil || values == nil {
+		t.Fatal("descriptor fields absent")
+	}
+	for _, order := range []TableByteOrder{TableByteOrderLittle, TableByteOrderBig} {
+		cooked := make([]byte, RootCookMeasure(v, &b.Arena))
+		if len(cooked) == 0 || !RootCookFrom(v, cooked, order, &b.Arena) {
+			t.Fatalf("%v: cook refused", order)
+		}
+		for i := 0; i < int(inner.ElemSize); i++ {
+			if at := 64 + int(inner.CookOffset) + i; cooked[at] != 0 {
+				t.Fatalf("%v: absent optional payload byte %d is %#x", order, i, cooked[at])
+			}
+		}
+		for i := int32(1); i < 4; i++ {
+			at := 64 + int(values.CookOffset) + int(i)*int(values.CookElemSize)
+			for j := 0; j < int(values.CookElemSize); j++ {
+				if cooked[at+j] != 0 {
+					t.Fatalf("%v: dead slot %d byte %d is %#x", order, i, j, cooked[at+j])
+				}
+			}
+		}
+	}
+}
+`)
+	})
 }
 
 // runCookZeroProbe emits the unit with the shared runtime the conformance leg
