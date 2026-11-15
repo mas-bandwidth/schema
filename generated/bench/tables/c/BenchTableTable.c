@@ -17,7 +17,8 @@
 
    The TEXT form (docs/SPEC-TABLES.md §16): one table, one text, one walk over the
    reflection descriptors (§8). Reading fills ONE caller-owned instance and
-   allocates nothing beyond it; writing targets a caller buffer with the
+   allocates nothing beyond it but the key set of an object of many keys;
+   writing targets a caller buffer with the
    wire's measure/write symmetry. Everything AROUND this — which file goes
    with which instance, what key an instance is filed under, how instances
    link into a root table's collections — is a packer's opinion and stays
@@ -25,8 +26,8 @@
 
    The dialect: trailing commas are accepted on read (the authoring files
    this exists for carry them) and never written; comments are not JSON and
-   are refused; unknown keys are skipped and counted; a repeated key is
-   last-wins and counted; a key present with the wrong JSON type is skipped
+   are refused; unknown keys are skipped and counted; a repeated key, in
+   any object of the text, refuses the read; a key present with the wrong JSON type is skipped
    and counted, never coerced. */
 
 #define BENCHTABLE_K_TABLE_JSON_MAX_DEPTH 128
@@ -1038,17 +1039,40 @@ typedef struct benchtable_table_json_in_t
     void * graph;
 } benchtable_table_json_in_t;
 
+/* A COMMENT IS TEXT (docs/SPEC-TABLES.md §16.2, §16.3): the bytes inside a line
+   or block comment are well-formed UTF-8 and hold no NUL. A comment carrying an
+   ill-formed sequence or a zero byte is not JSON and refuses the read, exactly
+   as a byte at a string site does. Linear in the comment's length. */
+static SCHEMA_UNUSED int benchtable_table_json_comment_text( const char * s, int64_t length )
+{
+    int64_t i = 0;
+    while ( i < length )
+    {
+        unsigned char c = (unsigned char) s[i];
+        int32_t width = 0;
+        int64_t left = length - i;
+        if ( c == 0 ) { return 0; }
+        if ( c < 0x80 ) { i++; continue; }
+        if ( benchtable_table_json_utf8( s + i, left > 4 ? 4 : (int32_t) left, &width ) < 0 ) { return 0; }
+        i += width;
+    }
+    return 1;
+}
+
 static SCHEMA_UNUSED void benchtable_table_json_space( benchtable_table_json_in_t * in )
 {
     while ( in->pos < in->size )
     {
         char c = in->text[in->pos];
         if ( c == ' ' || c == '\t' || c == '\n' || c == '\r' ) { in->pos++; continue; }
-        /* SPEC-TABLES 16.2: comments are whitespace on read. */
+        /* SPEC-TABLES 16.2: comments are whitespace on read, and their bytes are text. */
         if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '/' )
         {
+            int64_t start;
             in->pos += 2;
+            start = in->pos;
             while ( in->pos < in->size && in->text[in->pos] != '\n' ) { in->pos++; }
+            if ( !benchtable_table_json_comment_text( in->text + start, in->pos - start ) ) { in->bad = 1; return; }
             continue;
         }
         if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '*' )
@@ -1056,6 +1080,7 @@ static SCHEMA_UNUSED void benchtable_table_json_space( benchtable_table_json_in_
             int64_t at = in->pos + 2;
             while ( at + 1 < in->size && !(in->text[at] == '*' && in->text[at + 1] == '/') ) { at++; }
             if ( at + 1 >= in->size ) { in->bad = 1; in->pos = in->size; return; }
+            if ( !benchtable_table_json_comment_text( in->text + in->pos + 2, at - ( in->pos + 2 ) ) ) { in->bad = 1; return; }
             in->pos = at + 2;
             continue;
         }
@@ -1612,9 +1637,110 @@ static SCHEMA_UNUSED int benchtable_table_json_skipped_ampersand( benchtable_tab
 { (void)key; in->bad = 1; return 0; }
 #endif
 
+/* THE KEYS OF ONE OBJECT (docs/SPEC-TABLES.md §16.2): a repeated key refuses
+   the read, in every object of the text, whatever the key names — a field, a
+   key no field has, a key inside a value the walk only skips. Every object
+   walked keeps every key it decodes, as the key's place in the text and the
+   hash of its decoded bytes, in an open-addressed set: on the stack for an
+   object of a few keys and on the heap past that, so the set is as large as
+   the object's own keys and never limited by the table's width. Two keys are
+   the same key when their DECODED bytes are, so an escape spells the same key
+   as the character it names. */
+#define BENCHTABLE_K_TABLE_JSON_KEYS_LOCAL 16
+
+#ifndef schema_allocate
+#define schema_allocate(bytes) calloc(1,(size_t)(bytes))
+#endif
+#ifndef schema_release
+#define schema_release(pointer) free(pointer)
+#endif
+
+typedef struct benchtable_table_json_key_t
+{
+    int64_t at;    /* one past the key's opening quote in the text; 0 is an empty slot */
+    uint64_t hash; /* of the key's decoded bytes */
+} benchtable_table_json_key_t;
+
+typedef struct benchtable_table_json_keys_t
+{
+    benchtable_table_json_key_t * slots;
+    int64_t capacity; /* a power of two */
+    int64_t count;
+    benchtable_table_json_key_t local[BENCHTABLE_K_TABLE_JSON_KEYS_LOCAL];
+} benchtable_table_json_keys_t;
+
+static SCHEMA_UNUSED void benchtable_table_json_keys_init( benchtable_table_json_keys_t * keys )
+{
+    memset( keys->local, 0, sizeof( keys->local ) );
+    keys->slots = keys->local;
+    keys->capacity = BENCHTABLE_K_TABLE_JSON_KEYS_LOCAL;
+    keys->count = 0;
+}
+
+static SCHEMA_UNUSED void benchtable_table_json_keys_free( benchtable_table_json_keys_t * keys )
+{
+    if ( keys->slots != keys->local ) { schema_release( keys->slots ); }
+    keys->slots = keys->local;
+}
+
+/* the key a slot holds, decoded again from the text, against this one */
+static SCHEMA_UNUSED int benchtable_table_json_key_equal( const benchtable_table_json_in_t * in, int64_t at, const char * key, int32_t length )
+{
+    benchtable_table_json_in_t scan = *in;
+    benchtable_table_report_t scratch;
+    char held[BENCHTABLE_K_TABLE_JSON_MAX_KEY];
+    int32_t held_length = 0;
+    memset( &scratch, 0, sizeof( scratch ) );
+    scan.report = &scratch;
+    scan.pos = at - 1;
+    if ( !benchtable_table_json_scan_text( &scan, held, BENCHTABLE_K_TABLE_JSON_MAX_KEY - 1, &held_length ) ) { return 0; }
+    return held_length == length && memcmp( held, key, (size_t) length ) == 0;
+}
+
+/* 1: the key is new to its object and now held; 0: the object already holds
+   it; -1: the set could not grow, and the walk stops (in->bad). quote is the
+   key's opening quote in the text. */
+static SCHEMA_UNUSED int benchtable_table_json_keys_add( benchtable_table_json_in_t * in, benchtable_table_json_keys_t * keys, int64_t quote, const char * key, int32_t length )
+{
+    uint64_t hash = 1469598103934665603ULL;
+    int64_t mask;
+    int64_t i;
+    int32_t k;
+    for ( k = 0; k < length; k++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[k] ) * 1099511628211ULL; }
+    if ( ( keys->count + 1 ) * 2 > keys->capacity )
+    {
+        const int64_t capacity = keys->capacity * 2;
+        benchtable_table_json_key_t * grown;
+        int64_t j;
+        if ( (uint64_t) capacity > SIZE_MAX / sizeof( benchtable_table_json_key_t ) ) { in->bad = 1; return -1; }
+        grown = (benchtable_table_json_key_t *) schema_allocate( capacity * (int64_t) sizeof( benchtable_table_json_key_t ) );
+        if ( grown == NULL ) { in->bad = 1; return -1; }
+        memset( grown, 0, (size_t) capacity * sizeof( benchtable_table_json_key_t ) );
+        for ( j = 0; j < keys->capacity; j++ )
+        {
+            if ( keys->slots[j].at == 0 ) { continue; }
+            i = (int64_t) ( keys->slots[j].hash & (uint64_t) ( capacity - 1 ) );
+            while ( grown[i].at != 0 ) { i = ( i + 1 ) & ( capacity - 1 ); }
+            grown[i] = keys->slots[j];
+        }
+        benchtable_table_json_keys_free( keys );
+        keys->slots = grown;
+        keys->capacity = capacity;
+    }
+    mask = keys->capacity - 1;
+    for ( i = (int64_t) ( hash & (uint64_t) mask ); keys->slots[i].at != 0; i = ( i + 1 ) & mask )
+    {
+        if ( keys->slots[i].hash == hash && benchtable_table_json_key_equal( in, keys->slots[i].at, key, length ) ) { return 0; }
+    }
+    keys->slots[i].at = quote + 1;
+    keys->slots[i].hash = hash;
+    keys->count++;
+    return 1;
+}
+
 static SCHEMA_UNUSED int benchtable_table_json_skip_value( benchtable_table_json_in_t * in, int32_t depth );
 
-static SCHEMA_UNUSED int benchtable_table_json_skip_container( benchtable_table_json_in_t * in, char close, int32_t depth )
+static SCHEMA_UNUSED int benchtable_table_json_skip_members( benchtable_table_json_in_t * in, char close, int32_t depth, benchtable_table_json_keys_t * keys )
 {
     /* a skipped object's keys are held to the layer's rule too: a zero in one
        refuses the read, and a repeated key refuses in every object (§16.2,
@@ -1635,6 +1761,8 @@ static SCHEMA_UNUSED int benchtable_table_json_skip_container( benchtable_table_
         {
             char key[BENCHTABLE_K_TABLE_JSON_MAX_KEY];
             int32_t length = 0;
+            const int64_t quote = in->pos;
+            int added;
             uint64_t hash = 1469598103934665603ULL;
             int32_t k;
             if ( !benchtable_table_json_scan_text(in,key,BENCHTABLE_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
@@ -1647,6 +1775,9 @@ static SCHEMA_UNUSED int benchtable_table_json_skip_container( benchtable_table_
             if ( seen_count < 64 ) { seen[seen_count++] = hash; }
             if ( benchtable_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
+            added = benchtable_table_json_keys_add( in, keys, quote, key, length );
+            if ( added < 0 ) { return 0; }
+            if ( added == 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; }
             if ( key[0] == '&' && in->graph != NULL ) { if ( !first ) { in->bad = 1; return 0; } if ( !benchtable_table_json_skipped_ampersand(in,key) ) { return 0; } consumed = 1; }
         }
         first = 0;
@@ -1657,6 +1788,17 @@ static SCHEMA_UNUSED int benchtable_table_json_skip_container( benchtable_table_
         in->bad = 1;
         return 0;
     }
+}
+
+static SCHEMA_UNUSED int benchtable_table_json_skip_container( benchtable_table_json_in_t * in, char close, int32_t depth )
+{
+    benchtable_table_json_keys_t keys;
+    int ok;
+    if ( close != '}' ) { return benchtable_table_json_skip_members( in, close, depth, NULL ); }
+    benchtable_table_json_keys_init( &keys );
+    ok = benchtable_table_json_skip_members( in, close, depth, &keys );
+    benchtable_table_json_keys_free( &keys );
+    return ok;
 }
 
 static SCHEMA_UNUSED int benchtable_table_json_skip_value( benchtable_table_json_in_t * in, int32_t depth )
@@ -1687,7 +1829,7 @@ static SCHEMA_UNUSED int benchtable_table_json_skip_value( benchtable_table_json
 }
 
 static SCHEMA_UNUSED int benchtable_table_json_read_table( benchtable_table_json_in_t * in, void * base, const benchtable_table_type_info_t * info, int32_t depth );
-static SCHEMA_UNUSED int benchtable_table_json_read_table_keys( benchtable_table_json_in_t * in, void * base, const benchtable_table_type_info_t * info, int32_t depth, const char * first_key );
+static SCHEMA_UNUSED int benchtable_table_json_read_table_keys( benchtable_table_json_in_t * in, void * base, const benchtable_table_type_info_t * info, int32_t depth, const char * first_key, int32_t first_length, int64_t first_quote );
 
 typedef struct benchtable_table_json_integer_t
 {
@@ -2565,7 +2707,7 @@ static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json
 }
 
 /* ONE table object: keys are field keys, unknown ones are skipped and
-   counted, a repeated key is last-wins and counted. The instance is already
+   counted, a repeated key refuses the read. The instance is already
    at its declared defaults when this is entered, so a key the text never
    mentions keeps the default an absent field takes on the wire (§4). */
 static SCHEMA_UNUSED int schema_benchtable_table_json_require_seen_( benchtable_table_json_in_t * in, const void * base, const benchtable_table_type_info_t * info, const uint64_t * seen )
@@ -2585,10 +2727,11 @@ static SCHEMA_UNUSED int schema_benchtable_table_json_require_seen_( benchtable_
     return 1;
 }
 
-static SCHEMA_UNUSED int benchtable_table_json_read_table_keys( benchtable_table_json_in_t * in, void * base, const benchtable_table_type_info_t * info, int32_t depth, const char * first_key )
+static SCHEMA_UNUSED int benchtable_table_json_read_table_members( benchtable_table_json_in_t * in, void * base, const benchtable_table_type_info_t * info, int32_t depth, const char * first_key, int32_t first_length, int64_t first_quote, benchtable_table_json_keys_t * keys )
 {
-    /* repeated tracking, bounded and allocation-free: a table with more
-       fields than this still reads, its repeats simply stop being counted */
+    /* the fields seen, bounded and allocation-free, for the required check;
+       a repeated key, of any field or of none and at any width, is refused
+       through the key set (keys) */
     uint64_t seen[8];
     memset( seen, 0, sizeof( seen ) );
     for ( ;; )
@@ -2596,18 +2739,25 @@ static SCHEMA_UNUSED int benchtable_table_json_read_table_keys( benchtable_table
         char c = 0;
         char key[BENCHTABLE_K_TABLE_JSON_MAX_KEY];
         int32_t key_length = 0;
+        int64_t quote = first_quote;
         int32_t index = -1;
         int32_t i;
-        if ( first_key != NULL ) { memcpy(key,first_key,strlen(first_key)+1); first_key = NULL; }
+        if ( first_key != NULL ) { memcpy(key,first_key,(size_t)first_length); key[first_length] = 0; key_length = first_length; first_key = NULL; }
         else
         {
             c = benchtable_table_json_peek(in);
             if ( c == '}' ) { in->pos++; return schema_benchtable_table_json_require_seen_( in, base, info, seen ); }
             if ( c == 0 ) { in->bad = 1; return 0; }
+            quote = in->pos;
             if ( !benchtable_table_json_scan_text(in,key,BENCHTABLE_K_TABLE_JSON_MAX_KEY-1,&key_length) ) { return 0; }
             key[key_length] = 0;
             if ( benchtable_table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
+        }
+        {
+            const int added = benchtable_table_json_keys_add( in, keys, quote, key, key_length );
+            if ( added < 0 ) { return 0; }
+            if ( added == 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; }
         }
         for ( i = 0; i < info->num_fields; i++ )
         {
@@ -2680,6 +2830,18 @@ static SCHEMA_UNUSED int benchtable_table_json_read_table_keys( benchtable_table
     }
 }
 
+/* first_key, when the caller decoded the object's first key already: its
+   decoded bytes, their length and its opening quote in the text */
+static SCHEMA_UNUSED int benchtable_table_json_read_table_keys( benchtable_table_json_in_t * in, void * base, const benchtable_table_type_info_t * info, int32_t depth, const char * first_key, int32_t first_length, int64_t first_quote )
+{
+    benchtable_table_json_keys_t keys;
+    int ok;
+    benchtable_table_json_keys_init( &keys );
+    ok = benchtable_table_json_read_table_members( in, base, info, depth, first_key, first_length, first_quote, &keys );
+    benchtable_table_json_keys_free( &keys );
+    return ok;
+}
+
 /* ---- the two entry points the per-table wrappers name ---- */
 
 static SCHEMA_UNUSED int benchtable_table_json_read_table( benchtable_table_json_in_t * in, void * base, const benchtable_table_type_info_t * info, int32_t depth )
@@ -2692,7 +2854,7 @@ static SCHEMA_UNUSED int benchtable_table_json_read_table( benchtable_table_json
     }
     if ( benchtable_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
     in->pos++;
-    return benchtable_table_json_read_table_keys(in,base,info,depth,NULL);
+    return benchtable_table_json_read_table_keys(in,base,info,depth,NULL,0,-1);
 }
 
 static SCHEMA_UNUSED int benchtable_table_json_read( void * value, const benchtable_table_type_info_t * info, const char * text, int64_t bytes, benchtable_table_report_t * report )

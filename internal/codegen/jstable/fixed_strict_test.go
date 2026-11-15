@@ -48,6 +48,12 @@ func checkJsFixedLoadNeverClamps(decodeBody, runBody string) []string {
 			faults = append(faults, "decode lacks "+want)
 		}
 	}
+	// THE DEAD-BYTE SCAN ALSO NAMES WireDamaged (docs/FIXED-FORM-ALGORITHM.md
+	// §4.5, §5.3 step 11), so the bool clause is held by its own guard shape and
+	// not by the name alone.
+	if !strings.Contains(decodeBody, "if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; }") {
+		faults = append(faults, "decode lacks TableFixedRefusal.WireDamaged")
+	}
 	// THE RUNTIME OPS REFUSE BY NAME, NEVER CLAMP-AND-COUNT.
 	for _, want := range []string{
 		"TableFixedRefusal.LengthOverBound",
