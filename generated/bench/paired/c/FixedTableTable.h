@@ -4087,6 +4087,9 @@ static SCHEMA_UNUSED const bench_table_fixed_dst_t bench_fixed_table_fixed_dst[]
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly

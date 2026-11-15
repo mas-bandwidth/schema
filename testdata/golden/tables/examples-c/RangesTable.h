@@ -2731,13 +2731,13 @@ static SCHEMA_UNUSED int tabledemo_table_report_finish( tabledemo_table_report_t
 
 #ifndef SCHEMA_TABLEDEMO_TABLE_ALLOCATOR_RUNTIME
 #define SCHEMA_TABLEDEMO_TABLE_ALLOCATOR_RUNTIME
-#ifndef schema_tabledemo_allocate
+#ifndef schema_allocate
 #include <stdlib.h>
-#define schema_tabledemo_allocate(bytes) calloc(1,(size_t)(bytes))
+#define schema_allocate(bytes) calloc(1,(size_t)(bytes))
 #endif
-#ifndef schema_tabledemo_release
+#ifndef schema_release
 #include <stdlib.h>
-#define schema_tabledemo_release(pointer) free(pointer)
+#define schema_release(pointer) free(pointer)
 #endif
 typedef struct tabledemo_table_allocator_t
 {
@@ -2746,9 +2746,9 @@ typedef struct tabledemo_table_allocator_t
     void * context;
 } tabledemo_table_allocator_t;
 static SCHEMA_UNUSED void * tabledemo_table_default_allocate(void * context,int64_t bytes)
-{ (void)context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_tabledemo_allocate(bytes) : NULL; }
+{ (void)context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_allocate(bytes) : NULL; }
 static SCHEMA_UNUSED void tabledemo_table_default_release(void * context,void * pointer)
-{ (void)context; schema_tabledemo_release(pointer); }
+{ (void)context; schema_release(pointer); }
 static SCHEMA_UNUSED tabledemo_table_allocator_t tabledemo_table_default_allocator(void)
 {
     tabledemo_table_allocator_t allocator={tabledemo_table_default_allocate,tabledemo_table_default_release,NULL}; return allocator;
@@ -9650,6 +9650,9 @@ static SCHEMA_UNUSED const tabledemo_table_fixed_dst_t tabledemo_ranged_signed_f
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly
@@ -10026,6 +10029,9 @@ static SCHEMA_UNUSED const tabledemo_table_fixed_dst_t tabledemo_ranged_unsigned
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly
@@ -10377,6 +10383,9 @@ static SCHEMA_UNUSED const tabledemo_table_fixed_dst_t tabledemo_ranged_widths_f
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly

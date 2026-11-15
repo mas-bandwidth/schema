@@ -13150,6 +13150,9 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_camera_f
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly
@@ -13530,6 +13533,9 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_ship_fix
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly
@@ -13914,6 +13920,9 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_turret_f
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly
@@ -14301,6 +14310,9 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_missile_
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly
@@ -14690,6 +14702,9 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_dynamic_
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly
@@ -15079,6 +15094,9 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_static_p
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly
@@ -15470,6 +15488,9 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_cosmetic
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly
@@ -15854,6 +15875,9 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_laser_fi
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly
@@ -16239,6 +16263,9 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_explosio
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly
