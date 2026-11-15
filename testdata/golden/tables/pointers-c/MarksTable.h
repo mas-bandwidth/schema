@@ -5621,11 +5621,9 @@ static SCHEMA_UNUSED  int graphdemo_marker_load_body( graphdemo_table_reader_t *
 static SCHEMA_UNUSED int schema_graphdemo_tally_body_pack_(struct graphdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
 static SCHEMA_UNUSED int schema_graphdemo_marker_body_pack_(struct graphdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
 SCHEMA_TABLE_STATIC_ASSERT( graphdemo_schema_graphdemo_tally_arena_alignment_, SCHEMA_TABLE_ALIGNOF(graphdemo_tally_t) <= GRAPHDEMO_K_TABLE_ALIGN, "a table node's alignment must fit the arena's" );
-static const graphdemo_table_node_type_t schema_graphdemo_tally_node_type_;
 static SCHEMA_UNUSED int schema_graphdemo_tally_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage );
 static SCHEMA_UNUSED int schema_graphdemo_tally_cycle_edges_( graphdemo_table_cycle_t * cycle, const void * storage );
 SCHEMA_TABLE_STATIC_ASSERT( graphdemo_schema_graphdemo_marker_arena_alignment_, SCHEMA_TABLE_ALIGNOF(graphdemo_marker_t) <= GRAPHDEMO_K_TABLE_ALIGN, "a table node's alignment must fit the arena's" );
-static const graphdemo_table_node_type_t schema_graphdemo_marker_node_type_;
 static SCHEMA_UNUSED int schema_graphdemo_marker_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage );
 static SCHEMA_UNUSED int schema_graphdemo_marker_cycle_edges_( graphdemo_table_cycle_t * cycle, const void * storage );
 static SCHEMA_UNUSED int schema_graphdemo_tally_extent_(graphdemo_table_numbering_t * n,const void * storage,uint8_t * target,int64_t * at);
@@ -6740,6 +6738,12 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_marker_wire_storage_(const graphde
 }
 static SCHEMA_UNUSED int schema_graphdemo_tally_node_save_( graphdemo_table_writer_t * w, const void * storage )
 { return graphdemo_tally_save_body(w,(const graphdemo_tally_t *)storage); }
+static const graphdemo_table_node_type_t schema_graphdemo_tally_node_type_ = { UINT64_C(0x69ff34904242a73d), sizeof(graphdemo_tally_t), schema_graphdemo_tally_node_save_, schema_graphdemo_tally_graph_edges_, 0, schema_graphdemo_tally_extent_, schema_graphdemo_tally_wire_storage_, 4, 0, schema_graphdemo_tally_body_pack_, NULL };
+
+static SCHEMA_UNUSED int schema_graphdemo_marker_node_save_( graphdemo_table_writer_t * w, const void * storage )
+{ return graphdemo_marker_save_body(w,(const graphdemo_marker_t *)storage); }
+static const graphdemo_table_node_type_t schema_graphdemo_marker_node_type_ = { UINT64_C(0xd6458a3eef83d457), sizeof(graphdemo_marker_t), schema_graphdemo_marker_node_save_, schema_graphdemo_marker_graph_edges_, 0, schema_graphdemo_marker_extent_, schema_graphdemo_marker_wire_storage_, 8, 0, schema_graphdemo_marker_body_pack_, NULL };
+
 static SCHEMA_UNUSED int schema_graphdemo_tally_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage )
 {
     const graphdemo_tally_t * value=(const graphdemo_tally_t *)storage;
@@ -6752,10 +6756,6 @@ static SCHEMA_UNUSED int schema_graphdemo_tally_cycle_edges_( graphdemo_table_cy
     (void)value; (void)cycle;
     return 1;
 }
-static const graphdemo_table_node_type_t schema_graphdemo_tally_node_type_ = { UINT64_C(0x69ff34904242a73d), sizeof(graphdemo_tally_t), schema_graphdemo_tally_node_save_, schema_graphdemo_tally_graph_edges_, 0, schema_graphdemo_tally_extent_, schema_graphdemo_tally_wire_storage_, 4, 0, schema_graphdemo_tally_body_pack_, NULL };
-
-static SCHEMA_UNUSED int schema_graphdemo_marker_node_save_( graphdemo_table_writer_t * w, const void * storage )
-{ return graphdemo_marker_save_body(w,(const graphdemo_marker_t *)storage); }
 static SCHEMA_UNUSED int schema_graphdemo_marker_graph_edges_( graphdemo_table_numbering_t * numbering, const void * storage )
 {
     const graphdemo_marker_t * value=(const graphdemo_marker_t *)storage;
@@ -6770,8 +6770,6 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_cycle_edges_( graphdemo_table_c
     if (!graphdemo_table_cycle_slot(cycle,&value->note)) { return 0; }
     return 1;
 }
-static const graphdemo_table_node_type_t schema_graphdemo_marker_node_type_ = { UINT64_C(0xd6458a3eef83d457), sizeof(graphdemo_marker_t), schema_graphdemo_marker_node_save_, schema_graphdemo_marker_graph_edges_, 0, schema_graphdemo_marker_extent_, schema_graphdemo_marker_wire_storage_, 8, 0, schema_graphdemo_marker_body_pack_, NULL };
-
 /* ---- Marker: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 
    MUTABLE: MarkerBuilder — allocate nodes, wire them together, then Lock.

@@ -832,7 +832,6 @@ func (g *tableGen) graphType(name string) string { return g.sym(name, "node_type
 func (g *tableGen) emitGraphDeclarations(members []*ir.Struct) {
 	for _, st := range g.varMembers(members) {
 		g.emitStaticAssert(g.sym(st.Name, "arena_alignment"), fmt.Sprintf("SCHEMA_TABLE_ALIGNOF(%s) <= kTableAlign", st.Name), "a table node's alignment must fit the arena's")
-		g.pf("static const TableNodeType %s;\n", g.graphType(st.Name))
 		g.pf("static SCHEMA_UNUSED int %s( TableNumbering * numbering, const void * storage );\n", g.sym(st.Name, "graph_edges"))
 		g.pf("static SCHEMA_UNUSED int %s( TableCycle * cycle, const void * storage );\n", g.sym(st.Name, "cycle_edges"))
 	}
@@ -840,8 +839,18 @@ func (g *tableGen) emitGraphDeclarations(members []*ir.Struct) {
 
 func (g *tableGen) emitGraphBodies(members []*ir.Struct) {
 	g.emitExtentBodies(members)
+	// Every node type is defined before the first edge walker names one, so
+	// none is forward declared and the header reads the same as C and as C++.
 	for _, st := range g.varMembers(members) {
 		g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const void * storage )\n{ return %s(w,(const %s *)storage); }\n", g.sym(st.Name, "node_save"), g.api(st.Name, "save_body"), st.Name)
+		extent, hasExtent := "NULL", 0
+		if g.hasCookExtent(st) {
+			extent = g.sym(st.Name, "extent_pack")
+			hasExtent = 1
+		}
+		g.pf("static const TableNodeType %s = { UINT64_C(0x%016x), sizeof(%s), %s, %s, 0, %s, %s, %d, %d, %s, %s };\n\n", g.graphType(st.Name), ir.TableWireId(st.WireName()), st.Name, g.sym(st.Name, "node_save"), g.sym(st.Name, "graph_edges"), g.sym(st.Name, "extent"), g.sym(st.Name, "wire_storage"), ir.CookNodeAlign(g.unit, st), hasExtent, g.sym(st.Name, "body_pack"), extent)
+	}
+	for _, st := range g.varMembers(members) {
 		g.pf("static SCHEMA_UNUSED int %s( TableNumbering * numbering, const void * storage )\n{\n", g.sym(st.Name, "graph_edges"))
 		g.pf("    const %s * value=(const %s *)storage;\n    (void)value; (void)numbering;\n", st.Name, st.Name)
 		guards := tableGuardExprs(st)
@@ -866,12 +875,6 @@ func (g *tableGen) emitGraphBodies(members []*ir.Struct) {
 			g.emitCycleEdge(f, "value->"+f.Name, "    ", &cstep)
 		}
 		g.pf("    return 1;\n}\n")
-		extent, hasExtent := "NULL", 0
-		if g.hasCookExtent(st) {
-			extent = g.sym(st.Name, "extent_pack")
-			hasExtent = 1
-		}
-		g.pf("static const TableNodeType %s = { UINT64_C(0x%016x), sizeof(%s), %s, %s, 0, %s, %s, %d, %d, %s, %s };\n\n", g.graphType(st.Name), ir.TableWireId(st.WireName()), st.Name, g.sym(st.Name, "node_save"), g.sym(st.Name, "graph_edges"), g.sym(st.Name, "extent"), g.sym(st.Name, "wire_storage"), ir.CookNodeAlign(g.unit, st), hasExtent, g.sym(st.Name, "body_pack"), extent)
 	}
 }
 
