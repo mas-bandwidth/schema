@@ -2549,9 +2549,11 @@ function optionalVersioning(check, o, dir) {
 // out-of-range value REFUSES out_of_range: n = -1, the record goes back to its
 // Init defaults, and no counter moves. `plain` is `int32 = 5 | min = 0, max = 1000`.
 //
-// THE POISON GOES THROUGH THE WRITER, the way the reference forges it: the
-// write side's checks are debug-only by rule and a range is not one of them, so
-// a caller can put 5000 on the wire and the reader is what answers for it.
+// THE POISON IS PLANTED IN THE BYTES. The reference forges it through its
+// writer, whose write checks are debug asserts (C++ is an assert leg); the
+// JavaScript writer refuses an out-of-range value in every build (docs/SPEC.md
+// §5.1), so this leg saves a legal value and writes the planted int32 over
+// plain's four bytes, found by saving two legal values and diffing the images.
 //
 // The COMPILED half — a plan carrying an OLD writer's bound — is a stranger's
 // layout and is owed on the lineage harness; only the identity half runs here.
@@ -2562,13 +2564,29 @@ export function rangedScalarClamp(check, o) {
   // then read back through the identity plan into a POISONED destination, so
   // a reset to Init defaults is visible. `tail` rides behind the ranged field
   // so a value that ran off the end of its own field is visible on a read.
-  const read = (planted) => {
+  const image = (plain) => {
     const one = new fo1home.OptRoot();
-    one.plain = planted;
+    one.plain = plain;
     one.tail = 203;
     const w = new Uint8Array(fo1.OptRootFixedMeasure(1));
     check(fo1.OptRootFixedSave([one], 1, w) === w.length,
       "C7 RANGED: the record saves");
+    return w;
+  };
+  // plain's offset: the one byte where a 5 and a 6 differ is its low byte
+  const five = image(5);
+  const six = image(6);
+  let at = -1;
+  for (let i = 0; i < five.length; i++) {
+    if (five[i] !== six[i]) {
+      check(at === -1, "C7 RANGED: plain's low byte is the one byte a 5 and a 6 differ in");
+      at = i;
+    }
+  }
+  check(at >= 0 && five[at] === 5, "C7 RANGED: plain's bytes are found in the image");
+  const read = (planted) => {
+    const w = image(5);
+    new DataView(w.buffer, w.byteOffset, w.byteLength).setInt32(at, planted, true);
     const back = [new fo1home.OptRoot()];
     poisonDeep(back[0]);
     const r = new fo1home.TableFixedReport();
