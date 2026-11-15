@@ -1520,8 +1520,14 @@ static SCHEMA_UNUSED int benchtable_table_json_skip_value( benchtable_table_json
 
 static SCHEMA_UNUSED int benchtable_table_json_skip_container( benchtable_table_json_in_t * in, char close, int32_t depth )
 {
-    if ( depth > BENCHTABLE_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
+    /* a skipped object's keys are held to the layer's rule too: a zero in one
+       refuses the read, and a repeated key refuses in every object (§16.2,
+       §16.3). The repeat set is bounded and allocation-free like the table's. */
+    uint64_t seen[64];
+    int32_t seen_count = 0;
     int first = 1;
+    if ( depth > BENCHTABLE_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
+    memset( seen, 0, sizeof( seen ) );
     in->pos++; /* the opening bracket */
     for ( ;; )
     {
@@ -1533,8 +1539,16 @@ static SCHEMA_UNUSED int benchtable_table_json_skip_container( benchtable_table_
         {
             char key[BENCHTABLE_K_TABLE_JSON_MAX_KEY];
             int32_t length = 0;
-            if ( !benchtable_table_json_scan_string(in,key,BENCHTABLE_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
+            uint64_t hash = 1469598103934665603ULL;
+            int32_t k;
+            if ( !benchtable_table_json_scan_text(in,key,BENCHTABLE_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
             key[length] = 0;
+            for ( k = 0; k < length; k++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[k] ) * 1099511628211ULL; }
+            for ( k = 0; k < seen_count; k++ )
+            {
+                if ( seen[k] == hash ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; in->bad = 1; return 0; }
+            }
+            if ( seen_count < 64 ) { seen[seen_count++] = hash; }
             if ( benchtable_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
             if ( key[0] == '&' && in->graph != NULL ) { if ( !first ) { in->bad = 1; return 0; } if ( !benchtable_table_json_skipped_ampersand(in,key) ) { return 0; } consumed = 1; }
@@ -1556,7 +1570,9 @@ static SCHEMA_UNUSED int benchtable_table_json_skip_value( benchtable_table_json
     {
         case '{': return benchtable_table_json_skip_container( in, '}', depth );
         case '[': return benchtable_table_json_skip_container( in, ']', depth );
-        case '"': return benchtable_table_json_scan_string( in, NULL, 0, NULL );
+        /* a skipped string is held to the text rules of a placed value: a
+           U+0000 refuses the read (§16.3), as text_holds_zero does at a field */
+        case '"': return benchtable_table_json_scan_text( in, NULL, 0, NULL );
         case 't': return benchtable_table_json_literal( in, "true" );
         case 'f': return benchtable_table_json_literal( in, "false" );
         case 'n': return benchtable_table_json_literal( in, "null" );
@@ -2031,7 +2047,7 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
         in->pos++;
         benchtable_table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
         if ( benchtable_table_json_peek( in ) == '}' ) { in->pos++; return 1; }
-        if ( !benchtable_table_json_scan_string( in, key, BENCHTABLE_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
+        if ( !benchtable_table_json_scan_text( in, key, BENCHTABLE_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
         key[key_length] = 0;
         if ( benchtable_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
         in->pos++;
@@ -2371,7 +2387,7 @@ static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json
             int64_t v;
             if ( c == '}' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( !benchtable_table_json_scan_string( in, key, BENCHTABLE_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
+            if ( !benchtable_table_json_scan_text( in, key, BENCHTABLE_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
             key[key_length] = 0;
             if ( benchtable_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
@@ -2547,7 +2563,7 @@ static SCHEMA_UNUSED int benchtable_table_json_read_table_keys( benchtable_table
             c = benchtable_table_json_peek(in);
             if ( c == '}' ) { in->pos++; return schema_benchtable_table_json_require_seen_( in, base, info, seen ); }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( !benchtable_table_json_scan_string(in,key,BENCHTABLE_K_TABLE_JSON_MAX_KEY-1,&key_length) ) { return 0; }
+            if ( !benchtable_table_json_scan_text(in,key,BENCHTABLE_K_TABLE_JSON_MAX_KEY-1,&key_length) ) { return 0; }
             key[key_length] = 0;
             if ( benchtable_table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
