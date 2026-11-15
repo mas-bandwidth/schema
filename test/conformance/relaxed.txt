@@ -118,7 +118,6 @@ cpp json-hostile base64-unpadded relax/hostile-rows-cpp
 cpp json-hostile str-zero-escape-unknown-key relax/hostile-rows-cpp
 cs json-hostile base64-unpadded relax/hostile-rows-cs
 cs json-hostile str-zero-escape-unknown-key relax/hostile-rows-cs
-dart json-hostile base64-unpadded relax/hostile-rows-dart
 elixir json-hostile str-zero-escape-unknown-key relax/hostile-rows-elixir
 goose json-hostile base64-unpadded relax/hostile-rows-goose
 goose json-hostile str-zero-escape-unknown-key relax/hostile-rows-goose
