@@ -26,20 +26,34 @@ func TestCount(t *testing.T) {
  if _, why := tableFixedParseLayout(b); why == "" { t.Fatal("high-bit count accepted") }
 }`
 	const old = "count == 0 || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes))"
-	patched := 0
-	out, err := sharedRun(t, u, probe, RuntimeStandalone, func(files map[string][]byte) {
-		for name, data := range files {
-			s := string(data)
-			if strings.Contains(s, old) {
-				files[name] = []byte(strings.Replace(s, old, "count == 0", 1))
-				patched++
+	run := func(mask bool) (string, error) {
+		patched := 0
+		out, err := sharedRun(t, u, probe, RuntimeStandalone, func(files map[string][]byte) {
+			for name, data := range files {
+				s := string(data)
+				if strings.Contains(s, old) {
+					s = strings.Replace(s, old, "count == 0", 1)
+					if mask {
+						check := "if count > 0x7fffffff {\n\t\treturn out, \"layout_tree_unclosed\"\n\t}\n\tview := tableFixedLayoutView{Bytes: bytes, Count: int32(count)}"
+						if !strings.Contains(s, check) {
+							t.Fatal("count check missing")
+						}
+						s = strings.Replace(s, check, "view := tableFixedLayoutView{Bytes: bytes, Count: int32(count & 0x7fffffff)}", 1)
+					}
+					files[name] = []byte(s)
+					patched++
+				}
 			}
+		})
+		if patched != 1 {
+			t.Fatalf("length precondition applied to %d files", patched)
 		}
-	})
-	if patched != 1 {
-		t.Fatalf("length precondition applied to %d files", patched)
+		return out, err
 	}
-	if err != nil {
+	if out, err := run(false); err != nil {
 		t.Fatalf("standalone layout probe: %v\n%s", err, out)
+	}
+	if out, err := run(true); err == nil || !strings.Contains(out, "high-bit count accepted") {
+		t.Fatalf("masked count control did not reproduce acceptance: %v\n%s", err, out)
 	}
 }
