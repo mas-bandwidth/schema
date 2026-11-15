@@ -605,7 +605,11 @@ static void union_append_hostile_case()
         vold_union_append::Lineage v;
         vold_union_append::LineageReset( v );
         v.pick.type = vold_union_append::PickType::Alpha;
-        v.pick.alpha.m = 7;
+        // THE FORGED TAG IS THE ONLY FAULT: alpha's payload is zero, so once the
+        // tag names no arm of the writer's, nothing under it is a non-zero dead
+        // byte (fixed-dead-bytes-are-zero, 2026-11-10) and the refusal can only
+        // be the tag's own out_of_range.
+        v.pick.alpha.m = 0;
         v.seq = 15;
         check( vold_union_append::LineageFixedSave( &v, 1, oldf.data(), (int64_t) oldf.size() ) ==
                (int64_t) oldf.size(), "union_append_hostile: the OLD file saves" );
