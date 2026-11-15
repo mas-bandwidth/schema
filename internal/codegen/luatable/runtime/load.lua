@@ -767,12 +767,37 @@ end
 -- earlier occurrence left keeps that occurrence's unreplaced slots (decode.go
 -- arrayBody leaves fv.Elems standing). A pointer slot there is still queued
 -- against the earlier array, so its entries are pointed at the new one, where
--- they resolve before the repeat's own entries for the same slots.
+-- they resolve before the repeat's own entries for the same slots. The move is
+-- recorded, not applied by reading the queue: resolution follows it (moved_to),
+-- so a repeat costs one step whatever the load queued before it.
 local function adopt(ctx, from, to)
-  local pending = ctx.pending
-  for i = 1, ctx.np do
-    local p = pending[i]
-    if p.holder == from then p.holder = to end
+  ctx.moved[from] = to
+end
+
+-- the holder a queued slot lands in: its own, or the array the repeats of a
+-- fixed array moved it to, the chain shortened as it is walked
+local function moved_to(moved, holder)
+  local to = moved[holder]
+  if to == nil then return holder end
+  local last = to
+  while moved[last] ~= nil do
+    last = moved[last]
+  end
+  while to ~= last do
+    moved[holder] = last
+    holder = to
+    to = moved[to]
+  end
+  return last
+end
+
+-- the moves of a load are given back empty
+local function clear_moved(ctx)
+  local moved = ctx.moved
+  if next(moved) ~= nil then
+    for k in pairs(moved) do
+      moved[k] = nil
+    end
   end
 end
 
@@ -1116,6 +1141,8 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
     local last = nil
     local landed = false
     local widened = false
+    -- the queue range of the entry that placed the key `last` holds
+    local placed0, placed1 = 0, 0
     local i = 0
     while math.ult(i, count) do
       i = i + 1
@@ -1159,6 +1186,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
         local inst = fresh(T, entry)
         sub.at = at
         local elim, ebad = narrow(sub, n)
+        local np0 = ctx.np
         read_body(T, ctx, entry, sub, inst, true, keyname)
         restore(sub, at, n, elim, ebad)
         local dkey = inst[keyname]
@@ -1168,7 +1196,10 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
           -- resolves and counts, as the engine resolves every slot while it
           -- reads the entry (decodenodes.go resolveCell), so an index past
           -- the node table is damage even in an entry a later key replaces.
-          for j = 1, ctx.np do
+          -- The slots under that key are the ones the entry that placed it
+          -- queued (an earlier entry of the key already went to the sink),
+          -- so only that entry's range is read: the cost stays the entry's.
+          for j = placed0 + 1, placed1 do
             local pp = ctx.pending[j]
             if pp.holder == out and pp.key == last then pp.holder = ctx.sink end
           end
@@ -1183,10 +1214,13 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
         -- itself under the entry's key, so resolve lands the value there.
         -- An entry whose value is null is still an entry (§2.8, §3.1): a key
         -- cannot hold nil, so it holds false, as a null list element does.
+        -- Only the slots this entry queued are read, so an entry costs its
+        -- own slots, never every slot the load queued before it.
+        placed0, placed1 = np0, ctx.np
         local vf = fd.value_field
         if vf.shape == "pointer" or vf.shape == "string_blob" or vf.shape == "bytes_blob" then
           out[dkey] = false
-          for j = ctx.np, 1, -1 do
+          for j = ctx.np, np0 + 1, -1 do
             local pp = ctx.pending[j]
             if pp.holder == inst then
               pp.holder = out
@@ -1829,6 +1863,7 @@ local function resolve(ctx, root, rootdesc)
   local good = ctx.good
   local seen_blob = nil
   local pending = ctx.pending
+  local moved = ctx.moved
   for i = 1, ctx.np do
     local p = pending[i]
     local d = p.d
@@ -1893,11 +1928,12 @@ local function resolve(ctx, root, rootdesc)
     -- not resolve is WRITTEN null rather than left alone, because an earlier
     -- occurrence of the same slot may already have resolved into it.
     if value == nil then value = p.null end
-    p.holder[p.key] = value
+    moved_to(moved, p.holder)[p.key] = value
     -- the queue keeps its entries for the next load, and no value it named
     p.holder, p.d = nil, nil
   end
   ctx.np = 0
+  clear_moved(ctx)
 end
 
 -- THE LOADER STATE (docs/PORTING.md M1: the read path allocates nothing, and the
@@ -1938,6 +1974,9 @@ function L.NewState()
       report = nil,
       pending = {},
       np = 0,
+      -- the moves the repeats of a fixed array record (adopt), emptied when
+      -- the queue resolves or is released
+      moved = {},
       nodes = NO_NODES,
       good = false,
       owner = nil,
@@ -1958,6 +1997,7 @@ local function release(ctx)
     p.holder, p.d = nil, nil
   end
   ctx.np = 0
+  clear_moved(ctx)
   local sink = ctx.sink
   if next(sink) ~= nil then
     for k in pairs(sink) do
