@@ -92,6 +92,11 @@ func (m *pyModule) emitStruct(d *ir.Struct) {
 		m.printf("%s", docComment(d.Doc, "", "#"))
 	}
 	m.line("class %s:", d.Name)
+	if m.hosted {
+		m.need("Any")
+		m.need("ClassVar")
+		m.line("    descriptor: ClassVar[Any]")
+	}
 	if len(d.Fields) == 0 {
 		m.line("    __slots__ = ()")
 		m.line("")
@@ -159,6 +164,11 @@ func (m *pyModule) emitUnion(d *ir.Union) {
 		m.printf("%s", docComment(d.Doc, "", "#"))
 	}
 	m.line("class %s:", d.Name)
+	if m.hosted {
+		m.need("Any")
+		m.need("ClassVar")
+		m.line("    descriptor: ClassVar[Any]")
+	}
 	arms := unionArms(d)
 	slots := []string{"type"}
 	for _, v := range arms {
@@ -212,9 +222,6 @@ func (m *pyModule) unionArmDefault(v ir.UnionVariant) string {
 }
 
 func (m *pyModule) arrayDefault(f *ir.Field) string {
-	elem := *f
-	elem.Array = ir.ArrayNone
-	value := m.defaultExpr(&elem)
 	n := int64(0)
 	switch f.Array {
 	case ir.ArrayFixed:
@@ -224,10 +231,7 @@ func (m *pyModule) arrayDefault(f *ir.Field) string {
 	case ir.ArrayList:
 		n = 0
 	}
-	if isScalarZero(value) {
-		return fmt.Sprintf("[%s] * %d", value, n)
-	}
-	return fmt.Sprintf("[%s for _s_i in range(%d)]", value, n)
+	return m.arrayFill(f, strconv.FormatInt(n, 10))
 }
 
 func isScalarZero(s string) bool {

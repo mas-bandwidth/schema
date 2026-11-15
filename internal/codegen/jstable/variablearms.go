@@ -880,7 +880,7 @@ function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
   holder[fd.n] = TableVariableFieldDefault(fd);
   if (!TableVariableShapeMatches(fd.js, shape)) {
     report.mismatch++;
-    return inp.skip(depth, graph);
+    return inp.skip(depth, graph, report);
   }
   return TableVariableTextField(fd, inp, holder, depth, graph, report);
 }
@@ -910,11 +910,11 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
     if (status === "damaged") { report.damaged = true; inp.bad = true; return false; }
     if (status === "mismatch") {
       report.mismatch++;
-      if (!inp.skip(depth, graph)) { return false; }
+      if (!inp.skip(depth, graph, report)) { return false; }
     } else if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(key).length > fd.kb) {
       // KEYS NEVER CLAMP: the entry drops whole (§2.8)
       report.oor++;
-      if (!inp.skip(depth, graph)) { return false; }
+      if (!inp.skip(depth, graph, report)) { return false; }
     } else {
       const entry = fd.c.make();
       entry.key = key;
@@ -945,6 +945,7 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
     if (ch === "") { inp.bad = true; return false; }
     const key = inp.name();
     if (key === null) { return false; }
+    if (!TableVariableStoredText(key, inp, report)) { return false; }
     if (inp.peek() !== ":") { inp.bad = true; return false; }
     inp.p++;
     // A REPEATED KEY IS DAMAGE (docs/plans/strict-only.md decision 5), the
@@ -955,10 +956,10 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
     const slot = fd.slotByName.get(key);
     if (slot === undefined) {
       report.unknown++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else if (!TableVariableShapeMatches(fd.e.js, inp.shape())) {
       report.mismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else if (!TableVariableTextScalar(fd.e, inp, arr, slot, depth + 1, graph, report)) {
       return false;
     }
@@ -979,16 +980,17 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   if (inp.peek() === "}") { inp.p++; return true; }
   const k = inp.name();
   if (k === null) { return false; }
+  if (!TableVariableStoredText(k, inp, report)) { return false; }
   if (inp.peek() !== ":") { inp.bad = true; return false; }
   inp.p++;
   const arm = d.u.byName.get(k);
   if (arm === undefined) {
     report.unknown++;
-    if (!inp.skip(depth + 1, graph)) { return false; }
+    if (!inp.skip(depth + 1, graph, report)) { return false; }
   } else if (arm.void) {
     if (inp.shape() !== "z") {
       report.mismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else {
       if (!inp.literal("null")) { return false; }
       holder[key] = { arm: arm.name, value: null };
@@ -996,7 +998,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   } else if (arm.body) {
     if (inp.shape() !== (arm.c.jsonArray ? "a" : "o")) {
       report.mismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else {
       const inst = arm.c.make();
       if (!TableVariableReadTable(arm.c, inp, inst, depth + 1, graph, report)) { return false; }
@@ -1011,7 +1013,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
       holder[key] = h;
     } else if (!TableVariableShapeMatches(arm.f.js, shape)) {
       report.mismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else {
       if (!TableVariableTextField(arm.f, inp, h, depth + 1, graph, report)) { return false; }
       holder[key] = h;

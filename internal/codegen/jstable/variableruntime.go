@@ -2489,11 +2489,16 @@ class TableVariableTextIn {
     }
     return v;
   }
-  skip(depth, graph) {
+  skip(depth, graph, report) {
     switch (this.peek()) {
-      case "{": return this.skipContainer("}", depth, graph);
-      case "[": return this.skipContainer("]", depth, graph);
-      case "\"": return this.str() !== null;
+      case "{": return this.skipContainer("}", depth, graph, report);
+      case "[": return this.skipContainer("]", depth, graph, report);
+      case "\"": {
+        // A SKIPPED STRING IS HELD TO THE TEXT RULE (§4, §16.3): one that
+        // decodes to U+0000 refuses the read as a placed one does.
+        const s = this.str();
+        return s !== null && TableVariableStoredText(s, this, report);
+      }
       case "t": return this.literal("true");
       case "f": return this.literal("false");
       case "n": return this.literal("null");
@@ -2504,7 +2509,7 @@ class TableVariableTextIn {
   }
   // a skipped OBJECT may still be a pointer's: an "&node" opening it names a
   // node the storage could not hold, and the label still exists (§16.7)
-  skipContainer(close, depth, graph) {
+  skipContainer(close, depth, graph, report) {
     if (depth > 128) { this.bad = true; return false; }
     this.p++;
     let first = true;
@@ -2518,6 +2523,7 @@ class TableVariableTextIn {
       if (close === "}") {
         const key = this.name();
         if (key === null) { return false; }
+        if (!TableVariableStoredText(key, this, report)) { return false; }
         if (this.peek() !== ":") { this.bad = true; return false; }
         this.p++;
         if (keys.has(key)) { this.bad = true; return false; }
@@ -2536,7 +2542,7 @@ class TableVariableTextIn {
         }
       }
       first = false;
-      if (!this.skip(depth + 1, graph)) { return false; }
+      if (!this.skip(depth + 1, graph, report)) { return false; }
       ch = this.peek();
       if (ch === ",") { this.p++; continue; }
       if (ch === close) { this.p++; return true; }
@@ -2632,6 +2638,7 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
       if (ch === "") { inp.bad = true; return false; }
       key = inp.name();
       if (key === null) { return false; }
+      if (!TableVariableStoredText(key, inp, report)) { return false; }
       if (inp.peek() !== ":") { inp.bad = true; return false; }
       inp.p++;
     }
@@ -2645,7 +2652,7 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
     const fd = c.byKey.get(key);
     if (fd === undefined) {
       report.unknown++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else {
       seen.add(fd);
       const shape = inp.shape();
@@ -2660,7 +2667,7 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
         if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
         if (!TableVariableShapeMatches(fd.js, shape)) {
           report.mismatch++;
-          if (!inp.skip(depth + 1, graph)) { return false; }
+          if (!inp.skip(depth + 1, graph, report)) { return false; }
         } else {
           inp.field = c.name + "." + fd.n;
           if (!TableVariableTextField(fd, inp, v, depth, graph, report)) { return false; }
@@ -2800,13 +2807,13 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
     const shape = inp.shape();
     if (placed >= bound) {
       report.oor++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else if (e.s === "ptr" && shape === "z") {
       if (!inp.literal("null")) { return false; }
       out[placed++] = null;
     } else if (!TableVariableShapeMatches(e.js, shape)) {
       report.mismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 1, graph, report)) { return false; }
       out[placed++] = TableVariableZero(e);
     } else {
       out[placed] = TableVariableZero(e);
@@ -2834,6 +2841,7 @@ function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
   if (ch === "") { inp.bad = true; return false; }
   const k = inp.name();
   if (k === null) { return false; }
+  if (!TableVariableStoredText(k, inp, report)) { return false; }
   if (inp.peek() !== ":") { inp.bad = true; return false; }
   inp.p++;
   if (k !== "&node") {
@@ -2896,7 +2904,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
         if (ch === "") { inp.bad = true; return false; }
         if (inp.shape() !== "s") {
           report.mismatch++;
-          if (!inp.skip(depth + 1, graph)) { return false; }
+          if (!inp.skip(depth + 1, graph, report)) { return false; }
         } else {
           const s = inp.name();
           if (s === null) { return false; }

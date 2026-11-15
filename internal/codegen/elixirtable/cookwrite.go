@@ -340,29 +340,42 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
   defp cook_plan(table, value) do
     try do
-      if not is_map(value) do
-        throw(:invalid)
-      end
+      {value, directory} =
+        case value do
+          {r, d} when is_map(r) and is_tuple(d) -> {r, d}
+          r when is_map(r) -> {r, nil}
+          _ -> throw(:invalid)
+        end
 
       desc = Map.fetch!(@tables, table)
-      {body, children} = cook_collect(desc, value, [])
+      Process.put(:elixir_cook_directory, directory)
+      Process.put(:elixir_cook_seen, %{})
 
-      root = %{
-        id: desc.type_id,
-        key: {desc.type_id, value},
-        kind: :table,
-        string: false,
-        value: body,
-        elem: table,
-        desc: desc
-      }
+      try do
+        {body, {count, collected, _blobs}} = cook_collect(desc, value, {0, %{}, %{}})
+        children = for i <- 0..(count - 1)//1, do: Map.fetch!(collected, i)
 
-      {data, align, laid} = cook_lay([root | Enum.reverse(children)])
-      total = 64 + data + length(laid) * 16
-      {:ok, %{total: total, data: data, align: align, nodes: laid, desc: desc}}
+        root = %{
+          id: desc.type_id,
+          key: {desc.type_id, 1},
+          kind: :table,
+          string: false,
+          value: body,
+          elem: table,
+          desc: desc
+        }
+
+        {data, align, laid} = cook_lay([root | children])
+        total = 64 + data + length(laid) * 16
+        {:ok, %{total: total, data: data, align: align, nodes: laid, desc: desc}}
+      after
+        Process.delete(:elixir_cook_directory)
+        Process.delete(:elixir_cook_seen)
+      end
     catch
       :invalid -> {:error, :invalid_value}
       :invalid_value -> {:error, :invalid_value}
+      :data_cycle -> {:error, :data_cycle}
     end
   end
 
@@ -371,7 +384,11 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   # the node it names, {:cook_blob, n}. A table node is its type and content,
   # walked once however often it is named; A BLOB IS A NODE OF ITS SLOT
   # (docs/SPEC-TABLES.md §2.5, §3.1), so two slots holding equal bytes are two
-  # nodes and the record writer finds each slot's own node by its mark.
+  # nodes and the record writer finds each slot's own node by its mark. The
+  # walk's state is {count, nodes, blobs}: the number of nodes found so far,
+  # each node by its position in that order, and the first position of each
+  # blob's bytes by type, so a node is placed or found in constant time and
+  # never by scanning the nodes already collected.
   defp cook_collect(desc, value, acc) when is_map(value) do
     validate_record(desc, value)
 
@@ -397,21 +414,28 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   # a cook packs the graph as it finds it (docs/SPEC-TABLES.md §2.5): a blob
   # the strict read found named from a second slot is the one node the
   # earlier slot holding those bytes already numbered
-  defp cook_collect_field(%{t: :blob, cook_type_id: id} = f, {:blob_shared, v}, acc) do
-    case Enum.find(Enum.reverse(acc), fn n -> n.kind == :blob and n.id == id and n.value == v end) do
-      nil -> cook_collect_field(f, v, acc)
-      n -> {elem(n.key, 1), acc}
+  defp cook_collect_field(
+         %{t: :blob, cook_type_id: id} = f,
+         {:blob_shared, v},
+         {_count, nodes, blobs} = acc
+       ) do
+    case Map.fetch(blobs, {id, v}) do
+      :error -> cook_collect_field(f, v, acc)
+      {:ok, at} -> {elem(Map.fetch!(nodes, at).key, 1), acc}
     end
   end
 
-  defp cook_collect_field(%{t: :blob, cook_type_id: id} = f, v, acc) when not is_nil(v) do
+  defp cook_collect_field(%{t: :blob, cook_type_id: id} = f, v, {count, nodes, blobs})
+       when not is_nil(v) do
     if not is_binary(v), do: throw(:invalid)
-    slot = {:cook_blob, length(acc)}
-    {slot, [%{id: id, key: {id, slot}, kind: :blob, string: f.blob == :string, value: v} | acc]}
+    slot = {:cook_blob, count}
+    node = %{id: id, key: {id, slot}, kind: :blob, string: f.blob == :string, value: v}
+    {slot, {count + 1, Map.put(nodes, count, node), Map.put_new(blobs, {id, v}, count)}}
   end
 
-  defp cook_collect_field(%{t: :pointer, cook_type_id: id, elem: elem}, v, acc) when is_map(v),
-    do: {v, cook_push(acc, id, elem, v)}
+  defp cook_collect_field(%{t: :pointer, cook_type_id: id, elem: elem}, n, acc)
+       when is_integer(n),
+       do: {n, cook_push(acc, id, elem, n)}
 
   defp cook_collect_field(%{t: :table, elem: elem}, v, acc) when is_map(v),
     do: cook_collect(Map.fetch!(@tables, elem), v, acc)
@@ -458,8 +482,9 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   defp cook_collect_elem(%{elem_kind: 13, elem: elem}, e, acc) when is_map(e),
     do: cook_collect(Map.fetch!(@tables, elem), e, acc)
 
-  defp cook_collect_elem(%{elem_kind: 17, elem_cook_id: id, elem: elem}, e, acc) when is_map(e),
-    do: {e, cook_push(acc, id, elem, e)}
+  defp cook_collect_elem(%{elem_kind: 17, elem_cook_id: id, elem: elem}, n, acc)
+       when is_integer(n),
+       do: {n, cook_push(acc, id, elem, n)}
 
   defp cook_collect_elem(%{elem_kind: 15, elem: union}, e, acc),
     do: cook_collect_arm(union, e, acc)
@@ -483,19 +508,52 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     end
   end
 
-  # cook_push numbers a TABLE node once and walks its body the first time
-  # only: a node named again is the one record, blobs and all (§3.1). The node
-  # is placed before what its body reaches, then given the walked body.
-  defp cook_push(acc, id, elem, v) do
-    key = {id, v}
+  # cook_push numbers a TABLE node once, by its stored node number, and walks
+  # its body the first time only: a node named again is the one record, blobs
+  # and all (§3.1). The directory gives the node's value in constant time, so a
+  # shared node is never found by scanning collected nodes or by its whole
+  # value. The node is placed before what its body reaches, then given the
+  # walked body at its own position. Each number is marked with the table it
+  # was first reached as and whether its body is still being walked: a
+  # pointer to a node still OPEN is a data cycle, refused by name (§3.1), and a
+  # number reached as a second table type is not one node, an invalid value.
+  defp cook_push({count, nodes, blobs} = acc, id, elem, n) do
+    seen = Process.get(:elixir_cook_seen)
 
-    if Enum.any?(acc, fn n -> n.key == key end) do
-      acc
+    case Map.get(seen, n) do
+      {^elem, :closed} ->
+        acc
+
+      {^elem, :open} ->
+        throw(:data_cycle)
+
+      nil ->
+        Process.put(:elixir_cook_seen, Map.put(seen, n, {elem, :open}))
+        value = cook_node_lookup(n)
+        node = %{id: id, key: {id, n}, kind: :table, string: false, value: value, elem: elem}
+        acc = {count + 1, Map.put(nodes, count, node), blobs}
+        {body, {after_count, nodes, blobs}} = cook_collect(Map.fetch!(@tables, elem), value, acc)
+        closed = Map.put(Process.get(:elixir_cook_seen), n, {elem, :closed})
+        Process.put(:elixir_cook_seen, closed)
+        {after_count, Map.put(nodes, count, %{node | value: body}), blobs}
+
+      _ ->
+        throw(:invalid)
+    end
+  end
+
+  # a pointer field's number must name a table node in the directory
+  defp cook_node_lookup(n) do
+    directory = Process.get(:elixir_cook_directory)
+    at = n - 2
+
+    if directory == nil or at < 0 or at >= tuple_size(directory) do
+      throw(:invalid)
     else
-      node = %{id: id, key: key, kind: :table, string: false, value: v, elem: elem}
-      before = length(acc)
-      {body, acc} = cook_collect(Map.fetch!(@tables, elem), v, [node | acc])
-      List.update_at(acc, length(acc) - before - 1, &%{&1 | value: body})
+      case elem(directory, at) do
+        nil -> throw(:invalid)
+        value -> value
+      end
     end
   end
 
@@ -684,29 +742,39 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     end
   end
 
+  # Each node is written into its own window, a buffer of the node's size
+  # that answers the region's offsets ({origin, bytes}), and the windows are
+  # joined in layout order with the alignment gaps between them zero: a write
+  # copies one node, never the whole region, so the writer's work is linear in
+  # the node count.
   defp cook_render(plan, order) do
     try do
-      data = :binary.copy(<<0>>, plan.data)
       index = Map.new(plan.nodes, fn n -> {n.key, n.offset} end)
 
-      data =
-        Enum.reduce(plan.nodes, data, fn n, data ->
-          case n.kind do
-            :blob ->
-              data = put_u32(data, n.offset, byte_size(n.value), order)
-              put_raw(data, n.offset + 8, n.value)
+      {parts, at} =
+        Enum.reduce(plan.nodes, {[], 0}, fn n, {parts, at} ->
+          window = {n.offset, :binary.copy(<<0>>, n.size)}
 
-            :table ->
-              data = cook_record(n.desc, n.value, n.offset, index, order, data)
+          {_origin, bytes} =
+            case n.kind do
+              :blob ->
+                window = put_u32(window, n.offset, byte_size(n.value), order)
+                put_raw(window, n.offset + 8, n.value)
 
-              if n.extent == 0 and not n.desc.has_extent do
-                data
-              else
-                cook_carve(n.desc, n.value, n.offset, index, order, data)
-              end
-          end
+              :table ->
+                window = cook_record(n.desc, n.value, n.offset, index, order, window)
+
+                if n.extent == 0 and not n.desc.has_extent do
+                  window
+                else
+                  cook_carve(n.desc, n.value, n.offset, index, order, window)
+                end
+            end
+
+          {[bytes, :binary.copy(<<0>>, n.offset - at) | parts], n.offset + n.size}
         end)
 
+      data = [Enum.reverse(parts), :binary.copy(<<0>>, plan.data - at)]
       header = cook_header(plan, order)
       dir = cook_directory(plan.nodes, order)
       {:ok, IO.iodata_to_binary([header, data, dir])}
@@ -1030,6 +1098,8 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   defp put_float(buf, at, v, 8, :little), do: put_raw(buf, at, <<v::little-float-64>>)
   defp put_float(buf, at, v, 8, :big), do: put_raw(buf, at, <<v::big-float-64>>)
   defp put_float(_buf, _at, _v, _w, _order), do: throw(:invalid)
+
+  defp put_raw({origin, buf}, at, bytes), do: {origin, put_raw(buf, at - origin, bytes)}
 
   defp put_raw(buf, at, bytes) do
     n = byte_size(bytes)

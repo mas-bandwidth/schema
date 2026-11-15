@@ -47,14 +47,18 @@ do
 	local p = 1
 	for i = 0, 6 do
 		POW7[i] = p
-		p *= 128
+		if i < 6 then
+			p *= 128
+		end
 	end
 end
 
 -- leb(b, at, e): a canonical LEB128 value and the position after it, or nil
 -- (and at) when it does not read: past e, a tenth byte past 1, a non-final
--- zero continuation (docs/SPEC-TABLES.md §3). A value past 2^47 - 1 reads as
--- V.HUGE, which no length, count or index can be.
+-- zero continuation (docs/SPEC-TABLES.md §3). A value at or past 2^47 - 1
+-- reads as V.HUGE, the sticky marker no length, count or index can be. The
+-- room left at this group is tested before the multiply, so no product
+-- leaves moo's number range.
 function V.leb(b: buffer, at: number, e: number): (number?, number)
 	local v = 0
 	local mul = 1
@@ -73,13 +77,10 @@ function V.leb(b: buffer, at: number, e: number): (number?, number)
 				if low ~= 0 then
 					huge = true
 				end
+			elseif low > (V.HUGE - 1 - v) // mul then
+				huge = true
 			else
-				local add = low * mul
-				if v + add > V.HUGE - 1 then
-					huge = true
-				else
-					v += add
-				end
+				v += low * mul
 			end
 		end
 		if x < 128 then

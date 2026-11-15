@@ -469,6 +469,8 @@ public final class BenchMixedFixed {
                 if (live) {
                     r.refuse(TableFixed.Reason.outOfRange);
                 }
+            } else if (q == 0) {
+                q = 0.0f;
             }
             v.aimX = q;
         }
@@ -489,6 +491,8 @@ public final class BenchMixedFixed {
                 if (live) {
                     r.refuse(TableFixed.Reason.outOfRange);
                 }
+            } else if (q == 0) {
+                q = 0.0f;
             }
             v.aimY = q;
         }
@@ -509,6 +513,8 @@ public final class BenchMixedFixed {
                 if (live) {
                     r.refuse(TableFixed.Reason.outOfRange);
                 }
+            } else if (q == 0) {
+                q = 0.0f;
             }
             v.aimZ = q;
         }

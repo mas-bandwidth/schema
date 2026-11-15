@@ -106,6 +106,9 @@ type tableGen struct {
 	// anyList is the unit declaring at least one `[]T` (docs/SPEC-TABLES.md
 	// §2.9). It gates the list runtime and the builder's three the same way.
 	anyList bool
+	// storageAsserts is set once a write-side storage check is emitted
+	// (storageAssert): those are schema_assert, so the header takes the hook.
+	storageAsserts bool
 	// anyExtent is either: the unit carries the NODE EXTENT machinery both
 	// constructs share: the carve, the framing walk, the extent walks and the
 	// refusal reason (§2.8, §2.9, §6.5). A unit with neither carries none of it.
@@ -184,8 +187,9 @@ type tableGen struct {
 	//
 	// Empty everywhere else, INCLUDING every measure with no write beside it:
 	// a measure emitted on its own has nobody to hand the number to.
-	elemCache      string
-	elemCacheSlots int64
+	elemCache         string
+	elemCacheSlots    int64
+	elemNonDefaultVar string
 }
 
 // kElemCacheSlots is the most per-element lengths one array field keeps on the
@@ -753,6 +757,14 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
 	forceInline := tableInlineMacro(pkg)
 	messageForm := tableMessageForm(u)
+	// THE STRICT FORM-1 WALK (docs/SPEC-TABLES.md §6.5): the declaration-free
+	// body walk rides in every header, and the FIXED reader's entry beside it —
+	// the pointered reader's entry rides after the arena runtime, whose graph
+	// check it calls.
+	strictRuntime := tableStrictRuntime()
+	if !anyVariable {
+		strictRuntime += tableStrictFixedEntry()
+	}
 	// the fixed form's 128-bit stores name serialize.h's types, so they ride
 	// only in a unit that carries 128-bit storage and includes it
 	fixed128 := ""
@@ -1938,7 +1950,7 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
     }
 }
 
-` + messageForm + `` + keyedStorage + `inline float table_bits_to_float( uint32_t bits )
+` + strictRuntime + messageForm + `` + keyedStorage + `inline float table_bits_to_float( uint32_t bits )
 {
     float f;
     memcpy( &f, &bits, 4 );
@@ -2360,11 +2372,12 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// else (docs/SPEC-TABLES.md §3.4): a text field's used length and a
 		// counted array's live count, checked debug-only, with no abort behind
 		// them. The §5.1 write contract (range, bits width, enum ordinal,
-		// union tag, ill-formed text) asserts through the same hook, and so
-		// does every fixed save's at-least-one-record check (§22.6), so a file
-		// that emits the fixed form carries the hook. A unit with no fixed
-		// form and nothing to check gets no hook.
-		if !anyKeyed && !anyList && !anyTextList && (ir.TableFixedHasWriteCheck(u) || len(g.fixedRoots(members)) > 0) {
+		// union tag, ill-formed text) asserts through the same hook, and so do
+		// the variable and message writers' storage checks (docs/SPEC.md §5.1)
+		// and every fixed save's at-least-one-record check (§22.6), so a file
+		// that emits the fixed form carries the hook. A unit with nothing to
+		// check gets no hook.
+		if !anyKeyed && !anyList && !anyTextList && (ir.TableFixedHasWriteCheck(u) || g.storageAsserts || len(g.fixedRoots(members)) > 0) {
 			h.WriteString(tableAssertHook)
 		}
 		if anyKeyed || anyList || anyTextList {

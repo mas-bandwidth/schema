@@ -591,6 +591,19 @@ defmodule Bench.Bench do
     sc3 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 1
+
+    if not is_integer(value_big) do
+      raise ArgumentError, "value.big is not an integer"
+    end
+
+    if value_big < 0 do
+      raise ArgumentError, "value.big is below the wire minimum"
+    end
+
+    if value_big > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.big is above the wire maximum"
+    end
+
     v = value_big &&& 0xFFFFFFFF
     sc4 = scratch
     scratch = scratch >>> 32
@@ -2582,12 +2595,38 @@ defmodule Bench.Bench do
     v = value_ack_bits &&& 0xFFFFFFFF
     sc0 = scratch
     scratch = v
+
+    if not is_integer(value_session_id) do
+      raise ArgumentError, "value.session_id is not an integer"
+    end
+
+    if value_session_id < 0 do
+      raise ArgumentError, "value.session_id is below the wire minimum"
+    end
+
+    if value_session_id > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.session_id is above the wire maximum"
+    end
+
     v = value_session_id &&& 0xFFFFFFFF
     sc1 = scratch
     scratch = v
     v = value_session_id >>> 32 &&& 0xFFFFFFFF
     sc2 = scratch
     scratch = v
+
+    if not is_integer(value_client_id) do
+      raise ArgumentError, "value.client_id is not an integer"
+    end
+
+    if value_client_id < 0 do
+      raise ArgumentError, "value.client_id is below the wire minimum"
+    end
+
+    if value_client_id > 4_294_967_295 do
+      raise ArgumentError, "value.client_id is above the wire maximum"
+    end
+
     v = value_client_id &&& 0xFFFFFFFF
     sc3 = scratch
     scratch = v
@@ -2855,6 +2894,14 @@ defmodule Bench.Bench do
       raise ArgumentError, "value.player_name longer than the declared 15-byte bound"
     end
 
+    if not String.valid?(value_player_name) do
+      raise ArgumentError, "value.player_name is not well-formed UTF-8 (SPEC §4.7)"
+    end
+
+    if :binary.match(value_player_name, <<0>>) != :nomatch do
+      raise ArgumentError, "value.player_name holds a zero byte (SPEC §4.7)"
+    end
+
     v = byte_size(value_player_name)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
@@ -2877,10 +2924,37 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch>>
     # the used bytes ride whole — the stream is byte-aligned here
     data = <<data::binary, value_payload::binary>>
+
+    if is_number(value_aim_x) and value_aim_x < -1.0 do
+      raise ArgumentError, "value.aim_x is below the compressed float minimum"
+    end
+
+    if is_number(value_aim_x) and value_aim_x > 1.0 do
+      raise ArgumentError, "value.aim_x is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_aim_x, -1.0, 2.0, 200, 200.0)
     scratch = v
+
+    if is_number(value_aim_y) and value_aim_y < -1.0 do
+      raise ArgumentError, "value.aim_y is below the compressed float minimum"
+    end
+
+    if is_number(value_aim_y) and value_aim_y > 1.0 do
+      raise ArgumentError, "value.aim_y is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_aim_y, -1.0, 2.0, 200, 200.0)
     scratch = scratch ||| v <<< 8
+
+    if is_number(value_aim_z) and value_aim_z < -1.0 do
+      raise ArgumentError, "value.aim_z is below the compressed float minimum"
+    end
+
+    if is_number(value_aim_z) and value_aim_z > 1.0 do
+      raise ArgumentError, "value.aim_z is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_aim_z, -1.0, 2.0, 200, 200.0)
     scratch = scratch ||| v <<< 16
     v = f32_bits(value_recoil)
@@ -2888,6 +2962,19 @@ defmodule Bench.Bench do
     scratch = v
     data = <<data::binary, sc9::little-size(3)-unit(8), scratch::little-size(4)-unit(8)>>
     data = put_f64(data, value_drift)
+
+    if not is_integer(value_wide_key) do
+      raise ArgumentError, "value.wide_key is not an integer"
+    end
+
+    if value_wide_key < 0 do
+      raise ArgumentError, "value.wide_key is below the wire minimum"
+    end
+
+    if value_wide_key > 340_282_366_920_938_463_463_374_607_431_768_211_455 do
+      raise ArgumentError, "value.wide_key is above the wire maximum"
+    end
+
     v = value_wide_key &&& 0xFFFFFFFF
     scratch = v
     v = value_wide_key >>> 32 &&& 0xFFFFFFFF
@@ -3333,15 +3420,66 @@ defmodule Bench.Bench do
   defp wZbench_packetZblob([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZbench_packetZblob([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e1 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e1 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e1 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e2 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e2 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e2 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e3 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e3 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e3 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e4 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e4 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e4 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3353,6 +3491,18 @@ defmodule Bench.Bench do
   end
 
   defp wZbench_packetZblob([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3798,15 +3948,66 @@ defmodule Bench.Bench do
   defp wZbench_mixedZloadout([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZbench_mixedZloadout([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e1 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e1 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e1 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e2 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e2 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e2 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e3 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e3 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e3 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e4 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e4 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e4 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3818,6 +4019,18 @@ defmodule Bench.Bench do
   end
 
   defp wZbench_mixedZloadout([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8

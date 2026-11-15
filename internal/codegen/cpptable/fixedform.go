@@ -510,10 +510,18 @@ func fixedLoopVar(depth int) string {
 // to its payload's WIRE bytes (the wrapper's size less the present byte). The
 // layout walk carries both children; the plan's count entry carries the bound
 // in ELEMENTS and its present-defaults entry carries the payload's STORAGE
-// bytes, so the dead-byte scan needs the wire spans from here.
-func fixedPlanWireSpans(entries []ir.TableFixedLayoutEntry) (elems, payloads map[int64]int64) {
-	elems = map[int64]int64{}
-	payloads = map[int64]int64{}
+// bytes, so the dead-byte scan needs the wire spans from here. Every arm of a
+// union begins at the same offset, so the key is the offset AND the innermost
+// arm it sits in (the plan entry's Guard and Arg): a [..3]uint16 arm and a
+// bytes(4) arm of one union are two spans, not one.
+type fixedWireSpanKey struct {
+	src, guard int64
+	arg        int
+}
+
+func fixedPlanWireSpans(entries []ir.TableFixedLayoutEntry) (elems, payloads map[fixedWireSpanKey]int64) {
+	elems = map[fixedWireSpanKey]int64{}
+	payloads = map[fixedWireSpanKey]int64{}
 	var next func(i int) int
 	next = func(i int) int {
 		n := i + 1
@@ -522,23 +530,24 @@ func fixedPlanWireSpans(entries []ir.TableFixedLayoutEntry) (elems, payloads map
 		}
 		return n
 	}
-	var walk func(i int, src int64)
-	walk = func(i int, src int64) {
+	var walk func(i int, src, guard int64, arg int)
+	walk = func(i int, src, guard int64, arg int) {
 		e := entries[i]
+		at := fixedWireSpanKey{src: src, guard: guard, arg: arg}
 		switch {
 		case e.Kind == ir.TableKindEnum || e.Children == 0:
 			return
 		case e.Kind == ir.TableKindTable:
-			n, at := i+1, src
+			n, off := i+1, src
 			for c := 0; c < e.Children; c++ {
 				size := entries[n].Size
-				walk(n, at)
-				at += size
+				walk(n, off, guard, arg)
+				off += size
 				n = next(n)
 			}
 		case e.Kind == ir.TableKindOptional:
-			payloads[src] = e.Size - 1
-			walk(i+1, src+1)
+			payloads[at] = e.Size - 1
+			walk(i+1, src+1, guard, arg)
 		case e.Kind == ir.TableKindArray:
 			child := i + 1
 			base := src
@@ -546,10 +555,10 @@ func fixedPlanWireSpans(entries []ir.TableFixedLayoutEntry) (elems, payloads map
 				base += 4
 			}
 			elem := entries[child].Size
-			elems[src] = elem
+			elems[at] = elem
 			if elem > 0 {
 				for k := int64(0); k < (e.Size-(base-src))/elem; k++ {
-					walk(child, base+k*elem)
+					walk(child, base+k*elem, guard, arg)
 				}
 			}
 		case e.Kind == ir.TableKindKeyed:
@@ -561,12 +570,13 @@ func fixedPlanWireSpans(entries []ir.TableFixedLayoutEntry) (elems, payloads map
 			elem := entries[child].Size
 			if elem > 0 {
 				for k := int64(0); k < e.Size/elem; k++ {
-					walk(child, src+k*elem)
+					walk(child, src+k*elem, guard, arg)
 				}
 			}
 		case e.Kind == ir.TableKindUnion:
 			// Every arm begins after the tag: the union's size minus its widest
-			// arm's size is the tag's width.
+			// arm's size is the tag's width. Arm c rides under the tag's
+			// ordinal c+1, which is the innermost guard of what it holds.
 			widest := int64(0)
 			n := i + 1
 			for c := 0; c < e.Children; c++ {
@@ -578,13 +588,13 @@ func fixedPlanWireSpans(entries []ir.TableFixedLayoutEntry) (elems, payloads map
 			tag := e.Size - widest
 			n = i + 1
 			for c := 0; c < e.Children; c++ {
-				walk(n, src+tag)
+				walk(n, src+tag, src, c+1)
 				n = next(n)
 			}
 		}
 	}
 	if len(entries) > 0 {
-		walk(0, 0)
+		walk(0, 0, ir.TableFixedNoGuard, 0)
 	}
 	return elems, payloads
 }
@@ -680,11 +690,19 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		aux := e.Aux
 		meta := e.Meta
 		dstsize := 0
+		span := fixedWireSpanKey{src: e.Src, guard: e.Guard, arg: e.Arg}
+		if e.Guard == ir.TableFixedNoGuard {
+			span.arg = 0
+		}
 		if e.Op == ir.TableFixedOpCount {
-			aux = elemBytes[e.Src]
+			width, ok := elemBytes[span]
+			if !ok {
+				panic(fmt.Sprintf("cpptable: %s: the count at %d under arm %d of the tag at %d has no element width in the layout", st.Name, e.Src, e.Arg, e.Guard))
+			}
+			aux = width
 		}
 		if e.Op == ir.TableFixedOpPresentDefaults {
-			wire := optionalPayload[e.Src]
+			wire := optionalPayload[span]
 			meta = int(wire & 0xff)
 			dstsize = int((wire >> 8) & 0xff)
 		}
@@ -1480,8 +1498,10 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		// clamp, and the writers hold row 10 where the table says they do.
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		g.fixedClampBoth(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
+		g.fixedNegZero(expr, true, ind)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
 		g.fixedClampBoth(expr, formatFloat(f.FMin, false), formatFloat(f.FMax, false), ind)
+		g.fixedNegZero(expr, false, ind)
 	default:
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))
 		// A FIXED-POINT FIELD'S BOUNDS ARE IN VALUE UNITS and its storage is
@@ -1522,7 +1542,28 @@ func (g *tableGen) fixedClampBoth(expr, lo, hi, ind string) {
 	g.pf("%s%s = ( %s < %s ) ? %s : ( ( %s > %s ) ? %s : %s );\n", ind, expr, expr, lo, lo, expr, hi, hi, expr)
 }
 
-// fixedClampEnd is the one-ended twin: an end the storage's own width already
+// fixedNegZero is a compressed float's -0 (docs/SPEC-TABLES.md §3.3, A
+// COMPRESSED FLOAT'S SPECIAL VALUES; docs/rulings.json fixed-compressed-negzero):
+// it lands as +0, the value 0 itself, refusing nothing and counting nothing, so
+// a read-then-save writes the +0 image. The Go oracle is gotable's
+// compressedFloatBound. The CHECK asks for the sign bit alone, so a record
+// holding +0 still skips the body; the BODY tests the value (neither below nor
+// above zero, which a NaN never reaches: the finite pass refused it first) and
+// stores 0. Neither spells a float `==`, which -Wfloat-equal reds. A plain
+// float carries no range and is never here: its -0 rides bit-exact.
+func (g *tableGen) fixedNegZero(expr string, f32 bool, ind string) {
+	bits, sign, zero := "table_double_to_bits", "0x8000000000000000ull", "0.0"
+	if f32 {
+		bits, sign, zero = "table_float_to_bits", "0x80000000u", "0.0f"
+	}
+	if g.fixedCheck {
+		g.pf("%sbad |= (int) ( %s( %s ) == %s );\n", ind, bits, expr, sign)
+		return
+	}
+	g.pf("%sif ( !( %s < %s ) && !( %s > %s ) ) { %s = %s; }\n", ind, expr, zero, expr, zero, expr, zero)
+}
+
+// fixedClampEnd is the one-ended twin:an end the storage's own width already
 // holds is an end the emitter drops (tableClampEnds), so a great many bounded
 // fields spend one compare and not two.
 func (g *tableGen) fixedClampEnd(expr, op, bound, ind string) {

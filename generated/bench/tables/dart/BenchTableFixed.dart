@@ -1773,8 +1773,8 @@ abstract final class TableFixedCompiler {
           (theirArms >= 1 && theirArms <= 255) ? theirArms : 0,
         );
         plan.argw = innerArgw;
-        // THE DEAD BYTES OF THIS UNION ARE CHECKED IN THE PLAN (docs/FIXED-
-        // FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11): tag 0 names no arm, so
+        // THE DEAD BYTES OF THIS UNION ARE CHECKED IN THE PLAN
+        // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11): tag 0 names no arm, so
         // every arm byte is dead; a taken arm leaves the bytes past it inside
         // the widest arm's span dead. Each dead entry reads the writer's
         // record and lands nothing.
@@ -2328,6 +2328,10 @@ final class TableMessageShape {
       s.elem = sig[at];
       at += 1;
       if (!tableMessageKnownKind(s.elem)) return null;
+      // AN ARRAY OR KEYED ELEMENT IS FRAMING DAMAGE (docs/SPEC-TABLES.md
+      // §3.3, ir.DecodeShape): no declaration produces a list of lists or a
+      // list of keyed arrays.
+      if (s.elem == 14 || s.elem == 16) return null;
       final inner = decode(sig, at, end, s.elem);
       if (inner == null) return null;
       s.inner = inner.$1;

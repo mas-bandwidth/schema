@@ -190,7 +190,18 @@ func (g *tableGen) emitUnionWire(un *ir.Union) {
 		}
 		g.pf("            break;\n        }\n")
 	}
-	g.pf("%s", "        default: "+g.unknownEvent()+" break;\n    }\n    return 1;\n}\n\n")
+	// AN UNKNOWN ARM IS WALKED, NOT ONLY FRAMED (docs/SPEC-TABLES.md §4,
+	// §6.5): the value reads empty, but its payload is held to the rules a
+	// read of it would hold, exactly as an unknown field's payload is, and
+	// damage inside it refuses the whole load. A structural arm is one level
+	// deeper, as the engine's union walk counts it.
+	nodes := "0"
+	if g.anyVariable {
+		nodes = "( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 )"
+	}
+	g.pf("        default:\n            %s\n", g.unknownEvent())
+	g.pf("            if ( !table_skip_framed( arm, kind, %s, kind == 13 || kind == 14 || kind == 15 || kind == 16 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", nodes)
+	g.pf("            break;\n    }\n    return 1;\n}\n\n")
 }
 
 // An arm's L is its field payload's frame: no second length surrounds it.

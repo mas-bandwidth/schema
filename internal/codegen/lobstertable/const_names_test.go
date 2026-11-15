@@ -1,6 +1,7 @@
 package lobstertable
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -66,9 +67,7 @@ func TestLobsterTableConstNamesNeverShadowGeneratedLocals(t *testing.T) {
 		if err != nil {
 			t.Fatalf("consts %v: %v", set, err)
 		}
-		for name, data := range shadowTables {
-			shadow[name] = data
-		}
+		maps.Copy(shadow, shadowTables)
 		dir := t.TempDir()
 		tableWriteAll(t, dir, shadow)
 		tableWriteFile(t, dir, "main.lobster", tableConstNamesProbe)
@@ -155,9 +154,7 @@ func runTableTypeNames(t *testing.T, src string) {
 	if err != nil {
 		t.Fatalf("generate tables: %v\n%s", err, src)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	tableWriteAll(t, dir, files)
 	tableWriteFile(t, dir, "main.lobster", tableTypeNamesProbe)
@@ -171,8 +168,10 @@ const tableTypeNamesProbe = `import .ProbeTable
 let v = probe.NewProbeRoot()
 v.Tail = 7
 let wire = probe.ProbeRootFixedSave([v])
-let back = probe.ProbeRootFixedDecode(wire)
-assert length(back) == 1
+let back = [probe.NewProbeRoot()]
+let plan:[schema_rt.TableFixedEntry] = []
+for(probe.ProbeRootFixedPlanMax): push(plan, schema_rt.TableFixedEntry {})
+assert probe.ProbeRootFixedLoad(back, wire, plan, schema_rt.TableReport {}) == 1
 assert back[0].Tail == 7
 print("ok")
 `
@@ -218,7 +217,7 @@ func tableGeneratedLocals(t *testing.T, src string) []string {
 		}
 	}
 	for _, m := range tableGeneratedDefLine.FindAllStringSubmatch(src, -1) {
-		for _, part := range strings.Split(m[1], ",") {
+		for part := range strings.SplitSeq(m[1], ",") {
 			fields := strings.Fields(strings.TrimSpace(part))
 			if len(fields) > 0 {
 				name, _, _ := strings.Cut(fields[0], ":")
@@ -227,7 +226,7 @@ func tableGeneratedLocals(t *testing.T, src string) []string {
 		}
 	}
 	for _, m := range tableGeneratedDeclLine.FindAllStringSubmatch(src, -1) {
-		for _, part := range strings.Split(m[1], ",") {
+		for part := range strings.SplitSeq(m[1], ",") {
 			fields := strings.Fields(strings.TrimSpace(part))
 			if len(fields) > 0 {
 				name, _, _ := strings.Cut(fields[0], ":")
@@ -236,7 +235,7 @@ func tableGeneratedLocals(t *testing.T, src string) []string {
 		}
 	}
 	for _, m := range tableGeneratedForLine.FindAllStringSubmatch(src, -1) {
-		for _, part := range strings.Split(m[1], ",") {
+		for part := range strings.SplitSeq(m[1], ",") {
 			fields := strings.Fields(strings.TrimSpace(part))
 			if len(fields) > 0 {
 				add(fields[0])
@@ -295,7 +294,9 @@ const tableConstNamesProbe = `import .ProbeTable
 
 let v = tabledemo.NewRootConfig()
 let wire = tabledemo.RootConfigFixedSave([v])
-let back = tabledemo.RootConfigFixedDecode(wire)
-assert length(back) == 1
+let back = [tabledemo.NewRootConfig()]
+let plan:[schema_rt.TableFixedEntry] = []
+for(tabledemo.RootConfigFixedPlanMax): push(plan, schema_rt.TableFixedEntry {})
+assert tabledemo.RootConfigFixedLoad(back, wire, plan, schema_rt.TableReport {}) == 1
 print("ok")
 `

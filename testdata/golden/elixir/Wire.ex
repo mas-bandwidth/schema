@@ -584,6 +584,19 @@ defmodule Example.Wire do
     data = <<scratch::little-size(2)-unit(8)>>
     # align: zero-pad to the byte boundary (SPEC §4.3)
     # already byte-aligned, and nothing is pending
+
+    if not is_integer(value_probe_id) do
+      raise ArgumentError, "value.probe_id is not an integer"
+    end
+
+    if value_probe_id < 0 do
+      raise ArgumentError, "value.probe_id is below the wire minimum"
+    end
+
+    if value_probe_id > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.probe_id is above the wire maximum"
+    end
+
     v = value_probe_id &&& 0xFFFFFFFF
     scratch = v
     v = value_probe_id >>> 32 &&& 0xFFFFFFFF
@@ -919,10 +932,45 @@ defmodule Example.Wire do
 
     v = if value_active, do: 1, else: 0
     scratch = v
+
+    if is_number(value_orientation) and value_orientation < -180.0 do
+      raise ArgumentError, "value.orientation is below the compressed float minimum"
+    end
+
+    if is_number(value_orientation) and value_orientation > 180.0 do
+      raise ArgumentError, "value.orientation is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_orientation, -180.0, 360.0, 36000, 36000.0)
     scratch = scratch ||| v <<< 1
+
+    if not is_integer(value_raw_delta) do
+      raise ArgumentError, "value.raw_delta is not an integer"
+    end
+
+    if value_raw_delta < -2_147_483_648 do
+      raise ArgumentError, "value.raw_delta is below the wire minimum"
+    end
+
+    if value_raw_delta > 2_147_483_647 do
+      raise ArgumentError, "value.raw_delta is above the wire maximum"
+    end
+
     v = value_raw_delta &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< 17
+
+    if not is_integer(value_big_delta) do
+      raise ArgumentError, "value.big_delta is not an integer"
+    end
+
+    if value_big_delta < -9_223_372_036_854_775_808 do
+      raise ArgumentError, "value.big_delta is below the wire minimum"
+    end
+
+    if value_big_delta > 9_223_372_036_854_775_807 do
+      raise ArgumentError, "value.big_delta is above the wire maximum"
+    end
+
     v = value_big_delta &&& 0xFFFFFFFF
     sc0 = scratch
     scratch = scratch >>> 48
@@ -948,6 +996,18 @@ defmodule Example.Wire do
 
         {data, scratch} =
           if value_has_target do
+            if not is_integer(value.target_id) do
+              raise ArgumentError, "value.target_id is not an integer"
+            end
+
+            if value.target_id < 0 do
+              raise ArgumentError, "value.target_id is below the wire minimum"
+            end
+
+            if value.target_id > 65535 do
+              raise ArgumentError, "value.target_id is above the wire maximum"
+            end
+
             v = value.target_id &&& 0xFFFF
             scratch = scratch ||| v <<< 6
             data = <<data::binary, scratch::little-size(2)-unit(8)>>
@@ -960,6 +1020,18 @@ defmodule Example.Wire do
         scratch_bits = 6
         {data, scratch, scratch_bits}
       else
+        if not is_integer(value.idle_ticks) do
+          raise ArgumentError, "value.idle_ticks is not an integer"
+        end
+
+        if value.idle_ticks < 0 do
+          raise ArgumentError, "value.idle_ticks is below the wire minimum"
+        end
+
+        if value.idle_ticks > 4_294_967_295 do
+          raise ArgumentError, "value.idle_ticks is above the wire maximum"
+        end
+
         v = value.idle_ticks &&& 0xFFFFFFFF
         scratch = scratch ||| v <<< 1
         data = <<data::binary, scratch::little-size(4)-unit(8)>>
@@ -1147,6 +1219,18 @@ defmodule Example.Wire do
   """
   @spec write_probe_ring!(Example.ProbeRing.t()) :: binary()
   def write_probe_ring!(value) do
+    if not is_integer(value.radius) do
+      raise ArgumentError, "value.radius is not an integer"
+    end
+
+    if value.radius < 0 do
+      raise ArgumentError, "value.radius is below the wire minimum"
+    end
+
+    if value.radius > 65535 do
+      raise ArgumentError, "value.radius is above the wire maximum"
+    end
+
     v = value.radius &&& 0xFFFF
     scratch = v
     <<scratch::little-size(2)-unit(8)>>
@@ -1250,6 +1334,19 @@ defmodule Example.Wire do
 
     v = value_width
     scratch = v
+
+    if not is_integer(value_height) do
+      raise ArgumentError, "value.height is not an integer"
+    end
+
+    if value_height < 0 do
+      raise ArgumentError, "value.height is below the wire minimum"
+    end
+
+    if value_height > 255 do
+      raise ArgumentError, "value.height is above the wire maximum"
+    end
+
     v = value_height &&& 0xFF
     scratch = scratch ||| v <<< 7
     data = <<scratch::little-size(1)-unit(8)>>
@@ -1381,6 +1478,18 @@ defmodule Example.Wire do
     {data, scratch, scratch_bits} =
       case value do
         {:ring, value_ring} ->
+          if not is_integer(value_ring.radius) do
+            raise ArgumentError, "value.ring.radius is not an integer"
+          end
+
+          if value_ring.radius < 0 do
+            raise ArgumentError, "value.ring.radius is below the wire minimum"
+          end
+
+          if value_ring.radius > 65535 do
+            raise ArgumentError, "value.ring.radius is above the wire maximum"
+          end
+
           v = value_ring.radius &&& 0xFFFF
           scratch = scratch ||| v <<< 2
           data = <<data::binary, scratch::little-size(2)-unit(8)>>
@@ -1401,6 +1510,19 @@ defmodule Example.Wire do
 
           v = value_slab_width
           scratch = scratch ||| v <<< 2
+
+          if not is_integer(value_slab_height) do
+            raise ArgumentError, "value.slab.height is not an integer"
+          end
+
+          if value_slab_height < 0 do
+            raise ArgumentError, "value.slab.height is below the wire minimum"
+          end
+
+          if value_slab_height > 255 do
+            raise ArgumentError, "value.slab.height is above the wire maximum"
+          end
+
           v = value_slab_height &&& 0xFF
           scratch = scratch ||| v <<< 9
           data = <<data::binary, scratch::little-size(2)-unit(8)>>
@@ -1537,6 +1659,19 @@ defmodule Example.Wire do
   @spec write_probe_collider!(Example.ProbeCollider.t()) :: binary()
   def write_probe_collider!(value) do
     %{armor: value_armor, shape: value_shape, backup: value_backup, extras: value_extras} = value
+
+    if not is_integer(value_armor) do
+      raise ArgumentError, "value.armor is not an integer"
+    end
+
+    if value_armor < 0 do
+      raise ArgumentError, "value.armor is below the wire minimum"
+    end
+
+    if value_armor > 255 do
+      raise ArgumentError, "value.armor is above the wire maximum"
+    end
+
     v = value_armor &&& 0xFF
     scratch = v
 
@@ -1563,6 +1698,18 @@ defmodule Example.Wire do
     {data, scratch, scratch_bits} =
       case value_shape do
         {:ring, value_shape_ring} ->
+          if not is_integer(value_shape_ring.radius) do
+            raise ArgumentError, "value.shape.ring.radius is not an integer"
+          end
+
+          if value_shape_ring.radius < 0 do
+            raise ArgumentError, "value.shape.ring.radius is below the wire minimum"
+          end
+
+          if value_shape_ring.radius > 65535 do
+            raise ArgumentError, "value.shape.ring.radius is above the wire maximum"
+          end
+
           v = value_shape_ring.radius &&& 0xFFFF
           scratch = scratch ||| v <<< 2
           data = <<data::binary, scratch::little-size(2)-unit(8)>>
@@ -1583,6 +1730,19 @@ defmodule Example.Wire do
 
           v = value_shape_slab_width
           scratch = scratch ||| v <<< 2
+
+          if not is_integer(value_shape_slab_height) do
+            raise ArgumentError, "value.shape.slab.height is not an integer"
+          end
+
+          if value_shape_slab_height < 0 do
+            raise ArgumentError, "value.shape.slab.height is below the wire minimum"
+          end
+
+          if value_shape_slab_height > 255 do
+            raise ArgumentError, "value.shape.slab.height is above the wire maximum"
+          end
+
           v = value_shape_slab_height &&& 0xFF
           scratch = scratch ||| v <<< 9
           data = <<data::binary, scratch::little-size(2)-unit(8)>>
@@ -1622,6 +1782,18 @@ defmodule Example.Wire do
     {data, scratch, scratch_bits} =
       case value_backup do
         {:ring, value_backup_ring} ->
+          if not is_integer(value_backup_ring.radius) do
+            raise ArgumentError, "value.backup.ring.radius is not an integer"
+          end
+
+          if value_backup_ring.radius < 0 do
+            raise ArgumentError, "value.backup.ring.radius is below the wire minimum"
+          end
+
+          if value_backup_ring.radius > 65535 do
+            raise ArgumentError, "value.backup.ring.radius is above the wire maximum"
+          end
+
           v = value_backup_ring.radius &&& 0xFFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 16
@@ -1645,6 +1817,19 @@ defmodule Example.Wire do
           v = value_backup_slab_width
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 7
+
+          if not is_integer(value_backup_slab_height) do
+            raise ArgumentError, "value.backup.slab.height is not an integer"
+          end
+
+          if value_backup_slab_height < 0 do
+            raise ArgumentError, "value.backup.slab.height is below the wire minimum"
+          end
+
+          if value_backup_slab_height > 255 do
+            raise ArgumentError, "value.backup.slab.height is above the wire maximum"
+          end
+
           v = value_backup_slab_height &&& 0xFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 8
@@ -1863,6 +2048,19 @@ defmodule Example.Wire do
   @spec write_probe_config!(Example.ProbeConfig.t()) :: binary()
   def write_probe_config!(value) do
     %{retries: value_retries, preferred: value_preferred} = value
+
+    if not is_integer(value_retries) do
+      raise ArgumentError, "value.retries is not an integer"
+    end
+
+    if value_retries < -2_147_483_648 do
+      raise ArgumentError, "value.retries is below the wire minimum"
+    end
+
+    if value_retries > 2_147_483_647 do
+      raise ArgumentError, "value.retries is above the wire maximum"
+    end
+
     v = value_retries &&& 0xFFFFFFFF
     scratch = v
     v = Example.Weapon.to_int(value_preferred)
@@ -1979,6 +2177,19 @@ defmodule Example.Wire do
       wZprobe_arrayZsamples(value_samples, <<>>, scratch, scratch_bits)
 
     %{retries: value_config_retries, preferred: value_config_preferred} = value_config
+
+    if not is_integer(value_config_retries) do
+      raise ArgumentError, "value.config.retries is not an integer"
+    end
+
+    if value_config_retries < -2_147_483_648 do
+      raise ArgumentError, "value.config.retries is below the wire minimum"
+    end
+
+    if value_config_retries > 2_147_483_647 do
+      raise ArgumentError, "value.config.retries is above the wire maximum"
+    end
+
     v = value_config_retries &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -2173,6 +2384,18 @@ defmodule Example.Wire do
       test_c: value_test_c,
       test_d: value_test_d
     } = value
+
+    if not is_integer(value_test_a) do
+      raise ArgumentError, "value.test_a is not an integer"
+    end
+
+    if value_test_a < 0 do
+      raise ArgumentError, "value.test_a is below the wire minimum"
+    end
+
+    if value_test_a > 65535 do
+      raise ArgumentError, "value.test_a is above the wire maximum"
+    end
 
     v = value_test_a &&& 0xFFFF
     scratch = v
@@ -2433,6 +2656,14 @@ defmodule Example.Wire do
       raise ArgumentError, "value.text longer than the declared 256-byte bound"
     end
 
+    if not String.valid?(value.text) do
+      raise ArgumentError, "value.text is not well-formed UTF-8 (SPEC §4.7)"
+    end
+
+    if :binary.match(value.text, <<0>>) != :nomatch do
+      raise ArgumentError, "value.text holds a zero byte (SPEC §4.7)"
+    end
+
     v = byte_size(value.text)
     scratch = v
     data = <<scratch::little-size(1)-unit(8)>>
@@ -2566,6 +2797,19 @@ defmodule Example.Wire do
     data = <<scratch::little-size(2)-unit(8)>>
     # align: zero-pad to the byte boundary (SPEC §4.3)
     # already byte-aligned, and nothing is pending
+
+    if not is_integer(value_header_probe_id) do
+      raise ArgumentError, "value.header.probe_id is not an integer"
+    end
+
+    if value_header_probe_id < 0 do
+      raise ArgumentError, "value.header.probe_id is below the wire minimum"
+    end
+
+    if value_header_probe_id > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.header.probe_id is above the wire maximum"
+    end
+
     v = value_header_probe_id &&& 0xFFFFFFFF
     scratch = v
     v = value_header_probe_id >>> 32 &&& 0xFFFFFFFF
@@ -2585,6 +2829,18 @@ defmodule Example.Wire do
       test_c: value_echo_test_c,
       test_d: value_echo_test_d
     } = value_echo
+
+    if not is_integer(value_echo_test_a) do
+      raise ArgumentError, "value.echo.test_a is not an integer"
+    end
+
+    if value_echo_test_a < 0 do
+      raise ArgumentError, "value.echo.test_a is below the wire minimum"
+    end
+
+    if value_echo_test_a > 65535 do
+      raise ArgumentError, "value.echo.test_a is above the wire maximum"
+    end
 
     v = value_echo_test_a &&& 0xFFFF
     sc1 = scratch
@@ -2891,6 +3147,15 @@ defmodule Example.Wire do
     v = f32_bits(value_float_value)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if is_number(value_compressed_float_value) and value_compressed_float_value < 0.0 do
+      raise ArgumentError, "value.compressed_float_value is below the compressed float minimum"
+    end
+
+    if is_number(value_compressed_float_value) and value_compressed_float_value > 10.0 do
+      raise ArgumentError, "value.compressed_float_value is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_compressed_float_value, 0.0, 10.0, 1000, 1000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
@@ -2909,9 +3174,35 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if not is_integer(value_int8_value) do
+      raise ArgumentError, "value.int8_value is not an integer"
+    end
+
+    if value_int8_value < -128 do
+      raise ArgumentError, "value.int8_value is below the wire minimum"
+    end
+
+    if value_int8_value > 127 do
+      raise ArgumentError, "value.int8_value is above the wire maximum"
+    end
+
     v = value_int8_value &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(value_int16_value) do
+      raise ArgumentError, "value.int16_value is not an integer"
+    end
+
+    if value_int16_value < -32768 do
+      raise ArgumentError, "value.int16_value is below the wire minimum"
+    end
+
+    if value_int16_value > 32767 do
+      raise ArgumentError, "value.int16_value is above the wire maximum"
+    end
+
     v = value_int16_value &&& 0xFFFF
     sc3 = scratch
     fl3 = scratch_bits >>> 3
@@ -2919,12 +3210,51 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if not is_integer(value_uint8_value) do
+      raise ArgumentError, "value.uint8_value is not an integer"
+    end
+
+    if value_uint8_value < 0 do
+      raise ArgumentError, "value.uint8_value is below the wire minimum"
+    end
+
+    if value_uint8_value > 255 do
+      raise ArgumentError, "value.uint8_value is above the wire maximum"
+    end
+
     v = value_uint8_value &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(value_uint16_value) do
+      raise ArgumentError, "value.uint16_value is not an integer"
+    end
+
+    if value_uint16_value < 0 do
+      raise ArgumentError, "value.uint16_value is below the wire minimum"
+    end
+
+    if value_uint16_value > 65535 do
+      raise ArgumentError, "value.uint16_value is above the wire maximum"
+    end
+
     v = value_uint16_value &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if not is_integer(value_uint32_value) do
+      raise ArgumentError, "value.uint32_value is not an integer"
+    end
+
+    if value_uint32_value < 0 do
+      raise ArgumentError, "value.uint32_value is below the wire minimum"
+    end
+
+    if value_uint32_value > 4_294_967_295 do
+      raise ArgumentError, "value.uint32_value is above the wire maximum"
+    end
+
     v = value_uint32_value &&& 0xFFFFFFFF
     sc4 = scratch
     fl4 = scratch_bits >>> 3
@@ -2932,6 +3262,19 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if not is_integer(value_uint64_value) do
+      raise ArgumentError, "value.uint64_value is not an integer"
+    end
+
+    if value_uint64_value < 0 do
+      raise ArgumentError, "value.uint64_value is below the wire minimum"
+    end
+
+    if value_uint64_value > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.uint64_value is above the wire maximum"
+    end
+
     v = value_uint64_value &&& 0xFFFFFFFF
     sc5 = scratch
     fl5 = scratch_bits >>> 3
@@ -2946,6 +3289,19 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if not is_integer(value_int64_full) do
+      raise ArgumentError, "value.int64_full is not an integer"
+    end
+
+    if value_int64_full < -9_223_372_036_854_775_808 do
+      raise ArgumentError, "value.int64_full is below the wire minimum"
+    end
+
+    if value_int64_full > 9_223_372_036_854_775_807 do
+      raise ArgumentError, "value.int64_full is above the wire maximum"
+    end
+
     v = value_int64_full &&& 0xFFFFFFFF
     sc7 = scratch
     fl7 = scratch_bits >>> 3
@@ -3006,6 +3362,14 @@ defmodule Example.Wire do
 
     if byte_size(value_text) > 255 do
       raise ArgumentError, "value.text longer than the declared 255-byte bound"
+    end
+
+    if not String.valid?(value_text) do
+      raise ArgumentError, "value.text is not well-formed UTF-8 (SPEC §4.7)"
+    end
+
+    if :binary.match(value_text, <<0>>) != :nomatch do
+      raise ArgumentError, "value.text holds a zero byte (SPEC §4.7)"
     end
 
     v = byte_size(value_text)
@@ -3261,8 +3625,26 @@ defmodule Example.Wire do
   @spec write_compressed_probe!(Example.CompressedProbe.t()) :: binary()
   def write_compressed_probe!(value) do
     %{boundary: value_boundary, offset: value_offset} = value
+
+    if is_number(value_boundary) and value_boundary < 0.0 do
+      raise ArgumentError, "value.boundary is below the compressed float minimum"
+    end
+
+    if is_number(value_boundary) and value_boundary > 10.0 do
+      raise ArgumentError, "value.boundary is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_boundary, 0.0, 10.0, 1000, 1000.0)
     scratch = v
+
+    if is_number(value_offset) and value_offset < -5.0 do
+      raise ArgumentError, "value.offset is below the compressed float minimum"
+    end
+
+    if is_number(value_offset) and value_offset > 5.0 do
+      raise ArgumentError, "value.offset is above the compressed float maximum"
+    end
+
     v = cf_quantize(value_offset, -5.0, 10.0, 10000, 10000.0)
     scratch = scratch ||| v <<< 10
     <<scratch::little-size(3)-unit(8)>>
@@ -3338,15 +3720,66 @@ defmodule Example.Wire do
   defp wZprobe_sampleZsamples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZprobe_sampleZsamples([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e1 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e1 > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e1 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e2 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e2 > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e2 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e3 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e3 > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e3 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e4 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e4 > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e4 &&& 0xFFFF
     sc0 = scratch
     fl0 = scratch_bits >>> 3
@@ -3362,6 +3795,18 @@ defmodule Example.Wire do
   end
 
   defp wZprobe_sampleZsamples([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e > 65535 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
@@ -3498,6 +3943,18 @@ defmodule Example.Wire do
     {data, scratch, scratch_bits} =
       case e do
         {:ring, e_ring} ->
+          if not is_integer(e_ring.radius) do
+            raise ArgumentError, "e.ring.radius is not an integer"
+          end
+
+          if e_ring.radius < 0 do
+            raise ArgumentError, "e.ring.radius is below the wire minimum"
+          end
+
+          if e_ring.radius > 65535 do
+            raise ArgumentError, "e.ring.radius is above the wire maximum"
+          end
+
           v = e_ring.radius &&& 0xFFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 16
@@ -3521,6 +3978,19 @@ defmodule Example.Wire do
           v = e_slab_width
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 7
+
+          if not is_integer(e_slab_height) do
+            raise ArgumentError, "e.slab.height is not an integer"
+          end
+
+          if e_slab_height < 0 do
+            raise ArgumentError, "e.slab.height is below the wire minimum"
+          end
+
+          if e_slab_height > 255 do
+            raise ArgumentError, "e.slab.height is above the wire maximum"
+          end
+
           v = e_slab_height &&& 0xFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 8
@@ -3595,12 +4065,47 @@ defmodule Example.Wire do
     v = if e_active, do: 1, else: 0
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if is_number(e_orientation) and e_orientation < -180.0 do
+      raise ArgumentError, "e.orientation is below the compressed float minimum"
+    end
+
+    if is_number(e_orientation) and e_orientation > 180.0 do
+      raise ArgumentError, "e.orientation is above the compressed float maximum"
+    end
+
     v = cf_quantize(e_orientation, -180.0, 360.0, 36000, 36000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if not is_integer(e_raw_delta) do
+      raise ArgumentError, "e.raw_delta is not an integer"
+    end
+
+    if e_raw_delta < -2_147_483_648 do
+      raise ArgumentError, "e.raw_delta is below the wire minimum"
+    end
+
+    if e_raw_delta > 2_147_483_647 do
+      raise ArgumentError, "e.raw_delta is above the wire maximum"
+    end
+
     v = e_raw_delta &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if not is_integer(e_big_delta) do
+      raise ArgumentError, "e.big_delta is not an integer"
+    end
+
+    if e_big_delta < -9_223_372_036_854_775_808 do
+      raise ArgumentError, "e.big_delta is below the wire minimum"
+    end
+
+    if e_big_delta > 9_223_372_036_854_775_807 do
+      raise ArgumentError, "e.big_delta is above the wire maximum"
+    end
+
     v = e_big_delta &&& 0xFFFFFFFF
     sc0 = scratch
     fl0 = scratch_bits >>> 3
@@ -3640,6 +4145,18 @@ defmodule Example.Wire do
 
         {data, scratch, scratch_bits} =
           if e_has_target do
+            if not is_integer(e.target_id) do
+              raise ArgumentError, "e.target_id is not an integer"
+            end
+
+            if e.target_id < 0 do
+              raise ArgumentError, "e.target_id is below the wire minimum"
+            end
+
+            if e.target_id > 65535 do
+              raise ArgumentError, "e.target_id is above the wire maximum"
+            end
+
             v = e.target_id &&& 0xFFFF
             scratch = scratch ||| v <<< scratch_bits
             scratch_bits = scratch_bits + 16
@@ -3654,6 +4171,18 @@ defmodule Example.Wire do
 
         {data, scratch, scratch_bits}
       else
+        if not is_integer(e.idle_ticks) do
+          raise ArgumentError, "e.idle_ticks is not an integer"
+        end
+
+        if e.idle_ticks < 0 do
+          raise ArgumentError, "e.idle_ticks is below the wire minimum"
+        end
+
+        if e.idle_ticks > 4_294_967_295 do
+          raise ArgumentError, "e.idle_ticks is above the wire maximum"
+        end
+
         v = e.idle_ticks &&& 0xFFFFFFFF
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
@@ -3844,15 +4373,66 @@ defmodule Example.Wire do
   defp wZtest_dataZfixed_bytes([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZtest_dataZfixed_bytes([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e1 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e1 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e1 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e2 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e2 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e2 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e3 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e3 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e3 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e4 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e4 > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e4 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3864,6 +4444,18 @@ defmodule Example.Wire do
   end
 
   defp wZtest_dataZfixed_bytes([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e > 255 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
