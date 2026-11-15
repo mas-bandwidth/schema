@@ -531,7 +531,15 @@ local function compat_old(d, node)
   local s = d.shape
   if s == "int" then
     if d.timestamp then return node.kind == 36 and node.size == 8 end
-    if d.bits then return node.kind == 32 and (node.size == 4 or node.size == 8) end
+    if d.bits then
+      -- A bits(N) rides at its declared storage width under the unsigned
+      -- integer kind its bit count picks (ir.TableFixedLeafKind,
+      -- ir.TableFixedStorageBytes): kinds 6, 7 and 8 at four bytes and kind
+      -- 9 at eight. An older writer may have declared a narrower bits(N), so
+      -- every kind the walk assigns at those widths is a lawful source.
+      if node.size == 4 then return node.kind >= 6 and node.kind <= 8 end
+      return node.size == 8 and node.kind == 9
+    end
     if d.kind and d.kind >= 20 and d.kind <= 29 then return node.kind == d.kind and node.size == d.width end
     return node.kind >= 2 and node.kind <= 9 and node.size <= d.width
   elseif s == "wide" then
