@@ -3398,6 +3398,13 @@ defmodule Benchtable.Table do
           :error ->
             {:unknown, bytes}
 
+          id when id in [@node_id, @build_version_id, @message_vocab_id] ->
+            # A RESERVED ID IN A RECORD'S TYPE POSITION is malformed, because
+            # the three ids the language holds back ride only in their own transport
+            # (§3.1, §3.3), so the record names no type and the whole load is
+            # discarded
+            :malformed
+
           @string_id ->
             # a *string blob this reader can name is its UTF-8 bytes; a record
             # whose content is not text is malformed, and the root that reaches
