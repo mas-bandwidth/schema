@@ -29,6 +29,7 @@
 
 local S = require("./schema_tables")
 local V = require("./table_values")
+local L = require("./table_load")
 local Fl = require("./serialize_float")
 
 local Int64 = V.Int64
@@ -574,6 +575,14 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 	local ids = table.create(lo)
 	for i = 0, lo - 1 do
 		ids[i + 1] = buffer.readstring(data, start + i * 8, 8)
+	end
+	-- THE ANNOUNCEMENT IS A FILE (§3.3): every wire-alone condition the file
+	-- form holds applies to its body before anything is read, the unknown
+	-- fields it may gain included — skipped is not unread (§4, §6.5).
+	local wireFail, wireNonFinite = L.wireCheckAnnouncement(data, 1, start, ids)
+	if wireFail ~= nil or wireNonFinite then
+		report.damaged = true
+		return false
 	end
 	-- the body's extent: a terminated body must end exactly at the id table
 	local at = 1
