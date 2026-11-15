@@ -30,6 +30,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -257,11 +258,20 @@ func TestGooseRetainMatchesIndependentRewrite(t *testing.T) {
 	}
 }
 
-// shapeWire is the Go leg's hand-built file: the form byte, the root body,
-// the id table of the twelve names, and its count.
-func shapeWire(payload []byte) []byte {
-	names := []string{"child", "array", "keyed", "choice", "entries", "extra", "branch", "empty", "A", "B", "key", "value"}
-	wire := append(append([]byte{1}, payload...), 0)
+// shapeWire is a hand-built file in the one spelling a conforming writer
+// emits (docs/SPEC-TABLES.md §3): the form byte, the root body, then the id
+// table holding exactly the names the body uses, in the order the body first
+// uses them, and its count. build spells the body with ref, which answers a
+// name's 1-based place in names; names is that first-use order.
+func shapeWire(names []string, build func(ref func(string) byte) []byte) []byte {
+	ref := func(name string) byte {
+		i := slices.Index(names, name)
+		if i < 0 {
+			panic("shapeWire: " + name + " is not in the id table")
+		}
+		return byte(i + 1)
+	}
+	wire := append(append([]byte{1}, build(ref)...), 0)
 	for _, name := range names {
 		wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId(name))
 	}
@@ -270,12 +280,14 @@ func shapeWire(payload []byte) []byte {
 
 // shapeCases are the Go leg's cases (TestRetainReplacementAndShapeChanges),
 // with the counters it pins: retained, the live records stored, and the
-// retain_lost the save adds.
+// retain_lost the save adds. Each wire's id table is canonical, so a refusal
+// below is the case's own and never an id-table spelling.
 func shapeCases() []struct {
 	retainCase
 	retained, stored, lost int64
 	loadRefusal            bool
 } {
+	type refs = func(string) byte
 	field := func(ref, kind byte, payload ...byte) []byte { return append([]byte{ref, kind}, payload...) }
 	join := func(parts ...[]byte) []byte {
 		var out []byte
@@ -285,26 +297,45 @@ func shapeCases() []struct {
 		return out
 	}
 	body := func(p []byte) []byte { return append([]byte{byte(len(p))}, p...) }
-	unknown, empty := []byte{6, 6, 99, 0}, []byte{0}
-	child := field(1, 13, body(unknown)...)
-	two := field(2, 14, body(join([]byte{13, 2}, body(unknown), body(unknown)))...)
-	keyed := func(key byte, p []byte) []byte { return field(3, 16, body(join([]byte{13, 1, key}, body(p)))...) }
-	arm := field(4, 15, join([]byte{7, 13}, body(unknown))...)
-	entry := func(p []byte) []byte { return join([]byte{11, 4, 7, 0, 0, 0}, field(12, 13, body(p)...), []byte{0}) }
+	empty := []byte{0}
+	unknown := func(r refs) []byte { return []byte{r("extra"), 6, 99, 0} }
+	child := func(r refs) []byte { return field(r("child"), 13, body(unknown(r))...) }
+	two := func(r refs) []byte {
+		return field(r("array"), 14, body(join([]byte{13, 2}, body(unknown(r)), body(unknown(r))))...)
+	}
+	keyed := func(r refs, key string, p []byte) []byte {
+		return field(r("keyed"), 16, body(join([]byte{13, 1, r(key)}, body(p)))...)
+	}
+	arm := func(r refs) []byte { return field(r("choice"), 15, join([]byte{r("branch"), 13}, body(unknown(r)))...) }
+	entry := func(r refs, p []byte) []byte {
+		return join([]byte{r("key"), 4, 7, 0, 0, 0}, field(r("value"), 13, body(p)...), []byte{0})
+	}
 	type sc = struct {
 		retainCase
 		retained, stored, lost int64
 		loadRefusal            bool
 	}
 	return []sc{
-		{retainCase{"repeated_child", shapeWire(join(child, field(1, 13, 1, 0))), -1, -1, 0}, 0, 0, 0, true},
-		{retainCase{"cleared_array", shapeWire(join(two, field(2, 14, 2, 13, 0))), -1, -1, 0}, 0, 0, 0, true},
-		{retainCase{"inert_array", shapeWire(join(two, field(2, 14, 0))), -1, -1, 0}, 0, 0, 0, true},
-		{retainCase{"keyed_slots", shapeWire(join(keyed(9, unknown), keyed(10, unknown), keyed(9, empty))), -1, -1, 0}, 0, 0, 0, true},
-		{retainCase{"switched_union", shapeWire(join(arm, field(4, 15, 8, 32, 0))), -1, -1, 0}, 0, 0, 0, true},
-		{retainCase{"duplicate_map_key", shapeWire(field(5, 14, body(join([]byte{13, 2}, body(entry(unknown)), body(entry(empty))))...)), -1, -1, 0}, 0, 0, 0, true},
+		{retainCase{"repeated_child", shapeWire([]string{"child", "extra"}, func(r refs) []byte {
+			return join(child(r), field(r("child"), 13, 1, 0))
+		}), -1, -1, 0}, 0, 0, 0, true},
+		{retainCase{"cleared_array", shapeWire([]string{"array", "extra"}, func(r refs) []byte {
+			return join(two(r), field(r("array"), 14, 2, 13, 0))
+		}), -1, -1, 0}, 0, 0, 0, true},
+		{retainCase{"inert_array", shapeWire([]string{"array", "extra"}, func(r refs) []byte {
+			return join(two(r), field(r("array"), 14, 0))
+		}), -1, -1, 0}, 0, 0, 0, true},
+		{retainCase{"keyed_slots", shapeWire([]string{"keyed", "A", "extra", "B"}, func(r refs) []byte {
+			return join(keyed(r, "A", unknown(r)), keyed(r, "B", unknown(r)), keyed(r, "A", empty))
+		}), -1, -1, 0}, 0, 0, 0, true},
+		{retainCase{"switched_union", shapeWire([]string{"choice", "branch", "extra", "empty"}, func(r refs) []byte {
+			return join(arm(r), field(r("choice"), 15, r("empty"), 32, 0))
+		}), -1, -1, 0}, 0, 0, 0, true},
+		{retainCase{"duplicate_map_key", shapeWire([]string{"entries", "key", "value", "extra"}, func(r refs) []byte {
+			return field(r("entries"), 14, body(join([]byte{13, 2}, body(entry(r, unknown(r))), body(entry(r, empty))))...)
+		}), -1, -1, 0}, 0, 0, 0, true},
 		// the caller drops the second element: its retained record is lost
-		{retainCase{"shape_edit", shapeWire(two), -1, 1, 1}, 2, 2, 1, false},
+		{retainCase{"shape_edit", shapeWire([]string{"array", "extra"}, two), -1, 1, 1}, 2, 2, 1, false},
 	}
 }
 

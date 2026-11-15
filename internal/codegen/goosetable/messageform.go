@@ -84,7 +84,10 @@ func emitMessagePackage(g *goose.Gen) error {
 	}
 	g.Pf("// The announcement: the form-1 file carrying the build version and the vocabulary.\n")
 	g.Declare("MessageAnnouncement")
-	g.Pf("let MessageAnnouncement: const u8[:] = \"%s\";\n\n", fixedGooseBytes(tablewire.Announce(g.Unit)))
+	g.Pf("let MessageAnnouncement: const u8[:] = \"%s\";\n", fixedGooseBytes(tablewire.Announce(g.Unit)))
+	g.Pf("// The build version the announcement carries (docs/SPEC-TABLES.md §20.1).\n")
+	g.Declare("MessageBuildVersion")
+	g.Pf("let MessageBuildVersion: u64 = 0x%016x;\n\n", ir.BuildVersion(g.Unit))
 	return nil
 }
 
@@ -680,7 +683,7 @@ func (e *msgEmit) readClamp128(ind int, f *ir.Field, v string) {
 // variant reference.
 func (e *msgEmit) getScalar(ind int, f *ir.Field, en, dst string, element bool) {
 	if enum := enumOf(f); enum != nil {
-		e.getEnum(ind, f, enum, dst, element, true, "")
+		e.getEnum(ind, f, enum, dst, element, "", "")
 		return
 	}
 	v := e.loopVar()
@@ -753,14 +756,15 @@ func (e *msgEmit) getScalar(ind int, f *ir.Field, en, dst string, element bool) 
 
 // getEnum lands a variant reference: 0 is None, a name this enum cannot name
 // is §4's ordinary `unknown` (None lands), and a deprecated variant reads as
-// the field's declared default, or an element's 0 (§2.15).
-func (e *msgEmit) getEnum(ind int, f *ir.Field, en *ir.Enum, dst string, element bool, allowDefault bool, sawNonNone string) {
+// the field's declared default, or an element's 0 (§2.15). gate, when set, is
+// the condition under which the value at its default is refused (canonGate).
+func (e *msgEmit) getEnum(ind int, f *ir.Field, en *ir.Enum, dst string, element bool, gate string, sawNonNone string) {
 	v := e.loopVar()
 	e.p(ind, "let name%s = schema_rt::msg_name(r);", v)
 	e.p(ind, "if !r.ok { return false; }")
 	e.p(ind, "if name%s < 0 {", v)
-	if !allowDefault && (element || e.enumDefault(f) == "0") {
-		e.p(ind+1, "return schema_rt::msg_damage(r);")
+	if gate != "" && (element || e.enumDefault(f) == "0") {
+		e.p(ind+1, "if %s { return schema_rt::msg_damage(r); }", gate)
 	}
 	e.p(ind+1, "%s = 0;", dst)
 	e.p(ind, "} else {")
@@ -776,8 +780,11 @@ func (e *msgEmit) getEnum(ind int, f *ir.Field, en *ir.Enum, dst string, element
 				land = e.enumDefault(f)
 			}
 		}
-		if !allowDefault && !element && f.HasDefault && en.Variants[i] == f.DefVariant {
-			e.p(ind+2, "0x%016x => { return schema_rt::msg_damage(r); },", ir.TableWireId(en.VariantWireName(i)))
+		if gate != "" && !element && f.HasDefault && en.Variants[i] == f.DefVariant {
+			e.p(ind+2, "0x%016x => {", ir.TableWireId(en.VariantWireName(i)))
+			e.p(ind+3, "if %s { return schema_rt::msg_damage(r); }", gate)
+			e.p(ind+3, "%s = %s;", dst, land)
+			e.p(ind+2, "},")
 		} else {
 			e.p(ind+2, "0x%016x => { %s = %s; },", ir.TableWireId(en.VariantWireName(i)), dst, land)
 		}
@@ -834,41 +841,64 @@ func (e *msgEmit) getElement(ind int, el *ir.Field, en, dst string) {
 	}
 }
 
-func (e *msgEmit) getKeyedSlot(ind int, el *ir.Field, en, dst, def string) {
+// getKeyedSlot lands one present slot of an enum-keyed array. Inside the
+// slot the ordinary elision rule holds (docs/SPEC-TABLES.md §2.8), so a value
+// at its default refuses under gate (canonGate); a union slot at the empty arm
+// refuses whatever the build (§3.3(c)).
+func (e *msgEmit) getKeyedSlot(ind int, el *ir.Field, en, dst, def, gate string) {
 	switch {
-	case e.isStruct(el), e.isUnion(el):
+	case e.isUnion(el):
 		e.p(ind, "if !_%sMsgLoad(r, %s, false) { return false; }", el.Type.Name, dst)
+	case e.isStruct(el):
+		e.p(ind, "if !_%sMsgLoad(r, %s, !(%s)) { return false; }", el.Type.Name, dst, gate)
 	case enumOf(el) != nil:
-		e.getEnum(ind, el, enumOf(el), dst, true, false, "")
+		e.getEnum(ind, el, enumOf(el), dst, true, gate, "")
 	default:
 		e.getScalar(ind, el, en, dst, true)
 		if def != "" && e.losslessScalarDefault(el) {
 			if el.Type.Kind == ir.TFloat64 {
-				e.p(ind, "if r.ok && r.voc.entries[%s].packing != 2 && !(%s) { return schema_rt::msg_damage(r); }", en, e.differs(el, dst, def))
+				e.p(ind, "if r.ok && %s && r.voc.entries[%s].packing != 2 && !(%s) { return schema_rt::msg_damage(r); }", gate, en, e.differs(el, dst, def))
 			} else {
-				e.p(ind, "if r.ok && !(%s) { return schema_rt::msg_damage(r); }", e.differs(el, dst, def))
+				e.p(ind, "if r.ok && %s && !(%s) { return schema_rt::msg_damage(r); }", gate, e.differs(el, dst, def))
 			}
 		}
 	}
 }
 
-func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl, def place) {
-	e.getFieldValue(ind, f, en, pl, def, false)
+// canonGate is the condition under which a body's non-canonical spellings of
+// (a) and (b) refuse (docs/SPEC-TABLES.md §3.3): the sender announced this
+// reader's own build version (r.canon) and the entry `acc` accepted is this
+// reader's own kind and shape (msg_accept 0, not a widening). Under another
+// build version a field's sender default is not known, so the body reads.
+func canonGate(acc string) string {
+	return fmt.Sprintf("(r.canon && %s == 0)", acc)
+}
+
+func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl, def place, gate string) {
+	e.getFieldValue(ind, f, en, pl, def, gate, false)
 }
 
 // getFieldValue lands a field's payload from the entry `en`: text and bytes
 // refuse length_over_bound past this reader's bound, an array refuses
 // count_over_bound past its bound, a keyed array's present slots, or one
-// element; when checkDefault is set, non-canonical default encodings refuse.
-func (e *msgEmit) getFieldValue(ind int, f *ir.Field, en string, pl, def place, checkDefault bool) {
+// element. gate (canonGate) is the condition under which a non-canonical
+// spelling refuses; checkDefault says the field itself is one the writer
+// elides at its default, so a field stored at its default refuses under gate.
+func (e *msgEmit) getFieldValue(ind int, f *ir.Field, en string, pl, def place, gate string, checkDefault bool) {
 	el := elemOf(f)
 	v := e.loopVar()
+	// fieldGate is gate where the field itself is elided at its default, else
+	// empty: no field-level refusal is emitted.
+	fieldGate := ""
+	if checkDefault {
+		fieldGate = gate
+	}
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		e.p(ind, "let n%s = schema_rt::msg_text_len(r, %s);", v, en)
 		e.p(ind, "if !r.ok { return false; }")
 		if checkDefault {
-			e.p(ind, "if n%s == 0 { return schema_rt::msg_damage(r); }", v)
+			e.p(ind, "if %s && n%s == 0 { return schema_rt::msg_damage(r); }", fieldGate, v)
 		}
 		e.p(ind, "let at%s = r.pos >> 3;", v)
 		if f.Type.Kind == ir.TString {
@@ -887,7 +917,7 @@ func (e *msgEmit) getFieldValue(ind int, f *ir.Field, en string, pl, def place, 
 		slots := slotCount(f)
 		e.p(ind, "let n%s = schema_rt::msg_keyed_count(r, %s);", v, en)
 		if checkDefault {
-			e.p(ind, "if r.ok && n%s == 0 { return schema_rt::msg_damage(r); }", v)
+			e.p(ind, "if r.ok && %s && n%s == 0 { return schema_rt::msg_damage(r); }", fieldGate, v)
 		}
 		e.p(ind, "let el%s = schema_rt::msg_inner(r, %s);", v, en)
 		e.p(ind, "var seen%s: u64[>..] = [];", v)
@@ -903,13 +933,13 @@ func (e *msgEmit) getFieldValue(ind int, f *ir.Field, en string, pl, def place, 
 			id := ir.TableWireId(f.KeyEnumRef.VariantWireName(k))
 			e.p(ind+2, "0x%016x => {", id)
 			if int64(k) < slots {
-				e.p(ind+3, "if %d < lastk%s { return schema_rt::msg_damage(r); }", k, v)
+				e.p(ind+3, "if %s && %d < lastk%s { return schema_rt::msg_damage(r); }", gate, k, v)
 				e.p(ind+3, "lastk%s = %d;", v, k)
 				defAt := ""
 				if def.val != "" {
 					defAt = def.at(fmt.Sprint(k)).val
 				}
-				e.getKeyedSlot(ind+3, el, "el"+v, pl.at(fmt.Sprint(k)).val, defAt)
+				e.getKeyedSlot(ind+3, el, "el"+v, pl.at(fmt.Sprint(k)).val, defAt, gate)
 			} else {
 				// a key past this build's slots refuses out_of_range
 				e.p(ind+3, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
@@ -929,7 +959,7 @@ func (e *msgEmit) getFieldValue(ind int, f *ir.Field, en string, pl, def place, 
 		e.p(ind, "let n%s = schema_rt::msg_count(r, %s);", v, en)
 		e.p(ind, "if !r.ok { return false; }")
 		if checkDefault && (f.Array == ir.ArrayCounted || !e.isStruct(f)) {
-			e.p(ind, "if n%s == 0 { return schema_rt::msg_damage(r); }", v)
+			e.p(ind, "if %s && n%s == 0 { return schema_rt::msg_damage(r); }", fieldGate, v)
 		}
 		e.p(ind, "if n%s > %d { return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseCountOverBound); }", v, f.ArrayBound)
 		e.p(ind, "let el%s = schema_rt::msg_inner(r, %s);", v, en)
@@ -955,7 +985,7 @@ func (e *msgEmit) getFieldValue(ind int, f *ir.Field, en string, pl, def place, 
 				e.getElement(ind+2, el, "el"+v, pl.at(i).val)
 				e.p(ind+2, "if %s.Type != 0 || r.unknown + r.mismatch != u0%s { rides%s = true; }", pl.at(i).val, v, v)
 			case checkFixedRides && enumOf(el) != nil:
-				e.getEnum(ind+2, el, enumOf(el), pl.at(i).val, true, true, "rides"+v)
+				e.getEnum(ind+2, el, enumOf(el), pl.at(i).val, true, "", "rides"+v)
 			default:
 				e.getElement(ind+2, el, "el"+v, pl.at(i).val)
 			}
@@ -978,24 +1008,31 @@ func (e *msgEmit) getFieldValue(ind int, f *ir.Field, en string, pl, def place, 
 		e.p(ind, "}")
 		e.p(ind, "if walk%s < n%s && !schema_rt::msg_skip_run(r, (n%s - walk%s) as! u64, run%s) { return schema_rt::msg_damage(r); }", v, v, v, v, v)
 		if checkFixedRides {
-			e.p(ind, "if r.ok && !rides%s { return schema_rt::msg_damage(r); }", v)
+			e.p(ind, "if r.ok && %s && !rides%s { return schema_rt::msg_damage(r); }", fieldGate, v)
 		}
 		if f.Array == ir.ArrayCounted {
 			e.p(ind, "%sCount = k%s as! i32;", pl.val, v)
 		}
 	default:
 		switch {
-		case e.isStruct(f), e.isUnion(f):
+		case e.isUnion(f):
+			// an explicit empty arm refuses whatever the build (§3.3(c))
 			e.p(ind, "if !_%sMsgLoad(r, %s, %t) { return false; }", f.Type.Name, pl.val, !checkDefault)
+		case e.isStruct(f):
+			allowEmpty := "true"
+			if checkDefault {
+				allowEmpty = "!" + fieldGate
+			}
+			e.p(ind, "if !_%sMsgLoad(r, %s, %s) { return false; }", f.Type.Name, pl.val, allowEmpty)
 		case enumOf(f) != nil:
-			e.getEnum(ind, f, enumOf(f), pl.val, false, !checkDefault, "")
+			e.getEnum(ind, f, enumOf(f), pl.val, false, fieldGate, "")
 		default:
 			e.getScalar(ind, f, en, pl.val, false)
 			if checkDefault && e.losslessScalarDefault(f) {
 				if f.Type.Kind == ir.TFloat64 {
-					e.p(ind, "if r.ok && r.voc.entries[%s].packing != 2 && !(%s) { return schema_rt::msg_damage(r); }", en, e.differs(f, pl.val, def.val))
+					e.p(ind, "if r.ok && %s && r.voc.entries[%s].packing != 2 && !(%s) { return schema_rt::msg_damage(r); }", fieldGate, en, e.differs(f, pl.val, def.val))
 				} else {
-					e.p(ind, "if r.ok && !(%s) { return schema_rt::msg_damage(r); }", e.differs(f, pl.val, def.val))
+					e.p(ind, "if r.ok && %s && !(%s) { return schema_rt::msg_damage(r); }", fieldGate, e.differs(f, pl.val, def.val))
 				}
 			}
 		}
@@ -1021,11 +1058,12 @@ func (e *msgEmit) scratchInit(el *ir.Field) string {
 // entry for the same id. A mismatch refuses the load (msg_accept returns
 // -1). `onSkip` remains for a counted step-over, which this read no longer
 // takes.
-func (e *msgEmit) accept(ind int, en string, mine ir.TableVocabularyEntry, onSkip string) {
+func (e *msgEmit) accept(ind int, en string, mine ir.TableVocabularyEntry, onSkip string) string {
 	v := e.loopVar()
 	e.p(ind, "let acc%s = schema_rt::msg_accept(r, %s, %d, %d);", v, en, mine.Kind, mine.Shape.Elem)
 	e.p(ind, "if acc%s < 0 { return false; }", v)
 	e.p(ind, "if acc%s == 2 { %s }", v, onSkip)
+	return "acc" + v
 }
 
 // ---------------------------------------------------------------------------
@@ -1078,10 +1116,11 @@ func (e *msgEmit) emitStruct(st *ir.Struct) {
 	for idx, f := range st.Fields {
 		entry := ir.TableFieldEntry(f)
 		e.p(3, "0x%016x => {", entry.Id)
-		e.p(4, "if %d < last { return schema_rt::msg_damage(r); }", idx)
+		// §3.3(b): the writer's order is known only under this reader's build version
+		e.p(4, "if r.canon && %d < last { return schema_rt::msg_damage(r); }", idx)
 		e.p(4, "last = %d;", idx)
-		e.accept(4, "en", entry, "continue;")
-		e.getFieldValue(4, f, "en", fieldPlace("v", f), fieldPlace("d", f), !f.Type.Optional && !f.Required)
+		acc := e.accept(4, "en", entry, "continue;")
+		e.getFieldValue(4, f, "en", fieldPlace("v", f), fieldPlace("d", f), canonGate(acc), !f.Type.Optional && !f.Required)
 		if f.Type.Optional {
 			e.p(4, "%s = true;", presentOf("v", f))
 		}
@@ -1161,7 +1200,7 @@ func (e *msgEmit) emitUnion(un *ir.Union) {
 		entry := ir.TableArmEntry(v)
 		e.p(2, "0x%016x => {", entry.Id)
 		// a WIDENED arm is selected and decodes; a mismatched one is None
-		e.accept(3, "en", entry, "return true;")
+		acc := e.accept(3, "en", entry, "return true;")
 		e.p(3, "v.Type = %d;", i+1)
 		switch {
 		case v.Void():
@@ -1172,7 +1211,7 @@ func (e *msgEmit) emitUnion(un *ir.Union) {
 			if hasKeyedDefault {
 				defPl = armPlace("d", v)
 			}
-			e.getValue(3, armField(v), "en", armPlace("v", v), defPl)
+			e.getValue(3, armField(v), "en", armPlace("v", v), defPl, canonGate(acc))
 		}
 		e.p(2, "},")
 	}
@@ -1278,7 +1317,8 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(2, "report.reason = schema_rt::MsgRefuseNoVocabulary;")
 	e.p(2, "return -1;")
 	e.p(1, "}")
-	e.p(1, "var r = schema_rt::MsgReader { b: batch, pos: 8, end: batch.len * 8, voc: voc, .. };")
+	// §3.3(a)(b): canon holds when the sender announced this reader's build version
+	e.p(1, "var r = schema_rt::MsgReader { b: batch, pos: 8, end: batch.len * 8, voc: voc, canon: voc.build_version == MessageBuildVersion, .. };")
 	e.p(1, "let count = (schema_rt::msg_get(r, 8) as! i64) + 1;")
 	e.p(1, "if !r.ok {")
 	e.p(2, "report.damaged = true;")

@@ -629,6 +629,11 @@ struct MsgReader {
     widened: i64 = 0,
     oor: i64 = 0,
     depth: i64 = 0,
+    // canon is true when the sender announced this reader's own build
+    // version: only then are a field's default and the writer's field order
+    // known, so only then does a body's non-canonical spelling refuse
+    // (docs/SPEC-TABLES.md §3.3(a), (b)).
+    canon: bool = false,
     // seen is the skip walk's id scratch: one body's or keyed array's ids
     // from its mark, so a repeated id is found without a local the recursive
     // walk could not carry (§3.3, §4).
