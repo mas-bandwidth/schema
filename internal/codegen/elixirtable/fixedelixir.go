@@ -1796,6 +1796,9 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("    %s\n", call(snake+"_fixed_write_into", raw("value"), rawf("<<@%s_hash::little-unsigned-64>>", snake)).render(4, 4, 0))
 	g.pf("  end\n\n")
 
+	g.pf("  # A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: an empty batch is refused\n")
+	g.pf("  # before a byte is written, by value and in every build.\n")
+	g.pf("  def %s_fixed_save([]), do: {:error, :invalid_value}\n\n", snake)
 	g.pf("  def %s_fixed_save(values) when is_list(values) do\n", snake)
 	g.emitLines(g.assign("head", binNode{segs: []string{
 		fmt.Sprintf("R.file_header(@%s_hash, byte_size(@%s_layout))::binary", snake, snake),

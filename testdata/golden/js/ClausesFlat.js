@@ -120,6 +120,13 @@ export function ReadW13Flat(view, numBits, value) {
     value.items[i0] = v | 0;
     br += 13;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -213,6 +220,13 @@ export function ReadW17Flat(view, numBits, value) {
     v = (out & 0x1ffff) >>> 0;
     value.items[i0] = v | 0;
     br += 17;
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -308,6 +322,13 @@ export function ReadW26Flat(view, numBits, value) {
     value.items[i0] = v | 0;
     br += 26;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -401,6 +422,13 @@ export function ReadW1Flat(view, numBits, value) {
     v = (out & 0x1) >>> 0;
     value.items[i0] = v | 0;
     br += 1;
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -513,6 +541,13 @@ export function ReadW52Flat(view, numBits, value) {
     bg = SC.getBigUint64(0, true);
     value.items[i0] = bg;
     br += 20;
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -634,6 +669,13 @@ export function ReadW50Flat(view, numBits, value) {
     value.items[i0] = bg;
     br += 18;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -721,6 +763,13 @@ export function ReadF13Flat(view, numBits, value) {
     value.items[i0] = v | 0;
     br += 13;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -769,6 +818,12 @@ export function ReadTri3Flat(view, numBits, value) {
   value.a = v;
   v = (out >>> 1) & 0x3;
   value.b = v;
+  if (((3 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(0) & 0xf8) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -849,6 +904,13 @@ export function ReadArrTri3Flat(view, numBits, value) {
     e0.b = v;
     br += 3;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -910,6 +972,12 @@ export function ReadElevenFlat(view, numBits, value) {
   value.a = v;
   v = (out >>> 3) & 0xff;
   value.b = v;
+  if (((11 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(1) & 0xf8) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -974,6 +1042,13 @@ export function ReadArrElevenFlat(view, numBits, value) {
     e0.b = v;
     br += 11;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1012,7 +1087,10 @@ export function WriteEmptyAFlat() {
 
 // ReadEmptyAFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
-export function ReadEmptyAFlat() {
+export function ReadEmptyAFlat(view, numBits) {
+  if (((0 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -1034,7 +1112,10 @@ export function WriteEmptyBFlat() {
 
 // ReadEmptyBFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
-export function ReadEmptyBFlat() {
+export function ReadEmptyBFlat(view, numBits) {
+  if (((0 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
 }
 
@@ -1075,7 +1156,7 @@ export function WriteEmptyUnionFlat(view, value) {
 // ReadEmptyUnionFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
 export function ReadEmptyUnionFlat(view, numBits, value) {
-  let v = 0, out = 0;
+  let v = 0, s2 = 0, out = 0, br = 0;
   if (2 > numBits) {
     return false;
   }
@@ -1085,6 +1166,7 @@ export function ReadEmptyUnionFlat(view, numBits, value) {
     return false;
   }
   value.type = v;
+  br = 2;
   switch (value.type) {
     case 1: {
       break;
@@ -1092,6 +1174,13 @@ export function ReadEmptyUnionFlat(view, numBits, value) {
     case 2: {
       break;
     }
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
@@ -1196,6 +1285,14 @@ export function ReadHoldsEmptyUnionFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7f) >>> 0;
   value.tail = v;
+  br += 7;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1427,6 +1524,14 @@ export function ReadStrsFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7) >>> 0;
   value.tail = v;
+  br += 3;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1609,6 +1714,14 @@ export function ReadArrNestedFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7) >>> 0;
   value.tail = v;
+  br += 3;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
@@ -1685,6 +1798,12 @@ export function ReadSoleFlat(view, numBits, value) {
   out = view.getUint32(0, true);
   v = (out & 0x1fff) >>> 0;
   value.only = v;
+  if (((13 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((view.getUint8(1) & 0xe0) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
 }
 
