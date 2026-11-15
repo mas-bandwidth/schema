@@ -10,7 +10,7 @@ from typing import Any, Iterator
 
 from . import InvalidValue
 from . import descriptor, kinds
-from . import kind_blob, kind_map, kind_unsupported
+from . import kind_array, kind_blob, kind_map, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1
@@ -128,6 +128,23 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
             if target is None or not isinstance(current, target):
                 raise InvalidValue(where, f"not a {field.target}")
             _validate(current, current.descriptor, where, seen)
+        elif field.codec == "array":
+            if not isinstance(current, list):
+                raise InvalidValue(where, "not a list")
+            kind_array._check_count(where, len(current))
+            kind_array._check_shape(field, len(current), where)
+            element = field.element
+            if element is None:
+                raise InvalidValue(where, "an array carries no element descriptor")
+            for i, item in enumerate(current):
+                cell = f"{where}[{i}]"
+                if element.codec == "table":
+                    target = descriptor.by_name(element.target)
+                    if target is None or not isinstance(item, target):
+                        raise InvalidValue(cell, f"not a {element.target}")
+                    _validate(item, item.descriptor, cell, seen)
+                else:
+                    kinds._REGISTRY[element.codec].validate(element, item, cell)
         elif field.codec == "map":
             _validate_map(field, current, where, seen)
         else:
@@ -201,6 +218,14 @@ def _collect(value: Any, ctx: Ctx, blobs: list[int]) -> None:
             if field.is_default(current):
                 continue
             _collect(current, ctx, blobs)
+        elif field.codec == "array":
+            # a table element is a by-value edge, so its blob slots are the
+            # owner's, in the order the elements ride
+            element = field.element
+            if element is None or element.codec != "table":
+                continue
+            for item in current:
+                _collect(item, ctx, blobs)
         elif field.codec == "map":
             _collect_map(field, current, ctx, blobs)
         else:

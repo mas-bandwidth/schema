@@ -7,6 +7,8 @@ id and its fields by declaration order and by wire id. The values are DATA,
 built once at import, so the codec modules only ever read them.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 
@@ -41,6 +43,8 @@ class FieldDesc:
         "variant_ids",
         "deprecated",
         "default",
+        "elem_codec",
+        "element",
         "elem",
         "keys",
     )
@@ -66,6 +70,8 @@ class FieldDesc:
     variant_ids: tuple[int, ...]
     deprecated: frozenset[int]
     default: Any
+    elem_codec: str
+    element: FieldDesc | None
     elem: "FieldDesc | None"
     keys: tuple[int, ...]
 
@@ -92,6 +98,7 @@ class FieldDesc:
         variant_ids: tuple[int, ...] = (),
         deprecated: tuple[int, ...] = (),
         default: Any = None,
+        elem_codec: str = "",
         elem: "FieldDesc | None" = None,
         keys: tuple[int, ...] = (),
     ) -> None:
@@ -117,6 +124,21 @@ class FieldDesc:
         # the ordinals of the variants marked `| deprecated` (§2.15)
         self.deprecated = frozenset(deprecated)
         self.default = default
+        self.elem_codec = elem_codec
+        self.element = (
+            FieldDesc(
+                name=name,
+                field_id=0,
+                kind=elem_kind,
+                codec=elem_codec,
+                lo=lo,
+                hi=hi,
+                target=target,
+                pointer=pointer,
+            )
+            if codec == "array" and elem_codec
+            else None
+        )
         self.elem = elem
         self.keys = keys
 

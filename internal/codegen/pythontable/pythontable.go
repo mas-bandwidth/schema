@@ -626,6 +626,11 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		fmt.Fprintf(b, "            array_kind=%d,\n", int(f.Array))
 		fmt.Fprintf(b, "            array_min=%d,\n", f.ArrayMin)
 		fmt.Fprintf(b, "            elem_kind=%d,\n", ir.TableWireElemKind(f))
+		elemCodec := ""
+		if codecOf(f) == "array" {
+			elemCodec = elementCodecOf(f)
+		}
+		fmt.Fprintf(b, "            elem_codec=%s,\n", strconv.Quote(elemCodec))
 		fmt.Fprintf(b, "            size=%d,\n", fieldSize(f))
 		fmt.Fprintf(b, "            variant_ids=%s,\n", variantIds(f))
 		if dep := deprecatedOrdinals(f); dep != "" {
@@ -969,6 +974,20 @@ func codecOf(f *ir.Field) string {
 	if f.KeyEnum != "" && f.KeyEnumRef != nil && !f.Type.Pointer && !f.Type.Optional && !f.IsMap() && keyedElemCodec(f) != "" {
 		return "keyed"
 	}
+	if f.Array != ir.ArrayNone && !f.IsMap() && f.KeyEnum == "" && !f.Type.Optional {
+		// An unbounded array carries every element kind elementCodecOf names.
+		// A fixed or counted array carries a declared type by value: a
+		// kind-14 body of kind-13 elements, the nested body the field form
+		// rides (a packet type by value in an array, docs/PORT-PYTHON.md).
+		element := elementCodecOf(f)
+		if element == "unsupported" {
+			return "unsupported"
+		}
+		if f.Array == ir.ArrayList || element == "table" {
+			return "array"
+		}
+		return "unsupported"
+	}
 	if f.Type.Pointer {
 		if f.Type.Blob() {
 			if f.Type.Kind == ir.TString {
@@ -987,18 +1006,7 @@ func codecOf(f *ir.Field) string {
 		}
 		return "map"
 	}
-	if f.KeyEnum != "" || f.Type.Optional {
-		return "unsupported"
-	}
-	if f.Array != ir.ArrayNone {
-		// An array of a declared type is a kind-14 body of kind-13 elements:
-		// a packet type by value in an array rides the same nested body the
-		// field form does (docs/PORT-PYTHON.md, THE TABLE FRAME).
-		if f.Type.Kind == ir.TNamed {
-			if _, ok := f.Type.Ref.(*ir.Struct); ok {
-				return "array"
-			}
-		}
+	if f.KeyEnum != "" || f.Type.Optional || f.Array != ir.ArrayNone {
 		return "unsupported"
 	}
 	switch f.Type.Kind {
@@ -1023,6 +1031,28 @@ func codecOf(f *ir.Field) string {
 			// a flags mask rides as a u64 and holds an int; its declared
 			// default is the mask the declaration names.
 			return "int"
+		}
+	}
+	return "unsupported"
+}
+
+// elementCodecOf is the codec one array element rides through. An element is an
+// array element and not a field, so a construct an element spelling does not
+// admit is never reached here; a []*T element is the pointer-array layer's and
+// stays unsupported until that card lands.
+func elementCodecOf(f *ir.Field) string {
+	if f.Type.Pointer {
+		return "unsupported"
+	}
+	switch f.Type.Kind {
+	case ir.TBool:
+		return "bool"
+	case ir.TInt, ir.TFixed, ir.TBits:
+		return "int"
+	case ir.TNamed:
+		if _, ok := f.Type.Ref.(*ir.Struct); ok {
+			// a table or a packet type by value: both ride a kind-13 body
+			return "table"
 		}
 	}
 	return "unsupported"

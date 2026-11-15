@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"math"
 	"strings"
 	"testing"
@@ -362,9 +363,7 @@ func TestPythonVtTimestampNegativeControl(t *testing.T) {
 		t.Run(control.name, func(t *testing.T) {
 			t.Parallel()
 			sabotaged := make(map[string][]byte, len(files))
-			for name, data := range files {
-				sabotaged[name] = data
-			}
+			maps.Copy(sabotaged, files)
 			path := control.path
 			if path == "" {
 				path = module

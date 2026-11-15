@@ -7,9 +7,11 @@ the whole load rather than resolving part of it.
 
 from typing import Any
 
-from . import InvalidValue
+from . import InvalidValue, Refused
 from . import descriptor, kinds
 from .descriptor import FieldDesc
+
+_ELEMENT_RULE = "the Python table runtime does not carry pointer array elements yet (docs/PORT-PYTHON.md, THE CARD MAP)"
 
 
 def _target(fd: FieldDesc) -> type[Any]:
@@ -37,6 +39,12 @@ class _Pointer:
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
         w.varint(index)
+
+    def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
+        raise Refused("unsupported_kind", _ELEMENT_RULE)
+
+    def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        raise InvalidValue(fd.name, _ELEMENT_RULE)
 
 
 kinds.register("pointer", _Pointer())

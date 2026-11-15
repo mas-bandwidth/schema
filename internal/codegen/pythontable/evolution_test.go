@@ -745,7 +745,7 @@ func vtWireFailures(t *testing.T, reader string, cases []vtWireCase, mutate func
 	dir := vtGenerate(t, cases[0].name, reader, mutate)
 	got := vtRunBoth(t, cases[0].name, dir, inputs)
 	lines := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(got, "\n"), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) >= 2 && fields[0] == "case" {
 			lines[fields[1]] = line
