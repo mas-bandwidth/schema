@@ -6,11 +6,11 @@ flat node table and the id table. Measure runs the same walk into a counting
 sink, so the two agree byte for byte by construction.
 """
 
-from typing import Any
+from typing import Any, Iterator
 
 from . import InvalidValue
 from . import descriptor, kinds
-from . import kind_array, kind_bool, kind_int, kind_pointer, kind_table, kind_unsupported
+from . import kind_array, kind_blob, kind_map, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1
@@ -48,12 +48,19 @@ class Writer:
 
 
 class Ctx:
-    __slots__ = ("ids", "refs", "indices", "order", "onstack", "current")
+    __slots__ = ("ids", "refs", "indices", "node_blobs", "blob_slots", "blob_next", "order", "onstack", "current")
 
     def __init__(self) -> None:
         self.ids: list[int] = []
         self.refs: dict[int, int] = {}
         self.indices: dict[int, int] = {}
+        # Each node body's blob record numbers, in the order its write walk
+        # meets the slots (node 1 is the root), then flattened into the order
+        # the bodies are written. A by-value table reached twice is two visits
+        # with two records each, never keyed by the owner's identity.
+        self.node_blobs: dict[int, list[int]] = {}
+        self.blob_slots: list[int] = []
+        self.blob_next = 0
         self.order: list[Any] = []
         self.onstack: set[int] = set()
         self.current: Any = None
@@ -82,7 +89,13 @@ def _encode(value: Any, writer: Writer) -> int:
     ctx = Ctx()
     ctx.indices[id(value)] = 1
     ctx.onstack.add(id(value))
-    _collect(value, ctx)
+    root_blobs: list[int] = []
+    ctx.node_blobs[1] = root_blobs
+    _collect(value, ctx, root_blobs)
+    ctx.blob_slots = list(root_blobs)
+    for position, node in enumerate(ctx.order):
+        if not isinstance(node, kind_blob._BlobNode):
+            ctx.blob_slots.extend(ctx.node_blobs[position + 2])
     writer.byte(FORM)
     write_body(writer, value, ctx, True)
     for table_id in ctx.ids:
@@ -119,6 +132,7 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
             if not isinstance(current, list):
                 raise InvalidValue(where, "not a list")
             kind_array._check_count(where, len(current))
+            kind_array._check_shape(field, len(current), where)
             element = field.element
             if element is None:
                 raise InvalidValue(where, "an array carries no element descriptor")
@@ -131,15 +145,58 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
                     _validate(item, item.descriptor, cell, seen)
                 else:
                     kinds._REGISTRY[element.codec].validate(element, item, cell)
+        elif field.codec == "map":
+            _validate_map(field, current, where, seen)
         else:
-            kinds._REGISTRY[field.codec].validate(field, current, where)
+            kind = kinds._REGISTRY[field.codec]
+            kind.validate(field, current, where)
+            # a container kind that holds tables by value names them, and
+            # each is validated as a field's table is
+            for table, table_path in _held_tables(kind, field, current, where):
+                _validate(table, table.descriptor, table_path, seen)
 
 
-def _collect(value: Any, ctx: Ctx) -> None:
+def _validate_map(field: FieldDesc, value: Any, path: str, seen: set[int]) -> None:
+    if type(value) is not dict:
+        raise InvalidValue(path, "not a dict")
+    entry = descriptor.by_name(field.target)
+    if entry is None:
+        raise InvalidValue(path, f"the table {field.target} is not registered")
+    key_field = entry.descriptor.fields[0]
+    value_field = entry.descriptor.fields[1]
+    for key, current in value.items():
+        where = f"{path}[{key!r}]"
+        kinds._REGISTRY[key_field.codec].validate(key_field, key, where)
+        if value_field.codec == "string_blob" or value_field.codec == "bytes_blob":
+            # A map whose VALUE is a byte buffer, `map[K]*bytes` or
+            # `map[K]*string`, is not carried yet: an entry refuses by name,
+            # as kind_unsupported.py refused it before the buffers landed.
+            raise InvalidValue(where, kind_unsupported._RULE)
+        if value_field.codec == "pointer":
+            kinds._REGISTRY["pointer"].validate(value_field, current, where)
+            if current is not None:
+                _validate(current, current.descriptor, where, seen)
+        elif value_field.codec == "table":
+            kinds._REGISTRY["table"].validate(value_field, current, where)
+            _validate(current, current.descriptor, where, seen)
+        elif value_field.codec == "map":
+            _validate_map(value_field, current, where, seen)
+        else:
+            kinds._REGISTRY[value_field.codec].validate(value_field, current, where)
+
+
+def _collect(value: Any, ctx: Ctx, blobs: list[int]) -> None:
     desc: TableDesc = value.descriptor
     for field in desc.fields:
         current = getattr(value, field.name)
-        if field.codec == "pointer":
+        if field.codec == "string_blob" or field.codec == "bytes_blob":
+            if current is None:
+                continue
+            body = kind_blob._encode(field, current, _path(desc.name, field.name))
+            index = len(ctx.order) + 2
+            ctx.order.append(kind_blob._BlobNode(field.codec == "string_blob", body))
+            blobs.append(index)
+        elif field.codec == "pointer":
             if current is None:
                 continue
             key = id(current)
@@ -149,21 +206,79 @@ def _collect(value: Any, ctx: Ctx) -> None:
                         _path(desc.name, field.name), "a pointer cycle has no wire form"
                     )
                 continue
-            ctx.indices[key] = len(ctx.order) + 2
+            node_index = len(ctx.order) + 2
+            ctx.indices[key] = node_index
             ctx.order.append(current)
             ctx.onstack.add(key)
-            _collect(current, ctx)
+            inner: list[int] = []
+            ctx.node_blobs[node_index] = inner
+            _collect(current, ctx, inner)
             ctx.onstack.discard(key)
         elif field.codec == "table":
             if field.is_default(current):
                 continue
-            _collect(current, ctx)
+            _collect(current, ctx, blobs)
         elif field.codec == "array":
+            # a table element is a by-value edge, so its blob slots are the
+            # owner's, in the order the elements ride
             element = field.element
             if element is None or element.codec != "table":
                 continue
             for item in current:
-                _collect(item, ctx)
+                _collect(item, ctx, blobs)
+        elif field.codec == "map":
+            _collect_map(field, current, ctx, blobs)
+        else:
+            # the tables a container holds by value are walked in place, in
+            # the order their bodies ride
+            for table, _ in _held_tables(kinds._REGISTRY[field.codec], field, current, ""):
+                _collect(table, ctx, blobs)
+
+
+def _held_tables(kind: Any, field: FieldDesc, value: Any, path: str) -> Iterator[tuple[Any, str]]:
+    """The tables a container kind holds by value: its tables() when it has one."""
+    tables = getattr(kind, "tables", None)
+    if tables is None:
+        return iter(())
+    held: Iterator[tuple[Any, str]] = tables(field, value, path)
+    return held
+
+
+def _collect_map(field: FieldDesc, value: dict[Any, Any], ctx: Ctx, blobs: list[int]) -> None:
+    # A map is a by-value edge of the owner's body: a table value's blob slots
+    # are the owner's, numbered in the ascending key order the map writes in;
+    # a pointer value's node keeps its own.
+    entry = descriptor.by_name(field.target)
+    if entry is None:
+        raise InvalidValue(field.name, f"the table {field.target} is not registered")
+    value_field = entry.descriptor.fields[1]
+    for key in kind_map._sorted_keys(field, value):
+        current = value[key]
+        if value_field.codec == "pointer":
+            if current is None:
+                continue
+            node = id(current)
+            if node in ctx.indices:
+                if node in ctx.onstack:
+                    raise InvalidValue(
+                        _path(field.name, repr(key)),
+                        "a pointer cycle has no wire form",
+                    )
+                continue
+            node_index = len(ctx.order) + 2
+            ctx.indices[node] = node_index
+            ctx.order.append(current)
+            ctx.onstack.add(node)
+            inner: list[int] = []
+            ctx.node_blobs[node_index] = inner
+            _collect(current, ctx, inner)
+            ctx.onstack.discard(node)
+        elif value_field.codec == "table":
+            if value_field.is_default(current):
+                continue
+            _collect(current, ctx, blobs)
+        elif value_field.codec == "map":
+            _collect_map(value_field, current, ctx, blobs)
 
 
 def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:
@@ -182,6 +297,12 @@ def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:
         nodes = Writer(payload)
         nodes.varint(len(ctx.order))
         for node in ctx.order:
+            if isinstance(node, kind_blob._BlobNode):
+                type_id = kind_blob._STRING_BLOB_ID if node.string else kind_blob._BYTES_BLOB_ID
+                nodes.varint(ctx.idref(type_id))
+                nodes.varint(len(node.body))
+                nodes.raw(node.body)
+                continue
             nodes.varint(ctx.idref(node.descriptor.type_id))
             body = bytearray()
             write_body(Writer(body), node, ctx, False)

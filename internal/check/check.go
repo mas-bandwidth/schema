@@ -4637,6 +4637,10 @@ var tableGeneratedVerbs = []string{
 	// and the batch save's refusal path, which the JavaScript backend emits as
 	// a module-scope function for every fixed table, claimed on the same rule.
 	"FixedRefuseBatch",
+	// and the read's dead-byte check (docs/FIXED-FORM-ALGORITHM.md §4.1), which
+	// the JavaScript backend emits as a module-scope function for every fixed
+	// table, claimed on the same rule.
+	"FixedCheckDead",
 	// and the read's FINITE PASS (docs/SPEC-TABLES.md §3.3), run before the
 	// bounds pass: emitted for every fixed type that holds a float, and a
 	// field gains a float as an ordinary edit, so it is claimed on the same rule.

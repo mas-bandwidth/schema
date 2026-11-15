@@ -37,6 +37,8 @@ class _Table:
         return obj
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        # The field's id is numbered before its body's, so the id table is in
+        # the pre-order the Go engine writes.
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
         self.write_element(w, fd, value, ctx)

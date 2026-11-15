@@ -1,4 +1,8 @@
-"""The unbounded array field kind (docs/SPEC-TABLES.md §2.9, §3, kind 14).
+"""The array field kind (docs/SPEC-TABLES.md §2.9, §3, kind 14).
+
+A fixed [N]T or counted [..N]T array of a declared type by value (a table or
+a packet type, docs/PORT-PYTHON.md) rides the same body with element kind 13,
+and its length is held to the declaration on write and on read.
 
 An unbounded array is a counted array whose count the data decides: kind 14,
 the element kind, the count, then the elements. Nothing new rides the wire;
@@ -25,7 +29,7 @@ bytes; TestPythonVtUnboundedShapeBench holds them to that and times them.
 """
 
 import struct
-from typing import Any
+from typing import Any, cast
 
 from . import InvalidValue, Refused
 from . import kinds
@@ -72,6 +76,15 @@ def _check_count(path: str, count: int, cap: int = _MAX_COUNT) -> None:
         raise InvalidValue(path, f"a list of {count} elements is past the int32 storage cap")
 
 
+def _check_shape(fd: FieldDesc, count: int, path: str) -> None:
+    """Refuse a write whose length a fixed [N]T or counted [..N]T array does
+    not declare; an unbounded []T declares none."""
+    if fd.array_kind == 1 and count != fd.bound:
+        raise InvalidValue(path, f"{count} elements where {fd.bound} are declared")
+    if fd.array_kind == 2 and (count < fd.array_min or (fd.bound and count > fd.bound)):
+        raise InvalidValue(path, f"{count} elements outside [{fd.array_min}, {fd.bound}]")
+
+
 def _int_code(element: FieldDesc) -> str | None:
     if element.codec != "int":
         return None
@@ -83,7 +96,7 @@ def _int_code(element: FieldDesc) -> str | None:
 
 def _read_walk(sub: Any, element: FieldDesc, count: int, ctx: Any) -> list[Any]:
     """The per-element shape: each element through its own kind module."""
-    codec = kinds._REGISTRY[element.codec]
+    codec = cast(kinds.ElementKind, kinds._REGISTRY[element.codec])
     items: list[Any] = []
     append = items.append
     for _ in range(count):
@@ -114,7 +127,7 @@ def _read_bulk(sub: Any, element: FieldDesc, count: int, ctx: Any) -> list[Any] 
 
 def _write_walk(w: Any, element: FieldDesc, value: list[Any], ctx: Any) -> None:
     """The per-element shape: each element through its own kind module."""
-    codec = kinds._REGISTRY[element.codec]
+    codec = cast(kinds.ElementKind, kinds._REGISTRY[element.codec])
     for item in value:
         codec.write_element(w, element, item, ctx)
 
@@ -136,6 +149,7 @@ class _Array:
         if not isinstance(value, list):
             raise InvalidValue(path, "not a list")
         _check_count(path, len(value))
+        _check_shape(fd, len(value), path)
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         from .load import Reader
@@ -158,6 +172,16 @@ class _Array:
             raise Refused(
                 "count_over_extent_cap",
                 f"an array count of {count} is past the int32 storage cap",
+            )
+        if fd.array_kind == 1 and count != fd.bound:
+            raise Refused(
+                "wire_damaged",
+                f"{fd.name} carries {count} elements where {fd.bound} are declared",
+            )
+        if fd.array_kind == 2 and (count < fd.array_min or (fd.bound and count > fd.bound)):
+            raise Refused(
+                "wire_damaged",
+                f"{fd.name} carries {count} elements outside [{fd.array_min}, {fd.bound}]",
             )
         remaining = length - sub.pos
         if count > remaining:
