@@ -80,6 +80,19 @@ local same = function(x, y) {
   return true;
 };
 
+// outcome writes one value and asks for a verdict: "refused" is a false
+// return, "written" a true one; a raise is neither.
+local outcome = function(mod, type, value, want, what) {
+  local w;
+  try {
+    w = write(mod, type, value);
+  } catch (e) {
+    check(false, what + ": the write raised (" + e + ")");
+    return;
+  }
+  check(want == "refused" ? w == null : w != null, what);
+};
+
 // verdict writes one value and asks for the case's verdict: "refused" is a
 // false return; "written" is a true return whose bytes read back to value.
 local verdict = function(mod, type, value, want, what) {
@@ -149,20 +162,20 @@ local elements = function(pair, list) {
   v.ListCount = list.len();
   return v;
 };
-check(write(c, "Elements", elements([-128, 127], [0, 65535])) != null, "array elements at the width's bounds are written");
-check(write(c, "Elements", elements([128, 0], [0])) == null, "a fixed array element above the width is refused");
-check(write(c, "Elements", elements([0, -129], [0])) == null, "a fixed array element below the width is refused");
-check(write(c, "Elements", elements([0, 0], [0, 65536])) == null, "a counted array element above the width is refused");
-check(write(c, "Elements", elements([0, 0], [-1])) == null, "a negative counted array element is refused");
+outcome(c, "Elements", elements([-128, 127], [0, 65535]), "written", "array elements at the width's bounds are written");
+outcome(c, "Elements", elements([128, 0], [0]), "refused", "a fixed array element above the width is refused");
+outcome(c, "Elements", elements([0, -129], [0]), "refused", "a fixed array element below the width is refused");
+outcome(c, "Elements", elements([0, 0], [0, 65536]), "refused", "a counted array element above the width is refused");
+outcome(c, "Elements", elements([0, 0], [-1]), "refused", "a negative counted array element is refused");
 local arm = function(type, fill) {
   local v = c.Arm();
   v.Type = type;
   fill(v);
   return v;
 };
-check(write(c, "Arm", arm(c.ArmType.Small, function(v) { v.Small.Value = -128; })) != null, "an arm payload at the width's bound is written");
-check(write(c, "Arm", arm(c.ArmType.Small, function(v) { v.Small.Value = 128; })) == null, "an arm payload above the width is refused");
-check(write(c, "Arm", arm(c.ArmType.Elements, function(v) { v.Elements = elements([0, 200], [0]); })) == null, "an arm payload's array element above the width is refused");
+outcome(c, "Arm", arm(c.ArmType.Small, function(v) { v.Small.Value = -128; }), "written", "an arm payload at the width's bound is written");
+outcome(c, "Arm", arm(c.ArmType.Small, function(v) { v.Small.Value = 128; }), "refused", "an arm payload above the width is refused");
+outcome(c, "Arm", arm(c.ArmType.Elements, function(v) { v.Elements = elements([0, 200], [0]); }), "refused", "an arm payload's array element above the width is refused");
 
 if (failed > 0) throw "packet write bare-int squirrel: " + failed + " check(s) failed";
 print("packet write bare-int Squirrel: " + cases + " shared cases and " + checked + " checks OK\n");
