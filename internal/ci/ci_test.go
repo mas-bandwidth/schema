@@ -35,6 +35,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -863,7 +864,26 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 	if len(tok) >= 2 && ((tok[0] == '\'' && tok[len(tok)-1] == '\'') || (tok[0] == '"' && tok[len(tok)-1] == '"')) {
 		return tok[1 : len(tok)-1], nil
 	}
+	// startsWith(<token>, '<prefix>'), case-insensitive as in Actions, reads
+	// as the literal true or false (the card-branch skip, cardbranch_test.go)
+	if inner, ok := strings.CutPrefix(tok, "startsWith("); ok && strings.HasSuffix(inner, ")") {
+		arg, prefix, ok := strings.Cut(strings.TrimSuffix(inner, ")"), ",")
+		if !ok {
+			return "", fmt.Errorf("malformed startsWith() in %q", tok)
+		}
+		v, err := resolveCIToken(arg, ev)
+		if err != nil {
+			return "", err
+		}
+		p, err := resolveCIToken(prefix, ev)
+		if err != nil {
+			return "", err
+		}
+		return strconv.FormatBool(strings.HasPrefix(strings.ToLower(v), strings.ToLower(p))), nil
+	}
 	switch tok {
+	case "true", "false":
+		return tok, nil
 	case "github.event_name":
 		return ev.Name, nil
 	case "github.repository":
@@ -1098,7 +1118,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	streamToDevPR := ciEvent{
 		Name:     "pull_request",
 		Branch:   "dev",
-		HeadRef:  "sprint/schema-elixir",
+		HeadRef:  "sprint-group/schema-elixir",
 		Repo:     repo,
 		HeadRepo: repo,
 		PlanPkgs: planPkgs,
@@ -1179,7 +1199,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	unnamedBase := ciEvent{
 		Name:     "pull_request",
 		Branch:   "feature/not-a-named-base",
-		HeadRef:  "sprint/schema/shared-2856-ci-every-base-2",
+		HeadRef:  "sprint-group/schema",
 		Repo:     repo,
 		HeadRepo: repo,
 		PlanPkgs: planPkgs,
@@ -1452,8 +1472,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		{
 			name:      "drop ci-fast plan same-repo PR guard",
 			workflow:  "ci-fast.yml",
-			oldSubstr: "  plan:\n    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n",
-			newSubstr: "  plan:\n",
+			oldSubstr: "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)\n",
+			newSubstr: "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false\n",
 			wantErr:   "ci-fast.yml:plan admits fork PR",
 		},
 		{
