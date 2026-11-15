@@ -260,6 +260,13 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		// side reads (§20.2's `optional=true`)
 		p := pieces[len(pieces)-1]
 		w.putBool(p.Offset, fv.Present)
+		// AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (docs/SPEC-TABLES.md
+		// §7.2; docs/rulings.json `fixed-dead-bytes-are-zero`): zero on write
+		// whatever the element's declared default is, which stays a READ rule
+		// and never enters the dead storage.
+		if !fv.Present {
+			return nil
+		}
 	}
 	switch {
 	case f.IsMap():

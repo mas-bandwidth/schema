@@ -1603,6 +1603,7 @@ namespace Bench
             }
             {
                 float compressedValue = value.AimX;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -1.0f && compressedValue <= 1.0f, "value.AimX out of range [-1.0f, 1.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 200u, 8, 2.0f, -1.0f))
                 {
                     return false;
@@ -1610,6 +1611,7 @@ namespace Bench
             }
             {
                 float compressedValue = value.AimY;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -1.0f && compressedValue <= 1.0f, "value.AimY out of range [-1.0f, 1.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 200u, 8, 2.0f, -1.0f))
                 {
                     return false;
@@ -1617,6 +1619,7 @@ namespace Bench
             }
             {
                 float compressedValue = value.AimZ;
+                Debug.Assert(float.IsFinite(compressedValue) && compressedValue >= -1.0f && compressedValue <= 1.0f, "value.AimZ out of range [-1.0f, 1.0f]");
                 if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 200u, 8, 2.0f, -1.0f))
                 {
                     return false;

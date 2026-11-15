@@ -194,9 +194,10 @@ function _M.ZeroVec2(value: any)
   value.Y = 0
 end
 
--- ReadVec2 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadVec2Body reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadVec2(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadVec2 is the one-packet read (SPEC §5).
+function _M.ReadVec2Body(stream: any, value: any): boolean
   if not stream:serializeDouble(STR) then
     return false
   end
@@ -206,6 +207,13 @@ function _M.ReadVec2(stream: any, value: any): boolean
   end
   value.Y = STR.value
   return true
+end
+
+-- ReadVec2 reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadVec2(stream: any, value: any): boolean
+  if not _M.ReadVec2Body(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitSpanF64 resets a value to what NewSpanF64 builds, in place: its declared defaults
@@ -220,9 +228,10 @@ function _M.ZeroSpanF64(value: any)
   for i = 1, 2 do value.Values[i] = 0 end
 end
 
--- ReadSpanF64 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadSpanF64Body reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadSpanF64(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadSpanF64 is the one-packet read (SPEC §5).
+function _M.ReadSpanF64Body(stream: any, value: any): boolean
   for i = 1, 2 do
     if not stream:serializeDouble(STR) then
       return false
@@ -230,6 +239,13 @@ function _M.ReadSpanF64(stream: any, value: any): boolean
     value.Values[i] = STR.value
   end
   return true
+end
+
+-- ReadSpanF64 reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadSpanF64(stream: any, value: any): boolean
+  if not _M.ReadSpanF64Body(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitSpanU64 resets a value to what NewSpanU64 builds, in place: its declared defaults
@@ -244,9 +260,10 @@ function _M.ZeroSpanU64(value: any)
   for i = 1, 2 do value.Values[i] = 0i end
 end
 
--- ReadSpanU64 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadSpanU64Body reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadSpanU64(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadSpanU64 is the one-packet read (SPEC §5).
+function _M.ReadSpanU64Body(stream: any, value: any): boolean
   for i = 1, 2 do
     if not stream:serializeBits64(BIG, 64) then
       return false
@@ -254,6 +271,13 @@ function _M.ReadSpanU64(stream: any, value: any): boolean
     value.Values[i] = BIG.value
   end
   return true
+end
+
+-- ReadSpanU64 reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadSpanU64(stream: any, value: any): boolean
+  if not _M.ReadSpanU64Body(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitSpanI64 resets a value to what NewSpanI64 builds, in place: its declared defaults
@@ -268,9 +292,10 @@ function _M.ZeroSpanI64(value: any)
   for i = 1, 2 do value.Values[i] = 0i end
 end
 
--- ReadSpanI64 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadSpanI64Body reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadSpanI64(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadSpanI64 is the one-packet read (SPEC §5).
+function _M.ReadSpanI64Body(stream: any, value: any): boolean
   for i = 1, 2 do
     if not stream:serializeBits64(BIG, 64) then
       return false
@@ -278,6 +303,13 @@ function _M.ReadSpanI64(stream: any, value: any): boolean
     value.Values[i] = BIG.value
   end
   return true
+end
+
+-- ReadSpanI64 reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadSpanI64(stream: any, value: any): boolean
+  if not _M.ReadSpanI64Body(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitSpanOne resets a value to what NewSpanOne builds, in place: its declared defaults
@@ -292,9 +324,10 @@ function _M.ZeroSpanOne(value: any)
   for i = 1, 1 do value.Values[i] = 0i end
 end
 
--- ReadSpanOne reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadSpanOneBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadSpanOne(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadSpanOne is the one-packet read (SPEC §5).
+function _M.ReadSpanOneBody(stream: any, value: any): boolean
   for i = 1, 1 do
     if not stream:serializeBits64(BIG, 64) then
       return false
@@ -302,6 +335,13 @@ function _M.ReadSpanOne(stream: any, value: any): boolean
     value.Values[i] = BIG.value
   end
   return true
+end
+
+-- ReadSpanOne reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadSpanOne(stream: any, value: any): boolean
+  if not _M.ReadSpanOneBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitSpanChunk resets a value to what NewSpanChunk builds, in place: its declared defaults
@@ -316,9 +356,10 @@ function _M.ZeroSpanChunk(value: any)
   for i = 1, 4 do value.Values[i] = 0 end
 end
 
--- ReadSpanChunk reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadSpanChunkBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadSpanChunk(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadSpanChunk is the one-packet read (SPEC §5).
+function _M.ReadSpanChunkBody(stream: any, value: any): boolean
   for i = 1, 4 do
     if not stream:serializeBits(BITS, 16) then
       return false
@@ -326,6 +367,13 @@ function _M.ReadSpanChunk(stream: any, value: any): boolean
     value.Values[i] = BITS.value
   end
   return true
+end
+
+-- ReadSpanChunk reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadSpanChunk(stream: any, value: any): boolean
+  if not _M.ReadSpanChunkBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitSpanTail resets a value to what NewSpanTail builds, in place: its declared defaults
@@ -342,9 +390,10 @@ function _M.ZeroSpanTail(value: any)
   value.Tail = 0
 end
 
--- ReadSpanTail reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadSpanTailBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadSpanTail(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadSpanTail is the one-packet read (SPEC §5).
+function _M.ReadSpanTailBody(stream: any, value: any): boolean
   for i = 1, 2 do
     if not stream:serializeDouble(STR) then
       return false
@@ -356,6 +405,13 @@ function _M.ReadSpanTail(stream: any, value: any): boolean
   end
   value.Tail = BITS.value
   return true
+end
+
+-- ReadSpanTail reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadSpanTail(stream: any, value: any): boolean
+  if not _M.ReadSpanTailBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitSpanTwice resets a value to what NewSpanTwice builds, in place: its declared defaults
@@ -372,9 +428,10 @@ function _M.ZeroSpanTwice(value: any)
   for i = 1, 2 do value.B[i] = 0 end
 end
 
--- ReadSpanTwice reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadSpanTwiceBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadSpanTwice(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadSpanTwice is the one-packet read (SPEC §5).
+function _M.ReadSpanTwiceBody(stream: any, value: any): boolean
   for i = 1, 2 do
     if not stream:serializeDouble(STR) then
       return false
@@ -388,6 +445,13 @@ function _M.ReadSpanTwice(stream: any, value: any): boolean
     value.B[i] = STR.value
   end
   return true
+end
+
+-- ReadSpanTwice reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadSpanTwice(stream: any, value: any): boolean
+  if not _M.ReadSpanTwiceBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitTrio resets a value to what NewTrio builds, in place: its declared defaults
@@ -406,9 +470,10 @@ function _M.ZeroTrio(value: any)
   value.C = 0
 end
 
--- ReadTrio reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadTrioBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadTrio(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadTrio is the one-packet read (SPEC §5).
+function _M.ReadTrioBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 20) then
     return false
   end
@@ -424,6 +489,13 @@ function _M.ReadTrio(stream: any, value: any): boolean
   return true
 end
 
+-- ReadTrio reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadTrio(stream: any, value: any): boolean
+  if not _M.ReadTrioBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitTrioSole resets a value to what NewTrioSole builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -436,13 +508,21 @@ function _M.ZeroTrioSole(value: any)
   _M.ZeroTrio(value.Inner)
 end
 
--- ReadTrioSole reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadTrioSoleBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadTrioSole(stream: any, value: any): boolean
-  if not _M.ReadTrio(stream, value.Inner) then
+-- It does not end the packet: the public ReadTrioSole is the one-packet read (SPEC §5).
+function _M.ReadTrioSoleBody(stream: any, value: any): boolean
+  if not _M.ReadTrioBody(stream, value.Inner) then
     return false
   end
   return true
+end
+
+-- ReadTrioSole reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadTrioSole(stream: any, value: any): boolean
+  if not _M.ReadTrioSoleBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitVec3Sole resets a value to what NewVec3Sole builds, in place: its declared defaults
@@ -457,13 +537,21 @@ function _M.ZeroVec3Sole(value: any)
   _Types.ZeroVec3(value.V)
 end
 
--- ReadVec3Sole reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadVec3SoleBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadVec3Sole(stream: any, value: any): boolean
-  if not _Types.ReadVec3(stream, value.V) then
+-- It does not end the packet: the public ReadVec3Sole is the one-packet read (SPEC §5).
+function _M.ReadVec3SoleBody(stream: any, value: any): boolean
+  if not _Types.ReadVec3Body(stream, value.V) then
     return false
   end
   return true
+end
+
+-- ReadVec3Sole reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadVec3Sole(stream: any, value: any): boolean
+  if not _M.ReadVec3SoleBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitTrioFirst resets a value to what NewTrioFirst builds, in place: its declared defaults
@@ -480,10 +568,11 @@ function _M.ZeroTrioFirst(value: any)
   value.Trailer = 0
 end
 
--- ReadTrioFirst reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadTrioFirstBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadTrioFirst(stream: any, value: any): boolean
-  if not _M.ReadTrio(stream, value.Inner) then
+-- It does not end the packet: the public ReadTrioFirst is the one-packet read (SPEC §5).
+function _M.ReadTrioFirstBody(stream: any, value: any): boolean
+  if not _M.ReadTrioBody(stream, value.Inner) then
     return false
   end
   if not stream:serializeBits(BITS, 16) then
@@ -491,6 +580,13 @@ function _M.ReadTrioFirst(stream: any, value: any): boolean
   end
   value.Trailer = BITS.value
   return true
+end
+
+-- ReadTrioFirst reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadTrioFirst(stream: any, value: any): boolean
+  if not _M.ReadTrioFirstBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitTrioStraddle resets a value to what NewTrioStraddle builds, in place: its declared defaults
@@ -517,9 +613,10 @@ function _M.ZeroTrioStraddle(value: any)
   _M.ZeroTrio(value.Inner)
 end
 
--- ReadTrioStraddle reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadTrioStraddleBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadTrioStraddle(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadTrioStraddle is the one-packet read (SPEC §5).
+function _M.ReadTrioStraddleBody(stream: any, value: any): boolean
   if not stream:serializeBits64(BIG, 64) then
     return false
   end
@@ -544,10 +641,17 @@ function _M.ReadTrioStraddle(stream: any, value: any): boolean
     return false
   end
   value.Pad5 = BITS.value
-  if not _M.ReadTrio(stream, value.Inner) then
+  if not _M.ReadTrioBody(stream, value.Inner) then
     return false
   end
   return true
+end
+
+-- ReadTrioStraddle reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadTrioStraddle(stream: any, value: any): boolean
+  if not _M.ReadTrioStraddleBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- Vec2MaxBits is the longest wire path, align padding at its worst case;
