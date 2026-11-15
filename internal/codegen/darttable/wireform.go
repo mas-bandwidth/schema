@@ -1551,21 +1551,23 @@ final class TableWireReader {
     return b;
   }
 
-  // _placedNode is true for a node record the node table scan placed: a
-  // table this root can name, or a blob of a kind some pointer below the root
-  // targets (docs/SPEC-TABLES.md §2.5, §3.1). It is the Dart side of the
-  // Inst/Blob test in internal/tablewire/decodenodes.go resolveCell: every
-  // other record — counted unknown, or a refused text blob — is an empty node.
+  // _placedNode is true for a node record whose type this reader can name: a
+  // table the unit declares, or one of the two reserved blob ids (docs/
+  // SPEC-TABLES.md §2.5, §3.1). A record of a type the unit does not declare,
+  // or a refused text blob, is an empty node: it counts one unknown and every
+  // pointer naming it reads null. A placed record of any other type under a
+  // slot is a wrong-type pointer target and refuses the load.
   bool _placedNode(int typeId) =>
       knownTypes.contains(typeId) ||
-      (typeId == _kStringBlobId && stringBlob) ||
-      (typeId == _kBytesBlobId && bytesBlob);
+      typeId == _kStringBlobId ||
+      typeId == _kBytesBlobId;
 
   // resolveTable turns a kind-17 node index into the table it names (§3.1).
   // 0 is null. 1 is the root, and only when the field's target is the root's
   // own type. A record is decoded once and stored before its body is read, so
-  // a second slot names the same object. A type this reader cannot place, or
-  // a type other than the field's target, is a kind mismatch and reads null.
+  // a second slot names the same object. A record of a type this reader cannot
+  // name reads null; one of a type it names that is not the field's target is
+  // a wrong-type pointer target and refuses the whole load.
   Object? resolveTable(int idx, int wantType) {
     if (!nodeTableGood) return null;
     if (idx == 0) return null;
@@ -3378,16 +3380,21 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 func (g *wireGen) emitKnownTypes(st *ir.Struct, recv, root string) {
 	g.pf("\t%s.rootObj = %s;\n", recv, root)
 	g.pf("\t%s.rootType = %s;\n", recv, typeConst(st))
-	reached := ir.PointerReachable(st)
-	if len(reached) == 0 {
+	// THE TYPES THIS READER DECLARES (docs/SPEC-TABLES.md §3.1): every table
+	// of the unit, not only the ones a pointer below this root reaches. A node
+	// record of a declared type that is not its slot's target is damage; one of
+	// a type the unit does not declare is a newer writer's type, counted
+	// `unknown` once and read as null. A root with no table pointer places no
+	// node, so it names none of them.
+	if len(ir.PointerReachable(st)) == 0 || len(g.unit.Tables) == 0 {
 		return
 	}
 	g.pf("\t%s.knownTypes.addAll(<int>[", recv)
-	for i, t := range reached {
+	for i, name := range sortedKeys(g.unit.Tables) {
 		if i > 0 {
 			g.pf(", ")
 		}
-		g.pf("%s", typeConst(t))
+		g.pf("%s", dartU64Literal(ir.TableWireId(g.unit.Tables[name].WireName())))
 	}
 	g.pf("]);\n")
 }
