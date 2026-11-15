@@ -171,8 +171,10 @@ const tableTypeNamesProbe = `import .ProbeTable
 let v = probe.NewProbeRoot()
 v.Tail = 7
 let wire = probe.ProbeRootFixedSave([v])
-let back = probe.ProbeRootFixedDecode(wire)
-assert length(back) == 1
+let back = [probe.NewProbeRoot()]
+let plan:[schema_rt.TableFixedEntry] = []
+for(probe.ProbeRootFixedPlanMax): push(plan, schema_rt.TableFixedEntry {})
+assert probe.ProbeRootFixedLoad(back, wire, plan, schema_rt.TableReport {}) == 1
 assert back[0].Tail == 7
 print("ok")
 `
@@ -295,7 +297,9 @@ const tableConstNamesProbe = `import .ProbeTable
 
 let v = tabledemo.NewRootConfig()
 let wire = tabledemo.RootConfigFixedSave([v])
-let back = tabledemo.RootConfigFixedDecode(wire)
-assert length(back) == 1
+let back = [tabledemo.NewRootConfig()]
+let plan:[schema_rt.TableFixedEntry] = []
+for(tabledemo.RootConfigFixedPlanMax): push(plan, schema_rt.TableFixedEntry {})
+assert tabledemo.RootConfigFixedLoad(back, wire, plan, schema_rt.TableReport {}) == 1
 print("ok")
 `
