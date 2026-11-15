@@ -259,7 +259,9 @@ type runPatternException struct {
 // separate Go module whose generated replacements do not exist until `make`
 // builds them; and two are $(3) templates with no value until the caller
 // expands it; two pair an empty -run '^$' with -fuzz so only the fuzz target
-// runs; three select one subtest of the Lobster forgery control, and -list
+// runs; three select one subtest of the Lobster forgery control, four select
+// block_render chunks of the Lobster forgery oracle, and four select
+// fixed-proof cases of the Lobster value and control suites, and -list
 // lists top-level tests only and does not split a pattern at a slash, so a
 // subtest pattern cannot be listed; and slow-gate-coverage's pattern is
 // emitted by tools/slowgatescan when its recipe runs.
@@ -267,6 +269,14 @@ var runPatternExceptions = []runPatternException{
 	{"make/lobster.mk:88", "the recipe selects the block extent negative-control subtest; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzzNegativeControl/block_extent_bounds_removed$"},
 	{"make/lobster.mk:90", "the recipe selects the used-length negative-control subtest; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzzNegativeControl/block_used_length_unchecked$"},
 	{"make/lobster.mk:92", "the recipe selects the cook negative-control subtest; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzzNegativeControl/cook_reserved_words_unchecked$"},
+	{"make/lobster.mk:113", "the recipe selects block_render forgery chunks 0-1; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzz$/^block_render$/^[01]$"},
+	{"make/lobster.mk:115", "the recipe selects block_render forgery chunks 2-3; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzz$/^block_render$/^[23]$"},
+	{"make/lobster.mk:117", "the recipe selects block_render forgery chunks 4-5; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzz$/^block_render$/^[45]$"},
+	{"make/lobster.mk:119", "the recipe selects the block_render forgery chunks the three rows before it leave; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterForgeryFuzz$/^block_render$"},
+	{"make/lobster.mk:121", "the recipe selects the fixed-proof value cases a-f; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterFixedProofSuiteValues$/^[a-f]"},
+	{"make/lobster.mk:123", "the recipe selects the fixed-proof value cases g-r; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterFixedProofSuiteValues$/^[g-r]"},
+	{"make/lobster.mk:127", "the recipe selects the fixed-proof control cases a-f; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterFixedProofSuiteNegativeControl$/^[a-f]"},
+	{"make/lobster.mk:129", "the recipe selects the fixed-proof control cases g-r; -list lists top-level tests only and does not split a pattern at a slash", "^TestLobsterFixedProofSuiteNegativeControl$/^[g-r]"},
 	{"make/go.mk:323", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root", "^TestCorpusFixtureWrite$"},
 	{"make/go.mk:459", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'", "^TestCardFixtureWrite$"},
 	{"make/go.mk:531", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root", "Soak"},

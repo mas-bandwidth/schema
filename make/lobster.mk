@@ -83,7 +83,7 @@ test-lobster-packages-type: toolchain-lobster
 test-lobster-packages-fixed: toolchain-lobster build/fixedform-corpus/.stamp
 	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterFixedForm(AgreesWithTheByteOracle|NegativeControl|Evolution|NamesEveryRefusal)$$'
 test-lobster-packages-forgery: toolchain-lobster
-	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterForgeryFuzz$$'
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterForgeryFuzz$$' -skip '^TestLobsterForgeryFuzz$$/^block_render$$'
 test-lobster-packages-forgery-block-extent: toolchain-lobster
 	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterForgeryFuzzNegativeControl/block_extent_bounds_removed$$'
 test-lobster-packages-forgery-used-length: toolchain-lobster
@@ -93,9 +93,42 @@ test-lobster-packages-forgery-cook: toolchain-lobster
 test-lobster-packages-cook: toolchain-lobster
 	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterCook'
 test-lobster-packages-rest-a: toolchain-lobster
-	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobster[A-I]' -skip '^TestLobsterFixedForm(AgreesWithTheByteOracle|NegativeControl|Evolution|NamesEveryRefusal)$$|^TestLobsterForgeryFuzz$$|^TestLobsterForgeryFuzzNegativeControl$$|^TestLobsterCook'
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobster[A-I]' -skip '^TestLobsterFixedForm(AgreesWithTheByteOracle|NegativeControl|Evolution|NamesEveryRefusal)$$|^TestLobsterForgeryFuzz$$|^TestLobsterForgeryFuzzNegativeControl$$|^TestLobsterCook|^TestLobsterFixedProofSuite(Values|NegativeControl)$$'
 test-lobster-packages-rest-b: toolchain-lobster
 	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -skip '^TestLobster[A-I]|^TestLobsterFixedForm(AgreesWithTheByteOracle|NegativeControl|Evolution|NamesEveryRefusal)$$|^TestLobsterForgeryFuzz$$|^TestLobsterForgeryFuzzNegativeControl$$'
+
+# The two shards above that still walked too much in one row are cut again,
+# so each fits the cap on a runner's share of cores. The forgery oracle runs
+# one subtest per image and one per chunk of that image's mutants
+# (TestLobsterForgeryFuzz/<image>/<chunk>): block_render is most of its cost,
+# so its chunks go to four rows of their own and test-lobster-packages-forgery
+# keeps every other image. The fixed-proof value and control suites, one
+# subtest per row case and each a live C++ oracle build, leave rest-a and go
+# to three rows each by the case's first letter. The last row of each set
+# takes what the others do not, so a chunk or a case added later still runs.
+.PHONY: test-lobster-packages-forgery-render-a test-lobster-packages-forgery-render-b test-lobster-packages-forgery-render-c test-lobster-packages-forgery-render-d
+.PHONY: test-lobster-packages-proof-values-a test-lobster-packages-proof-values-b test-lobster-packages-proof-values-c
+.PHONY: test-lobster-packages-proof-control-a test-lobster-packages-proof-control-b test-lobster-packages-proof-control-c
+test-lobster-packages-forgery-render-a: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterForgeryFuzz$$/^block_render$$/^[01]$$'
+test-lobster-packages-forgery-render-b: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterForgeryFuzz$$/^block_render$$/^[23]$$'
+test-lobster-packages-forgery-render-c: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterForgeryFuzz$$/^block_render$$/^[45]$$'
+test-lobster-packages-forgery-render-d: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterForgeryFuzz$$/^block_render$$' -skip '^TestLobsterForgeryFuzz$$/^block_render$$/^[0-5]$$'
+test-lobster-packages-proof-values-a: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterFixedProofSuiteValues$$/^[a-f]'
+test-lobster-packages-proof-values-b: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterFixedProofSuiteValues$$/^[g-r]'
+test-lobster-packages-proof-values-c: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterFixedProofSuiteValues$$' -skip '^TestLobsterFixedProofSuiteValues$$/^[a-r]'
+test-lobster-packages-proof-control-a: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterFixedProofSuiteNegativeControl$$/^[a-f]'
+test-lobster-packages-proof-control-b: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterFixedProofSuiteNegativeControl$$/^[g-r]'
+test-lobster-packages-proof-control-c: toolchain-lobster
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterFixedProofSuiteNegativeControl$$' -skip '^TestLobsterFixedProofSuiteNegativeControl$$/^[a-r]'
 
 # build/conformance-lobster is the manifest's units generated for lobster, one
 # directory per unit.
