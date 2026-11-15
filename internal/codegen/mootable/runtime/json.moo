@@ -787,18 +787,6 @@ local function bnToNumber(a: Big): number
 	return v
 end
 
--- dblRound(a): the integer a rounded to the nearest double, ties to even,
--- as an integer again: the value Go's float64(magnitude) compares with
-local function dblRound(a: Big): Big
-	if bnBitLen(a) <= 53 then
-		return a
-	end
-	local qh, ql, e = roundBinary(a, { 1 }, 0, 53, -1074)
-	local q = bnShl(bnSmall(qh), 24)
-	bnAddSmall(q, ql)
-	return bnShl(q, e)
-end
-
 -- the signed order of two (negative, magnitude) pairs; a zero is never negative
 local function cmpSigned(an: boolean, am: Big, bn: boolean, bm: Big): number
 	if an ~= bn then
@@ -2281,17 +2269,16 @@ local function placeInteger(r: Reader, fd: any, holder: any, key: any, token: st
 	if saturated then
 		r.report.outOfRange += 1
 	end
-	-- THE DECLARED RANGE FIRST, compared as the doubles the engine compares
+	-- THE DECLARED RANGE FIRST, compared exactly: a value one past a bound
+	-- refuses at every magnitude, and no wide integer passes through a double
 	local bn, bm = negative, mag
 	local has, ln, lm, hn, hm = intBounds(fd)
 	if has then
-		local scale = dblRound(mag)
-		local dlo, dhi = dblRound(lm), dblRound(hm)
-		if cmpSigned(negative, scale, ln, dlo) < 0 then
-			bn, bm = ln and #dlo > 0, dlo
+		if cmpSigned(negative, mag, ln, lm) < 0 then
+			bn, bm = ln and #lm > 0, lm
 			r.report.outOfRange += 1
-		elseif cmpSigned(negative, scale, hn, dhi) > 0 then
-			bn, bm = hn and #dhi > 0, dhi
+		elseif cmpSigned(negative, mag, hn, hm) > 0 then
+			bn, bm = hn and #hm > 0, hm
 			r.report.outOfRange += 1
 		end
 		if bnCmp(bm, MAX64) > 0 then
