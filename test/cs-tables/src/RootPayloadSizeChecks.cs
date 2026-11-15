@@ -141,16 +141,12 @@ static partial class Program
                 }
             }
 
+            // A count outside [0, bound] (ItemsCount -1 or 4, TextLength -1
+            // or past the buffer) is the caller's contract on a write: the C#
+            // leg checks it with a debug assert only (aa9aa173d), so it is not
+            // a refusal and has no case here. A vocabulary too small for the
+            // ids the value needs is a refusal in every build.
             byte[] refused = new byte[1024];
-            value.ItemsCount = -1;
-            CheckPayloadRootRefusal(value, type, refused, ids);
-            value.ItemsCount = 4;
-            CheckPayloadRootRefusal(value, type, refused, ids);
-            value.ItemsCount = 2;
-            value.TextLength = -1;
-            CheckPayloadRootRefusal(value, type, refused, ids);
-            value.TextLength = value.Text.Length + 1;
-            CheckPayloadRootRefusal(value, type, refused, ids);
             value.TextLength = 0;
             CheckPayloadRootRefusal(value, type, refused, new ulong[6]);
         }
