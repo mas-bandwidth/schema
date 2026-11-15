@@ -67,6 +67,11 @@ toolchain-luacheck:
 #                  suggested rewrite is not, so the rewrite would change
 #                  behaviour.
 #
+# The table runtime's message.lua (internal/codegen/luatable/runtime) carries
+# the same NaN-rejecting `not (x < y)` range checks as the compressed-float
+# runtime it mirrors, for the same reason, so it takes the same 581 setting
+# (2026-11-15: main was red on exactly these six W581 findings).
+#
 # A warning in the vendored bytes is fixed upstream in serialize.lua and
 # re-vendored (make vendor-serialize-lua), never edited here or ignored here.
 #
@@ -81,6 +86,7 @@ $(LUA_LUACHECK_CONFIG): make/schema-lua-generated-luacheck-gate.mk
 		'-- The vendored serialize.lua runtime, under its own .luacheckrc (see make/schema-lua-generated-luacheck-gate.mk).' \
 		'files["$(LUA_LUACHECK_CORPUS)/unique/*-serialize_stream.lua"] = { self = false }' \
 		'files["$(LUA_LUACHECK_CORPUS)/unique/*-serialize_compressed_float.lua"] = { ignore = { "581" } }' \
+		'files["$(LUA_LUACHECK_CORPUS)/unique/*-message.lua"] = { ignore = { "581" } }' \
 		> $@
 
 # generate the corpus exactly as the other legs generate theirs: one directory
