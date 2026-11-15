@@ -2440,6 +2440,11 @@ int writeStrs(Strs value, ByteData view) {
   var v = 0;
   assert(value.sLength >= 0);
   assert(value.sLength <= 8);
+  assert(Schema.utf8Valid(value.s, value.sLength));
+  // an interior null is content the write refuses (SPEC §4.7)
+  for (var i0 = 0; i0 < value.sLength; i0++) {
+    assert(value.s[i0] != 0);
+  }
   v = (value.lead & 0x1f) | ((value.sLength & 0xf) << 5);
   scratch |= v << scratchBits;
   scratchBits += 9;

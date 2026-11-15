@@ -729,6 +729,11 @@ int writeArmAlign(ArmAlign value, ByteData view) {
   if (value.flag) {
     assert(value.sLength >= 0);
     assert(value.sLength <= 4);
+    assert(Schema.utf8Valid(value.s, value.sLength));
+    // an interior null is content the write refuses (SPEC §4.7)
+    for (var i0 = 0; i0 < value.sLength; i0++) {
+      assert(value.s[i0] != 0);
+    }
     v = value.sLength & 0x7;
     scratch |= v << scratchBits;
     scratchBits += 3;
@@ -1963,6 +1968,11 @@ int writeRegainAfterAlign(RegainAfterAlign value, ByteData view) {
   }
   assert(value.sLength >= 0);
   assert(value.sLength <= 4);
+  assert(Schema.utf8Valid(value.s, value.sLength));
+  // an interior null is content the write refuses (SPEC §4.7)
+  for (var i0 = 0; i0 < value.sLength; i0++) {
+    assert(value.s[i0] != 0);
+  }
   v = value.sLength & 0x7;
   scratch |= v << scratchBits;
   scratchBits += 3;
