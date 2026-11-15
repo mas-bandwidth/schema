@@ -21,6 +21,10 @@ import (
 
 const variableSaveChecksSchema = `package probe
 
+table Inner {
+	x uint8
+}
+
 table Probe {
 	bounded64 int64 | min = -5, max = 5
 	bounded128 int128 | min = -5, max = 5
@@ -32,6 +36,7 @@ table Probe {
 	u32 uint32
 	fixedbytes [4]uint8
 	counted [1..4]uint8
+	inners [..4]Inner
 }
 `
 
@@ -54,6 +59,7 @@ var variableSaveValidCases = []variableSaveValidCase{
 	{"bytes-full", `v.Fixedbytes = [4]uint8{1, 2, 3, 4}`, `v.Fixedbytes = buffer.fromstring("\x01\x02\x03\x04")`},
 	{"counted-max", `v.CountedCount = 4`, `v.CountedCount = 4`},
 	{"counted-min", `v.CountedCount = 1`, `v.CountedCount = 1`},
+	{"inners-max", `v.InnersCount = 4; v.Inners[3].X = 7`, `v.InnersCount = 4; v.Inners[4].X = 7`},
 }
 
 type variableSaveInvalidCase struct {
@@ -77,6 +83,11 @@ var variableSaveInvalidCases = []variableSaveInvalidCase{
 	{"bytes-short", `v.Fixedbytes = buffer.create(3)`},
 	{"counted-over-bound", `v.CountedCount = 5`},
 	{"counted-under-bound", `v.CountedCount = 0`},
+	{"inners-over-bound", `v.InnersCount = 5`},
+	{"inners-huge", `v.InnersCount = 1e8`},
+	{"inners-infinite", `v.InnersCount = math.huge`},
+	{"inners-nan", `v.InnersCount = 0 / 0`},
+	{"inners-fraction", `v.InnersCount = 1.5`},
 }
 
 // TestLuauVariableSaveRefusesOffDeclaration holds the variable-form writer to

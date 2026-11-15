@@ -219,6 +219,12 @@ local function live_count(fd: any, holder: any, val: any): number
 	if fd.array == "counted" then
 		local c = holder[fd.slot .. "Count"]
 		if c == nil then c = 0 end
+		-- A COUNT OFF ITS DECLARATION refuses here, before any walk loops on
+		-- it: not an integer, or outside [min, bound]. The raise is caught by
+		-- S.save and S.measure, which answer the refusal (docs/SPEC.md §5.1).
+		if typeof(c) ~= "number" or c ~= math.floor(c) or c < (fd.min or 0) or c > fd.bound then
+			error("count off its declaration", 0)
+		end
 		return c
 	end
 	return fd.bound
