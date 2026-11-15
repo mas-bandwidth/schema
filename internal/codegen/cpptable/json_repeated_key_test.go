@@ -33,6 +33,8 @@ func TestCPPJsonRepeatedKeyEveryObject(t *testing.T) {
 		{name: "array-object-repeated", text: `{"zz":[{"a":1,"a":2}]}`, want: false},
 		{name: "distinct-unknown-keys", text: `{"zz":1,"yy":2}`, want: true},
 		{name: "same-key-two-objects", text: `{"zz":{"a":1},"yy":{"a":2}}`, want: true},
+		{name: "same-key-outer-and-nested", text: `{"zz":{"zz":{"zz":1}}}`, want: true},
+		{name: "same-key-outer-and-array-object", text: `{"zz":[{"zz":1},{"zz":2}]}`, want: true},
 	}
 	var body strings.Builder
 	body.WriteString(`

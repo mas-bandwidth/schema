@@ -1525,9 +1525,10 @@ struct TableJsonIn
     bool bad;     // the text is not JSON: the walk stops and the read is discarded whole
     void * graph; // the pointered read's builder and label map (§16.7); NULL for a fixed table
     // EVERY KEY OF EVERY OBJECT THE TEXT WALKS (docs/SPEC-TABLES.md §16.2,
-    // §16.12), decoded into one stack: an object marks the count when it opens
-    // and its mark cuts the stack back when it closes, so a key repeated in one
-    // object refuses while the same key in two objects does not. The arrays
+    // §16.12), decoded into one stack: an object marks the count when it opens,
+    // compares only the keys above its mark, and cuts the stack back when it
+    // closes, so a key repeated in one object refuses while the same key in two
+    // objects, or in an object and one nested inside it, does not. The arrays
     // grow with the text and never past it.
     char * key_bytes;
     int64_t key_bytes_size;
@@ -1536,6 +1537,7 @@ struct TableJsonIn
     int32_t * key_length;
     int64_t key_count;
     int64_t key_capacity;
+    int64_t key_mark; // the first key of the object being walked
 };
 
 inline void TableJsonKeysInit( TableJsonIn & in )
@@ -1547,6 +1549,7 @@ inline void TableJsonKeysInit( TableJsonIn & in )
     in.key_length = NULL;
     in.key_count = 0;
     in.key_capacity = 0;
+    in.key_mark = 0;
 }
 
 inline void TableJsonKeysShutdown( TableJsonIn & in )
@@ -1558,14 +1561,25 @@ inline void TableJsonKeysShutdown( TableJsonIn & in )
 }
 
 // ONE OBJECT's key window: the stack's mark at its opening is where it must be
-// when the object closes, so a nested object's keys never stand among its own.
+// when the object closes, so a nested object's keys never stand among its own,
+// and its own window starts there, so its enclosing objects' keys never stand
+// among a nested object's.
 struct TableJsonKeyScope
 {
     TableJsonIn & in;
     int64_t count;
     int64_t used;
-    TableJsonKeyScope( TableJsonIn & owner ) : in( owner ), count( owner.key_count ), used( owner.key_bytes_used ) {}
-    ~TableJsonKeyScope() { in.key_count = count; in.key_bytes_used = used; }
+    int64_t mark;
+    TableJsonKeyScope( TableJsonIn & owner ) : in( owner ), count( owner.key_count ), used( owner.key_bytes_used ), mark( owner.key_mark )
+    {
+        in.key_mark = in.key_count;
+    }
+    ~TableJsonKeyScope()
+    {
+        in.key_count = count;
+        in.key_bytes_used = used;
+        in.key_mark = mark;
+    }
 };
 
 inline bool TableJsonKeysGrow( TableJsonIn & in, int64_t count, int64_t bytes )
@@ -1599,7 +1613,7 @@ inline bool TableJsonKeysGrow( TableJsonIn & in, int64_t count, int64_t bytes )
 // object.
 inline bool TableJsonKeyTrack( TableJsonIn & in, const char * key, int32_t length )
 {
-    for ( int64_t i = 0; i < in.key_count; i++ )
+    for ( int64_t i = in.key_mark; i < in.key_count; i++ )
     {
         if ( in.key_length[i] == length && ( length == 0 || memcmp( in.key_bytes + in.key_offset[i], key, (size_t) length ) == 0 ) )
         {
