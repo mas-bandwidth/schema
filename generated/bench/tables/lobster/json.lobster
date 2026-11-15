@@ -929,6 +929,49 @@ class JsonReader:
     labels:[JsonLabel] = []
     zero:bool = false
     utf8:bool = false
+    def key_order(a:string, b:string) -> int:
+        let n = min(length(a), length(b))
+        var i = 0
+        while i < n:
+            if a[i] != b[i]:
+                return if a[i] < b[i]: -1 else: 1
+            i++
+        if length(a) == length(b):
+            return 0
+        return if length(a) < length(b): -1 else: 1
+    def sorted_keys(keys:[string]) -> [string]:
+        let n = length(keys)
+        if n < 2:
+            return keys
+        let mid = n / 2
+        var left:[string] = []
+        var right:[string] = []
+        var i = 0
+        while i < n:
+            if i < mid:
+                push(left, keys[i])
+            else:
+                push(right, keys[i])
+            i++
+        left = this.sorted_keys(left)
+        right = this.sorted_keys(right)
+        let out:[string] = []
+        var a = 0
+        var b = 0
+        while a < length(left) and b < length(right):
+            if this.key_order(left[a], right[b]) <= 0:
+                push(out, left[a])
+                a++
+            else:
+                push(out, right[b])
+                b++
+        while a < length(left):
+            push(out, left[a])
+            a++
+        while b < length(right):
+            push(out, right[b])
+            b++
+        return out
 
 def j_refuse(r:JsonReader, reason:string) -> bool:
     r.bad = true
@@ -937,59 +980,13 @@ def j_refuse(r:JsonReader, reason:string) -> bool:
         r.report.reason = reason
     return false
 
-def j_key_order(a:string, b:string) -> int:
-    let n = min(length(a), length(b))
-    var i = 0
-    while i < n:
-        if a[i] != b[i]:
-            return if a[i] < b[i]: -1 else: 1
-        i++
-    if length(a) == length(b):
-        return 0
-    return if length(a) < length(b): -1 else: 1
-
-// j_sorted_keys is the merge sort the object-key check runs once per object.
-def j_sorted_keys(keys:[string]) -> [string]:
-    let n = length(keys)
-    if n < 2:
-        return keys
-    let mid = n / 2
-    var left:[string] = []
-    var right:[string] = []
-    var i = 0
-    while i < n:
-        if i < mid:
-            push(left, keys[i])
-        else:
-            push(right, keys[i])
-        i++
-    left = j_sorted_keys(left)
-    right = j_sorted_keys(right)
-    let out:[string] = []
-    var a = 0
-    var b = 0
-    while a < length(left) and b < length(right):
-        if j_key_order(left[a], right[b]) <= 0:
-            push(out, left[a])
-            a++
-        else:
-            push(out, right[b])
-            b++
-    while a < length(left):
-        push(out, left[a])
-        a++
-    while b < length(right):
-        push(out, right[b])
-        b++
-    return out
-
-// j_distinct_keys refuses a repeated object key by comparing sorted
-// neighbours, one pass over the keys rather than one scan per key.
-def j_distinct_keys(r:JsonReader, keys:[string]) -> bool:
-    let sorted = j_sorted_keys(keys)
+// j_key_once refuses a repeated object key by comparing sorted neighbours,
+// one pass over the keys rather than one scan per key.
+def j_key_once(r:JsonReader, keys:[string]) -> bool:
+    let sorted = r.sorted_keys(keys)
     var i = 1
     while i < length(sorted):
-        if j_key_order(sorted[i - 1], sorted[i]) == 0:
+        if r.key_order(sorted[i - 1], sorted[i]) == 0:
             return j_refuse(r, "duplicate_key")
         i++
     return true
@@ -1315,7 +1312,7 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
         var c = j_peek(r)
         if c == close:
             r.pos++
-            if not j_distinct_keys(r, keys):
+            if not j_key_once(r, keys):
                 return false
             if definition:
                 definition.open = false
@@ -1346,7 +1343,7 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
                     continue
                 if c == close:
                     r.pos++
-                    if not j_distinct_keys(r, keys):
+                    if not j_key_once(r, keys):
                         return false
                     return true
                 r.bad = true
@@ -1361,7 +1358,7 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
                 continue
             if c == close:
                 r.pos++
-                if not j_distinct_keys(r, keys):
+                if not j_key_once(r, keys):
                     return false
                 if definition:
                     definition.open = false
@@ -1466,7 +1463,7 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
             let c = j_peek(r)
             if c == '}':
                 r.pos++
-                if not j_distinct_keys(r, keys):
+                if not j_key_once(r, keys):
                     return false
                 return j_required(r, rec, seen)
             if c == 0:
@@ -1508,7 +1505,7 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
             continue
         if c == '}':
             r.pos++
-            if not j_distinct_keys(r, keys):
+            if not j_key_once(r, keys):
                 return false
             return j_required(r, rec, seen)
         return j_refuse(r, "malformed")
@@ -1783,7 +1780,7 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
             break
         r.bad = true
         return false
-    if not j_distinct_keys(r, seen):
+    if not j_key_once(r, seen):
         return false
     return true
 

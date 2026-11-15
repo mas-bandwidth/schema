@@ -243,7 +243,7 @@ print(if value: "read" else: "refused")
 	if out := string(lobsterrun.Run(t, g.dir, "main.lobster", inputs)); out != "refused\n" {
 		t.Fatalf("duplicate read: %q", out)
 	}
-	patchJson(t, g, "        if j_key_order(sorted[i - 1], sorted[i]) == 0:\n            return j_refuse(r, \"duplicate_key\")", "        if j_key_order(sorted[i - 1], sorted[i]) == 0 and length(sorted) < 0:\n            return j_refuse(r, \"duplicate_key\")")
+	patchJson(t, g, "        if r.key_order(sorted[i - 1], sorted[i]) == 0:\n            return j_refuse(r, \"duplicate_key\")", "        if r.key_order(sorted[i - 1], sorted[i]) == 0 and length(sorted) < 0:\n            return j_refuse(r, \"duplicate_key\")")
 	if out := string(lobsterrun.Run(t, g.dir, "main.lobster", inputs)); out != "read\n" {
 		t.Fatalf("negative control did not expose dropped duplicate detection: %q", out)
 	}
