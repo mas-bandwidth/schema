@@ -2087,9 +2087,9 @@ test-c: tables-c-discard
 # 1-based directory indices during construction and resolving offsets once
 # acyclicity holds. The first control drops the cycle verdict in a copy of
 # graph.go so a cyclic graph loads, and TestPointerNamingAnOpenNodeIsRefusedC
-# must go red on it: the region and builder reads refuse the probe's wire by
-# the reachability rule too, so the control's red line is the retaining read,
-# the one leg the cycle verdict alone gates. The linear control stacks a node
+# must go red on it: its self-loop leaves every node reachable from the root,
+# so the reachability rule passes and the control's red line is the region read,
+# the first read the cycle verdict alone gates. The linear control stacks a node
 # at every slot naming it rather than the last, and
 # TestDiamondChainLoadsLinearC must go red on it.
 C_CYCLE_NC := build/c-cycle-nc
@@ -2106,8 +2106,8 @@ tables-c-cycle-negative-control:
 	@rm -rf $(C_CYCLE_NC) && mkdir -p $(C_CYCLE_NC)
 	@n=$$(grep -F -c 'if ( !c.broken && c.processed == c.vertices )' internal/codegen/ctable/graph.go); \
 		if [ "$$n" != "1" ]; then echo "NEGATIVE CONTROL: the C cycle verdict appears $$n times, expected exactly 1"; exit 1; fi
-	@m=$$(grep -F -c 'cycle: the retaining load handed back a cyclic graph' internal/codegen/ctable/discard_test.go); \
-		if [ "$$m" != "1" ]; then echo "NEGATIVE CONTROL: the cycle gate's retaining refusal appears $$m times, expected exactly 1"; exit 1; fi
+	@m=$$(grep -F -c 'cycle: the region load handed back a cyclic graph' internal/codegen/ctable/discard_test.go); \
+		if [ "$$m" != "1" ]; then echo "NEGATIVE CONTROL: the cycle gate's region refusal appears $$m times, expected exactly 1"; exit 1; fi
 	@sed -e 's#if ( !c.broken && c.processed == c.vertices )#if ( !c.broken ) /* NEGATIVE CONTROL: the cycle verdict is gone */#' \
 		internal/codegen/ctable/graph.go > $(C_CYCLE_NC)/graph.go.txt
 	@cmp -s internal/codegen/ctable/graph.go $(C_CYCLE_NC)/graph.go.txt && \
@@ -2119,7 +2119,7 @@ tables-c-cycle-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the C cycle verdict is gone and the gate stayed green"; \
 		cat $(C_CYCLE_NC)/log; exit 1; \
 	fi
-	@grep -q "cycle: the retaining load handed back a cyclic graph" $(C_CYCLE_NC)/log || \
+	@grep -q "cycle: the region load handed back a cyclic graph" $(C_CYCLE_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(C_CYCLE_NC)/log; exit 1; }
 	@grep -m1 "cyclic graph" $(C_CYCLE_NC)/log

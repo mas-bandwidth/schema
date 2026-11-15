@@ -421,63 +421,83 @@ int main( void )
 // TestPointerNamingAnOpenNodeIsRefusedC is the C leg's gate for
 // docs/SPEC-TABLES.md §3.1: no writer produces a cycle, so a pointer naming a
 // node whose descent is still open is damage and the whole load is refused.
-// The wire is a clean chain root -> 2 -> 3 with node 2's pointer turned back
-// at node 2 itself. Red if the region load, the retaining load or the builder
-// load hands back the cyclic graph.
+// The wire is root(1) naming A(2) and B(3), with A naming B, and A's pointer
+// at B turned back at A itself: a self-loop off the root while the root still
+// reaches every node, so the reach rule passes and only the cycle verdict
+// refuses it. Red if the region load, the retaining load or the builder load
+// hands back the cyclic graph.
 func TestPointerNamingAnOpenNodeIsRefusedC(t *testing.T) {
 	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
-	u := unitFrom(t, discardProbeSchema)
+	u := unitFrom(t, cycleUnit)
 	m := tabletext.NewModel(u)
-	inst := m.New(m.Lookup("Graph"))
-	var r tabletext.Report
-	if !m.Read(inst, []byte(`{"a":5,"next":{"a":6,"next":{"a":7}}}`), &r) {
-		t.Fatal("the text did not place")
+	twin := cycleEncode(t, m, 3, nil, []cycleLink{{0, "left", 1}, {0, "right", 2}, {1, "left", 2}})
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Node")), twin, &tabletext.Report{}); !ok || err != nil {
+		t.Fatalf("the engine refuses the acyclic twin: ok=%v err=%v", ok, err)
 	}
-	wire, err := tablewire.Encode(m, inst)
-	if err != nil {
-		t.Fatal(err)
+	// B (index 3) is named twice, by root.right and by A.left. Turning the
+	// root's name of B at A leaves an acyclic graph the engine reads; turning
+	// A's name of B at A is the self-loop, which it refuses. Exactly one of each.
+	pattern := []byte{byte(ir.TableKindPointer), 3}
+	if bytes.Count(twin, pattern) != 2 {
+		t.Fatalf("index 3 appears %d times as a pointer payload, want 2", bytes.Count(twin, pattern))
 	}
-	at := bytes.Index(wire, []byte{byte(ir.TableKindPointer), 3})
-	if at < 0 || bytes.Count(wire, []byte{byte(ir.TableKindPointer), 3}) != 1 {
-		t.Fatal("node 2's pointer at node 3 is not where this test expects it")
+	var wire []byte
+	acyclic := 0
+	for from := 0; ; {
+		at := bytes.Index(twin[from:], pattern)
+		if at < 0 {
+			break
+		}
+		at += from
+		from = at + 1
+		try := bytes.Clone(twin)
+		try[at+1] = 2
+		var report tabletext.Report
+		ok, err := tablewire.Decode(m, m.New(m.Lookup("Node")), try, &report)
+		switch {
+		case ok && err == nil:
+			acyclic++
+		case !ok && tablewire.ReadRefusal(err):
+			wire = try
+		default:
+			t.Fatalf("the engine neither reads nor refuses a patched twin: ok=%v err=%v %+v", ok, err, report)
+		}
 	}
-	wire[at+1] = 2
-	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Graph")), wire, &report); ok || !tablewire.ReadRefusal(err) {
-		t.Fatalf("the engine does not refuse the cycle: ok=%v err=%v %+v", ok, err, report)
+	if wire == nil || acyclic != 1 {
+		t.Fatalf("want one self-loop the engine refuses and one acyclic patch it reads, got self-loop=%v acyclic=%d", wire != nil, acyclic)
 	}
 	body := fmt.Sprintf(`
     const uint8_t cyclic[] = { %s };
-    int64_t need = graph_load_measure( cyclic, (int64_t) sizeof( cyclic ) );
+    int64_t need = node_load_measure( cyclic, (int64_t) sizeof( cyclic ) );
     uint8_t * region = (uint8_t *) malloc( (size_t) ( need > 0 ? need : 4096 ) );
-    TableReport g; GraphBuilder builder; TableReport br; Graph * broot; int64_t i;
+    TableReport g; NodeBuilder builder; TableReport br; Node * broot; int64_t i;
     if ( region == NULL ) { return 1; }
     memset( &g, 0, sizeof( g ) );
-    if ( graph_load( region, need > 0 ? need : 4096, cyclic, (int64_t) sizeof( cyclic ), &g ) != NULL ) { printf( "cycle: the region load handed back a cyclic graph\n" ); free( region ); return 1; }
+    if ( node_load( region, need > 0 ? need : 4096, cyclic, (int64_t) sizeof( cyclic ), &g ) != NULL ) { printf( "cycle: the region load handed back a cyclic graph\n" ); free( region ); return 1; }
     if ( !g.refused ) { printf( "cycle: the region load did not say malformed\n" ); free( region ); return 1; }
     for ( i = 0; i < ( need > 0 ? need : 4096 ); i++ ) { if ( region[i] != 0 ) { printf( "cycle: the region was not zeroed on refusal\n" ); free( region ); return 1; } }
     free( region );
     {
         static uint8_t store[1 << 12]; static TableRetainId ids[16];
         uint8_t * retain_region = (uint8_t *) malloc( 1 << 16 );
-        TableRetain retain; TableReport rr; const Graph * kept;
+        TableRetain retain; TableReport rr; const Node * kept;
         if ( retain_region == NULL ) { return 1; }
         memset( &retain, 0, sizeof( retain ) );
         retain.bytes = store; retain.capacity = (int64_t) sizeof( store );
         retain.ids = ids; retain.id_capacity = 16;
         memset( &rr, 0, sizeof( rr ) );
-        kept = graph_load_retain( retain_region, 1 << 16, cyclic, (int64_t) sizeof( cyclic ), &retain, &rr );
+        kept = node_load_retain( retain_region, 1 << 16, cyclic, (int64_t) sizeof( cyclic ), &retain, &rr );
         free( retain_region );
         if ( kept != NULL ) { printf( "cycle: the retaining load handed back a cyclic graph\n" ); return 1; }
         if ( !rr.refused ) { printf( "cycle: the retaining load did not say malformed\n" ); return 1; }
     }
-    if ( !graph_builder_init( &builder ) ) { return 1; }
+    if ( !node_builder_init( &builder ) ) { return 1; }
     memset( &br, 0, sizeof( br ) );
-    if ( graph_load_builder( &builder, cyclic, (int64_t) sizeof( cyclic ), &br ) || !br.refused ) { printf( "cycle: the builder load did not refuse\n" ); graph_builder_shutdown( &builder ); return 1; }
-    broot = graph_builder_root( &builder );
-    if ( broot != NULL && ( broot->a != 0 || broot->b != 0 || broot->next.value != 0 ) ) { printf( "cycle: the builder root was not reset\n" ); graph_builder_shutdown( &builder ); return 1; }
-    graph_builder_shutdown( &builder );
+    if ( node_load_builder( &builder, cyclic, (int64_t) sizeof( cyclic ), &br ) || !br.refused ) { printf( "cycle: the builder load did not refuse\n" ); node_builder_shutdown( &builder ); return 1; }
+    broot = node_builder_root( &builder );
+    if ( broot != NULL && ( broot->a != 0 || broot->left.value != 0 || broot->right.value != 0 ) ) { printf( "cycle: the builder root was not reset\n" ); node_builder_shutdown( &builder ); return 1; }
+    node_builder_shutdown( &builder );
 `, cBytes(wire))
 	out, err := cHeldRun(t, u, body)
 	if err != nil {
