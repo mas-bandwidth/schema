@@ -1052,7 +1052,9 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b48");
         b.append(": ");
+        b.append('"');
         b.append(Long.toUnsignedString(v.b48));
+        b.append('"');
         return first;
     }
 
@@ -1222,7 +1224,7 @@ public final class BenchBitsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x7fL);
+                        long placed = in.integer(false, false, 0L, 0x7fL);
                         if (!in.rejected) {
                             v.b7 = (int) placed;
                         }
@@ -1243,7 +1245,7 @@ public final class BenchBitsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x1fffL);
+                        long placed = in.integer(false, false, 0L, 0x1fffL);
                         if (!in.rejected) {
                             v.b13 = (int) placed;
                         }
@@ -1264,7 +1266,7 @@ public final class BenchBitsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x7fffffL);
+                        long placed = in.integer(false, false, 0L, 0x7fffffL);
                         if (!in.rejected) {
                             v.b23 = (int) placed;
                         }
@@ -1285,7 +1287,7 @@ public final class BenchBitsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x7L);
+                        long placed = in.integer(false, false, 0L, 0x7L);
                         if (!in.rejected) {
                             v.b3 = (int) placed;
                         }
@@ -1306,7 +1308,7 @@ public final class BenchBitsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffL);
+                        long placed = in.integer(false, false, 0L, 0xffffffffL);
                         if (!in.rejected) {
                             v.b32 = (int) placed;
                         }
@@ -1327,7 +1329,7 @@ public final class BenchBitsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x7ffL);
+                        long placed = in.integer(false, false, 0L, 0x7ffL);
                         if (!in.rejected) {
                             v.b11 = (int) placed;
                         }
@@ -1348,7 +1350,7 @@ public final class BenchBitsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x7ffffL);
+                        long placed = in.integer(false, false, 0L, 0x7ffffL);
                         if (!in.rejected) {
                             v.b19 = (int) placed;
                         }
@@ -1363,13 +1365,14 @@ public final class BenchBitsVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[7] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
-                    if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffffffL);
+                    if (in.peek() == '"'
+                            || in.peek() == '-'
+                            || (in.peek() >= '0' && in.peek() <= '9')) {
+                        long placed = in.integer(false, true, 0L, 0xffffffffffffL);
                         if (!in.rejected) {
                             v.b48 = placed;
                         }

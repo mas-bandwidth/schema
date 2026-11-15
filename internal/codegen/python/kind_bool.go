@@ -39,6 +39,11 @@ func init() {
 	})
 }
 
+// fieldPath is the path expression of a named field under path; an array
+// element, which has no name of its own, is handed its full path already.
 func fieldPath(path, name string) string {
+	if name == "" {
+		return path
+	}
 	return fmt.Sprintf("%s + %q", path, "."+name)
 }
