@@ -35,7 +35,7 @@ int main( void )
         }
 #ifdef __cplusplus
         serialize::ReadStream r( data, size );
-        if ( !ReadNarrowBody( r, value ) ) { puts( "REFUSE" ); continue; }
+        if ( !ReadNarrow( r, value ) ) { puts( "REFUSE" ); continue; }
         const long long consumed = (long long) r.GetBitsProcessed();
         serialize::WriteStream w( (unsigned char *) encoded, sizeof( encoded ) );
         if ( !WriteNarrow( w, value ) ) { return 3; }
