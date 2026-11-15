@@ -120,7 +120,7 @@ func cookDirectoryVerdict(out string, code int) string {
 	if len(lines) != size+2 {
 		return fmt.Sprintf("the run printed %d position lines for a %d-byte cook", len(lines)-2, size)
 	}
-	for p := 0; p < size; p++ {
+	for p := range size {
 		pos, rest, _ := strings.Cut(lines[p+1], " ")
 		if pos != strconv.Itoa(p) || (!strings.HasSuffix(rest, " refused") && !strings.HasSuffix(rest, " record")) {
 			return fmt.Sprintf("position %d answered %q", p, lines[p+1])
