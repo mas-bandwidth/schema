@@ -16,12 +16,12 @@ name: schema moo nightly fuzz
 # at depth.
 
 on:
+  # PR gate is ci-fast (Glenn 2026-11-15: efficient on tiny PRs first); this runs on main, nightly, dispatch
   schedule:
     - cron: '41 3 * * *'
   workflow_dispatch:
   push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-  pull_request:
+    branches: [ main, dev, fixed-table-form ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
