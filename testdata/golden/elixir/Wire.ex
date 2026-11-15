@@ -2656,6 +2656,14 @@ defmodule Example.Wire do
       raise ArgumentError, "value.text longer than the declared 256-byte bound"
     end
 
+    if not String.valid?(value.text) do
+      raise ArgumentError, "value.text is not well-formed UTF-8 (SPEC §4.7)"
+    end
+
+    if :binary.match(value.text, <<0>>) != :nomatch do
+      raise ArgumentError, "value.text holds a zero byte (SPEC §4.7)"
+    end
+
     v = byte_size(value.text)
     scratch = v
     data = <<scratch::little-size(1)-unit(8)>>
@@ -3354,6 +3362,14 @@ defmodule Example.Wire do
 
     if byte_size(value_text) > 255 do
       raise ArgumentError, "value.text longer than the declared 255-byte bound"
+    end
+
+    if not String.valid?(value_text) do
+      raise ArgumentError, "value.text is not well-formed UTF-8 (SPEC §4.7)"
+    end
+
+    if :binary.match(value_text, <<0>>) != :nomatch do
+      raise ArgumentError, "value.text holds a zero byte (SPEC §4.7)"
     end
 
     v = byte_size(value_text)
