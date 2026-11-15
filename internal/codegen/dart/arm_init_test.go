@@ -138,7 +138,7 @@ func TestUnionSelectionInitializesConstructionDefaults(t *testing.T) {
 	armInitContains(t, zero, "zeroLeaf(value.current);", "zeroLeaf(value.live[i0]);", "value.liveCount = 0;")
 	armInitExcludes(t, zero, "initLeaf(")
 
-	read := armInitBody(t, source, "bool readChoice(")
+	read := armInitBody(t, source, "int readChoiceBits(")
 	armInitContains(t, read, "value.selected.current.active = true;", "value.selected.liveCount = 1;")
 	// a field the arm's read always assigns (a nested union's tag, a bare
 	// scalar) takes no initial store: the read overwrites it unconditionally

@@ -82,10 +82,10 @@ func TestSpecPacketEndIsChecked(t *testing.T) {
 		"generated public `Read<T>`")
 	packetEndMustState(t, "SPEC §5 the runtime end check", spec,
 		"ends with that check")
-	packetEndMustState(t, "SPEC §5 the boolean-only open question", spec,
-		"return a boolean only")
-	packetEndMustState(t, "SPEC §5 the bits-consumed open question", spec,
-		"do not report bits consumed today")
+	packetEndMustState(t, "SPEC §5 the Dart boolean read", spec,
+		"its `read<T>` returns a boolean")
+	packetEndMustState(t, "SPEC §5 the Dart bits-consumed entry", spec,
+		"reports bits consumed through a second entry")
 	packetEndMustNotState(t, "SPEC §5 the retired justification", spec,
 		"caller's concern")
 	packetEndMustNotState(t, "SPEC §5 the retired framing", spec,

@@ -19,10 +19,10 @@
 // then a straight-line scatter — laid down at build time as one function per
 // type: <T>'s _<T>FixedRead (the run, every byte of the image landed), its
 // _<T>FixedScan (§4.5's refusals, run over the whole batch before the first
-// landing), its _<T>FixedClamp (§4.6's bounds pass over the live extent) and,
-// on the write side, _<T>FixedCheck (§3.1's contract) and _<T>FixedWrite (the
-// live extent onto zero). The lineage plans are
-// schema-goose-fixed-form-evolution's.
+// landing), its _<T>FixedStrictRefuse (§4.6's read-side bounds pass over the
+// live extent, refusing out_of_range) and, on the write side, _<T>FixedCheck
+// (§3.1's contract) and _<T>FixedWrite (the live extent onto zero). The
+// lineage plans are schema-goose-fixed-form-evolution's.
 package goosetable
 
 import (
@@ -553,14 +553,13 @@ func (e *fixedEmit) checkElem(ind int, f *ir.Field, pl place) {
 // ---------------------------------------------------------------------------
 
 func (e *fixedEmit) scanField(ind int, f *ir.Field, off string) {
-	el := elemOf(f)
 	if f.Type.Optional {
 		e.p(ind, "if b[%s] > 1 { return schema_rt::FixedRefuseWireDamaged; }", off)
-		if !elemNeedsScan(el) && f.Array != ir.ArrayCounted {
-			return
-		}
 		e.p(ind, "if b[%s] == 1 {", off)
 		e.scanValue(ind+1, f, off+" + 1")
+		e.p(ind, "} else {")
+		e.p(ind+1, "r = schema_rt::fixed_scan_zero(b, %s, %d);", off, payloadBytes(f))
+		e.p(ind+1, "if r != 0 { return r; }")
 		e.p(ind, "}")
 		return
 	}
@@ -583,12 +582,15 @@ func (e *fixedEmit) scanValue(ind int, f *ir.Field, off string) {
 	case f.Array == ir.ArrayCounted:
 		e.p(ind, "r = schema_rt::fixed_scan_count(b, %s, %d);", off, f.ArrayBound)
 		e.p(ind, "if r != 0 { return r; }")
+		c := e.loopVar()
+		e.p(ind, "let %s = schema_rt::fixed_u32(b, %s) as i64;", c, off)
+		e.p(ind, "r = schema_rt::fixed_scan_zero(b, %s + 4 + %s * %d, (%d - %s) * %d);",
+			off, c, ir.TableFixedElementBytes(f), f.ArrayBound, c, ir.TableFixedElementBytes(f))
+		e.p(ind, "if r != 0 { return r; }")
 		if !elemNeedsScan(el) {
 			return
 		}
-		c := e.loopVar()
 		i := e.loopVar()
-		e.p(ind, "let %s = schema_rt::fixed_u32(b, %s) as i64;", c, off)
 		e.p(ind, "var %s: i64 = 0;", i)
 		e.p(ind, "while %s < %s {", i, c)
 		e.scanElem(ind+1, el, offStep(off+" + 4", i, ir.TableFixedElementBytes(f)))
@@ -620,6 +622,10 @@ func (e *fixedEmit) scanElem(ind int, f *ir.Field, off string) {
 		return
 	}
 	e.p(ind, "r = schema_rt::fixed_scan_text(b, %s, %d, %d);", off, f.Type.Size, flavour)
+	e.p(ind, "if r != 0 { return r; }")
+	n := e.loopVar()
+	e.p(ind, "let %s = schema_rt::fixed_i32(b, %s) as i64;", n, off)
+	e.p(ind, "r = schema_rt::fixed_scan_zero(b, %s + 4 + %s, %d - %s);", off, n, f.Type.Size, n)
 	e.p(ind, "if r != 0 { return r; }")
 }
 
@@ -958,16 +964,9 @@ func needs(f *ir.Field, seen map[string]bool, leaf func(*ir.Field) bool, unionTa
 			if unionTag {
 				return true
 			}
-			if seen[r.Name] {
-				return false
-			}
-			seen[r.Name] = true
-			for _, v := range r.Variants {
-				if v.F != nil && (needs(v.F, seen, leaf, unionTag) || needs(elemOf(v.F), seen, leaf, unionTag)) {
-					return true
-				}
-			}
-			return false
+			// every inactive union arm is dead, so a union with an arm span
+			// always needs its scan (docs/FIXED-FORM-ALGORITHM.md §4.5)
+			return ir.TableFixedUnionBytes(r) > ir.TableFixedUnionTagBytes(r)
 		}
 	}
 	return leaf(f)
@@ -1124,13 +1123,26 @@ func (e *fixedEmit) emitUnion(un *ir.Union) error {
 	e.p(0, "fn _%sFixedScan(b: const u8[:], at: i64) -> i64 {", n)
 	e.p(1, "var r: i64 = 0;")
 	e.p(1, "let tag = schema_rt::fixed_get(b, at, %d);", tw)
-	for i, v := range un.Variants {
-		if v.F == nil || !elemNeedsScan(armField(v)) && armField(v).Array != ir.ArrayCounted {
-			continue
-		}
-		e.p(1, "if tag == %d {", i+1)
-		e.scanField(2, armField(v), offAt("at", tw))
+	if widest > 0 {
+		e.p(1, "if tag == 0 {")
+		e.p(2, "r = schema_rt::fixed_scan_zero(b, %s, %d);", offAt("at", tw), widest)
+		e.p(2, "if r != 0 { return r; }")
 		e.p(1, "}")
+		for i, v := range un.Variants {
+			var size int64
+			if v.F != nil {
+				size = ir.TableFixedFieldBytes(armField(v))
+			}
+			e.p(1, "if tag == %d {", i+1)
+			if v.F != nil {
+				e.scanField(2, armField(v), offAt("at", tw))
+			}
+			if pad := widest - size; pad > 0 {
+				e.p(2, "r = schema_rt::fixed_scan_zero(b, %s, %d);", offAt("at", tw+size), pad)
+				e.p(2, "if r != 0 { return r; }")
+			}
+			e.p(1, "}")
+		}
 	}
 	e.p(1, "return r;")
 	e.p(0, "}\n")

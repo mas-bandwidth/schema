@@ -151,8 +151,6 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 		"schema-dart-generated-strict-analyze-gate-all DART=dart",
 		"workflow_dispatch:",
 		"schedule:",
-		"pull_request:",
-		"push:",
 		"dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d",
 		"sdk: 3.13.2",
 		"if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
@@ -160,6 +158,13 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 		if !strings.Contains(wf, want) {
 			t.Errorf("workflow does not carry %q", want)
 		}
+	}
+
+	// NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that
+	// is not light moved to nightly test now." "no exceptions."): no push and
+	// no pull request starts this workflow.
+	for _, p := range nightlyOnlyTriggerProblems(wf) {
+		t.Errorf("schema-dart-generated-strict-analyze-gate.yml: %s", p)
 	}
 
 	// Self-hosted admission and tier assertions for fast and nightly jobs.
@@ -174,25 +179,53 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 			t.Errorf("Dart nightly job admitted fork PR (%+v): ok=%v err=%v", ev, ok, err)
 		}
 	}
+	// THE PR GATE IS ci-fast.yml (the owner, 2026-11-15): on a pull request the
+	// fast half runs there as lang-lint (dart), selected by path; no push and
+	// no pull request starts this workflow.
 	for _, ev := range []ciEvent{
 		{Name: "pull_request", Branch: "dev", HeadRef: "sprint/schema-dart", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
 		{Name: "pull_request", Branch: "main", HeadRef: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
 		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
 		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
+	} {
+		for _, job := range []string{"fast", "nightly"} {
+			if ok, err := jobSelectsSelfHosted(wf, job, ev); err != nil || ok {
+				t.Errorf("Dart %s job ran on (%+v): ok=%v err=%v; the workflow is nightly and dispatch only", job, ev, ok, err)
+			}
+		}
+	}
+	fast, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"make schema-dart-generated-strict-analyze-gate DART=dart",
+		"make schema-dart-generated-strict-analyze-gate-negative-control DART=dart",
+	} {
+		if !strings.Contains(string(fast), want) {
+			t.Errorf("ci-fast.yml lang-lint does not carry %q: a Dart pull request would run no strict analyze", want)
+		}
+	}
+	for _, ev := range []ciEvent{
 		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
 		{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
 	} {
-		if ok, err := jobSelectsSelfHosted(wf, "fast", ev); err != nil || !ok {
-			t.Errorf("Dart fast job did not run for allowed event (%+v): ok=%v err=%v", ev, ok, err)
-		}
-		wantNightly := ev.Name == "schedule" || ev.Name == "workflow_dispatch"
-		if ok, err := jobSelectsSelfHosted(wf, "nightly", ev); err != nil || ok != wantNightly {
-			t.Errorf("Dart nightly job under (%+v) = %v (err=%v), want %v", ev, ok, err, wantNightly)
+		for _, job := range []string{"fast", "nightly"} {
+			if ok, err := jobSelectsSelfHosted(wf, job, ev); err != nil || !ok {
+				t.Errorf("Dart %s job did not run for allowed event (%+v): ok=%v err=%v", job, ev, ok, err)
+			}
 		}
 	}
-	// Guard mutation must fail fork PR admission.
-	mutated := strings.Replace(wf, "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n", "", 1)
-	if ok, err := jobSelectsSelfHosted(mutated, "fast", ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema"}); err != nil || !ok {
-		t.Errorf("guard mutation control did not admit fork PR as expected: ok=%v err=%v", ok, err)
+	// Mutation: a restored pull_request or push trigger is seen by the checks
+	// above.
+	mutated := strings.Replace(wf, "\non:\n", "\non:\n  pull_request:\n", 1)
+	if ok, err := jobSelectsSelfHosted(mutated, "fast", ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}); err != nil || !ok {
+		t.Errorf("trigger mutation control: a restored pull_request trigger was not seen: ok=%v err=%v", ok, err)
+	}
+	if len(nightlyOnlyTriggerProblems(mutated)) == 0 {
+		t.Error("nightly-only control: a restored pull_request trigger was not refused")
+	}
+	if len(nightlyOnlyTriggerProblems(strings.Replace(wf, "\non:\n", "\non:\n  push:\n", 1))) == 0 {
+		t.Error("nightly-only control: a restored push trigger was not refused")
 	}
 }

@@ -333,6 +333,13 @@ func tableMessageUnsignedBase(v *big.Int) uint64 {
 	if v == nil {
 		return 0
 	}
+	if v.Sign() < 0 {
+		// A NEGATIVE BASE FOR AN UNSIGNED KIND does not come from a lawful
+		// declaration, but writing its low sixty-four bits as the two's
+		// complement they are keeps it the value DecodeShape then holds to
+		// the kind, rather than the magnitude an unsigned read would give.
+		return new(big.Int).And(v, new(big.Int).SetUint64(math.MaxUint64)).Uint64()
+	}
 	return v.Uint64()
 }
 
@@ -344,10 +351,21 @@ func TableMessageKindBits(kind uint8) int64 {
 	return int64(TableKindWidth(int(kind))) * 8
 }
 
-// tableMessageBaseInsideKind is §3.3's base rule: a ranged base and the top
-// of its range, base + 2^bits - 1, lie inside the kind's own domain. A width
-// the kind holds is not enough under a base near its edge, and the arithmetic
-// is exact because a 128-bit top does not fit a machine word.
+// tableMessageBaseInsideKind holds a RANGED base to the kind's own domain.
+// The base is the declared minimum, so it must be a value the kind can hold:
+// an unsigned kind's is never negative and a signed kind's lies in its two's
+// complement range, exact for the 128-bit kinds.
+//
+// THE OFFSET'S TOP IS NOT THE DECLARATION'S TOP. `bits` is the width of
+// `max - min`, so `base + 2^bits - 1` is the largest offset the width can
+// spell, not the largest value a writer emits: a lawful `uint8 | min = 200,
+// max = 250` announces base 200 at six bits, whose spellable top is 263, and a
+// `fixed(8,8)` over [-100, 100] announces base -25600 at sixteen bits. Both
+// are values their kind holds at every declared point, and a body carrying an
+// offset past the sender's own `max` refuses `out_of_range` when it is read.
+// Holding the spellable top to the kind would refuse these lawful
+// declarations their own announcements, which is why only the base is checked
+// here.
 func tableMessageBaseInsideKind(kind uint8, s TableMessageShape) bool {
 	if s.Base == nil {
 		return true
@@ -360,11 +378,7 @@ func tableMessageBaseInsideKind(kind uint8, s TableMessageShape) bool {
 		hi.Rsh(hi, 1)
 		lo.Neg(new(big.Int).Lsh(one, width-1))
 	}
-	if s.Base.Cmp(lo) < 0 || s.Base.Cmp(hi) > 0 {
-		return false
-	}
-	top := new(big.Int).Add(s.Base, new(big.Int).Sub(new(big.Int).Lsh(one, uint(s.Bits)), one))
-	return top.Cmp(lo) >= 0 && top.Cmp(hi) <= 0
+	return s.Base.Cmp(lo) >= 0 && s.Base.Cmp(hi) <= 0
 }
 
 // ---- the compressed float's rule, in float32 and by nothing else ----

@@ -62,9 +62,10 @@ const (
 	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
 	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
 	// -4: the comment skip holds each comment to the text rule in one bytes.Index pass, in every JSON read entry (SPEC-TABLES §16.2)
+	// +71: a wide integer is a JSON string of digits, and every integer takes an integer token (SPEC-TABLES §16.2)
 	// +21: a message-form integer is held to this reader's kind domain while it is still wide (SPEC-TABLES §3.3)
 	// +59: the same hold reaches every integer kind's high lane, and a reconstruction past 128 bits refuses before it narrows (SPEC-TABLES §3.3)
-	goOneTableLineBudget = 10194
+	goOneTableLineBudget = 10265
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -109,9 +110,10 @@ const (
 	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
 	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
 	// -4: the comment skip holds each comment to the text rule in one bytes.Index pass, in every JSON read entry (SPEC-TABLES §16.2)
+	// +71: a wide integer is a JSON string of digits, and every integer takes an integer token (SPEC-TABLES §16.2)
 	// +380: the same kind-domain hold across every message-bearing table in the examples (SPEC-TABLES §3.3)
 	// +432: the high-lane hold and the 128-bit refusal reconstruction reach every message-bearing table (SPEC-TABLES §3.3)
-	goExamplesLineBudget = 60917
+	goExamplesLineBudget = 60988
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

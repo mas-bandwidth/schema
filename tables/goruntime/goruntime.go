@@ -686,7 +686,7 @@ const TableFixedMaxDepth int32 = 64
 // tag 0x0101 is not arm 1. Arg is the arm ordinal and carries NO BYTE LANE
 // (§5.8 row 5): a 256-arm union's ordinal does not fit a byte.
 type TableFixedEntry struct {
-	Src, Dst, Size, Aux, Guard uint32
+	Src, Dst, Size, Aux, Guard, Min uint32
 	// Arg IS THE GUARD'S ORDINAL AT FULL WIDTH (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
 	// §4.1: arg : u64, "no byte lane anywhere"): a union past 255 arms or an
 	// enum past 65535 variants holds its ordinal whole in this lane, and the
@@ -745,8 +745,8 @@ func (p TableFixedEntry) chainHolds(plan []TableFixedEntry, src []byte) bool {
 }
 
 type TableFixedDst struct {
-	Dst, Stride, Aux   uint32
-	Counted, Arg, Meta uint8
+	Dst, Stride, Aux, Min uint32
+	Counted, Arg, Meta    uint8
 }
 
 // Arg's high bit marks a deprecated destination field: every compiled lineage
@@ -1333,7 +1333,7 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		switch p.Op {
 		case TableFixedCount:
 			v := int32(TableFixedGet32(src[p.Src:]))
-			if v < 0 || v > int32(p.Size) {
+			if v < 0 || int64(v) < int64(p.Min) || v > int32(p.Size) {
 				return TableRefuseCountOverBound.Error()
 			}
 			if p.Aux != 0 && uint32(v) < p.Size {
@@ -2075,4 +2075,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xe23925a54a7fe80a
+const Version uint64 = 0x0e4615a11b55b03d
