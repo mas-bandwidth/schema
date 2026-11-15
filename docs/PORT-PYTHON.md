@@ -290,23 +290,14 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-<<<<<<< HEAD
-  `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_table.py`,
-  `kind_pointer.py`, `kind_array.py` and `kind_union.py` register the kinds
-  this cut carries. A later card adds its module and one registration line,
-  never an edit to the body walk. `kind_unsupported.py` is the named
-  placeholder for a construct whose descriptor exists but whose codec has not
-  landed; a read or write that reaches it refuses by name.
-=======
   each `_schema/kind_<kind>.py` beside it registers a kind this cut carries
-  (today `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_table.py` and
-  `kind_pointer.py`; the directory is the list). A later card adds its module
-  and one registration line in it, never an edit to the body walk; `kinds.py`
-  imports every `kind_*.py` itself, so no other file names a new module.
-  `kind_unsupported.py` is the named placeholder for a construct whose
-  descriptor exists but whose codec has not landed; a read or write that
-  reaches it refuses by name.
->>>>>>> a17b509bc7a57a7eca8db5c7522109dd31eb9ec3
+  (today `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_table.py`,
+  `kind_pointer.py`, `kind_array.py` and `kind_union.py`; the directory is
+  the list). A later card adds its module and one registration line in it,
+  never an edit to the body walk; `kinds.py` imports every `kind_*.py`
+  itself, so no other file names a new module. `kind_unsupported.py` is the
+  named placeholder for a construct whose descriptor exists but whose codec
+  has not landed; a read or write that reaches it refuses by name.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
@@ -320,7 +311,6 @@ generated class per table and per map entry, each with its descriptor
   `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
-<<<<<<< HEAD
 - **Maps are dicts, written sorted.** A `map[K]V` is a `dict` born empty; the
   save writes its entries in ascending key order (text by its UTF-8 bytes,
   integers by value), and the read refuses a descending or a repeated key as
@@ -328,13 +318,36 @@ generated class per table and per map entry, each with its descriptor
   request that does not arrive in that order is not a map this leg accepts;
   the whole read refuses and returns nothing. `kind_map.py` owns the entry
   framing, the sort and the order check.
-- **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables, `*T` pointers to tables and `map[K]V` for the base key and
-  value kinds, for both the fixed and the variable class, and the by-value
-  arrays and unions a packet type reaches (below). `*bytes`, `*string`, `?T`,
-  other `[]T` and `[E]T`, `?map[K]V` and unions with table arms have
-  descriptors in this cut and refuse by name through `kind_unsupported.py`
-  until their cards land.
+- **Scope.** For both the fixed and the variable class, the runtime carries
+  each construct marked carried below. One marked refused has a descriptor in
+  this cut and refuses by name through `kind_unsupported.py` until its card
+  lands.
+
+  - bool: carried
+
+  - the full-width integers (8 to 128 bits): carried
+
+  - by-value tables: carried
+
+  - `*T` pointers to tables: carried
+
+  - `*bytes`: refused
+
+  - `*string`: refused
+
+  - `?T`: refused
+
+  - `[]T` and `[E]T`: carried when the element type is a packet type (below);
+    otherwise refused
+
+  - `map[K]V` for the base key and value kinds: carried
+    ([the table maps](port-python/table-maps.md))
+
+  - `?map[K]V`: refused
+
+  - unions: an arm that holds a packet type is carried (below); a union with
+    table arms is refused
+
 - **A packet type is carried by value.** A table field, an array element, a
   union arm or a map's value whose type is a packet `type` is carried on the
   form-1 table wire as SPEC-TABLES states for a type by value: the field's
@@ -364,41 +377,6 @@ generated class per table and per map entry, each with its descriptor
   ...) is refused at generate time, naming the type, the field, the kind and
   P4 the packet wire. It is never a blanket refusal of the unit, so a unit is
   refused only for the packet kind that is still missing.
-=======
-- **Scope.** For both the fixed and the variable class, the runtime carries
-  each construct marked carried below. One marked refused has a descriptor in
-  this cut and refuses by name through `kind_unsupported.py` until its card
-  lands.
-
-  - bool: carried
-
-  - the full-width integers (8 to 128 bits): carried
-
-  - by-value tables: carried
-
-  - `*T` pointers to tables: carried
-
-  - `*bytes`: refused
-
-  - `*string`: refused
-
-  - `?T`: refused
-
-  - `[]T`: refused
-
-  - `[E]T`: refused
-
-  - `map[K]V` for the base key and value kinds: carried
-    ([the table maps](port-python/table-maps.md))
-
-  - `?map[K]V`: refused
-
-  - unions with table arms: refused
-
-- **A packet-typed field is refused by name.** A table field whose type is a
-  packet `type` reaches `refusePacketValues` and is refused naming the field
-  and the type, until P4 carries packet types into tables.
->>>>>>> a17b509bc7a57a7eca8db5c7522109dd31eb9ec3
 - **The compiler keeps the shared carry checks.** Before table dispatch it
   refuses constructs outside the registered carry set, just as the packet
   target does. The table emitter can describe future codec layers directly;
