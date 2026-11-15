@@ -1,9 +1,0 @@
-package packetwritetext
-
-// C# cannot carry the shared Text.schema's field name beside its declaring
-// type (CS0542), so this twin names the field value. The wire shape is the
-// shared one: a string(8) with a four-bit length.
-type Text
-{
-    value string(8)
-}

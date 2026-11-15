@@ -129,9 +129,9 @@ local function fixed_text(x, signed, fbits)
 	while #d <= fbits do d = "0" .. d end
 	local whole = string.sub(d, 1, #d - fbits)
 	local frac = string.gsub(string.sub(d, #d - fbits + 1), "0+$", "")
-	local out = whole
-	if frac ~= "" then out = whole .. "." .. frac end
-	if neg and out ~= "0" then out = "-" .. out end
+	if frac == "" then frac = "0" end
+	local out = whole .. "." .. frac
+	if neg and out ~= "0.0" then out = "-" .. out end
 	return out
 end
 
@@ -311,8 +311,9 @@ encode_value = function(fd, val, owner)
 	if s == "int" then
 		if flagsOf[fd] ~= nil then return flags_text(flagsOf[fd], val) end
 		if fd.timestamp then return ts_text(val) end
-		if fd.fbits ~= nil and fd.fbits > 0 then return fixed_text(val or 0, fd.signed, fd.fbits) end
-		return int_text(val or 0, fd.signed)
+		local text = if fd.fbits ~= nil and fd.fbits > 0 then fixed_text(val or 0, fd.signed, fd.fbits) else int_text(val or 0, fd.signed)
+		if (fd.kw or 0) > 4 then return q(text) end
+		return text
 	end
 	if s == "float" then return float_text(val or 0, fd.kw == 4 or fd.k == 10) end
 	if s == "str" or s == "text" then return q(str_value(fd, val, owner)) end

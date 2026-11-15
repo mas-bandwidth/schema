@@ -869,21 +869,20 @@ tables-cs-fixed-rows: tables-fixedform-corpus
 # tables-cs-release passes) run in certify.yml's nightly tier.
 CS_FUZZ_SMOKE_N ?= 2000
 
-# RELAXED 2026-11-14 (maintainer: get main green): the C# wire fuzz does not
-# compare the fixed-form dead-byte mutants (array tail, absent optional
-# payload, text tail, inactive arm), which C# refuses and the engine still
-# accepts; every other mutant is compared. re-enable: relax/dead-bytes
-CS_WIRE_FUZZ_RELAX ?= --relax-dead-bytes
-
+# THE FIXED-FORM DEAD-BYTE MUTANTS ARE COMPARED AGAIN (docs/rulings.json
+# fixed-dead-bytes-are-zero): the engine and the C# reader both refuse a
+# non-zero dead byte — an array tail past a counted array's live count, an
+# absent optional's payload, a text tail and an inactive union arm — so the
+# relax that once skipped them is gone and every mutant is compared.
 .PHONY: tables-cs-wire-fuzz-smoke tables-cs-region-fuzz-smoke
 tables-cs-wire-fuzz-smoke: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N) $(CS_WIRE_FUZZ_RELAX)
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N)
 
 tables-cs-region-fuzz-smoke: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N)
 
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N) $(CS_WIRE_FUZZ_RELAX)
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
 
 tables-cs-region-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(N)
@@ -901,6 +900,20 @@ tables-cs-wire-fuzz-repeated-id:
 tables-cs-wire-fuzz-repeated-id-negative-control:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldIdNegativeControl$$'
 test-cs: tables-cs-wire-fuzz-repeated-id tables-cs-wire-fuzz-repeated-id-negative-control
+
+# EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/rulings.json
+# fixed-dead-bytes-are-zero): the C# reader holds a dead range to all-zero bytes
+# and never reads it as a live value — a counted array's slots past its count,
+# an absent optional's payload, a text tail and an inactive union arm. These are
+# the emitted artifact's unit checks (no interpreter): the runtime's DeadZero
+# check and the plan's count/present/union dead markers. The control strips the
+# check out of the same artifact and requires the check red.
+.PHONY: tables-cs-wire-fuzz-dead-bytes tables-cs-wire-fuzz-dead-bytes-negative-control
+tables-cs-wire-fuzz-dead-bytes:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZero$$'
+tables-cs-wire-fuzz-dead-bytes-negative-control:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZeroNegativeControl$$'
+test-cs: tables-cs-wire-fuzz-dead-bytes tables-cs-wire-fuzz-dead-bytes-negative-control
 
 tables-cs-builder-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-builder" --seed $(SEED) --n $(N) --builder --failed build/wire-fuzz/failed-builder-cs.bin
@@ -1588,42 +1601,3 @@ packet-write-cfloat-cs-negative-control: $(PACKET_WRITE_CFLOAT_CS)/.stamp
 	@echo 'packet-write-cfloat C# negative control: removing the range assertion turns the off-range verdicts red'
 
 test-cs: packet-write-cfloat-cs packet-write-cfloat-cs-negative-control
-
-# THE PACKET-WRITE TEXT GATE (docs/SPEC.md §5.1 row 8): the packet writer's
-# string(N) used bytes hold no zero byte and are well-formed UTF-8. C# is an
-# assert leg, so the check is a Debug.Assert answered through a throwing
-# TraceListener; a release build carries no write check by design. The shared
-# cases (test/packet-write-text/cases.txt) are written and read back.
-PACKET_WRITE_TEXT_CS := build/packet-write-text/cs
-PACKET_WRITE_TEXT_CS_NEG := build/packet-write-text/cs-negative
-
-build/packet-write-text/cs/.stamp: bin/schema test/packet-write-text/cs/PacketText.schema make/cs.mk
-	./bin/schema generate --lang cs --out $(PACKET_WRITE_TEXT_CS) test/packet-write-text/cs/PacketText.schema
-	@touch $@
-
-.PHONY: packet-write-text-cs packet-write-text-cs-negative-control
-packet-write-text-cs: build/packet-write-text/cs/.stamp
-	$(DOTNET) run --project test/packet-write-text/cs/packet-write-text.csproj -- test/packet-write-text/cases.txt
-	@echo 'packet write text C#: every ill-formed case asserted and every well-formed twin round-tripped'
-
-# The control removes the write-side assert from the emitter through a go build
-# overlay, regenerates the shared schema, and requires the driver to go red on
-# the ill-formed cases by name while every well-formed twin stays accepted.
-packet-write-text-cs-negative-control: packet-write-text-cs
-	@rm -rf $(PACKET_WRITE_TEXT_CS_NEG) && mkdir -p $(PACKET_WRITE_TEXT_CS_NEG)/generated
-	go run ./tools/sabotage -name packet-write-text-cs -out $(PACKET_WRITE_TEXT_CS_NEG)/functions.gotext internal/codegen/csharp/functions.go
-	@printf '{"Replace":{"%s/internal/codegen/csharp/functions.go":"%s/%s/functions.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" "$(PACKET_WRITE_TEXT_CS_NEG)" > $(PACKET_WRITE_TEXT_CS_NEG)/overlay.json
-	go build -overlay=$(PACKET_WRITE_TEXT_CS_NEG)/overlay.json -o $(PACKET_WRITE_TEXT_CS_NEG)/schema ./cmd/schema
-	./$(PACKET_WRITE_TEXT_CS_NEG)/schema generate --lang cs --out $(PACKET_WRITE_TEXT_CS_NEG)/generated test/packet-write-text/cs/PacketText.schema
-	$(DOTNET) build test/packet-write-text/cs/packet-write-text.csproj \
-		-p:TextDir="$(CURDIR)/$(PACKET_WRITE_TEXT_CS_NEG)/generated" -o $(PACKET_WRITE_TEXT_CS_NEG)/checker --nologo
-	@if $(DOTNET) $(PACKET_WRITE_TEXT_CS_NEG)/checker/packet-write-text.dll test/packet-write-text/cases.txt > $(PACKET_WRITE_TEXT_CS_NEG)/log 2>&1; then \
-		echo 'NEGATIVE CONTROL FAILED: packet-write-text-cs stayed green with the string(N) write check removed'; \
-		cat $(PACKET_WRITE_TEXT_CS_NEG)/log; exit 1; fi
-	@grep -Fq 'FAILED: interior-null was not refused' $(PACKET_WRITE_TEXT_CS_NEG)/log || \
-		{ echo 'NEGATIVE CONTROL FAILED: the ill-formed writes were not refused by name'; cat $(PACKET_WRITE_TEXT_CS_NEG)/log; exit 1; }
-	@grep '^FAILED: ' $(PACKET_WRITE_TEXT_CS_NEG)/log
-	@echo 'packet write text C# negative control: removing the string(N) write check turns the ill-formed cases red'
-
-test-cs: packet-write-text-cs packet-write-text-cs-negative-control

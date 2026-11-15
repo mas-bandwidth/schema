@@ -31,15 +31,15 @@ static class Program
             string verdict = parts[2].Trim();
             byte[] content = hex == "-" ? Array.Empty<byte>() : Convert.FromHexString(hex.Replace(" ", ""));
 
-            Text value = new Text();
-            content.AsSpan().CopyTo(value.Value[..]);
-            value.ValueLength = content.Length;
+            TextPacket value = new TextPacket();
+            content.AsSpan().CopyTo(value.Text[..]);
+            value.TextLength = content.Length;
 
             WriteStream stream = new WriteStream(new byte[256]);
             bool refused = false;
             try
             {
-                if (!Schema.WriteText(stream, ref value))
+                if (!Schema.WriteTextPacket(stream, ref value))
                 {
                     Console.WriteLine("FAILED: " + name + " write returned false");
                     failed++;
@@ -80,15 +80,15 @@ static class Program
             }
 
             ReadStream reader = new ReadStream(stream.Data.ToArray());
-            Text readback = new Text();
-            if (!Schema.ReadText(reader, ref readback))
+            TextPacket readback = new TextPacket();
+            if (!Schema.ReadTextPacket(reader, ref readback))
             {
                 Console.WriteLine("FAILED: " + name + " did not read back");
                 failed++;
                 continue;
             }
-            if (readback.ValueLength != content.Length ||
-                !content.AsSpan().SequenceEqual(readback.Value[..readback.ValueLength]))
+            if (readback.TextLength != content.Length ||
+                !content.AsSpan().SequenceEqual(readback.Text[..readback.TextLength]))
             {
                 Console.WriteLine("FAILED: " + name + " did not round-trip its used bytes");
                 failed++;
