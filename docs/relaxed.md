@@ -396,3 +396,22 @@ section is the current state.
 - `relax/hostile-rows-goose` (narrowed): the Goose JSON read refuses unpadded
   Base64; its conformance line is gone. What is left:
   str-zero-escape-unknown-key.
+- `relax/hostile-rows-goose` (added site): `TestGooseJSONHostile`
+  (`internal/codegen/goosetable/json_form_test.go`,
+  `gooseJSONHostileRelaxed`) carries str-zero-escape-unknown-key, the row the
+  conformance leg relaxes. Real fix: the Goose JSON read validates a skipped
+  value; then the map entry goes with the conformance line.
+- `relax/hostile-rows-lobster` (added site):
+  `TestLobsterJsonMatchesTheReference`
+  (`internal/codegen/lobstertable/json_test.go`, `lobsterJsonHostileRelaxed`)
+  carries base64-unpadded and str-zero-escape-unknown-key, the rows the
+  conformance leg relaxes. Real fix: runtime/json.lobster refuses both.
+- `relax/cook-dead-slots-zero-ports` (added site): `TestLobsterCook`
+  (`internal/codegen/lobstertable/cook_test.go`, `lobsterCookDeadSlotRows`)
+  does not hold archive, loadout_full, profile_elide, root_default and
+  root_full byte for byte to the tool's cooks (the Lobster cook writer writes
+  dead slots as element defaults); it still opens and reads them back, and
+  fails if one starts matching. The unbounded-text control's unchanged
+  witness moved from root_full to keyed_config for the same reason (not a
+  relaxation: keyed_config holds no unbounded text and no dead slot). Real
+  fix: the Lobster cook writer zeroes dead slots; then the map goes.
