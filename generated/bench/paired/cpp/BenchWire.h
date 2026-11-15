@@ -213,7 +213,7 @@ SCHEMA_WRITE_INLINE bool WriteBenchPacket( serialize::WriteStream & stream, cons
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadBenchPacket( serialize::ReadStream & stream, BenchPacket & value )
+SCHEMA_READ_INLINE bool ReadBenchPacketBody( serialize::ReadStream & stream, BenchPacket & value )
 {
     read_int( stream, value.a, -100, 100 );
     read_int( stream, value.b, 0, 65535 );
@@ -228,6 +228,17 @@ SCHEMA_READ_INLINE bool ReadBenchPacket( serialize::ReadStream & stream, BenchPa
     read_bits( stream, value.big, 64 );
     read_align( stream ); // rejects nonzero padding (SPEC §4.3)
     read_bytes( stream, value.blob, 17 ); // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadBenchPacket( serialize::ReadStream & stream, BenchPacket & value )
+{
+    if ( !ReadBenchPacketBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -256,7 +267,7 @@ SCHEMA_WRITE_INLINE bool WriteBenchInts( serialize::WriteStream & stream, const 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadBenchInts( serialize::ReadStream & stream, BenchInts & value )
+SCHEMA_READ_INLINE bool ReadBenchIntsBody( serialize::ReadStream & stream, BenchInts & value )
 {
     read_int( stream, value.f0, -100, 100 );
     read_int( stream, value.f1, 0, 65535 );
@@ -268,6 +279,17 @@ SCHEMA_READ_INLINE bool ReadBenchInts( serialize::ReadStream & stream, BenchInts
     read_int( stream, value.f7, 0, 255 );
     read_int( stream, value.f8, -600000, 600000 );
     read_int( stream, value.f9, 0, 100 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadBenchInts( serialize::ReadStream & stream, BenchInts & value )
+{
+    if ( !ReadBenchIntsBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -284,7 +306,7 @@ SCHEMA_WRITE_INLINE bool WriteBenchBits( serialize::WriteStream & stream, const 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadBenchBits( serialize::ReadStream & stream, BenchBits & value )
+SCHEMA_READ_INLINE bool ReadBenchBitsBody( serialize::ReadStream & stream, BenchBits & value )
 {
     read_bits( stream, value.b7, 7 );
     read_bits( stream, value.b13, 13 );
@@ -294,6 +316,17 @@ SCHEMA_READ_INLINE bool ReadBenchBits( serialize::ReadStream & stream, BenchBits
     read_bits( stream, value.b11, 11 );
     read_bits( stream, value.b19, 19 );
     read_bits( stream, value.b48, 48 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadBenchBits( serialize::ReadStream & stream, BenchBits & value )
+{
+    if ( !ReadBenchBitsBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -325,7 +358,7 @@ SCHEMA_WRITE_INLINE bool WriteMixedEntity( serialize::WriteStream & stream, cons
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadMixedEntity( serialize::ReadStream & stream, MixedEntity & value )
+SCHEMA_READ_INLINE bool ReadMixedEntityBody( serialize::ReadStream & stream, MixedEntity & value )
 {
     read_bits( stream, value.entity_id, 12 );
     read_int( stream, value.pos_x, -16383, 16383 );
@@ -348,6 +381,17 @@ SCHEMA_READ_INLINE bool ReadMixedEntity( serialize::ReadStream & stream, MixedEn
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadMixedEntity( serialize::ReadStream & stream, MixedEntity & value )
+{
+    if ( !ReadMixedEntityBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
+}
+
 SCHEMA_WRITE_INLINE bool WriteMixedStat( serialize::WriteStream & stream, const MixedStat & value )
 {
     write_bits( stream, value.stat_id, 8 );
@@ -356,10 +400,21 @@ SCHEMA_WRITE_INLINE bool WriteMixedStat( serialize::WriteStream & stream, const 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadMixedStat( serialize::ReadStream & stream, MixedStat & value )
+SCHEMA_READ_INLINE bool ReadMixedStatBody( serialize::ReadStream & stream, MixedStat & value )
 {
     read_bits( stream, value.stat_id, 8 );
     read_int( stream, value.delta, -512, 511 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadMixedStat( serialize::ReadStream & stream, MixedStat & value )
+{
+    if ( !ReadMixedStatBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -374,12 +429,23 @@ SCHEMA_WRITE_INLINE bool WriteMixedHitEvent( serialize::WriteStream & stream, co
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadMixedHitEvent( serialize::ReadStream & stream, MixedHitEvent & value )
+SCHEMA_READ_INLINE bool ReadMixedHitEventBody( serialize::ReadStream & stream, MixedHitEvent & value )
 {
     read_bits( stream, value.target_id, 12 );
     read_int( stream, value.damage, 0, 4095 );
     read_int( stream, value.hit_kind, 0, 7 );
     read_bool( stream, value.crit );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadMixedHitEvent( serialize::ReadStream & stream, MixedHitEvent & value )
+{
+    if ( !ReadMixedHitEventBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -391,10 +457,21 @@ SCHEMA_WRITE_INLINE bool WriteMixedChatEvent( serialize::WriteStream & stream, c
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadMixedChatEvent( serialize::ReadStream & stream, MixedChatEvent & value )
+SCHEMA_READ_INLINE bool ReadMixedChatEventBody( serialize::ReadStream & stream, MixedChatEvent & value )
 {
     read_int( stream, value.channel, 0, 3 );
     read_bits( stream, value.speaker, 12 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadMixedChatEvent( serialize::ReadStream & stream, MixedChatEvent & value )
+{
+    if ( !ReadMixedChatEventBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -406,10 +483,21 @@ SCHEMA_WRITE_INLINE bool WriteMixedPickupEvent( serialize::WriteStream & stream,
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadMixedPickupEvent( serialize::ReadStream & stream, MixedPickupEvent & value )
+SCHEMA_READ_INLINE bool ReadMixedPickupEventBody( serialize::ReadStream & stream, MixedPickupEvent & value )
 {
     read_bits( stream, value.item_id, 10 );
     read_int( stream, value.amount, 0, 255 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadMixedPickupEvent( serialize::ReadStream & stream, MixedPickupEvent & value )
+{
+    if ( !ReadMixedPickupEventBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -436,7 +524,7 @@ SCHEMA_WRITE_INLINE bool WriteMixedEvent( serialize::WriteStream & stream, const
     return true; // an out-of-set tag selected no arm, so no bits rode: the assert above is the contract (SPEC §5)
 }
 
-SCHEMA_READ_INLINE bool ReadMixedEvent( serialize::ReadStream & stream, MixedEvent & value )
+SCHEMA_READ_INLINE bool ReadMixedEventBody( serialize::ReadStream & stream, MixedEvent & value )
 {
     int32_t tag_value = 0;
     read_int( stream, tag_value, 0, 3 ); // MixedEventType::Max — rejects a tag above the count (SPEC §4.8)
@@ -447,15 +535,26 @@ SCHEMA_READ_INLINE bool ReadMixedEvent( serialize::ReadStream & stream, MixedEve
             return true;
         case MixedEventType::Hit:
             ::new ( static_cast<void *>( &value.hit ) ) MixedHitEvent{};
-            return ReadMixedHitEvent( stream, value.hit );
+            return ReadMixedHitEventBody( stream, value.hit );
         case MixedEventType::Chat:
             ::new ( static_cast<void *>( &value.chat ) ) MixedChatEvent{};
-            return ReadMixedChatEvent( stream, value.chat );
+            return ReadMixedChatEventBody( stream, value.chat );
         case MixedEventType::Pickup:
             ::new ( static_cast<void *>( &value.pickup ) ) MixedPickupEvent{};
-            return ReadMixedPickupEvent( stream, value.pickup );
+            return ReadMixedPickupEventBody( stream, value.pickup );
     }
     return false;
+}
+
+SCHEMA_READ_INLINE bool ReadMixedEvent( serialize::ReadStream & stream, MixedEvent & value )
+{
+    if ( !ReadMixedEventBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
 }
 
 SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const BenchMixed & value )
@@ -536,7 +635,7 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadBenchMixed( serialize::ReadStream & stream, BenchMixed & value )
+SCHEMA_READ_INLINE bool ReadBenchMixedBody( serialize::ReadStream & stream, BenchMixed & value )
 {
     {
         uint64_t const_value = 0;
@@ -562,14 +661,14 @@ SCHEMA_READ_INLINE bool ReadBenchMixed( serialize::ReadStream & stream, BenchMix
     read_int( stream, value.entities_count, 1, 8 );
     for ( int32_t i = 0; i < value.entities_count; i++ )
     {
-        schema_read_object( stream, ReadMixedEntity, value.entities[i] );
+        schema_read_object( stream, ReadMixedEntityBody, value.entities[i] );
     }
     read_int( stream, value.stats_count, 0, 80 );
     for ( int32_t i = 0; i < value.stats_count; i++ )
     {
-        schema_read_object( stream, ReadMixedStat, value.stats[i] );
+        schema_read_object( stream, ReadMixedStatBody, value.stats[i] );
     }
-    schema_read_object( stream, ReadMixedEvent, value.game_event );
+    schema_read_object( stream, ReadMixedEventBody, value.game_event );
     for ( int32_t i = 0; i < 4; i++ )
     {
         {
@@ -612,6 +711,17 @@ SCHEMA_READ_INLINE bool ReadBenchMixed( serialize::ReadStream & stream, BenchMix
     read_bool( stream, value.has_extra );
     read_int( stream, value.extra, 0, 255 );
     read_int( stream, value.idle_ticks, 0, 15 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadBenchMixed( serialize::ReadStream & stream, BenchMixed & value )
+{
+    if ( !ReadBenchMixedBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
