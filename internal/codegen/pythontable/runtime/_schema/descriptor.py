@@ -110,7 +110,13 @@ class FieldDesc:
                 return True
             if not self.target:
                 return False
-            return bool(value == new_by_name(self.target))
+            # The engine elides a by-value table whose body is its terminator
+            # alone (internal/tablewire/encode.go), which is every field of it
+            # elided: judged field by field through the descriptors, never by
+            # the generated __eq__, so a union inside it elides by its
+            # selected arm and a user __eq__ cannot move a byte.
+            fields: tuple[FieldDesc, ...] = value.descriptor.fields
+            return all(field.is_default(getattr(value, field.name)) for field in fields)
         return bool(value == self.default)
 
 

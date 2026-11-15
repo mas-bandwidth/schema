@@ -472,12 +472,14 @@ check("union_write_nested", write_nested)
 check("union_write_minimum", write_minimum)
 
 # Elision is judged per element by its selected arm, never by ==: a fixed
-# array of None elements whose inactive arm members are set is left out, and
-# a user __eq__ cannot change the bytes.
+# array of None elements whose inactive arm members are set is left out, as
+# is a nested table whose one union is None with an inactive arm set, and a
+# user __eq__ cannot change the bytes.
 def inactive():
     e = Root()
     e.trail[0].leaf.value = 3
     e.trail[1].number = 9
+    e.holder.pick.number = 4
     l0 = Pick()
     l0.type = arm(Pick, "toggle")
     l0.toggle = True
@@ -535,12 +537,12 @@ func unionWant(t *testing.T, u *ir.Unit) []string {
 		"union_arm_default True 5 False",
 		"union_nested_none True 0",
 		"union_arm_zero 0",
-		"union_write_type Root.pick.number | not an int | True",
-		"union_write_range Root.pick.number | 2147483648 is outside [-2147483648, 2147483647] | True",
-		"union_write_tag Root.pick | type 7 names no arm | True",
-		"union_write_element Root.many[1].number | -2147483649 is outside [-2147483648, 2147483647]",
-		"union_write_nested Root.holder.pick.toggle | not a bool",
-		"union_write_minimum Root.least | a counted array holds 0, outside [1, 2]",
+		"union_write_type pick.number | not an int | True",
+		"union_write_range pick.number | 2147483648 is outside [-2147483648, 2147483647] | True",
+		"union_write_tag pick | type 7 names no arm | True",
+		"union_write_element many[1].number | -2147483649 is outside [-2147483648, 2147483647]",
+		"union_write_nested holder.pick.toggle | not a bool",
+		"union_write_minimum least | a counted array holds 0, outside [1, 2]",
 		"union_elide_inactive True",
 		"union_elide_eq_true True True",
 		"union_elide_eq_false True True",
@@ -635,6 +637,7 @@ var unionControls = []struct {
 	{"count-extent-cap", "kind_union.py", "        if count > _EXTENT_CAP:\n", "        if False:\n", "case count-over-extent-cap "},
 	{"counted-elision", "descriptor.py", "                return len(value) == 0\n", "                return len(value) <= 1 and all(element.type == 0 for element in value)\n", "case counted-one-none "},
 	{"fixed-elision", "descriptor.py", "            return all(element.type == 0 for element in value)\n", "            return bool(value == self.default)\n", "union_elide_inactive True"},
+	{"table-elision", "descriptor.py", "            return all(field.is_default(getattr(value, field.name)) for field in fields)\n", "            return bool(value == new_by_name(self.target))\n", "union_elide_inactive True"},
 	{"write-arm-path", "kind_union.py", "f\"{path}.{arm.name}\"", "path", "union_write_type "},
 	{"write-minimum", "kind_union.py", "    elif len(value) < f.array_min or len(value) > f.bound:", "    elif len(value) > f.bound:", "union_write_minimum "},
 	{"write-tag-check", "kind_union.py", "    if type(tag) is not int or tag < 0 or tag > len(un.descriptor.arms):", "    if type(tag) is not int or tag < 0:", "union_write_tag "},
