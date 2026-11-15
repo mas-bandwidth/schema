@@ -6366,6 +6366,7 @@ inline int64_t TableEntitySave( const TableEntity & value, uint8_t * buffer, int
 BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity & value )
 {
     TableEntityReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -6383,6 +6384,15 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -8524,6 +8534,7 @@ inline int64_t TableStatSave( const TableStat & value, uint8_t * buffer, int64_t
 BENCHTABLE_TABLE_INLINE bool TableStatLoadBody( TableReader & r, TableStat & value )
 {
     TableStatReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -8541,6 +8552,15 @@ BENCHTABLE_TABLE_INLINE bool TableStatLoadBody( TableReader & r, TableStat & val
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -9488,6 +9508,7 @@ inline int64_t TableMixedSave( const TableMixed & value, uint8_t * buffer, int64
 BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & value )
 {
     TableMixedReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9505,6 +9526,15 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -10026,8 +10056,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     const int32_t previous_count = value.entities_count;
@@ -10113,8 +10147,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     const int32_t previous_count = value.stats_count;
@@ -10310,8 +10348,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
@@ -10424,8 +10466,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
@@ -13538,6 +13584,7 @@ inline int64_t TableHitEventSave( const TableHitEvent & value, uint8_t * buffer,
 BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEvent & value )
 {
     TableHitEventReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13555,6 +13602,15 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEve
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -14403,6 +14459,7 @@ inline int64_t TableChatEventSave( const TableChatEvent & value, uint8_t * buffe
 BENCHTABLE_TABLE_INLINE bool TableChatEventLoadBody( TableReader & r, TableChatEvent & value )
 {
     TableChatEventReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14420,6 +14477,15 @@ BENCHTABLE_TABLE_INLINE bool TableChatEventLoadBody( TableReader & r, TableChatE
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -15051,6 +15117,7 @@ inline int64_t TablePickupEventSave( const TablePickupEvent & value, uint8_t * b
 BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePickupEvent & value )
 {
     TablePickupEventReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -15068,6 +15135,15 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePic
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {

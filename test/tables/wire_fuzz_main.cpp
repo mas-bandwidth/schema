@@ -185,6 +185,11 @@ struct Variable
         Report report;
         const T * root = load( region, need, wire, bytes, &report );
         copy_report( report, reply );
+        // A REFUSAL IS NOT DAMAGE (§3): a form byte this reader does not
+        // carry moves no counter and reports nothing, so it must not fold into
+        // the flag; a read that returned no root without a named refusal is
+        // damage, folded into malformed from the read's own false.
+        reply.malformed = reply.malformed || ( root == NULL && !reply.refused );
         reply.loaded = root != NULL;
         reply.saved = -1;
         if ( root != NULL )
@@ -257,6 +262,9 @@ struct VariableRetain
         // the report is copied AFTER the save, which is where retain_lost's
         // save half lands (§6.6)
         copy_report( report, reply );
+        // a read that returned no root without a named refusal is damage,
+        // folded into malformed from the read's own false (§3, §6.5)
+        reply.malformed = reply.malformed || ( root == NULL && !reply.refused );
         free( region );
     }
 };

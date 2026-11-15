@@ -1369,6 +1369,7 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	g.pf("%suint64_t body_len = 0;\n", ind)
 	g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", ind)
 	g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
+	g.pf("%sif ( body_len < 2 )\n%s{\n%s    r.report->damaged = true;\n%s    return false;\n%s}\n", ind, ind, ind, ind, ind)
 	g.pf("%sif ( body_len >= 2 )\n%s{\n", ind, ind)
 	g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
 	g.pf("%s    uint64_t count = 0;\n", ind)

@@ -6098,6 +6098,7 @@ inline int64_t UserSave( const User & value, uint8_t * buffer, int64_t capacity 
 MESSAGEDEMO_TABLE_INLINE bool UserLoadBody( TableReader & r, User & value )
 {
     UserReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -6115,6 +6116,15 @@ MESSAGEDEMO_TABLE_INLINE bool UserLoadBody( TableReader & r, User & value )
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -6565,6 +6575,7 @@ inline int64_t ScriptSave( const Script & value, uint8_t * buffer, int64_t capac
 MESSAGEDEMO_TABLE_INLINE bool ScriptLoadBody( TableReader & r, Script & value )
 {
     ScriptReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -6582,6 +6593,15 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptLoadBody( TableReader & r, Script & value )
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -7167,6 +7187,7 @@ inline int64_t SelectionSave( const Selection & value, uint8_t * buffer, int64_t
 MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBody( TableReader & r, Selection & value )
 {
     SelectionReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -7184,6 +7205,15 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBody( TableReader & r, Selection & va
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -8018,6 +8048,7 @@ inline int64_t InsertTextSave( const InsertText & value, uint8_t * buffer, int64
 MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & value )
 {
     InsertTextReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -8035,6 +8066,15 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -8344,8 +8384,12 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     const int32_t previous_count = value.origins_count;
@@ -8565,8 +8609,12 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     const int32_t previous_count = value.modes_count;
@@ -9733,6 +9781,7 @@ inline int64_t RemoveTextSave( const RemoveText & value, uint8_t * buffer, int64
 MESSAGEDEMO_TABLE_INLINE bool RemoveTextLoadBody( TableReader & r, RemoveText & value )
 {
     RemoveTextReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9750,6 +9799,15 @@ MESSAGEDEMO_TABLE_INLINE bool RemoveTextLoadBody( TableReader & r, RemoveText & 
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -10325,6 +10383,7 @@ inline int64_t EditSave( const Edit & value, uint8_t * buffer, int64_t capacity 
 MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
 {
     EditReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10342,6 +10401,15 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -10565,7 +10633,12 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                             }
                             value.body.type = EditBodyType::Marks;
                             memset( (void *) &value.body.marks, 0, sizeof( value.body.marks ) ); // selection establishes the arm (§2.6)
-                            if ( !sub.has( 2 ) ) { break; }
+                            if ( !sub.has( 2 ) )
+                            {
+                                value.body.type = EditBodyType::None;
+                                r.report->damaged = true;
+                                break;
+                            }
                             {
                                 uint8_t arm_elem_kind = sub.get8();
                                 uint64_t arm_count = 0;
@@ -10648,7 +10721,12 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                             }
                             value.body.type = EditBodyType::Blob;
                             memset( (void *) &value.body.blob, 0, sizeof( value.body.blob ) ); // selection establishes the arm (§2.6)
-                            if ( !sub.has( 2 ) ) { break; }
+                            if ( !sub.has( 2 ) )
+                            {
+                                value.body.type = EditBodyType::None;
+                                r.report->damaged = true;
+                                break;
+                            }
                             {
                                 uint8_t arm_elem_kind = sub.get8();
                                 uint64_t arm_count = 0;
@@ -11591,6 +11669,7 @@ inline int64_t OpenDocumentSave( const OpenDocument & value, uint8_t * buffer, i
 MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBody( TableReader & r, OpenDocument & value )
 {
     OpenDocumentReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11608,6 +11687,15 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBody( TableReader & r, OpenDocumen
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -12210,6 +12298,7 @@ inline int64_t SaveDocumentSave( const SaveDocument & value, uint8_t * buffer, i
 MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBody( TableReader & r, SaveDocument & value )
 {
     SaveDocumentReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12227,6 +12316,15 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBody( TableReader & r, SaveDocumen
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -13117,6 +13215,7 @@ inline int64_t TransactionSave( const Transaction & value, uint8_t * buffer, int
 MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction & value )
 {
     TransactionReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13134,6 +13233,15 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -13221,8 +13329,12 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     const int32_t previous_count = value.edits_count;
@@ -13308,8 +13420,12 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
@@ -13469,7 +13585,12 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::Marks;
                                             memset( (void *) &value.pending[(int32_t) i].marks, 0, sizeof( value.pending[(int32_t) i].marks ) ); // selection establishes the arm (§2.6)
-                                            if ( !elem_arm.has( 2 ) ) { break; }
+                                            if ( !elem_arm.has( 2 ) )
+                                            {
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             {
                                                 uint8_t arm_elem_kinda = elem_arm.get8();
                                                 uint64_t arm_counta = 0;
@@ -13547,7 +13668,12 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::Blob;
                                             memset( (void *) &value.pending[(int32_t) i].blob, 0, sizeof( value.pending[(int32_t) i].blob ) ); // selection establishes the arm (§2.6)
-                                            if ( !elem_arm.has( 2 ) ) { break; }
+                                            if ( !elem_arm.has( 2 ) )
+                                            {
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             {
                                                 uint8_t arm_elem_kinda = elem_arm.get8();
                                                 uint64_t arm_counta = 0;
@@ -13643,8 +13769,12 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
@@ -13740,8 +13870,12 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
@@ -15916,6 +16050,7 @@ inline int64_t ToolMessageSave( const ToolMessage & value, uint8_t * buffer, int
 MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage & value )
 {
     ToolMessageReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -15933,6 +16068,15 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -16164,7 +16308,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                             }
                             value.body.type = ToolBodyType::Spans;
                             memset( (void *) &value.body.spans, 0, sizeof( value.body.spans ) ); // selection establishes the arm (§2.6)
-                            if ( !sub.has( 2 ) ) { break; }
+                            if ( !sub.has( 2 ) )
+                            {
+                                value.body.type = ToolBodyType::None;
+                                r.report->damaged = true;
+                                break;
+                            }
                             {
                                 uint8_t arm_elem_kind = sub.get8();
                                 uint64_t arm_count = 0;
@@ -16451,8 +16600,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     const int32_t previous_count = value.history_count;
@@ -16612,7 +16765,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Spans;
                                             memset( (void *) &value.history[(int32_t) i].spans, 0, sizeof( value.history[(int32_t) i].spans ) ); // selection establishes the arm (§2.6)
-                                            if ( !elem_arm.has( 2 ) ) { break; }
+                                            if ( !elem_arm.has( 2 ) )
+                                            {
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             {
                                                 uint8_t arm_elem_kinda = elem_arm.get8();
                                                 uint64_t arm_counta = 0;
@@ -16906,8 +17064,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     const int32_t previous_count = value.trace_count;
@@ -16994,8 +17156,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
@@ -18996,6 +19162,7 @@ inline int64_t CursorSave( const Cursor & value, uint8_t * buffer, int64_t capac
 MESSAGEDEMO_TABLE_INLINE bool CursorLoadBody( TableReader & r, Cursor & value )
 {
     CursorReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -19013,6 +19180,15 @@ MESSAGEDEMO_TABLE_INLINE bool CursorLoadBody( TableReader & r, Cursor & value )
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -19568,6 +19744,7 @@ inline int64_t PingSave( const Ping & value, uint8_t * buffer, int64_t capacity 
 MESSAGEDEMO_TABLE_INLINE bool PingLoadBody( TableReader & r, Ping & value )
 {
     PingReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -19585,6 +19762,15 @@ MESSAGEDEMO_TABLE_INLINE bool PingLoadBody( TableReader & r, Ping & value )
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {

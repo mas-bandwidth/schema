@@ -4,12 +4,13 @@ package cpptable
 // docs/SPEC-TABLES.md §4, §6.5): the strict read is one read — the whole
 // value or a refusal — and the framing battery's vectors are form-1 files,
 // so a root declared `fixed table` is read there through its form-1 read
-// with its class variable. Ten of the battery's rows are damaged wires the
-// generated C++ readers decoded as values: an inert array, keyed or map
-// body (H2), a repeated field id (R5), an unknown field whose skipped bytes
-// are themselves damage (R2), a node table riding twice (R5, T1), a node
-// record no pointer reaches (T1) and an unknown node table whose record's
-// type reference is 0 (T4). The driver now walks the whole wire by the
+// with its class variable. Several of the battery's rows are damaged wires
+// the generated C++ readers decoded as values: a repeated field id (R5), an
+// unknown field whose skipped bytes are themselves damage (R2), a node table
+// riding twice (R5, T1), a node record no pointer reaches (T1) and an unknown
+// node table whose record's type reference is 0 (T4). A short array, keyed or
+// map body (H2) is damage the readers now refuse themselves (§4: a body too
+// short for its own header). The driver now walks the whole wire by the
 // wire-alone rules before it decodes (test/conformance/cpp/main.cpp,
 // framing_strict_ok), and this test holds the built driver to every
 // framing row of the manifest: the verdict the row owes, the §16 text of
@@ -37,23 +38,18 @@ import (
 // the negative control below is held to turning exactly these back into
 // reads when the strict walk is taken out of the driver. The four rows of
 // bytes inside L past a count and after a record terminator (8ad2632bc) are
-// refused by the same walk. node_index_null is not here: its null pointer
-// leaves a record no pointer reaches, which the C++ read's own
-// declaration-free graph walk refuses (§3.1, §6.5), so taking the driver's
-// strict walk out does not turn it back into a read.
+// refused by the same walk. The rows the readers now refuse themselves are
+// not here — a short array, keyed or map body (§4), a repeated field id, a
+// node table riding twice, and a node record no pointer reaches, which the
+// declaration-free graph walk refuses (§3.1, §6.5) — so taking the driver's
+// strict walk out does not turn them back into reads.
 var cppFramingStrictRows = []string{
-	"array_L0_inert",
-	"array_L1_inert",
 	"array_elements_past_count",
-	"frame_repeat_last_wins",
 	"frame_unknown_id_length",
 	"frame_unknown_id_reference",
 	"keyed_slots_past_count",
-	"keyed_L1_inert",
-	"map_L1_inert",
 	"map_entries_past_count",
 	"node_record_bytes_after_terminator",
-	"node_table_twice",
 	"node_unknown_to_fixed_reader",
 }
 

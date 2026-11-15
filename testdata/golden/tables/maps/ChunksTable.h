@@ -10517,6 +10517,7 @@ inline bool ChunksBlobsEntryLoadBody( TableReader & r, const TableNodeMap & node
     (void) nodes;
     if ( nodes.refused ) { return false; }
     ChunksBlobsEntryReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10534,6 +10535,15 @@ inline bool ChunksBlobsEntryLoadBody( TableReader & r, const TableNodeMap & node
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -10741,6 +10751,7 @@ inline bool ChunksLoadBody( TableReader & r, const TableNodeMap & nodes, Chunks 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     ChunksReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10758,6 +10769,15 @@ inline bool ChunksLoadBody( TableReader & r, const TableNodeMap & nodes, Chunks 
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -10800,6 +10820,11 @@ inline bool ChunksLoadBody( TableReader & r, const TableNodeMap & nodes, Chunks 
                     return false;
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
@@ -12551,6 +12576,7 @@ inline bool ChunksBlobsEntryLoadBodyRetain( TableReader & r, const TableNodeMap 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12568,6 +12594,15 @@ inline bool ChunksBlobsEntryLoadBodyRetain( TableReader & r, const TableNodeMap 
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -12782,6 +12817,7 @@ inline bool ChunksLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, C
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12799,6 +12835,15 @@ inline bool ChunksLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, C
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -12841,6 +12886,11 @@ inline bool ChunksLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, C
                     return false;
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();

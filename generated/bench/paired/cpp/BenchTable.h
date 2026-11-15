@@ -6328,6 +6328,7 @@ inline int64_t MixedEntitySave( const MixedEntity & value, uint8_t * buffer, int
 BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & value )
 {
     MixedEntityReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -6345,6 +6346,15 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -8482,6 +8492,7 @@ inline int64_t MixedStatSave( const MixedStat & value, uint8_t * buffer, int64_t
 BENCH_TABLE_INLINE bool MixedStatLoadBody( TableReader & r, MixedStat & value )
 {
     MixedStatReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -8499,6 +8510,15 @@ BENCH_TABLE_INLINE bool MixedStatLoadBody( TableReader & r, MixedStat & value )
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -9079,6 +9099,7 @@ inline int64_t MixedHitEventSave( const MixedHitEvent & value, uint8_t * buffer,
 BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & value )
 {
     MixedHitEventReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9096,6 +9117,15 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -9944,6 +9974,7 @@ inline int64_t MixedChatEventSave( const MixedChatEvent & value, uint8_t * buffe
 BENCH_TABLE_INLINE bool MixedChatEventLoadBody( TableReader & r, MixedChatEvent & value )
 {
     MixedChatEventReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9961,6 +9992,15 @@ BENCH_TABLE_INLINE bool MixedChatEventLoadBody( TableReader & r, MixedChatEvent 
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -10592,6 +10632,7 @@ inline int64_t MixedPickupEventSave( const MixedPickupEvent & value, uint8_t * b
 BENCH_TABLE_INLINE bool MixedPickupEventLoadBody( TableReader & r, MixedPickupEvent & value )
 {
     MixedPickupEventReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10609,6 +10650,15 @@ BENCH_TABLE_INLINE bool MixedPickupEventLoadBody( TableReader & r, MixedPickupEv
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -11611,6 +11661,7 @@ inline int64_t BenchMixedSave( const BenchMixed & value, uint8_t * buffer, int64
 BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value )
 {
     BenchMixedReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11628,6 +11679,15 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -12079,8 +12139,12 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     const int32_t previous_count = value.entities_count;
@@ -12166,8 +12230,12 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     const int32_t previous_count = value.stats_count;
@@ -12363,8 +12431,12 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
@@ -12477,8 +12549,12 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();

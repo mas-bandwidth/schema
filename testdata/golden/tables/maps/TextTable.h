@@ -10639,6 +10639,7 @@ MAPDEMO_TABLE_INLINE bool TextNamesEntrySaveBody( TableWriter & w, TableIds & id
 MAPDEMO_TABLE_INLINE bool TextNamesEntryLoadBody( TableReader & r, TextNamesEntry & value )
 {
     TextNamesEntryReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10656,6 +10657,15 @@ MAPDEMO_TABLE_INLINE bool TextNamesEntryLoadBody( TableReader & r, TextNamesEntr
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -10815,6 +10825,7 @@ MAPDEMO_TABLE_INLINE bool TextBlobsEntrySaveBody( TableWriter & w, TableIds & id
 MAPDEMO_TABLE_INLINE bool TextBlobsEntryLoadBody( TableReader & r, TextBlobsEntry & value )
 {
     TextBlobsEntryReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10832,6 +10843,15 @@ MAPDEMO_TABLE_INLINE bool TextBlobsEntryLoadBody( TableReader & r, TextBlobsEntr
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -10913,8 +10933,12 @@ MAPDEMO_TABLE_INLINE bool TextBlobsEntryLoadBody( TableReader & r, TextBlobsEntr
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
@@ -11135,6 +11159,7 @@ inline bool TextLoadBody( TableReader & r, const TableNodeMap & nodes, Text & va
     (void) nodes;
     if ( nodes.refused ) { return false; }
     TextReset( value ); // prefill declared defaults in place, then overlay
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11152,6 +11177,15 @@ inline bool TextLoadBody( TableReader & r, const TableNodeMap & nodes, Text & va
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -11194,6 +11228,11 @@ inline bool TextLoadBody( TableReader & r, const TableNodeMap & nodes, Text & va
                     return false;
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
@@ -11338,6 +11377,11 @@ inline bool TextLoadBody( TableReader & r, const TableNodeMap & nodes, Text & va
                     return false;
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
@@ -12967,6 +13011,7 @@ MAPDEMO_TABLE_INLINE bool TextNamesEntryLoadBodyRetain( TableReader & r, TextNam
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12984,6 +13029,15 @@ MAPDEMO_TABLE_INLINE bool TextNamesEntryLoadBodyRetain( TableReader & r, TextNam
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -13150,6 +13204,7 @@ MAPDEMO_TABLE_INLINE bool TextBlobsEntryLoadBodyRetain( TableReader & r, TextBlo
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13167,6 +13222,15 @@ MAPDEMO_TABLE_INLINE bool TextBlobsEntryLoadBodyRetain( TableReader & r, TextBlo
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -13248,8 +13312,12 @@ MAPDEMO_TABLE_INLINE bool TextBlobsEntryLoadBodyRetain( TableReader & r, TextBlo
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
+                // count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
@@ -13477,6 +13545,7 @@ inline bool TextLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tex
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    uint64_t seen_refs[kTableProbeBound / 64] = {0};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13494,6 +13563,15 @@ inline bool TextLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tex
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        const uint64_t seen_idx = field_ref - 1;
+        const uint64_t seen_word = seen_idx >> 6;
+        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );
+        if ( seen_refs[seen_word] & seen_bit )
+        {
+            r.report->damaged = true;
+            return false;
+        }
+        seen_refs[seen_word] |= seen_bit;
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -13536,6 +13614,11 @@ inline bool TextLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tex
                     return false;
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();
@@ -13683,6 +13766,11 @@ inline bool TextLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tex
                     return false;
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
+                if ( body_len < 2 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( body_len >= 2 )
                 {
                     uint8_t elem_kind = r.get8();

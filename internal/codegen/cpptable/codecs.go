@@ -2089,6 +2089,12 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		// not refuse a clean record for an earlier read's missing field.
 		g.pf("    const int32_t missing_before = r.report->missing_required;\n")
 	}
+	// A REPEATED FIELD ID IS DAMAGE (docs/SPEC-TABLES.md §4): the same id
+	// twice in one body is a wire no conforming writer produces, so a
+	// reference already seen discards the load. One bit per reference — the
+	// id table is distinct, so a reference IS a field id, and the entry
+	// count is capped at kTableProbeBound, so the bitmap is bounded.
+	g.pf("    uint64_t seen_refs[kTableProbeBound / 64] = {0};\n")
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t field_ref = 0;\n")
 	g.pf("        if ( !r.getleb( field_ref ) )\n        {\n            r.report->damaged = true;\n            return false;\n        }\n")
@@ -2121,6 +2127,11 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	}
 	g.pf("        }\n")
 	g.pf("        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )\n        {\n            r.report->damaged = true;\n            return false;\n        } // a reference ABOVE the entry count\n")
+	g.pf("        const uint64_t seen_idx = field_ref - 1;\n")
+	g.pf("        const uint64_t seen_word = seen_idx >> 6;\n")
+	g.pf("        const uint64_t seen_bit = uint64_t(1) << ( seen_idx & 63 );\n")
+	g.pf("        if ( seen_refs[seen_word] & seen_bit )\n        {\n            r.report->damaged = true;\n            return false;\n        }\n")
+	g.pf("        seen_refs[seen_word] |= seen_bit;\n")
 	g.pf("        const uint64_t field_id = r.ids->at( field_ref );\n")
 	g.pf("        if ( !r.has( 1 ) )\n        {\n            r.report->damaged = true;\n            return false;\n        }\n")
 	g.pf("        uint8_t kind = r.get8();\n")
@@ -2418,6 +2429,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%suint64_t body_len = 0;\n", ind)
 		g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", ind)
 		g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
+		g.pf("%sif ( body_len < 2 )\n%s{\n%s    r.report->damaged = true;\n%s    return false;\n%s}\n", ind, ind, ind, ind, ind)
 		g.pf("%sif ( body_len >= 2 )\n%s{\n", ind, ind)
 		g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
 		g.pf("%s    uint64_t count = 0;\n", ind)
@@ -2485,8 +2497,8 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", ind)
 		g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
 		g.pf("%s// A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the\n", ind)
-		g.pf("%s// count, so fewer than two bytes — is INERT (§4): the field keeps the\n", ind)
-		g.pf("%s// value it has, no counter is raised, and the walk continues past L.\n", ind)
+		g.pf("%s// count, so fewer than two bytes — is DAMAGE (§4): the load is discarded.\n", ind)
+		g.pf("%sif ( body_len < 2 )\n%s{\n%s    r.report->damaged = true;\n%s    return false;\n%s}\n", ind, ind, ind, ind, ind)
 		g.pf("%sif ( body_len >= 2 )\n%s{\n", ind, ind)
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s    const int32_t previous_count = value.%s_count;\n", ind, f.Name)

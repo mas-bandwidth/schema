@@ -304,10 +304,10 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		ek, n, keep := "arm_elem_kind"+sfx, "arm_count"+sfx, "arm_keep"+sfx
 		i, decoded := "arm_i"+sfx, "arm_decoded"+sfx
 		sub, elems, left := "arm_sub"+sfx, "arm_elems"+sfx, "arm_left"+sfx
-		// A BODY TOO SHORT FOR ITS OWN HEADER IS INERT (§3, §4): no element is
-		// decoded and no counter fires, so the union selects the arm at its
-		// declared defaults
-		g.pf("%sif ( !%s.has( 2 ) ) { break; }\n", ind, rdr)
+		// A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
+		// count, so fewer than two bytes — is DAMAGE (§4): the arm deselects
+		// and the load is discarded.
+		g.pf("%sif ( !%s.has( 2 ) )\n%s{\n%s    %s = %s;\n%s    r.report->damaged = true;\n%s    break;\n%s}\n", ind, rdr, ind, ind, tag, none, ind, ind, ind)
 		g.pf("%s{\n%s    uint8_t %s = %s.get8();\n", ind, ind, ek, rdr)
 		g.pf("%s    uint64_t %s = 0;\n", ind, n)
 		g.pf("%[1]s    if ( !%[2]s.getleb( %[3]s ) )\n%[1]s    {\n%[1]s        %[4]s = %[5]s;\n%[1]s        r.report->damaged = true;\n%[1]s        break;\n%[1]s    }\n", ind, rdr, n, tag, none)
