@@ -1823,7 +1823,8 @@ define rust_wref_control
 	@file=$(1)/generated/$(2); \
 	n=$$(grep -cF '$(3)' $$file); \
 	[ "$$n" -gt 0 ] || { echo "NEGATIVE CONTROL: the $(5) check matches no generated line in $$file"; exit 1; }; \
-	sed -i 's@$(3)@$(4)@g' $$file; \
+	sed -i.orig 's@$(3)@$(4)@g' $$file && rm -f $$file.orig || { echo "NEGATIVE CONTROL: the $(5) check could not be edited"; exit 1; }; \
+	grep -qF '$(3)' $$file && { echo "NEGATIVE CONTROL: the $(5) check did not change"; exit 1; } || true; \
 	grep -qF '$(4)' $$file || { echo "NEGATIVE CONTROL: the $(5) check did not change"; exit 1; }
 	@sed -e 's|^path = "src/main.rs"|path = "../../../test/conformance/rust/src/main.rs"|' \
 		-e 's|build/tables-generated-rust/|$(1)/generated/|' \
