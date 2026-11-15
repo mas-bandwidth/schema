@@ -41,7 +41,9 @@ python-packet-core-negative-control: python-toolchain-check
 # layer's write checks), and requires the driver to fail exactly the vectors
 # in test/packet-finite/python/<direction>.expected; beside them it cuts the
 # compressed float's range check from a copy of a generated validator and
-# requires the contract probe to name exactly the vectors that check holds.
+# requires the contract probe to name exactly the vectors that check holds,
+# and cuts the fixed point read's raw span check from a copy of the bit layer
+# and requires the probe to name exactly the headroom reads.
 .PHONY: packet-finite-python packet-finite-python-negative-control
 test-python: packet-finite-python
 packet-finite-python: build/schema-python python-toolchain-check

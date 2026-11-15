@@ -535,6 +535,29 @@ func TestPythonPacketFloats(t *testing.T) {
 				t.Fatalf("the cut compressed range check failed %v (err %v), want exactly %v:\n%s", got, err, want, out)
 			}
 		})
+		// fixed-read: the raw span check is cut from a copy of the bit
+		// layer's fixed point read, so an offset in the bit headroom lands a
+		// value outside the declaration.
+		t.Run("fixed-read", func(t *testing.T) {
+			t.Parallel()
+			u := floatsContractUnit(t)
+			files, err := Generate(u)
+			if err != nil {
+				t.Fatal(err)
+			}
+			files = sabotage(t, files, u.Package+"/_schema/serialize/_core.py",
+				[2]string{"        if offset > raw_span:\n            return self._fail(VALUE_OUT_OF_RANGE)\n        ref.value = raw_min + offset\n",
+					"        # SABOTAGED: the fixed point read takes every offset\n        ref.value = raw_min + offset\n"})
+			dir := t.TempDir()
+			writeTree(t, dir, files)
+			out, _, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", map[string][]byte{
+				"main.py": []byte(floatsContractProbe(floatsContractLayout(t, u))),
+			})
+			want := []string{"q/read/headroom", "u/read/headroom", "w/read/headroom"}
+			if got := failedVectors(out, "FAILED: "); err != nil || !slices.Equal(got, want) {
+				t.Fatalf("the cut fixed point span check failed %v (err %v), want exactly %v:\n%s", got, err, want, out)
+			}
+		})
 		for _, dir := range []string{"read", "write"} {
 			t.Run("finite-"+dir, func(t *testing.T) {
 				t.Parallel()
