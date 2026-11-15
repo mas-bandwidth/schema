@@ -61,7 +61,7 @@ func cppRuntimeNames() []Name {
 			"kTableMessageListMax", "kTableMessageVocabularyFieldId",
 		}},
 		{what: "a shared runtime helper or constant of the table wire (docs/SPEC-TABLES.md §3, §6)", names: []string{
-			"TableExtentUnreachedEmpty", "TableKeyLength", "TableKeyOrder", "TableResetMapValue",
+			"TableArrayElementKind", "TableExtentUnreachedEmpty", "TableKeyLength", "TableKeyOrder", "TableKeyedElementKind", "TableResetMapValue",
 			"TableWireExtentElements", "TableWireExtentFn", "TableWireExtentKeyed", "kTableCookHeaderBytes",
 			"kTableProbeBound", "kTableProbeShift", "kTableProbeSlots", "kTableWireForm", "kTableWireMessageForm",
 		}},
@@ -87,7 +87,7 @@ func cppRuntimeNames() []Name {
 			"TableFixedApply", "TableFixedBigEndianHost", "TableFixedClampKnownRanges", "TableFixedCopyLe", "TableFixedCopyRun", "TableFixedDepth",
 			"TableFixedEntryAt", "TableFixedEntryLands", "TableFixedFills", "TableFixedGet32", "TableFixedGet64", "TableFixedGetLe",
 			"TableFixedKnownRange", "TableFixedLayFills", "TableFixedLayTable", "TableFixedPut16", "TableFixedPut32",
-			"TableFixedPut64", "TableFixedPut8", "TableFixedPutF32", "TableFixedPutF64", "TableFixedRefuseScan", "TableFixedStoreNative",
+			"TableFixedPut64", "TableFixedPut8", "TableFixedPutF32", "TableFixedPutF64", "TableFixedRefuseScan", "TableFixedLoadNative", "TableFixedStoreNative",
 		}},
 		{what: "the id vocabulary and the announcement (docs/SPEC-TABLES.md §3.3)", names: []string{
 			"TableIdTable", "TableIdsBytes", "TableIdsWrite", "TableLebBytes", "TableVocabularyEntryAt",
@@ -113,7 +113,7 @@ func cppRuntimeNames() []Name {
 			"TableDeclRef", "TableNodeScanBegin", "TableNodeScanNext", "TableNodeScanOpen",
 			"TableNodeScanWhole", "TableNodeTableMeasure", "TableNodeTableMeasureRetain", "TableNodeTablePayload",
 			"TableNodeTablePayloadRetain", "TableNodeTableSave", "TableNodeTableSaveRetain", "TableNumberingAppend",
-			"TableNumberingIndex", "TableNumberingInit", "TableNumberingShutdown", "TablePackMapClose",
+			"TableNumberingIndex", "TableNumberingInit", "TableNumberingShutdown", "TableNumberingWorkPush", "TablePackMapClose",
 			"TablePackMapFind", "TablePackMapGrow", "TablePackMapInit", "TablePackMapReach", "TablePackMapReset",
 			"TablePackMapShutdown", "TablePackMapSlot", "kTableNodeAbsent", "kTableNodeIndexNull",
 			"kTableNodeIndexRoot", "kTableNodeRefused", "kTableNodeTableFieldId",

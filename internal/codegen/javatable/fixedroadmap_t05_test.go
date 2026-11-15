@@ -160,7 +160,7 @@ func t05C13(t *testing.T) {
 		"final int present = b[at + 1] & 0xFF; if (present > 1) { if (live) { r.refuse(TableFixed.Reason.wireDamaged); } } v.linkPresent = present != 0;",
 		"C13 a present byte other than 0 or 1 refuses wire_damaged")
 	t05Has(t, files, "HbbFixed.java",
-		"PayFixed.scatter(b, at + 2, v.link, r, live && v.linkPresent);",
+		"PayFixed.scatter(b, at + 2, v.link, r, live && v.linkPresent, checkDead);",
 		"C13 an absent optional's payload is not walked")
 }
 

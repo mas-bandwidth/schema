@@ -166,21 +166,20 @@ func TestEveryNamedTableLegRunsOnItsPullRequests(t *testing.T) {
 		}
 	}
 
-	// Clause 4 — THE C# LEG'S PULL REQUESTS. cs-tables runs on a same-repository
-	// pull request exactly when pr-select selects the C# leg, and on a push.
+	// Clause 4 — THE C# LEG'S TABLES RUN NIGHTLY. ci-full.yml runs nightly and
+	// on dispatch only (the owner, 2026-11-15: "I want everything that is not
+	// light moved to nightly test now." "no exceptions."), and cs-tables runs
+	// in it on the schedule; no pull request or push starts it.
 	full := wfs["ci-full.yml"]
-	pr := ciEvent{Name: "pull_request", Branch: "main", HeadRef: "sprint/schema-main/card", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}
-	for _, tc := range []struct {
-		cs   string
-		want bool
-	}{{"yes", true}, {"no", false}} {
-		ev := pr
-		ev.PRCS = tc.cs
-		if ok, err := jobSelectsSelfHosted(full, "cs-tables", ev); err != nil || ok != tc.want {
-			t.Errorf("ci-full.yml:cs-tables on a pull request with pr-select cs=%s ran=%v (err=%v), want %v", tc.cs, ok, err, tc.want)
-		}
+	if ok, err := jobSelectsSelfHosted(full, "cs-tables", ciEvent{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"}); err != nil || !ok {
+		t.Errorf("ci-full.yml:cs-tables did not run on the schedule (err=%v)", err)
 	}
-	if ok, err := jobSelectsSelfHosted(full, "cs-tables", ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"}); err != nil || !ok {
-		t.Errorf("ci-full.yml:cs-tables did not run on a push to main (err=%v)", err)
+	for _, ev := range []ciEvent{
+		{Name: "pull_request", Branch: "main", HeadRef: "sprint/schema-main/card", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema", PRCS: "yes"},
+		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
+	} {
+		if ok, err := jobSelectsSelfHosted(full, "cs-tables", ev); err != nil || ok {
+			t.Errorf("ci-full.yml:cs-tables ran on %s (ok=%v err=%v); it runs nightly", ev.Name, ok, err)
+		}
 	}
 }

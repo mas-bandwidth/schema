@@ -148,6 +148,17 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARMS_AGREE_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
+        if (value.flag) {
+            assert value.a >= 0;
+            assert value.a <= 2047;
+        } else {
+            assert value.b >= 0;
+            assert value.b <= 2047;
+        }
+        assert value.tail >= 0;
+        assert value.tail <= 127;
         return true;
     }
 
@@ -292,6 +303,17 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARMS_DISAGREE_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
+        if (value.flag) {
+            assert value.a >= 0;
+            assert value.a <= 2047;
+        } else {
+            assert value.b >= 0;
+            assert value.b <= 7;
+        }
+        assert value.tail >= 0;
+        assert value.tail <= 127;
         return true;
     }
 
@@ -440,6 +462,14 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARM_EMPTY_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
+        if (value.flag) {
+            assert value.a >= 0;
+            assert value.a <= 524287;
+        }
+        assert value.tail >= 0;
+        assert value.tail <= 127;
         return true;
     }
 
@@ -595,6 +625,22 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARMS_NESTED_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 7;
+        if (value.outer) {
+            if (value.inner) {
+                assert value.x >= 0;
+                assert value.x <= 536870911;
+            } else {
+                assert value.y >= 0;
+                assert value.y <= 31;
+            }
+        } else {
+            assert value.z >= 0;
+            assert value.z <= 8191;
+        }
+        assert value.tail >= 0;
+        assert value.tail <= 63;
         return true;
     }
 
@@ -779,10 +825,17 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARM_ALIGN_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
         if (value.flag) {
             assert value.sLength >= 0;
             assert value.sLength <= 4;
+        } else {
+            assert value.b >= 0;
+            assert value.b <= 1023;
         }
+        assert value.tail >= 0;
+        assert value.tail <= 127;
         return true;
     }
 
@@ -992,6 +1045,8 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARM_ARRAY_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
         if (value.flag) {
             assert value.itemsCount >= 0;
             assert value.itemsCount <= 3;
@@ -999,7 +1054,12 @@ public final class Joins {
                 assert value.items[i0] >= 0;
                 assert value.items[i0] <= 8191;
             }
+        } else {
+            assert value.b >= 0;
+            assert value.b <= 511;
         }
+        assert value.tail >= 0;
+        assert value.tail <= 127;
         return true;
     }
 
@@ -1147,6 +1207,8 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + NARROW_MAX_BITS;
+        assert value.n >= 0;
+        assert value.n <= 7;
         return true;
     }
 
@@ -1244,6 +1306,8 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + WIDE_MAX_BITS;
+        assert value.w >= 0;
+        assert value.w <= 137438953471L;
         return true;
     }
 
@@ -1501,6 +1565,10 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + HOLDS_UNEVEN_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
+        assert value.tail >= 0;
+        assert value.tail <= 2047;
         return true;
     }
 
@@ -1635,8 +1703,12 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARR_UNEVEN_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 3;
+        assert value.tail >= 0;
+        assert value.tail <= 7;
         return true;
     }
 
@@ -1788,6 +1860,8 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + REGAIN_AFTER_ALIGN_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 3;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
@@ -1796,6 +1870,14 @@ public final class Joins {
         }
         assert value.sLength >= 0;
         assert value.sLength <= 4;
+        assert value.p >= 0;
+        assert value.p <= 4294967295L;
+        assert value.q >= 0;
+        assert value.q <= 536870911;
+        assert value.r >= 0;
+        assert value.r <= 524287;
+        assert value.tail >= 0;
+        assert value.tail <= 15;
         return true;
     }
 
