@@ -35,6 +35,11 @@
     },
     {
       "row": "surface json-hostile",
+      "lang": "go",
+      "slug": "relax/hostile-rows-go"
+    },
+    {
+      "row": "surface json-hostile",
       "lang": "goose",
       "slug": "relax/hostile-rows-goose"
     },

@@ -1147,10 +1147,9 @@
     {
       "row": "surface json-hostile",
       "lang": "go",
-      "status": "proven",
-      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
-      "job": "CI full / conformance (go)",
-      "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
+      "status": "relaxed",
+      "why": "1 case(s) fail: json-hostile/str-zero-escape-unknown-key",
+      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-go (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
