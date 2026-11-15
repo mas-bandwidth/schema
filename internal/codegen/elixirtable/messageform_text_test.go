@@ -69,10 +69,8 @@ fixed table Root {
 			if got := inst.Fields[0].Cell.Str; !bytes.Equal(got, row.text) {
 				t.Fatalf("%s: the engine read %q, want %q", row.name, got, row.text)
 			}
-		} else {
-			if ok || err == nil || n != 0 {
-				t.Fatalf("%s: the engine did not refuse the batch: n=%d ok=%v err=%v", row.name, n, ok, err)
-			}
+		} else if ok || err == nil || n != 0 {
+			t.Fatalf("%s: the engine did not refuse the batch: n=%d ok=%v err=%v", row.name, n, ok, err)
 		}
 
 		fmt.Fprintf(&probeRows, "    {%q, Base.decode16!(%q, case: :lower), %t},\n",
@@ -148,7 +146,7 @@ func messageBatchWithText(t *testing.T, m *tabletext.Model, u *ir.Unit, text []b
 		t.Fatalf("encode the placeholder batch: %v", err)
 	}
 	at := bytes.Index(batch, placeholder)
-	if at < 0 || bytes.Index(batch[at+len(placeholder):], placeholder) >= 0 {
+	if at < 0 || bytes.Contains(batch[at+len(placeholder):], placeholder) {
 		t.Fatalf("the string payload is not a single run of the batch (at %d): %x", at, batch)
 	}
 	out := append([]byte(nil), batch...)

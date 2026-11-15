@@ -31,7 +31,7 @@ type textOffShapeBits struct {
 }
 
 func (w *textOffShapeBits) put(v uint64, n int) {
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if w.n%8 == 0 {
 			w.b = append(w.b, 0)
 		}

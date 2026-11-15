@@ -147,8 +147,7 @@ func TestRustUnknownFieldFloatIsFinite(t *testing.T) {
 		if ok {
 			t.Fatalf("%s: the engine accepted the non-finite unknown float", c.name)
 		}
-		var nf *tablewire.NonFiniteRefusal
-		if !errors.As(err, &nf) {
+		if _, ok := errors.AsType[*tablewire.NonFiniteRefusal](err); !ok {
 			t.Fatalf("%s: the engine refused %v, want the non-finite float verdict", c.name, err)
 		}
 

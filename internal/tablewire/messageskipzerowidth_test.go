@@ -141,7 +141,7 @@ func TestMessageSkipRefusesElementWithNoProgress(t *testing.T) {
 			shape: ir.TableMessageShape{Min: 2, Max: 2, Elem: ir.TableKindString,
 				Inner: &ir.TableMessageShape{Max: 1}},
 			elems: func(w *bitWriter) {
-				for i := 0; i < 2; i++ {
+				for range 2 {
 					w.put(0, 1) // a length of zero
 					w.align()
 				}

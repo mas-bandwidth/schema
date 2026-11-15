@@ -33,7 +33,7 @@ type textElementBitWriter struct {
 }
 
 func (w *textElementBitWriter) put(v uint64, n int) {
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if w.bits%8 == 0 {
 			w.buf = append(w.buf, 0)
 		}

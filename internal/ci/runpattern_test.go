@@ -277,11 +277,11 @@ var runPatternExceptions = []runPatternException{
 	{"make/moo-text.mk:32", "-run 'TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)' ends in a make variable defined at the top of make/moo-text.mk, so the pattern has no value until make expands it", "TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)"},
 	{"make/moo-tables.mk:18", "-run 'Moo' names tests in compiler/tablesmoo_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them", "Moo"},
 	{"make/moo-readiness.mk:35", "-run 'Moo' names tests in compiler/tablesmoo_test.go and compiler/tablesmoonames_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them", "Moo"},
-	{"Makefile:5900", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion", "^$(3)$"},
+	{"Makefile:5921", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion", "^$(3)$"},
 	{"make/js.mk:1541", "inside define js_jstable_control: $(3) is the caller's test pattern and $(4) its package, so the pattern has no value until expansion", "$(3)"},
-	{"Makefile:7461", "slow-gate-coverage: -run \"$$(go run ./tools/slowgatescan -emit-gated-run)\" is the gated tests' names, which tools/slowgatescan scans the tree for when the recipe runs, so the pattern has no literal value, and ./tools/slowgatescan in it is the program, not the package under test", "$(go run ./tools/slowgatescan -emit-gated-run)"},
-	{"Makefile:7489", "slow-gate-coverage-codegen: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
-	{"Makefile:7493", "slow-gate-coverage-rest: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
+	{"Makefile:7482", "slow-gate-coverage: -run \"$$(go run ./tools/slowgatescan -emit-gated-run)\" is the gated tests' names, which tools/slowgatescan scans the tree for when the recipe runs, so the pattern has no literal value, and ./tools/slowgatescan in it is the program, not the package under test", "$(go run ./tools/slowgatescan -emit-gated-run)"},
+	{"Makefile:7510", "slow-gate-coverage-codegen: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
+	{"Makefile:7514", "slow-gate-coverage-rest: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, over the packages -emit-shard-packages names", "$(go run ./tools/slowgatescan -emit-gated-run)"},
 }
 
 // checkRunPatterns is the shared code path for both tests. It extracts every
@@ -516,7 +516,7 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 	// stamp newer than them is remade at make time and recompiles its object
 	// even when the object itself was touched.
 	pathLines := 0
-	for _, l := range strings.Split(conf, "\n") {
+	for l := range strings.SplitSeq(conf, "\n") {
 		if strings.TrimSpace(l) == "build/conformance-c-objs" {
 			pathLines++
 		}
@@ -527,7 +527,7 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 	stampAt := strings.Index(conf, "touch build/tables-generated-c/.stamp")
 	driverAt := strings.Index(conf, "touch build/conformance-c")
 	generatedAt, objectsAt := -1, -1
-	for _, l := range strings.Split(conf, "\n") {
+	for l := range strings.SplitSeq(conf, "\n") {
 		if strings.Contains(l, "find build/tables-generated-c ") &&
 			strings.Contains(l, "-exec touch") {
 			generatedAt = strings.Index(conf, l)
@@ -544,7 +544,7 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 		t.Error("conformance does not stand every restored object under build/conformance-c-objs newer than the checkout: make recompiles all of the C driver's translation units on a cache hit")
 	}
 	if stampAt < 0 || driverAt < 0 || generatedAt < 0 || objectsAt < 0 ||
-		!(stampAt < generatedAt && generatedAt < objectsAt && objectsAt < driverAt) {
+		(stampAt >= generatedAt || generatedAt >= objectsAt || objectsAt >= driverAt) {
 		t.Error("conformance refreshes the C driver inputs out of order: the stamp, then the generated sources, then the objects, then the linked driver must each stand newer than the last, or make recompiles or relinks on a hit")
 	}
 
@@ -618,7 +618,7 @@ func TestCSharpCacheHitRefreshesEveryRestoredOutput(t *testing.T) {
 	}
 	for _, dir := range []string{"test/conformance/cs/obj", "test/conformance/cs/bin"} {
 		refreshed := false
-		for _, l := range strings.Split(body, "\n") {
+		for l := range strings.SplitSeq(body, "\n") {
 			if strings.Contains(l, "find") && strings.Contains(l, dir) &&
 				strings.Contains(l, "-type f") && strings.Contains(l, "-exec touch") {
 				refreshed = true

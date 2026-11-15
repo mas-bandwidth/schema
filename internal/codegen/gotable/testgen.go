@@ -598,11 +598,12 @@ func testgenHasFixedForm(u *ir.Unit, st *ir.Struct) bool {
 // reader reads no form-1 file at all.
 func testgenRoundTrip(b *strings.Builder, st *ir.Struct, variable, fixedForm bool, samples []tgSample) {
 	n := st.Name
-	if variable {
+	switch {
+	case variable:
 		fmt.Fprintf(b, "\n// Test%sGenRoundTrip reads every sample of %s back through the binary wire,\n// base64 text and JSON text, each equal to what was written (SPEC-TABLES §16.11).\n", n, n)
-	} else if fixedForm {
+	case fixedForm:
 		fmt.Fprintf(b, "\n// Test%sGenRoundTrip reads every sample of %s through form 3's plain Save\n// and Load, then through FixedLoad and JSON (SPEC-TABLES §3.4, §16.11). A\n// form-1 file is still refused as previous_form.\n", n, n)
-	} else {
+	default:
 		fmt.Fprintf(b, "\n// Test%sGenRoundTrip reads every sample of %s. This fixed root has no file\n// form: Measure, Save and SaveText refuse, a form-1 file is previous_form at\n// Load and LoadText, and JSON carries the value (SPEC-TABLES §3.4, §16.11).\n", n, n)
 	}
 	fmt.Fprintf(b, "func Test%sGenRoundTrip(t *testing.T) {\n\tt.Parallel()\n\tsamples := []struct{ name, text string }{\n", n)

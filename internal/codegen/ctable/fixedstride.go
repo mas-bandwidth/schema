@@ -333,14 +333,14 @@ func (c *fixedStrideCompiler) compileEntry(ti int32, theirAt uint32, mi int32, m
 	c.depth++
 	defer func() { c.depth-- }()
 
-	if int(me.Kind) == ir.TableKindOptional && int(te.kind) != ir.TableKindOptional {
+	if me.Kind == ir.TableKindOptional && int(te.kind) != ir.TableKindOptional {
 		c.push(fixedSizedEntry{dst: auxAt, size: 1, guard: guard, arg: arg, op: kTableFixedPresent})
 		c.compileEntry(ti, theirAt, mi+1, myAt, guard, arg)
 		return
 	}
 	if int(te.kind) != me.Kind {
 		if fixedWidens(te.kind, uint8(me.Kind)) {
-			op := uint8(kTableFixedWiden)
+			op := kTableFixedWiden
 			if te.kind == 10 {
 				op = kTableFixedWidenF
 			}
@@ -373,10 +373,7 @@ func (c *fixedStrideCompiler) compileEntry(ti int32, theirAt uint32, mi int32, m
 		if mel.Size > 0 {
 			myN = (uint32(me.Size) - head) / uint32(mel.Size)
 		}
-		n := theirN
-		if myN < n {
-			n = myN
-		}
+		n := min(myN, theirN)
 		if n > 1<<20 {
 			c.hostile = true
 			return
@@ -385,7 +382,7 @@ func (c *fixedStrideCompiler) compileEntry(ti int32, theirAt uint32, mi int32, m
 		if d.counted != 0 {
 			c.push(fixedSizedEntry{src: theirAt, dst: auxAt, size: n, guard: guard, arg: arg, op: kTableFixedCount})
 		}
-		for i := uint32(0); i < n; i++ {
+		for i := range n {
 			c.compileEntry(ti+1, theirBase+i*tel.size, mi+1, at+i*d.stride, guard, arg)
 		}
 	case ir.TableKindKeyed:
@@ -470,10 +467,7 @@ func (c *fixedStrideCompiler) compileEntry(ti int32, theirAt uint32, mi int32, m
 		}
 		c.push(fixedSizedEntry{src: theirAt, dst: at, size: te.size, guard: guard, arg: arg, op: kTableFixedOrdinal, dstsize: uint8(me.Size)})
 	case ir.TableKindString:
-		units := uint32(me.Size) - 4
-		if te.size-4 < units {
-			units = te.size - 4
-		}
+		units := min(te.size-4, uint32(me.Size)-4)
 		c.push(fixedSizedEntry{src: theirAt, dst: at, size: units, aux: auxAt, guard: guard, arg: arg, op: kTableFixedText, meta: d.meta})
 	default:
 		e := fixedSizedEntry{src: theirAt, dst: at, guard: guard, arg: arg}

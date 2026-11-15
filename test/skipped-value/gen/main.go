@@ -57,7 +57,7 @@ func run() error {
 	}
 	canonical, err := tablewire.EncodeMessage(writerModel, inst)
 	if err != nil {
-		return fmt.Errorf("encode canonical: %v", err)
+		return fmt.Errorf("encode canonical: %w", err)
 	}
 	announcement := tablewire.Announce(writerModel.Unit)
 
@@ -65,7 +65,7 @@ func run() error {
 	// every body against it and skips what it does not declare.
 	var vocab tablewire.Vocabulary
 	if err := vocab.AnnounceRead(announcement, &report); err != nil {
-		return fmt.Errorf("the writer's announcement did not read: %v %+v", err, report)
+		return fmt.Errorf("the writer's announcement did not read: %w %+v", err, report)
 	}
 	refBits := vocab.RefBits()
 
@@ -154,7 +154,7 @@ func checkMessage(readerModel *tabletext.Model, root *ir.Struct, data []byte, vo
 	ok, err := tablewire.DecodeMessage(readerModel, inst, data, vocab, &report)
 	if wantRead {
 		if err != nil || !ok || report.Refused {
-			return fmt.Errorf("%s: the canonical batch did not read: ok=%v err=%v report=%+v", name, ok, err, report)
+			return fmt.Errorf("%s: the canonical batch did not read: ok=%v err=%w report=%+v", name, ok, err, report)
 		}
 		if report.Unknown != unknown {
 			return fmt.Errorf("%s: unknown %d, want %d (%+v)", name, report.Unknown, unknown, report)
@@ -162,7 +162,7 @@ func checkMessage(readerModel *tabletext.Model, root *ir.Struct, data []byte, vo
 		return nil
 	}
 	if ok || err == nil || !report.Refused {
-		return fmt.Errorf("%s: the damaged batch was accepted: ok=%v err=%v report=%+v", name, ok, err, report)
+		return fmt.Errorf("%s: the damaged batch was accepted: ok=%v err=%w report=%+v", name, ok, err, report)
 	}
 	return nil
 }

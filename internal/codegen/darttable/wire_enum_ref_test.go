@@ -54,7 +54,7 @@ func TestDartWireEnumRefHeldToIdCount(t *testing.T) {
 		t.Fatalf("the clean fixture's root body does not end at its terminator (trailer at %d)", start)
 	}
 	future := ir.TableWireId("future_enum_field")
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if binary.LittleEndian.Uint64(clean[start+i*8:]) == future {
 			t.Fatal("the clean fixture already carries the future field's id")
 		}

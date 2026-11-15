@@ -203,9 +203,10 @@ func TestSquirrelToJsonRefusesOffContract(t *testing.T) {
 		st := model.Lookup("T")
 		for _, c := range offContractCases {
 			prefix := `{"k":[0,0],"tm":[{"value":"a"},{"value":"b"}],`
-			if c.field == "k" {
+			switch c.field {
+			case "k":
 				prefix = `{"tm":[{"value":"a"},{"value":"b"}],`
-			} else if c.field == "tm" {
+			case "tm":
 				prefix = `{"k":[0,0],`
 			}
 			text := prefix + `"` + c.field + `":` + c.text + `}`

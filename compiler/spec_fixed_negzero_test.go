@@ -9,6 +9,7 @@
 package compiler
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -23,7 +24,7 @@ func TestSpecFixedCompressedNegZero(t *testing.T) {
 	message := specSection(t, tables, "### 3.3 The message form", "### 3.4 The fixed form")
 
 	var fixedRow string
-	for _, line := range strings.Split(message, "\n") {
+	for line := range strings.SplitSeq(message, "\n") {
 		if strings.HasPrefix(line, "| FIXED (§3.4) |") {
 			fixedRow = line
 			break
@@ -44,13 +45,7 @@ func TestSpecFixedCompressedNegZero(t *testing.T) {
 			t.Errorf("the ruling fixed-compressed-negzero carries date %q, want 2026-11-10", r.Date)
 		}
 		const quote = "ruled 2026-11-10: a compressed float's negative zero reads as +0 and is written as +0"
-		found := false
-		for _, q := range r.Quotes {
-			if q == quote {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(r.Quotes, quote)
 		if !found {
 			t.Errorf("the ruling fixed-compressed-negzero does not quote %q", quote)
 		}

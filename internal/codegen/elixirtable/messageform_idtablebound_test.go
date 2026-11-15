@@ -46,7 +46,6 @@ func TestElixirAnnouncementIdTableBound(t *testing.T) {
 
 	dir := t.TempDir()
 	for _, row := range rows {
-		row := row
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			path := filepath.Join(dir, row.name+".bin")

@@ -230,7 +230,7 @@ func repeatedIdBatch(spans ...repeatedIdSpan) []byte {
 }
 
 func repeatedIdSetBits(buf []byte, off, width int, value uint64) {
-	for i := 0; i < width; i++ {
+	for i := range width {
 		if (value>>uint(i))&1 != 0 {
 			buf[(off+i)/8] |= 1 << uint((off+i)%8)
 		} else {

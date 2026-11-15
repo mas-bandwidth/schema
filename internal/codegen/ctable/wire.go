@@ -4,6 +4,7 @@ package ctable
 // and flat node records for the variable class.
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -728,10 +729,8 @@ func unitHasWriteBound(u *ir.Unit) bool {
 		if st == nil {
 			continue
 		}
-		for _, f := range st.Fields {
-			if bounded(f) {
-				return true
-			}
+		if slices.ContainsFunc(st.Fields, bounded) {
+			return true
 		}
 	}
 	return false
