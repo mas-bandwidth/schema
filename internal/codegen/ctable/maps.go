@@ -204,7 +204,7 @@ func (g *tableGen) emitMapKeyRead(f *ir.Field) {
 			g.pf("                TableReader text; if(!table_reader_span(&r,&text) || !table_wire_utf8(text.buffer,text.size)) { out.damaged=1; return out; }\n                out.key.data=(const char *)text.buffer; out.key.length=(int32_t)text.size; out.over=text.size>%d;\n", key.Type.Size)
 		}
 	} else {
-		g.wireScalarRead(key, "out.key", "r", "kind", "                ", "out.damaged=1; return out;")
+		g.wireScalarRead(key, "out.key", "r", "kind", "                ", "out.damaged=1; return out;", false)
 	}
 	g.pf("                continue;\n            }\n        }\n        if(!table_reader_skip(&r,kind)) { out.damaged=1; return out; }\n    }\n}\n")
 }

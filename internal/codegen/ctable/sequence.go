@@ -519,7 +519,7 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 		g.wireRefusalCheck("                                ")
 		g.pf("                                %s }\n", bad)
 	default:
-		g.wireScalarRead(e, "(*element)", "sub", "elem_kind", "                            ", bad)
+		g.wireScalarRead(e, "(*element)", "sub", "elem_kind", "                            ", bad, false)
 	}
 	if f.IsTextList() && f.TextTotal > 0 {
 		if ir.TextListOptional(f) {

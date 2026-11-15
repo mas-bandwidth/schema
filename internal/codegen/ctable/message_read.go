@@ -301,12 +301,12 @@ func messageRange(signed bool, bits int) (*big.Int, *big.Int) {
 	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
 }
 
-func (g *tableGen) messageReadElement(f *ir.Field, dst, e, ind string) {
+func (g *tableGen) messageReadElement(f *ir.Field, dst, e, ind string, element int) {
 	switch {
 	case ir.TableWireScalarKind(f) == tkTable:
 		g.pf("%sif(!%s(r,&%s))return 0;\n", ind, g.api(f.Type.Name, "load_message_body"), dst)
 	case ir.TableWireScalarKind(f) == tkUnion:
-		g.pf("%sif(!%s(r,&%s))return 0;\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "message_load"), dst)
+		g.pf("%sif(!%s(r,&%s,%d))return 0;\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "message_load"), dst, element)
 	default:
 		g.messageReadScalar(f, dst, e, ind)
 	}
@@ -347,22 +347,22 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 			_ = v
 		}
 		g.pf("%s default:break;} if(slot<0){r->report->unknown++;\n%s { %s scratch;memset(&scratch,0,sizeof(scratch));\n", ind, ind, g.sequenceType(f))
-		g.messageReadElement(f, "scratch", "element_entry", ind+" ")
+		g.messageReadElement(f, "scratch", "element_entry", ind+" ", 1)
 		g.pf("%s }continue;}\n", ind)
-		g.messageReadElement(f, dst+"[slot]", "element_entry", ind+" ")
+		g.messageReadElement(f, dst+"[slot]", "element_entry", ind+" ", 1)
 		g.pf("%s} }\n", ind)
 	case f.Array != ir.ArrayNone:
 		g.pf("%s{uint64_t n,kept,walk,i;TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;\n", ind, e)
 		g.pf("%s if(!table_message_count(r,%s,&n))goto damaged;kept=n>%d?%d:n;if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;\n", ind, e, f.ArrayBound, f.ArrayBound)
 		g.pf("%s walk=element_entry->value_bits>=0?kept:n;for(i=0;i<walk;i++){%s scratch; %s * item=i<kept ? &%s[i] : &scratch;\n", ind, g.sequenceType(f), g.sequenceType(f), dst)
-		g.messageReadElement(f, "(*item)", "element_entry", ind+" ")
+		g.messageReadElement(f, "(*item)", "element_entry", ind+" ", 1)
 		g.pf("%s }if(walk<n && !table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;\n", ind)
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s %s=(int32_t)kept;\n", ind, count)
 		}
 		g.pf("%s}\n", ind)
 	default:
-		g.messageReadElement(f, dst, e, ind)
+		g.messageReadElement(f, dst, e, ind, 0)
 	}
 }
 
@@ -386,12 +386,12 @@ func (g *tableGen) emitMessageReadDeclarations(members []*ir.Struct, unions []*i
 		g.pf("static SCHEMA_UNUSED int %s(TableMessageReader *,%s *);\n", g.api(st.Name, "load_message_body"), st.Name)
 	}
 	for _, un := range unions {
-		g.pf("static SCHEMA_UNUSED int %s(TableMessageReader *,%s *);\n", g.unionWireName(un, "message_load"), un.Name)
+		g.pf("static SCHEMA_UNUSED int %s(TableMessageReader *,%s *,int);\n", g.unionWireName(un, "message_load"), un.Name)
 	}
 }
 
 func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
-	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto damaged;value->type=0;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd)||entry->kind==0)goto damaged;\n switch(entry->id){\n", g.unionWireName(un, "message_load"), un.Name)
+	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value,int element)\n{\n const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto damaged;value->type=0;if(entry==NULL){if(!element)goto damaged;return 1;}if(entry->id>=UINT64_C(0xfffffffffffffffd)||entry->kind==0)goto damaged;\n switch(entry->id){\n", g.unionWireName(un, "message_load"), un.Name)
 	for _, v := range un.Variants {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableWireId(v.WireName()))
 		g.messageAccept(v.F, ir.TableArmEntry(v), " ")
@@ -409,17 +409,42 @@ func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
 	g.pf("%s", " default:r->report->unknown++;if(!table_message_skip(r,entry))goto damaged;break;\n }return 1;\n damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;\n}\n")
 }
 
+func (g *tableGen) messageFieldMustRide(f *ir.Field) bool {
+	if f.Type.Optional || f.Array != ir.ArrayNone || f.IsList() || f.IsMap() || f.KeyEnum != "" {
+		return false
+	}
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TNamed {
+		return false
+	}
+	switch ir.TableWireScalarKind(f) {
+	case tkTable, tkUnion, tkArray, tkKeyed:
+		return false
+	}
+	return f.Required || !f.HasDefault
+}
+
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
+	empty := "return 1;"
+	if len(st.Fields) > 0 {
+		empty = "if(r->vocabulary->build_version==" + buildVersionName(g.unit.Package) + "&&!any_field)goto damaged;return 1;"
+	}
 	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n", g.api(st.Name, "load_message_body"), st.Name)
-	g.pf(" %s(value);for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto damaged;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;switch(entry->id){\n", g.api(st.Name, "reset"))
-	for _, f := range st.Fields {
+	if len(st.Fields) > 0 {
+		g.pf(" int32_t last_field=-1; int any_field=0;\n")
+	}
+	g.pf(" %s(value);for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto damaged;if(entry==NULL){%s}if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;any_field=1;switch(entry->id){\n", g.api(st.Name, "reset"), empty)
+	for ordinal, f := range st.Fields {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableFieldWireId(f))
+		g.pf(" if(%d<=last_field)goto damaged;last_field=%d;\n", ordinal, ordinal)
 		g.messageAccept(f, ir.TableFieldEntry(f), " ")
 		dst, count := "value->"+f.Name, "value->"+f.Name+"_count"
 		if f.Array == ir.ArrayNone {
 			count = "value->" + f.Name + "_length"
 		}
 		g.messageReadValue(f, dst, count, "entry", " ")
+		if g.wireReadRefusesDefault(f) {
+			g.pf(" if(r->vocabulary->build_version==%s&&%s)goto damaged;\n", buildVersionName(g.unit.Package), g.wireDefaultEquals(f, dst))
+		}
 		if f.Type.Optional {
 			g.pf(" %s_present=1;\n", dst)
 		}

@@ -28,9 +28,29 @@ func (g *tableGen) wireEnumRead(e *ir.Enum, dst, rdr, ind, onBad string) {
 	g.pf("%s        }\n%s    }\n%s}\n", ind, ind, ind)
 }
 
-func (g *tableGen) wireScalarRead(f *ir.Field, dst, rdr, wireKind, ind, onBad string) {
+func (g *tableGen) wireReadRefusesDefault(f *ir.Field) bool {
+	if f.Type.Optional || f.Required || f.Type.Pointer {
+		return false
+	}
+	if f.Array != ir.ArrayNone || f.IsList() || f.IsMap() || f.KeyEnum != "" {
+		return false
+	}
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		return false
+	}
+	switch ir.TableWireScalarKind(f) {
+	case tkTable, tkUnion, tkArray, tkKeyed:
+		return false
+	}
+	return true
+}
+
+func (g *tableGen) wireScalarRead(f *ir.Field, dst, rdr, wireKind, ind, onBad string, refuseNull bool) {
 	if f.Type.Pointer {
 		g.pf("%s{ uint64_t index; if(!table_reader_leb(&%s,&index)) { %s }\n", ind, rdr, onBad)
+		if refuseNull {
+			g.pf("%s  if ( index == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; %s }\n", ind, onBad)
+		}
 		target := ir.TableWireId(ir.PointeeWireName(f))
 		if f.Type.Blob() {
 			target = ir.BlobWireTypeId(f)
@@ -161,6 +181,9 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 	if hasReq {
 		g.pf("    int32_t missing_before = r->report->missing_required;\n")
 	}
+	if len(st.Fields) > 0 {
+		g.pf("    int32_t last_field = -1;\n")
+	}
 	g.pf("    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );\n")
 	g.pf("    for ( ;; )\n    {\n        uint64_t ref, id; uint8_t kind;\n")
 	g.pf("        if ( !table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n")
@@ -203,10 +226,14 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 		}
 		plain := !f.Type.Pointer && f.Array == ir.ArrayNone && f.KeyEnum == "" && (kind == tkI16 || kind == tkI32 || kind == tkI64 || kind == 18 || kind == tkU16 || kind == tkU32 || kind == tkU64 || kind == 19 || kind == tkF64)
 		g.pf("            case 0x%016xull: /* %s */\n            {\n", ir.TableFieldWireId(f), f.Name)
+		g.pf("                if ( %d <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = %d;\n", ordinal, ordinal)
 		g.pf("                if ( kind != %d )\n                {\n", wireKind)
 		if plain {
 			g.pf("                    if ( table_kind_widens( kind, %d ) )\n                    {\n", wireKind)
-			g.wireScalarRead(f, "value->"+f.Name, "(*r)", "kind", "                        ", "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0;")
+			g.wireScalarRead(f, "value->"+f.Name, "(*r)", "kind", "                        ", "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0;", false)
+			if g.wireReadRefusesDefault(f) {
+				g.pf("                        if ( %s ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", g.wireDefaultEquals(f, "value->"+f.Name))
+			}
 			if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {
 				g.pf("                        r->report->widened++;\n")
 			} // map key widening is counted once by the key scan
@@ -222,6 +249,9 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 		g.pf("                    r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;\n                    if ( !table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n                    break;\n                }\n")
 		g.retainReadField(f, ordinal, "                ")
 		g.wireReadFieldAt(f, kind, "value->"+f.Name)
+		if g.wireReadRefusesDefault(f) {
+			g.pf("                if ( %s ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", g.wireDefaultEquals(f, "value->"+f.Name))
+		}
 		if f.Type.Optional {
 			g.pf("                value->%s_present = 1;\n", f.Name)
 		}
@@ -282,7 +312,7 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 	case f.IsList():
 		g.emitListRead(f, dst, bounded)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
-		g.wireScalarRead(f, dst, "(*r)", "kind", ind, "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0;")
+		g.wireScalarRead(f, dst, "(*r)", "kind", ind, "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0;", f.Type.Pointer && !f.Required)
 	case f.Type.TextUnbounded():
 		g.pf("%sTableReader sub; int refused = 0;\n", ind)
 		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", ind)
@@ -369,7 +399,7 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 			g.wireRefusalCheck(ind + "                ")
 			g.pf("%s                %s }\n", ind, bad)
 		default:
-			g.wireScalarRead(f, dst+"[i]", "sub", "elem_kind", ind+"            ", bad)
+			g.wireScalarRead(f, dst+"[i]", "sub", "elem_kind", ind+"            ", bad, false)
 		}
 		if f.IsTextList() && f.TextTotal > 0 {
 			if ir.TextListOptional(f) {
@@ -445,7 +475,7 @@ func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
 		g.wireRefusalCheck(ind + "        ")
 		g.pf("%s        if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; %s(&%s); }\n", ind, g.api(f.Type.Name, "reset"), dst)
 	} else {
-		g.wireScalarRead(f, dst, "elem", "elem_kind", ind+"        ", "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; goto next_"+f.Name+";")
+		g.wireScalarRead(f, dst, "elem", "elem_kind", ind+"        ", "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; goto next_"+f.Name+";", false)
 		// The slot's L frames its element exactly (docs/SPEC-TABLES.md §4).
 		g.pf("%s        if ( elem.offset != elem.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }\n", ind)
 	}
