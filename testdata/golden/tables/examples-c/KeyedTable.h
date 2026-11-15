@@ -8463,6 +8463,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_team_config_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t tabledemo_team_config_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_team_config_fixed_layout ) ) ) / ( 8 + 24 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_team_config_fixed_layout ) + count * ( 8 + 24 );
 }
 
@@ -8757,6 +8758,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_gunner_config_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t tabledemo_gunner_config_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_gunner_config_fixed_layout ) ) ) / ( 8 + 5 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_gunner_config_fixed_layout ) + count * ( 8 + 5 );
 }
 
@@ -9064,6 +9066,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_turret_config_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t tabledemo_turret_config_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_turret_config_fixed_layout ) ) ) / ( 8 + 14 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_turret_config_fixed_layout ) + count * ( 8 + 14 );
 }
 
@@ -9401,6 +9404,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_hull_config_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t tabledemo_hull_config_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_hull_config_fixed_layout ) ) ) / ( 8 + 50 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_hull_config_fixed_layout ) + count * ( 8 + 50 );
 }
 
@@ -9872,6 +9876,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_keyed_config_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t tabledemo_keyed_config_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_keyed_config_fixed_layout ) ) ) / ( 8 + 234 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_keyed_config_fixed_layout ) + count * ( 8 + 234 );
 }
 

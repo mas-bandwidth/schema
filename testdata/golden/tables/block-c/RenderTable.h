@@ -13209,6 +13209,7 @@ static SCHEMA_UNUSED const int32_t blockdemo_render_camera_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_camera_fixed_layout ) ) ) / ( 8 + 72 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_camera_fixed_layout ) + count * ( 8 + 72 );
 }
 
@@ -13596,6 +13597,7 @@ static SCHEMA_UNUSED const int32_t blockdemo_render_ship_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_ship_fixed_layout ) ) ) / ( 8 + 81 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_ship_fixed_layout ) + count * ( 8 + 81 );
 }
 
@@ -13980,6 +13982,7 @@ static SCHEMA_UNUSED const int32_t blockdemo_render_turret_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_turret_fixed_layout ) ) ) / ( 8 + 59 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_turret_fixed_layout ) + count * ( 8 + 59 );
 }
 
@@ -14370,6 +14373,7 @@ static SCHEMA_UNUSED const int32_t blockdemo_render_missile_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_missile_fixed_layout ) ) ) / ( 8 + 71 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_missile_fixed_layout ) + count * ( 8 + 71 );
 }
 
@@ -14762,6 +14766,7 @@ static SCHEMA_UNUSED const int32_t blockdemo_render_dynamic_prop_fixed_floor = 0
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_dynamic_prop_fixed_layout ) ) ) / ( 8 + 71 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_dynamic_prop_fixed_layout ) + count * ( 8 + 71 );
 }
 
@@ -15154,6 +15159,7 @@ static SCHEMA_UNUSED const int32_t blockdemo_render_static_prop_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_static_prop_fixed_layout ) ) ) / ( 8 + 78 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_static_prop_fixed_layout ) + count * ( 8 + 78 );
 }
 
@@ -15549,6 +15555,7 @@ static SCHEMA_UNUSED const int32_t blockdemo_render_cosmetic_prop_fixed_floor = 
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_cosmetic_prop_fixed_layout ) ) ) / ( 8 + 79 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_cosmetic_prop_fixed_layout ) + count * ( 8 + 79 );
 }
 
@@ -15933,6 +15940,7 @@ static SCHEMA_UNUSED const int32_t blockdemo_render_laser_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_laser_fixed_layout ) ) ) / ( 8 + 62 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_laser_fixed_layout ) + count * ( 8 + 62 );
 }
 
@@ -16323,6 +16331,7 @@ static SCHEMA_UNUSED const int32_t blockdemo_render_explosion_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_explosion_fixed_layout ) ) ) / ( 8 + 74 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_render_explosion_fixed_layout ) + count * ( 8 + 74 );
 }
 
