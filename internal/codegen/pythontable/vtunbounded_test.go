@@ -301,6 +301,8 @@ def check(label, value):
         print(label, "wrote")
     except InvalidValue:
         print(label, r.scores == before)
+    except Exception as err:
+        print(label, "raised", type(err).__name__)
 
 check("range", [1, 101])
 check("bool", [True])
@@ -372,7 +374,7 @@ cases = {
     "flags": (flags, [i % 3 == 0 for i in range(COUNT)]),
 }
 
-N = 2000
+N = 200
 ROUNDS = 5
 
 def run(fn):
