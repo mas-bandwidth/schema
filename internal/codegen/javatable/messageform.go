@@ -1001,7 +1001,18 @@ public final class TableMessage {
                 return !r.err;
             case 1:
                 return r.skipBits(1L);
-            case 11: case 36:
+            case 10: {
+                // A SKIPPED FLOAT IS HELD TO THE READ'S OWN RULE (§3.3, §4):
+                // a whole value that is not finite refuses the batch, and a
+                // quantized index above its announced count is damage.
+                readFloat32(r, s, 0.0f, 0.0f, false, "<skipped>");
+                return !r.err;
+            }
+            case 11: {
+                readFloat64(r, s, 0.0, 0.0, false, "<skipped>");
+                return !r.err;
+            }
+            case 36:
                 return r.skipBits(64L);
             case 30: {
                 long ref = r.get(r.vocab.refBits);
@@ -1043,6 +1054,8 @@ public final class TableMessage {
             case 14: case 16: {
                 long n = readCount(r, s);
                 if (r.err) { return false; }
+                // A SKIPPED COUNT IS HELD TO ITS ANNOUNCED BOUNDS (§3.3, §4).
+                if (n < s.min || n > s.max) { r.err = true; return false; }
                 if (s.kind == 14 && elem != null && elem.kind == 6 && !r.align()) {
                     return false;
                 }
@@ -1050,14 +1063,16 @@ public final class TableMessage {
                 if (run >= 0L) {
                     return skipRun(r, n, run);
                 }
+                int seenSlotMark = r.seenMark();
                 for (long i = 0; i < n; i++) {
                     long at = r.at;
                     if (s.kind == 16) {
-                        long kref = r.get(r.vocab.refBits);
-                        if (r.err || kref < 0L || kref > (long) r.vocab.count) {
-                            r.err = true;
-                            return false;
-                        }
+                        // A SKIPPED KEY IS A NAMED KEY'S REFERENCE (§3.3, §4):
+                        // it names a declared no-payload entry, and no key is
+                        // carried twice in one array.
+                        TableVocabulary.Entry key = r.nameRef();
+                        if (key == null) { return false; }
+                        if (!r.seenAdd(seenSlotMark, key.id)) { r.err = true; return false; }
                     }
                     if (!skipAt(r, elem, null, depth + 1)) {
                         return false;
@@ -1074,9 +1089,11 @@ public final class TableMessage {
                             r.err = true;
                             return false;
                         }
+                        r.seenRollback(seenSlotMark);
                         return true;
                     }
                 }
+                r.seenRollback(seenSlotMark);
                 return true;
             }
         }
@@ -1087,12 +1104,16 @@ public final class TableMessage {
 
     public static boolean skipBody(Reader r, int depth) {
         if (depth > 128) { r.err = true; return false; }
+        int seenFieldMark = r.seenMark();
         while (true) {
             long ref = r.get(r.vocab.refBits);
             if (r.err) { return false; }
-            if (ref == 0L) { return true; }
+            if (ref == 0L) { r.seenRollback(seenFieldMark); return true; }
             if (ref < 0L || ref > (long) r.vocab.count) { r.err = true; return false; }
             TableVocabulary.Entry e = r.vocab.entries[(int) ref - 1];
+            // A SKIPPED BODY NAMES NO ID TWICE (§4, §5): the ids this body
+            // has carried take their own region, as a read of it would.
+            if (!r.seenAdd(seenFieldMark, e.id)) { r.err = true; return false; }
             if (!skipAt(r, e.shape, e.element, depth)) { return false; }
         }
     }

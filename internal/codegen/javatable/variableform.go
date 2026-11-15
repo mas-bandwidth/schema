@@ -3744,7 +3744,9 @@ public final class TableJson {
                     skipContainer(']', depth);
                     return;
                 case '"':
-                    scanString();
+                    // A SKIPPED STRING IS HELD TO A PLACED STRING'S TEXT
+                    // RULE (§16.3): one that decodes to U+0000 refuses.
+                    scanStored();
                     return;
                 case 't':
                     lit("true");
@@ -3784,7 +3786,9 @@ public final class TableJson {
                     return;
                 }
                 if (closing == '}') {
-                    String key = scanString();
+                    // EVERY OBJECT KEY IS HELD TO A PLACED STRING'S RULE
+                    // (§16.3): one that decodes to U+0000 refuses.
+                    String key = scanStored();
                     if (bad) {
                         return;
                     }
@@ -5058,7 +5062,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("            int c = in.peek();\n")
 	b.WriteString("            if (c == 0) { in.bad = true; return; }\n")
 	b.WriteString("            if (c == '}') { in.p++; break; }\n")
-	b.WriteString("            String key = in.scanString();\n")
+	b.WriteString("            String key = in.scanStored();\n")
 	b.WriteString("            if (in.bad) { return; }\n")
 	b.WriteString("            // THE KEY SET HOLDS EVERY KEY OF THE OBJECT, declared or not,\n")
 	b.WriteString("            // compared by decoded text (§16.2, §16.12).\n")

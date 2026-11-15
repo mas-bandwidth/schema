@@ -901,7 +901,7 @@ public final class MixedPickupEventVariable {
                 in.p++;
                 break;
             }
-            String key = in.scanString();
+            String key = in.scanStored();
             if (in.bad) {
                 return;
             }

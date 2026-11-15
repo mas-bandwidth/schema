@@ -1377,7 +1377,7 @@ public final class BenchIntsVariable {
                 in.p++;
                 break;
             }
-            String key = in.scanString();
+            String key = in.scanStored();
             if (in.bad) {
                 return;
             }

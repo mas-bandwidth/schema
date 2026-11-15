@@ -997,7 +997,9 @@ public final class TableJson {
                     skipContainer(']', depth);
                     return;
                 case '"':
-                    scanString();
+                    // A SKIPPED STRING IS HELD TO A PLACED STRING'S TEXT
+                    // RULE (§16.3): one that decodes to U+0000 refuses.
+                    scanStored();
                     return;
                 case 't':
                     lit("true");
@@ -1037,7 +1039,9 @@ public final class TableJson {
                     return;
                 }
                 if (closing == '}') {
-                    String key = scanString();
+                    // EVERY OBJECT KEY IS HELD TO A PLACED STRING'S RULE
+                    // (§16.3): one that decodes to U+0000 refuses.
+                    String key = scanStored();
                     if (bad) {
                         return;
                     }
