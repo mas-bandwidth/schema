@@ -11341,7 +11341,7 @@ inline int64_t RunsSpansEntryMeasureBody( TableIds & ids, const RunsSpansEntry &
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 2; } // key
-    if ( value.value_count < 0 || value.value_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.value_count >= 0 && value.value_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.value_count > 0 )
     {
         const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
@@ -11365,7 +11365,7 @@ MAPDEMO_TABLE_INLINE bool RunsSpansEntrySaveBody( TableWriter & w, TableIds & id
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 7 ); // key
         w.put16( uint16_t( value.key ) );
     }
-    if ( value.value_count < 0 || value.value_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.value_count >= 0 && value.value_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.value_count > 0 )
     {
         const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
@@ -13304,7 +13304,7 @@ inline int64_t RunsSpansEntryMeasureBodyRetain( TableRetainIds & ids, const Runs
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 2; } // key
-    if ( value.value_count < 0 || value.value_count > 4 ) { return -1; } // storage invariant
+    schema_assert( value.value_count >= 0 && value.value_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.value_count > 0 )
     {
         const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
@@ -13329,7 +13329,7 @@ MAPDEMO_TABLE_INLINE bool RunsSpansEntrySaveBodyRetain( TableWriter & w, TableRe
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 7 ); // key
         w.put16( uint16_t( value.key ) );
     }
-    if ( value.value_count < 0 || value.value_count > 4 ) { return false; } // storage invariant
+    schema_assert( value.value_count >= 0 && value.value_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.value_count > 0 )
     {
         const uint64_t ref_value = ids.ref_at( 36, 0x7ce4fd9430e80ceaull );
