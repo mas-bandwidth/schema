@@ -14,7 +14,9 @@ static bool load( const std::string & path, std::vector<uint8_t> & out )
 {
     std::ifstream file( path, std::ios::binary );
     if ( !file.good() )
+    {
         return false;
+    }
     out.assign( std::istreambuf_iterator<char>( file ), {} );
     return true;
 }
@@ -23,10 +25,14 @@ static bool read_packet( const std::vector<uint8_t> & packet, packetend::End & v
 {
     std::vector<uint8_t> buffer( packet.size() + 8, 0 );
     if ( !packet.empty() )
+    {
         std::memcpy( buffer.data(), packet.data(), packet.size() );
+    }
     serialize::ReadStream stream( buffer.data(), int64_t( packet.size() ) );
     if ( !packetend::ReadEnd( stream, value ) )
+    {
         return false;
+    }
     bits = stream.GetBitsProcessed();
     return true;
 }

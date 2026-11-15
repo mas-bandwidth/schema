@@ -583,7 +583,9 @@ public:
         {
             uint64_t padding = 0;
             if ( !ReadBitsRaw( padding, int32_t( remaining ) ) )
+            {
                 return false;
+            }
             if ( padding != 0 )
             {
                 failed_ = true;
@@ -679,7 +681,9 @@ private:
     do \
     { \
         if ( !( stream ).SerializeEnd() ) \
+        { \
             return false; \
+        } \
     } while ( 0 )
 `
 
