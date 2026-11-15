@@ -139,6 +139,32 @@ func TestBlobRecordUnderUnknownField(t *testing.T) {
 	}
 }
 
+func TestBlobRecordNamedTwiceUnderUnknownFields(t *testing.T) {
+	var ids TableIds
+	for _, tc := range []struct { name string; rec record }{
+		{"bytes", record{blobBytesID, []byte("abc")}},
+		{"string", record{blobStringID, []byte("hello")}},
+	} {
+		shared := file(&ids, func(w *TableWriter) { ptr(w, dataField, 2); ptr(w, noteField, 2) }, tc.rec)
+		var r TableReport
+		if NodeLoad(region(1<<16), shared, &r) != nil { t.Fatalf("%s: Load accepted a blob record named from two unknown fields: %+v", tc.name, r) }
+		if _, err := NodeReadStrict(shared); err == nil { t.Fatalf("%s: ReadStrict accepted a blob record named from two unknown fields", tc.name) }
+	}
+}
+
+func TestBlobRecordNoPointerReachesRefused(t *testing.T) {
+	var ids TableIds
+	for _, tc := range []struct { name string; rec record }{
+		{"bytes", record{blobBytesID, []byte("abc")}},
+		{"string", record{blobStringID, []byte("hello")}},
+	} {
+		orphan := file(&ids, func(w *TableWriter) {}, tc.rec)
+		var r TableReport
+		if NodeLoad(region(1<<16), orphan, &r) != nil { t.Fatalf("%s: Load accepted a blob record no pointer reaches: %+v", tc.name, r) }
+		if _, err := NodeReadStrict(orphan); err == nil { t.Fatalf("%s: ReadStrict accepted a blob record no pointer reaches", tc.name) }
+	}
+}
+
 func TestDamagedBlobRecordRefused(t *testing.T) {
 	var ids TableIds
 	// ill-formed text in a string record is damage, declared or not
@@ -193,11 +219,44 @@ func TestStringRecordUnderUnknownField(t *testing.T) {
 	if BlobNodeLoad(region(max(BlobNodeLoadMeasure(known), 0)), known, &kr) == nil { t.Fatalf("Load refused a declared blob under an unknown field: %+v", kr) }
 	if kr.Err() != nil || kr.Unknown != 1 { t.Fatalf("declared blob unknown=%d err=%v, want accepted unknown 1", kr.Unknown, kr.Err()) }
 }
+
+func TestDeclaredAndUnknownNameOneStringRecord(t *testing.T) {
+	var ids TableIds
+	const data = 2
+	shared := file(&ids, func(w *TableWriter) {
+		w.ID(fieldB(bN)); w.Put8(4); w.Put32(1)
+		ptr(w, fieldB(data), 2)
+		ptr(w, noteField, 2)
+	}, record{blobStringID, []byte("hello")})
+	var r TableReport
+	if BlobNodeLoad(region(1<<16), shared, &r) != nil { t.Fatalf("Load accepted a declared and an unknown field naming one string record: %+v", r) }
+	if _, err := BlobNodeReadStrict(shared); err == nil { t.Fatal("ReadStrict accepted a declared and an unknown field naming one string record") }
+}
+
+func TestStringRecordNamedTwiceUnderUnknownFields(t *testing.T) {
+	var ids TableIds
+	shared := file(&ids, func(w *TableWriter) {
+		w.ID(fieldB(bN)); w.Put8(4); w.Put32(1)
+		ptr(w, noteField, 2)
+		ptr(w, otherField, 2)
+	}, record{blobStringID, []byte("hello")})
+	var r TableReport
+	if BlobNodeLoad(region(1<<16), shared, &r) != nil { t.Fatalf("Load accepted a string record named from two unknown fields: %+v", r) }
+	if _, err := BlobNodeReadStrict(shared); err == nil { t.Fatal("ReadStrict accepted a string record named from two unknown fields") }
+}
+
+func TestStringRecordNoPointerReachesRefused(t *testing.T) {
+	var ids TableIds
+	orphan := file(&ids, func(w *TableWriter) {}, record{blobStringID, []byte("hello")})
+	var r TableReport
+	if BlobNodeLoad(region(1<<16), orphan, &r) != nil { t.Fatalf("Load accepted a string record no pointer reaches: %+v", r) }
+	if _, err := BlobNodeReadStrict(orphan); err == nil { t.Fatal("ReadStrict accepted a string record no pointer reaches") }
+}
 `
 
 func blobWireIds() string {
-	return fmt.Sprintf("const blobBytesID uint64 = 0x%016x\nconst blobStringID uint64 = 0x%016x\nconst dataField uint64 = 0x%016x\nconst noteField uint64 = 0x%016x\n",
-		ir.TableWireId("bytes"), ir.TableWireId("string"), ir.TableWireId("data"), ir.TableWireId("note"))
+	return fmt.Sprintf("const blobBytesID uint64 = 0x%016x\nconst blobStringID uint64 = 0x%016x\nconst dataField uint64 = 0x%016x\nconst noteField uint64 = 0x%016x\nconst otherField uint64 = 0x%016x\n",
+		ir.TableWireId("bytes"), ir.TableWireId("string"), ir.TableWireId("data"), ir.TableWireId("note"), ir.TableWireId("other"))
 }
 
 func TestGoBlobRecordUnderUnknownFieldReads(t *testing.T) {
