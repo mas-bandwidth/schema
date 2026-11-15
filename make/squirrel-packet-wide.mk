@@ -82,3 +82,37 @@ packet-end-squirrel-negative-control: packet-end-squirrel
 	@grep -Fm1 'FAILED: trailing packet accepted' build/packet-end/squirrel-negative/log
 	@echo 'packet end Squirrel negative control: a missing end check accepts the trailing byte and the padding'
 
+
+# THE BARE-INTEGER WIDTH CHECK (test/packet-write-bareint/cases.txt; SPEC §5.1
+# row 11): the packet writer refuses a bare intN/uintN value its width cannot
+# carry, in every build, and writes each boundary twin back exactly.
+build/packet-write-bareint/squirrel/.stamp: bin/schema test/packet-write-bareint/BareInt.schema test/packet-write-bareint/squirrel/Carriers.schema make/squirrel-packet-wide.mk
+	@rm -rf build/packet-write-bareint/squirrel
+	./bin/schema generate --lang squirrel --out build/packet-write-bareint/squirrel/bareint test/packet-write-bareint/BareInt.schema
+	./bin/schema generate --lang squirrel --out build/packet-write-bareint/squirrel/carriers test/packet-write-bareint/squirrel/Carriers.schema
+	@touch $@
+
+.PHONY: packet-write-bareint-squirrel packet-write-bareint-squirrel-negative-control
+packet-write-bareint-squirrel: build/packet-write-bareint/squirrel/.stamp toolchain-squirrel
+	"$(SQ)" test/packet-write-bareint/squirrel/main.nut test/packet-write-bareint/cases.txt build/packet-write-bareint/squirrel/bareint build/packet-write-bareint/squirrel/carriers > build/packet-write-bareint/squirrel/stdout 2> build/packet-write-bareint/squirrel/stderr
+	@cat build/packet-write-bareint/squirrel/stdout
+	@if [ -s build/packet-write-bareint/squirrel/stderr ] || grep -q '^FAILED:' build/packet-write-bareint/squirrel/stdout; then \
+		cat build/packet-write-bareint/squirrel/stderr >&2; exit 1; fi
+
+# THE WIDTH CONTROL: the writer keeps only its integer check, so an
+# out-of-width bare value reaches the wire and the driver must fail by name.
+packet-write-bareint-squirrel-negative-control: packet-write-bareint-squirrel
+	@rm -rf build/packet-write-bareint/squirrel-negative
+	@mkdir -p build/packet-write-bareint/squirrel-negative
+	go run ./tools/sabotage -name packet-write-bareint-squirrel-width -out build/packet-write-bareint/squirrel-negative/write.gotext internal/codegen/squirrel/write.go
+	@printf '{"Replace":{"%s/internal/codegen/squirrel/write.go":"%s/build/packet-write-bareint/squirrel-negative/write.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-write-bareint/squirrel-negative/overlay.json
+	go run -overlay=build/packet-write-bareint/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-write-bareint/squirrel-negative/bareint test/packet-write-bareint/BareInt.schema
+	go run -overlay=build/packet-write-bareint/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-write-bareint/squirrel-negative/carriers test/packet-write-bareint/squirrel/Carriers.schema
+	@if "$(SQ)" test/packet-write-bareint/squirrel/main.nut test/packet-write-bareint/cases.txt build/packet-write-bareint/squirrel-negative/bareint build/packet-write-bareint/squirrel-negative/carriers > build/packet-write-bareint/squirrel-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: Squirrel unchecked bare-integer width passed'; cat build/packet-write-bareint/squirrel-negative/log; exit 1; fi
+	@grep -Fq 'FAILED: int8-above-max: refused' build/packet-write-bareint/squirrel-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: no out-of-width case failed by name'; cat build/packet-write-bareint/squirrel-negative/log; exit 1; }
+	@grep -Fxm1 'FAILED: int8-above-max: refused' build/packet-write-bareint/squirrel-negative/log
+	@echo 'packet write bare-int Squirrel negative control: an unchecked width fails the shared cases'
+
+test-squirrel: packet-write-bareint-squirrel packet-write-bareint-squirrel-negative-control
