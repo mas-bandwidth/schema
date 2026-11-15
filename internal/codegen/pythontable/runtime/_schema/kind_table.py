@@ -36,13 +36,11 @@ class _Table:
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         from .save import write_body
 
-        # THE FIELD'S ID IS USED FIRST: its header rides before the body, and
-        # the id table's first-use order follows the bytes (§3)
-        reference = ctx.idref(fd.field_id)
+        field_ref = ctx.idref(fd.field_id)
         body = bytearray()
         bw = _body_writer(body)
         write_body(bw, value, ctx, False)
-        w.varint(reference)
+        w.varint(field_ref)
         w.byte(fd.kind)
         w.varint(len(body))
         w.raw(body)

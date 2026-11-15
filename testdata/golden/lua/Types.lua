@@ -628,7 +628,8 @@ end
 function _M.WriteHandle(stream, v)
   if math.type(v.ObjectId) ~= "integer" or v.ObjectId < 0 or v.ObjectId > 9999 then return false end
   if not stream:serializeBits({ value = v.ObjectId - 0 }, 14) then return false end -- the offset from min
-  if math.type(v.ObjectSequence) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.ObjectSequence) ~= "integer" or v.ObjectSequence < 0 or v.ObjectSequence > 255 then return false end
   if not stream:serializeBits({ value = v.ObjectSequence }, 8) then return false end -- the storage width
   return true
 end
@@ -700,7 +701,10 @@ end
 
 -- type InputPacket (SPEC §6.1: the wire order is the declared order)
 function _M.WriteInputPacket(stream, v)
-  if math.type(v.SynchronizeSequence) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.SynchronizeSequence) ~= "integer" or v.SynchronizeSequence < 0 or v.SynchronizeSequence > 65535 then
+    return false
+  end
   if not stream:serializeBits({ value = v.SynchronizeSequence }, 16) then return false end -- the storage width
   if math.type(v.CurrentFrame) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.CurrentFrame }, 64) then return false end -- the storage width

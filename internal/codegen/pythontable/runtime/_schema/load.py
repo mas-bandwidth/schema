@@ -9,7 +9,7 @@ from typing import Any, TypeVar
 
 from . import InvalidValue, LoadReport, Refused
 from . import descriptor, kinds
-from . import kind_bool, kind_int, kind_pointer, kind_table, kind_unsupported
+from . import kind_bool, kind_int, kind_map, kind_pointer, kind_table, kind_unsupported
 from . import kind_keyed
 from .descriptor import FieldDesc, TableDesc
 
@@ -114,7 +114,7 @@ class Ctx:
     def __init__(self, ids: list[int]) -> None:
         self.ids = ids
         self.unknown = 0
-        self.pending: list[tuple[Any, str, int]] = []
+        self.pending: list[tuple[Any, Any, int]] = []
         self.current: Any = None
         self.root: Any = None
         self.nodes: list[Any] = []
@@ -255,7 +255,10 @@ def _resolve(ctx: Ctx) -> None:
             value = ctx.nodes[index - 2]
         else:
             raise Refused("wire_damaged", "a node index is past the node table")
-        setattr(owner, name, value)
+        if isinstance(owner, dict):
+            owner[name] = value
+        else:
+            setattr(owner, name, value)
 
 
 def _skip(reader: Reader, kind: int) -> None:

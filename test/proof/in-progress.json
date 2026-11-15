@@ -25,11 +25,6 @@
     },
     {
       "row": "surface json-hostile",
-      "lang": "dart",
-      "slug": "relax/hostile-rows-dart"
-    },
-    {
-      "row": "surface json-hostile",
       "lang": "elixir",
       "slug": "relax/hostile-rows-elixir"
     },
@@ -52,11 +47,6 @@
       "row": "surface json-hostile",
       "lang": "js",
       "slug": "relax/hostile-rows-js"
-    },
-    {
-      "row": "surface json-hostile",
-      "lang": "lobster",
-      "slug": "relax/hostile-rows-lobster"
     },
     {
       "row": "surface json-hostile",
