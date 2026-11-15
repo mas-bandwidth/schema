@@ -909,7 +909,10 @@ local function place_wide(fd: any, token: string, report: any): any
   return integer.tonumber(raw.lo)
 end
 
--- one map key: the token is the whole string and must be a JSON number
+-- one map key: the token is the whole string and must be a JSON number, and
+-- the key is exactly the integer it names: a token that placement moves (past
+-- the key kind's range, or negative for an unsigned kind) is no key of the map
+-- (§16.2 map[K]V row; read.go readMap)
 local function map_int_key(fd: any, key: string): (any, string?)
   local probe = new_in(key)
   local token = scan_number(probe)
@@ -917,8 +920,9 @@ local function map_int_key(fd: any, key: string): (any, string?)
   local integral = not (token:find("[%.eE]") ~= nil)
   local _, _, finite, frac = norm_digits(token, integral)
   if not finite or frac then return false, "mismatch" end
-  local v = place_integer(fd, token, integral, { kindMismatch = 0, clamped = 0 })
-  if v == nil then return false, "mismatch" end
+  local placed = { kindMismatch = 0, clamped = 0 }
+  local v = place_integer(fd, token, integral, placed)
+  if v == nil or placed.kindMismatch > 0 or placed.clamped > 0 then return false, "mismatch" end
   return v, nil
 end
 
