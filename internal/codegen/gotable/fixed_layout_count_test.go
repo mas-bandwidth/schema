@@ -25,23 +25,17 @@ func TestCount(t *testing.T) {
  binary.LittleEndian.PutUint32(b, n | 0x80000000)
  if _, why := tableFixedParseLayout(b); why == "" { t.Fatal("high-bit count accepted") }
 }`
-	const old = "count == 0 || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes))"
+	const old = "count == 0 || count > 0x7fffffff || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes))"
 	run := func(mask bool) (string, error) {
 		patched := 0
 		out, err := sharedRun(t, u, probe, RuntimeStandalone, func(files map[string][]byte) {
 			for name, data := range files {
 				s := string(data)
 				if strings.Contains(s, old) {
-					s = strings.Replace(s, old, "count == 0", 1)
+					s = strings.Replace(s, old, "count == 0 || count > 0x7fffffff", 1)
 					if mask {
-						check := "if count > 0x7fffffff {\n\t\treturn out, \"layout_tree_unclosed\"\n\t}\n\tview := tableFixedLayoutView{Bytes: bytes, Count: int32(count)}"
-						if !strings.Contains(s, check) {
-							t.Fatal("count check missing")
-						}
-						s = strings.Replace(s, check, "view := tableFixedLayoutView{Bytes: bytes, Count: int32(count & 0x7fffffff)}", 1)
-					}
-					files[name] = []byte(s)
-					patched++
+						s = strings.Replace(s, "count == 0 || count > 0x7fffffff", "count == 0", 1)
+					s = strings.Replace(s, "Count: int32(count)", "Count: int32(count & 0x7fffffff)", 1)
 				}
 			}
 		})
