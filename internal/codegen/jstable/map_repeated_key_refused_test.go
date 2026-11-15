@@ -12,10 +12,11 @@ import (
 
 const jsMapRepeatedKeySchema = "package probe\ntable Root { entries map[uint32]int32 }\n"
 
-// jsMapRepeatedKeyCases is one clean map entry and the three repeated-key
-// orderings. A body that carries the key's id more than once is damage
-// (docs/SPEC-TABLES.md §2.8), whether the repeat comes after a widened key, an
-// incompatible kind, or an exact key.
+// jsMapRepeatedKeyCases is one clean map entry, the three repeated-key
+// orderings, and a key field repeated under its own declared kind. A body that
+// carries the key's id more than once is damage (docs/SPEC-TABLES.md §2.8),
+// whether the repeat comes after a widened key, an incompatible kind, or an
+// exact key, and the exact repeat refuses on the repeat alone.
 func jsMapRepeatedKeyCases(t *testing.T, u *ir.Unit) []struct {
 	Name string `json:"name"`
 	Wire string `json:"wire"`
@@ -40,6 +41,7 @@ func jsMapRepeatedKeyCases(t *testing.T, u *ir.Unit) []struct {
 		{"bad_then_widened", wire([]byte{2, 9, 0, 0, 0, 0, 0, 0, 0, 0, 2, 6, 7})},
 		{"widened_then_bad", wire([]byte{2, 6, 7, 2, 9, 0, 0, 0, 0, 0, 0, 0, 0})},
 		{"bad_then_exact", wire([]byte{2, 9, 0, 0, 0, 0, 0, 0, 0, 0, 2, 8, 7, 0, 0, 0})},
+		{"exact_then_exact", wire([]byte{2, 8, 7, 0, 0, 0, 2, 8, 7, 0, 0, 0})},
 	}
 }
 
@@ -60,7 +62,8 @@ for (const c of rows) {
 const jsMapRepeatedKeyWant = "clean.load=read\nclean.retain=read\n" +
 	"bad_then_widened.load=refused\nbad_then_widened.retain=refused\n" +
 	"widened_then_bad.load=refused\nwidened_then_bad.retain=refused\n" +
-	"bad_then_exact.load=refused\nbad_then_exact.retain=refused"
+	"bad_then_exact.load=refused\nbad_then_exact.retain=refused\n" +
+	"exact_then_exact.load=refused\nexact_then_exact.retain=refused"
 
 func jsMapRepeatedKeyRun(t *testing.T, mutate func(files map[string][]byte, home string)) string {
 	t.Helper()
@@ -90,34 +93,23 @@ func TestJavaScriptMapRepeatedKeyRefused(t *testing.T) {
 
 // TestJavaScriptMapRepeatedKeyRefusedNegativeControl reverts the generated
 // text to the tolerant last-wins read — a repeated field id lands rather than
-// damaging, and a key kind mismatch no longer moves the strict mark — and
-// requires a repeated row to read again.
+// damaging — and requires the right-kind repeated row to read again.
 func TestJavaScriptMapRepeatedKeyRefusedNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "node")
 	got := jsMapRepeatedKeyRun(t, func(files map[string][]byte, home string) {
 		src := string(files[home])
-		for _, patch := range []struct{ from, to string }{
-			{
-				"else if (rode.includes(ref)) { report.damaged = true; return false; }",
-				"else if (false && rode.includes(ref)) { report.damaged = true; return false; }",
-			},
-			{
-				"return report.mismatch + report.oor + report.repeated + report.sharedBlob;",
-				"return report.oor + report.repeated + report.sharedBlob;",
-			},
-		} {
-			if n := strings.Count(src, patch.from); n != 1 {
-				t.Fatalf("the sabotage anchor %q occurs %d times in %s: the runtime moved", patch.from, n, home)
-			}
-			src = strings.Replace(src, patch.from, patch.to, 1)
+		const from = "else if (rode.includes(ref)) { report.damaged = true; return false; }"
+		const to = "else if (false && rode.includes(ref)) { report.damaged = true; return false; }"
+		if n := strings.Count(src, from); n != 1 {
+			t.Fatalf("the sabotage anchor %q occurs %d times in %s: the runtime moved", from, n, home)
 		}
-		files[home] = []byte(src)
+		files[home] = []byte(strings.Replace(src, from, to, 1))
 	})
 	if got == jsMapRepeatedKeyWant {
 		t.Fatalf("the planted defect left every repeated row refusing:\n%s", got)
 	}
-	if !strings.Contains(got, "bad_then_widened.load=read") {
-		t.Fatalf("the planted defect left bad_then_widened refusing; the control is blind:\n%s", got)
+	if !strings.Contains(got, "exact_then_exact.load=read\nexact_then_exact.retain=read") {
+		t.Fatalf("the planted defect left the right-kind repeated row refusing; the control is blind:\n%s", got)
 	}
 }
