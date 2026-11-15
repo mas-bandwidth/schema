@@ -46,19 +46,17 @@ func jsonIntegersModel(t *testing.T) *tabletext.Model {
 
 // TestTextIntegersWideAreStringsAndTokensAreIntegers holds every manifest row
 // of testdata/wire/json-integers/ through the engine's writer and reader: a
-// wide integer is written as a STRING of decimal digits and reads as a string
-// or a number; an integer field takes an integer token only — no fraction, no
-// exponent, no negative zero — the value never passes through a double, and
-// its range is tested on the exact value.
+// wide integer is written as a STRING of decimal digits and reads as that
+// STRING only — its bare number token refuses kind_mismatch, the rows of
+// NUMBER-TOKEN.tsv that TestTextWideIntegerRefusesNumberToken holds; an
+// integer field takes an integer token only — no fraction, no exponent, no
+// negative zero — the value never passes through a double, and its range is
+// tested on the exact value.
 func TestTextIntegersWideAreStringsAndTokensAreIntegers(t *testing.T) {
 	t.Parallel()
 	m := jsonIntegersModel(t)
 	dir := filepath.Join("..", "..", "testdata", "wire", "json-integers")
 	data, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	canonical, err := os.ReadFile(filepath.Join(dir, "canonical.read.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,9 +110,6 @@ func TestTextIntegersWideAreStringsAndTokensAreIntegers(t *testing.T) {
 			}
 			if name == "canonical" && string(out) != string(body) {
 				t.Errorf("canonical: read then write moved the text\nwrote:\n%s\nwant:\n%s", out, body)
-			}
-			if name == "numbers" && string(out) != string(canonical) {
-				t.Errorf("numbers: reading wide integers as numbers must write the canonical strings\nwrote:\n%s\nwant:\n%s", out, canonical)
 			}
 		case "refused":
 			if ok || !report.Refused {
