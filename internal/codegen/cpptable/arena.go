@@ -1804,7 +1804,7 @@ inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const Tab
     return true;
 }
 
-} // namespace ` + pkg + `
+` + tableStrictPointerEntry() + `} // namespace ` + pkg + `
 
 #endif // ` + guard + `
 `

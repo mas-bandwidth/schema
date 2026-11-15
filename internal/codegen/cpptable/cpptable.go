@@ -753,6 +753,14 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
 	forceInline := tableInlineMacro(pkg)
 	messageForm := tableMessageForm(u)
+	// THE STRICT FORM-1 WALK (docs/SPEC-TABLES.md §6.5): the declaration-free
+	// body walk rides in every header, and the FIXED reader's entry beside it —
+	// the pointered reader's entry rides after the arena runtime, whose graph
+	// check it calls.
+	strictRuntime := tableStrictRuntime()
+	if !anyVariable {
+		strictRuntime += tableStrictFixedEntry()
+	}
 	// the fixed form's 128-bit stores name serialize.h's types, so they ride
 	// only in a unit that carries 128-bit storage and includes it
 	fixed128 := ""
@@ -1757,7 +1765,7 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
     }
 }
 
-` + messageForm + `` + keyedStorage + `inline float table_bits_to_float( uint32_t bits )
+` + strictRuntime + messageForm + `` + keyedStorage + `inline float table_bits_to_float( uint32_t bits )
 {
     float f;
     memcpy( &f, &bits, 4 );
