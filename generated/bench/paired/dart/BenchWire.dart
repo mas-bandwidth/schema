@@ -5349,66 +5349,41 @@ _JNumParts _jsonNumberParts(String token) {
   return _JNumParts(negative, all.substring(start, end), point);
 }
 
-// _jsonIntField reads one int field (§16.2): an integer token, or an integral
-// float, placed and range-checked; anything else is a kind mismatch. lo and hi
-// are the declared range, or the storage width below 64 bits; an unsigned
-// field's bounds are 64-bit patterns. A token an int holds is placed by int
-// compares. Every other integral value (a token at or past +-2^63, a negative
-// token in an unsigned field, an integral float) is placed EXACTLY as the
-// engine places it (internal/tabletext interpretInteger, integerInDomain): its
-// sign and magnitude, saturated at 2^64-1 and counted; the declared range;
-// then the 64-bit storage domain, each move counted. The range is decided from
-// the token's significant digits before any parse, so a long token stays
-// linear (§16.2, §16.12).
-int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false, int def = 0]) {
-  if (val is int && (!unsigned || val >= 0)) {
-    var v = val;
-    if (unsigned) {
-      if (lo != null && _u64Below(v, lo)) { r.refuse('out_of_range'); return def; }
-      if (hi != null && _u64Above(v, hi)) { r.refuse('out_of_range'); return def; }
-    } else {
-      if (lo != null && v < lo) { r.refuse('out_of_range'); return def; }
-      if (hi != null && v > hi) { r.refuse('out_of_range'); return def; }
-    }
-    return v;
+// _jsonIntegerToken reports whether text is an integer token — an optional
+// minus, digits with no leading zero, and not -0 (§16.2, §16.14 W10). Every
+// integer field, of every width, takes this spelling and no other: no
+// fraction, no exponent, no plus and no negative zero.
+bool _jsonIntegerToken(String text) {
+  var i = 0;
+  var negative = false;
+  if (i < text.length && text.codeUnitAt(i) == 0x2d) {
+    negative = true;
+    i++;
   }
-  BigInt wide;
-  if (val is int) {
-    wide = BigInt.from(val);
-  } else if (val is _JNum && val.integral) {
-    // a token whose magnitude a double rounds to infinity is past every
-    // integer storage domain: refuse it by value, never an Error, without
-    // materializing a BigInt from an arbitrarily long token
-    // (docs/SPEC-TABLES.md §16.2)
-    if (!val.d.isFinite) {
-      r.refuse('out_of_range');
-      return def;
-    }
-    final parts = _jsonNumberParts(val.token);
-    if (parts.digits.isEmpty) {
-      wide = BigInt.zero;
-    } else if (parts.point > 20) {
-      r.refuse('out_of_range');
-      return def;
-    } else {
-      wide = BigInt.parse(parts.digits);
-      if (parts.negative) wide = -wide;
-      if (parts.point > parts.digits.length) {
-        wide *= BigInt.from(10).pow(parts.point - parts.digits.length);
-      }
-    }
-  } else {
-    final d = val is _JNum ? val.d : (val is num ? val.toDouble() : double.nan);
-    if (!d.isFinite || d != d.truncateToDouble()) {
-      r.refuse('kind_mismatch');
-      return def;
-    }
-    wide = d.abs() >= 18446744073709551616.0 ? (d.isNegative ? -_jsonU64Span : _jsonU64Span) : BigInt.from(d);
+  if (i >= text.length) return false;
+  if (text.codeUnitAt(i) == 0x30) {
+    return !negative && i + 1 == text.length;
   }
-  if (wide.abs() > _jsonU64Max) {
-    r.refuse('out_of_range');
-    return def;
+  final c0 = text.codeUnitAt(i);
+  if (c0 < 0x31 || c0 > 0x39) return false;
+  for (; i < text.length; i++) {
+    final c = text.codeUnitAt(i);
+    if (c < 0x30 || c > 0x39) return false;
   }
+  return true;
+}
+
+// _jsonIntegerDigits is an integer token's digit count, its sign excluded. A
+// token with more than twenty digits is past every 64-bit integer domain, so
+// the range is decided before BigInt.parse and a long token stays linear
+// (§16.2, §16.12).
+int _jsonIntegerDigits(String text) => text.startsWith('-') ? text.length - 1 : text.length;
+
+// _jsonPlaceInteger places one exact integer value in a field's storage: the
+// declared range, then the 64-bit storage domain, both tested on the EXACT
+// value and never through a double (§16.2). An unsigned bound is a 64-bit
+// pattern stored as a Dart int.
+int _jsonPlaceInteger(BigInt wide, TableTextReport r, int? lo, int? hi, bool unsigned, int def) {
   BigInt bound(int b) => unsigned ? BigInt.from(b).toUnsigned(64) : BigInt.from(b);
   if (lo != null && wide < bound(lo)) {
     r.refuse('out_of_range');
@@ -5418,7 +5393,7 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
     return def;
   }
   if (unsigned) {
-    if (wide.isNegative) { r.refuse('out_of_range'); return def; }
+    if (wide.isNegative || wide > _jsonU64Max) { r.refuse('out_of_range'); return def; }
   } else if (wide < _jsonI64Min) {
     r.refuse('out_of_range');
     return def;
@@ -5427,6 +5402,53 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
     return def;
   }
   return wide.toSigned(64).toInt();
+}
+
+// _jsonIntField reads one int field of a kind 32 bits or narrower (§16.2): an
+// integer token only — digits with an optional minus, no fraction, no
+// exponent, no negative zero — placed and range-checked on its exact value.
+// Anything else is a kind mismatch. lo and hi are the declared range, or the
+// storage width below 64 bits; an unsigned field's bounds are 64-bit patterns.
+int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false, int def = 0]) {
+  BigInt wide;
+  if (val is int) {
+    wide = BigInt.from(val);
+  } else if (val is _JNum && val.integral && _jsonIntegerToken(val.token)) {
+    if (_jsonIntegerDigits(val.token) > 20) {
+      r.refuse('out_of_range');
+      return def;
+    }
+    wide = BigInt.parse(val.token);
+  } else {
+    r.refuse('kind_mismatch');
+    return def;
+  }
+  return _jsonPlaceInteger(wide, r, lo, hi, unsigned, def);
+}
+
+// _jsonWideIntField reads one int field whose storage is wider than 32 bits
+// (§16.2): it accepts the string form and the number form, and either one
+// must be an integer token — digits with an optional minus, no fraction, no
+// exponent, no negative zero. The value never passes through a double, and its
+// range is tested on the exact value.
+int _jsonWideIntField(dynamic val, TableTextReport r, int? lo, int? hi, bool unsigned, [int def = 0]) {
+  String? token;
+  if (val is String) {
+    token = val;
+  } else if (val is int) {
+    token = val.toString();
+  } else if (val is _JNum) {
+    token = val.token;
+  }
+  if (token == null || !_jsonIntegerToken(token)) {
+    r.refuse('kind_mismatch');
+    return def;
+  }
+  if (_jsonIntegerDigits(token) > 20) {
+    r.refuse('out_of_range');
+    return def;
+  }
+  return _jsonPlaceInteger(BigInt.parse(token), r, lo, hi, unsigned, def);
 }
 
 final _jsonU64Span = BigInt.one << 64;
@@ -6189,16 +6211,27 @@ String _jsonWide(BigInt raw, int frac, bool integer) {
 // §16.2, internal/tabletext ParseWide and WideClamp): the value times 2^frac,
 // exactly; a value this Q I.F cannot spell is a kind mismatch and places
 // nothing; a magnitude past the storage domain saturates and counts a clamp,
-// and the declared raw range clamps after.
-BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, BigInt? lo, BigInt? hi, BigInt def) {
-  String token;
-  if (val is int) {
+// and the declared raw range clamps after. wide admits the string form a kind
+// wider than 32 bits is written as; integer holds a 128-bit integer to the
+// integer-token rule inside either form.
+BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, BigInt? lo, BigInt? hi, BigInt def, [bool wide = false, bool integer = false]) {
+  String? token;
+  if (val is String) {
+    if (!wide) {
+      r.refuse('kind_mismatch');
+      return def;
+    }
+    token = val;
+  } else if (val is int) {
     token = val.toString();
   } else if (val is _JNum) {
     token = val.token;
-  } else if (val is double) {
-    token = val.toString();
-  } else {
+  }
+  if (token == null) {
+    r.refuse('kind_mismatch');
+    return def;
+  }
+  if (integer && !_jsonIntegerToken(token)) {
     r.refuse('kind_mismatch');
     return def;
   }
@@ -6403,70 +6436,17 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
     r.refuse('kind_mismatch');
     return null;
   }
-  var i = 0;
-  var negative = false;
-  if (i < k.length && k.codeUnitAt(i) == 0x2d) {
-    negative = true;
-    i++;
-  }
-  if (i >= k.length) throw const FormatException('invalid integer map key');
-  final intStart = i;
-  final c0 = k.codeUnitAt(i);
-  if (c0 == 0x30) {
-    i++;
-  } else if (c0 >= 0x31 && c0 <= 0x39) {
-    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) i++;
-  } else {
-    throw const FormatException('invalid integer map key');
-  }
-  final intDigits = k.substring(intStart, i);
-  var fracDigits = '';
-  if (i < k.length && k.codeUnitAt(i) == 0x2e) {
-    i++;
-    final fracStart = i;
-    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) i++;
-    if (i == fracStart) throw const FormatException('invalid integer map key');
-    fracDigits = k.substring(fracStart, i);
-  }
-  var exp = 0;
-  if (i < k.length && (k.codeUnitAt(i) == 0x65 || k.codeUnitAt(i) == 0x45)) {
-    i++;
-    var expNeg = false;
-    if (i < k.length && (k.codeUnitAt(i) == 0x2b || k.codeUnitAt(i) == 0x2d)) {
-      expNeg = k.codeUnitAt(i) == 0x2d;
-      i++;
-    }
-    final expStart = i;
-    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) {
-      if (exp < 100000) exp = exp * 10 + (k.codeUnitAt(i) - 0x30);
-      i++;
-    }
-    if (i == expStart) throw const FormatException('invalid integer map key');
-    if (expNeg) exp = -exp;
-  }
-  if (i != k.length) throw const FormatException('invalid integer map key');
-  final all = intDigits + fracDigits;
-  var start = 0;
-  var point = intDigits.length + exp;
-  while (start < all.length && all.codeUnitAt(start) == 0x30) {
-    start++;
-    point--;
-  }
-  var end = all.length;
-  while (end > start && all.codeUnitAt(end - 1) == 0x30) end--;
-  final digits = all.substring(start, end);
-  BigInt mag;
-  if (digits.isEmpty) {
-    mag = BigInt.zero;
-    negative = false;
-  } else if (point < digits.length || point > 20) {
+  // AN INTEGER KEY IS THE INTEGER'S OWN SPELLING AND NOTHING ELSE (§16.2):
+  // digits with an optional minus, no fraction, no exponent, no negative zero,
+  // and no leading zero. A key is an identity, so a key the kind cannot hold
+  // drops the entry and never clamps.
+  if (!_jsonIntegerToken(k)) {
     r.refuse('kind_mismatch');
     return null;
-  } else {
-    mag = BigInt.parse(digits) * BigInt.from(10).pow(point - digits.length);
   }
+  final mag = BigInt.parse(k);
   if (unsigned) {
-    if (negative) {
+    if (mag.isNegative) {
       r.refuse('kind_mismatch');
       return null;
     }
@@ -6479,14 +6459,13 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
     final signed = mag > BigInt.from(9223372036854775807) ? mag - (BigInt.one << 64) : mag;
     return signed.toInt();
   }
-  final val = negative ? -mag : mag;
   final minS = lo != null ? BigInt.from(lo) : -(BigInt.one << 63);
   final maxS = hi != null ? BigInt.from(hi) : (BigInt.one << 63) - BigInt.one;
-  if (val < minS || val > maxS) {
+  if (mag < minS || mag > maxS) {
     r.refuse('kind_mismatch');
     return null;
   }
-  return val.toInt();
+  return mag.toInt();
 }
 
 String mixedWeaponName(int v) {
@@ -7199,7 +7178,7 @@ void benchMixedToJsonBody(_JOut out, BenchMixed v, int depth, _Share sh, [int? l
   out.line(depth + 1);
   out.raw(_jsonString("session_id"));
   out.raw(': ');
-  out.raw(BigInt.from(v.sessionId).toUnsigned(64).toString());
+  out.raw(_jsonString(BigInt.from(v.sessionId).toUnsigned(64).toString()));
   if (comma) out.raw(',');
   comma = true;
   out.line(depth + 1);
@@ -7211,19 +7190,19 @@ void benchMixedToJsonBody(_JOut out, BenchMixed v, int depth, _Share sh, [int? l
   out.line(depth + 1);
   out.raw(_jsonString("nonce"));
   out.raw(': ');
-  out.raw(BigInt.from(v.nonce).toUnsigned(64).toString());
+  out.raw(_jsonString(BigInt.from(v.nonce).toUnsigned(64).toString()));
   if (comma) out.raw(',');
   comma = true;
   out.line(depth + 1);
   out.raw(_jsonString("world_time"));
   out.raw(': ');
-  out.raw(v.worldTime.toString());
+  out.raw(_jsonString(v.worldTime.toString()));
   if (comma) out.raw(',');
   comma = true;
   out.line(depth + 1);
   out.raw(_jsonString("frame_tick"));
   out.raw(': ');
-  out.raw(v.frameTick.toString());
+  out.raw(_jsonString(BigInt.from(v.frameTick).toUnsigned(64).toString()));
   if (comma) out.raw(',');
   comma = true;
   out.line(depth + 1);
@@ -7340,13 +7319,13 @@ void benchMixedToJsonBody(_JOut out, BenchMixed v, int depth, _Share sh, [int? l
   out.line(depth + 1);
   out.raw(_jsonString("wide_key"));
   out.raw(': ');
-  out.raw(_jsonWide(v.wideKey, 0, true));
+  out.raw(_jsonString(_jsonWide(v.wideKey, 0, true)));
   if (comma) out.raw(',');
   comma = true;
   out.line(depth + 1);
   out.raw(_jsonString("flux"));
   out.raw(': ');
-  out.raw(_jsonWide(v.flux, 0, true));
+  out.raw(_jsonString(_jsonWide(v.flux, 0, true)));
   if (comma) out.raw(',');
   comma = true;
   out.line(depth + 1);
@@ -7408,7 +7387,7 @@ void benchMixedFromJsonFields(BenchMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       case "session_id":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.sessionId = _jsonIntField(val, r, null, null, true, v.sessionId);
+        v.sessionId = _jsonWideIntField(val, r, null, null, true, v.sessionId);
         break;
       case "client_id":
         if (!seen.add(key)) r.refuse('text_damaged');
@@ -7416,19 +7395,19 @@ void benchMixedFromJsonFields(BenchMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       case "nonce":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.nonce = _jsonIntField(val, r, 0, -1, true, v.nonce);
+        v.nonce = _jsonWideIntField(val, r, 0, -1, true, v.nonce);
         break;
       case "world_time":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.worldTime = _jsonIntField(val, r, -1000000000000, 1000000000000, false, v.worldTime);
+        v.worldTime = _jsonWideIntField(val, r, -1000000000000, 1000000000000, false, v.worldTime);
         break;
       case "frame_tick":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.frameTick = _jsonIntField(val, r, null, 281474976710655, true, v.frameTick);
+        v.frameTick = _jsonWideIntField(val, r, null, 281474976710655, true, v.frameTick);
         break;
       case "server_time":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.serverTime = _jsonWideField(val, r, 8, true, BigInt.zero, BigInt.parse('16776960'), v.serverTime);
+        v.serverTime = _jsonWideField(val, r, 8, true, BigInt.zero, BigInt.parse('16776960'), v.serverTime, false, false);
         break;
       case "entities":
         if (!seen.add(key)) r.refuse('text_damaged');
@@ -7500,15 +7479,15 @@ void benchMixedFromJsonFields(BenchMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       case "wide_key":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.wideKey = _jsonWideField(val, r, 0, false, null, null, v.wideKey);
+        v.wideKey = _jsonWideField(val, r, 0, false, null, null, v.wideKey, true, true);
         break;
       case "flux":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.flux = _jsonWideField(val, r, 0, true, BigInt.parse('-1267650600228229401496703205376'), BigInt.parse('1267650600228229401496703205376'), v.flux);
+        v.flux = _jsonWideField(val, r, 0, true, BigInt.parse('-1267650600228229401496703205376'), BigInt.parse('1267650600228229401496703205376'), v.flux, true, true);
         break;
       case "ping":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.ping = _jsonWideField(val, r, 8, false, BigInt.zero, BigInt.parse('64000'), v.ping);
+        v.ping = _jsonWideField(val, r, 8, false, BigInt.zero, BigInt.parse('64000'), v.ping, false, false);
         break;
       case "crc_hint":
         if (!seen.add(key)) r.refuse('text_damaged');
