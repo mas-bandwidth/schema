@@ -13,7 +13,9 @@ package luautable
 import (
 	"encoding/binary"
 	"fmt"
+	"math/big"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
@@ -30,12 +32,17 @@ import (
 // (compiler/lineage.go), so this backend adds nothing. Retired and Reason are
 // `schema lock --retire T@0x<hash> --reason "…"`'s, which keep the entry and
 // move the floor.
+//
+// Ranges are the WRITER's own ranged integer leaves (§4.6, bill §12.5): the
+// bounds a fixed read of a record written under this entry holds, never the
+// reader's. They ride beside the layout because a layout has no ranges in it.
 type FixedLineageEntry struct {
 	Wire    uint64
 	Layout  []byte
 	Record  int64
 	Retired bool
 	Reason  string
+	Ranges  []ir.TableFixedWriterRange
 }
 
 // fixedHashBytes is the eight bytes of a record's own hash, in front of every
@@ -57,9 +64,54 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 			Wire:   ir.TableFixedLayoutHash(layout, st),
 			Layout: layout,
 			Record: fixedHashBytes + ir.TableFixedTypeBytes(st),
+			Ranges: ir.TableFixedWriterRanges(st),
 		}, true
 	}
 	return FixedLineageEntry{}, false
+}
+
+// fixedRangeDom is the Luau value domain an integer-shaped field stores in,
+// matching intDesc: a 128-bit value is a pair, a 64-bit one an integer, the
+// rest a number.
+func fixedRangeDom(f *ir.Field) string {
+	switch ir.TableKindWidth(ir.TableWireScalarKind(f)) {
+	case 16:
+		return "int128"
+	case 8:
+		return "integer"
+	}
+	return "number"
+}
+
+// fixedWriterRanges lays one lineage entry's WRITER ranges down as the plan's
+// bounds (§4.6, bill §12.5): for each ranged integer leaf of the WRITER that
+// the reader's root names at the same scalar kind, the writer's raw bounds
+// keyed by the reader field's wire id. It is the same match the reference's
+// collectKnownRanges makes (ir.TableFixedWriterRanges,
+// ir.TableFixedWriterField). The bounds stay on the raw scale, because a
+// fixed-point's storage is raw and the reader's own range is the value-units
+// one. The identity entry carries none: it holds the reader's own.
+func fixedWriterRanges(reader *ir.Struct, e FixedLineageEntry, own uint64) string {
+	if e.Wire == own || len(e.Ranges) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, r := range e.Ranges {
+		for _, f := range reader.Fields {
+			if _, ok := ir.TableFixedWriterField(f, r); !ok {
+				continue
+			}
+			dom := fixedRangeDom(f)
+			parts = append(parts, fmt.Sprintf("[%s] = { lo = %s, hi = %s }",
+				luau.IntegerLit(new(big.Int).SetUint64(ir.TableFieldWireId(f))),
+				boundLit(dom, big.NewInt(r.Lo)), boundLit(dom, big.NewInt(r.Hi))))
+			break
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return ", ranges = { " + strings.Join(parts, ", ") + " }"
 }
 
 // lineages hands one Generate call's lineage to the fixedform part, which runs
@@ -202,7 +254,7 @@ func emitLineage(g *luau.Gen, root *ir.Struct, own FixedLineageEntry) {
 				binary.LittleEndian.Uint64(e.Layout[p:]), e.Layout[p+8],
 				binary.LittleEndian.Uint32(e.Layout[p+9:]), binary.LittleEndian.Uint32(e.Layout[p+13:]))
 		}
-		g.Pf("\t}), layoutBytes = %d, recordBytes = %d }),\n", len(e.Layout), e.Record)
+		g.Pf("\t}), layoutBytes = %d, recordBytes = %d%s }),\n", len(e.Layout), e.Record, fixedWriterRanges(root, e, own.Wire))
 	}
 	g.Pf("})\n")
 	g.Pf("%s.%sFixedFloor = %d\n\n", g.Self, name, floor)

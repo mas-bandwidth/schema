@@ -239,6 +239,51 @@ void main(List<String> args) {
 		}
 	})
 
+	t.Run("report surface carries the strict counters", func(t *testing.T) {
+		t.Parallel()
+		src, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "conformance", "dart", "main.dart"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		line, ok := dartFunctionSpan(string(src), "String _reportLine(")
+		if !ok {
+			t.Fatal("the Dart driver has no report line")
+		}
+		for _, retired := range []string{"clamped", "duplicate", "malformed"} {
+			if strings.Contains(line, retired) {
+				t.Errorf("the report line still carries the retired %s counter", retired)
+			}
+		}
+		for _, survivor := range []string{"$unknown", "$widened", "$retained", "$retainLost"} {
+			if !strings.Contains(line, survivor) {
+				t.Errorf("a successful read does not report %s", survivor)
+			}
+		}
+		if !strings.Contains(line, `'refused\n'`) {
+			t.Error("a refused read must answer the refusal alone")
+		}
+		load, ok := dartFunctionSpan(string(src), "String? loadReport(")
+		if !ok {
+			t.Fatal("the Dart driver has no loadReport")
+		}
+		for _, survivor := range []string{"rep.retained", "rep.retainLost"} {
+			if !strings.Contains(load, survivor) {
+				t.Errorf("the report surface does not carry %s", survivor)
+			}
+		}
+		for _, sig := range []string{"int surfaceReport(", "int surfaceFraming("} {
+			body, ok := dartFunctionSpan(string(src), sig)
+			if !ok {
+				t.Fatalf("the Dart driver has no %s", sig)
+			}
+			for _, retired := range []string{"clamped", "duplicate", "malformed"} {
+				if strings.Contains(body, retired) {
+					t.Errorf("%s still carries the retired %s counter", sig, retired)
+				}
+			}
+		}
+	})
+
 	t.Run("cook and block open reasons", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
@@ -504,6 +549,33 @@ func goRefusalSource(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return string(src)
+}
+
+// dartFunctionSpan is one function's text, from its signature to the brace
+// that closes its body.
+func dartFunctionSpan(src, sig string) (string, bool) {
+	i := strings.Index(src, sig)
+	if i < 0 {
+		return "", false
+	}
+	open := strings.Index(src[i:], ") {")
+	if open < 0 {
+		return "", false
+	}
+	open += i + 2
+	depth := 0
+	for k := open; k < len(src); k++ {
+		switch src[k] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[i : k+1], true
+			}
+		}
+	}
+	return "", false
 }
 
 var dartRefuseCase = regexp.MustCompile(`(?m)^  \w+\('(\w+)'\)[,;]$`)
