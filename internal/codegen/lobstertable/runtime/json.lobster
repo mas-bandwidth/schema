@@ -937,11 +937,61 @@ def j_refuse(r:JsonReader, reason:string) -> bool:
         r.report.reason = reason
     return false
 
-def j_key_once(r:JsonReader, keys:[string], key:string) -> bool:
-    for(keys) prior:
-        if prior == key:
+def j_key_order(a:string, b:string) -> int:
+    let n = min(length(a), length(b))
+    var i = 0
+    while i < n:
+        if a[i] != b[i]:
+            return if a[i] < b[i]: -1 else: 1
+        i++
+    if length(a) == length(b):
+        return 0
+    return if length(a) < length(b): -1 else: 1
+
+// j_sorted_keys is the merge sort the object-key check runs once per object.
+def j_sorted_keys(keys:[string]) -> [string]:
+    let n = length(keys)
+    if n < 2:
+        return keys
+    let mid = n / 2
+    var left:[string] = []
+    var right:[string] = []
+    var i = 0
+    while i < n:
+        if i < mid:
+            push(left, keys[i])
+        else:
+            push(right, keys[i])
+        i++
+    left = j_sorted_keys(left)
+    right = j_sorted_keys(right)
+    let out:[string] = []
+    var a = 0
+    var b = 0
+    while a < length(left) and b < length(right):
+        if j_key_order(left[a], right[b]) <= 0:
+            push(out, left[a])
+            a++
+        else:
+            push(out, right[b])
+            b++
+    while a < length(left):
+        push(out, left[a])
+        a++
+    while b < length(right):
+        push(out, right[b])
+        b++
+    return out
+
+// j_distinct_keys refuses a repeated object key by comparing sorted
+// neighbours, one pass over the keys rather than one scan per key.
+def j_distinct_keys(r:JsonReader, keys:[string]) -> bool:
+    let sorted = j_sorted_keys(keys)
+    var i = 1
+    while i < length(sorted):
+        if j_key_order(sorted[i - 1], sorted[i]) == 0:
             return j_refuse(r, "duplicate_key")
-    push(keys, key)
+        i++
     return true
 
 def j_required(r:JsonReader, rec:Record, seen:[bool]) -> bool:
@@ -1265,6 +1315,8 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
         var c = j_peek(r)
         if c == close:
             r.pos++
+            if not j_distinct_keys(r, keys):
+                return false
             if definition:
                 definition.open = false
             return true
@@ -1276,8 +1328,7 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
             let key, _, ok = j_scan_string(r, json_max_key)
             if not ok:
                 return false
-            if not j_key_once(r, keys, key):
-                return false
+            push(keys, key)
             if j_peek(r) != ':':
                 r.bad = true
                 return false
@@ -1295,6 +1346,8 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
                     continue
                 if c == close:
                     r.pos++
+                    if not j_distinct_keys(r, keys):
+                        return false
                     return true
                 r.bad = true
                 return false
@@ -1308,6 +1361,8 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
                 continue
             if c == close:
                 r.pos++
+                if not j_distinct_keys(r, keys):
+                    return false
                 if definition:
                     definition.open = false
                 return true
@@ -1411,6 +1466,8 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
             let c = j_peek(r)
             if c == '}':
                 r.pos++
+                if not j_distinct_keys(r, keys):
+                    return false
                 return j_required(r, rec, seen)
             if c == 0:
                 return j_refuse(r, "malformed")
@@ -1421,8 +1478,7 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
                 return j_refuse(r, "malformed")
             r.pos++
             key = k
-        if not j_key_once(r, keys, key):
-            return false
+        push(keys, key)
         if length(key) > 0 and key[0] == '&':
             return j_refuse(r, "malformed")
         let index = j_field_index(rec, key)
@@ -1452,6 +1508,8 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
             continue
         if c == '}':
             r.pos++
+            if not j_distinct_keys(r, keys):
+                return false
             return j_required(r, rec, seen)
         return j_refuse(r, "malformed")
     return false
@@ -1701,8 +1759,7 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
         let key, _, ok = j_scan_string(r, json_max_key)
         if not ok:
             return false
-        if not j_key_once(r, seen, key):
-            return false
+        push(seen, key)
         if j_peek(r) != ':':
             r.bad = true
             return false
@@ -1725,6 +1782,8 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
             r.pos++
             break
         r.bad = true
+        return false
+    if not j_distinct_keys(r, seen):
         return false
     return true
 
@@ -2196,7 +2255,6 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
     let ed = table_of(sl.fd.t)
     let kf = ed.fields[0]
     let string_key = key_is_string(kf)
-    let keys:[string] = []
     while true:
         var c = j_peek(r)
         if c == '}':
@@ -2208,8 +2266,6 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
         let key, _, ok = j_scan_stored(r, key_limit)
         if not ok:
             return false
-        if not j_key_once(r, keys, key):
-            return false
         if j_peek(r) != ':':
             return j_refuse(r, "malformed")
         r.pos++
@@ -2217,10 +2273,6 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
         let placed = j_place_map_key(entry, kf, key)
         if placed != 0:
             return j_refuse(r, "kind_mismatch")
-        for(sl.entries) v:
-            let prior = v.tab
-            if prior and map_key_order(kf, prior.fields[0].cell, entry.fields[0].cell) == 0:
-                return j_refuse(r, "duplicate_key")
         push(sl.entries, Value { tab: entry })
         if not j_read_map_value(r, entry.fields[1], depth):
             return false
@@ -2233,16 +2285,44 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
             break
         return j_refuse(r, "malformed")
     sl.entries = j_sorted_entries(kf, sl.entries)
+    for(sl.entries) v, i:
+        if i > 0 and j_entry_order(kf, sl.entries[i - 1], v) == 0:
+            return j_refuse(r, "duplicate_key")
     return true
 
 
 def j_sorted_entries(kf:FieldDescriptor, entries:[Value]) -> [Value]:
+    let n = length(entries)
+    if n < 2:
+        return entries
+    let mid = n / 2
+    var left:[Value] = []
+    var right:[Value] = []
+    var i = 0
+    while i < n:
+        if i < mid:
+            push(left, entries[i])
+        else:
+            push(right, entries[i])
+        i++
+    left = j_sorted_entries(kf, left)
+    right = j_sorted_entries(kf, right)
     let out:[Value] = []
-    for(entries) v:
-        var i = length(out)
-        while i > 0 and j_entry_order(kf, out[i - 1], v) > 0:
-            i--
-        insert(out, i, v)
+    var a = 0
+    var b = 0
+    while a < length(left) and b < length(right):
+        if j_entry_order(kf, left[a], right[b]) <= 0:
+            push(out, left[a])
+            a++
+        else:
+            push(out, right[b])
+            b++
+    while a < length(left):
+        push(out, left[a])
+        a++
+    while b < length(right):
+        push(out, right[b])
+        b++
     return out
 
 def j_entry_order(kf:FieldDescriptor, a:Value, b:Value) -> int:

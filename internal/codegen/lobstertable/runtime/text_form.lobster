@@ -740,15 +740,14 @@ def t_value_into(p:TextParser, sl:Slot, f:FieldDescriptor, v:TNode, path:string)
             let entry = new_record(ed)
             if not t_value_into(p, entry.fields[0], entry.fields[0].fd, pair.items[0], path):
                 return false
-            for(sl.entries) prior:
-                let other = prior.tab
-                if other and map_key_order(ed.fields[0], entry.fields[0].cell, other.fields[0].cell) == 0:
-                    t_set_fail(p, "text_duplicate_key")
-                    return false
             push(sl.entries, Value { tab: entry })
             if not t_value_into(p, entry.fields[1], entry.fields[1].fd, pair.items[1], path):
                 return false
         sl.entries = j_sorted_entries(ed.fields[0], sl.entries)
+        for(sl.entries) cur, i:
+            if i > 0 and j_entry_order(ed.fields[0], sl.entries[i - 1], cur) == 0:
+                t_set_fail(p, "text_duplicate_key")
+                return false
         return true
     return t_set_scalar(p, sl, v, path)
 
