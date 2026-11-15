@@ -524,8 +524,20 @@ jobs:
       # on every pull-request push, so it carries the check here instead. The
       # pin below is the one ci-full.yml carries — the version gopls's own
       # module tags — and is bumped by hand in both files together.
+      # THE FLEET'S MODERNIZE BINARY, never `go run`: building the tool from
+      # the module cache was the step's whole cost and ran past the two-minute
+      # cap on a busy runner (PR 3954, main at d7008bdfbd94); the installed
+      # v0.23.0 binary analyses the whole tree in seconds. A runner without it
+      # is a loud red that names the tool, never a skip.
       - name: modernize
-        run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 ./...
+        run: |
+          export PATH="$HOME/sdk/bin:$PATH"
+          bin=$(command -v modernize || true)
+          if [ -z "$bin" ] || ! readlink -f "$bin" | grep 'modernize-0\.23\.0/' >/dev/null; then
+            echo "::error::tool missing: modernize 0.23.0 (the fleet install is ~/sdk/bin/modernize -> ~/sdk/modernize-0.23.0/modernize; found: ${bin:-nothing})"
+            exit 1
+          fi
+          modernize ./...
       # THE SLOW-GATE SCAN (schema#988, G5). internal/slowtest.Gate skips a test
       # that shells out to a toolchain unless SCHEMA_SLOW=1 is set, and a skipped
       # test exits 0 — so a make target running a bare `go test` on such a
@@ -839,7 +851,8 @@ jobs:
           set -euo pipefail
           case "$TARGET" in
             tables-go-fixedform) make tables-go-fixedform ;;
-            conformance-go-rows) make conformance-go-rows ;;
+            conformance-go-rows-a) make conformance-go-rows-a ;;
+            conformance-go-rows-b) make conformance-go-rows-b ;;
             *) echo "::error::go-test-touched has no make row '$TARGET'"; exit 1 ;;
           esac
 

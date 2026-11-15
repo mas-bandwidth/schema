@@ -231,7 +231,7 @@ func TestCppJsonWriterRefusesZeroByte(t *testing.T) {
 	out := runCppJsonZeroProbe(t)
 
 	got := map[string]cppJsonZeroAnswer{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		var name, text, reread string
 		var measure, written int64
 		var read int
