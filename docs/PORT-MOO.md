@@ -108,7 +108,11 @@ directory and reads stdout (hex lines). Every test that runs moo is behind
 are; `make test-moo` and CI's emitter rows set it, and then a missing pin
 FAILS, never skips. The pin is built by `make dist-moo` (moo ships no binary),
 which refuses any other commit; `.github/actions/moo` caches the build by pin,
-OS and architecture. No unit test uses real time, a socket or the network.
+OS and architecture. The checked interpreter is `make dist-moo-checked`, the
+same pin built with `MOO_OVERFLOW_ERRORS=ON` into `dist/moo-checked/`, which
+raises on arithmetic that leaves moo's number range where the release build
+saturates, so the runtime's load and its computations are held to the same
+rule in both. No unit test uses real time, a socket or the network.
 
 ## THE GATES (layer 1)
 

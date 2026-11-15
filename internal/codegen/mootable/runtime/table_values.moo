@@ -47,7 +47,9 @@ do
 	local p = 1
 	for i = 0, 6 do
 		POW7[i] = p
-		p *= 128
+		if i < 6 then
+			p *= 128
+		end
 	end
 end
 
