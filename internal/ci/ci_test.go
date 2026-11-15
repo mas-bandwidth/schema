@@ -508,6 +508,8 @@ type ciEvent struct {
 	Labels   []string // pull_request labels
 	PlanPkgs string   // needs.plan.outputs.packages
 	PlanLegs string   // needs.plan.outputs.legs
+	PRPins   string   // needs.pr-select.outputs.pins (ci-full.yml)
+	PRCS     string   // needs.pr-select.outputs.cs (ci-full.yml)
 }
 
 type selfHostedJob struct {
@@ -846,6 +848,10 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 		return ev.PlanPkgs, nil
 	case "needs.plan.outputs.legs":
 		return ev.PlanLegs, nil
+	case "needs.pr-select.outputs.pins":
+		return ev.PRPins, nil
+	case "needs.pr-select.outputs.cs":
+		return ev.PRCS, nil
 	default:
 		if strings.HasPrefix(tok, "needs.") && strings.Contains(tok, ".outputs.") {
 			// An upstream output this model does not carry: a non-empty
@@ -919,6 +925,48 @@ var prOffHeavyWorkflows = []string{
 	"schema-moo-nightly-fuzz.yml",
 }
 
+// checkCIFullPRSelection holds ci-full.yml's three per-PR jobs to the owner,
+// 2026-11-15: heavy suite failure on main is fine, like a hierarchical merge.
+// On an unlabelled same-repository pull request: generated never runs (the
+// sprint's card gate runs make generated-current; the merge runs this job);
+// pins runs only when pr-select says the diff touches what pins protect;
+// cs-tables only when pr-select selects the C# leg; pr-select itself runs.
+// The full-ci label selects all three.
+func checkCIFullPRSelection(wfs map[string]string, what string, pr ciEvent) []string {
+	var errs []string
+	wf := wfs["ci-full.yml"]
+	pr.PRPins, pr.PRCS, pr.Labels = "no", "no", nil
+	if ok, err := jobSelectsSelfHosted(wf, "pr-select", pr); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("%s did not run ci-full.yml:pr-select (err=%v)", what, err))
+	}
+	for _, job := range []string{"generated", "pins", "cs-tables"} {
+		if ok, err := jobSelectsSelfHosted(wf, job, pr); err != nil || ok {
+			errs = append(errs, fmt.Sprintf("%s with nothing selected ran ci-full.yml:%s (ok=%v err=%v); on a pull request it runs only on its own paths or the full-ci label", what, job, ok, err))
+		}
+	}
+	pins := pr
+	pins.PRPins = "yes"
+	if ok, err := jobSelectsSelfHosted(wf, "pins", pins); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("%s touching what pins protect did not run ci-full.yml:pins (err=%v)", what, err))
+	}
+	if ok, _ := jobSelectsSelfHosted(wf, "cs-tables", pins); ok {
+		errs = append(errs, fmt.Sprintf("%s touching only pin paths ran ci-full.yml:cs-tables", what))
+	}
+	cs := pr
+	cs.PRCS = "yes"
+	if ok, err := jobSelectsSelfHosted(wf, "cs-tables", cs); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("%s selecting the C# leg did not run ci-full.yml:cs-tables (err=%v)", what, err))
+	}
+	labeled := pr
+	labeled.Labels = []string{"full-ci"}
+	for _, job := range []string{"generated", "pins", "cs-tables"} {
+		if ok, err := jobSelectsSelfHosted(wf, job, labeled); err != nil || !ok {
+			errs = append(errs, fmt.Sprintf("%s labelled full-ci did not run ci-full.yml:%s (err=%v)", what, job, err))
+		}
+	}
+	return errs
+}
+
 // checkWorkflowPolicy validates that the workflow map satisfies all self-hosted
 // admission and stream-to-dev / dev-push / main-promotion trigger invariants.
 // Returning an error slice lets negative-control mutation tests prove that
@@ -973,7 +1021,6 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	for _, wantKey := range []string{
 		"ci-fast.yml:leg-gate",
 		"ci-fast.yml:lang-lint",
-		"ci-full.yml:pins",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, sameRepoMainUnlabeled)
@@ -999,6 +1046,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 			}
 		}
 	}
+	errs = append(errs, checkCIFullPRSelection(wfs, "same-repo PR into main", sameRepoMainUnlabeled)...)
 	if ok, _ := jobSelectsSelfHosted(wfs["ci-full.yml"], "go-test", sameRepoMainUnlabeled); ok {
 		errs = append(errs, "ci-full.yml:go-test ran on unlabeled pull_request")
 	}
@@ -1076,11 +1124,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-squirrel", sameRepoMainUnlabeled); ok {
 		errs = append(errs, "ci-fast.yml:leg-gate-squirrel ran with no Squirrel leg in the plan")
 	}
-	for _, job := range []string{"generated", "pins", "cs-tables"} {
-		if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], job, streamToDevPR); err != nil || !ok {
-			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not run ci-full.yml:%s (err=%v)", job, err))
-		}
-	}
+	errs = append(errs, checkCIFullPRSelection(wfs, "stream-to-dev PR", streamToDevPR)...)
 	if ok, _ := jobRunsInWorkflow(wfs["ci-full.yml"], "go-test", streamToDevPR); ok {
 		errs = append(errs, "unlabeled stream-to-dev PR ran ci-full.yml:go-test (would serialize full CI on stream PRs)")
 	}
@@ -1090,7 +1134,6 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		errs = append(errs, fmt.Sprintf("labeled stream-to-dev PR did not select ci-full.yml:go-test (err=%v)", err))
 	}
 	for _, wantKey := range []string{
-		"ci-full.yml:pins",
 		"ci-fast.yml:lang-lint",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
@@ -1119,11 +1162,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", unnamedBase); ok {
 		errs = append(errs, "PR into an unnamed base ran ci-fast.yml:leg-gate below main")
 	}
-	for _, job := range []string{"generated", "pins", "cs-tables"} {
-		if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], job, unnamedBase); err != nil || !ok {
-			errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-full.yml:%s (err=%v)", job, err))
-		}
-	}
+	errs = append(errs, checkCIFullPRSelection(wfs, "PR into an unnamed base", unnamedBase)...)
 	if ok, _ := jobRunsInWorkflow(wfs["ci-full.yml"], "go-test", unnamedBase); ok {
 		errs = append(errs, "unlabeled PR into an unnamed base ran ci-full.yml:go-test")
 	}
@@ -1450,9 +1489,40 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		{
 			name:      "drop ci-full pins same-repo PR guard",
 			workflow:  "ci-full.yml",
-			oldSubstr: "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n    runs-on: [self-hosted, Linux, X64, fleet, schema]",
-			newSubstr: "    runs-on: [self-hosted, Linux, X64, fleet, schema]",
+			oldSubstr: "(github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.pins == 'yes'",
+			newSubstr: "((needs.pr-select.outputs.pins == 'yes'",
 			wantErr:   "ci-full.yml:pins admits fork PR",
+		},
+		// the owner, 2026-11-15: heavy suite failure on main is fine, like a
+		// hierarchical merge. Each of ci-full's three per-PR jobs put back on
+		// every unlabelled pull request is refused by name.
+		{
+			name:      "run ci-full generated on every pull request again",
+			workflow:  "ci-full.yml",
+			oldSubstr: "    name: generated (${{ matrix.row }})\n    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))\n",
+			newSubstr: "    name: generated (${{ matrix.row }})\n    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n",
+			wantErr:   "with nothing selected ran ci-full.yml:generated",
+		},
+		{
+			name:      "run ci-full pins on every pull request again",
+			workflow:  "ci-full.yml",
+			oldSubstr: "needs.pr-select.outputs.pins == 'yes'",
+			newSubstr: "github.event_name == 'pull_request'",
+			wantErr:   "with nothing selected ran ci-full.yml:pins",
+		},
+		{
+			name:      "run ci-full cs-tables on every pull request again",
+			workflow:  "ci-full.yml",
+			oldSubstr: "needs.pr-select.outputs.cs == 'yes'",
+			newSubstr: "github.event_name == 'pull_request'",
+			wantErr:   "with nothing selected ran ci-full.yml:cs-tables",
+		},
+		{
+			name:      "cs-tables reads the pins selection",
+			workflow:  "ci-full.yml",
+			oldSubstr: "needs.pr-select.outputs.cs == 'yes'",
+			newSubstr: "needs.pr-select.outputs.pins == 'yes'",
+			wantErr:   "selecting the C# leg did not run ci-full.yml:cs-tables",
 		},
 		{
 			name:      "drop ci-full labeled go-test same-repo PR guard",
