@@ -770,7 +770,7 @@ func TestSquirrelMessageIntegerHeldToReaderKind(t *testing.T) {
 fixed table Probe
 {
     smallSigned int8
-    smallUnsigned uint8
+    smallUnsigned uint8 = 1
     wide int32
     optional ?int32
 }

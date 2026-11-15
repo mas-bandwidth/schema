@@ -177,9 +177,68 @@ skipFileKind = function(b,state,kind) {
   local width=0;
   switch(kind){case 1:case 2:case 6:case 20:case 25:width=1;break;case 3:case 7:case 21:case 26:width=2;break;case 4:case 8:case 10:case 22:case 27:width=4;break;case 5:case 9:case 11:case 23:case 28:width=8;break;case 18:case 19:case 24:case 29:width=16;break;}
   if(width>0){if(state.at+width>state.end){state.bad=true;return;}state.at+=width;return;}
-  if(kind==17 || kind==30){readLeb(b,state);return;}
-  if(kind==12 || kind==13 || kind==14 || kind==16 || kind==31 || kind==32){local n=readLeb(b,state);if(state.bad||n<0||n>state.end-state.at){state.bad=true;return;}state.at+=n;return;}
-  if(kind==15){local tag=readLeb(b,state);if(state.bad||tag==0)return;if(state.at>=state.end){state.bad=true;return;}local arm=b[state.at]&0xff;state.at++;skipFileKind(b,state,arm);return;}
+  if(kind==17){readLeb(b,state);return;}
+  if(kind==30){local r=readLeb(b,state);if(state.bad||r<0||r>state.idsLen||r>state.nextRef){state.bad=true;return;}if(r>0&&r==state.nextRef)state.nextRef++;return;}
+  if(kind==12 || kind==31){local n=readLeb(b,state);if(state.bad||n<0||n>state.end-state.at){state.bad=true;return;}state.at+=n;return;}
+  if(kind==32){local n=readLeb(b,state);if(state.bad||n!=0){state.bad=true;}return;}
+  if(kind==13){
+    local n=readLeb(b,state);if(state.bad||n<0||n>state.end-state.at){state.bad=true;return;}
+    local sub={b=b,at=state.at,end=state.at+n,bad=false,idsLen=state.idsLen,nextRef=state.nextRef};
+    local seen={};
+    for(;;){
+      local r=readLeb(b,sub);if(sub.bad)break;if(r==0){if(sub.at!=sub.end)sub.bad=true;break;}
+      if(r<0||r>sub.idsLen||r>sub.nextRef||sub.at>=sub.end||(r in seen)){sub.bad=true;break;}
+      seen[r]<-true;if(r==sub.nextRef)sub.nextRef++;
+      local k=b[sub.at]&0xff;sub.at++;skipFileKind(b,sub,k);if(sub.bad)break;
+    }
+    if(sub.bad){state.bad=true;return;}
+    state.at+=n;state.nextRef=sub.nextRef;return;
+  }
+  if(kind==14||kind==16){
+    local n=readLeb(b,state);if(state.bad||n<2||n>state.end-state.at){state.bad=true;return;}
+    local sub={b=b,at=state.at,end=state.at+n,bad=false,idsLen=state.idsLen,nextRef=state.nextRef};
+    local ek=b[sub.at]&0xff;sub.at++;local cnt=readLeb(b,sub);if(sub.bad||cnt<0){state.bad=true;return;}
+    for(local i=0;i<cnt;i++){
+      if(kind==16){
+        local kr=readLeb(b,sub);if(sub.bad||kr<=0||kr>sub.idsLen||kr>sub.nextRef){sub.bad=true;break;}
+        if(kr==sub.nextRef)sub.nextRef++;
+        local el=readLeb(b,sub);if(sub.bad||el<0||el>sub.end-sub.at){sub.bad=true;break;}
+        local es={b=b,at=sub.at,end=sub.at+el,bad=false,idsLen=sub.idsLen,nextRef=sub.nextRef};
+        if(ek==12){sub.at+=el;continue;}
+        skipFileKind(b,es,ek);if(es.bad||es.at!=es.end){sub.bad=true;break;}
+        sub.at+=el;sub.nextRef=es.nextRef;continue;
+      }
+      skipFileKind(b,sub,ek);if(sub.bad)break;
+    }
+    if(sub.bad||sub.at!=sub.end){state.bad=true;return;}
+    state.at+=n;state.nextRef=sub.nextRef;return;
+  }
+  if(kind==15){
+    local tag=readLeb(b,state);if(state.bad)return;if(tag==0)return;
+    if(tag<0||tag>state.idsLen||tag>state.nextRef||state.at>=state.end){state.bad=true;return;}
+    if(tag==state.nextRef)state.nextRef++;
+    local arm=b[state.at]&0xff;state.at++;
+    local n=readLeb(b,state);if(state.bad||n<0||n>state.end-state.at){state.bad=true;return;}
+    local sub={b=b,at=state.at,end=state.at+n,bad=false,idsLen=state.idsLen,nextRef=state.nextRef};
+    if(arm!=12&&arm!=31){
+      if(arm==32){if(n!=0)sub.bad=true;}
+      else if(arm==13){
+        local seen={};
+        for(;;){
+          local r=readLeb(b,sub);if(sub.bad)break;if(r==0){if(sub.at!=sub.end)sub.bad=true;break;}
+          if(r<0||r>sub.idsLen||r>sub.nextRef||sub.at>=sub.end||(r in seen)){sub.bad=true;break;}
+          seen[r]<-true;if(r==sub.nextRef)sub.nextRef++;
+          local k=b[sub.at]&0xff;sub.at++;skipFileKind(b,sub,k);if(sub.bad)break;
+        }
+      } else if(arm==14||arm==16) {
+        sub.at=state.at+n;
+      } else {
+        skipFileKind(b,sub,arm);if(sub.at!=sub.end)sub.bad=true;
+      }
+    } else { sub.at=state.at+n; }
+    if(sub.bad){state.bad=true;return;}
+    state.at+=n;state.nextRef=sub.nextRef;return;
+  }
   state.bad=true;
 };
 local refuseAnnouncement = function(v, report, why) {
@@ -205,14 +264,22 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
   local total=bytes.len(), trailer=total-8, entries=readU64(bytes,trailer);
   if(entries>maxEntries)return refuseAnnouncement(v,report,"vocabulary_too_large");
   if(entries>(trailer-1)/8){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
-  local bodyEnd=trailer-entries*8, ids=[];
-  for(local i=0;i<entries;i++)ids.append(readU64(bytes,bodyEnd+i*8));
-  local state={b=bytes,at=1,end=bodyEnd,bad=false}, versionCount=0, wordsCount=0, words=null, build=0;
+  local bodyEnd=trailer-entries*8, ids=[], seenIds={};
+  for(local i=0;i<entries;i++){
+    local id=readU64(bytes,bodyEnd+i*8);
+    if(id in seenIds){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
+    seenIds[id]<-true;ids.append(id);
+  }
+  local state={b=bytes,at=1,end=bodyEnd,bad=false,idsLen=ids.len(),nextRef=1}, versionCount=0, wordsCount=0, words=null, build=0, seenBody={};
   for(;;){
     local ref=readLeb(bytes,state);if(state.bad){break;}if(ref==0)break;
-    if(ref<0||ref>ids.len()||state.at>=state.end){state.bad=true;break;}
+    if(ref<0||ref>ids.len()||ref>state.nextRef||state.at>=state.end){state.bad=true;break;}
+    if(ref==state.nextRef)state.nextRef++;
     local id=ids[ref-1],kind=bytes[state.at]&0xff;state.at++;
-    if(id==0xfffffffffffffffe){if(kind!=9||state.at+8>state.end){state.bad=true;break;}build=readU64(bytes,state.at);state.at+=8;versionCount++;}
+    if(id in seenBody){state.bad=true;break;}
+    seenBody[id]<-true;
+    if(id==0xffffffffffffffff){state.bad=true;break;}
+    if(id==0xfffffffffffffffe){if(wordsCount>0||kind!=9||state.at+8>state.end){state.bad=true;break;}build=readU64(bytes,state.at);state.at+=8;versionCount++;}
     else if(id==0xfffffffffffffffd){
       if(kind!=14){state.bad=true;break;}
       local n=readLeb(bytes,state);if(state.bad||n<0||n>state.end-state.at){state.bad=true;break;}
@@ -227,10 +294,10 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
       skipFileKind(bytes,state,kind);if(state.bad)break;
     }
   }
-  if(state.bad||state.at!=bodyEnd||versionCount!=1||wordsCount!=1){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
+  if(state.bad||state.at!=bodyEnd||state.nextRef!=ids.len()+1||versionCount!=1||wordsCount!=1){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
   local parsed=parseVocabulary(words);
   if(!parsed[2]){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
-  setSlot(v,"Ids",parsed[0]);setSlot(v,"Entries",parsed[1]);v.Count<-v.Ids.len();local refs=0, cap=v.Count;while(cap>0){refs++;cap=cap>>1;}v.RefBits<-refs;if(v.RefBits==0)v.RefBits=1;
+  setSlot(v,"Ids",parsed[0]);setSlot(v,"Entries",parsed[1]);setSlot(v,"Words",words);v.Count<-v.Ids.len();local refs=0, cap=v.Count;while(cap>0){refs++;cap=cap>>1;}v.RefBits<-refs;if(v.RefBits==0)v.RefBits=1;
   v.BuildVersion<-build;setSlot(v,"Announced",true);return true;
 };
 
@@ -483,7 +550,8 @@ local numberBits = function(fd) {
   if (fd.bits > 0) return fd.bits;
   return fd.width * 8;
 };
-local defaultValue = function(fd, value, owner) {
+local defaultValue;
+defaultValue = function(fd, value, owner) {
   if (("optional" in fd) && fd.optional) return !owner[fd.member + "Present"];
   if (fd.shape == "str") return value == fd.def;
   // a value of the wrong type is never a default: the write refuses it
@@ -496,7 +564,19 @@ local defaultValue = function(fd, value, owner) {
   if (fd.shape == "arr") {
     if (typeof value != "array") return false;
     if ((("list" in fd) && fd.list) || (("counted" in fd) && fd.counted)) return value.len() == 0;
-    if (fd.elem.shape == "tab" || fd.elem.shape == "union") return false;
+    if (("keyvariants" in fd) && fd.keyvariants != null) {
+      for (local i = 0; i < value.len(); i++) {
+        if (!defaultValue(fd.elem, value[i], value)) return false;
+      }
+      return true;
+    }
+    if (fd.elem.shape == "tab") return false;
+    if (fd.elem.shape == "union") {
+      foreach (x in value) {
+        if (!isRecord(x) || !("Type" in x) || x.Type != 0) return false;
+      }
+      return true;
+    }
     // a float element compares its BITS (docs/SPEC-TABLES.md §3.3): a -0
     // element under a +0 default rides the array
     if (fd.elem.shape == "float") {
@@ -508,8 +588,7 @@ local defaultValue = function(fd, value, owner) {
       return true;
     }
     for (local i = 0; i < value.len(); i++) {
-      if (typeof fd.elem.def == "integer" && typeof value[i] != "integer") return false;
-      if (value[i] != fd.elem.def) return false;
+      if (!defaultValue(fd.elem, value[i], value)) return false;
     }
     return true;
   }
@@ -525,6 +604,10 @@ local defaultValue = function(fd, value, owner) {
     if (fd.f32 && fd.fmin != null) return f32(value) == f32(fd.def);
     if (fd.f32) return messageNarrowF32(value.tofloat()) == messageNarrowF32(fd.def.tofloat());
     return castf2i(value.tofloat()) == castf2i(fd.def.tofloat());
+  }
+  if (typeof fd.def == "array") {
+    return typeof value == "array" && value.len() == fd.def.len() &&
+           value[0] == fd.def[0] && value[1] == fd.def[1];
   }
   // an integer default is never matched by a float: the write refuses it
   if (typeof fd.def == "integer" && typeof value != "integer") return false;
@@ -605,7 +688,11 @@ local readScalar = function(r, T, v, fd, shape) {
   if (fd.shape == "bool") return get(r, 1) != 0;
   if (fd.shape == "enum") {
     local ref = get(r, v.RefBits);
-    if (r.bad || ref == 0) return null;
+    if (r.bad) return null;
+    if (ref == 0) {
+      r.enumAtDefault = (fd.def == null);
+      return null;
+    }
     if (ref > v.Count) { r.bad = true; return null; }
     local entry=v.Entries[ref-1], id=entry.Id;
     if(entry.Shape.Kind!=0||reservedId(id)){r.bad=true;return null;}
@@ -613,7 +700,9 @@ local readScalar = function(r, T, v, fd, shape) {
     foreach (p in fd.variants) {
       if (p[1] == id) { name = p[0]; dep = p.len() > 2 && p[2]; break; }
     }
-    if (name == null) { r.unknown++; return null; }
+    if (name == null) { r.unknown++; r.enumAtDefault = false; return null; }
+    if (dep) r.depCount++;
+    r.enumAtDefault = (!dep && name == fd.def);
     // a DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, never
     // unknown (docs/SPEC-TABLES.md §2.15); an element's fd is its element
     // descriptor, whose default is the element default
@@ -750,8 +839,31 @@ local compatKinds = function(kind, elem, mine, mineElem) {
 local entryElem = function(entry) {
   return (entry.Kind == 14 || entry.Kind == 16) ? entry.Element.Kind : 0;
 };
+local ownVocab = function(T) {
+  if (!("_ownMessageVocab" in T)) {
+    local own = {};
+    _M.AnnounceRead(T, own, T.TableMessageAnnouncement, null);
+    T._ownMessageVocab <- own;
+  }
+  return T._ownMessageVocab;
+};
+local sameOwnEntry = function(T, v, entry) {
+  if (!("Words" in v) || v.Words == null) return false;
+  local own = ownVocab(T);
+  if (!("Announced" in own) || !own.Announced || v.BuildVersion != own.BuildVersion) return false;
+  local n = entry.End - entry.Start;
+  foreach (oe in own.Entries) {
+    if (oe.Id != entry.Id || oe.Kind != entry.Kind || (oe.End - oe.Start) != n) continue;
+    local same = true;
+    for (local i = 0; i < n; i++) {
+      if (v.Words[entry.Start + i] != own.Words[oe.Start + i]) { same = false; break; }
+    }
+    if (same) return true;
+  }
+  return false;
+};
 
-readPayload = function(T, v, r, fd, owner, member, depth, entry) {
+readPayload = function(T, v, r, fd, owner, member, depth, entry, atField = false) {
   if (depth > 128) { r.bad = true; return; }
   if (fd.shape == "str") {
     // THE LENGTH, THE ALIGN, THEN THE BYTES; kind 12's content rule is damage
@@ -769,11 +881,16 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     local at=r.bits/8,b=blob(n);for(local i=0;i<n;i++)b[i]=r.b[at+i];r.bits+=n*8;
     owner[member]=b;return;
   }
-  if(fd.shape=="tab"){local child=T.Descriptors[fd.table].make();readBody(T,v,r,T.Descriptors[fd.table],child,depth+1);owner[member]=child;return;}
+  if(fd.shape=="tab"){
+    local child=T.Descriptors[fd.table].make(),startBits=r.bits;
+    readBody(T,v,r,T.Descriptors[fd.table],child,depth+1);
+    if(!r.bad && atField && r.bits-startBits==v.RefBits && sameOwnEntry(T,v,entry)){r.bad=true;return;}
+    owner[member]=child;return;
+  }
   if(fd.shape=="union"){
     local ref=get(r,v.RefBits);if(r.bad)return;
     local ud=T[fd.table+"Descriptor"],u=ud.make();
-    if(ref==0){owner[member]=u;return;}
+    if(ref==0){if(atField){r.bad=true;return;}owner[member]=u;return;}
     if(ref>v.Count){r.bad=true;return;}
     local ae=v.Entries[ref-1];if(ae.Shape.Kind==0||reservedId(ae.Id)){r.bad=true;return;}
     local arm=null;foreach(a in ud.arms)if(a.id==ae.Id){arm=a;break;}
@@ -802,14 +919,23 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     // A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (§3.2, §3.3); an element under
     // a key this reader does not name is read under the element declaration
     // and dropped, counted unknown
-    local a=owner[member],keys=[];
+    if(atField&&n==0&&sameOwnEntry(T,v,entry)){r.bad=true;return;}
+    local a=owner[member],keys=[],lastIndex=-1;
     for(local i=0;i<n;i++){
       local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}
       local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||reservedId(ke.Id)||keys.find(ke.Id)!=null){r.bad=true;return;}
       keys.append(ke.Id);
       local index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id){index=j;break;}
+      if(index>=0){if(index<lastIndex){r.bad=true;return;}lastIndex=index;}
+      local depBefore=r.depCount,unkBefore=r.unknown;
       readPayload(T,v,r,fd.elem,holder,"value",depth+1,element);if(r.bad)return;
-      if(index<0)r.unknown++;else a[index]=holder.value;
+      if(index<0){r.unknown++;}else{
+        if(sameOwnEntry(T,v,entry)&&!(fd.elem.shape=="float"&&element.Shape.Packing==2)&&r.depCount==depBefore&&r.unknown==unkBefore){
+          local slotAtDef=(fd.elem.shape=="enum")?r.enumAtDefault:defaultValue(fd.elem,holder.value,a);
+          if(slotAtDef){r.bad=true;return;}
+        }
+        a[index]=holder.value;
+      }
     }
     owner[member]=a;return;
   }
@@ -824,8 +950,16 @@ writeBody = function(T, w, d, value, depth) {
     if(!(fd.member in value))continue;
     local val=value[fd.member];
     if(defaultValue(fd,val,value))continue;
+    if(fd.shape=="tab"&&!fd.optional&&!("required" in fd && fd.required)){
+      local probe=newWriter(null,true);
+      probe.owner=d.name;probe.field=fd.name;
+      writePayload(T,probe,fd,val,depth+1);
+      if(probe.bad){w.bad=true;w.reason=probe.reason;return;}
+      if(probe.bits<=T.TableMessageRefBitsHere)continue;
+    }
     local ref=findSlot(T,fd.id);if(ref==0){w.bad=true;return;}
     put(w,ref,T.TableMessageRefBitsHere);
+    w.owner = d.name;
     w.field = fd.name;
     writePayload(T,w,fd,val,depth+1);
     if(w.bad)return;
@@ -845,24 +979,31 @@ readBody = function(T, v, r, d, value, depth) {
   if(depth>128){r.bad=true;return;}
   // A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
   // or unknown
-  local seen=[];
+  local seen=[],lastOrdinal=-1;
   for(;;){
-    local ref=get(r,v.RefBits);if(r.bad)return;
-    if(ref==0)return;
+    local ref=get(r,v.RefBits);if(r.bad||ref==0)return;
     if(ref>v.Count){r.bad=true;return;}
     local entry=v.Entries[ref-1],id=entry.Id;
     if(reservedId(id)||seen.find(id)!=null){r.bad=true;return;}
     seen.append(id);
     local fd=(id in d.byId)?d.byId[id]:null;
     if(fd==null){r.unknown++;skipRemoteEntry(T,v,r,entry,0);if(r.bad)return;continue;}
+    if(fd.ordinal<lastOrdinal){r.bad=true;return;}
+    lastOrdinal=fd.ordinal;
     // AN ANNOUNCED KIND THAT IS NOT THE DECLARED ONE AND NOT A WIDENING
     // REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3, §4), kind_mismatch
     local c=compatKinds(entry.Kind,entryElem(entry),fd.kind,declaredElem(fd));
     if(c<0){refuseRead(r,"kind_mismatch");return;}
     if(c>0)r.widened++;
     if(fd.optional)value[fd.member + "Present"] = true;
-    readPayload(T,v,r,fd,value,fd.member,depth+1,entry);
+    local depBefore=r.depCount,unkBefore=r.unknown;
+    r.enumAtDefault=false;
+    readPayload(T,v,r,fd,value,fd.member,depth+1,entry,!fd.optional&&!("required" in fd && fd.required));
     if(r.bad)return;
+    if(c==0&&!fd.optional&&!("required" in fd && fd.required)&&fd.shape!="tab"&&fd.shape!="union"&&sameOwnEntry(T,v,entry)&&!(fd.shape=="float"&&entry.Shape.Packing==2)&&r.depCount==depBefore&&r.unknown==unkBefore){
+      local atDef=(fd.shape=="enum")?r.enumAtDefault:defaultValue(fd,value[fd.member],value);
+      if(atDef){r.bad=true;return;}
+    }
   }
 };
 
@@ -912,7 +1053,7 @@ _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   // and the interpreter cannot grow its stack inside one, so a deep but legal
   // nesting would die in the bit reader rather than at the depth bound.
   local raw=array(bytes.len());for(local i=0;i<raw.len();i++)raw[i]=bytes[i]&0xff;
-  local r={b=raw,bits=16,bad=false,unknown=0,widened=0,refusal=null,written=0};
+  local r={b=raw,bits=16,bad=false,unknown=0,widened=0,refusal=null,written=0,enumAtDefault=false,depCount=0};
   local whole=readBatch(T,v,r,d,storage,count);
   if(report!=null){report.unknown=r.unknown;report.widened=r.widened;}
   if(whole)return count;
