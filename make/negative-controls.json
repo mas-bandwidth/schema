@@ -1048,6 +1048,15 @@
       "python": "pin"
     },
     {
+      "name": "python-table-wide",
+      "when": "pull-request",
+      "why": "the wide table kinds' control (make/python.mk): a copy of the emitted runtime moves the integer codec's int128 width, so every Go-engine wide construct's read-then-write probe must go red under both pinned interpreters, and takes a nested table's id reference after its body, so the nested construct must go red too. It is also a prerequisite of test-python, so the leg runs it beside the table tests; this row is the one the negative-control matrix schedules, on the pins .github/actions/python restores.",
+      "targets": [
+        "python-table-wide-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",

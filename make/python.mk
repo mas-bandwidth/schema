@@ -15,8 +15,8 @@
 # generates into temp directories and runs the generated package under both
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
-.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control
-test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
+.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-table-wide-negative-control
+test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control python-table-wide-negative-control
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
 update-goldens-python: ;
@@ -60,6 +60,14 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 # make/negative-controls.json as a gate test-python runs.
 python-table-core-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonTableCoreNegativeControl' ./internal/codegen/pythontable/ -count=1
+
+# The wide kinds' negative control: a copy of the emitted runtime moves the
+# integer codec's int128 width (every wide construct must go red under both
+# pins) and takes a nested table's id reference after its body (the nested
+# construct must go red). It needs the pins, so test-python depends on it and
+# it is registered in make/negative-controls.json.
+python-table-wide-negative-control:
+	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonVtWideNegativeControl' ./internal/codegen/pythontable/ -count=1
 
 generated/bench/tables/python/.stamp: ;
 

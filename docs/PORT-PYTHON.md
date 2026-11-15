@@ -294,6 +294,22 @@ generated class per table and per map entry, each with its descriptor
   line, never an edit to the body walk. `kind_unsupported.py` is the named
   placeholder for a construct whose descriptor exists but whose codec has not
   landed; a read or write that reaches it refuses by name.
+- **The wide kinds ride the integer codec.** `int128`, `uint128`, `fixed(I, F)`
+  and `ufixed(I, F)` need no module of their own: `kind_int.py` already names
+  every storage width, sixteen bytes for kinds 18 and 19 and the fixed family's
+  own 1, 2, 4, 8 or 16 (kinds 20 to 29). A read takes the declared width as a
+  little-endian two's-complement integer, signed by the descriptor's lower
+  bound, and refuses a value outside `[lo, hi]`; a write validates the raw
+  scaled integer first and writes exactly those bytes. The bounds are the raw
+  scaled range (`ir.TableRawRange`), so a `fixed(112, 16)` is its 128-bit raw
+  integer and never a float. `TestPythonVtWide` holds the kind alone and beside
+  bool, the integers, bits, a nested table and a union-free pointer closure to
+  the Go engine's canonical wire under both pins.
+- **The id table is numbered by the walk.** A field's id reference is taken
+  before its payload is written, so a nested table's own field id precedes the
+  ids inside its body, the order the Go engine and the C++ reference use
+  (SPEC-TABLES §3.1). Taking it after the body renumbers a nested table's
+  fields and breaks the byte-for-byte read-then-write contract.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
@@ -307,11 +323,12 @@ generated class per table and per map entry, each with its descriptor
   `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
-- **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
-  `kind_unsupported.py` until their cards land.
+- **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits)
+  and the fixed-point family at their raw storage widths, by-value tables and
+  `*T` pointers to tables, for both the fixed and the variable class. `*bytes`,
+  `*string`, `?T`, `[]T`, `[E]T`, maps and unions with table arms have
+  descriptors in this cut and refuse by name through `kind_unsupported.py`
+  until their cards land.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.

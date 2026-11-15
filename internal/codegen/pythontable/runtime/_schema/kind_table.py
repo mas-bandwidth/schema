@@ -36,10 +36,14 @@ class _Table:
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         from .save import write_body
 
+        # THE FIELD'S ID REFERENCE IS TAKEN BEFORE ITS BODY IS WRITTEN: the id
+        # table is numbered in the order the walk meets it, so a nested table's
+        # own field id precedes the ids inside it (docs/SPEC-TABLES.md §3.1).
+        reference = ctx.idref(fd.field_id)
         body = bytearray()
         bw = _body_writer(body)
         write_body(bw, value, ctx, False)
-        w.varint(ctx.idref(fd.field_id))
+        w.varint(reference)
         w.byte(fd.kind)
         w.varint(len(body))
         w.raw(body)
