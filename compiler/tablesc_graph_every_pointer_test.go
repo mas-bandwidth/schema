@@ -41,7 +41,8 @@ func TestCTableGraphCheckedOverEveryPointer(t *testing.T) {
 		{"graph_reach_unknown_field", "Scene", true},
 		{"graph_reach_unknown_nested", "Scene", true},
 		{"graph_reach_unknown_union_arm", "Scene", true},
-		{"graph_reach_unknown_keyed_slot", "Scene", true},
+		// The keyed body carries element kind 17, which the closed list forbids.
+		{"graph_reach_unknown_keyed_slot", "Scene", false},
 		{"node_chain_two", "ListNode", true},
 	}
 	var decls, checks strings.Builder

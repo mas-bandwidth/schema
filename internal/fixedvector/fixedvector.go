@@ -39,6 +39,13 @@ const RangeWidenArrayHostile = "hostile_range_widen_array.bin"
 // number, inside the range, and lands it.
 const RangeWidenU64Hostile = "hostile_range_widen_u64.bin"
 
+// NegativeZeroFile is the compressed float's negative-zero vector
+// (docs/SPEC-TABLES.md §3.3): the reference writer's file holding -0's bits in
+// its compressed float field. The rule reads it as +0, uncounted, and writes
+// +0 for it, so the canonical bytes are the same record with all-zero bytes in
+// that field. The file is named for what it holds.
+const NegativeZeroFile = "negative_zero.bin"
+
 // Vector names one shared vector: its corpus file, a Name that tells it from
 // the others (a leg's subtest), and the fixed root it holds. A writer's-range
 // vector names the versioning row whose pair it reads (VOLD_<Row> in the
@@ -57,6 +64,12 @@ var WriterRange = []Vector{
 	{File: RangeWidenHostile, Name: "range_widen", Row: "range_widen", Root: "RangeWiden"},
 	{File: RangeWidenArrayHostile, Name: "range_widen_array", Row: "range_widen", Root: "RangeWiden"},
 	{File: RangeWidenU64Hostile, Name: "range_widen_u64", Row: "range_widen", Root: "RangeWiden"},
+}
+
+// NegativeZero is every compressed-float negative-zero vector
+// (docs/SPEC-TABLES.md §3.3), the list each leg runs.
+var NegativeZero = []Vector{
+	{File: NegativeZeroFile, Name: "negative_zero", Root: "NegZero"},
 }
 
 // The deprecated-field vectors (docs/SPEC-TABLES.md §3.4, §21.2, §22.6;
@@ -233,9 +246,14 @@ func Read(corpus, file string) (Expect, error) {
 				return e, nil
 			}
 		}
-		var err error
-		if e.ForgedPath, e.ForgedAt, err = parseForged(file, forged); err != nil {
-			return Expect{}, err
+		if forged != "" {
+			var err error
+			if e.ForgedPath, e.ForgedAt, err = parseForged(file, forged); err != nil {
+				return Expect{}, err
+			}
+		}
+		if expect == "" && forged == "" {
+			return Expect{}, fmt.Errorf("fixedvector: %s is not a vector: its manifest line carries neither expect= nor forged=", file)
 		}
 		return e, nil
 	}
