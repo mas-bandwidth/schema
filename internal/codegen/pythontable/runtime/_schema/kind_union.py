@@ -24,6 +24,8 @@ from .descriptor import ArmDesc, FieldDesc
 # The kinds whose FIELD payload begins with its own length: an arm holds the
 # bytes after that length, so the arm's L is that length.
 _LENGTH_KINDS = frozenset((12, 13, 14, 16, 31, 32))
+# a collection count above the int32 storage cap (§2.9)
+_COUNT_CAP = 0x7FFFFFFF
 
 
 def _union_class(name: str) -> type[Any]:
@@ -67,9 +69,16 @@ def _read_union_payload(r: Any, un: type[Any], ctx: Any) -> Any:
     payload = r.take(length)
     if arm is None:
         # An arm this reader cannot name reads as None, counted unknown, and
-        # its payload is judged as the engine's wire check judges any skipped
-        # value (internal/tablewire/wirecheck.go, union and content).
-        _load._check_content(payload, kind, ctx.ids)
+        # its payload is judged by the table runtime's one skip walk, the
+        # port of the engine's wire check (load._skip_content; internal/
+        # tablewire/wirecheck.go, union and content). A structural arm is a
+        # level (§4), as load._skip_union counts it.
+        depth = ctx.depth
+        if kind in _load._STRUCTURAL_KINDS:
+            if depth >= _load._MAX_DEPTH:
+                raise Refused("wire_damaged", "a union arm nested past the binary bound")
+            depth += 1
+        _load._skip_content(payload, kind, ctx, depth)
         ctx.unknown += 1
         return un()
     if kind != arm.kind:
@@ -160,14 +169,24 @@ def _validate_union(value: Any, name: str, path: str, seen: set[int]) -> None:
     _validate_arm_value(getattr(value, arm.name), arm.field, f"{path}.{arm.name}", seen)
 
 
+def _check_union_count(f: FieldDesc, count: int, path: str) -> None:
+    """Refuse a write whose length the declaration does not admit: a fixed
+    [N] holds N, a counted [Min..N] between its bounds, an unbounded [] any
+    count the int32 storage cap allows."""
+    if f.array_kind == 1:
+        if count != f.bound:
+            raise InvalidValue(path, f"a fixed array of {f.bound} holds {count}")
+    elif f.array_kind == 2:
+        if count < f.array_min or count > f.bound:
+            raise InvalidValue(path, f"a counted array holds {count}, outside [{f.array_min}, {f.bound}]")
+    elif count > _COUNT_CAP:
+        raise InvalidValue(path, f"a list of {count} elements is past the int32 storage cap")
+
+
 def _validate_union_array(value: Any, f: FieldDesc, path: str, seen: set[int]) -> None:
     if not isinstance(value, list):
         raise InvalidValue(path, "not a list")
-    if f.array_fixed:
-        if len(value) != f.bound:
-            raise InvalidValue(path, f"a fixed array of {f.bound} holds {len(value)}")
-    elif len(value) < f.array_min or len(value) > f.bound:
-        raise InvalidValue(path, f"a counted array holds {len(value)}, outside [{f.array_min}, {f.bound}]")
+    _check_union_count(f, len(value), path)
     for index, element in enumerate(value):
         _validate_union(element, f.target, f"{path}[{index}]", seen)
 
@@ -193,10 +212,21 @@ def _validate_arm_value(value: Any, f: FieldDesc, path: str, seen: set[int]) -> 
     if f.codec == "union_array":
         _validate_union_array(value, f, path, seen)
         return
-    kinds._REGISTRY[f.codec].validate(f, value, path)
+    if f.codec == "map":
+        _save._validate_map(f, value, path, seen)
+        return
+    kind = kinds._REGISTRY[f.codec]
+    kind.validate(f, value, path)
+    element = f.element
+    if f.codec == "array" and element is not None:
+        for index, item in enumerate(value):
+            _validate_arm_value(item, element, f"{path}[{index}]", seen)
+        return
+    for table, table_path in _save._held_tables(kind, f, value, path):
+        _save._validate(table, table.descriptor, table_path, seen)
 
 
-def _collect_union(value: Any, ctx: Any) -> None:
+def _collect_union(value: Any, ctx: Any, blobs: list[int]) -> None:
     tag = value.type
     if tag == 0:
         return
@@ -204,15 +234,18 @@ def _collect_union(value: Any, ctx: Any) -> None:
     arm = arms[tag - 1]
     if arm.field is None:
         return
-    _collect_arm_value(getattr(value, arm.name), arm.field, ctx)
+    _collect_arm_value(getattr(value, arm.name), arm.field, ctx, blobs)
 
 
-def _collect_union_array(value: Any, ctx: Any) -> None:
+def _collect_union_array(value: Any, ctx: Any, blobs: list[int]) -> None:
     for element in value:
-        _collect_union(element, ctx)
+        _collect_union(element, ctx, blobs)
 
 
-def _collect_arm_value(value: Any, f: FieldDesc, ctx: Any) -> None:
+def _collect_arm_value(value: Any, f: FieldDesc, ctx: Any, blobs: list[int]) -> None:
+    """Number the nodes an arm's value reaches, as save._collect numbers a
+    field's: a pointer's target in pre-order with its own blob slots, a table
+    by value in place."""
     if f.codec == "pointer":
         if value is None:
             return
@@ -221,25 +254,41 @@ def _collect_arm_value(value: Any, f: FieldDesc, ctx: Any) -> None:
             if key in ctx.onstack:
                 raise InvalidValue(f.name, "a pointer cycle has no wire form")
             return
-        ctx.indices[key] = len(ctx.order) + 2
+        node_index = len(ctx.order) + 2
+        ctx.indices[key] = node_index
         ctx.order.append(value)
         ctx.onstack.add(key)
-        _save._collect(value, ctx)
+        inner: list[int] = []
+        ctx.node_blobs[node_index] = inner
+        _save._collect(value, ctx, inner)
         ctx.onstack.discard(key)
         return
     if f.codec == "table":
-        _save._collect(value, ctx)
+        _save._collect(value, ctx, blobs)
         return
     if f.codec == "union":
-        _collect_union(value, ctx)
+        _collect_union(value, ctx, blobs)
         return
     if f.codec == "union_array":
-        _collect_union_array(value, ctx)
+        _collect_union_array(value, ctx, blobs)
+        return
+    if f.codec == "map":
+        _save._collect_map(f, value, ctx, blobs)
+        return
+    element = f.element
+    if f.codec == "array" and element is not None:
+        for item in value:
+            _collect_arm_value(item, element, ctx, blobs)
 
 
 class _Union:
     def validate(self, fd: FieldDesc, value: Any, path: str) -> None:
         _validate_union(value, fd.target, path, set())
+
+    def collect(self, fd: FieldDesc, value: Any, ctx: Any, blobs: list[int]) -> None:
+        if value is None:
+            return
+        _collect_union(value, ctx, blobs)
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         return _read_union_payload(r, _union_class(fd.target), ctx)
@@ -259,29 +308,41 @@ class _UnionArray:
     def validate(self, fd: FieldDesc, value: Any, path: str) -> None:
         _validate_union_array(value, fd, path, set())
 
+    def collect(self, fd: FieldDesc, value: Any, ctx: Any, blobs: list[int]) -> None:
+        _collect_union_array(value, ctx, blobs)
+
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         length = r.varint()
         payload = r.take(length)
+        if length < 2:
+            raise Refused("wire_damaged", "an array body too short for its header")
         sub = _load.Reader(payload, 0, len(payload), ctx.ids)
         element_kind = sub.byte()
+        if element_kind not in _load._ARRAY_ELEMENT_KINDS:
+            raise Refused("wire_damaged", "an array element kind outside the closed list")
         if element_kind != 15:
             raise Refused(
                 "kind_mismatch",
                 f"{fd.name} carries element kind {element_kind}, not 15",
             )
         count = sub.varint()
-        # A count past the int32 storage cap is past every bound too; the
-        # refusal path's file walk (load._check_file) names it
-        # count_over_extent_cap, as the engine's wire check does.
-        if count > fd.bound:
+        if count > _COUNT_CAP:
+            raise Refused("count_over_extent_cap", "a collection count above the int32 storage cap")
+        # As the engine reads (internal/tablewire/decode.go, arrayBody): a
+        # count past a fixed or counted array's bound is count_over_bound; a
+        # counted array below its minimum and a fixed array short of its
+        # bound are read as they stand, the fixed one over its born slots.
+        # The minimum binds the writer (save refuses it).
+        if fd.array_kind != 3 and count > fd.bound:
             raise Refused("count_over_bound", f"{fd.name} counts {count}, past its bound {fd.bound}")
+        if count > sub.end - sub.pos:
+            raise Refused("wire_damaged", "a count the array body cannot cover")
         un = _union_class(fd.target)
-        # A counted array below its declared minimum is read as it stands, as
-        # the engine reads it; the minimum binds the writer (save refuses it).
-        values = [un() for _ in range(fd.bound)] if fd.array_fixed else []
+        fixed = fd.array_kind == 1
+        values = [un() for _ in range(fd.bound)] if fixed else []
         for index in range(count):
             value = _read_union_payload(sub, un, ctx)
-            if fd.array_fixed:
+            if fixed:
                 values[index] = value
             else:
                 values.append(value)
