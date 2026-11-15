@@ -260,6 +260,9 @@ export function WriteUnsignedProbeFlat(view, value) {
   if (value.locked !== 196608) {
     return -1;
   }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 255) { // a bare integer must fit its width
+    return -1;
+  }
   v = (((value.tail) & 0xff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
@@ -426,6 +429,9 @@ export function ReadUnsignedProbeFlatBits(view, numBits, value) {
 export function WriteWideProbeFlat(view, value) {
   let v = 0, lo = 0;
   let bg = 0n;
+  if (typeof value.entityId !== "bigint" || value.entityId < 0n || value.entityId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+    return -1;
+  }
   bg = value.entityId;
   SC.setBigUint64(0, bg, true);
   v = SC.getUint32(0, true);
@@ -468,6 +474,9 @@ export function WriteWideProbeFlat(view, value) {
   SC.setBigUint64(0, value.bias - -1000n, true);
   v = SC.getUint32(0, true) & 0x7ff;
   lo = (lo | (v << 8)) >>> 0;
+  if (typeof value.seed !== "bigint" || value.seed < 0n || value.seed > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+    return -1;
+  }
   bg = value.seed;
   SC.setBigUint64(0, bg, true);
   v = SC.getUint32(0, true);
@@ -705,6 +714,9 @@ export function WriteLudicrousStateFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (21 - sb);
     }
   }
+  if (typeof value.wide.entityId !== "bigint" || value.wide.entityId < 0n || value.wide.entityId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+    return -1;
+  }
   bg = value.wide.entityId;
   SC.setBigUint64(0, bg, true);
   v = SC.getUint32(0, true);
@@ -821,6 +833,9 @@ export function WriteLudicrousStateFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
+  if (typeof value.wide.seed !== "bigint" || value.wide.seed < 0n || value.wide.seed > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+    return -1;
+  }
   bg = value.wide.seed;
   SC.setBigUint64(0, bg, true);
   v = SC.getUint32(0, true);
@@ -873,6 +888,9 @@ export function WriteLudicrousStateFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   for (let i0 = 0; i0 < value.keysCount; i0++) {
+    if (typeof value.keys[i0] !== "bigint" || value.keys[i0] < 0n || value.keys[i0] > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+      return -1;
+    }
     bg = value.keys[i0];
     SC.setBigUint64(0, bg, true);
     v = SC.getUint32(0, true);
@@ -923,6 +941,9 @@ export function WriteLudicrousStateFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.hasTarget) {
+    if (typeof value.targetId !== "bigint" || value.targetId < 0n || value.targetId > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+      return -1;
+    }
     bg = value.targetId;
     SC.setBigUint64(0, bg, true);
     v = SC.getUint32(0, true);
@@ -1594,6 +1615,9 @@ export function WriteDegenerateProbeFlat(view, value) {
     return -1;
   }
   if (value.lockedWide !== -12345678901234n) {
+    return -1;
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 255) { // a bare integer must fit its width
     return -1;
   }
   lo = (((value.tail) & 0xff));
