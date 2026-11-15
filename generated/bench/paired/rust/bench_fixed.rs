@@ -122,6 +122,51 @@ pub fn mixed_event_fixed_scatter(b: &[u8], value: &mut MixedEventRow, report: &m
     }
 }
 
+/// MixedEvent: true when a DEAD byte of this union image is not zero.
+pub fn mixed_event_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    let tag = b[0] as u64;
+    if tag == 0 {
+        return b[1..14].iter().any(|&x| x != 0);
+    }
+    match tag {
+        1 => {
+            {
+                let at = 1;
+                if mixed_hit_event_fixed_dead(&b[at..at + 13]) {
+                    return true;
+                }
+            }
+            false
+        }
+        2 => {
+            if b[9..14].iter().any(|&x| x != 0) {
+                return true;
+            }
+            {
+                let at = 1;
+                if mixed_chat_event_fixed_dead(&b[at..at + 8]) {
+                    return true;
+                }
+            }
+            false
+        }
+        3 => {
+            if b[9..14].iter().any(|&x| x != 0) {
+                return true;
+            }
+            {
+                let at = 1;
+                if mixed_pickup_event_fixed_dead(&b[at..at + 8]) {
+                    return true;
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
 /// MixedEvent's read-side bounds: the arm THE TAG NAMES, and no other — the
 /// overlay behind a narrower arm is bytes nobody wrote.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -272,6 +317,12 @@ pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: 
     }
 }
 
+/// MixedEntity: true when a DEAD byte of this record image is not zero.
+pub fn mixed_entity_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    false
+}
+
 /// MixedEntity's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -326,6 +377,12 @@ pub fn mixed_stat_fixed_scatter(b: &[u8], value: &mut MixedStatRow, report: &mut
         let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
         value.delta = raw as i32;
     }
+}
+
+/// MixedStat: true when a DEAD byte of this record image is not zero.
+pub fn mixed_stat_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    false
 }
 
 /// MixedStat's read-side bounds: every RANGED SCALAR held to its declared min
@@ -384,6 +441,12 @@ pub fn mixed_hit_event_fixed_scatter(b: &[u8], value: &mut MixedHitEventRow, rep
     }
 }
 
+/// MixedHitEvent: true when a DEAD byte of this record image is not zero.
+pub fn mixed_hit_event_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    false
+}
+
 /// MixedHitEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -426,6 +489,12 @@ pub fn mixed_chat_event_fixed_scatter(b: &[u8], value: &mut MixedChatEventRow, r
     }
 }
 
+/// MixedChatEvent: true when a DEAD byte of this record image is not zero.
+pub fn mixed_chat_event_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    false
+}
+
 /// MixedChatEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -464,6 +533,12 @@ pub fn mixed_pickup_event_fixed_scatter(b: &[u8], value: &mut MixedPickupEventRo
         let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
         value.amount = raw as i32;
     }
+}
+
+/// MixedPickupEvent: true when a DEAD byte of this record image is not zero.
+pub fn mixed_pickup_event_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    false
 }
 
 /// MixedPickupEvent's read-side bounds: every RANGED SCALAR held to its declared min
@@ -741,6 +816,61 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
         let raw = u32::from_le_bytes(b[at..at + 4].try_into().expect("the declared width"));
         value.idle_ticks = raw as i32;
     }
+}
+
+/// BenchMixed: true when a DEAD byte of this record image is not zero.
+pub fn bench_mixed_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    {
+        let count = i32::from_le_bytes(b[52..56].try_into().expect("four bytes")).clamp(0, 8) as usize;
+        if b[56 + count * 51..464].iter().any(|&x| x != 0) {
+            return true;
+        }
+        for i in 0..count {
+            {
+                let at = 56 + i * 51;
+                if mixed_entity_fixed_dead(&b[at..at + 51]) {
+                    return true;
+                }
+            }
+        }
+    }
+    {
+        let count = i32::from_le_bytes(b[464..468].try_into().expect("four bytes")).clamp(0, 80) as usize;
+        if b[468 + count * 8..1108].iter().any(|&x| x != 0) {
+            return true;
+        }
+        for i in 0..count {
+            {
+                let at = 468 + i * 8;
+                if mixed_stat_fixed_dead(&b[at..at + 8]) {
+                    return true;
+                }
+            }
+        }
+    }
+    {
+        let at = 1108;
+        if mixed_event_fixed_dead(&b[at..at + 14]) {
+            return true;
+        }
+    }
+    for i in 0..4 {
+        let _ = i;
+    }
+    {
+        let used = i32::from_le_bytes(b[1126..1130].try_into().expect("four bytes")).clamp(0, 15) as usize;
+        if b[1130 + used..1145].iter().any(|&x| x != 0) {
+            return true;
+        }
+    }
+    {
+        let used = i32::from_le_bytes(b[1145..1149].try_into().expect("four bytes")).clamp(0, 16) as usize;
+        if b[1149 + used..1165].iter().any(|&x| x != 0) {
+            return true;
+        }
+    }
+    false
 }
 
 /// BenchMixed's read-side bounds: every RANGED SCALAR held to its declared min
