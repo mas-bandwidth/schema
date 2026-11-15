@@ -1048,6 +1048,15 @@
       "python": "pin"
     },
     {
+      "name": "python-vt-idtable",
+      "when": "pull-request",
+      "why": "the id-table wire's enum and escape kinds (make/python.mk): in a copy of the emitted runtime the enum codec references the wrong variant id, and in another the payload-free skipper accepts a nonzero L; TestPythonVtIdtableNegativeControl must go red on each by name under both pinned interpreters. One SCHEMA_SLOW go test, the cost of the pin cache restore rather than the run.",
+      "targets": [
+        "python-vt-idtable-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",

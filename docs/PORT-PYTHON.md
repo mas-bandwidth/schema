@@ -289,11 +289,12 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
-  the kinds this cut carries. A later card adds its module and one registration
-  line, never an edit to the body walk. `kind_unsupported.py` is the named
-  placeholder for a construct whose descriptor exists but whose codec has not
-  landed; a read or write that reaches it refuses by name.
+  `kind_bool.py`, `kind_int.py`, `kind_enum.py`, `kind_table.py` and
+  `kind_pointer.py` register the kinds this cut carries. A later card adds its
+  module and one registration line, never an edit to the body walk.
+  `kind_unsupported.py` is the named placeholder for a construct whose
+  descriptor exists but whose codec has not landed; a read or write that
+  reaches it refuses by name.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
@@ -309,9 +310,16 @@ generated class per table and per map entry, each with its descriptor
   faster on the floor.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
   by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
-  `kind_unsupported.py` until their cards land.
+  variable class. It also carries the id-table wire's ENUM kind (30): a table
+  enum is the generated class of int constants, the field's descriptor holds
+  its `(value, wire id)` pairs, and the wire carries the variant name's hash
+  as a reference (SPEC-TABLES §3, §5). The ESCAPE (31) and PAYLOAD-FREE (32)
+  kinds are framed by a field the reader cannot name: the escape is skipped
+  by its `L`, the payload-free kind must have `L = 0`, and both count
+  `unknown`. A field the reader can name that rides under either kind is the
+  ordinary kind mismatch. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and
+  unions with table arms have descriptors in this cut and refuse by name
+  through `kind_unsupported.py` until their cards land.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.

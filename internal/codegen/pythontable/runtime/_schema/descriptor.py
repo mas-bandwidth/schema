@@ -29,6 +29,7 @@ class FieldDesc:
         "bound",
         "key_enum",
         "default",
+        "variants",
     )
 
     name: str
@@ -46,6 +47,7 @@ class FieldDesc:
     bound: int
     key_enum: str
     default: Any
+    variants: tuple[tuple[int, int], ...]
 
     def __init__(
         self,
@@ -64,6 +66,7 @@ class FieldDesc:
         bound: int = 0,
         key_enum: str = "",
         default: Any = None,
+        variants: tuple[tuple[int, int], ...] = (),
     ) -> None:
         self.name = name
         self.field_id = field_id
@@ -80,12 +83,13 @@ class FieldDesc:
         self.bound = bound
         self.key_enum = key_enum
         self.default = default
+        self.variants = variants
 
     def is_default(self, value: Any) -> bool:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""
         if self.pointer or self.optional:
             return value is None
-        if self.codec in ("bool", "int", "unsupported"):
+        if self.codec in ("bool", "int", "enum", "unsupported"):
             return bool(value == self.default)
         if self.codec == "table":
             if value is None:

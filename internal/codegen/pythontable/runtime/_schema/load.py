@@ -9,7 +9,7 @@ from typing import Any, TypeVar
 
 from . import InvalidValue, LoadReport, Refused
 from . import descriptor, kinds
-from . import kind_bool, kind_int, kind_pointer, kind_table, kind_unsupported
+from . import kind_bool, kind_enum, kind_int, kind_pointer, kind_table, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
 _T = TypeVar("_T")
@@ -262,12 +262,22 @@ def _skip(reader: Reader, kind: int) -> None:
     if width is not None:
         reader.take(width)
         return
-    if kind in (17, 30):
+    if kind == 17:
         reader.varint()
         return
-    if kind in (12, 13, 14, 16, 31, 32):
+    if kind == 30:
+        reference = reader.varint()
+        if reference > len(reader.ids):
+            raise Refused("wire_damaged", "a variant reference is past the id table")
+        return
+    if kind in (12, 13, 14, 16) or kind == 31:
         length = reader.varint()
         reader.take(length)
+        return
+    if kind == 32:
+        length = reader.varint()
+        if length != 0:
+            raise Refused("wire_damaged", "kind 32 with a nonzero L")
         return
     if kind == 15:
         arm = reader.varint()
