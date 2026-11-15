@@ -36,11 +36,13 @@ class _Table:
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         from .save import write_body
 
-        field_ref = ctx.idref(fd.field_id)
+        # The field's id is numbered before its body's, so the id table is in
+        # the pre-order the Go engine writes.
+        reference = ctx.idref(fd.field_id)
         body = bytearray()
         bw = _body_writer(body)
         write_body(bw, value, ctx, False)
-        w.varint(field_ref)
+        w.varint(reference)
         w.byte(fd.kind)
         w.varint(len(body))
         w.raw(body)

@@ -33,6 +33,7 @@ class FieldDesc:
         "optional",
         "array",
         "bound",
+        "size",
         "key_enum",
         "array_kind",
         "array_min",
@@ -55,6 +56,7 @@ class FieldDesc:
     optional: bool
     array: bool
     bound: int
+    size: int
     key_enum: str
     array_kind: int
     array_min: int
@@ -78,6 +80,7 @@ class FieldDesc:
         optional: bool = False,
         array: bool = False,
         bound: int = 0,
+        size: int = 0,
         key_enum: str = "",
         array_kind: int = 0,
         array_min: int = 0,
@@ -99,6 +102,7 @@ class FieldDesc:
         self.optional = optional
         self.array = array
         self.bound = bound
+        self.size = size
         self.key_enum = key_enum
         self.array_kind = array_kind
         self.array_min = array_min

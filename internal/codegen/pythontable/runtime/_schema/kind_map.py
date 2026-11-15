@@ -84,7 +84,17 @@ class _Map:
             body = sub.take(n)
             entry = entry_cls()
             before = len(ctx.pending)
+            blobs_before = len(ctx.blob_pending)
             read_body(body, entry, ctx)
+            if value_field.codec == "string_blob" or value_field.codec == "bytes_blob":
+                # `map[K]*bytes` and `map[K]*string` are not carried yet: an
+                # entry that holds its value refuses by name, as
+                # kind_unsupported.py refused it before the buffers landed.
+                for owner, _, _ in ctx.blob_pending[blobs_before:]:
+                    if owner is entry:
+                        from .kind_unsupported import _RULE
+
+                        raise Refused("unsupported_kind", _RULE)
             key = getattr(entry, key_field.name)
             if landed and _compare(fd, last, key) >= 0:
                 raise Refused(

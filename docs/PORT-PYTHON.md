@@ -324,9 +324,9 @@ generated class per table and per map entry, each with its descriptor
 
   - `*T` pointers to tables: carried
 
-  - `*bytes`: refused
+  - `*bytes`: carried ([the table blobs](port-python/table-blobs.md))
 
-  - `*string`: refused
+  - `*string`: carried ([the table blobs](port-python/table-blobs.md))
 
   - `?T`: refused
 

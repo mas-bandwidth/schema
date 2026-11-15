@@ -621,6 +621,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		fmt.Fprintf(b, "            optional=%s,\n", pyBool(f.Type.Optional))
 		fmt.Fprintf(b, "            array=%s,\n", pyBool(f.Array != ir.ArrayNone))
 		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
+		fmt.Fprintf(b, "            size=%d,\n", f.Type.Size)
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
 		fmt.Fprintf(b, "            array_kind=%d,\n", int(f.Array))
 		fmt.Fprintf(b, "            array_min=%d,\n", f.ArrayMin)
@@ -964,7 +965,10 @@ func codecOf(f *ir.Field) string {
 	}
 	if f.Type.Pointer {
 		if f.Type.Blob() {
-			return "unsupported"
+			if f.Type.Kind == ir.TString {
+				return "string_blob"
+			}
+			return "bytes_blob"
 		}
 		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
 			return "pointer"
@@ -996,6 +1000,10 @@ func codecOf(f *ir.Field) string {
 		return "bool"
 	case ir.TInt, ir.TFixed, ir.TBits:
 		return "int"
+	case ir.TString:
+		return "string"
+	case ir.TBytes:
+		return "bytes"
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Struct:
@@ -1022,7 +1030,16 @@ func targetName(f *ir.Field) string {
 }
 
 func pythonType(st *ir.Struct, f *ir.Field) string {
-	if f.Type.Pointer || f.Type.Optional {
+	if f.Type.Pointer {
+		if f.Type.Blob() {
+			if f.Type.Kind == ir.TString {
+				return "str | None"
+			}
+			return "bytes | bytearray | memoryview | None"
+		}
+		return "object | None"
+	}
+	if f.Type.Optional {
 		return "object | None"
 	}
 	if f.IsMap() {
@@ -1144,6 +1161,10 @@ func defaultFor(f *ir.Field, codec string) string {
 			return f.DefInt.String()
 		}
 		return "0"
+	case "string":
+		return strconv.Quote(string(f.DefBytes))
+	case "bytes":
+		return "b" + goBytesLiteral(f.DefBytes)
 	case "map":
 		return "{}"
 	}
