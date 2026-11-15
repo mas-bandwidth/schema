@@ -107,10 +107,17 @@ class _Map:
         return out
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
-        from .save import Writer, write_body
+        # Each entry body is written straight from the key and the value, the
+        # bytes write_body gives an entry object (its two fields in order, each
+        # elided at its default, then the end mark) without building one: the
+        # faster of the two shapes measured (docs/PORT-PYTHON.md, Maps bench).
+        from .save import Writer
 
-        entry_cls = _entry(fd)
         key_field, value_field = _entry_fields(fd)
+        key_codec = kinds._REGISTRY[key_field.codec]
+        value_codec = kinds._REGISTRY[value_field.codec]
+        key_default = key_field.is_default
+        value_default = value_field.is_default
         field_ref = ctx.idref(fd.field_id)
         keys = _sorted_keys(fd, value)
         body = bytearray()
@@ -118,11 +125,14 @@ class _Map:
         body_writer.byte(13)
         body_writer.varint(len(keys))
         for key in keys:
-            entry = entry_cls()
-            setattr(entry, key_field.name, key)
-            setattr(entry, value_field.name, value[key])
+            item = value[key]
             entry_body = bytearray()
-            write_body(Writer(entry_body), entry, ctx, False)
+            entry_writer = Writer(entry_body)
+            if not key_default(key):
+                key_codec.write(entry_writer, key_field, key, ctx)
+            if not value_default(item):
+                value_codec.write(entry_writer, value_field, item, ctx)
+            entry_writer.byte(0)
             body_writer.varint(len(entry_body))
             body_writer.raw(entry_body)
         w.varint(field_ref)

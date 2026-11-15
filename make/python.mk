@@ -62,8 +62,9 @@ python-table-core-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonTableCoreNegativeControl' ./internal/codegen/pythontable/ -count=1
 
 # The map cell's negative controls: the map runtime's writer sort is removed,
-# then the reader's ascending/duplicate check, each in a copy, and the pinned
-# probe must go red under each.
+# then the reader's duplicate check, then its descending check, then the
+# ascending order the save numbers a map's nodes in, each in a copy, and the
+# pinned probe must go red under each.
 python-table-maps-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonVtMapsNegativeControl' ./internal/codegen/pythontable/ -count=1
 

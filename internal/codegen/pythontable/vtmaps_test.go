@@ -3,10 +3,14 @@ package pythontable
 // THE MAP CELL on the Python leg (ROADMAP.md, Variable tables, maps;
 // docs/SPEC-TABLES.md §2.8): Go-engine constructs that use a `map[K]V` alone
 // and with the kinds the table frame carries, read through the strict load and
-// saved back byte for byte. The writer holds the ascending key order and the
-// reader refuses a key that is not ascending, a repeated key included.
+// saved back byte for byte. The writer holds the ascending key order, numbers
+// the nodes a map's pointer values reach in that order, and refuses a key or a
+// value outside its type; the reader refuses a key that is not ascending, a
+// repeated key included.
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"testing"
@@ -23,7 +27,15 @@ type pythonVTMapConstruct struct {
 	schema string
 	root   string
 	json   string
-	extra  string
+	// wireLen, when set, is the length the Go engine's wire must have.
+	wireLen int
+	// damaged names wires (pythonVTMapDamagedWire) that the reader must refuse
+	// as wire_damaged.
+	damaged []string
+	// extra runs after the read-then-write; every line of want must appear in
+	// its output.
+	extra string
+	want  []string
 }
 
 var pythonVTMapConstructs = []pythonVTMapConstruct{
@@ -36,28 +48,47 @@ table Root
     values map[int32]int32
 }
 `,
-		root: "Root",
-		json: `{"values":{"-3":-30,"2":20,"0":0}}`,
+		root:    "Root",
+		json:    `{"values":{"-3":-30,"2":20,"0":0}}`,
+		damaged: []string{"duplicate", "descending"},
 		extra: `r = Root()
 r.values = {2: 20, -3: -30, 0: 0}
 print("sorted", str(r.save() == data).lower())
-d = {1: True}
-r = Root()
-r.values = d
-try:
-    r.save()
-    print("invalid wrote")
-except InvalidValue:
-    print("invalid refused", r.values is d, d == {1: True})
-d = {True: 1}
-r = Root()
-r.values = d
-try:
-    r.save()
-    print("invalidkey wrote")
-except InvalidValue:
-    print("invalidkey refused", r.values is d, d == {True: 1})
+outcomes = []
+for d in ({1: True}, {True: 1}, {1 << 31: 1}, {1: 1 << 31}, {-(1 << 31) - 1: 1}, {1: -(1 << 31) - 1}):
+    snapshot = dict(d)
+    r = Root()
+    r.values = d
+    try:
+        r.save()
+        outcomes.append("wrote")
+    except InvalidValue:
+        outcomes.append("refused" if r.values is d and d == snapshot else "touched")
+print("range", " ".join(outcomes))
 `,
+		want: []string{
+			"sorted true",
+			"range refused refused refused refused refused refused",
+		},
+	},
+	{
+		name: "empty",
+		schema: `package probe
+
+table Root
+{
+    values map[int32]int32
+}
+`,
+		root:    "Root",
+		json:    `{"values":{}}`,
+		wireLen: 10,
+		extra: `r = Root()
+r.values = {}
+print("emptysave", str(r.save() == data).lower())
+print("emptyread", Root.load(data).values == {})
+`,
+		want: []string{"emptysave true", "emptyread True"},
 	},
 	{
 		name: "table-value",
@@ -77,6 +108,29 @@ table Root
 `,
 		root: "Root",
 		json: `{"items":{"9":{"count":9,"live":true},"2":{"count":2}},"tail":5}`,
+		extra: `from probe import Item
+a = Item()
+a.count = 9
+a.live = True
+b = Item()
+b.count = 2
+r = Root()
+r.items = {9: a, 2: b}
+r.tail = 5
+print("unordered", str(r.save() == data).lower())
+outcomes = []
+for k in (1 << 32, -1):
+    d = {k: Item()}
+    r = Root()
+    r.items = d
+    try:
+        r.save()
+        outcomes.append("wrote")
+    except InvalidValue:
+        outcomes.append("refused" if r.items is d and len(d) == 1 else "touched")
+print("range", " ".join(outcomes))
+`,
+		want: []string{"unordered true", "range refused refused"},
 	},
 	{
 		name: "pointer-value",
@@ -95,6 +149,32 @@ table Root
 `,
 		root: "Root",
 		json: `{"heads":{"1":{"value":1,"next":{"value":2}},"3":{"value":3}}}`,
+		// Built in descending key order, so a writer that numbered the nodes in
+		// the dict's own order would put node 3 first and write other bytes.
+		extra: `from probe import Node
+n1 = Node()
+n1.value = 1
+n2 = Node()
+n2.value = 2
+n1.next = n2
+n3 = Node()
+n3.value = 3
+r = Root()
+r.heads = {3: n3, 1: n1}
+print("unordered", str(r.save() == data).lower())
+outcomes = []
+for k in (1 << 16, -1):
+    d = {k: Node()}
+    r = Root()
+    r.heads = d
+    try:
+        r.save()
+        outcomes.append("wrote")
+    except InvalidValue:
+        outcomes.append("refused" if r.heads is d and len(d) == 1 else "touched")
+print("range", " ".join(outcomes))
+`,
+		want: []string{"unordered true", "range refused refused"},
 	},
 	{
 		name: "nested-table",
@@ -114,6 +194,22 @@ table Outer
 `,
 		root: "Outer",
 		json: `{"inner":{"by_id":{"1":-1,"200":200},"label":7},"live":true}`,
+		extra: `from probe import Inner
+outcomes = []
+for k, v in ((256, 1), (-1, 1), (1, 1 << 15), (1, -(1 << 15) - 1)):
+    d = {k: v}
+    i = Inner()
+    i.by_id = d
+    o = Outer()
+    o.inner = i
+    try:
+        o.save()
+        outcomes.append("wrote")
+    except InvalidValue:
+        outcomes.append("refused" if i.by_id is d and d == {k: v} else "touched")
+print("range", " ".join(outcomes))
+`,
+		want: []string{"range refused refused refused refused"},
 	},
 	{
 		name: "map-of-maps",
@@ -131,6 +227,26 @@ table Root
 `,
 		root: "Root",
 		json: `{"grid":{"2":{"1":{"n":1},"3":{"n":3}},"1":{"2":{"n":2}}}}`,
+		extra: `from probe import Item
+def item(n: int) -> Item:
+    out = Item()
+    out.n = n
+    return out
+r = Root()
+r.grid = {2: {3: item(3), 1: item(1)}, 1: {2: item(2)}}
+print("unordered", str(r.save() == data).lower())
+outcomes = []
+for d in ({256: {}}, {1: {256: item(1)}}, {1: {-1: item(1)}}):
+    r = Root()
+    r.grid = d
+    try:
+        r.save()
+        outcomes.append("wrote")
+    except InvalidValue:
+        outcomes.append("refused" if r.grid is d else "touched")
+print("range", " ".join(outcomes))
+`,
+		want: []string{"unordered true", "range refused refused refused"},
 	},
 	{
 		name: "bits-value",
@@ -143,6 +259,19 @@ table Root
 `,
 		root: "Root",
 		json: `{"flags":{"2":4095,"5":0}}`,
+		extra: `outcomes = []
+for k, v in ((1, 4096), (1, -1), (256, 1)):
+    d = {k: v}
+    r = Root()
+    r.flags = d
+    try:
+        r.save()
+        outcomes.append("wrote")
+    except InvalidValue:
+        outcomes.append("refused" if r.flags is d and d == {k: v} else "touched")
+print("range", " ".join(outcomes))
+`,
+		want: []string{"range refused refused refused"},
 	},
 }
 
@@ -167,10 +296,40 @@ func pythonVTMapEngineWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 	return wire
 }
 
-// pythonVTMapDuplicateWire writes a map whose entries hold one key twice,
-// through the engine's own encoder: the reader must refuse it, because no
-// conforming writer emits a repeated key.
-func pythonVTMapDuplicateWire(t *testing.T, u *ir.Unit, root string) []byte {
+// pythonVTMapDamagedWire is a wire of the construct's first map that no
+// conforming writer emits. "duplicate" holds one key twice, through the
+// engine's own encoder (its stable sort keeps both entries). "descending"
+// holds two keys in descending order: the encoder always writes ascending, so
+// the wire is the engine's for two distinctive int32 keys with the keys' four
+// bytes swapped in place, which keeps every length and frame intact.
+func pythonVTMapDamagedWire(t *testing.T, u *ir.Unit, root, label string) []byte {
+	t.Helper()
+	switch label {
+	case "duplicate":
+		return pythonVTMapKeyedWire(t, u, root, []int64{2, 2})
+	case "descending":
+		const low, high = 0x3c3c0102, 0x3c3c0203
+		wire := pythonVTMapKeyedWire(t, u, root, []int64{low, high})
+		a := binary.LittleEndian.AppendUint32(nil, low)
+		b := binary.LittleEndian.AppendUint32(nil, high)
+		if bytes.Count(wire, a) != 1 || bytes.Count(wire, b) != 1 {
+			t.Fatalf("the keys' bytes are not unique in the engine's wire %x", wire)
+		}
+		i, j := bytes.Index(wire, a), bytes.Index(wire, b)
+		if i >= j {
+			t.Fatalf("the engine's wire is not ascending: %x", wire)
+		}
+		copy(wire[i:], b)
+		copy(wire[j:], a)
+		return wire
+	}
+	t.Fatalf("no damaged wire %q", label)
+	return nil
+}
+
+// pythonVTMapKeyedWire writes a map whose entries carry the keys given,
+// through the engine's own encoder, which writes them in ascending order.
+func pythonVTMapKeyedWire(t *testing.T, u *ir.Unit, root string, keys []int64) []byte {
 	t.Helper()
 	m := tabletext.NewModel(u)
 	st := u.Tables[root]
@@ -189,17 +348,21 @@ func pythonVTMapDuplicateWire(t *testing.T, u *ir.Unit, root string) []byte {
 		t.Fatalf("table %s declares no map", root)
 	}
 	f := st.Fields[at]
-	entries := make([]tabletext.Cell, 2)
-	for i := range entries {
+	entries := make([]tabletext.Cell, len(keys))
+	for i, key := range keys {
 		entry := m.NewMapEntry(f)
-		entry.Fields[0].Cell.I = 2
+		// a signed cell holds its value in both slots, as the engine's reader
+		// leaves it
+		entry.Fields[0].Cell.I = key
+		entry.Fields[0].Cell.U = uint64(key)
 		entry.Fields[1].Cell.I = int64(20 + i)
+		entry.Fields[1].Cell.U = uint64(20 + i)
 		entries[i] = tabletext.Cell{Tab: entry}
 	}
 	inst.Fields[at].Entries = entries
 	wire, err := tablewire.Encode(m, inst)
 	if err != nil {
-		t.Fatalf("the Go engine does not write the duplicate: %v", err)
+		t.Fatalf("the Go engine does not write the keys %v: %v", keys, err)
 	}
 	return wire
 }
@@ -255,10 +418,14 @@ func pythonVTMapRun(t *testing.T, u *ir.Unit, root string, wire []byte, extra st
 	return out, fail
 }
 
-func pythonVTMapCellFailures(t *testing.T, c pythonVTMapConstruct, wire, duplicate []byte, mutate func(map[string][]byte) error) []string {
+func pythonVTMapCellFailures(t *testing.T, c pythonVTMapConstruct, mutate func(map[string][]byte) error) []string {
 	t.Helper()
 	u := loadUnit(t, c.schema)
+	wire := pythonVTMapEngineWire(t, u, c.root, c.json)
 	var fails []string
+	if c.wireLen != 0 && len(wire) != c.wireLen {
+		fails = append(fails, fmt.Sprintf("the Go engine's wire is %d bytes, want %d", len(wire), c.wireLen))
+	}
 	got, runFail := pythonVTMapRun(t, u, c.root, wire, c.extra, mutate)
 	for name, why := range runFail {
 		fails = append(fails, fmt.Sprintf("%s: %s", name, why))
@@ -280,8 +447,8 @@ func pythonVTMapCellFailures(t *testing.T, c pythonVTMapConstruct, wire, duplica
 		case !strings.Contains(out, "OK\n"):
 			fails = append(fails, fmt.Sprintf("%s: the probe did not finish:\n%s", name, out))
 		}
-		for _, line := range []string{"sorted true", "invalid refused True True", "invalidkey refused True True"} {
-			if strings.Contains(c.extra, strings.SplitN(line, " ", 2)[0]) && !strings.Contains(out, line+"\n") {
+		for _, line := range c.want {
+			if !strings.Contains(out, line+"\n") {
 				fails = append(fails, fmt.Sprintf("%s: %q is absent:\n%s", name, line, out))
 			}
 		}
@@ -289,16 +456,15 @@ func pythonVTMapCellFailures(t *testing.T, c pythonVTMapConstruct, wire, duplica
 	if current != "" && floor != "" && current != floor {
 		fails = append(fails, "the pinned interpreters disagree")
 	}
-	if duplicate == nil {
-		return fails
-	}
-	dup, dupFail := pythonVTMapRun(t, u, c.root, duplicate, c.extra, mutate)
-	for name, why := range dupFail {
-		fails = append(fails, fmt.Sprintf("%s duplicate: %s", name, why))
-	}
-	for name, out := range dup {
-		if !strings.Contains(out, "refused wire_damaged\n") {
-			fails = append(fails, fmt.Sprintf("%s: the duplicate key was not refused:\n%s", name, out))
+	for _, label := range c.damaged {
+		bad, badFail := pythonVTMapRun(t, u, c.root, pythonVTMapDamagedWire(t, u, c.root, label), "", mutate)
+		for name, why := range badFail {
+			fails = append(fails, fmt.Sprintf("%s %s: %s", name, label, why))
+		}
+		for name, out := range bad {
+			if !strings.Contains(out, "refused wire_damaged\n") {
+				fails = append(fails, fmt.Sprintf("%s: the %s keys were not refused:\n%s", name, label, out))
+			}
 		}
 	}
 	return fails
@@ -311,16 +477,10 @@ func TestPythonVtMaps(t *testing.T) {
 	for _, c := range pythonVTMapConstructs {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			u := loadUnit(t, c.schema)
-			wire := pythonVTMapEngineWire(t, u, c.root, c.json)
-			var duplicate []byte
-			if c.name == "plain" {
-				duplicate = pythonVTMapDuplicateWire(t, u, c.root)
-			}
-			for _, f := range pythonVTMapCellFailures(t, c, wire, duplicate, nil) {
+			for _, f := range pythonVTMapCellFailures(t, c, nil) {
 				t.Error(f)
 			}
-			files, err := Generate(u)
+			files, err := Generate(loadUnit(t, c.schema))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -336,17 +496,17 @@ func TestPythonVtMaps(t *testing.T) {
 	}
 }
 
-// TestPythonVtMapsNegativeControl plants, one at a time, the writer's sort and
-// the reader's ascending/duplicate check in a COPY of the map runtime and
-// requires the cell to go red under each.
+// TestPythonVtMapsNegativeControl plants, one at a time, a fault in a COPY of
+// the map runtime — the writer's sort, the reader's duplicate check, the
+// reader's descending check, and the order the save numbers a map's nodes in —
+// and requires the named construct's cell to go red under each.
 //
 // Functional (python pins): run with SCHEMA_SLOW=1.
 func TestPythonVtMapsNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Python interpreters (it runs the emitted table runtime)")
-	plant := func(from, to string) func(map[string][]byte) error {
+	plant := func(path, from, to string) func(map[string][]byte) error {
 		return func(files map[string][]byte) error {
-			const path = "probe/_schema/kind_map.py"
 			src := string(files[path])
 			if strings.Count(src, from) != 1 {
 				return fmt.Errorf("%s carries %q %d times, want 1: the control would be vacuous", path, from, strings.Count(src, from))
@@ -355,20 +515,30 @@ func TestPythonVtMapsNegativeControl(t *testing.T) {
 			return nil
 		}
 	}
-	c := pythonVTMapConstructs[0]
-	u := loadUnit(t, c.schema)
-	wire := pythonVTMapEngineWire(t, u, c.root, c.json)
-	duplicate := pythonVTMapDuplicateWire(t, u, c.root)
+	const kindMap = "probe/_schema/kind_map.py"
+	const save = "probe/_schema/save.py"
+	construct := func(name string) pythonVTMapConstruct {
+		for _, c := range pythonVTMapConstructs {
+			if c.name == name {
+				return c
+			}
+		}
+		t.Fatalf("no construct %s", name)
+		return pythonVTMapConstruct{}
+	}
 	for _, ctl := range []struct {
-		name   string
-		mutate func(map[string][]byte) error
+		name      string
+		construct string
+		mutate    func(map[string][]byte) error
 	}{
-		{"save-sort", plant("return sorted(mapping, key=lambda key: _comparable(key_field, key))", "return list(mapping)")},
-		{"read-duplicate", plant("if landed and _compare(fd, last, key) >= 0:", "if landed and _compare(fd, last, key) > 0:")},
+		{"save-sort", "plain", plant(kindMap, "return sorted(mapping, key=lambda key: _comparable(key_field, key))", "return list(mapping)")},
+		{"read-duplicate", "plain", plant(kindMap, "if landed and _compare(fd, last, key) >= 0:", "if landed and _compare(fd, last, key) > 0:")},
+		{"read-descending", "plain", plant(kindMap, "if landed and _compare(fd, last, key) >= 0:", "if landed and _compare(fd, last, key) == 0:")},
+		{"collect-order", "pointer-value", plant(save, "for key in kind_map._sorted_keys(field, value):", "for key in value:")},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
 			t.Parallel()
-			fails := pythonVTMapCellFailures(t, c, wire, duplicate, ctl.mutate)
+			fails := pythonVTMapCellFailures(t, construct(ctl.construct), ctl.mutate)
 			if len(fails) == 0 {
 				t.Fatalf("%s: the map cell stayed green", ctl.name)
 			}

@@ -1051,7 +1051,7 @@
     {
       "name": "python-table-maps",
       "when": "pull-request",
-      "why": "the map cell's controls (make/python.mk): a copy of the map runtime loses the writer's ascending sort, then the reader's ascending/duplicate check, and TestPythonVtMapsNegativeControl must go red under each. One SCHEMA_SLOW go test under both pinned interpreters, the cost of the pin cache restore rather than the run.",
+      "why": "the map cell's controls (make/python.mk): a copy of the map runtime loses the writer's ascending sort, then the reader's duplicate check, then its descending check, then the ascending order save.py numbers a map's nodes in, and TestPythonVtMapsNegativeControl must go red under each. One SCHEMA_SLOW go test under both pinned interpreters, the cost of the pin cache restore rather than the run.",
       "targets": [
         "python-table-maps-negative-control"
       ],
