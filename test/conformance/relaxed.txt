@@ -109,7 +109,6 @@ cs json-hostile str-zero-escape-unknown-key relax/hostile-rows-cs
 goose json-hostile base64-unpadded relax/hostile-rows-goose
 goose json-hostile str-zero-escape-unknown-key relax/hostile-rows-goose
 js json-hostile base64-unpadded relax/hostile-rows-js
-js json-hostile str-zero-escape-unknown-key relax/hostile-rows-js
 lua json-hostile str-zero-escape-unknown-key relax/hostile-rows-lua
 rust json-hostile str-zero-escape-unknown-key relax/hostile-rows-rust
 c write-refusal-json jref_zero_byte relax/hostile-rows-c

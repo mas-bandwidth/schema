@@ -86,7 +86,7 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-go`: gated again (json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte in the go conformance leg, and the row its hostile-corpus run used to drop from the staged manifest, `make/schema-go-runs-hostile-corpus.mk`).
   - `relax/hostile-rows-goose`: gated again (both hostile rows; the relaxed.txt lines go with the card sm-a1-main-green-relax-and-conformance).
   - `relax/hostile-rows-java`: neither hostile row is relaxed: the JSON read refuses unpadded Base64 and validates a skipped value, so both are gated in the conformance leg and in the port's hostile-corpus run. Its proof cell (`test/proof/in-progress.json`, surface json-hostile/java) still names the slug while that cell's other json-hostile cases fail; it goes, with this entry, in the change that removes that cell.
-  - `relax/hostile-rows-js`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings); jref_zero_byte is gated again. The js text-boundary control does not count its leg's relaxed json-hostile cases.
+  - `relax/hostile-rows-js`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried finding); jref_zero_byte and str-zero-escape-unknown-key are gated again: the JS text writer refuses a zero byte, and the JS reader validates a skipped value. The js text-boundary control does not count its leg's relaxed json-hostile cases.
   - `relax/hostile-rows-lobster`: gated again (jref_zero_byte). The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
   - `relax/hostile-rows-lua`: str-zero-escape-unknown-key only (its JSON read refuses unpadded Base64 and set pad bits; jref_zero_byte is gated again).
   - `relax/hostile-rows-luau`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run).
@@ -243,19 +243,6 @@ Relaxed on 2026-11-15 to get the fast lane green on `main` after a day of
 landings with no gate; each site carries `RELAXED 2026-11-15 (get main
 green)` and its slug.
 
-- `relax/dart-announce-refuses-nested-element`:
-  `internal/codegen/darttable` TestDartAnnounceShapesAsTheEngine drops the
-  cases nested_array_wellformed and keyed_array_of_keyed_array. The engine
-  now refuses an announced list or keyed array whose element is itself a
-  list or keyed array (90b679296); the Dart announceRead still accepts it.
-  Real fix: the Dart announceRead refuses those shapes as the engine does,
-  the two cases want false, and the test's negative control is reworked.
-- `relax/dart-skip-progress-text-list-fixture`:
-  `internal/codegen/darttable` TestDartMessageSkipMakesProgress is skipped.
-  Its zero-progress fixture is a list of lists, which the engine now refuses
-  at announce time. Real fix: a fixture shape the engine admits, following
-  TestMessageSkipRefusesElementWithNoProgress (a text-list element with
-  length bound 0).
 - `relax/go-fixed-read-dead-bytes-zero`: `internal/codegen/gotable/fuzzunit`
   TestGeneratedFixedAgreesWithEngine and TestGeneratedFixedOneVerdictEveryByte
   hold (count and log, not compare) the inputs the generated Go fixed read
