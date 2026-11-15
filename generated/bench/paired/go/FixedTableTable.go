@@ -716,7 +716,7 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -725,8 +725,8 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
-		if why := FixedTableFixedFiniteBody(&values[k]); why != "" {
-			for j := range k + 1 {
+		if why := FixedTableFixedFiniteBody(&values[k : k+1][0]); why != "" {
+			for j := range values[:k+1] {
 				FixedTableReset(&values[j])
 			}
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
@@ -735,8 +735,8 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !FixedTableFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !FixedTableFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				FixedTableReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())

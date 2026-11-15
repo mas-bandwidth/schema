@@ -1392,22 +1392,59 @@ public final class ArmProbe {
             fail("FU2 record 2 mismatch");
         }
 
-        // 3. Real zero-byte control rules out treating every bool/presence as true.
+        // 3. A zero flag is false. Moved off "clear the present byte and ignore
+        // the payload": the optional stays present, so its payload stays live.
         data[body] = 0;
-        data[body + 1] = 0;
         if (tblfu1.FuRootFixed.load(v1, v1.length, data,
                 tblfu1.TableFixed.plan(4096), new short[4096], tblfu1.FuRootFixed.image(), r1) != 3) {
-            fail("FU1 zero-byte control load");
+            fail("FU1 zero-flag control load");
         }
-        if (v1[0].flag || v1[0].notePresent || v1[0].pick.labelled.labelLength != 5) {
-            fail("FU1 zero-byte control values");
+        if (v1[0].flag || !v1[0].notePresent || v1[0].note != 44
+                || v1[0].pick.labelled.labelLength != 5) {
+            fail("FU1 zero-flag control values");
         }
         if (tblfu2.FuRootFixed.load(v2, v2.length, data,
                 tblfu2.TableFixed.plan(4096), new short[4096], tblfu2.FuRootFixed.image(), r2) != 3) {
-            fail("FU2 zero-byte control load");
+            fail("FU2 zero-flag control load");
+        }
+        if (v2[0].flag || !v2[0].notePresent || v2[0].note != 44
+                || v2[0].pick.labelled.labelLength != 5) {
+            fail("FU2 zero-flag control values");
+        }
+
+        // 4. A lawful absent optional: present byte 0 and a zero payload.
+        // Identity and compiled both read it. The note is absent; the label stays.
+        data[body + 1] = 0;
+        data[body + 2] = 0;
+        data[body + 3] = 0;
+        data[body + 4] = 0;
+        data[body + 5] = 0;
+        if (tblfu1.FuRootFixed.load(v1, v1.length, data,
+                tblfu1.TableFixed.plan(4096), new short[4096], tblfu1.FuRootFixed.image(), r1) != 3) {
+            fail("FU1 absent-zero control load");
+        }
+        if (v1[0].flag || v1[0].notePresent || v1[0].pick.labelled.labelLength != 5) {
+            fail("FU1 absent-zero control values");
+        }
+        if (tblfu2.FuRootFixed.load(v2, v2.length, data,
+                tblfu2.TableFixed.plan(4096), new short[4096], tblfu2.FuRootFixed.image(), r2) != 3) {
+            fail("FU2 absent-zero control load");
         }
         if (v2[0].flag || v2[0].notePresent || v2[0].pick.labelled.labelLength != 5) {
-            fail("FU2 zero-byte control values");
+            fail("FU2 absent-zero control values");
+        }
+
+        // 5. Identity only. A present byte of 0 with a non-zero payload refuses
+        // the whole load and leaves the caller's destination as the lawful read
+        // left it. Moved off "a cleared present byte ignores its payload".
+        data[body + 2] = 44;
+        if (tblfu1.FuRootFixed.load(v1, v1.length, data,
+                tblfu1.TableFixed.plan(4096), new short[4096], tblfu1.FuRootFixed.image(), r1) == 3
+                || !r1.refused) {
+            fail("FU1 non-zero absent payload read");
+        }
+        if (v1[0].flag || v1[0].notePresent || v1[0].pick.labelled.labelLength != 5) {
+            fail("FU1 non-zero absent payload wrote the destination");
         }
         System.out.println("ok");
     }

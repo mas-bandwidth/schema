@@ -5102,7 +5102,7 @@ func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixed
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -5113,8 +5113,8 @@ func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixed
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !RangedSignedFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !RangedSignedFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				RangedSignedReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
@@ -5408,7 +5408,7 @@ func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableF
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -5419,8 +5419,8 @@ func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableF
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !RangedUnsignedFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !RangedUnsignedFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				RangedUnsignedReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
@@ -5676,7 +5676,7 @@ func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixed
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -5687,8 +5687,8 @@ func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixed
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !RangedWidthsFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !RangedWidthsFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				RangedWidthsReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
