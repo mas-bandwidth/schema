@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -561,7 +562,14 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 		if len(f.DefBytes) == 0 {
 			return mem + "Length > 0"
 		}
-		return fmt.Sprintf("%sLength !== %d", mem, len(f.DefBytes))
+		// elided only when the length AND the bytes are the default's: a
+		// value of the default's length rides, as the reference's compare
+		// (gotable byteValueRides)
+		parts := []string{fmt.Sprintf("%sLength !== %d", mem, len(f.DefBytes))}
+		for i, c := range f.DefBytes {
+			parts = append(parts, fmt.Sprintf("%s[%d] !== %d", mem, i, c))
+		}
+		return "(" + strings.Join(parts, " || ") + ")"
 	}
 	if f.Array == ir.ArrayCounted {
 		return mem + "Count > 0"

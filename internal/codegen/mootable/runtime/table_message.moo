@@ -1150,7 +1150,9 @@ local function encodeField(c: any, d: any, k: number, fd: any, v: any): boolean
 		return encodeKeyed(c, fd, entry, val)
 	end
 	if s == "str" then
-		if val == nil or val == "" then
+		-- elided only at the declared default, length and bytes both: a value
+		-- of the default's length rides, and so does "" under a non-empty one
+		if val == nil or val == (fd.def or "") then
 			return true
 		end
 		wref(c, entry.slot)
@@ -1160,7 +1162,9 @@ local function encodeField(c: any, d: any, k: number, fd: any, v: any): boolean
 		return fail(c, "invalid_value", fd) -- unbounded text: the form spells no capacity for it
 	end
 	if s == "bytes" then
-		if (v[fd.slot .. "Length"] or 0) == 0 then
+		local n = v[fd.slot .. "Length"] or 0
+		local def = fd.def or ""
+		if n == #def and (n == 0 or (type(val) == "buffer" and n <= buffer.len(val) and buffer.readstring(val, 0, n) == def)) then
 			return true
 		end
 		wref(c, entry.slot)
