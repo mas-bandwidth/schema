@@ -2391,7 +2391,7 @@ active, a writer never produces bytes its own reader refuses.
 | Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 and 10 not yet held |
 | Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 debug; 8 and 10 not yet held |
 | Go | 1–8 every build | 1–8 every build | 1–8 every build, on the flat and the per-field path alike; 10 not yet held |
-| JavaScript | 1–8 every build | 1–8 every build | the flat tier 1–7 every build, whatever `NODE_ENV` says; 8 and 10 not yet held |
+| JavaScript | 1–8 every build | 1–8 every build | 1–8 every build on the flat and runtime tiers, whatever `NODE_ENV` says; 10 not yet held |
 | Elixir | 1–6 and 8 every build (`ArgumentError`); 7 unrepresentable | 1–6 and 8 every build; 7 unrepresentable | 1–7 every build (`ArgumentError`); 8 and 10 not yet held |
 | Lua | 1–8 every build | 1–8 every build | 1–6 every build; 7 raises; 8 and 10 not yet held |
 | Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises; 8 and 10 not yet held |

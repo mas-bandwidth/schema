@@ -647,13 +647,17 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// length in [0, N], align, then the used bytes — the classic
 		// serialize_string framing over a pre-allocated buffer (SPEC §4.7),
 		// Composed from primitives so the N bound and in-place byte storage
-		// stay explicit. The generated reader validates UTF-8. The guard runs
-		// BEFORE the slice, so a stale length never reaches subarray (§6.3).
-		// Interior nulls are writer misuse; the read side rejects them (§4.7).
+		// stay explicit. The guard runs BEFORE the slice, so a stale length
+		// never reaches subarray (§6.3). A string's used bytes are checked by
+		// the same validator its read calls (§5.1 row 8).
 		length := name + "Length"
 		g.emitWriteFoldedNum(length, "0", g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
 			big.NewInt(0), big.NewInt(f.Type.Size), true,
 			" // the length guards the slice (§6.3); out-of-contract writes are refused", ind)
+		if f.Type.Kind == ir.TString {
+			g.needText = true
+			emitWriteText(g.pf, name, length, ind, "false")
+		}
 		g.call(ind, fmt.Sprintf("stream.serializeBytes(%s.subarray(0, %s))", name, length), "")
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
