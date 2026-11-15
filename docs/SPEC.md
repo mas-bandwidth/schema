@@ -2425,7 +2425,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–2 debug; 3–8 every build
 
-  - packet `Write`: 1, 3–7 and 10 debug; 2 unchecked; 8 not yet held
+  - packet `Write`: 1, 3–8 and 10 debug; 2 unchecked
 
 - **Rust**
 
