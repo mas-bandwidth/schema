@@ -378,6 +378,15 @@ namespace Example
 
         public static bool ReadProbeHeader(ReadStream stream, ref ProbeHeader value)
         {
+            if (!ReadProbeHeaderBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadProbeHeaderBody(ReadStream stream, ref ProbeHeader value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeHeaderBatch(ref batch, ref value);
             batch.End();
@@ -482,6 +491,15 @@ namespace Example
         }
 
         public static bool ReadProbeBits(ReadStream stream, ref ProbeBits value)
+        {
+            if (!ReadProbeBitsBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadProbeBitsBody(ReadStream stream, ref ProbeBits value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeBitsBatch(ref batch, ref value);
@@ -650,6 +668,15 @@ namespace Example
 
         public static bool ReadProbeSample(ReadStream stream, ref ProbeSample value)
         {
+            if (!ReadProbeSampleBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadProbeSampleBody(ReadStream stream, ref ProbeSample value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeSampleBatch(ref batch, ref value);
             batch.End();
@@ -784,6 +811,15 @@ namespace Example
 
         public static bool ReadProbeRing(ReadStream stream, ref ProbeRing value)
         {
+            if (!ReadProbeRingBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadProbeRingBody(ReadStream stream, ref ProbeRing value)
+        {
             {
                 uint rawValue = 0;
                 if (!stream.SerializeBits(ref rawValue, 16))
@@ -851,6 +887,15 @@ namespace Example
         }
 
         public static bool ReadProbeSlab(ReadStream stream, ref ProbeSlab value)
+        {
+            if (!ReadProbeSlabBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadProbeSlabBody(ReadStream stream, ref ProbeSlab value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeSlabBatch(ref batch, ref value);
@@ -944,6 +989,15 @@ namespace Example
         }
 
         public static bool ReadProbeShape(ReadStream stream, ref ProbeShape value)
+        {
+            if (!ReadProbeShapeBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadProbeShapeBody(ReadStream stream, ref ProbeShape value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeShapeBatch(ref batch, ref value);
@@ -1040,6 +1094,15 @@ namespace Example
 
         public static bool ReadProbeCollider(ReadStream stream, ref ProbeCollider value)
         {
+            if (!ReadProbeColliderBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadProbeColliderBody(ReadStream stream, ref ProbeCollider value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeColliderBatch(ref batch, ref value);
             batch.End();
@@ -1129,6 +1192,15 @@ namespace Example
 
         public static bool ReadProbeConfig(ReadStream stream, ref ProbeConfig value)
         {
+            if (!ReadProbeConfigBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadProbeConfigBody(ReadStream stream, ref ProbeConfig value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeConfigBatch(ref batch, ref value);
             batch.End();
@@ -1211,6 +1283,15 @@ namespace Example
 
         public static bool ReadProbeArray(ReadStream stream, ref ProbeArray value)
         {
+            if (!ReadProbeArrayBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadProbeArrayBody(ReadStream stream, ref ProbeArray value)
+        {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeArrayBatch(ref batch, ref value);
             batch.End();
@@ -1253,6 +1334,15 @@ namespace Example
         }
 
         public static bool ReadHeartbeat(ReadStream stream, ref Heartbeat value)
+        {
+            if (!ReadHeartbeatBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadHeartbeatBody(ReadStream stream, ref Heartbeat value)
         {
             return true;
         }
@@ -1304,6 +1394,15 @@ namespace Example
         }
 
         public static bool ReadTest(ReadStream stream, ref Test value)
+        {
+            if (!ReadTestBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadTestBody(ReadStream stream, ref Test value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadTestBatch(ref batch, ref value);
@@ -1381,6 +1480,15 @@ namespace Example
 
         public static bool ReadBlock(ReadStream stream, ref Block value)
         {
+            if (!ReadBlockBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadBlockBody(ReadStream stream, ref Block value)
+        {
             if (!stream.SerializeInt(ref value.DataLength, 0, (int)MaxBlockSize)) // the length guards the slice (§6.3)
             {
                 return false;
@@ -1422,6 +1530,15 @@ namespace Example
         }
 
         public static bool ReadChat(ReadStream stream, ref Chat value)
+        {
+            if (!ReadChatBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadChatBody(ReadStream stream, ref Chat value)
         {
             if (!stream.SerializeInt(ref value.TextLength, 0, (int)MaxChatLength)) // the length guards the slice (§6.3)
             {
@@ -1508,6 +1625,15 @@ namespace Example
         }
 
         public static bool ReadProbeReport(ReadStream stream, ref ProbeReport value)
+        {
+            if (!ReadProbeReportBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadProbeReportBody(ReadStream stream, ref ProbeReport value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadProbeReportBatch(ref batch, ref value);
@@ -1681,6 +1807,15 @@ namespace Example
         }
 
         public static bool ReadTestData(ReadStream stream, ref TestData value)
+        {
+            if (!ReadTestDataBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadTestDataBody(ReadStream stream, ref TestData value)
         {
             if (!stream.SerializeInt(ref value.A, -100, 100))
             {
@@ -1859,6 +1994,15 @@ namespace Example
         }
 
         public static bool ReadCompressedProbe(ReadStream stream, ref CompressedProbe value)
+        {
+            if (!ReadCompressedProbeBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadCompressedProbeBody(ReadStream stream, ref CompressedProbe value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadCompressedProbeBatch(ref batch, ref value);

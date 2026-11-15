@@ -2525,7 +2525,7 @@ wcBody = function(s: number, e: number, root: boolean): boolean
 		end
 		local kind = buffer.readu8(wc.b, p)
 		p += 1
-		if id == BuildVersionId or id == MessageVocabularyId then
+		if (id == BuildVersionId or id == MessageVocabularyId) and (not root or not wc.announcement) then
 			return wcFail("wire_damaged") -- an announcement id in a file body
 		elseif id == NodeTableId then
 			if not root or kind ~= 12 then
@@ -2627,11 +2627,12 @@ local function wcGraph(children: { { number } }, blobs: { boolean }): boolean
 	return true
 end
 
--- wireCheck(b, s, e, ids): every wire-alone condition over the root body
--- [s, e). The first refusal's name or nil, and whether a non-finite float
--- rides anywhere in the file.
-local function wireCheck(b: buffer, s: number, e: number, ids: { string }): (string?, boolean)
-	wc = { b = b, ids = ids, edges = {}, fail = nil, nonFinite = false, depth = 0, table = nil }
+-- wireCheck(b, s, e, ids, announcement): every wire-alone condition over the
+-- root body [s, e). The first refusal's name or nil, and whether a non-finite
+-- float rides anywhere in the file. An announcement's body is the one root
+-- body whose transport carries the two reserved announcement ids (§3.3).
+local function wireCheck(b: buffer, s: number, e: number, ids: { string }, announcement: boolean?): (string?, boolean)
+	wc = { b = b, ids = ids, edges = {}, fail = nil, nonFinite = false, depth = 0, table = nil, announcement = announcement == true }
 	local function finish(): (string?, boolean)
 		local fail, nonFinite = wc.fail, wc.nonFinite
 		wc = nil
@@ -2672,6 +2673,13 @@ local function wireCheck(b: buffer, s: number, e: number, ids: { string }): (str
 	end
 	wcGraph(children, blobs)
 	return finish()
+end
+
+-- wireCheckAnnouncement is wireCheck over an announcement's root body
+-- (docs/SPEC-TABLES.md §3.3): the two reserved announcement ids are its
+-- transport, so they are admitted in that body and nowhere else.
+function L.wireCheckAnnouncement(b: buffer, s: number, e: number, ids: any): (string?, boolean)
+	return wireCheck(b, s, e, ids, true)
 end
 
 -- THE VARIABLE FORM'S STRICT READ (§6.5): the one answer for form 1, over

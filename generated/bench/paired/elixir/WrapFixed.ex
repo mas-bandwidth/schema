@@ -217,6 +217,10 @@ defmodule Bench.WrapFixed do
     fixed_table_fixed_write_into(value, <<@fixed_table_hash::little-unsigned-64>>)
   end
 
+  # A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: an empty batch is refused
+  # before a byte is written, by value and in every build.
+  def fixed_table_fixed_save([]), do: {:error, :invalid_value}
+
   def fixed_table_fixed_save(values) when is_list(values) do
     head =
       <<R.file_header(@fixed_table_hash, byte_size(@fixed_table_layout))::binary,
