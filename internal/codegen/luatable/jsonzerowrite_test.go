@@ -20,11 +20,17 @@ func TestLuaJsonWriterRefusesZeroByte(t *testing.T) {
 	work := t.TempDir()
 	schema := `package probe
 
+table Item
+{
+    text string(8)
+}
+
 table Root
 {
     name string(8)
     names []string(8)
     entries map[string(8)]int32
+    slots [3]Item
 }
 `
 	path := filepath.Join(work, "probe.schema")
@@ -53,10 +59,22 @@ local expected = [[{
   ],
   "entries": {
     "good": 7
-  }
+  },
+  "slots": [
+    {
+      "text": ""
+    },
+    {
+      "text": ""
+    },
+    {
+      "text": ""
+    }
+  ]
 }
 ]]
-assert(J.ToJson(T, "Root", clean) == expected, "ordinary text output changed")
+local got = J.ToJson(T, "Root", clean)
+assert(got == expected, "ordinary text output changed: " .. tostring(got))
 
 local string_value = T.NewRoot()
 string_value.name = "a" .. zero .. "b"
@@ -69,6 +87,16 @@ assert(J.ToJson(T, "Root", list_value) == nil, "zero byte in text-list element w
 local map_value = T.NewRoot()
 map_value.entries = { ["a" .. zero .. "b"] = 7 }
 assert(J.ToJson(T, "Root", map_value) == nil, "zero byte in string map key was written")
+-- a nil slot in a fixed array is a hole the writer fills with the zero
+-- element; every slot after it is checked all the same
+local hole_clean = T.NewRoot()
+hole_clean.slots = { nil, nil, { text = "ab" } }
+assert(J.ToJson(T, "Root", hole_clean) ~= nil, "fixed array with a nil slot was refused")
+
+local hole_value = T.NewRoot()
+hole_value.slots = { nil, nil, { text = "a" .. zero .. "b" } }
+assert(J.ToJson(T, "Root", hole_value) == nil, "zero byte after a nil fixed-array slot was written")
+
 print("Lua JSON writer refuses zero bytes")
 `
 	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
