@@ -549,9 +549,9 @@ r[1].tail = 0x7A7A7A7A
 	}
 	script := fmt.Sprintf(`local T = require(%[1]q)
 %[2]s
-local ok, wire = pcall(function() return T.FixedSave(%[3]q, r) end)
-if not ok then
-  print("REFUSED " .. tostring(wire))
+local ok, wire, why = pcall(function() return T.FixedSave(%[3]q, r) end)
+if not ok or (wire == nil and type(why) == "string" and #why > 0) then
+  print("REFUSED " .. tostring(why or wire))
   os.exit(0)
 end
 local f = io.open("out.bin", "wb"); f:write(wire); f:close()
