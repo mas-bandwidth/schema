@@ -368,6 +368,171 @@ public static class TableFixedWire
         return EntryAt(b, i).Size - UnionArmBytes(b, i);
     }
 
+    // View wraps a layout the BUILD laid down (this unit's own, or a locked
+    // lineage entry's) as the view the walk reads. The bytes were checked when
+    // the lock was built; the load path does not re-walk them.
+    public static TableFixedLayoutView View(ReadOnlySpan<byte> bytes)
+    {
+        TableFixedLayoutView v = default;
+        v.Bytes = bytes;
+        v.Count = bytes.Length >= 4 ? (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes) : 0;
+        return v;
+    }
+
+    // EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/rulings.json
+    // fixed-dead-bytes-are-zero; docs/SPEC-TABLES.md §3.4, §13.10;
+    // docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). DeadDead answers
+    // "wire_damaged" when a byte that is not live is not zero, and null
+    // otherwise. The walk follows the WRITER's layout over the record body and
+    // reads the reader's own rows only for the facts a layout entry cannot
+    // carry: whether an array is counted and whether a byte span is bytes.
+    public static string DeadCheck(TableFixedLayoutView theirs, TableFixedLayoutView mine, ReadOnlySpan<TableFixedDst> dst, ReadOnlySpan<byte> body)
+    {
+        if (theirs.Count == 0 || mine.Count == 0 || body.IsEmpty) { return null; }
+        return DeadEntry(theirs, 0, 0, mine, 0, dst, body);
+    }
+
+    private static string DeadZero(ReadOnlySpan<byte> b)
+    {
+        for (int i = 0; i < b.Length; ++i)
+        {
+            if (b[i] != 0) { return "wire_damaged"; }
+        }
+        return null;
+    }
+
+    private static string DeadEntry(TableFixedLayoutView theirs, int ti, uint at, TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, ReadOnlySpan<byte> src)
+    {
+        if (ti < 0 || ti >= theirs.Count || mi < 0 || mi >= mine.Count) { return null; }
+        TableFixedLayoutEntry te = EntryAt(theirs, ti);
+        TableFixedLayoutEntry me = EntryAt(mine, mi);
+        if ((long)at + te.Size > src.Length || (uint)mi >= (uint)dst.Length) { return null; }
+        TableFixedDst d = dst[mi];
+        if (te.Kind != me.Kind && me.Kind != 35) { return null; } // a widen or a kind that moved: no dead span here
+        if (me.Kind == 35 && te.Kind != 35) { return DeadEntry(theirs, ti, at, mine, mi + 1, dst, src); }
+        switch (me.Kind)
+        {
+            case 35: // optional: an absent payload is dead whole
+                {
+                    byte present = src[(int)at];
+                    if (present > 1) { return "wire_damaged"; }
+                    if (present == 0) { return DeadZero(src.Slice((int)at + 1, (int)te.Size - 1)); }
+                    return DeadEntry(theirs, ti + 1, at + 1, mine, mi + 1, dst, src);
+                }
+            case 13: // table: every reader field the writer names, in the writer's order
+                {
+                    int my_child = mi + 1;
+                    for (uint k = 0; k < me.Children; ++k)
+                    {
+                        TableFixedLayoutEntry mc = EntryAt(mine, my_child);
+                        int tc_i = ti + 1;
+                        uint tc_at = at;
+                        for (uint j = 0; j < te.Children; ++j)
+                        {
+                            TableFixedLayoutEntry tc = EntryAt(theirs, tc_i);
+                            if (tc.Id == mc.Id)
+                            {
+                                string why = DeadEntry(theirs, tc_i, tc_at, mine, my_child, dst, src);
+                                if (why != null) { return why; }
+                                break;
+                            }
+                            tc_at += tc.Size;
+                            tc_i += Subtree(theirs, tc_i);
+                        }
+                        my_child += Subtree(mine, my_child);
+                    }
+                    return null;
+                }
+            case 14: // array, and bytes(N) as an array of u8
+                {
+                    if (d.Arg == TextBytes)
+                    {
+                        if (te.Size < 4 || me.Size < 4) { return null; }
+                        int used = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
+                        uint cap = Math.Min(me.Size - 4u, te.Size - 4u);
+                        if (used < 0 || (uint)used > cap) { return null; } // the live length rule refuses this
+                        return DeadZero(src.Slice((int)at + 4 + used, (int)te.Size - 4 - used));
+                    }
+                    TableFixedLayoutEntry tel = EntryAt(theirs, ti + 1);
+                    TableFixedLayoutEntry mel = EntryAt(mine, mi + 1);
+                    uint head = d.Counted != 0 ? 4u : 0u;
+                    if (tel.Size == 0 || mel.Size == 0 || te.Size < head || me.Size < head) { return null; }
+                    uint their_n = (te.Size - head) / tel.Size;
+                    uint my_n = (me.Size - head) / mel.Size;
+                    uint n = Math.Min(their_n, my_n);
+                    if (d.Counted != 0)
+                    {
+                        int count = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
+                        if (count < 0 || (uint)count > n) { return null; } // the live count rule refuses this
+                        string why = DeadZero(src.Slice((int)at + 4 + count * (int)tel.Size, (int)te.Size - 4 - count * (int)tel.Size));
+                        if (why != null) { return why; }
+                        n = (uint)count;
+                    }
+                    for (uint i = 0; i < n; ++i)
+                    {
+                        string why = DeadEntry(theirs, ti + 1, at + head + i * tel.Size, mine, mi + 1, dst, src);
+                        if (why != null) { return why; }
+                    }
+                    return null;
+                }
+            case 16: // enum-keyed array: every slot is live, but its elements may carry dead bytes
+                {
+                    TableFixedLayoutEntry tkey = EntryAt(theirs, ti + 1);
+                    TableFixedLayoutEntry mkey = EntryAt(mine, mi + 1);
+                    int tel = ti + 1 + Subtree(theirs, ti + 1);
+                    int mel = mi + 1 + Subtree(mine, mi + 1);
+                    TableFixedLayoutEntry tee = EntryAt(theirs, tel);
+                    for (uint k = 0; k < mkey.Children; ++k)
+                    {
+                        ulong key_id = EntryAt(mine, mi + 2 + (int)k).Id;
+                        for (uint j = 0; j < tkey.Children; ++j)
+                        {
+                            if (EntryAt(theirs, ti + 2 + (int)j).Id != key_id) { continue; }
+                            string why = DeadEntry(theirs, tel, at + j * tee.Size, mine, mel, dst, src);
+                            if (why != null) { return why; }
+                            break;
+                        }
+                    }
+                    return null;
+                }
+            case 12: // string(N): the bytes past the used length are dead
+                {
+                    if (te.Size < 4 || me.Size < 4) { return null; }
+                    int used = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
+                    uint cap = Math.Min(me.Size - 4u, te.Size - 4u);
+                    if (used < 0 || (uint)used > cap) { return null; } // the live length rule refuses this
+                    return DeadZero(src.Slice((int)at + 4 + used, (int)te.Size - 4 - used));
+                }
+            case 15: // union: tag 0 names no arm, and the span past a narrower arm is dead
+                {
+                    uint tag_bytes = TagBytes(theirs, ti);
+                    ulong tag = 0;
+                    if (tag_bytes == 1) { tag = src[(int)at]; }
+                    else if (tag_bytes == 2) { tag = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)at)); }
+                    else if (tag_bytes == 4) { tag = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)at)); }
+                    else if (tag_bytes == 8) { tag = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)at)); }
+                    if (tag == 0) { return DeadZero(src.Slice((int)at + (int)tag_bytes, (int)te.Size - (int)tag_bytes)); }
+                    if (tag > te.Children) { return null; } // a forged tag refuses in the live pass
+                    int their_arm = ti + 1;
+                    for (uint j = 0; j + 1 < (uint)tag; ++j) { their_arm += Subtree(theirs, their_arm); }
+                    TableFixedLayoutEntry ta = EntryAt(theirs, their_arm);
+                    uint live = tag_bytes + (ta.Kind == 32 ? 0u : ta.Size);
+                    string why = DeadZero(src.Slice((int)at + (int)live, (int)te.Size - (int)live));
+                    if (why != null) { return why; }
+                    int my_arm = mi + 1;
+                    for (uint k = 0; k < me.Children; ++k)
+                    {
+                        TableFixedLayoutEntry ma = EntryAt(mine, my_arm);
+                        if (ma.Id == ta.Id) { return DeadEntry(theirs, their_arm, at + tag_bytes, mine, my_arm, dst, src); }
+                        my_arm += Subtree(mine, my_arm);
+                    }
+                    return null;
+                }
+            default:
+                return null;
+        }
+    }
+
     private static bool LeafSize(byte kind, uint size, out bool isLeaf)
     {
         isLeaf = true;
