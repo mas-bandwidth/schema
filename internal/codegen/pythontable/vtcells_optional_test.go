@@ -1,6 +1,7 @@
 package pythontable
 
 import (
+	"maps"
 	"strings"
 	"testing"
 
@@ -325,9 +326,7 @@ func TestPythonVtOptionalNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	sabotaged := make(map[string][]byte, len(files))
-	for name, data := range files {
-		sabotaged[name] = data
-	}
+	maps.Copy(sabotaged, files)
 	const path = "optional/_schema/kind_optional.py"
 	const anchor = "self._inner(fd).write(w, fd, value, ctx)"
 	text := string(sabotaged[path])
@@ -640,9 +639,7 @@ func TestPythonVtOptionalArraysNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	sabotaged := make(map[string][]byte, len(files))
-	for name, data := range files {
-		sabotaged[name] = data
-	}
+	maps.Copy(sabotaged, files)
 	const path = "optarrays/_schema/kind_optional.py"
 	const anchor = "            _write_array(w, fd, value, ctx)\n"
 	text := string(sabotaged[path])
