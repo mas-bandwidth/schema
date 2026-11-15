@@ -1216,7 +1216,13 @@ debug = 0
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command("cargo", "test", "--workspace", "--no-fail-fast")
+	// `--lib`: every probe is a unit test in its crate's src/lib.rs and no
+	// probe carries a doc test, so the doc-test pass ran rustdoc once per
+	// member, one after another, to run nothing — 58 passes of `running 0
+	// tests`, measured at 13 s of a 17 s run on a 32-core host (2026-11-14),
+	// and the most of what pushed the Rust leg gate past the fleet's
+	// two-minute cap. The test binaries are the same; nothing they run is cut.
+	cmd := exec.Command("cargo", "test", "--workspace", "--no-fail-fast", "--lib")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	out, err := cmd.CombinedOutput()

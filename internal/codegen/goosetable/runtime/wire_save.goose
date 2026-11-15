@@ -44,6 +44,7 @@ struct SaveCtx {
     order: i64[>..<]&,      // the records, by WIRE node index, in save order
     index: i64[>..<]&,      // the save's node index, by wire node index
     open: bool[>..<]&,      // a descent still open, by wire node index
+    sorted: i64[>..<]&,     // the maps' sort stack (map_entry_order)
     root_tab: i64,
     refusal: i64,           // the first refusal (SaveRefuse*), 0 while none
     retain: RetainStore&,
@@ -321,11 +322,16 @@ fn edges_value(c: SaveCtx&, s: i64, d: FieldDesc) {
         return;
     }
     if d.shape == ShapeMap {
-        if !c.vals[s].made { return; }
+        if !c.vals[s].made || c.vals[s].len == 0 { return; }
+        // in the order field_map writes the entries, so a node is numbered
+        // where the wire first reaches it (§3.1)
+        let mark = c.sorted.len;
+        map_entry_order(c.data, c.vals, c.unit.tables[c.vals[c.vals[s].first].tab].fields[0], c.vals[s].first, c.vals[s].len, c.sorted);
         for k in c.vals[s].len {
-            let e = c.vals[s].first + k;
+            let e = c.sorted[mark + k];
             if c.vals[e].made { edges(c, c.vals[e].tab, e); }
         }
+        c.sorted.resize(mark);
         return;
     }
     if d.shape == ShapeArr {
@@ -709,12 +715,16 @@ fn field_map(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64) {
     let start = c.out.len;
     put(c, KindTable);
     put_leb(c, c.vals[s].len as! u64);
+    // the writer derives the order (map_entry_order): the value may hold the
+    // entries in any order, the wire never does
+    let mark = c.sorted.len;
+    map_entry_order(c.data, c.vals, c.unit.tables[t].fields[0], c.vals[s].first, c.vals[s].len, c.sorted);
     for k in c.vals[s].len {
-        let e = c.vals[s].first + k;
         let el = c.out.len;
-        body(c, t, e, false);
+        body(c, t, c.sorted[mark + k], false);
         frame(c, el);
     }
+    c.sorted.resize(mark);
     frame(c, start);
 }
 
@@ -835,12 +845,13 @@ fn save_table(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVa
     var order: i64[>..<] = [];
     var index: i64[>..<] = [];
     var open: bool[>..<] = [];
+    var sorted: i64[>..<] = [];
     var rbytes: u8[>..<] = [];
     var rrecs: RetainRec[>..<] = [];
     var rids: u64[>..<] = [];
     var none = RetainStore { capacity: 0, id_capacity: 0, used: 0, bytes: rbytes, recs: rrecs, ids: rids };
     let at = out.len;
-    var c = SaveCtx { data: data, unit: unit, vals: vals, nodes: nodes, out: out, ids: ids, order: order, index: index, open: open, root_tab: -1, refusal: 0, retain: none, retaining: false, retain_lost: 0 };
+    var c = SaveCtx { data: data, unit: unit, vals: vals, nodes: nodes, out: out, ids: ids, order: order, index: index, open: open, sorted: sorted, root_tab: -1, refusal: 0, retain: none, retaining: false, retain_lost: 0 };
     for d, i in unit.tables { if d.name == root { c.root_tab = i; } }
     if c.root_tab < 0 { return SaveRefuseUnknownRoot; }
     let refusal = save_into(c, root_val);

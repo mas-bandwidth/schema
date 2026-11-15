@@ -169,7 +169,14 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "\tif len(text) != base64.StdEncoding.EncodedLen(len(wire)) {\n")
 			fmt.Fprintf(&b, "\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n")
 			fmt.Fprintf(&b, "\t}\n")
-			fmt.Fprintf(&b, "\tif len(wire) == 0 || wire[0] != 1 { return nil, tableRefuseError(TableRefuseUnknownForm) }\n")
+			if (&tableGen{unit: u}).hasFixedForm(st) && st.FixedDeclared {
+				// A FIXED-CLASS ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4):
+				// the text carrier keeps the form byte, so it carries both the
+				// variable byte its Load still names previous_form and form 3.
+				fmt.Fprintf(&b, "\tif len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) { return nil, tableRefuseError(TableRefuseUnknownForm) }\n")
+			} else {
+				fmt.Fprintf(&b, "\tif len(wire) == 0 || wire[0] != 1 { return nil, tableRefuseError(TableRefuseUnknownForm) }\n")
+			}
 			fmt.Fprintf(&b, "\tvar v %s\n", storageName(u, n))
 			fmt.Fprintf(&b, "\tvar read TableReport\n")
 			fmt.Fprintf(&b, "\tok := %sLoad(&v, wire, &read)\n", n)
@@ -216,22 +223,35 @@ func writeVariableTextCarrier(b *strings.Builder, n, storage string) {
 	b.WriteString("// allowed; a supplied one receives this read's report.\n")
 	fmt.Fprintf(b, "func %sLoadText(text string, report *TableReport) (*%s, error) {\n", n, storage)
 	b.WriteString("\tif report != nil { *report = TableReport{} }\n")
-	b.WriteString("\twire, err := base64.StdEncoding.Strict().DecodeString(text)\n")
+	b.WriteString("\tvar decoded [256]byte\n\tvar stackWire, heapWire []byte\n\tvar err error\n\theap := false\n")
+	b.WriteString("\tif want := base64.StdEncoding.DecodedLen(len(text)); want <= len(decoded) {\n")
+	b.WriteString("\t\tvar n int\n\t\tn, err = base64.StdEncoding.Strict().Decode(decoded[:want], []byte(text))\n")
+	b.WriteString("\t\tstackWire = decoded[:n]\n")
+	b.WriteString("\t} else {\n")
+	b.WriteString("\t\theapWire, err = base64.StdEncoding.Strict().DecodeString(text)\n")
+	b.WriteString("\t\theap = true\n")
+	b.WriteString("\t}\n")
 	b.WriteString("\tif err != nil {\n")
 	b.WriteString("\t\tif _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {\n")
 	b.WriteString("\t\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n")
 	b.WriteString("\t\t}\n")
 	b.WriteString("\t\treturn nil, tableRefuseError(TableRefuseBase64Damaged)\n")
 	b.WriteString("\t}\n")
+	b.WriteString("\twire := stackWire\n\tif heap { wire = heapWire }\n")
 	b.WriteString("\tif len(text) != base64.StdEncoding.EncodedLen(len(wire)) {\n")
 	b.WriteString("\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n")
 	b.WriteString("\t}\n")
-	fmt.Fprintf(b, "\tsize := %sLoadMeasure(wire)\n", n)
-	b.WriteString("\tsize = max(size, 0)\n")
+	fmt.Fprintf(b, "\tsize, measureErr := %sLoadMeasureReason(wire)\n", n)
+	b.WriteString("\tif measureErr == TableRefuseCountOverLength { measureErr = TableRefuseWireDamaged }\n")
+	b.WriteString("\tif measureErr != nil {\n")
+	b.WriteString("\t\tif report != nil { *report = TableReport{}; if reason, ok := measureErr.(TableRefuseReason); ok { report.Refuse(reason, \"\") } else { report.Refuse(TableRefuseWireDamaged, \"\") } }\n")
+	b.WriteString("\t\treturn nil, measureErr\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\tvar load []byte\n\tif heap { load = heapWire } else { load = append([]byte(nil), stackWire...) }\n")
 	fmt.Fprintf(b, "\tvar builder %sBuilder\n", n)
 	b.WriteString("\tif !builder.initSized(size) { return nil, tableRefuseError(TableRefuseAllocationFailed) }\n")
 	b.WriteString("\tvar read TableReport\n")
-	fmt.Fprintf(b, "\tok := %sLoadBuilder(&builder, wire, &read)\n", n)
+	fmt.Fprintf(b, "\tok := %sLoadBuilder(&builder, load, &read)\n", n)
 	b.WriteString("\tif report != nil { *report = read }\n")
 	b.WriteString("\tif !ok {\n")
 	b.WriteString("\t\tbuilder.Shutdown()\n")
@@ -1541,6 +1561,100 @@ func (in *tableJSONIn) scanNumber() (token []byte, integral bool, ok bool) {
 	return in.text[start:in.pos], integral, true
 }
 
+// tableJSONNumberToken bounds a token before strconv converts it. A number's
+// value does not depend on how many zeros spell its mantissa (§16.2), so the
+// trailing zeros fold into the exponent and only the first significant digits
+// remain; past that limit a sticky digit keeps the fact that more followed.
+// Without the trim a long mantissa is longer than strconv's decimal, and the
+// digits it drops would move the value.
+func tableJSONNumberToken(token []byte) []byte {
+	if len(token) <= 800 {
+		return token
+	}
+	const limit = 768
+	i := 0
+	negative := false
+	if token[i] == '-' || token[i] == '+' {
+		negative = token[i] == '-'
+		i++
+	}
+	kept := make([]byte, 0, limit+1)
+	fraction := 0
+	afterPoint := false
+	digits := 0
+	trailing := 0
+	nonzero := false
+	for ; i < len(token); i++ {
+		c := token[i]
+		if c == '.' {
+			afterPoint = true
+			continue
+		}
+		if c == 'e' || c == 'E' {
+			break
+		}
+		if afterPoint {
+			fraction++
+		}
+		if !nonzero {
+			if c == '0' {
+				continue
+			}
+			nonzero = true
+		}
+		digits++
+		if c == '0' {
+			trailing++
+		} else {
+			trailing = 0
+		}
+		if len(kept) < limit {
+			kept = append(kept, c)
+		}
+	}
+	exponent := 0
+	if i < len(token) && (token[i] == 'e' || token[i] == 'E') {
+		i++
+		sign := 1
+		if i < len(token) && (token[i] == '-' || token[i] == '+') {
+			if token[i] == '-' {
+				sign = -1
+			}
+			i++
+		}
+		for ; i < len(token); i++ {
+			if exponent < 1000000 {
+				exponent = exponent*10 + int(token[i]-'0')
+			}
+		}
+		exponent *= sign
+	}
+	if !nonzero {
+		if negative {
+			return []byte("-0")
+		}
+		return []byte("0")
+	}
+	significant := digits - trailing
+	scale := exponent - fraction + trailing
+	var value []byte
+	if significant <= limit {
+		value = kept[:significant]
+	} else {
+		value = kept[:limit]
+		scale += significant - limit
+		value = append(value, '1')
+		scale--
+	}
+	out := make([]byte, 0, len(value)+16)
+	if negative {
+		out = append(out, '-')
+	}
+	out = append(out, value...)
+	out = append(out, 'e')
+	return strconv.AppendInt(out, int64(scale), 10)
+}
+
 // the token's exact double. Go's strconv is locale-free, so unlike the C++
 // walk's strtod there is no decimal point to cross on the way in.
 func tableJSONTokenDouble(token []byte, single bool) float64 {
@@ -1550,7 +1664,8 @@ func tableJSONTokenDouble(token []byte, single bool) float64 {
 	}
 	// an out-of-range token is the only failure a scanned production can
 	// produce, and ParseFloat still hands back the infinity the caller checks
-	value, _ := strconv.ParseFloat(unsafe.String(&token[0], len(token)), bits)
+	bounded := tableJSONNumberToken(token)
+	value, _ := strconv.ParseFloat(unsafe.String(&bounded[0], len(bounded)), bits)
 	return value
 }
 
@@ -2133,7 +2248,6 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 		symbols := 0
 		pad := 0
 		malformed := false
-		nonCanonical := false
 		for _, c := range raw {
 			if malformed {
 				continue
@@ -2160,17 +2274,6 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 				}
 			} else if symbols%4 == 1 {
 				malformed = true
-			} else if symbols%4 != 0 {
-				// Raw standard base64 can decode these unpadded spellings, but
-				// the table writer always emits the padded StdEncoding form.
-				nonCanonical = true
-			}
-			if !malformed && pad > 0 {
-				last := int(tableJSONBase64Decode[raw[len(raw)-pad-1]])
-				if pad == 1 && last&0x03 != 0 || pad == 2 && last&0x0f != 0 {
-					// Like StdEncoding.Strict, reject non-zero discarded pad bits.
-					nonCanonical = true
-				}
 			}
 		}
 		if malformed {
@@ -2179,7 +2282,17 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 			in.report.Refuse(TableRefuseKindMismatch, "")
 			return true
 		}
-		if nonCanonical {
+		// the canonical spelling only, the text the writer writes (§16.8):
+		// padded, and the pad bits zero. A body that decodes but is spelled
+		// any other way keeps the field's default and is counted, as
+		// tabletext refuses it base64_not_canonical.
+		canonical := symbols%4 == 0
+		if pad == 1 {
+			canonical = tableJSONBase64Decode[raw[len(raw)-2]]&0x03 == 0
+		} else if pad == 2 {
+			canonical = tableJSONBase64Decode[raw[len(raw)-3]]&0x0f == 0
+		}
+		if !canonical {
 			in.report.Refuse(TableRefuseBase64NotCanonical, "")
 			return true
 		}

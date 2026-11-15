@@ -618,8 +618,9 @@ end
 
 -- CookMeasure answers the whole file's length (§7.6), -1 when the cook refuses.
 function C.CookMeasure(T, name, v)
-  -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
-  local refused = D.refuse_deprecated(T, name, v)
+  -- a retired variant (docs/SPEC-TABLES.md §2.15) and a value off the write
+  -- contract (docs/SPEC.md §5.1) are refused, by name, before the first byte
+  local refused = D.refuse_write(T, name, v)
   if refused ~= nil then return -1, refused end
   -- the measure refuses what the write refuses: a float that is not finite
   -- (§3.3), named
@@ -634,7 +635,7 @@ end
 -- every multi-byte piece in ORD. The capacity is the measure's answer; short
 -- input refuses and writes nothing.
 local function cook(T, name, v, capacity, order)
-  local refused = D.refuse_deprecated(T, name, v)
+  local refused = D.refuse_write(T, name, v)
   if refused ~= nil then return nil, refused end
   local l, reason = layout(T, name, v)
   if l == nil then return nil, reason or D.refuse_non_finite(T, name, v) end

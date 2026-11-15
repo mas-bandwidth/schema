@@ -151,7 +151,8 @@ func TestFixedMessageRootRetainRefusalElixir(t *testing.T) {
 wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
-{:error,:malformed,report}=T.load("ToolMessage",wire)
+{:error,:previous_form,_}=T.load("ToolMessage",wire)
+{:error,:malformed,report}=T.variable_load("ToolMessage",wire)
 unless report.reason=="wire_damaged", do: raise("hostile kind must refuse: " <> inspect(report))
 {:error,:fixed_root,^zero,^store}=T.load_retain("ToolMessage",wire,store,zero)
 {:error,:fixed_root}=T.measure_retain("ToolMessage",%%{},store)

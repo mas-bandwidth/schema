@@ -896,12 +896,11 @@ static partial class Program
         Check(UtSame(viaPlan, id),
               "arm text: a COMPILED plan lands exactly what the identity plan lands");
 
-        // A TAG PAST THE LAST ARM: None on both paths, and the identity path
-        // counts one clamped. THE COMPILED PLAN COUNTS NOTHING HERE and that
-        // is not an oversight: a plan says what a SELECTED arm does, so
-        // "no arm fired" is not an event any entry of it can see. The tag
-        // still lands None, because the prefill put None there and no entry
-        // wrote over it.
+        // A TAG PAST THE LAST ARM refuses out_of_range on the COMPILED plan
+        // exactly as on the identity one (docs/FIXED-FORM-ALGORITHM.md §4.6
+        // and its bounds-pass row): the union's None const carries the
+        // writer's arm count, and a raw tag past it names nothing the writer
+        // wrote. The record stays at its declared defaults, None included.
         {
             byte[] bad = (byte[])wire.Clone();
             int body = UtBodyAt(bad);
@@ -921,8 +920,8 @@ static partial class Program
             UT.UtRoot bent = UtCompiled(bad, r2);
             Check(bent.Pick.Type == UT.UtPickType.None,
                   "tag past the last arm: the compiled plan lands None too");
-            Check(!r2.Refused,
-                  "tag past the last arm: no entry of a plan can see an arm that did not fire");
+            Check(r2.Refused && r2.Reason == "out_of_range" && !r2.Damaged,
+                  "tag past the last arm: the compiled plan refuses out_of_range too");
         }
 
         // AN ORDINAL PAST THE LAST VARIANT: None (0) on both paths, and BOTH
@@ -1205,15 +1204,18 @@ static partial class Program
         TD.TableReport r = new TD.TableReport();
         TD.TableFixedEntry[] plan = new TD.TableFixedEntry[64];
         long loaded = TD.Schema.WeaponConfigFixedLoad(back, buf, plan, r);
-        Check(loaded == 1, "hostile bool: load one record");
-        Check(r.Unknown == 0 && !r.Refused && r.Widened == 0 && !r.Damaged,
-              "hostile bool: clean report, no counters moved");
-        Check(back.Homing == true, "hostile bool: nonzero byte normalized to true");
+        // STRICT: a bool byte past 1 is wire_damaged on the one read, never
+        // normalized, and the refused record is reset (docs/SPEC-TABLES.md
+        // §3.4; docs/plans/strict-only.md).
+        Check(loaded == -1, "hostile bool: nonzero byte refuses the load");
+        Check(r.Refused && r.Reason == "wire_damaged" && r.Unknown == 0 && r.Widened == 0,
+              "hostile bool: refusal is wire_damaged, no tolerant counters");
+        Check(back.Homing == false, "hostile bool: a refused record is reset, not normalized to true");
 
         byte[] resaved = new byte[buf.Length];
         long savedAgain = TD.Schema.WeaponConfigFixedSave(back, resaved);
         Check(savedAgain == resaved.Length, "hostile bool: resave");
-        Check(resaved[homingOffset] == 1, "hostile bool: resaved byte is strictly 1, not 0x7F");
+        Check(resaved[homingOffset] == 0, "hostile bool: resaved byte is the refused default, not 0x7F");
     }
 
     static void TestFixedAbsentOptionalCase()
@@ -1260,7 +1262,10 @@ static partial class Program
             Array.Copy(absentBytes, present.Name, absentBytes.Length);
             present.NameLength = 6;
             present.LinkPresent = true;
-            present.Link.Value = 0x5A5A5A;
+            // inside value's declared [0, 1000]: a present value off its range
+            // is refused by the write contract (docs/SPEC.md §5.1); the tag's
+            // 0x5A bytes are the ones this half looks for on the wire
+            present.Link.Value = 1000;
             Array.Fill(present.Link.Tag, (byte)0x5A);
             present.Link.TagLength = 4;
             byte[] pw = new byte[(int)P3.Schema.ChainFixedMeasure(1)];

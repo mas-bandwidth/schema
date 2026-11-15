@@ -196,10 +196,11 @@ func TestCFixedNormalizationIsDamageNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "functional negative control: invokes the C compiler (cc) on a mutated C fixed-form artifact")
 	t.Parallel()
 	// Plant the pre-fix answer in the real generated header: bool/present
-	// damage counted as out_of_range instead of wire_damaged.
+	// damage refused as out_of_range instead of wire_damaged by the load's
+	// check pass.
 	out, err := cNormDamageRun(t, [2]string{
-		"if ( damaged != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }",
-		"if ( damaged != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }",
+		"memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;",
+		"memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;",
 	})
 	if err == nil {
 		t.Fatalf("negative control failed: probe exited 0 when wire_damaged was planted back to out_of_range:\n%s", out)

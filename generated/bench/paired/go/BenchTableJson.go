@@ -1183,6 +1183,100 @@ func (in *tableJSONIn) scanNumber() (token []byte, integral bool, ok bool) {
 	return in.text[start:in.pos], integral, true
 }
 
+// tableJSONNumberToken bounds a token before strconv converts it. A number's
+// value does not depend on how many zeros spell its mantissa (§16.2), so the
+// trailing zeros fold into the exponent and only the first significant digits
+// remain; past that limit a sticky digit keeps the fact that more followed.
+// Without the trim a long mantissa is longer than strconv's decimal, and the
+// digits it drops would move the value.
+func tableJSONNumberToken(token []byte) []byte {
+	if len(token) <= 800 {
+		return token
+	}
+	const limit = 768
+	i := 0
+	negative := false
+	if token[i] == '-' || token[i] == '+' {
+		negative = token[i] == '-'
+		i++
+	}
+	kept := make([]byte, 0, limit+1)
+	fraction := 0
+	afterPoint := false
+	digits := 0
+	trailing := 0
+	nonzero := false
+	for ; i < len(token); i++ {
+		c := token[i]
+		if c == '.' {
+			afterPoint = true
+			continue
+		}
+		if c == 'e' || c == 'E' {
+			break
+		}
+		if afterPoint {
+			fraction++
+		}
+		if !nonzero {
+			if c == '0' {
+				continue
+			}
+			nonzero = true
+		}
+		digits++
+		if c == '0' {
+			trailing++
+		} else {
+			trailing = 0
+		}
+		if len(kept) < limit {
+			kept = append(kept, c)
+		}
+	}
+	exponent := 0
+	if i < len(token) && (token[i] == 'e' || token[i] == 'E') {
+		i++
+		sign := 1
+		if i < len(token) && (token[i] == '-' || token[i] == '+') {
+			if token[i] == '-' {
+				sign = -1
+			}
+			i++
+		}
+		for ; i < len(token); i++ {
+			if exponent < 1000000 {
+				exponent = exponent*10 + int(token[i]-'0')
+			}
+		}
+		exponent *= sign
+	}
+	if !nonzero {
+		if negative {
+			return []byte("-0")
+		}
+		return []byte("0")
+	}
+	significant := digits - trailing
+	scale := exponent - fraction + trailing
+	var value []byte
+	if significant <= limit {
+		value = kept[:significant]
+	} else {
+		value = kept[:limit]
+		scale += significant - limit
+		value = append(value, '1')
+		scale--
+	}
+	out := make([]byte, 0, len(value)+16)
+	if negative {
+		out = append(out, '-')
+	}
+	out = append(out, value...)
+	out = append(out, 'e')
+	return strconv.AppendInt(out, int64(scale), 10)
+}
+
 // the token's exact double. Go's strconv is locale-free, so unlike the C++
 // walk's strtod there is no decimal point to cross on the way in.
 func tableJSONTokenDouble(token []byte, single bool) float64 {
@@ -1192,7 +1286,8 @@ func tableJSONTokenDouble(token []byte, single bool) float64 {
 	}
 	// an out-of-range token is the only failure a scanned production can
 	// produce, and ParseFloat still hands back the infinity the caller checks
-	value, _ := strconv.ParseFloat(unsafe.String(&token[0], len(token)), bits)
+	bounded := tableJSONNumberToken(token)
+	value, _ := strconv.ParseFloat(unsafe.String(&bounded[0], len(bounded)), bits)
 	return value
 }
 
@@ -1794,7 +1889,6 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 		symbols := 0
 		pad := 0
 		malformed := false
-		nonCanonical := false
 		for _, c := range raw {
 			if malformed {
 				continue
@@ -1821,17 +1915,6 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 				}
 			} else if symbols%4 == 1 {
 				malformed = true
-			} else if symbols%4 != 0 {
-				// Raw standard base64 can decode these unpadded spellings, but
-				// the table writer always emits the padded StdEncoding form.
-				nonCanonical = true
-			}
-			if !malformed && pad > 0 {
-				last := int(tableJSONBase64Decode[raw[len(raw)-pad-1]])
-				if pad == 1 && last&0x03 != 0 || pad == 2 && last&0x0f != 0 {
-					// Like StdEncoding.Strict, reject non-zero discarded pad bits.
-					nonCanonical = true
-				}
 			}
 		}
 		if malformed {
@@ -1840,7 +1923,17 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 			in.report.Refuse(TableRefuseKindMismatch, "")
 			return true
 		}
-		if nonCanonical {
+		// the canonical spelling only, the text the writer writes (§16.8):
+		// padded, and the pad bits zero. A body that decodes but is spelled
+		// any other way keeps the field's default and is counted, as
+		// tabletext refuses it base64_not_canonical.
+		canonical := symbols%4 == 0
+		if pad == 1 {
+			canonical = tableJSONBase64Decode[raw[len(raw)-2]]&0x03 == 0
+		} else if pad == 2 {
+			canonical = tableJSONBase64Decode[raw[len(raw)-3]]&0x0f == 0
+		}
+		if !canonical {
 			in.report.Refuse(TableRefuseBase64NotCanonical, "")
 			return true
 		}
@@ -4200,7 +4293,7 @@ func FixedTableLoadText(text string, report *TableReport) (*FixedTable, error) {
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v FixedTable

@@ -328,8 +328,20 @@ func TestUnboundedTextHostileControls(t *testing.T) {
 		t.Fatal(r)
 	}
 	field(badInst, "capped").Count = 1
-	if _, err := tablecook.Cook(m, badInst, tablecook.Options{}); err == nil {
-		t.Fatal("Cook accepted unreached slot past live count holding non-empty unbounded text")
+	withDeadSlot, err := tablecook.Cook(m, badInst, tablecook.Options{})
+	if err != nil {
+		t.Fatalf("Cook checked a dead counted slot: %v", err)
+	}
+	liveInst := m.New(root)
+	if !m.Read(liveInst, []byte(`{"capped":["alpha"]}`), &r) || !r.Silent() {
+		t.Fatal(r)
+	}
+	withoutDeadSlot, err := tablecook.Cook(m, liveInst, tablecook.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(withDeadSlot, withoutDeadSlot) {
+		t.Fatal("a counted slot past the live count changed the cooked bytes")
 	}
 }
 

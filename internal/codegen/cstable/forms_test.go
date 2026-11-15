@@ -45,7 +45,7 @@ func TestDeclaredFormsCSharp(t *testing.T) {
  var value = new Probe.Root { Value = 7 }; byte[] bytes = new byte[Probe.Schema.RootMeasure(value)];
  if (Probe.Schema.RootSave(value,bytes) != bytes.Length || !bytes.AsSpan().SequenceEqual(Convert.FromHexString("WIRE_HEX"))) throw new Exception("forms changed populated wire bytes");
  var back = new Probe.Root(); var report = new Probe.TableReport();
- if (!Probe.Schema.RootLoad(back,bytes,report) || back.Value != 7 || report.Malformed || report.Refused) throw new Exception("declared wire load");
+ if (!Probe.Schema.RootLoad(back,bytes,report) || back.Value != 7 || report.Damaged || report.Refused) throw new Exception("declared wire load");
  byte[] fixedBytes = new byte[Probe.Schema.FixedRowFixedMeasure(1)];
  if (Probe.Schema.FixedRowFixedSave(new Probe.FixedRow {Value=7},fixedBytes)!=fixedBytes.Length) throw new Exception("fixed save after forms trim");
  var fixedBack = new Probe.FixedRow();
