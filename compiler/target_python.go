@@ -11,6 +11,9 @@
 package compiler
 
 import (
+	"fmt"
+	"sort"
+
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -38,7 +41,7 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseMaps(u, "python"); err != nil {
 		return nil, err
 	}
-	if err := refuseLists(u, "python"); err != nil {
+	if err := refuseNonPointerLists(u); err != nil {
 		return nil, err
 	}
 	if len(u.Tables) > 0 {
@@ -48,6 +51,33 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 		return nil, err
 	}
 	return python.Generate(u)
+}
+
+// refuseNonPointerLists admits []*T pointer lists into the Python table leg
+// while preserving the named refusal for uncarried []T value lists (and []*blob).
+func refuseNonPointerLists(u *ir.Unit) error {
+	var fields []string
+	for name := range ir.TableClosure(u) {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.IsList() && (!f.Type.Pointer || f.Type.Blob()) {
+				fields = append(fields, name+"."+f.Name)
+			}
+		}
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	sort.Strings(fields)
+	carry, flags := carriers(listTargets)
+	return fmt.Errorf("unit declares an unbounded array in a table closure (%s): a []T is %s only today, and the python form is a named follow-on. Generate with %s, or declare the array at a bound, [..N]T, which is the same bytes (docs/SPEC-TABLES.md §2.9, §11, §15)",
+		englishList(fields), englishList(carry), englishList(flags))
 }
 
 func init() {

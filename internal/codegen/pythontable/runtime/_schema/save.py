@@ -10,7 +10,14 @@ from typing import Any
 
 from . import InvalidValue
 from . import descriptor, kinds
-from . import kind_bool, kind_int, kind_pointer, kind_table, kind_unsupported
+from . import (
+    kind_bool,
+    kind_int,
+    kind_pointer,
+    kind_pointer_array,
+    kind_table,
+    kind_unsupported,
+)
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1
@@ -77,13 +84,17 @@ def measure_table(value: Any) -> int:
     return _encode(value, Writer(None))
 
 
+def _write_form(writer: Writer) -> None:
+    writer.byte(FORM)
+
+
 def _encode(value: Any, writer: Writer) -> int:
     _validate(value, value.descriptor, "", set())
     ctx = Ctx()
     ctx.indices[id(value)] = 1
     ctx.onstack.add(id(value))
     _collect(value, ctx)
-    writer.byte(FORM)
+    _write_form(writer)
     write_body(writer, value, ctx, True)
     for table_id in ctx.ids:
         writer.raw(table_id.to_bytes(8, "little"))
@@ -101,6 +112,8 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
         return
     seen.add(key)
     for field in desc.fields:
+        if not field.guard_holds(value):
+            continue
         current = getattr(value, field.name)
         where = _path(path, field.name)
         if field.codec == "pointer":
@@ -110,6 +123,11 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
             if target is None or not isinstance(current, target):
                 raise InvalidValue(where, f"not a {field.target} or None")
             _validate(current, current.descriptor, where, seen)
+        elif field.codec == "pointer_array":
+            kinds._REGISTRY["pointer_array"].validate(field, current, where)
+            for index, elem in enumerate(current):
+                if elem is not None:
+                    _validate(elem, elem.descriptor, f"{where}[{index}]", seen)
         elif field.codec == "table":
             target = descriptor.by_name(field.target)
             if target is None or not isinstance(current, target):
@@ -122,6 +140,8 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
 def _collect(value: Any, ctx: Ctx) -> None:
     desc: TableDesc = value.descriptor
     for field in desc.fields:
+        if not field.guard_holds(value):
+            continue
         current = getattr(value, field.name)
         if field.codec == "pointer":
             if current is None:
@@ -138,10 +158,43 @@ def _collect(value: Any, ctx: Ctx) -> None:
             ctx.onstack.add(key)
             _collect(current, ctx)
             ctx.onstack.discard(key)
+        elif field.codec == "pointer_array":
+            for index, elem in enumerate(current):
+                if elem is None:
+                    continue
+                key = id(elem)
+                if key in ctx.indices:
+                    if key in ctx.onstack:
+                        raise InvalidValue(
+                            f"{_path(desc.name, field.name)}[{index}]",
+                            "a pointer cycle has no wire form",
+                        )
+                    continue
+                ctx.indices[key] = len(ctx.order) + 2
+                ctx.order.append(elem)
+                ctx.onstack.add(key)
+                _collect(elem, ctx)
+                ctx.onstack.discard(key)
         elif field.codec == "table":
             if field.is_default(current):
                 continue
             _collect(current, ctx)
+
+
+def _write_node_table(writer: Writer, ctx: Ctx) -> None:
+    writer.varint(ctx.idref(NODE_WIRE_ID))
+    writer.byte(12)
+    payload = bytearray()
+    nodes = Writer(payload)
+    nodes.varint(len(ctx.order))
+    for node in ctx.order:
+        nodes.varint(ctx.idref(node.descriptor.type_id))
+        body = bytearray()
+        write_body(Writer(body), node, ctx, False)
+        nodes.varint(len(body))
+        nodes.raw(body)
+    writer.varint(len(payload))
+    writer.raw(payload)
 
 
 def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:
@@ -149,23 +202,13 @@ def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:
     previous = ctx.current
     ctx.current = value
     for field in desc.fields:
+        if not field.guard_holds(value):
+            continue
         current = getattr(value, field.name)
         if field.is_default(current):
             continue
         kinds._REGISTRY[field.codec].write(writer, field, current, ctx)
     if root and ctx.order:
-        writer.varint(ctx.idref(NODE_WIRE_ID))
-        writer.byte(12)
-        payload = bytearray()
-        nodes = Writer(payload)
-        nodes.varint(len(ctx.order))
-        for node in ctx.order:
-            nodes.varint(ctx.idref(node.descriptor.type_id))
-            body = bytearray()
-            write_body(Writer(body), node, ctx, False)
-            nodes.varint(len(body))
-            nodes.raw(body)
-        writer.varint(len(payload))
-        writer.raw(payload)
+        _write_node_table(writer, ctx)
     writer.byte(0)
     ctx.current = previous

@@ -36,10 +36,11 @@ class _Table:
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         from .save import write_body
 
+        ref = ctx.idref(fd.field_id)
         body = bytearray()
         bw = _body_writer(body)
         write_body(bw, value, ctx, False)
-        w.varint(ctx.idref(fd.field_id))
+        w.varint(ref)
         w.byte(fd.kind)
         w.varint(len(body))
         w.raw(body)

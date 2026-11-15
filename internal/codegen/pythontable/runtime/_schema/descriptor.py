@@ -29,6 +29,9 @@ class FieldDesc:
         "bound",
         "key_enum",
         "default",
+        "array_mode",
+        "min_count",
+        "guards",
     )
 
     name: str
@@ -46,6 +49,9 @@ class FieldDesc:
     bound: int
     key_enum: str
     default: Any
+    array_mode: str
+    min_count: int
+    guards: tuple[tuple[str, bool], ...]
 
     def __init__(
         self,
@@ -64,6 +70,9 @@ class FieldDesc:
         bound: int = 0,
         key_enum: str = "",
         default: Any = None,
+        array_mode: str = "",
+        min_count: int = 0,
+        guards: tuple[tuple[str, bool], ...] = (),
     ) -> None:
         self.name = name
         self.field_id = field_id
@@ -80,11 +89,31 @@ class FieldDesc:
         self.bound = bound
         self.key_enum = key_enum
         self.default = default
+        self.array_mode = array_mode
+        self.min_count = min_count
+        self.guards = guards
+
+    def guard_holds(self, owner: Any) -> bool:
+        """Whether every enclosing field guard holds on owner (docs/SPEC-TABLES.md §4)."""
+        for cond_name, want in self.guards:
+            if (getattr(owner, cond_name) is True) != want:
+                return False
+        return True
 
     def is_default(self, value: Any) -> bool:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""
-        if self.pointer or self.optional:
+        if self.optional:
             return value is None
+        if self.codec == "pointer":
+            return value is None
+        if self.codec == "pointer_array":
+            if type(value) is not list:
+                return False
+            if len(value) == 0:
+                return True
+            if self.array_mode != "fixed":
+                return False
+            return all(elem is None for elem in value)
         if self.codec in ("bool", "int", "unsupported"):
             return bool(value == self.default)
         if self.codec == "table":
@@ -92,20 +121,27 @@ class FieldDesc:
                 return True
             if not self.target:
                 return False
-            return bool(value == new_by_name(self.target))
+            desc: TableDesc | None = getattr(value, "descriptor", None)
+            if desc is None:
+                return bool(value == new_by_name(self.target))
+            return all(
+                (not sub.guard_holds(value)) or sub.is_default(getattr(value, sub.name))
+                for sub in desc.fields
+            )
         return bool(value == self.default)
 
 
 class TableDesc:
     """One generated table: its name, type id and fields."""
 
-    __slots__ = ("name", "type_id", "variable", "fields", "by_id")
+    __slots__ = ("name", "type_id", "variable", "fields", "by_id", "reachable_ids")
 
     name: str
     type_id: int
     variable: bool
     fields: tuple[FieldDesc, ...]
     by_id: dict[int, FieldDesc]
+    reachable_ids: frozenset[int]
 
     def __init__(
         self,
@@ -113,12 +149,14 @@ class TableDesc:
         type_id: int,
         variable: bool,
         fields: tuple[FieldDesc, ...],
+        reachable_ids: tuple[int, ...] = (),
     ) -> None:
         self.name = name
         self.type_id = type_id
         self.variable = variable
         self.fields = fields
         self.by_id = {field.field_id: field for field in fields}
+        self.reachable_ids = frozenset(reachable_ids)
 
     def field(self, name: str) -> FieldDesc | None:
         for field in self.fields:
@@ -186,6 +224,10 @@ def by_id(type_id: int) -> type[Any] | None:
 
 def by_name(name: str) -> type[Any] | None:
     return _REGISTRY_BY_NAME.get(name)
+
+
+def _declared_type_ids() -> frozenset[int]:
+    return frozenset(_REGISTRY_BY_ID.keys())
 
 
 def register_union(cls: type[Any]) -> None:

@@ -25,7 +25,8 @@ class _Pointer:
             raise InvalidValue(path, f"not a {fd.target} or None")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
-        ctx.pending.append((ctx.current, fd.name, r.varint()))
+        target_id: int = _target(fd).descriptor.type_id
+        ctx.pending.append((ctx.current, fd.name, False, r.varint(), target_id))
         return None
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:

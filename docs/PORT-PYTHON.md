@@ -299,19 +299,22 @@ generated class per table and per map entry, each with its descriptor
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
   `LoadReport` on success only. `Measure` runs the same walk into a counting
   sink, so measure and save agree by construction.
-- **The shape is measured.** A table whose fields are all bools and integers
-  gets the straight-line generated save/load pair, unrolled with each field
-  descriptor bound to a local; every table, and every construct a later card
-  adds, keeps the descriptor walk over `_schema/kinds.py`. The two shapes run
-  on the same table, under both pinned interpreters, in
-  `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
-  straight-line pair is kept: its save is faster on both pins, and its load is
-  faster on the floor.
+- **The shape is measured.** Every table whose fields are all carried kinds gets
+  the straight-line generated root save/load pair, unrolled with each field
+  descriptor and codec method bound to a local and any field-guard condition
+  emitted inline; the runtime's descriptor walk over `_schema/kinds.py` stays
+  beside it for nested bodies, node records, and tables holding uncarried
+  placeholders. Both shapes run on the same tables under both pinned
+  interpreters in `TestPythonTableCoreShapeBench` and
+  `TestPythonVtPointerArraysShapeBench` (`internal/codegen/pythontable`), and
+  the straight-line pair is kept where measured faster.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
-  `kind_unsupported.py` until their cards land.
+  by-value tables, `*T` pointers to tables, pointer arrays (`[]*T`, `[N]*T`,
+  `[..N]*T` and `[Min..N]*T`), and table field guards (`if`, `if !`, `else` and
+  nested `if`), with a full Form-1 wire-alone framing and pointer-graph check
+  before decode. `*bytes`, `*string`, `?T`, value arrays (`[]T`, `[N]T`,
+  `[..N]T`), `[E]T`, maps and unions with table arms have descriptors in this
+  cut and refuse by name through `kind_unsupported.py` until their cards land.
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.
@@ -337,6 +340,22 @@ generated load is 2% slower on 3.15.2 and 4% faster on 3.11.18. Save and load
 together, the generated pair is 2% faster on 3.15.2 and 11% faster on 3.11.18,
 so the pair is kept. `TestPythonTableCoreShapeBench` re-measures it and holds
 both shapes to the same value.
+
+For pointer arrays and guarded fields, `TestPythonVtPointerArraysShapeBench`
+runs a nine-field table (`[]*Leaf`, `[4]*Leaf`, `[..6]*Leaf`, `if active` with
+`[]*Leaf`, nested `if !muted`, and `else *Leaf`, over shared and null `Leaf`
+nodes) under both pins on a 16-core AMD EPYC 9124 host (minimum of five rounds
+of 5,000 iterations after warm-up, in nanoseconds per operation):
+
+| operation | 3.15.2 generated | 3.15.2 descriptor | 3.11.18 generated | 3.11.18 descriptor |
+|---|---:|---:|---:|---:|
+| save | 35,794 | 36,010 | 33,254 | 34,265 |
+| load | 56,507 | 57,631 | 62,756 | 62,981 |
+
+The generated pair with bound locals and inline guard checks is faster on every
+cell (up to 3% faster on save under 3.11.18 and 2% faster on load under 3.15.2;
+save and load together, 1.5% faster on 3.15.2 and 1.3% faster on 3.11.18), so
+the generated pair is kept for pointer-array and guarded tables as well.
 
 ## IDENTIFIERS
 

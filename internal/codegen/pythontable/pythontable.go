@@ -259,8 +259,8 @@ func emitModule(u *ir.Unit, base string, tables []*ir.Struct, unions []*ir.Union
 	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, FieldDesc, TableDesc, UnionDesc, new_by_name, new_union_by_name, register, register_union\n")
-	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _skip, buffer_view, load_table\n")
-	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _validate as _validate_value, measure_table, save_table\n\n\n")
+	b.WriteString("from ._schema.load import Ctx as _LoadCtx, NODE_WIRE_ID as _NODE_WIRE_ID, Reader as _LoadReader, _body_end, _decode_node_records, _open_file, _resolve, _skip, buffer_view, load_table\n")
+	b.WriteString("from ._schema.save import Ctx as _SaveCtx, Writer as _Writer, _collect as _collect_nodes, _validate as _validate_value, _write_form, _write_node_table, measure_table, save_table\n\n\n")
 	for _, st := range tables {
 		for _, f := range st.Fields {
 			if f.KeyEnum != "" {
@@ -324,8 +324,11 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		}
 		fmt.Fprintf(b, "        return f\"%s(%s)\"\n", name, strings.Join(parts, ", "))
 	}
+	guards := structGuards(st)
+	variable := ir.VariableTables(u)[name]
+	straight := straightLineable(st)
 	b.WriteString("\n    @classmethod\n")
-	if scalarOnly(st) {
+	if straight {
 		fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name)
 		fmt.Fprintf(b, "        return _s_load_%s(cls, data, report)\n", name)
 	} else {
@@ -333,7 +336,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("        return load_table(cls, data, report)\n")
 	}
 	b.WriteString("\n    def save(self) -> bytes:\n")
-	if scalarOnly(st) {
+	if straight {
 		fmt.Fprintf(b, "        return _s_save_%s(self)\n", name)
 	} else {
 		b.WriteString("        return save_table(self)\n")
@@ -343,7 +346,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "%s.descriptor = TableDesc(\n", name)
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(name))
 	fmt.Fprintf(b, "    type_id=%s,\n", hex64(ir.TableWireId(st.WireName())))
-	fmt.Fprintf(b, "    variable=%s,\n", pyBool(ir.VariableTables(u)[name]))
+	fmt.Fprintf(b, "    variable=%s,\n", pyBool(variable))
 	fmt.Fprintf(b, "    fields=(\n")
 	for ordinal, f := range st.Fields {
 		lo, hi := intRange(f)
@@ -367,71 +370,182 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
 		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
+		if mode := arrayMode(f); mode != "" {
+			fmt.Fprintf(b, "            array_mode=%s,\n", strconv.Quote(mode))
+		}
+		if f.ArrayMin != 0 {
+			fmt.Fprintf(b, "            min_count=%d,\n", f.ArrayMin)
+		}
+		if gterms := guards[f.Name]; len(gterms) > 0 {
+			fmt.Fprintf(b, "            guards=%s,\n", formatGuardTuple(gterms))
+		}
 		fmt.Fprintf(b, "        ),\n")
 	}
-	if len(st.Fields) == 1 {
-		b.WriteString("    ),\n")
-	} else {
-		b.WriteString("    ),\n")
+	b.WriteString("    ),\n")
+	if variable {
+		reachable := ir.PointerReachable(st)
+		if len(reachable) > 0 {
+			ids := make([]string, 0, len(reachable))
+			for _, targetSt := range reachable {
+				ids = append(ids, hex64(ir.TableWireId(targetSt.WireName())))
+			}
+			trailing := ""
+			if len(ids) == 1 {
+				trailing = ","
+			}
+			fmt.Fprintf(b, "    reachable_ids=(%s%s),\n", strings.Join(ids, ", "), trailing)
+		}
 	}
 	b.WriteString(")\n")
-	if scalarOnly(st) {
-		emitStraightLine(b, st)
+	if straight {
+		emitStraightLine(b, st, variable, guards)
 	}
 	fmt.Fprintf(b, "register(%s)\n\n\n", name)
 }
 
-// scalarOnly reports whether every field is a bool or an integer the generated
-// straight-line shape can bind directly. A pointer, container or union keeps
-// the descriptor walk.
-func scalarOnly(st *ir.Struct) bool {
-	for _, f := range st.Fields {
-		if f.Type.Pointer || f.Type.Optional || f.IsMap() || f.Array != ir.ArrayNone || f.KeyEnum != "" {
-			return false
+type guardTerm struct {
+	cond string
+	want bool
+}
+
+func structGuards(st *ir.Struct) map[string][]guardTerm {
+	out := map[string][]guardTerm{}
+	var walk func(items []ir.Item, cond []guardTerm)
+	walk = func(items []ir.Item, cond []guardTerm) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if len(cond) > 0 {
+					terms := make([]guardTerm, len(cond))
+					copy(terms, cond)
+					out[item.F.Name] = terms
+				}
+			case *ir.Branch:
+				pos, neg := true, false
+				if item.Neg {
+					pos, neg = false, true
+				}
+				walk(item.Then, append(cond[:len(cond):len(cond)], guardTerm{item.Cond, pos}))
+				walk(item.Else, append(cond[:len(cond):len(cond)], guardTerm{item.Cond, neg}))
+			}
 		}
-		switch codecOf(f) {
-		case "bool", "int":
-		default:
+	}
+	walk(st.Items, nil)
+	return out
+}
+
+func formatGuardTuple(terms []guardTerm) string {
+	parts := make([]string, 0, len(terms))
+	for _, term := range terms {
+		parts = append(parts, fmt.Sprintf("(%s, %s)", strconv.Quote(term.cond), pyBool(term.want)))
+	}
+	if len(parts) == 1 {
+		return "(" + parts[0] + ",)"
+	}
+	return "(" + strings.Join(parts, ", ") + ")"
+}
+
+func formatGuardCond(owner string, terms []guardTerm) string {
+	parts := make([]string, 0, len(terms))
+	for _, term := range terms {
+		if term.want {
+			parts = append(parts, fmt.Sprintf("(%s.%s is True)", owner, term.cond))
+		} else {
+			parts = append(parts, fmt.Sprintf("(%s.%s is not True)", owner, term.cond))
+		}
+	}
+	return strings.Join(parts, " and ")
+}
+
+func arrayMode(f *ir.Field) string {
+	switch f.Array {
+	case ir.ArrayFixed:
+		return "fixed"
+	case ir.ArrayCounted:
+		return "counted"
+	case ir.ArrayList:
+		return "list"
+	}
+	return ""
+}
+
+// straightLineable reports whether every field of st is carried by an active
+// codec so generated straight-line root save/load with bound locals can run.
+func straightLineable(st *ir.Struct) bool {
+	for _, f := range st.Fields {
+		if codecOf(f) == "unsupported" {
 			return false
 		}
 	}
 	return true
 }
 
-// emitStraightLine emits the straight-line shape for a table whose fields are
-// all bools and integers (docs/PORT-PYTHON.md, THE TABLE FRAME; D1): the field
-// walk is unrolled with each field descriptor bound to a local, against the
-// runtime's descriptor walk over the same wire. The bench keeps the faster.
-func emitStraightLine(b *strings.Builder, st *ir.Struct) {
+// emitStraightLine emits the straight-line root save/load pair with field
+// descriptors and codec methods bound to locals (docs/PORT-PYTHON.md, THE
+// TABLE FRAME; D1), measured against the generic descriptor walk.
+func emitStraightLine(b *strings.Builder, st *ir.Struct, variable bool, guards map[string][]guardTerm) {
 	name := st.Name
 	fmt.Fprintf(b, "def _s_save_%s(value: %s) -> bytes:\n", name, name)
 	b.WriteString("    _validate_value(value, value.descriptor, \"\", set())\n")
 	b.WriteString("    ctx = _SaveCtx()\n")
 	b.WriteString("    ctx.indices[id(value)] = 1\n")
 	b.WriteString("    ctx.onstack.add(id(value))\n")
+	if variable {
+		b.WriteString("    _collect_nodes(value, ctx)\n")
+	}
 	b.WriteString("    sink = bytearray()\n")
 	b.WriteString("    writer = _Writer(sink)\n")
-	b.WriteString("    writer.byte(_FORM)\n")
-	b.WriteString("    fields = value.descriptor.fields\n")
-	b.WriteString("    current: object\n")
-	for i, f := range st.Fields {
-		fmt.Fprintf(b, "    current = value.%s\n", f.Name)
-		fmt.Fprintf(b, "    if not fields[%d].is_default(current):\n", i)
-		fmt.Fprintf(b, "        _s_kinds._REGISTRY[%q].write(writer, fields[%d], current, ctx)\n", codecOf(f), i)
+	b.WriteString("    _write_form(writer)\n")
+	b.WriteString("    ctx.current = value\n")
+	if len(st.Fields) > 0 {
+		b.WriteString("    fields = value.descriptor.fields\n")
+		b.WriteString("    reg = _s_kinds._REGISTRY\n")
+		for i, f := range st.Fields {
+			fmt.Fprintf(b, "    f%d = fields[%d]\n", i, i)
+			fmt.Fprintf(b, "    w%d = reg[%q].write\n", i, codecOf(f))
+		}
+		b.WriteString("    current: object\n")
+		for i, f := range st.Fields {
+			ind := "    "
+			if gterms := guards[f.Name]; len(gterms) > 0 {
+				fmt.Fprintf(b, "    if %s:\n", formatGuardCond("value", gterms))
+				ind = "        "
+			}
+			fmt.Fprintf(b, "%scurrent = value.%s\n", ind, f.Name)
+			fmt.Fprintf(b, "%sif not f%d.is_default(current):\n", ind, i)
+			fmt.Fprintf(b, "%s    w%d(writer, f%d, current, ctx)\n", ind, i, i)
+		}
+	}
+	if variable {
+		b.WriteString("    if ctx.order:\n")
+		b.WriteString("        _write_node_table(writer, ctx)\n")
 	}
 	b.WriteString("    writer.byte(0)\n")
 	b.WriteString("    for table_id in ctx.ids:\n")
 	b.WriteString("        writer.raw(table_id.to_bytes(8, \"little\"))\n")
 	b.WriteString("    writer.raw(len(ctx.ids).to_bytes(8, \"little\"))\n")
 	b.WriteString("    return bytes(sink)\n\n")
+
 	fmt.Fprintf(b, "def _s_load_%s(cls: type[%s], data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name, name, name)
 	b.WriteString("    view = buffer_view(data)\n")
-	b.WriteString("    ids = _id_table(view)\n")
-	b.WriteString("    ctx = _LoadCtx(ids)\n")
+	b.WriteString("    ids, records, non_finite = _open_file(view)\n")
+	fmt.Fprintf(b, "    ctx = _LoadCtx(ids, %s)\n", pyBool(variable))
 	b.WriteString("    obj = cls()\n")
 	b.WriteString("    ctx.root = obj\n")
+	b.WriteString("    ctx.current = obj\n")
+	if variable {
+		b.WriteString("    if records:\n")
+		b.WriteString("        _decode_node_records(cls.descriptor, records, ctx)\n")
+	}
 	b.WriteString("    reader = _LoadReader(view, 1, _body_end(view), ids)\n")
-	b.WriteString("    fields = obj.descriptor.fields\n")
+	if len(st.Fields) > 0 {
+		b.WriteString("    fields = obj.descriptor.fields\n")
+		b.WriteString("    reg = _s_kinds._REGISTRY\n")
+		for i, f := range st.Fields {
+			fmt.Fprintf(b, "    f%d = fields[%d]\n", i, i)
+			fmt.Fprintf(b, "    r%d = reg[%q].read\n", i, codecOf(f))
+		}
+	}
 	b.WriteString("    seen: set[int] = set()\n")
 	b.WriteString("    while True:\n")
 	b.WriteString("        reference = reader.varint()\n")
@@ -439,18 +553,23 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("            break\n")
 	b.WriteString("        field_id = reader.id_at(reference)\n")
 	b.WriteString("        kind = reader.byte()\n")
+	b.WriteString("        if field_id == _NODE_WIRE_ID:\n")
+	b.WriteString("            reader.take(reader.varint())\n")
+	b.WriteString("            continue\n")
 	for i, f := range st.Fields {
+		fidHex := hex64(ir.TableFieldWireId(f))
+		fkind := ir.TableWireFieldKind(f)
 		if i == 0 {
-			fmt.Fprintf(b, "        if field_id == fields[%d].field_id:\n", i)
+			fmt.Fprintf(b, "        if field_id == %s:\n", fidHex)
 		} else {
-			fmt.Fprintf(b, "        elif field_id == fields[%d].field_id:\n", i)
+			fmt.Fprintf(b, "        elif field_id == %s:\n", fidHex)
 		}
 		b.WriteString("            if field_id in seen:\n")
 		b.WriteString("                raise Refused(\"wire_damaged\", \"a body carries one field twice\")\n")
 		b.WriteString("            seen.add(field_id)\n")
-		fmt.Fprintf(b, "            if kind != fields[%d].kind:\n", i)
-		fmt.Fprintf(b, "                raise Refused(\"kind_mismatch\", f\"{obj.descriptor.name}.{fields[%d].name} rides under kind {kind}, not {fields[%d].kind}\")\n", i, i)
-		fmt.Fprintf(b, "            obj.%s = _s_kinds._REGISTRY[fields[%d].codec].read(reader, fields[%d], ctx)\n", f.Name, i, i)
+		fmt.Fprintf(b, "            if kind != %d:\n", fkind)
+		fmt.Fprintf(b, "                raise Refused(\"kind_mismatch\", f\"{obj.descriptor.name}.%s rides under kind {kind}, not %d\")\n", f.Name, fkind)
+		fmt.Fprintf(b, "            obj.%s = r%d(reader, f%d, ctx)\n", f.Name, i, i)
 	}
 	if len(st.Fields) > 0 {
 		b.WriteString("        else:\n")
@@ -463,6 +582,8 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("    if reader.pos != reader.end:\n")
 	b.WriteString("        raise Refused(\"wire_damaged\", \"bytes between the root terminator and the id table\")\n")
 	b.WriteString("    _resolve(ctx)\n")
+	b.WriteString("    if non_finite:\n")
+	b.WriteString("        raise Refused(\"non_finite_float\", non_finite)\n")
 	b.WriteString("    if report is not None:\n")
 	b.WriteString("        report.unknown = ctx.unknown\n")
 	b.WriteString("        report.widened = 0\n")
@@ -642,16 +763,22 @@ func packageInit(u *ir.Unit, bases []string, byFile map[string][]*ir.Struct, uni
 }
 
 func codecOf(f *ir.Field) string {
+	if f.IsMap() || f.KeyEnum != "" || f.Type.Optional {
+		return "unsupported"
+	}
 	if f.Type.Pointer {
 		if f.Type.Blob() {
 			return "unsupported"
 		}
 		if _, ok := f.Type.Ref.(*ir.Struct); ok {
+			if f.Array != ir.ArrayNone {
+				return "pointer_array"
+			}
 			return "pointer"
 		}
 		return "unsupported"
 	}
-	if f.Array != ir.ArrayNone || f.IsMap() || f.KeyEnum != "" || f.Type.Optional {
+	if f.Array != ir.ArrayNone {
 		return "unsupported"
 	}
 	switch f.Type.Kind {
@@ -681,7 +808,7 @@ func targetName(f *ir.Field) string {
 }
 
 func pythonType(st *ir.Struct, f *ir.Field) string {
-	if f.Type.Pointer || f.Type.Optional {
+	if f.Type.Optional {
 		return "object | None"
 	}
 	if f.IsMap() {
@@ -692,6 +819,9 @@ func pythonType(st *ir.Struct, f *ir.Field) string {
 			return keyedClassName(st.Name, f)
 		}
 		return "list[object]"
+	}
+	if f.Type.Pointer {
+		return "object | None"
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -718,7 +848,7 @@ func pythonType(st *ir.Struct, f *ir.Field) string {
 // VALUE MAPPING): a container before its element's kind, so an array is never
 // one element and a map is never a scalar.
 func defaultExpr(owner string, f *ir.Field) string {
-	if f.Type.Pointer || f.Type.Optional {
+	if f.Type.Optional {
 		return "None"
 	}
 	if f.IsMap() {
@@ -744,6 +874,9 @@ func defaultExpr(owner string, f *ir.Field) string {
 			values = append(values, elem)
 		}
 		return "[" + strings.Join(values, ", ") + "]"
+	}
+	if f.Type.Pointer {
+		return "None"
 	}
 	return valueDefault(f)
 }
