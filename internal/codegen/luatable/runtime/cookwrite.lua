@@ -298,8 +298,9 @@ write_ref = function(_T, _f, x, at, w, index)
 end
 
 -- write_array writes a fixed, counted or enum-keyed array's record storage
--- (§7.2): EVERY slot is written, a counted array's slots past the live count
--- taking the value-initialized element.
+-- (§7.2): a fixed or enum-keyed array writes every slot; a counted array
+-- writes its live slots only, so the slots past the count stay zero byte for
+-- byte the tool's file (docs/rulings.json fixed-dead-bytes-are-zero).
 write_array = function(T, f, x, at, w, index)
   if f.list then return true end
   x = x or {}
@@ -307,17 +308,12 @@ write_array = function(T, f, x, at, w, index)
   if not f.fixed and f.keyed == nil then
     local used = math.min(#x, n)
     put_uint(w, at + (f.companion or 0), used, 4)
-    for i = 1, n do
-      local e = x[i]
-      if e == nil then e = zero_elem(T, f.elem) end
-      if not write_field_value(T, f.elem, e, at + (i - 1) * f.elem_step, w, index) then return nil end
-    end
-  else
-    for i = 1, n do
-      local e = x[i]
-      if e == nil then e = zero_elem(T, f.elem) end
-      if not write_field_value(T, f.elem, e, at + (i - 1) * f.elem_step, w, index) then return nil end
-    end
+    n = used
+  end
+  for i = 1, n do
+    local e = x[i]
+    if e == nil then e = zero_elem(T, f.elem) end
+    if not write_field_value(T, f.elem, e, at + (i - 1) * f.elem_step, w, index) then return nil end
   end
   return true
 end

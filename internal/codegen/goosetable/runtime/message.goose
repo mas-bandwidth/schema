@@ -629,6 +629,10 @@ struct MsgReader {
     widened: i64 = 0,
     oor: i64 = 0,
     depth: i64 = 0,
+    // seen is the skip walk's id scratch: one body's or keyed array's ids
+    // from its mark, so a repeated id is found without a local the recursive
+    // walk could not carry (§3.3, §4).
+    seen: u64[>..],
 }
 
 fn msg_has(r: MsgReader&, n: i64) -> bool {
@@ -805,7 +809,17 @@ fn msg_run_bits(r: MsgReader&, e: i64) -> i64 {
     if elem == 0 || elem == 32 { return 0; }
     let inner = r.voc.entries[e].inner;
     if inner < 0 { return -1; }
-    return r.voc.entries[inner].bits;
+    let width = r.voc.entries[inner].bits;
+    // A FLOAT AND A RANGED OR QUANTIZED ELEMENT CARRY A VALUE CONDITION the
+    // wire and the announcement decide (finiteness, an index at or below its
+    // count), so they are WALKED through the same checks a named field takes
+    // rather than stepped over arithmetically (§3.3, §4).
+    if width > 0 {
+        if elem == 10 || elem == 11 { return -1; }
+        let packing = r.voc.entries[inner].packing;
+        if packing == 1 || packing == 2 { return -1; }
+    }
+    return width;
 }
 
 // msg_skip_run steps over n elements of one fixed width in one step.
@@ -835,10 +849,16 @@ recursive fn msg_skip(r: MsgReader&, e: i64) -> bool {
         let arm = msg_arm(r);
         if !r.ok { return false; }
         if arm < 0 { return true; }
-        r.depth += 1;
-        let ok = msg_skip(r, arm);
-        r.depth -= 1;
-        return ok;
+        // A SCALAR ARM ADDS NO LEVEL (§3.3): only a structural arm — a
+        // nested body, an array, a keyed array or a union — descends.
+        let arm_kind = r.voc.entries[arm].kind;
+        if arm_kind == 13 || arm_kind == 14 || arm_kind == 15 || arm_kind == 16 {
+            r.depth += 1;
+            let ok = msg_skip(r, arm);
+            r.depth -= 1;
+            return ok;
+        }
+        return msg_skip(r, arm);
     }
     if kind == 13 {
         r.depth += 1;
@@ -852,8 +872,13 @@ recursive fn msg_skip(r: MsgReader&, e: i64) -> bool {
     }
     let max = r.voc.entries[e].max;
     if kind == 12 {
+        // THE STRING'S BYTES ARE READ, NOT MERELY STEPPED OVER: well-formed
+        // UTF-8 with no zero byte is the condition a named string's read
+        // applies, and a value the reader skips is held to it (§3.3, §4).
         let n = msg_get(r, msg_bits_required(0, max));
         if !r.ok || !msg_align_read(r) { return false; }
+        if r.end < r.pos || n > ((r.end - r.pos) / 8) as! u64 { return false; }
+        if !fixed_utf8_ok(r.b, r.pos >> 3, n as! i64) { return msg_damage(r); }
         return msg_skip_run(r, n, 8);
     }
     if kind == 31 {
@@ -862,65 +887,196 @@ recursive fn msg_skip(r: MsgReader&, e: i64) -> bool {
         if !r.ok { return false; }
         return msg_skip_run(r, n, 8);
     }
+    if kind == 10 {
+        // A FLOAT IS FINITE, AND A QUANTIZED FLOAT'S INDEX IS AT MOST ITS
+        // ANNOUNCED COUNT, on the skip path as on a named read (§3.3, §4).
+        msg_f32(r, e);
+        return r.ok;
+    }
+    if kind == 11 {
+        msg_f64(r, e);
+        return r.ok;
+    }
     if kind == 14 || kind == 16 {
-        let min = r.voc.entries[e].min;
-        var n: u64 = min as! u64;
-        var width = msg_bits_required(min, max);
-        if kind == 16 {
-            width = msg_bits_required(0, max);
-            n = 0;
-        }
-        if width > 0 {
-            n = msg_get(r, width);
-            if !r.ok { return false; }
-            if kind == 14 { n += min as! u64; }
-        }
-        let elem = r.voc.entries[e].elem;
-        if kind == 14 && elem == 6 && !msg_align_read(r) { return false; }
-        let run = msg_run_bits(r, e);
-        if run >= 0 { return msg_skip_run(r, n, run); }
-        let inner = r.voc.entries[e].inner;
-        var i: u64 = 0;
-        while i < n {
-            let at = r.pos;
-            if kind == 16 {
-                msg_get(r, r.voc.ref_bits);
-                if !r.ok { return false; }
-            }
-            var ok = false;
-            if inner >= 0 {
-                r.depth += 1;
-                ok = msg_skip(r, inner);
-                r.depth -= 1;
-            } else {
-                ok = elem == 0 || elem == 32;
-            }
-            if !ok { return false; }
-            // A WALKED ELEMENT THAT CONSUMED NO BITS: the rest of the run is
-            // stepped in one, and a count the bits left cannot back is damage
-            if r.pos == at {
-                if n - i - 1 > (r.end - r.pos) as! u64 { return false; }
-                return true;
-            }
-            i += 1;
-        }
-        return true;
+        return msg_skip_array(r, e);
     }
     let width = r.voc.entries[e].bits;
     if width < 0 { return false; }
+    if width == 0 { return true; }
+    // A RANGED INTEGER'S OFFSET IS RECONSTRUCTED onto its base and held to the
+    // KIND'S OWN DOMAIN: the offset's bits can spell a value past the sender's
+    // maximum whenever the range is not one less than a power of two, and no
+    // conforming writer emits one (§3.3, §4). A width of zero is arithmetic.
+    if r.voc.entries[e].packing == 1 {
+        return msg_skip_ranged(r, e, width);
+    }
     return msg_skip_bits(r, width);
 }
 
-// msg_skip_body walks a nested body it cannot name, field by field.
-fn msg_skip_body(r: MsgReader&) -> bool {
-    loop {
-        let ref = msg_get(r, r.voc.ref_bits);
-        if !r.ok { return false; }
-        if ref == 0 { return true; }
-        if ref > r.voc.count as! u64 { return false; }
-        if !msg_skip(r, (ref - 1) as! i64) { return false; }
+// msg_kind_signed reports whether an integer-shaped kind's bytes are two's
+// complement (ir.TableKindSigned), the 128-bit pair included.
+fn msg_kind_signed(k: u8) -> bool {
+    return (k >= 2 && k <= 5) || k == 18 || (k >= 20 && k <= 24);
+}
+
+// msg_skip_ranged reads a ranged integer's offset, adds its announced base
+// across both lanes, and refuses out_of_range where the value falls outside
+// its kind (§3.3, §4). A value wider than the kind is out of range, not a
+// wrapped one.
+fn msg_skip_ranged(r: MsgReader&, e: i64, width: i64) -> bool {
+    let kind = r.voc.entries[e].kind;
+    let wide = msg_wide_kind(kind);
+    var lo: u64 = 0;
+    var hi: u64 = 0;
+    if wide && width > 64 {
+        lo = msg_get(r, 64);
+        hi = msg_get(r, width - 64);
+    } else {
+        lo = msg_get(r, width);
     }
+    if !r.ok { return false; }
+    let base_lo = r.voc.entries[e].base_lo;
+    var base_hi: u64 = 0;
+    if wide {
+        base_hi = r.voc.entries[e].base_hi;
+    } else if msg_kind_signed(kind) && (base_lo as! i64) < 0 {
+        base_hi = 0xFFFFFFFFFFFFFFFF;
+    }
+    let off_lo = lo;
+    lo = off_lo + base_lo;
+    let carry: u64 = if lo < off_lo { 1 } else { 0 };
+    hi = hi + base_hi + carry;
+    if !msg_kind_lanes_hold(kind, lo, hi) {
+        return msg_refuse_read(r, MsgRefuseOutOfRange);
+    }
+    return true;
+}
+
+// msg_kind_lanes_hold reports whether a reconstructed value's two's-complement
+// lanes lie in its kind's own domain, the widest range a declaration of that
+// kind can announce (§3.3). A narrow kind's lanes must show the 64-bit sum
+// whole — a sign extension or a zero high lane — so a carry past 64 bits
+// cannot wrap back inside the range.
+fn msg_kind_lanes_hold(k: u8, lo: u64, hi: u64) -> bool {
+    let bits = msg_kind_bits(k);
+    if msg_kind_signed(k) {
+        if bits >= 128 { return true; }
+        let sign: u64 = if (lo >> 63) != 0 { 0xFFFFFFFFFFFFFFFF } else { 0 };
+        if hi != sign { return false; }
+        if bits == 64 { return true; }
+        let v = lo as! i64;
+        let half: i64 = 1 << ((bits - 1) as! u64);
+        return v >= -half && v <= half - 1;
+    }
+    if bits >= 128 { return true; }
+    if hi != 0 { return false; }
+    if bits == 64 { return true; }
+    let top: u64 = (1 << (bits as! u64)) - 1;
+    return lo <= top;
+}
+
+// msg_skip_seen records one id in the skip walk's scratch from `mark`, and
+// answers whether it was already there (§3.3, §4: an id twice is damage).
+fn msg_skip_seen(r: MsgReader&, mark: i64, id: u64) -> bool {
+    var k = mark;
+    while k < r.seen.len {
+        if r.seen[k] == id {
+            r.ok = false;
+            return true;
+        }
+        k += 1;
+    }
+    r.seen.push(id);
     return false;
+}
+
+// msg_skip_array steps over a counted or enum-keyed array by its announced
+// shape, holding its count to the announced bounds and a keyed slot's key to
+// the rule a named slot's read applies (§3.2, §3.3, §4).
+fn msg_skip_array(r: MsgReader&, e: i64) -> bool {
+    let kind = r.voc.entries[e].kind;
+    let max = r.voc.entries[e].max;
+    let min = r.voc.entries[e].min;
+    var n: u64 = min as! u64;
+    var width = msg_bits_required(min, max);
+    if kind == 16 {
+        width = msg_bits_required(0, max);
+        n = 0;
+    }
+    if width > 0 {
+        n = msg_get(r, width);
+        if !r.ok { return false; }
+        if kind == 14 { n += min as! u64; }
+    }
+    // THE COUNT'S BITS CAN SPELL MORE THAN THE ANNOUNCED MAXIMUM, and a
+    // count outside its announced bounds is refused as at a named field.
+    if n > max as! u64 { return msg_refuse_read(r, MsgRefuseCountOverBound); }
+    let elem = r.voc.entries[e].elem;
+    if kind == 14 && elem == 6 && !msg_align_read(r) { return false; }
+    let run = msg_run_bits(r, e);
+    if run >= 0 { return msg_skip_run(r, n, run); }
+    let inner = r.voc.entries[e].inner;
+    let mark = r.seen.len;
+    var ok = true;
+    var i: u64 = 0;
+    while i < n {
+        let at = r.pos;
+        if kind == 16 {
+            // A KEYED SLOT'S KEY IS RESOLVED: it names a declared no-payload
+            // entry and no key repeats (§3.2, §3.3, §4).
+            let key = msg_name(r);
+            if key < 0 {
+                ok = msg_damage(r);
+            } else if msg_skip_seen(r, mark, r.voc.entries[key].id) {
+                ok = false;
+            }
+            if !ok { break; }
+        }
+        if inner >= 0 {
+            r.depth += 1;
+            ok = msg_skip(r, inner);
+            r.depth -= 1;
+        } else {
+            ok = elem == 0 || elem == 32;
+        }
+        if !ok { break; }
+        // A WALKED ELEMENT THAT CONSUMED NO BITS REFUSES THE READ: a count
+        // the bits left cannot back is damage, even when the remaining count
+        // would fit in the batch's padding (§3.3).
+        if r.pos == at {
+            ok = false;
+            break;
+        }
+        i += 1;
+    }
+    r.seen.resize(mark);
+    return ok;
+}
+
+// msg_skip_body walks a nested body it cannot name, field by field, and holds
+// its ids to the rules a named body's read applies: no reserved id and no id
+// twice (§3.1, §3.3, §4).
+fn msg_skip_body(r: MsgReader&) -> bool {
+    if r.depth > 128 { return false; }
+    let mark = r.seen.len;
+    var ok = true;
+    loop {
+        let e = msg_field(r);
+        if e < 0 {
+            ok = r.ok;
+            break;
+        }
+        if msg_skip_seen(r, mark, r.voc.entries[e].id) {
+            ok = false;
+            break;
+        }
+        if !msg_skip(r, e) {
+            ok = false;
+            break;
+        }
+    }
+    r.seen.resize(mark);
+    return ok;
 }
 
 // ---- payloads at the SENDER's shape (docs/SPEC-TABLES.md §3.3) --------------
