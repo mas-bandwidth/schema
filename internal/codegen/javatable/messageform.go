@@ -2359,12 +2359,30 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 			if rlo, rhi, ok := ir.TableRawRange(f); ok && f.HasIntRange {
 				minLit, maxLit, hasRange = rlo.Int64(), rhi.Int64(), true
 			}
+			if !hasRange && f.Type.Kind == ir.TInt && f.Type.Width > 0 && f.Type.Width < 64 {
+				// A FIELD THAT DECLARES NO RANGE IS STILL HELD TO ITS KIND'S
+				// DOMAIN (docs/SPEC-TABLES.md §3.3): an int8 holds -128
+				// through 127, and a value outside it refuses rather than
+				// landing narrowed in the cell.
+				minLit = -(int64(1) << uint(f.Type.Width-1))
+				maxLit = (int64(1) << uint(f.Type.Width-1)) - 1
+				hasRange = true
+			}
 			g.pf("%s    long %s = TableMessage.readSigned(r, %s, %dL, %dL, %t);\n", ind, vVar, shapeExpr, minLit, maxLit, hasRange)
 		} else {
 			var minLit, maxLit uint64
 			hasRange := false
 			if rlo, rhi, ok := ir.TableRawRange(f); ok && f.HasIntRange {
 				minLit, maxLit, hasRange = rlo.Uint64(), rhi.Uint64(), true
+			}
+			if !hasRange && f.Type.Kind == ir.TInt && f.Type.Width > 0 && f.Type.Width < 64 {
+				// A FIELD THAT DECLARES NO RANGE IS STILL HELD TO ITS KIND'S
+				// DOMAIN (docs/SPEC-TABLES.md §3.3): a uint8 holds 0 through
+				// 255, and a value outside it refuses rather than landing
+				// masked in the cell.
+				minLit = 0
+				maxLit = (uint64(1) << uint(f.Type.Width)) - 1
+				hasRange = true
 			}
 			bitsWidth := 0
 			if f.Type.Kind == ir.TBits {

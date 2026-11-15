@@ -461,7 +461,7 @@ public final class BenchMixedMessage {
                     }
                 }
                 {
-                    long v10 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 0);
+                    long v10 = TableMessage.readUnsigned(r, entry.shape, 0L, 0xffffffffL, true, 0);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;
@@ -849,7 +849,7 @@ public final class BenchMixedMessage {
                     if (i43 < keep40) {
                         {
                             long v45 =
-                                    TableMessage.readUnsigned(r, entry.element, 0L, 0L, false, 0);
+                                    TableMessage.readUnsigned(r, entry.element, 0L, 0xffL, true, 0);
                             if (r.err) {
                                 r.report.damaged = true;
                                 return false;
@@ -860,7 +860,7 @@ public final class BenchMixedMessage {
                         byte scratch44 = (byte) 0;
                         {
                             long v46 =
-                                    TableMessage.readUnsigned(r, entry.element, 0L, 0L, false, 0);
+                                    TableMessage.readUnsigned(r, entry.element, 0L, 0xffL, true, 0);
                             if (r.err) {
                                 r.report.damaged = true;
                                 return false;
