@@ -315,6 +315,10 @@ generated class per table and per map entry, each with its descriptor
 - **A packet-typed field is refused by name.** A table field whose type is a
   packet `type` reaches `refusePacketValues` and is refused naming the field
   and the type, until P4 carries packet types into tables.
+- **The compiler keeps the shared carry checks.** Before table dispatch it
+  refuses constructs outside the registered carry set, just as the packet
+  target does. The table emitter can describe future codec layers directly;
+  those descriptors do not claim that the compiler carries their constructs.
 
 ### Bench
 

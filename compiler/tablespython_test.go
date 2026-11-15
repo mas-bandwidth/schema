@@ -92,6 +92,27 @@ func TestPythonTableCarrySetStaysEmpty(t *testing.T) {
 	}
 }
 
+// The compiler keeps the common carry checks before the table frame. Direct
+// descriptor generation remains available for later field-codec layers.
+func TestPythonTablesHonorCarriedConstructs(t *testing.T) {
+	t.Parallel()
+	for _, field := range []string{"[]int32", "map[uint32]int32", "?[3]int16"} {
+		u := unitFromSource(t, "package probe\ntable Root {\n values "+field+"\n}\n")
+		_, err := New().Generate(u, "python", Options{})
+		if err == nil {
+			t.Errorf("python emitted an uncarried field values %s", field)
+		} else if !strings.Contains(err.Error(), "python") || !strings.Contains(err.Error(), "values") {
+			t.Errorf("the refusal does not name the target and field: %v", err)
+		}
+	}
+	// The table frame carries the full integer widths, independently of the
+	// narrower packet core's temporary refusal chain.
+	u := unitFromSource(t, "package probe\nfixed table Scalar {\n value uint128\n}\n")
+	if _, err := New().Generate(u, "python", Options{}); err != nil {
+		t.Fatalf("the table frame refused its uint128 field: %v", err)
+	}
+}
+
 // TestPythonTableRuntimeNamesAreClaimed holds the registry to the runtime the
 // emitter embeds: every public module-level name is registered, and every
 // registered name is one the runtime spells.

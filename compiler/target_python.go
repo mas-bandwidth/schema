@@ -24,11 +24,10 @@ func (pythonTarget) Names() []string { return []string{"python"} }
 // otherwise. Each emitter holds the identifier rules and names any construct
 // outside its carried surface (docs/PORT-PYTHON.md).
 func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if len(u.Tables) > 0 {
-		return pythontable.Generate(u)
-	}
-	if err := ir.RefuseWideTableKinds(u, "python"); err != nil {
-		return nil, err
+	if len(u.Tables) == 0 {
+		if err := ir.RefuseWideTableKinds(u, "python"); err != nil {
+			return nil, err
+		}
 	}
 	if err := refuseUnported(u, "python"); err != nil {
 		return nil, err
@@ -41,6 +40,9 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	}
 	if err := refuseLists(u, "python"); err != nil {
 		return nil, err
+	}
+	if len(u.Tables) > 0 {
+		return pythontable.Generate(u)
 	}
 	if err := refuseTables(u, "python"); err != nil {
 		return nil, err
