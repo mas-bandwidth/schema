@@ -26,16 +26,16 @@ fixed table Msg
 	}
 
 	skipFn := jsFn(src, "tableMessageSkip")
-	start := strings.Index(skipFn, "case 12:")
-	if start < 0 {
+	_, after, ok := strings.Cut(skipFn, "case 12:")
+	if !ok {
 		t.Fatalf("tableMessageSkip has no kind 12 case:\n%s", skipFn)
 	}
-	rest := skipFn[start+len("case 12:"):]
-	end := strings.Index(rest, "case ")
-	if end < 0 {
+	rest := after
+	before0, _, ok0 := strings.Cut(rest, "case ")
+	if !ok0 {
 		t.Fatalf("kind 12 case has no following case:\n%s", skipFn)
 	}
-	textCase := rest[:end]
+	textCase := before0
 
 	if !strings.Contains(textCase, "r.Align()") {
 		t.Errorf("kind 12 skip must align:\n%s", textCase)

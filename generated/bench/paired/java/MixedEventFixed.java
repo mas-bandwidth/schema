@@ -78,6 +78,11 @@ public final class MixedEventFixed {
 
     /** the tag, then the selected arm; an unselected arm keeps what it held. */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
+        scatter(b, at, v, r, true);
+    }
+
+    /** the same landing, where `live` is false inside an absent optional's payload. */
+    static void scatter(byte[] b, int at, Value v, TableFixed.Report r, boolean live) {
         v.type = (b[at + 0] & 0xFF);
         // A TAG PAST THE LAST ARM LANDS None AND COUNTS ONE CLAMPED: it
         // is a value this reader's own storage does not admit, and
@@ -85,22 +90,24 @@ public final class MixedEventFixed {
         // and that its own switch cannot answer.
         if (v.type > 3) {
             v.type = none;
-            r.refuse(TableFixed.Reason.outOfRange);
+            if (live) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
         }
         switch (v.type) {
             case 1:
                 {
-                    MixedHitEventFixed.scatter(b, at + 1 + 0, v.hit, r);
+                    MixedHitEventFixed.scatter(b, at + 1 + 0, v.hit, r, live);
                     break;
                 }
             case 2:
                 {
-                    MixedChatEventFixed.scatter(b, at + 1 + 0, v.chat, r);
+                    MixedChatEventFixed.scatter(b, at + 1 + 0, v.chat, r, live);
                     break;
                 }
             case 3:
                 {
-                    MixedPickupEventFixed.scatter(b, at + 1 + 0, v.pickup, r);
+                    MixedPickupEventFixed.scatter(b, at + 1 + 0, v.pickup, r, live);
                     break;
                 }
             default:

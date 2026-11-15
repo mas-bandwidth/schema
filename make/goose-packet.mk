@@ -13,6 +13,8 @@
 #                          byte and bit pins, reused storage
 #   packet-finite-goose    test/packet-finite: SPEC §4.3's finite floats, both
 #                          directions, a control per direction
+#   packet-end-goose       test/packet-end: SPEC §5's one end check after the
+#                          top-level object, a control that removes it
 #
 # The target lives behind the schema_leg_goose tag until the port joins the
 # builtins, so every generation here uses build/schema-goose.
@@ -123,3 +125,28 @@ packet-finite-goose-negative-control: packet-finite-goose
 
 test-goose: packet-utf8-goose packet-utf8-goose-negative-control \
 	packet-defaults-goose packet-defaults-goose-negative-control packet-finite-goose packet-finite-goose-negative-control
+
+# ---- packet end: SPEC §5's one end check after the top-level object ----
+
+.PHONY: packet-end-goose packet-end-goose-negative-control
+packet-end-goose: goose-packet-ready
+	@rm -rf build/packet-end/goose && mkdir -p build/packet-end/goose
+	./build/schema-goose generate --lang goose --out build/packet-end/goose test/packet-end/End.schema
+	cp test/packet-end/goose/main.goose build/packet-end/goose/
+	env -u SCHEMA_UPDATE_WIRE_GOLDENS $(GOOSE) run build/packet-end/goose/main.goose -- testdata/wire/packet-end
+
+# Removes the public read's runtime end call (SPEC §5): a whole trailing byte
+# and set padding must then read as the value, so the driver's two refusal
+# rows go red by name.
+packet-end-goose-negative-control: packet-end-goose
+	$(call goose-packet-sabotaged,build/packet-end/goose-negative,packet-end-goose,internal/codegen/goose/wire.go)
+	@rm -rf build/packet-end/goose-negative/generated && mkdir -p build/packet-end/goose-negative/generated
+	./build/packet-end/goose-negative/schema generate --lang goose --out build/packet-end/goose-negative/generated test/packet-end/End.schema
+	cp test/packet-end/goose/main.goose build/packet-end/goose-negative/generated/
+	@if env -u SCHEMA_UPDATE_WIRE_GOLDENS $(GOOSE) run build/packet-end/goose-negative/generated/main.goose -- testdata/wire/packet-end > build/packet-end/goose-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the end check was removed and the Goose packet-end driver stayed green'; exit 1; fi
+	@grep -Fq 'FAILED: trailing' build/packet-end/goose-negative/log || { cat build/packet-end/goose-negative/log; exit 1; }
+	@grep -Fq 'FAILED: padding' build/packet-end/goose-negative/log || { cat build/packet-end/goose-negative/log; exit 1; }
+	@echo 'packet end Goose negative control: the removed end call accepts trailing bytes and set padding'
+
+test-goose: packet-end-goose packet-end-goose-negative-control

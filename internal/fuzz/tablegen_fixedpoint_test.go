@@ -8,7 +8,17 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+// fixedPointProbe is one seed's generated unit and the probe that reads its
+// drawn values.
+type fixedPointProbe struct {
+	seed int
+	src  string
+	unit *ir.Unit
+	test string
+}
 
 // TestRandomTableGenFixedPoint pins the generator to valid schemas and values
 // across deterministic seeds. Each sample is read by the generated Go table
@@ -21,6 +31,7 @@ func TestRandomTableGenFixedPoint(t *testing.T) {
 	ufixedSeen := map[[2]int]bool{}
 	fractionSeen := map[string]bool{}
 	floatSeen := map[string]bool{}
+	var probes []fixedPointProbe
 	for seed := range 100 {
 		r := rand.New(rand.NewSource(int64(seed)))
 		src, model := randomSchema(r)
@@ -70,11 +81,21 @@ func TestRandomTableGenFixedPoint(t *testing.T) {
 			fractionSeen[key] = true
 		}
 		generatedTest.WriteString("}\n")
-		output, err := runGeneratedTableUnit(t, unit, generatedTest.String(), map[string]string{"NOVA_TEST_NO_HOST": "1"}, "-timeout=600s")
-		if err != nil {
-			t.Fatalf("seed %d: generated Go reader failed\n%s\n%s", seed, src, output)
-		}
+		probes = append(probes, fixedPointProbe{seed: seed, src: src, unit: unit, test: generatedTest.String()})
 	}
+	// Drawing is serial (one generator per seed, in order); the probes share
+	// nothing, so they compile and run side by side.
+	t.Run("probes", func(t *testing.T) {
+		for _, p := range probes {
+			t.Run(fmt.Sprintf("seed%d", p.seed), func(t *testing.T) {
+				t.Parallel()
+				output, err := runGeneratedTableUnit(t, p.unit, p.test, map[string]string{"NOVA_TEST_NO_HOST": "1"}, "-timeout=600s")
+				if err != nil {
+					t.Fatalf("seed %d: generated Go reader failed\n%s\n%s", p.seed, p.src, output)
+				}
+			})
+		}
+	})
 
 	for _, pair := range fixedPairs {
 		if !fixedSeen[pair] {

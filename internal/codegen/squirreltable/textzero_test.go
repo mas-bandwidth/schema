@@ -24,7 +24,9 @@ import (
 // a nested table's string(8) and a [..4]string(8) element; every row is
 // compared with the reason internal/tabletext reports for the same text. A
 // \u0001 in the same place reads clean and round-trips through ToJson to the
-// same text, and a zero the read only skips is not this event.
+// same text. A zero the read only skips (an unknown key's value, an object
+// key) refuses too, plain malformed with no field named, on the skipped-value
+// ruling.
 // Red at BASE: FromJson accepted every zero row silently, and Save or
 // ReadStrict then refused what the read produced.
 func TestSquirrelJsonTextZeroByteTakesOneRule(t *testing.T) {
@@ -105,6 +107,7 @@ table Root
 	type row struct {
 		key, text string
 		zero      bool
+		skipped   bool
 		reason    string
 		control   string
 	}
@@ -138,16 +141,32 @@ table Root
 		}
 	}
 
-	// a zero the read only skips stores nothing and is not the event (§16.3)
-	for i, text := range []string{`{"zz":"a\u0000b"}`, `{"t\u0000":"x"}`} {
+	// a zero the read only SKIPS (an unknown key's value, an object key) is
+	// held to a placed string's rule and refuses the read too, plain
+	// malformed with no field named (§16.2, §16.3; read.go scanKey); the
+	// U+0001 control reads clean
+	for i, text := range []string{`{"zz":"a\u0000b"}`, `{"t\u0000":"x"}`, `{"zz":["a\u0000b"]}`, `{"zz":{"k\u0000":1}}`} {
 		inst := m.New(st)
 		var report tabletext.Report
-		if !m.Read(inst, []byte(text), &report) || report.Refused {
-			t.Fatalf("skipped zero %d: the Go oracle refused %s (%+v)", i, text, report)
+		if m.Read(inst, []byte(text), &report) || !report.Refused {
+			t.Fatalf("skipped zero %d: the Go oracle did not refuse %s (%+v)", i, text, report)
+		}
+		if strings.HasPrefix(report.Reason, "text_holds_zero: ") {
+			t.Fatalf("skipped zero %d: the Go oracle named a field for %s (%+v)", i, text, report)
 		}
 		key := fmt.Sprintf("skipped_%d", i)
-		rows = append(rows, row{key: key, text: text})
+		rows = append(rows, row{key: key, text: text, zero: true, skipped: true})
 		inputs[key] = []byte(text)
+
+		controlText := strings.Replace(text, `\u0000`, `\u0001`, 1)
+		inst = m.New(st)
+		report = tabletext.Report{}
+		if !m.Read(inst, []byte(controlText), &report) || report.Refused {
+			t.Fatalf("skipped control %d: the Go oracle refused %s (%+v)", i, controlText, report)
+		}
+		ckey := fmt.Sprintf("skipped_control_%d", i)
+		rows = append(rows, row{key: ckey, text: controlText})
+		inputs[ckey] = []byte(controlText)
 	}
 
 	var p strings.Builder
@@ -177,6 +196,10 @@ table Root
 			continue
 		}
 		switch {
+		case r.skipped:
+			if len(g) < 2 || g[0] != "refused" || strings.HasPrefix(g[1], "text_holds_zero: ") {
+				t.Errorf("%s: FromJson gave %s, want refused with no field named (%s)", r.key, strings.Join(g, "|"), r.text)
+			}
 		case r.zero:
 			if len(g) < 2 || g[0] != "refused" || g[1] != r.reason {
 				t.Errorf("%s: FromJson gave %s, want refused with reason %s (%s)", r.key, strings.Join(g, "|"), r.reason, r.text)

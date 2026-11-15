@@ -305,9 +305,12 @@ print("fixed-only-ok")
 
 // TestMooMessageRepeatedFieldIdNegativeControl: a field id twice in one body
 // is damage (docs/SPEC-TABLES.md §3.3; docs/plans/strict-only.md decision 5).
-// The batch below is the backend batch with one byte flipped so a body names
-// a field twice; the Go engine refuses it, the emitted reader refuses it, and
-// the reader with the repeated-id check patched out accepts it.
+// The batch below is the backend batch
+// (testdata/wire/tables/backend_batch_damaged_second_message.bin, as re-pinned
+// over the message closure) with one bit set, byte 6's high bit, so a body
+// names a field twice; the Go engine refuses it on its repeated-id check, the
+// emitted reader refuses it, and the reader with the repeated-id check patched
+// out accepts it.
 func TestMooMessageRepeatedFieldIdNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
@@ -317,7 +320,7 @@ func TestMooMessageRepeatedFieldIdNegativeControl(t *testing.T) {
 		t.Fatal(g.err)
 	}
 	conn := readRoot(t, "testdata/wire/tables/backend_conn.bin")
-	wire, err := hex.DecodeString("02020419000000f19701000000841900000000")
+	wire, err := hex.DecodeString("0202840c000080fc3200000040cc00000000")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -124,7 +124,10 @@ func TestPackTextReaderRefusesZeroInText(t *testing.T) {
 		}
 	}
 
-	// a zero the read only SKIPS or COMPARES stores nothing and is not the event
+	// a zero the read only SKIPS is held to a placed string's rule
+	// (docs/SPEC-TABLES.md §16.3): the value of an unknown key and an object
+	// key that decode to U+0000 refuse the read, and the U+0001 control reads
+	// clean and counts one unknown.
 	for _, text := range []string{
 		`{"gone":"a\u0000b","n":1}`,
 		`{"gone":["a\u0000b"],"n":1}`,
@@ -132,8 +135,18 @@ func TestPackTextReaderRefusesZeroInText(t *testing.T) {
 	} {
 		inst := m.New(root)
 		var r tabletext.Report
-		if !m.Read(inst, []byte(text), &r) || r.Refused || r.Unknown != 1 {
-			t.Errorf("%s: a skipped zero is not the event: %+v", text, r)
+		if m.Read(inst, []byte(text), &r) {
+			t.Errorf("%s: a skipped zero must refuse the read: %+v", text, r)
+			continue
+		}
+		if !r.Refused {
+			t.Errorf("%s: a skipped zero refused without the verdict: %+v", text, r)
+		}
+		control := strings.ReplaceAll(text, `\u0000`, `\u0001`)
+		inst = m.New(root)
+		r = tabletext.Report{}
+		if !m.Read(inst, []byte(control), &r) || r.Refused || r.Unknown != 1 {
+			t.Errorf("%s: the \\u0001 control did not read clean: %+v", control, r)
 		}
 	}
 }

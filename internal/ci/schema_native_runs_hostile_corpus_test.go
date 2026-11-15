@@ -92,9 +92,9 @@ func TestSchemaNativeRunsHostileCorpusWiring(t *testing.T) {
 		}
 		text := string(workflow)
 		for _, want := range []string{
-			"push:", "pull_request:", "schedule:", "workflow_dispatch:",
+			"push:", "schedule:", "workflow_dispatch:",
 			"runs-on: [self-hosted, linux, x64, schema]",
-			"branches: [ main, dev, fixed-table-form, 'sprint/**' ]",
+			"branches: [ main, dev, fixed-table-form ]",
 			"if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
 			"make " + target + " ",
 			"make " + target + "-negative-control ",
@@ -102,6 +102,11 @@ func TestSchemaNativeRunsHostileCorpusWiring(t *testing.T) {
 			if !strings.Contains(text, want) {
 				t.Errorf("%s.yml does not carry %q", target, want)
 			}
+		}
+		// THE PR GATE IS ci-fast.yml (the owner, 2026-11-15): no pull request
+		// starts this workflow; it runs after the merge.
+		if ok, err := jobSelectsSelfHosted(text, "corpus", ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}); err != nil || ok {
+			t.Errorf("%s.yml:corpus ran on a pull request: ok=%v err=%v; the PR gate is ci-fast.yml", target, ok, err)
 		}
 		fork := ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema"}
 		for _, job := range []string{"corpus", "negative-control"} {

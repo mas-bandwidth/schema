@@ -15,9 +15,9 @@ import "testing"
 // storage and refuses by its own name, timestamp_not_rfc3339:
 // the read is refused, and whatever value it left measures, saves, reads
 // back through ReadStrict and writes the same JSON text. A \u0001 control in
-// the same place reads clean and round-trips, and a zero the read only SKIPS
-// (an unknown key's value, an object key naming no field) is not the event.
-// Red at BASE: FromJSON accepted every zero row silently, and Save or
+// the same place reads clean and round-trips, and a zero in a value the read
+// only SKIPS or in an object key refuses the read as a placed one does (§4,
+// §16.3). Red at BASE: FromJSON accepted every zero row silently, and Save or
 // ReadStrict then refused what the read produced.
 func TestGoTextZeroByteTakesOneRuleInEveryForm(t *testing.T) {
 	t.Parallel()
@@ -190,15 +190,30 @@ func TestTextZero(t *testing.T) {
 		carry(t, k.text, &b)
 		b.Shutdown()
 	}
-	// a zero the read only skips stores nothing and is not the event
-	for _, text := range []string{"{\"zz\":\"a\\u0000b\"}", "{\"t\\u0000\":\"x\"}"} {
+	// a zero in a value the read only skips, in an object key naming no field,
+	// or in a skipped object's own key refuses the read as a placed one does
+	// (docs/SPEC-TABLES.md §4, §16.3)
+	for _, text := range []string{"{\"zz\":\"a\\u0000b\"}", "{\"t\\u0000\":\"x\"}", "{\"zz\":{\"a\\u0000b\":1}}"} {
 		var b RootBuilder
 		if !b.Init() {
 			t.Fatal("init")
 		}
 		var report TableReport
-		if !RootFromJSON(&b, []byte(text), &report) || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Unknown != 1 {
-			t.Fatalf("%s: a skipped zero %+v", text, report)
+		if RootFromJSON(&b, []byte(text), &report) {
+			t.Fatalf("%s: FromJSON accepted a skipped zero %+v", text, report)
+		}
+		carry(t, text, &b)
+		b.Shutdown()
+	}
+	// the control: a \u0001 in the same places is ordinary text and is skipped
+	for _, text := range []string{"{\"zz\":\"a\\u0001b\"}", "{\"t\\u0001\":\"x\"}", "{\"zz\":{\"a\\u0001b\":1}}"} {
+		var b RootBuilder
+		if !b.Init() {
+			t.Fatal("init")
+		}
+		var report TableReport
+		if !RootFromJSON(&b, []byte(text), &report) || report.Refused() || report.Unknown != 1 {
+			t.Fatalf("%s: the control %+v", text, report)
 		}
 		carry(t, text, &b)
 		b.Shutdown()

@@ -516,7 +516,12 @@ as lines (lowercase hex for bytes).**
   writer, and answered `absent`), `report`, `message`, `retain`,
   `retain-save`, `cook`, `cook-write`, `cook-foreign`, `cook-forgery`,
   `cook-reason`, `block`, `block-foreign`, `block-dump`, `forgery`,
-  `block-reason`, `json-read`, `json-write` and `json-hostile`. An `absent`
+  `block-reason`, `json-read`, `json-write`, `json-hostile`, and the four
+  write-contract surfaces `write-refusal`, `write-refusal-fixed`,
+  `write-refusal-message` and `write-refusal-json` (docs/SPEC.md §5.1: a
+  table writer refuses in every build, so they answer from the ordinary
+  build; `conformance-negative-control-lobster-write-refusal` and
+  `-write-refusal-message` hold them). An `absent`
   case names its reason in the leg's own refusal (`blob_shared`, a message
   or retain row the reference itself answers absent).
 - **The wire-fuzz differential** (test/conformance/README.md, "The
@@ -622,7 +627,7 @@ stands:
 | the card facade and its conformance leg (docs/PORTING.md J6): load, save, render, parse, bounds, upgrade, edit, taskhash and view over the Card unit, SHA-256 written in Lobster; the driver stages the facade into the generated unit, where Lobster resolves imports | `tables/cards/lobster/`, `make/lobster.mk` (`cards-lobster-*`) | landed |
 | the wire-fuzz differential and the hostile corpus | `make/lobster-fuzz.mk`, `make/lobster-hostile.mk` | landed, with the retain and message arms; a variable message root is not carried (as Go) |
 | the strict gate, CI, the register column, the roadmap column | `make/schema-lobster-generated-strict-gate.mk`, `.github/workflows/*`, `docs/PORTING.md`, `docs/roadmap.sexp` | landed |
-| the integrity trailer and the `forms` declaration (§2.12, §2.14) | — | owed |
+| the integrity trailer, the `forms` declaration and the JSON array root (§2.12, §2.14, §16.10) | `lobstertable/lobstertable.go` (the descriptor's `json_form`, `cook_form`, `integrity`), `block_form.go`, `cook.go`, `runtime/schema_tables.lobster`, `runtime/json.lobster`; `compiler/carries_lobster_forms_integrity.go` | landed (`TestLobsterTableHonoursTheFormsDeclaration`, `TestLobsterVariableWireIntegrity`, the featurewitnesses unit on every surface) |
 | the bench legs, JIT (packet and tables, golden-gated, `bench-lobster-gate`) | `bench/lobster/`, `bench/tables/lobster/`, `make/lobster-bench.mk` | landed; the first sitting is a fleet pass |
 | the bench legs' `--cpp` row | — | owed (`port/lobster/bench-cpp`, schema-lobster-bench-cpp) |
 | native snake_case naming (Lobster's own idiom; the port still spells names as Go does) | `lobster/`, `lobstertable/` | owed |

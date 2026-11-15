@@ -106,6 +106,54 @@ List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
   return null;
 }
 
+// _jsonName holds a SCHEMA-NAME STRING to its 255-byte cap (docs/SPEC-TABLES.md
+// §16.2): an object key naming a field, an enum variant name, a flags element,
+// a union arm key and an &node name, in every object and inside a skipped
+// value. The cap never reaches a map key or a string value.
+bool _jsonName(String name, TableTextReport r) {
+  if (utf8.encode(name).length > 255) {
+    r.refuse('length_over_bound');
+    return false;
+  }
+  return true;
+}
+
+// _jsonSkipValue holds a value the read only SKIPS to the grammar and text
+// rules a placed value is held to (docs/SPEC-TABLES.md §16.2, §16.3, §4):
+// the parser has judged its grammar, and every object key and every string in
+// it goes through the same text check a placed string does, so one that
+// decodes to U+0000 refuses the read as a placed one would. Every object key
+// also carries the 255-byte schema-name cap (§16.2), however deep it sits.
+void _jsonSkipValue(dynamic val, TableTextReport r) {
+  if (val is String) {
+    _jsonText(val);
+    return;
+  }
+  if (val is _JObj) {
+    for (final entry in val.entries) {
+      _jsonText(entry.key);
+      _jsonName(entry.key, r);
+      _jsonSkipValue(entry.value, r);
+    }
+    return;
+  }
+  if (val is List) {
+    for (final item in val) {
+      _jsonSkipValue(item, r);
+    }
+    return;
+  }
+  if (val is Map) {
+    for (final entry in val.entries) {
+      final key = entry.key;
+      if (key is! String) throw const FormatException('kind_mismatch');
+      _jsonText(key);
+      _jsonName(key, r);
+      _jsonSkipValue(entry.value, r);
+    }
+  }
+}
+
 // _jsonDecodeExact is JSON decoding that keeps every number's token
 // (docs/SPEC-TABLES.md §16.2): an integer token an int holds is an int, and
 // every other number is a _JNum.
@@ -362,48 +410,10 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
     r.refuse('kind_mismatch');
     return def;
   }
-  var i = 0;
-  var negative = false;
-  if (i < token.length && (token[i] == '-' || token[i] == '+')) {
-    negative = token[i] == '-';
-    i++;
-  }
-  final intDigits = StringBuffer();
-  final fracDigits = StringBuffer();
-  while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-    intDigits.write(token[i]);
-    i++;
-  }
-  if (i < token.length && token[i] == '.') {
-    i++;
-    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-      fracDigits.write(token[i]);
-      i++;
-    }
-  }
-  var exp = 0;
-  if (i < token.length && (token[i] == 'e' || token[i] == 'E')) {
-    i++;
-    var expNegative = false;
-    if (i < token.length && (token[i] == '-' || token[i] == '+')) {
-      expNegative = token[i] == '-';
-      i++;
-    }
-    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-      if (exp < 100000) exp = exp * 10 + (token.codeUnitAt(i) - 0x30);
-      i++;
-    }
-    if (expNegative) exp = -exp;
-  }
-  var digits = intDigits.toString() + fracDigits.toString();
-  var point = intDigits.length + exp;
-  while (digits.isNotEmpty && digits[0] == '0') {
-    digits = digits.substring(1);
-    point--;
-  }
-  while (digits.isNotEmpty && digits[digits.length - 1] == '0') {
-    digits = digits.substring(0, digits.length - 1);
-  }
+  final parts = _jsonNumberParts(token);
+  final digits = parts.digits;
+  final point = parts.point;
+  final negative = parts.negative;
   final domainLo = signed ? -(BigInt.one << 127) : BigInt.zero;
   final domainHi = signed ? (BigInt.one << 127) - BigInt.one : (BigInt.one << 128) - BigInt.one;
   BigInt raw;
@@ -413,6 +423,12 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
     r.refuse('out_of_range');
     return def;
   } else if (point < -40) {
+    r.refuse('kind_mismatch');
+    return def;
+  } else if (point < digits.length && digits.length - point > frac) {
+    // A fraction with more significant digits than the Q I.F grid has
+    // fraction bits cannot be exact; decide it before any big arithmetic,
+    // so BigInt.parse only ever sees a bounded string (§16.2).
     r.refuse('kind_mismatch');
     return def;
   } else {
@@ -454,7 +470,8 @@ bool _jsonBoolField(dynamic val, TableTextReport r, [bool def = false]) {
 String _jsonBytesField(dynamic val, TableTextReport r, int bound, [String def = '']) {
   if (val is String) {
     try {
-      final b = base64Decode(base64.normalize(val));
+      final b = base64Decode(val);
+      if (base64Encode(b) != val) throw const FormatException('base64_not_canonical');
       if (b.length > bound) {
         r.refuse('length_over_bound');
         return def;
@@ -480,7 +497,9 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r, [Uint8List? def]) {
   if (val == null) return null;
   if (val is String) {
     try {
-      return base64Decode(base64.normalize(val));
+      final b = base64Decode(val);
+      if (base64Encode(b) != val) throw const FormatException('base64_not_canonical');
+      return b;
     } on FormatException {
       r.refuse('kind_mismatch');
       return null;
@@ -534,9 +553,15 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   // key's repeat is caught by slot (§2.8: a repeated key is damage)
   Set<String>? unknownSeen;
   for (final entry in entries) {
+    if (!_jsonName(entry.key, r)) return out;
     final slot = slots[entry.key];
     if (slot == null) {
+      // AN UNKNOWN KEY AND ITS VALUE are held to the text and grammar rules a
+      // placed one is held to (docs/SPEC-TABLES.md §16.3, §4): a key or a
+      // string inside the value that decodes to U+0000 refuses the read.
+      _jsonText(entry.key);
       if (!(unknownSeen ??= <String>{}).add(entry.key)) r.refuse('text_damaged');
+      _jsonSkipValue(entry.value, r);
       r.unknown++;
       continue;
     }
@@ -628,15 +653,16 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
     if (expNeg) exp = -exp;
   }
   if (i != k.length) throw const FormatException('invalid integer map key');
-  var digits = intDigits + fracDigits;
+  final all = intDigits + fracDigits;
+  var start = 0;
   var point = intDigits.length + exp;
-  while (digits.isNotEmpty && digits.codeUnitAt(0) == 0x30) {
-    digits = digits.substring(1);
+  while (start < all.length && all.codeUnitAt(start) == 0x30) {
+    start++;
     point--;
   }
-  while (digits.isNotEmpty && digits.codeUnitAt(digits.length - 1) == 0x30) {
-    digits = digits.substring(0, digits.length - 1);
-  }
+  var end = all.length;
+  while (end > start && all.codeUnitAt(end - 1) == 0x30) end--;
+  final digits = all.substring(start, end);
   BigInt mag;
   if (digits.isEmpty) {
     mag = BigInt.zero;
@@ -697,9 +723,11 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tif (val is! List) { r.refuse('kind_mismatch'); return def; }\n")
 		g.pf("\tvar bits = 0;\n")
 		g.pf("\tfor (final item in val) {\n")
+		g.pf("\t\tif (item is String && !_jsonName(item, r)) return def;\n")
 		g.pf("\t\tswitch (item) {\n")
+		// a known name set twice refuses the read, as a repeated key does (§16.2)
 		for i, name := range fl.Variants {
-			g.pf("\t\t\tcase %s: bits |= %d;\n", strconv.Quote(name), uint64(1)<<i)
+			g.pf("\t\t\tcase %s: if (bits & %d != 0) { r.refuse('text_damaged'); return def; } bits |= %d;\n", strconv.Quote(name), uint64(1)<<i, uint64(1)<<i)
 		}
 		g.pf("\t\t\tdefault: if (item is String) { r.unknown++; } else { r.refuse('kind_mismatch'); }\n")
 		g.pf("\t\t}\n")
@@ -736,6 +764,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tfinal v = %s();\n", un.Name)
 		g.pf("\tif (entries.isEmpty) return v;\n")
 		g.pf("\tif (entries.length != 1) throw const FormatException('union has two keys');\n")
+		g.pf("\tif (!_jsonName(entries.first.key, r)) return v;\n")
 		g.pf("\tfinal item = entries.first.value;\n")
 		g.pf("\tswitch (entries.first.key) {\n")
 		for i, arm := range un.Variants {
@@ -751,7 +780,7 @@ func (g *wireGen) emitTextMoreDecls() {
 				g.pf("\t\t\t}\n")
 			}
 		}
-		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n")
+		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n\t\t\t_jsonSkipValue(item, r);\n")
 		g.pf("\t}\n")
 		g.pf("\treturn v;\n")
 		g.pf("}\n\n")

@@ -61,11 +61,11 @@ func reservedTypeFile(typeId uint64) []byte {
 	return binary.LittleEndian.AppendUint64(out, uint64(len(ids)))
 }
 
-func reservedTypeRead(t *testing.T, m *tabletext.Model, wire []byte) (bool, error, tabletext.Report) {
+func reservedTypeRead(t *testing.T, m *tabletext.Model, wire []byte) (bool, tabletext.Report, error) {
 	t.Helper()
 	var report tabletext.Report
 	ok, err := Decode(m, m.New(m.Lookup("Root")), wire, &report)
-	return ok, err, report
+	return ok, report, err
 }
 
 // TestNodeTypeReservedIdRefused holds a node record whose TYPE reference
@@ -83,7 +83,7 @@ func TestNodeTypeReservedIdRefused(t *testing.T) {
 		{"a bytes blob record", `{"data":"AQID"}`},
 		{"a string blob record", `{"text":"hello"}`},
 	} {
-		ok, err, report := reservedTypeRead(t, m, reservedTypeWire(t, m, control.value))
+		ok, report, err := reservedTypeRead(t, m, reservedTypeWire(t, m, control.value))
 		if !ok || err != nil || report.Refused {
 			t.Errorf("%s did not read: ok=%t err=%v report=%+v", control.name, ok, err, report)
 		}
@@ -97,7 +97,7 @@ func TestNodeTypeReservedIdRefused(t *testing.T) {
 		{"the build-version id", ir.TableBuildVersionWireId},
 		{"the vocabulary id", ir.TableMessageVocabularyWireId},
 	} {
-		ok, err, report := reservedTypeRead(t, m, reservedTypeFile(reserved.id))
+		ok, report, err := reservedTypeRead(t, m, reservedTypeFile(reserved.id))
 		if ok || !ReadRefusal(err) || !report.Refused {
 			t.Errorf("a node record whose type reference resolves to %s read: ok=%t err=%v report=%+v", reserved.name, ok, err, report)
 		}

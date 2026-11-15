@@ -73,7 +73,11 @@ const cRetainRuntime = `
 #ifndef SCHEMA_TABLE_RETAIN_RUNTIME
 #define SCHEMA_TABLE_RETAIN_RUNTIME
 #define SCHEMA_TABLE_RETAIN_DEPTH_MAX @DEPTH@
-#define SCHEMA_TABLE_RETAIN_WALK_MAX 64
+/* THE RESOLVING WALK HOLDS §4's ONE NESTING BOUND (docs/SPEC-TABLES.md §4,
+   §6.6 retain_walk_depth): the depth a walk passes is the level of the
+   payload holding a frame; a table, array or keyed body is one level deeper,
+   and a union is a level when its arm is structural. 128 levels pass. */
+#define SCHEMA_TABLE_RETAIN_WALK_MAX 128
 #define SCHEMA_TABLE_RETAIN_HEADER 26
 
 typedef struct TableRetainId { uint64_t id; int32_t slot; } TableRetainId;
@@ -178,11 +182,12 @@ static SCHEMA_UNUSED int table_retain_in_frame(TableRetainIn * s,uint8_t kind,in
 {uint8_t zero[8]={0};int64_t mark=s->used;if(!table_retain_raw(s,zero,8)||!table_retain_in_content(s,kind,length,depth))return 0;if(s->used-mark-8>UINT32_MAX)return 0;table_retain_put32(s->out+mark,(uint32_t)(s->used-mark-8));return 1;}
 static SCHEMA_UNUSED int table_retain_in_content(TableRetainIn * s,uint8_t kind,int64_t length,int32_t depth)
 {
- int64_t end;TableReader * r=&s->input;if(depth>SCHEMA_TABLE_RETAIN_WALK_MAX||!table_reader_has(r,length))return 0;end=r->offset+length;
+ int64_t end;TableReader * r=&s->input;if(!table_reader_has(r,length))return 0;end=r->offset+length;
+ if(kind==13||kind==14||kind==16){if(depth>=SCHEMA_TABLE_RETAIN_WALK_MAX){return 0;}depth++;}
  switch(kind){
  case 13:for(;;){uint64_t ref;int64_t mark=r->offset;uint8_t k;if(!table_reader_leb(r,&ref))return 0;if(!ref){if(!table_retain_id(s,0))return 0;break;}r->offset=mark;if(!table_retain_in_ref(s,0)||r->offset>=end)return 0;k=table_reader_get8(r);if(!table_retain_raw(s,&k,1)||!table_retain_in_payload(s,k,depth)||r->offset>end)return 0;}break;
  case 14:case 16:{uint8_t elem;uint64_t n,i;if(r->offset>=end)return 0;elem=table_reader_get8(r);if(!table_retain_raw(s,&elem,1)||!table_reader_leb(r,&n)||!table_retain_leb(s,n))return 0;
- for(i=0;i<n;i++){if(kind==16){uint64_t bytes;if(!table_retain_in_ref(s,0)||!table_reader_leb(r,&bytes)||bytes>(uint64_t)(end-r->offset)||!table_retain_in_frame(s,elem,(int64_t)bytes,depth+1))return 0;}else if(!table_retain_in_payload(s,elem,depth))return 0;if(r->offset>end)return 0;}break;}
+ for(i=0;i<n;i++){if(kind==16){uint64_t bytes;if(!table_retain_in_ref(s,0)||!table_reader_leb(r,&bytes)||bytes>(uint64_t)(end-r->offset)||!table_retain_in_frame(s,elem,(int64_t)bytes,depth))return 0;}else if(!table_retain_in_payload(s,elem,depth))return 0;if(r->offset>end)return 0;}break;}
  case 15:case 30:if(!table_retain_in_payload(s,kind,depth))return 0;break;
  case 17:return 0;
  default:if(!table_retain_raw(s,r->buffer+r->offset,length))return 0;r->offset+=length;break;
@@ -196,8 +201,9 @@ static SCHEMA_UNUSED int table_retain_in_payload(TableRetainIn * s,uint8_t kind,
  if(width){if(!table_reader_has(r,width)||!table_retain_raw(s,r->buffer+r->offset,width))return 0;r->offset+=width;return 1;}
  switch(kind){
  case 12:case 31:case 32:if(!table_reader_leb(r,&length)||!table_reader_room(r,length)||!table_retain_leb(s,length)||!table_retain_raw(s,r->buffer+r->offset,(int64_t)length))return 0;r->offset+=(int64_t)length;return 1;
- case 13:case 14:case 16:if(!table_reader_leb(r,&length)||!table_reader_room(r,length))return 0;return table_retain_in_frame(s,kind,(int64_t)length,depth+1);
- case 15:{uint64_t arm;uint8_t k;int64_t mark=r->offset;if(!table_reader_leb(r,&arm))return 0;r->offset=mark;if(!table_retain_in_ref(s,1))return 0;if(!arm)return 1;if(!table_reader_has(r,1))return 0;k=table_reader_get8(r);if(!table_retain_raw(s,&k,1)||!table_reader_leb(r,&length)||!table_reader_room(r,length))return 0;return table_retain_in_frame(s,k,(int64_t)length,depth+1);}
+ case 13:case 14:case 16:if(!table_reader_leb(r,&length)||!table_reader_room(r,length))return 0;return table_retain_in_frame(s,kind,(int64_t)length,depth);
+ case 15:{uint64_t arm;uint8_t k;int64_t mark=r->offset;if(!table_reader_leb(r,&arm))return 0;r->offset=mark;if(!table_retain_in_ref(s,1))return 0;if(!arm)return 1;if(!table_reader_has(r,1))return 0;k=table_reader_get8(r);if(!table_retain_raw(s,&k,1)||!table_reader_leb(r,&length)||!table_reader_room(r,length))return 0;
+  if(k==13||k==14||k==15||k==16){if(depth>=SCHEMA_TABLE_RETAIN_WALK_MAX){return 0;}depth++;}return table_retain_in_frame(s,k,(int64_t)length,depth);}
  case 30:return table_retain_in_ref(s,1);
  default:return 0;
  }
@@ -218,9 +224,15 @@ static SCHEMA_UNUSED void table_retain_commit(TableRetainWalk keep,uint8_t * rec
    for a known field, and the load answers the refusal at its end. */
 static SCHEMA_UNUSED int table_retain_capture(TableReader * r,uint64_t id,uint8_t kind,TableRetainWalk keep)
 {
- TableRetainIn s;TableReader source=*r;uint8_t * record;if(!table_reader_skip(r,kind))return 0;if(!keep.retain)return 1;
+ TableRetainIn s;TableReader source=*r,check;uint8_t * record;int64_t nodes;
+ if(!table_reader_skip(r,kind))return 0;
  if(kind==10||kind==11){uint64_t raw=0;int64_t i;for(i=r->offset-1;i>=source.offset;i--)raw=(raw<<8)|source.buffer[i];
   if(kind==10?!table_bits_finite32((uint32_t)raw):!table_bits_finite64(raw)){table_non_finite_float(r->report);return 1;}}
+ /* AN UNKNOWN FIELD IS VALIDATED BEFORE IT IS KEPT, exactly as the plain
+    read validates one it skips (docs/SPEC-TABLES.md §4, §6.6). */
+ nodes=(r->nodes!=NULL?(int64_t)r->nodes->count-1:0);check=source;
+ if(!table_skip_value(&check,kind,nodes,0)||check.offset!=r->offset)return 0;
+ if(!keep.retain)return 1;
  record=table_retain_begin(keep,id,kind,&s);if(!record){r->report->retain_lost++;return 1;}source.size=r->offset;s.input=source;
  if(!table_retain_in_payload(&s,kind,0)||s.input.offset!=source.size){r->report->retain_lost++;return 1;}table_retain_commit(keep,record,&s,r->report);return 1;
 }

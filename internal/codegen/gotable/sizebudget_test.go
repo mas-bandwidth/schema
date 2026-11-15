@@ -54,8 +54,15 @@ const (
 	// +6: a fixed-class root's Load refuses a form-1 file as previous_form (§3.4), the strict read
 	// -5: the announcement and the message entries carry the message closure alone (SPEC-TABLES §3.3, #2529)
 	// -1161: wide text is retired: kind 33's storage, codecs, JSON and text form are gone (SPEC.md §4.12)
+	// +95: the generated JSON reader bounds a long mantissa before strconv (SPEC-TABLES §16.2)
 	// +7: a union tag's Max is defined from its last arm, and a 128-bit widen carries the source's sign (measured together at the merged head)
-	goOneTableLineBudget = 10007
+	// -15: a fixed table's plain Save, Measure and Load are the fixed form's
+	// (§3.4): the variable form's measure walk and save header are gone at a fixed root, and a root with no file form refuses its save (§3.4)
+	// +14: the JSON walk reads a bytes body as canonical base64 only (§16.8): padded, pad bits zero
+	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
+	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
+	// -4: the comment skip holds each comment to the text rule in one bytes.Index pass, in every JSON read entry (SPEC-TABLES §16.2)
+	goOneTableLineBudget = 10114
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -92,10 +99,17 @@ const (
 	// +110: a fixed-class root's Load refuses a form-1 file as previous_form (§3.4), the strict read
 	// -29: the announcement and the message entries carry the message closure alone (SPEC-TABLES §3.3, #2529)
 	// -161: wide text is retired: kind 33's storage, codecs, JSON and text form are gone (SPEC.md §4.12)
+	// +95: the generated JSON reader bounds a long mantissa before strconv (SPEC-TABLES §16.2)
 	// +7: a union tag's Max is defined from its last arm, and a 128-bit widen carries the source's sign (measured together at the merged head)
+	// +39: the strict read and the text read return the measure's refusal before the builder, and a small text decodes into a stack buffer so a refusal allocates nothing.
+	// -153: the same, across every fixed root in the examples (WideBlob has no file form; a fixed Measure checks the value as its Save does)
+	// +14: the JSON walk reads a bytes body as canonical base64 only (§16.8): padded, pad bits zero
+	// +1: measured over at main 4f02b465e by a hand-landed card, unattributed
+	// +16: a schema-name string past 255 bytes refuses in a skipped object and a skipped pointer definition (§16.2)
+	// -4: the comment skip holds each comment to the text rule in one bytes.Index pass, in every JSON read entry (SPEC-TABLES §16.2)
 	// +9: every blob record checks the u32 size cap before a unit-specific storage mask can classify it unknown (SPEC-TABLES §3.1, §4)
 	// +9: every blob record's shared and unreachable rules apply whatever the unit declares (SPEC-TABLES §3.1, §4)
-	goExamplesLineBudget = 60115
+	goExamplesLineBudget = 60123
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
