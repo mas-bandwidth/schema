@@ -73,6 +73,43 @@ int main( int argc, char ** argv )
         printf( "ROW\t%s\t%s\n", file, ok ? "read" : "refused" );
     }
 
+    // A REPEATED KEY REFUSES IN EVERY OBJECT, the objects a skipped value
+    // carries included (docs/SPEC-TABLES.md §16.2).
+    row_text( "json-unknown-key-control", "{\"known\":1,\"x\":2,\"y\":3}" );
+    row_text( "json-unknown-key-repeat", "{\"known\":1,\"x\":2,\"x\":3}" );
+    row_text( "json-skipped-object-key-control", "{\"known\":1,\"x\":{\"a\":1,\"b\":2}}" );
+    row_text( "json-skipped-object-key-repeat", "{\"known\":1,\"x\":{\"a\":1,\"a\":2}}" );
+
+    // A FIELD ID TWICE IN THE ROOT BODY IS DAMAGE (§3.3), even when the slot
+    // the fixed set knows is the one repeated.
+    {
+        uint64_t simple_ref = 0;
+        for ( int64_t i = 1; i <= vocabulary.count; i++ )
+        {
+            const TableMessageEntry & e = TableVocabularyEntryAt( vocabulary, (uint64_t) i );
+            if ( e.kind == 6 && e.elem_kind == 0 && e.value_bits == 8 ) { simple_ref = (uint64_t) i; break; }
+        }
+        if ( simple_ref == 0 ) { printf( "MISSING\tsimple-ref\n" ); }
+        else
+        {
+            uint8_t buffer[64] = {};
+            buffer[0] = kTableWireMessageForm;
+            TableBitWriter w( buffer + 1, (int64_t) sizeof( buffer ) - 1 );
+            w.put( 0, 8 ); // the batch's body count, M - 1
+            w.put( simple_ref, vocabulary.ref_bits );
+            w.put( 1, 8 );
+            w.put( simple_ref, vocabulary.ref_bits );
+            w.put( 2, 8 );
+            w.put( 0, vocabulary.ref_bits );
+            const int64_t bytes = 1 + ( w.bits + 7 ) / 8;
+            Root value; RootReset( value );
+            int64_t count = 1;
+            TableReport report; memset( &report, 0, sizeof( report ) );
+            const bool ok = RootLoadMessages( &value, &count, vocabulary, buffer, bytes, &report );
+            printf( "ROW\troot-field-id-twice\t%s\n", ok && count == 1 ? "read" : "refused" );
+        }
+    }
+
     // THE SHAPES THE SHARED VECTORS CANNOT CARRY, skipped under a vocabulary
     // built here: a ranged integer and an enum-keyed array of zero-bit slots.
     static TableMessageEntry built[3];
@@ -92,6 +129,29 @@ int main( int argc, char ** argv )
         const bool ok = TableMessageSkip( r, names, 0, c.entry, 0 );
         printf( "ROW\t%s\t%s\n", c.name, ok ? "read" : "refused" );
     }
+
+    // ONE NAME AT TWO SHAPES is still one id: a nested body naming both slots
+    // names the field twice (§3.3). The set is fixed, so the repeat beyond it
+    // is caught too.
+    static TableMessageEntry dup_entries[3];
+    TableVocabulary dup( dup_entries, 3 );
+    dup_entries[0].id = 100; dup_entries[0].kind = 0;
+    dup_entries[1].id = 101; dup_entries[1].kind = 0;
+    dup_entries[2].id = 100; dup_entries[2].kind = 0;
+    dup.count = 3;
+    dup.ref_bits = TableBitsRequired( 0, 3 );
+    dup.announced = true;
+    row_nested_body( "nested-id-two-refs-distinct", dup, 1, 2 );
+    row_nested_body( "nested-id-two-refs", dup, 1, 3 );
+
+    static TableMessageEntry big[4097];
+    for ( int i = 0; i < 4097; i++ ) { big[i].id = (uint64_t) ( i + 1 ); big[i].kind = 0; }
+    TableVocabulary bigv( big, 4097 );
+    bigv.count = 4097;
+    bigv.ref_bits = TableBitsRequired( 0, 4097 );
+    bigv.announced = true;
+    row_nested_body( "nested-id-slot-past-4096-distinct", bigv, 4096, 4097 );
+    row_nested_body( "nested-id-slot-past-4096", bigv, 4096, 4096 );
     return 0;
 }
 `
@@ -133,6 +193,28 @@ static TableMessageEntry keyed_names()
     return e;
 }
 
+static void row_text( const char * name, const char * text )
+{
+    Root value; RootReset( value );
+    TableReport report; memset( &report, 0, sizeof( report ) );
+    const bool ok = RootFromJson( value, text, (int64_t) strlen( text ), &report );
+    printf( "ROW\t%s\t%s\n", name, ok ? "read" : "refused" );
+}
+
+static void row_nested_body( const char * name, const TableVocabulary & vocabulary, uint64_t first, uint64_t second )
+{
+    uint8_t buffer[64] = {};
+    TableBitWriter w( buffer, (int64_t) sizeof( buffer ) );
+    w.put( first, vocabulary.ref_bits );
+    w.put( second, vocabulary.ref_bits );
+    w.put( 0, vocabulary.ref_bits );
+    TableBitReader r( buffer, ( w.bits + 7 ) / 8 );
+    TableMessageEntry body;
+    body.kind = 13;
+    const bool ok = TableMessageSkip( r, vocabulary, 0, body, 0 );
+    printf( "ROW\t%s\t%s\n", name, ok ? "read" : "refused" );
+}
+
 static std::vector<SkipCase> skip_cases()
 {
     const int64_t i64_max = INT64_MAX;
@@ -157,20 +239,29 @@ static std::vector<SkipCase> skip_cases()
 
 // cppSkippedShapeVerdicts is the verdict each built case holds.
 var cppSkippedShapeVerdicts = map[string]string{
-	"ranged-i8-at-max":             "read",
-	"ranged-i8-over-max":           "refused",
-	"ranged-u8-at-max":             "read",
-	"ranged-u8-over-max":           "refused",
-	"ranged-u64-at-max":            "read",
-	"ranged-u64-over-max":          "refused",
-	"ranged-i128-at-max":           "read",
-	"ranged-i128-over-max":         "refused",
-	"ranged-element-at-max":        "read",
-	"ranged-element-over-max":      "refused",
-	"keyed-zero-bit-distinct":      "read",
-	"keyed-zero-bit-repeat":        "refused",
-	"keyed-zero-bit-payload-entry": "refused",
-	"keyed-zero-bit-above-count":   "refused",
+	"ranged-i8-at-max":                  "read",
+	"ranged-i8-over-max":                "refused",
+	"ranged-u8-at-max":                  "read",
+	"ranged-u8-over-max":                "refused",
+	"ranged-u64-at-max":                 "read",
+	"ranged-u64-over-max":               "refused",
+	"ranged-i128-at-max":                "read",
+	"ranged-i128-over-max":              "refused",
+	"ranged-element-at-max":             "read",
+	"ranged-element-over-max":           "refused",
+	"keyed-zero-bit-distinct":           "read",
+	"keyed-zero-bit-repeat":             "refused",
+	"keyed-zero-bit-payload-entry":      "refused",
+	"keyed-zero-bit-above-count":        "refused",
+	"json-unknown-key-control":          "read",
+	"json-unknown-key-repeat":           "refused",
+	"json-skipped-object-key-control":   "read",
+	"json-skipped-object-key-repeat":    "refused",
+	"root-field-id-twice":               "refused",
+	"nested-id-two-refs-distinct":       "read",
+	"nested-id-two-refs":                "refused",
+	"nested-id-slot-past-4096-distinct": "read",
+	"nested-id-slot-past-4096":          "refused",
 }
 
 func cppSkippedValueRun(t *testing.T, fixtures string) ([]byte, error) {

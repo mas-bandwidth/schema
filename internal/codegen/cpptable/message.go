@@ -1120,18 +1120,25 @@ inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t wi
     return base_lo >= bottom || lo >= (uint64_t) bottom - (uint64_t) base_lo;
 }
 
-// THE SKIP PATH'S SEEN SET is a fixed bitmap over the announced slot number,
-// so a skip allocates nothing and the depth cap bounds the walk. A slot above
-// the bitmap means more entries than this reader declared, and such a slot is
-// not tracked.
-static const int64_t kTableMessageSeenBits = kTableMessageEntriesHere > 4096 ? kTableMessageEntriesHere : 4096;
+// THE SKIP PATH'S SEEN SET is a fixed bitmap over an id's FIRST vocabulary
+// slot, so a skip allocates nothing and the depth cap bounds the walk. An ID
+// is the wire's own name (§3.2, §3.3), not the slot that happened to carry
+// it: one name may be announced at two shapes, and naming it twice is a
+// repeat whichever slot it rode. The bitmap covers every slot a 64 KiB
+// announcement can carry; a slot past it is damage, never silently untracked.
+static const int64_t kTableMessageSeenBits = 65536;
 
-// TableMessageSeenOnce records one reference of a body or one key of a keyed
-// array and answers false on a repeat, whether or not this reader can name the
-// field (§3.2, §3.3).
-inline bool TableMessageSeenOnce( uint64_t * seen, uint64_t slot )
+// TableMessageSeenOnce records one id of a body or one key of a keyed array
+// and answers false on a repeat, whether or not this reader can name the field
+// (§3.2, §3.3).
+inline bool TableMessageSeenOnce( uint64_t * seen, const TableVocabulary & vocabulary, uint64_t ref, uint64_t id )
 {
-    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return true; }
+    uint64_t slot = ref;
+    for ( uint64_t i = 1; i < ref; i++ )
+    {
+        if ( TableVocabularyEntryAt( vocabulary, i ).id == id ) { slot = i; break; }
+    }
+    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return false; }
     const uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
     if ( ( seen[slot >> 6] & bit ) != 0 ) { return false; }
     seen[slot >> 6] |= bit;
@@ -1268,7 +1275,7 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
                     TableMessageEntry key_entry;
                     if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
                     if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
-                    if ( !TableMessageSeenOnce( seen, key_ref ) ) { return false; } // one key twice
+                    if ( !TableMessageSeenOnce( seen, vocabulary, key_ref, key_entry.id ) ) { return false; } // one key twice
                 }
                 if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, nested ? depth + 1 : depth ) ) { return false; }
             }
@@ -1295,7 +1302,7 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
         if ( ref > (uint64_t) vocabulary.count ) { return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         if ( TableMessageReserved( entry.id ) ) { return false; }
-        if ( !TableMessageSeenOnce( seen, ref ) ) { return false; } // one id twice
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
         if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
 }

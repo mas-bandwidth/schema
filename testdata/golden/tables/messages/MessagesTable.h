@@ -2863,18 +2863,25 @@ inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t wi
     return base_lo >= bottom || lo >= (uint64_t) bottom - (uint64_t) base_lo;
 }
 
-// THE SKIP PATH'S SEEN SET is a fixed bitmap over the announced slot number,
-// so a skip allocates nothing and the depth cap bounds the walk. A slot above
-// the bitmap means more entries than this reader declared, and such a slot is
-// not tracked.
-static const int64_t kTableMessageSeenBits = kTableMessageEntriesHere > 4096 ? kTableMessageEntriesHere : 4096;
+// THE SKIP PATH'S SEEN SET is a fixed bitmap over an id's FIRST vocabulary
+// slot, so a skip allocates nothing and the depth cap bounds the walk. An ID
+// is the wire's own name (§3.2, §3.3), not the slot that happened to carry
+// it: one name may be announced at two shapes, and naming it twice is a
+// repeat whichever slot it rode. The bitmap covers every slot a 64 KiB
+// announcement can carry; a slot past it is damage, never silently untracked.
+static const int64_t kTableMessageSeenBits = 65536;
 
-// TableMessageSeenOnce records one reference of a body or one key of a keyed
-// array and answers false on a repeat, whether or not this reader can name the
-// field (§3.2, §3.3).
-inline bool TableMessageSeenOnce( uint64_t * seen, uint64_t slot )
+// TableMessageSeenOnce records one id of a body or one key of a keyed array
+// and answers false on a repeat, whether or not this reader can name the field
+// (§3.2, §3.3).
+inline bool TableMessageSeenOnce( uint64_t * seen, const TableVocabulary & vocabulary, uint64_t ref, uint64_t id )
 {
-    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return true; }
+    uint64_t slot = ref;
+    for ( uint64_t i = 1; i < ref; i++ )
+    {
+        if ( TableVocabularyEntryAt( vocabulary, i ).id == id ) { slot = i; break; }
+    }
+    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return false; }
     const uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
     if ( ( seen[slot >> 6] & bit ) != 0 ) { return false; }
     seen[slot >> 6] |= bit;
@@ -3011,7 +3018,7 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
                     TableMessageEntry key_entry;
                     if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
                     if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
-                    if ( !TableMessageSeenOnce( seen, key_ref ) ) { return false; } // one key twice
+                    if ( !TableMessageSeenOnce( seen, vocabulary, key_ref, key_entry.id ) ) { return false; } // one key twice
                 }
                 if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, nested ? depth + 1 : depth ) ) { return false; }
             }
@@ -3038,7 +3045,7 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
         if ( ref > (uint64_t) vocabulary.count ) { return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         if ( TableMessageReserved( entry.id ) ) { return false; }
-        if ( !TableMessageSeenOnce( seen, ref ) ) { return false; } // one id twice
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
         if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
 }
@@ -6458,6 +6465,7 @@ inline bool UserSaveMessageBody( TableBitWriter & w, const User & value )
 inline bool UserLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, User & value )
 {
     UserReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -6486,6 +6494,11 @@ inline bool UserLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xc4bcadba8e631b86ull: // name
@@ -6974,6 +6987,7 @@ inline bool ScriptSaveMessageBody( TableBitWriter & w, const Script & value )
 inline bool ScriptLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Script & value )
 {
     ScriptReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -7002,6 +7016,11 @@ inline bool ScriptLoadMessageBody( TableBitReader & r, const TableVocabulary & v
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x03c52d0debd70676ull: // path
@@ -7569,6 +7588,7 @@ inline bool SelectionSaveMessageBody( TableBitWriter & w, const Selection & valu
 inline bool SelectionLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Selection & value )
 {
     SelectionReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -7597,6 +7617,11 @@ inline bool SelectionLoadMessageBody( TableBitReader & r, const TableVocabulary 
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xee5d97ad45ad251full: // start
@@ -9128,6 +9153,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
 inline bool InsertTextLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, InsertText & value )
 {
     InsertTextReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -9156,6 +9182,11 @@ inline bool InsertTextLoadMessageBody( TableBitReader & r, const TableVocabulary
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x089c4e07b545a968ull: // at
@@ -10084,6 +10115,7 @@ inline bool RemoveTextSaveMessageBody( TableBitWriter & w, const RemoveText & va
 inline bool RemoveTextLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RemoveText & value )
 {
     RemoveTextReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -10112,6 +10144,11 @@ inline bool RemoveTextLoadMessageBody( TableBitReader & r, const TableVocabulary
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x8b7dc019093cd0e1ull: // span
@@ -11115,6 +11152,7 @@ inline bool EditSaveMessageBody( TableBitWriter & w, const Edit & value )
 inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Edit & value )
 {
     EditReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -11143,6 +11181,11 @@ inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xd6a4dbc46c8e8658ull: // revision
@@ -12046,6 +12089,7 @@ inline bool OpenDocumentSaveMessageBody( TableBitWriter & w, const OpenDocument 
 inline bool OpenDocumentLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, OpenDocument & value )
 {
     OpenDocumentReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -12074,6 +12118,11 @@ inline bool OpenDocumentLoadMessageBody( TableBitReader & r, const TableVocabula
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x03c52d0debd70676ull: // path
@@ -12607,6 +12656,7 @@ inline bool SaveDocumentSaveMessageBody( TableBitWriter & w, const SaveDocument 
 inline bool SaveDocumentLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, SaveDocument & value )
 {
     SaveDocumentReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -12635,6 +12685,11 @@ inline bool SaveDocumentLoadMessageBody( TableBitReader & r, const TableVocabula
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x03c52d0debd70676ull: // path
@@ -14272,6 +14327,7 @@ inline bool TransactionSaveMessageBody( TableBitWriter & w, const Transaction & 
 inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Transaction & value )
 {
     TransactionReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -14300,6 +14356,11 @@ inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabular
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x65e8d7f3474f2639ull: // reason
@@ -17809,6 +17870,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
 inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, ToolMessage & value )
 {
     ToolMessageReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -17837,6 +17899,11 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xaa38aca481f528a8ull: // sequence
@@ -19394,6 +19461,7 @@ inline bool CursorSaveMessageBody( TableBitWriter & w, const Cursor & value )
 inline bool CursorLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Cursor & value )
 {
     CursorReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -19422,6 +19490,11 @@ inline bool CursorLoadMessageBody( TableBitReader & r, const TableVocabulary & v
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xbf4ba5ad694f5907ull: // line
@@ -19917,6 +19990,7 @@ inline bool PingSaveMessageBody( TableBitWriter & w, const Ping & value )
 inline bool PingLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Ping & value )
 {
     PingReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -19945,6 +20019,11 @@ inline bool PingLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0x73a94c71d60dc0d8ull: // nonce

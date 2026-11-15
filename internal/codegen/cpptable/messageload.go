@@ -29,6 +29,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("// not this field's is a kind mismatch and skipped the same way.\n")
 	g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    %sReset( value );\n", st.Name)
+	g.pf("    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};\n")
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t ref = 0;\n")
 	g.pf("        if ( !r.get( ref, vocabulary.ref_bits ) )\n        {\n            report->damaged = true;\n            return false;\n        }\n")
@@ -40,6 +41,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("        // field and is read before this walk begins, so meeting one here is\n")
 	g.pf("        // a second numbering wherever it sits\n")
 	g.pf("        if ( TableMessageReserved( entry.id ) )\n        {\n            report->damaged = true;\n            return false;\n        }\n")
+	g.pf("        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )\n        {\n            report->damaged = true;\n            return false;\n        } // one field id twice in one body is damage (§3.3)\n")
 	g.pf("        switch ( entry.id )\n        {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
