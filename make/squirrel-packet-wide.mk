@@ -82,32 +82,38 @@ packet-end-squirrel-negative-control: packet-end-squirrel
 	@grep -Fm1 'FAILED: trailing packet accepted' build/packet-end/squirrel-negative/log
 	@echo 'packet end Squirrel negative control: a missing end check accepts the trailing byte and the padding'
 
-# Compressed floats (SPEC §5.1 row 10, PACKET-WIRE-ALGORITHM §2.5): the
-# generated Squirrel packet writer refuses non-finite and off-range values
-# before handing them to the compressed-float runtime.
-build/packet-write-cfloat/squirrel/.stamp: build/schema-squirrel test/packet-write-cfloat/CFloat.schema test/packet-write-cfloat/squirrel/main.nut
-	@rm -rf build/packet-write-cfloat/squirrel
-	./build/schema-squirrel generate --lang squirrel --out build/packet-write-cfloat/squirrel test/packet-write-cfloat/CFloat.schema
+
+# THE BARE-INTEGER WIDTH CHECK (test/packet-write-bareint/cases.txt; SPEC §5.1
+# row 11): the packet writer refuses a bare intN/uintN value its width cannot
+# carry, in every build, and writes each boundary twin back exactly.
+build/packet-write-bareint/squirrel/.stamp: bin/schema test/packet-write-bareint/BareInt.schema test/packet-write-bareint/squirrel/Carriers.schema make/squirrel-packet-wide.mk
+	@rm -rf build/packet-write-bareint/squirrel
+	./bin/schema generate --lang squirrel --out build/packet-write-bareint/squirrel/bareint test/packet-write-bareint/BareInt.schema
+	./bin/schema generate --lang squirrel --out build/packet-write-bareint/squirrel/carriers test/packet-write-bareint/squirrel/Carriers.schema
 	@touch $@
 
-SQUIRREL_CFLOAT_DIR ?= build/packet-write-cfloat/squirrel
+.PHONY: packet-write-bareint-squirrel packet-write-bareint-squirrel-negative-control
+packet-write-bareint-squirrel: build/packet-write-bareint/squirrel/.stamp toolchain-squirrel
+	"$(SQ)" test/packet-write-bareint/squirrel/main.nut test/packet-write-bareint/cases.txt build/packet-write-bareint/squirrel/bareint build/packet-write-bareint/squirrel/carriers > build/packet-write-bareint/squirrel/stdout 2> build/packet-write-bareint/squirrel/stderr
+	@cat build/packet-write-bareint/squirrel/stdout
+	@if [ -s build/packet-write-bareint/squirrel/stderr ] || grep -q '^FAILED:' build/packet-write-bareint/squirrel/stdout; then \
+		cat build/packet-write-bareint/squirrel/stderr >&2; exit 1; fi
 
-.PHONY: packet-write-cfloat-squirrel packet-write-cfloat-squirrel-negative-control
-packet-write-cfloat-squirrel: build/packet-write-cfloat/squirrel/.stamp toolchain-squirrel
-	@"$(SQ)" test/packet-write-cfloat/squirrel/main.nut test/packet-write-cfloat/cases.txt $(SQUIRREL_CFLOAT_DIR) > build/packet-write-cfloat/squirrel/stdout 2> build/packet-write-cfloat/squirrel/stderr; status=$$?; \
-	cat build/packet-write-cfloat/squirrel/stdout; \
-	if [ $$status -ne 0 ] || [ -s build/packet-write-cfloat/squirrel/stderr ] || ! grep -Fxq 'packet-write-cfloat-squirrel: shared cases passed' build/packet-write-cfloat/squirrel/stdout; then cat build/packet-write-cfloat/squirrel/stderr >&2; exit 1; fi
+# THE WIDTH CONTROL: the writer keeps only its integer check, so an
+# out-of-width bare value reaches the wire and the driver must fail by name.
+packet-write-bareint-squirrel-negative-control: packet-write-bareint-squirrel
+	@rm -rf build/packet-write-bareint/squirrel-negative
+	@mkdir -p build/packet-write-bareint/squirrel-negative
+	go run ./tools/sabotage -name packet-write-bareint-squirrel-width -out build/packet-write-bareint/squirrel-negative/write.gotext internal/codegen/squirrel/write.go
+	@printf '{"Replace":{"%s/internal/codegen/squirrel/write.go":"%s/build/packet-write-bareint/squirrel-negative/write.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-write-bareint/squirrel-negative/overlay.json
+	go run -overlay=build/packet-write-bareint/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-write-bareint/squirrel-negative/bareint test/packet-write-bareint/BareInt.schema
+	go run -overlay=build/packet-write-bareint/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-write-bareint/squirrel-negative/carriers test/packet-write-bareint/squirrel/Carriers.schema
+	-"$(SQ)" test/packet-write-bareint/squirrel/main.nut test/packet-write-bareint/cases.txt build/packet-write-bareint/squirrel-negative/bareint build/packet-write-bareint/squirrel-negative/carriers > build/packet-write-bareint/squirrel-negative/log 2>&1
+	@if grep -Fq 'packet write bare-int Squirrel: ' build/packet-write-bareint/squirrel-negative/log; then \
+		echo 'NEGATIVE CONTROL FAILED: Squirrel unchecked bare-integer width passed'; cat build/packet-write-bareint/squirrel-negative/log; exit 1; fi
+	@grep -Fq 'FAILED: int8-above-max: refused' build/packet-write-bareint/squirrel-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: no out-of-width case failed by name'; cat build/packet-write-bareint/squirrel-negative/log; exit 1; }
+	@grep -Fxm1 'FAILED: int8-above-max: refused' build/packet-write-bareint/squirrel-negative/log
+	@echo 'packet write bare-int Squirrel negative control: an unchecked width fails the shared cases'
 
-packet-write-cfloat-squirrel-negative-control: packet-write-cfloat-squirrel
-	@rm -rf build/packet-write-cfloat/squirrel-negative
-	@mkdir -p build/packet-write-cfloat/squirrel-negative
-	go run ./tools/sabotage -name packet-write-cfloat-squirrel -out build/packet-write-cfloat/squirrel-negative/write.gotext internal/codegen/squirrel/write.go
-	@printf '{"Replace":{"%s/internal/codegen/squirrel/write.go":"%s/build/packet-write-cfloat/squirrel-negative/write.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-write-cfloat/squirrel-negative/overlay.json
-	go run -overlay=build/packet-write-cfloat/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-write-cfloat/squirrel-negative/generated test/packet-write-cfloat/CFloat.schema
-	@if $(MAKE) packet-write-cfloat-squirrel SQUIRREL_CFLOAT_DIR=build/packet-write-cfloat/squirrel-negative/generated > build/packet-write-cfloat/squirrel-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Squirrel compressed-float range check removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-write-cfloat nan:' build/packet-write-cfloat/squirrel-negative/log || { cat build/packet-write-cfloat/squirrel-negative/log; exit 1; }
-	@grep -Fq 'FAILED: packet-write-cfloat above-max:' build/packet-write-cfloat/squirrel-negative/log || { cat build/packet-write-cfloat/squirrel-negative/log; exit 1; }
-	@test "$$(grep -c '^FAILED: packet-write-cfloat ' build/packet-write-cfloat/squirrel-negative/log)" -eq 6 || { cat build/packet-write-cfloat/squirrel-negative/log; exit 1; }
-	@echo 'packet compressed-float Squirrel negative control: removed range check fails all six unlawful cases'
-
-test-squirrel: packet-write-cfloat-squirrel packet-write-cfloat-squirrel-negative-control
+test-squirrel: packet-write-bareint-squirrel packet-write-bareint-squirrel-negative-control

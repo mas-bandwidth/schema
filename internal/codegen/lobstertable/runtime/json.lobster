@@ -1205,9 +1205,13 @@ def j_scan_unit(r:JsonReader) -> string, bool, bool:
     return substring(t, at, got), false, true
 
 // Read a whole decoded string or refuse at its bound. Capacity < 0 is
-// unbounded; stored strings also forbid zero. The middle result is retained
-// for scanner call compatibility and is always false: no prefix is published.
-def j_scan_text(r:JsonReader, capacity:int, store:bool) -> string, bool, bool:
+// unbounded. zero is the U+0000 rule (§16.3): 0 compares only and holds none,
+// 1 is a stored string (text_holds_zero), 2 is an object key or a string the
+// walk only SKIPS, held to the rule a placed string is held to (§4, §16.3);
+// no field holds it, so its refusal is plain malformed. The middle result is
+// retained for scanner call compatibility and is always false: no prefix is
+// published.
+def j_scan_text(r:JsonReader, capacity:int, zero:int) -> string, bool, bool:
     if j_peek(r) != '\"':
         j_refuse(r, "kind_mismatch")
         return "", false, false
@@ -1236,9 +1240,12 @@ def j_scan_text(r:JsonReader, capacity:int, store:bool) -> string, bool, bool:
             return "", false, false
         if done:
             return concat_string(parts, ""), false, true
-        if store and length(unit) == 1 and unit[0] == 0:
-            r.zero = true
-            j_refuse(r, "text_holds_zero")
+        if zero != 0 and length(unit) == 1 and unit[0] == 0:
+            if zero == 1:
+                r.zero = true
+                j_refuse(r, "text_holds_zero")
+            else:
+                j_refuse(r, "malformed")
             return "", false, false
         if capacity >= 0 and length(unit) > capacity - size:
             j_refuse(r, "length_over_bound")
@@ -1249,10 +1256,10 @@ def j_scan_text(r:JsonReader, capacity:int, store:bool) -> string, bool, bool:
 
 
 def j_scan_string(r:JsonReader, capacity:int) -> string, bool, bool:
-    return j_scan_text(r, capacity, false)
+    return j_scan_text(r, capacity, 0)
 
 def j_scan_stored(r:JsonReader, capacity:int) -> string, bool, bool:
-    return j_scan_text(r, capacity, true)
+    return j_scan_text(r, capacity, 1)
 
 // j_decode_utf8 is the code point of one well-formed UTF-8 unit.
 def j_decode_utf8(u:string) -> int:
@@ -1336,18 +1343,13 @@ def j_scan_number(r:JsonReader) -> string, bool, bool:
         return "", false, false
     return substring(r.text, start, r.pos - start), integral, true
 
-// j_skip_string steps over one string the walk does not keep.
+// j_skip_string steps over one string the walk does not keep, held to the
+// text rules of a placed string (§4, §16.3: skipped is not unread).
 def j_skip_string(r:JsonReader) -> bool:
     if j_peek(r) != '\"':
         return j_refuse(r, "malformed")
-    r.pos++
-    while true:
-        let _, done, ok = j_scan_unit(r)
-        if not ok:
-            return false
-        if done:
-            return true
-    return false
+    let _, clamped, ok = j_scan_text(r, -1, 2)
+    return ok and not clamped
 
 
 def j_skip_value(r:JsonReader, depth:int) -> bool:
@@ -1394,7 +1396,7 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
             return false
         var keyed = false
         if close == '}':
-            let key, _, ok = j_scan_string(r, json_max_key)
+            let key, _, ok = j_scan_text(r, json_max_key, 2)
             if not ok:
                 return false
             push(keys, key)
@@ -1540,7 +1542,7 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
                 return j_required(r, rec, seen)
             if c == 0:
                 return j_refuse(r, "malformed")
-            let k, _, ok = j_scan_string(r, json_max_key)
+            let k, _, ok = j_scan_text(r, json_max_key, 2)
             if not ok:
                 return false
             if j_peek(r) != ':':
@@ -1825,7 +1827,7 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
         if c == 0:
             r.bad = true
             return false
-        let key, _, ok = j_scan_string(r, json_max_key)
+        let key, _, ok = j_scan_text(r, json_max_key, 2)
         if not ok:
             return false
         push(seen, key)
@@ -2179,7 +2181,7 @@ def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> boo
     if j_peek(r) == '}':
         r.pos++
         return true
-    let key, _, ok = j_scan_string(r, json_max_key)
+    let key, _, ok = j_scan_text(r, json_max_key, 2)
     if not ok:
         return false
     if j_peek(r) != ':':
@@ -2306,7 +2308,7 @@ def j_read_pointer_cell(r:JsonReader, cell:Value, tname:string, depth:int) -> bo
     if c == 0:
         r.bad = true
         return false
-    let key, _, ok = j_scan_string(r, json_max_key)
+    let key, _, ok = j_scan_text(r, json_max_key, 2)
     if not ok:
         return false
     if j_peek(r) != ':':
