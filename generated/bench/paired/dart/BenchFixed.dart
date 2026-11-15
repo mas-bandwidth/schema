@@ -2157,6 +2157,12 @@ final class TableMessageShape {
   int base = 0;
   int baseLo = 0;
   int baseHi = 0;
+  /// The quantized triple's derived facts, kept so the SKIP path can hold an
+  /// index to its count and a dequantized value to a finite float, exactly as
+  /// a named read does (docs/SPEC-TABLES.md §3.3, §4).
+  double qMin = 0;
+  double qDelta = 0;
+  int qCount = 0;
   TableMessageShape? inner;
 
   /// Decodes ONE shape at at in an announced entry's signature, mirroring
@@ -2201,7 +2207,7 @@ final class TableMessageShape {
         return (s, b.$2);
       }
       if (s.packing == 2 && kind == 10) {
-        final bits = quantizedBits(sig, at, end);
+        final bits = quantizedBits(sig, at, end, s);
         if (bits == null) return null;
         s.bits = bits;
         return (s, at + 12);
@@ -2240,7 +2246,7 @@ final class TableMessageShape {
   /// The width of a quantized f32 (ir.DecodeShape, ir.TableMessageQuantization):
   /// bits.Len32 of ceil(float32((max - min) / res)), clamped to [1, 2^32 - 256],
   /// or null where the triple is not conforming.
-  static int? quantizedBits(Uint8List sig, int at, int end) {
+  static int? quantizedBits(Uint8List sig, int at, int end, TableMessageShape s) {
     if (at + 12 > end) return null;
     final view = ByteData.sublistView(sig, at, at + 12);
     final f = Float32List(3);
@@ -2260,10 +2266,14 @@ final class TableMessageShape {
     }
     var count = values.ceil();
     var width = 0;
+    final kept = count;
     while (count != 0) {
       width++;
       count >>= 1;
     }
+    s.qMin = f[0];
+    s.qDelta = delta;
+    s.qCount = kept;
     return width;
   }
 
@@ -2987,15 +2997,26 @@ bool tableMessageKindWidens(int from, int declared) {
   return false;
 }
 
-/// One body at [depth]. Fields of the body are skipped at this same depth.
+/// One body at [depth]. Fields of the body are skipped at this same depth,
+/// held to the same two framing rules a named body applies
+/// (docs/SPEC-TABLES.md §3.1, §3.3): a reserved id is damage, and an id met
+/// twice in one body is damage whether or not this reader can name it.
 bool tableMessageSkipBody(TableMessageReader r, int depth) {
   if (depth > 128) return false;
+  // A BODY'S OWN SEEN SET, the reference's per-body map
+  // (internal/tablewire/messagedecode.go, skipBody): a field id twice in one
+  // body is damage, known or unknown, and a nested body's ids do not shadow
+  // its host's.
+  final seen = <int>{};
   while (true) {
     final ref = r.bits.get(r.vocabulary.refBits);
     if (r.bits.failed) return false;
     if (ref == 0) return true;
     if (ref > r.vocabulary.count) return false;
-    if (!tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1], depth)) return false;
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) return false;
+    if (!seen.add(entry.id)) return false;
+    if (!tableMessageSkipEntry(r, entry, depth)) return false;
   }
 }
 
@@ -3031,12 +3052,47 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
     case 12:
       final n = r.bits.get(TableMessageShape.bitsRequired(0, s.max));
       if (r.bits.failed || !r.bits.align()) return false;
-      return r.bits.skip(n * 8);
+      final start = r.bits.offset >> 3;
+      if (!r.bits.skip(n * 8)) return false;
+      // ILL-FORMED TEXT, OR A ZERO BYTE, IS DAMAGE ON THE SKIP PATH TOO
+      // (docs/SPEC-TABLES.md §3.3, §4): reuse the named read's own check.
+      return tableTextValid(r.bits.buffer, start, n);
     case 31:
       if (!r.bits.align()) return false;
       final n = r.bits.get(32);
       if (r.bits.failed) return false;
       return r.bits.skip(n * 8);
+    case 10:
+      // A FLOAT IS FINITE ON THE SKIP PATH TOO (docs/SPEC-TABLES.md §3.3):
+      // a raw NaN or infinity is refused on its bits, and a quantized index
+      // above its count is damage, never reconstructed.
+      if (s.packing == 2) {
+        final index = r.bits.get(s.bits);
+        if (r.bits.failed) return false;
+        if (index > s.qCount) return false;
+        // The announced triple's own float32 arithmetic, the read path's
+        // order (ir.TableMessageDequantize): two roundings on each side.
+        final cell = Float32List(1);
+        cell[0] = index.toDouble();
+        final fi = cell[0];
+        cell[0] = s.qCount.toDouble();
+        final fc = cell[0];
+        cell[0] = fi / fc;
+        final normalized = cell[0];
+        cell[0] = normalized * s.qDelta;
+        final scaled = cell[0];
+        cell[0] = scaled + s.qMin;
+        return cell[0].isFinite;
+      }
+      final b32 = r.bits.get(32);
+      if (r.bits.failed) return false;
+      return (b32 & 0x7f800000) != 0x7f800000;
+    case 11:
+      final b64 = r.bits.get(64);
+      if (r.bits.failed) return false;
+      // The exponent field alone, so no NaN payload is ever assembled: an
+      // all-ones exponent is a NaN or an infinity (§3.3).
+      return ((b64 >> 52) & 0x7ff) != 0x7ff;
     case 14:
     case 16:
       var n = s.min;
@@ -3054,31 +3110,70 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
           n += s.min;
         }
       }
+      // THE COUNT'S BITS CAN SPELL MORE THAN max - min, so a count above the
+      // announced maximum is damage here as it is at a named field
+      // (docs/SPEC-TABLES.md §3.3, §4).
+      if (n > s.max) return false;
       if (kind == 14 && s.elem == 6 && !r.bits.align()) return false;
       final inner = s.inner ?? TableMessageShape();
-      // elementRunBits + skipRun (internal/codegen/gotable/message.go): a
-      // fixed-width element of an array or keyed entry is stepped
-      // arithmetically; only a walked element recurses at depth + 1.
+      // elementRunBits + skipRun (internal/tablewire/messagedecode.go): a
+      // fixed-width element of an ARRAY is stepped arithmetically; a float,
+      // a compressed or ranged element, a keyed entry and a structural
+      // element are walked so their own conditions are held.
       final elem = s.elem;
-      if (elem != 13 && elem != 15 && elem != 17 && elem != 30) {
+      if (kind == 14 &&
+          elem != 13 &&
+          elem != 15 &&
+          elem != 17 &&
+          elem != 30 &&
+          elem != 10 &&
+          elem != 11 &&
+          inner.packing == 0) {
         var run = (elem == 0 || elem == 32) ? 0 : TableMessageShape.valueBits(elem, inner);
         if (run >= 0) {
-          if (kind == 16) {
-            run += r.vocabulary.refBits;
-          }
           if (run == 0) return true;
           if (n > 0x7fffffffffffffff ~/ run) return false;
           return r.bits.skip(n * run);
         }
       }
-      for (var i = 0; i < n; i++) {
-        if (kind == 16) {
-          r.bits.get(r.vocabulary.refBits);
-          if (r.bits.failed) return false;
+      if (kind == 16) {
+        // AN ENUM-KEYED ARRAY'S KEY references a declared no-payload entry,
+        // none repeated (docs/SPEC-TABLES.md §3.2, §3.3): the skip path runs
+        // the same checks a named keyed read does, with the keyed body's own
+        // seen set (internal/tablewire/messagedecode.go, keyedReference).
+        final seen = <int>{};
+        // A STRUCTURAL ELEMENT is one level deeper; a scalar element adds no
+        // level (docs/SPEC-TABLES.md §4), so a keyed array of scalars at the
+        // depth boundary still reads.
+        final structural = elem == 13 || elem == 14 || elem == 15 || elem == 16;
+        for (var i = 0; i < n; i++) {
+          // The key's own bits are progress (internal/tablewire/messagedecode.go,
+          // skip: the offset is read before keyedReference), so a payload-free
+          // element is still a walked element that advanced.
+          final before = r.bits.offset;
+          final keyRef = r.bits.get(r.vocabulary.refBits);
+          if (r.bits.failed ||
+              keyRef == 0 ||
+              keyRef > r.vocabulary.count) {
+            return false;
+          }
+          final key = r.vocabulary.entries[keyRef - 1];
+          if (tableMessageReservedId(key.id) || key.kind != 0) {
+            return false;
+          }
+          if (!seen.add(key.id)) return false;
+          if (!tableMessageSkip(
+              r, elem, inner, structural ? depth + 1 : depth)) {
+            return false;
+          }
+          if (r.bits.offset == before) return false;
         }
+        return true;
+      }
+      for (var i = 0; i < n; i++) {
         // A WALKED ELEMENT THAT CONSUMES NO BITS is damage and ends the
-        // walk (internal/codegen/gotable/message.go, tableMessageSkip):
-        // otherwise the announced count alone buys the iterations.
+        // walk (internal/tablewire/messagedecode.go, skip): otherwise the
+        // announced count alone buys the iterations.
         final before = r.bits.offset;
         if (!tableMessageSkip(r, s.elem, inner, depth + 1)) return false;
         if (r.bits.offset == before) return false;

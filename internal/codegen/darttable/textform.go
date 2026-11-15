@@ -1032,6 +1032,10 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	g.pf("\tfinal seen = <String>{};\n")
 	g.pf("\tfor (final entry in entries) {\n")
 	g.pf("\t\tfinal key = entry.key;\n")
+	// EVERY OBJECT KEY is held to the text rules a placed value is held to,
+	// whether it names a field or none (docs/SPEC-TABLES.md §16.3, §4): a key
+	// that decodes to U+0000 refuses the read.
+	g.pf("\t\t_jsonText(key);\n")
 	g.pf("\t\tfinal val = entry.value;\n")
 	g.pf("\t\tswitch (key) {\n")
 	g.pf("\t\t\tcase '&node':\n\t\t\t\tif (!pointer) throw const FormatException('label outside pointer');\n\t\t\t\tbreak;\n")
@@ -1039,8 +1043,9 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 		g.emitTextFromJsonField(f)
 	}
 	// an unknown key is skipped and counted, and its repeat is damage like a
-	// known key's (§2.8)
-	g.pf("\t\t\tdefault:\n\t\t\t\tif (!seen.add(key)) r.refuse('text_damaged');\n\t\t\t\tr.unknown++;\n")
+	// known key's (§2.8). Its VALUE is held to the grammar and text rules a
+	// placed value is held to (§16.3, §4), so damage inside it refuses.
+	g.pf("\t\t\tdefault:\n\t\t\t\tif (!seen.add(key)) r.refuse('text_damaged');\n\t\t\t\t_jsonSkipValue(val);\n\t\t\t\tr.unknown++;\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
 	g.emitRequiredCheck(st, false, "\t")

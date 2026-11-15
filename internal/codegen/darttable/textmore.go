@@ -106,6 +106,39 @@ List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
   return null;
 }
 
+// _jsonSkipValue holds a value the read only SKIPS to the grammar and text
+// rules a placed value is held to (docs/SPEC-TABLES.md §16.2, §16.3, §4):
+// the parser has judged its grammar, and every object key and every string in
+// it goes through the same text check a placed string does, so one that
+// decodes to U+0000 refuses the read as a placed one would.
+void _jsonSkipValue(dynamic val) {
+  if (val is String) {
+    _jsonText(val);
+    return;
+  }
+  if (val is _JObj) {
+    for (final entry in val.entries) {
+      _jsonText(entry.key);
+      _jsonSkipValue(entry.value);
+    }
+    return;
+  }
+  if (val is List) {
+    for (final item in val) {
+      _jsonSkipValue(item);
+    }
+    return;
+  }
+  if (val is Map) {
+    for (final entry in val.entries) {
+      final key = entry.key;
+      if (key is! String) throw const FormatException('kind_mismatch');
+      _jsonText(key);
+      _jsonSkipValue(entry.value);
+    }
+  }
+}
+
 // _jsonDecodeExact is JSON decoding that keeps every number's token
 // (docs/SPEC-TABLES.md §16.2): an integer token an int holds is an int, and
 // every other number is a _JNum.

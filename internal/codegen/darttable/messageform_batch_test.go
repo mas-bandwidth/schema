@@ -701,11 +701,13 @@ const dartSkipDepthBody = `
   array.refBits = width;
   array.announced = true;
 
-  h.TableVocabulary keyedVocab(int elemKind) {
+  h.TableVocabulary keyedVocab(int elemKind, int maxSlots) {
     final sig16 = Uint8List(12);
-    sig16[9] = (1 << width) - 1;
+    sig16[9] = maxSlots;
     sig16[10] = elemKind;
-    final entries = List<h.TableMessageEntry>.generate(8, (i) => h.TableMessageEntry(0, 0));
+    // THE KEYS the rows below carry are six DISTINCT kind-0 entries, so no
+    // key repeats (§3.2, §3.3).
+    final entries = List<h.TableMessageEntry>.generate(8, (i) => h.TableMessageEntry(100 + i, 0));
     entries[6] = h.TableMessageEntry(1, 13, Uint8List(9));
     entries[7] = h.TableMessageEntry(2, 16, sig16);
     final vocab = h.TableVocabulary(entries: entries);
@@ -715,9 +717,44 @@ const dartSkipDepthBody = `
     return vocab;
   }
 
-  final keyed6 = keyedVocab(6);
-  final keyed32 = keyedVocab(32);
-  final keyed13 = keyedVocab(13);
+  final keyed6 = keyedVocab(6, 6);
+  final keyed32 = keyedVocab(32, 6);
+  final keyed13 = keyedVocab(13, 1);
+
+  // A KEYED ENTRY'S KEYS name declared no-payload entries, none repeated
+  // (docs/SPEC-TABLES.md §3.2, §3.3), so the depth rows carry valid keys:
+  // slots 1..keyCount, the probe vocabulary's kind-0 entries.
+  Uint8List packKeyed(int nlead, int keyCount, int elemBytes) {
+    final bits = <int>[];
+    void put(int value, int n) {
+      for (var b = 0; b < n; b++) {
+        bits.add((value >> b) & 1);
+      }
+    }
+    Uint8List flush() {
+      final out = Uint8List(2 + ((bits.length + 7) >> 3));
+      out[0] = 2;
+      out[1] = 0;
+      for (var i = 0; i < bits.length; i++) {
+        if (bits[i] != 0) out[2 + (i >> 3)] |= 1 << (i & 7);
+      }
+      return out;
+    }
+    for (var i = 0; i < nlead; i++) {
+      put(7, width);
+    }
+    put(8, width);
+    final countBits = keyCount == 0 ? 0 : keyCount.bitLength;
+    if (countBits > 0) put(keyCount, countBits);
+    for (var i = 0; i < keyCount; i++) {
+      put(i + 1, width);
+      put(0, elemBytes * 8);
+    }
+    for (var i = 0; i <= nlead; i++) {
+      put(0, width);
+    }
+    return flush();
+  }
 
   Uint8List pack(int nlead, int lead, int nmid, int mid, int ntail) {
     final n = nlead + nmid + ntail;
@@ -769,7 +806,7 @@ const dartSkipDepthBody = `
   expectOk('skip_depth_array_below_128', array, pack(125, 7, 1, 8, 127));
   expectOk('skip_depth_array_at_128', array, pack(126, 7, 1, 8, 128));
   expectBad('skip_depth_above_128 array', array, pack(127, 7, 1, 8, 129));
-  expectOk('skip_depth_keyed_fixed_at_128', keyed6, pack(128, 7, 2, 8, 153));
-  expectOk('skip_depth_keyed_nopayload_at_128', keyed32, pack(128, 7, 2, 8, 137));
-  expectBad('skip_depth_above_128 keyed', keyed13, pack(127, 7, 2, 8, 137));
+  expectOk('skip_depth_keyed_fixed_at_128', keyed6, packKeyed(128, 6, 1));
+  expectOk('skip_depth_keyed_nopayload_at_128', keyed32, packKeyed(128, 6, 0));
+  expectBad('skip_depth_above_128 keyed', keyed13, packKeyed(127, 1, 0));
 `

@@ -6121,6 +6121,39 @@ List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
   return null;
 }
 
+// _jsonSkipValue holds a value the read only SKIPS to the grammar and text
+// rules a placed value is held to (docs/SPEC-TABLES.md §16.2, §16.3, §4):
+// the parser has judged its grammar, and every object key and every string in
+// it goes through the same text check a placed string does, so one that
+// decodes to U+0000 refuses the read as a placed one would.
+void _jsonSkipValue(dynamic val) {
+  if (val is String) {
+    _jsonText(val);
+    return;
+  }
+  if (val is _JObj) {
+    for (final entry in val.entries) {
+      _jsonText(entry.key);
+      _jsonSkipValue(entry.value);
+    }
+    return;
+  }
+  if (val is List) {
+    for (final item in val) {
+      _jsonSkipValue(item);
+    }
+    return;
+  }
+  if (val is Map) {
+    for (final entry in val.entries) {
+      final key = entry.key;
+      if (key is! String) throw const FormatException('kind_mismatch');
+      _jsonText(key);
+      _jsonSkipValue(entry.value);
+    }
+  }
+}
+
 // _jsonDecodeExact is JSON decoding that keeps every number's token
 // (docs/SPEC-TABLES.md §16.2): an integer token an int holds is an int, and
 // every other number is a _JNum.
@@ -6989,6 +7022,7 @@ void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _S
   final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
+    _jsonText(key);
     final val = entry.value;
     switch (key) {
       case '&node':
@@ -7052,6 +7086,7 @@ void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _S
         break;
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
+        _jsonSkipValue(val);
         r.unknown++;
     }
   }
@@ -7092,6 +7127,7 @@ void tableStatFromJsonFields(TableStat v, dynamic obj, TableTextReport r, _Share
   final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
+    _jsonText(key);
     final val = entry.value;
     switch (key) {
       case '&node':
@@ -7107,6 +7143,7 @@ void tableStatFromJsonFields(TableStat v, dynamic obj, TableTextReport r, _Share
         break;
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
+        _jsonSkipValue(val);
         r.unknown++;
     }
   }
@@ -7159,6 +7196,7 @@ void tableHitEventFromJsonFields(TableHitEvent v, dynamic obj, TableTextReport r
   final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
+    _jsonText(key);
     final val = entry.value;
     switch (key) {
       case '&node':
@@ -7182,6 +7220,7 @@ void tableHitEventFromJsonFields(TableHitEvent v, dynamic obj, TableTextReport r
         break;
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
+        _jsonSkipValue(val);
         r.unknown++;
     }
   }
@@ -7222,6 +7261,7 @@ void tableChatEventFromJsonFields(TableChatEvent v, dynamic obj, TableTextReport
   final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
+    _jsonText(key);
     final val = entry.value;
     switch (key) {
       case '&node':
@@ -7237,6 +7277,7 @@ void tableChatEventFromJsonFields(TableChatEvent v, dynamic obj, TableTextReport
         break;
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
+        _jsonSkipValue(val);
         r.unknown++;
     }
   }
@@ -7277,6 +7318,7 @@ void tablePickupEventFromJsonFields(TablePickupEvent v, dynamic obj, TableTextRe
   final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
+    _jsonText(key);
     final val = entry.value;
     switch (key) {
       case '&node':
@@ -7292,6 +7334,7 @@ void tablePickupEventFromJsonFields(TablePickupEvent v, dynamic obj, TableTextRe
         break;
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
+        _jsonSkipValue(val);
         r.unknown++;
     }
   }
@@ -7530,6 +7573,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
   final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
+    _jsonText(key);
     final val = entry.value;
     switch (key) {
       case '&node':
@@ -7673,6 +7717,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       default:
         if (!seen.add(key)) r.refuse('text_damaged');
+        _jsonSkipValue(val);
         r.unknown++;
     }
   }
