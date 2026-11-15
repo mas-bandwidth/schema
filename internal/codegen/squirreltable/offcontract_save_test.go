@@ -91,7 +91,7 @@ local probe = function(name, setup) {
 };
 `
 
-type offContractCase struct {
+type offContractSaveCase struct {
 	name string
 	// goBad and goGood are the same value in the Go engine's model; nil where
 	// the engine has no way to hold it (a wrong Squirrel type) or where its
@@ -218,7 +218,7 @@ func TestSquirrelVariableSaveRefusesOffContract(t *testing.T) {
 		}
 	}
 
-	cases := []offContractCase{
+	cases := []offContractSaveCase{
 		{
 			name:   "ranged_over",
 			goBad:  func(_ *tabletext.Model, inst *tabletext.Instance) { setU(inst, "ranged", 50) },
@@ -364,7 +364,7 @@ func TestSquirrelVariableSaveRefusesOffContract(t *testing.T) {
 	}
 	for _, location := range []string{"name", "text", "names", "lookup"} {
 		for _, text := range texts {
-			c := offContractCase{
+			c := offContractSaveCase{
 				name:    location + "_" + text.name,
 				nutBad:  nutTextField(location, text.data),
 				nutGood: nutTextTwin(location),
