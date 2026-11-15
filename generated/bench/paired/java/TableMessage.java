@@ -325,7 +325,104 @@ public final class TableMessage {
             case 17:
                 return -1L;
         }
-        return valueBits(elem);
+        long width = valueBits(elem);
+        if (width > 0L) {
+            // A FLOAT AND A RANGED OR QUANTIZED ELEMENT CARRY A VALUE
+            // CONDITION (§3.3, §4): finiteness, an index at or below its
+            // count, an offset within its kind's range. Walk them through the
+            // same checks a named field takes.
+            if (elem.kind == 10 || elem.kind == 11) {
+                return -1L;
+            }
+            if (elem.packing == 1 || elem.packing == 2) {
+                return -1L;
+            }
+        }
+        return width;
+    }
+
+    static boolean kindSigned(int kind) {
+        return (kind >= 2 && kind <= 5) || kind == 18 || (kind >= 20 && kind <= 24);
+    }
+
+    // A RANGED OFFSET IS HELD TO ITS KIND'S OWN DOMAIN (§3.3, §4): the offset's
+    // bits can spell a value past the sender's maximum whenever the range is
+    // not one less than a power of two, and no conforming writer emits one.
+    public static boolean skipRanged(Reader r, TableVocabulary.Shape s) {
+        int width = TableVocabulary.kindWidth(s.kind) * 8;
+        long lo, hi;
+        if (width > 64) {
+            lo = r.get(64);
+            hi = r.get(width - 64);
+        } else {
+            lo = r.get(width);
+            hi = 0L;
+        }
+        if (r.err) {
+            return false;
+        }
+        long baseHi = s.kind >= 18 ? s.baseHi : (kindSigned(s.kind) && s.baseLo < 0L ? -1L : 0L);
+        if (!kindHolds(s.kind, lo, hi, s.baseLo, baseHi)) {
+            r.err = true;
+            return false;
+        }
+        return true;
+    }
+
+    // kindHolds holds base + offset, the offset at its announced width and the
+    // base at its own kind's signedness, inside the kind's own 128-bit domain.
+    static boolean kindHolds(int kind, long offLo, long offHi, long baseLo, long baseHi) {
+        int width = TableVocabulary.kindWidth(kind) * 8;
+        if (width == 0) {
+            return true;
+        }
+        boolean signed = kindSigned(kind);
+        long minLo, minHi, maxLo, maxHi;
+        if (signed) {
+            if (width >= 128) {
+                minLo = 0L;
+                minHi = Long.MIN_VALUE;
+                maxLo = -1L;
+                maxHi = Long.MAX_VALUE;
+            } else {
+                long min = -(1L << (width - 1));
+                long max = (1L << (width - 1)) - 1L;
+                minLo = min;
+                minHi = min < 0L ? -1L : 0L;
+                maxLo = max;
+                maxHi = max < 0L ? -1L : 0L;
+            }
+        } else {
+            minLo = 0L;
+            minHi = 0L;
+            maxLo = width >= 128 ? -1L : (width == 64 ? -1L : (1L << width) - 1L);
+            maxHi = width >= 128 ? -1L : 0L;
+        }
+        int baseMin =
+                signed
+                        ? compareSigned128(baseLo, baseHi, minLo, minHi)
+                        : compareUnsigned128(baseLo, baseHi, minLo, minHi);
+        int baseMax =
+                signed
+                        ? compareSigned128(baseLo, baseHi, maxLo, maxHi)
+                        : compareUnsigned128(baseLo, baseHi, maxLo, maxHi);
+        if (baseMax > 0) {
+            return false;
+        }
+        if (baseMin >= 0) {
+            long limLo = maxLo - baseLo;
+            long borrow = Long.compareUnsigned(maxLo, baseLo) < 0 ? 1L : 0L;
+            long limHi = maxHi - baseHi - borrow;
+            return compareUnsigned128(offLo, offHi, limLo, limHi) <= 0;
+        }
+        long loLo = minLo - baseLo;
+        long borrowLo = Long.compareUnsigned(minLo, baseLo) < 0 ? 1L : 0L;
+        long loHi = minHi - baseHi - borrowLo;
+        long hiLo = maxLo - baseLo;
+        long borrowHi = Long.compareUnsigned(maxLo, baseLo) < 0 ? 1L : 0L;
+        long hiHi = maxHi - baseHi - borrowHi;
+        return compareUnsigned128(offLo, offHi, loLo, loHi) >= 0
+                && compareUnsigned128(offLo, offHi, hiLo, hiHi) <= 0;
     }
 
     public static boolean skipRun(Reader r, long n, long width) {
@@ -413,7 +510,10 @@ public final class TableMessage {
                         r.err = true;
                         return false;
                     }
-                    return skipAt(r, arm.shape, arm.element, depth + 1);
+                    // A UNION INSIDE A UNION NESTS; a scalar arm adds no level, and
+                    // a structural arm's own payload is the one level it spends
+                    // (§4, §3.3).
+                    return skipAt(r, arm.shape, arm.element, arm.kind == 15 ? depth + 1 : depth);
                 }
             case 12:
                 {
@@ -440,6 +540,12 @@ public final class TableMessage {
             case 14:
             case 16:
                 {
+                    // AN ARRAY OR KEYED BODY IS ONE LEVEL DEEPER (§4): a body past
+                    // the bound refuses even when it carries no element.
+                    if (depth + 1 > 128) {
+                        r.err = true;
+                        return false;
+                    }
                     long n = readCount(r, s);
                     if (r.err) {
                         return false;
@@ -475,20 +581,13 @@ public final class TableMessage {
                         if (!skipAt(r, elem, null, depth + 1)) {
                             return false;
                         }
-                        // A WALKED ELEMENT THAT CONSUMED NO BITS, a nested array
-                        // whose inner run is itself zero-width, steps the rest of
-                        // the run in one (docs/SPEC-TABLES.md §3.3). A remaining
-                        // count the bits left could not back is damage, so a
-                        // hostile count is refused here rather than walked, and
-                        // the skip is bounded by the batch's bits whatever the
-                        // count says.
+                        // A WALKED ELEMENT THAT CONSUMES NO BITS REFUSES THE READ
+                        // (§3.3): a fixed-width element is stepped over by its
+                        // width and never walked, so a walked element must make
+                        // progress whatever the announced count says.
                         if (r.at == at) {
-                            if (n - i - 1 > r.totalBits - r.at) {
-                                r.err = true;
-                                return false;
-                            }
-                            r.seenRollback(seenSlotMark);
-                            return true;
+                            r.err = true;
+                            return false;
                         }
                     }
                     r.seenRollback(seenSlotMark);
@@ -499,6 +598,9 @@ public final class TableMessage {
         if (w < 0L) {
             r.err = true;
             return false;
+        }
+        if (s.packing == 1) {
+            return skipRanged(r, s);
         }
         return r.skipBits(w);
     }
