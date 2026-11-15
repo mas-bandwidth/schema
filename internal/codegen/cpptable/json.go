@@ -4013,7 +4013,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     {
         char name[kTableJsonMaxKey];
         int32_t name_length = 0;
-        if ( !TableJsonScanString( in, name, kTableJsonMaxKey - 1, &name_length, NULL, true ) ) { return false; }
+        if ( !TableJsonScanString( in, name, kTableJsonMaxKey - 1, &name_length ) ) { return false; }
         name[name_length] = 0;
         for ( int64_t v = 0; v <= f->enum_max; v++ )
         {
@@ -4061,7 +4061,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             {
                 char name[kTableJsonMaxKey];
                 int32_t name_length = 0;
-                if ( !TableJsonScanString( in, name, kTableJsonMaxKey - 1, &name_length, NULL, true ) ) { return false; }
+                if ( !TableJsonScanString( in, name, kTableJsonMaxKey - 1, &name_length ) ) { return false; }
                 name[name_length] = 0;
                 bool found = false;
                 for ( int64_t bit = 0; bit <= f->enum_max; bit++ )
