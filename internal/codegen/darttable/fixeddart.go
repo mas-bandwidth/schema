@@ -866,15 +866,22 @@ func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind 
 	name := dartName(f.Name)
 	if f.Type.Optional {
 		// A PRESENT BYTE OTHER THAN 0 OR 1 REFUSES wire_damaged, on the same
-		// rule as a bool byte (docs/SPEC-TABLES.md §4, §6.5).
+		// rule as a bool byte (docs/SPEC-TABLES.md §4, §6.5). A CLEAR FLAG
+		// READS THE DECLARED DEFAULT AND NOT THE PAYLOAD: the payload is dead
+		// and the plan has already held it to zero (docs/FIXED-FORM-
+		// ALGORITHM.md §3.1, §4.5, §5.3 step 11), so nothing in it is read as
+		// a value.
 		g.pf("%s{\n", ind)
 		g.call(ind+"  ", "final p = ", "view.getUint8", []string{fixedOff(base, at)}, ";")
 		g.pf("%s  if (p > 1) {\n", ind)
 		g.pf("%s    report.refused = TableFixedRefusal.damaged;\n", ind)
 		g.pf("%s  }\n", ind)
 		g.pf("%s  %s.%sPresent = p != 0;\n", ind, val, name)
+		g.pf("%s  if (p == 1) {\n", ind)
+		g.emitDecodeValue(f, base, at+fixedPresentBytes, val+"."+name, ind+"    ")
+		g.pf("%s  }\n", ind)
 		g.pf("%s}\n", ind)
-		at += fixedPresentBytes
+		return
 	}
 	g.emitDecodeValue(f, base, at, val+"."+name, ind)
 }

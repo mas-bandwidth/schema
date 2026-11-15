@@ -563,6 +563,8 @@ public final class BenchPacketRetain {
                             int ek = ar.get8();
                             long n = ar.count(r.limit);
                             if (ar.fail) {
+                            } else if (!TableVariable.arrayElemKindClosed(ek)) {
+                                report.damaged = true;
                             } else if (!(ek == 6)) {
                                 report.refuse("kind_mismatch");
                             } else {
