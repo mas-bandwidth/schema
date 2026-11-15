@@ -411,6 +411,9 @@ public final class TableVariable {
         // (docs/SPEC-TABLES.md §3.3): it lives on the one id table every
         // writer of a save shares, sub-writers included, so the save sees it.
         public boolean nonFinite;
+        // offRange is the SAVE's refusal of a ranged float off its range
+        // (docs/SPEC.md §5.1 row 10), held in every build beside nonFinite.
+        public boolean offRange;
 
         public Ids(int cap) {
             entries = new long[cap];
@@ -659,6 +662,23 @@ public final class TableVariable {
                 ids.nonFinite = true;
             }
             put64(bits);
+        }
+
+        // putF32In and putF64In write a ranged float: its raw bits as putF32
+        // and putF64 do, and a value off [lo, hi] refuses the whole save in
+        // every build (docs/SPEC.md §5.1 row 10), on every field shape.
+        public void putF32In(float v, double lo, double hi) {
+            if ((double) v < lo || (double) v > hi) {
+                ids.offRange = true;
+            }
+            putF32(v);
+        }
+
+        public void putF64In(double v, double lo, double hi) {
+            if (v < lo || v > hi) {
+                ids.offRange = true;
+            }
+            putF64(v);
         }
 
         public void putLeb(long v) {
@@ -1855,6 +1875,27 @@ public final class TableVariable {
         return max < 0 || len <= max;
     }
 
+    // WriteCheck is the write contract's walk over the tables a value points
+    // to (docs/SPEC.md §5.1): each target is checked once, by identity, so a
+    // cycle ends the walk and stays the graph's own refusal. A work list, not
+    // a recursion, so a long chain cannot run out of stack. Debug only: a
+    // writer's checkWrite makes one under an assert.
+    public static final class WriteCheck {
+        private final java.util.IdentityHashMap<Object, Boolean> seen =
+                new java.util.IdentityHashMap<>();
+        private final java.util.ArrayDeque<Object> pending = new java.util.ArrayDeque<>();
+
+        public void point(Object target) {
+            if (target != null && seen.put(target, Boolean.TRUE) == null) {
+                pending.add(target);
+            }
+        }
+
+        public Object next() {
+            return pending.poll();
+        }
+    }
+
     // textValid reports whether a kind-12 payload is well-formed UTF-8 with no
     // zero byte among its bytes (docs/SPEC-TABLES.md §3, §4): checked as it
     // ARRIVES, before the reader's own bound, because a payload that is not
@@ -2755,6 +2796,7 @@ public final class TableVariable {
             ids.count = 0;
             ids.overflow = false;
             ids.nonFinite = false;
+            ids.offRange = false;
             writer.off = 0;
             writer.overflow = false;
             return writer;

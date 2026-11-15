@@ -16,7 +16,8 @@ import (
 // assert, so under -ea the save throws AssertionError and without it the
 // save does not throw (an assert leg's release build is not required to
 // check a write); rows 6, 7 and 10 are refused (null) in both builds, row 10
-// on a required field. Every refused case has a lawful twin at the same boundary that
+// on every shape that holds a ranged float. Every refused case has a lawful
+// twin at the same boundary that
 // saves and loads back equal in both builds, so a save that refused
 // everything fails. Each row is held on every field shape the variable writer
 // handles: a scalar, an array element, a map key and value, a union arm's

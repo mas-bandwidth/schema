@@ -1205,7 +1205,7 @@ public final class BenchMixedRetain {
         }
         w.put8(0);
         w.trailer();
-        return w.overflow || ids.nonFinite ? -1 : w.off;
+        return w.overflow || ids.nonFinite || ids.offRange ? -1 : w.off;
     }
 
     static void writeFieldsRetain(
@@ -1341,17 +1341,26 @@ public final class BenchMixedRetain {
         if (Float.floatToRawIntBits(v.aimX) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchMixedVariable.F_aimX));
             w.put8(10);
-            w.putF32(v.aimX);
+            w.putF32In(
+                    v.aimX,
+                    Double.longBitsToDouble(0xbff0000000000000L),
+                    Double.longBitsToDouble(0x3ff0000000000000L));
         }
         if (Float.floatToRawIntBits(v.aimY) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchMixedVariable.F_aimY));
             w.put8(10);
-            w.putF32(v.aimY);
+            w.putF32In(
+                    v.aimY,
+                    Double.longBitsToDouble(0xbff0000000000000L),
+                    Double.longBitsToDouble(0x3ff0000000000000L));
         }
         if (Float.floatToRawIntBits(v.aimZ) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchMixedVariable.F_aimZ));
             w.put8(10);
-            w.putF32(v.aimZ);
+            w.putF32In(
+                    v.aimZ,
+                    Double.longBitsToDouble(0xbff0000000000000L),
+                    Double.longBitsToDouble(0x3ff0000000000000L));
         }
         if (Float.floatToRawIntBits(v.recoil) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchMixedVariable.F_recoil));

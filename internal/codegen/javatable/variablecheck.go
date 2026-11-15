@@ -13,16 +13,33 @@ import (
 // a string(N) or bytes(N) length, an enum ordinal, and well-formed text — in
 // one checkWrite predicate per type, reached once through `assert` from save.
 // Without -ea the predicate never runs and the writer trusts its caller.
+// Row 10 (a ranged float off its range) is not here: the Java row holds it in
+// every build, on the writer's own float put (putF32In, putF64In).
 
 // writeVariableCheckWrite emits a table's checkWrite: every field the save
-// writes, under the same guard the save writes it under. A pointer's target
-// is a node, checked by checkNodes once the graph is built, so the walk never
-// follows a pointer and a cycle cannot loop it.
-func writeVariableCheckWrite(b *strings.Builder, st *ir.Struct) {
+// writes, under the same guard the save writes it under. The one-argument
+// form is the root's, asserted from save before the graph walk: it walks
+// every table the value reaches, through its pointers as well, each once
+// (TableVariable.WriteCheck keeps the seen set), so a cycle ends the walk
+// and stays the graph's own refusal. The two-argument form checks one
+// table's fields and hands each pointer's target to the walk.
+func writeVariableCheckWrite(b *strings.Builder, st *ir.Struct, tables []*ir.Struct) {
 	b.WriteString("    // checkWrite is save's contract walk (docs/SPEC.md §5.1 rows 1-5 and 8),\n")
 	b.WriteString("    // called through `assert`: THE WRITE-SIDE CHECKS ARE DEBUG ONLY, and\n")
-	b.WriteString("    // without -ea the writer trusts its caller.\n")
+	b.WriteString("    // without -ea the writer trusts its caller. It reaches every table the\n")
+	b.WriteString("    // value points to, each once, so a cycle ends it.\n")
 	b.WriteString("    static boolean checkWrite(Value v) {\n")
+	b.WriteString("        TableVariable.WriteCheck walk = new TableVariable.WriteCheck();\n")
+	b.WriteString("        walk.point(v);\n")
+	b.WriteString("        for (Object o = walk.next(); o != null; o = walk.next()) {\n")
+	for _, t := range tables {
+		fmt.Fprintf(b, "            if (o instanceof %sVariable.Value) {\n", t.Name)
+		fmt.Fprintf(b, "                assert %sVariable.checkWrite((%sVariable.Value) o, walk);\n", t.Name, t.Name)
+		b.WriteString("            }\n")
+	}
+	b.WriteString("        }\n")
+	b.WriteString("        return true;\n    }\n\n")
+	b.WriteString("    static boolean checkWrite(Value v, TableVariable.WriteCheck walk) {\n")
 	b.WriteString("        if (v == null) { return true; }\n")
 	for _, f := range st.Fields {
 		var fb strings.Builder
@@ -47,7 +64,7 @@ func writeVariableUnionCheckWrite(b *strings.Builder, un *ir.Union) {
 	mem := unionMembers(un)
 	b.WriteString("    // checkWrite is the selected arm's contract walk (docs/SPEC.md §5.1),\n")
 	b.WriteString("    // reached from its holder's checkWrite under `assert`: debug only.\n")
-	b.WriteString("    static boolean checkWrite(Value v) {\n")
+	b.WriteString("    static boolean checkWrite(Value v, TableVariable.WriteCheck walk) {\n")
 	b.WriteString("        if (v == null) { return true; }\n")
 	var cases strings.Builder
 	for i, arm := range un.Variants {
@@ -68,24 +85,6 @@ func writeVariableUnionCheckWrite(b *strings.Builder, un *ir.Union) {
 		}
 	}
 	b.WriteString(cases.String())
-	b.WriteString("        return true;\n    }\n\n")
-}
-
-// writeVariableCheckNodes emits checkNodes: every table node the built graph
-// holds, through its own type's checkWrite. Blob nodes are checked at the
-// field that names them.
-func writeVariableCheckNodes(b *strings.Builder, tables []*ir.Struct) {
-	b.WriteString("    // checkNodes is checkWrite over every table the graph reached through a\n")
-	b.WriteString("    // pointer (docs/SPEC.md §5.1), called through `assert`: debug only.\n")
-	b.WriteString("    static boolean checkNodes(TableVariable.NodeGraph graph) {\n")
-	b.WriteString("        for (int i = 0, n = graph.nodeCount(); i < n; i++) {\n")
-	b.WriteString("            if (graph.nodeBlob(i)) { continue; }\n")
-	b.WriteString("            Object value = graph.nodeValue(i);\n")
-	b.WriteString("            long typeId = graph.nodeType(i);\n")
-	for _, t := range tables {
-		fmt.Fprintf(b, "            if (typeId == %sVariable.TYPE_ID) { assert %sVariable.checkWrite((%sVariable.Value) value); }\n", t.Name, t.Name, t.Name)
-	}
-	b.WriteString("        }\n")
 	b.WriteString("        return true;\n    }\n\n")
 }
 
@@ -134,7 +133,9 @@ func writeVariableFieldCheck(b *strings.Builder, f *ir.Field, expr, name, ind st
 // writeVariableValueCheck emits the asserts for one value of f's kind.
 func writeVariableValueCheck(b *strings.Builder, f *ir.Field, expr, name, ind string) {
 	if f.Type.Pointer && isStruct(f) {
-		return // a node: checkNodes
+		// a pointer's target is a table of its own: the walk checks it once
+		fmt.Fprintf(b, "%swalk.point(%s);\n", ind, expr)
+		return
 	}
 	if variableWide(f) {
 		// ROW 1: a fixed-point raw value or a wide integer off its range
@@ -189,7 +190,7 @@ func writeVariableValueCheck(b *strings.Builder, f *ir.Field, expr, name, ind st
 			// ROW 5: an ordinal inside the variant set (0 is the unset value)
 			fmt.Fprintf(b, "%sassert %s >= 0 && %s <= %d : %q;\n", ind, expr, expr, len(ref.Variants), name)
 		case *ir.Struct, *ir.Union:
-			fmt.Fprintf(b, "%sassert %sVariable.checkWrite(%s);\n", ind, f.Type.Name, expr)
+			fmt.Fprintf(b, "%sassert %sVariable.checkWrite(%s, walk);\n", ind, f.Type.Name, expr)
 		}
 	}
 }

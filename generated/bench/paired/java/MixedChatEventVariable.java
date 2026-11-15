@@ -473,56 +473,52 @@ public final class MixedChatEventVariable {
 
     // checkWrite is save's contract walk (docs/SPEC.md §5.1 rows 1-5 and 8),
     // called through `assert`: THE WRITE-SIDE CHECKS ARE DEBUG ONLY, and
-    // without -ea the writer trusts its caller.
+    // without -ea the writer trusts its caller. It reaches every table the
+    // value points to, each once, so a cycle ends it.
     static boolean checkWrite(Value v) {
+        TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
+        walk.point(v);
+        for (Object o = walk.next(); o != null; o = walk.next()) {
+            if (o instanceof BenchBitsVariable.Value) {
+                assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchIntsVariable.Value) {
+                assert BenchIntsVariable.checkWrite((BenchIntsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchMixedVariable.Value) {
+                assert BenchMixedVariable.checkWrite((BenchMixedVariable.Value) o, walk);
+            }
+            if (o instanceof BenchPacketVariable.Value) {
+                assert BenchPacketVariable.checkWrite((BenchPacketVariable.Value) o, walk);
+            }
+            if (o instanceof FixedTableVariable.Value) {
+                assert FixedTableVariable.checkWrite((FixedTableVariable.Value) o, walk);
+            }
+            if (o instanceof MixedChatEventVariable.Value) {
+                assert MixedChatEventVariable.checkWrite((MixedChatEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedEntityVariable.Value) {
+                assert MixedEntityVariable.checkWrite((MixedEntityVariable.Value) o, walk);
+            }
+            if (o instanceof MixedHitEventVariable.Value) {
+                assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedPickupEventVariable.Value) {
+                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedStatVariable.Value) {
+                assert MixedStatVariable.checkWrite((MixedStatVariable.Value) o, walk);
+            }
+        }
+        return true;
+    }
+
+    static boolean checkWrite(Value v, TableVariable.WriteCheck walk) {
         if (v == null) {
             return true;
         }
         assert v.channel >= 0 && v.channel <= 3 : "MixedChatEvent.channel";
         assert (v.speaker & 0xffffffffL) <= 0xfffL : "MixedChatEvent.speaker";
-        return true;
-    }
-
-    // checkNodes is checkWrite over every table the graph reached through a
-    // pointer (docs/SPEC.md §5.1), called through `assert`: debug only.
-    static boolean checkNodes(TableVariable.NodeGraph graph) {
-        for (int i = 0, n = graph.nodeCount(); i < n; i++) {
-            if (graph.nodeBlob(i)) {
-                continue;
-            }
-            Object value = graph.nodeValue(i);
-            long typeId = graph.nodeType(i);
-            if (typeId == BenchBitsVariable.TYPE_ID) {
-                assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) value);
-            }
-            if (typeId == BenchIntsVariable.TYPE_ID) {
-                assert BenchIntsVariable.checkWrite((BenchIntsVariable.Value) value);
-            }
-            if (typeId == BenchMixedVariable.TYPE_ID) {
-                assert BenchMixedVariable.checkWrite((BenchMixedVariable.Value) value);
-            }
-            if (typeId == BenchPacketVariable.TYPE_ID) {
-                assert BenchPacketVariable.checkWrite((BenchPacketVariable.Value) value);
-            }
-            if (typeId == FixedTableVariable.TYPE_ID) {
-                assert FixedTableVariable.checkWrite((FixedTableVariable.Value) value);
-            }
-            if (typeId == MixedChatEventVariable.TYPE_ID) {
-                assert MixedChatEventVariable.checkWrite((MixedChatEventVariable.Value) value);
-            }
-            if (typeId == MixedEntityVariable.TYPE_ID) {
-                assert MixedEntityVariable.checkWrite((MixedEntityVariable.Value) value);
-            }
-            if (typeId == MixedHitEventVariable.TYPE_ID) {
-                assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) value);
-            }
-            if (typeId == MixedPickupEventVariable.TYPE_ID) {
-                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) value);
-            }
-            if (typeId == MixedStatVariable.TYPE_ID) {
-                assert MixedStatVariable.checkWrite((MixedStatVariable.Value) value);
-            }
-        }
         return true;
     }
 
@@ -541,7 +537,6 @@ public final class MixedChatEventVariable {
             return null;
         }
         graph.setOpen(v, false);
-        assert checkNodes(graph);
         w.put8(1);
         writeFields(w, graph, v);
         int nodes = graph.nodeCount();
@@ -572,7 +567,7 @@ public final class MixedChatEventVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite) {
+        if (w.ids.nonFinite || w.ids.offRange) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
