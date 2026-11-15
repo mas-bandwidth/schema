@@ -95,6 +95,26 @@ local function byte_order_mark(inp: Input)
   if inp.p == 1 and inp.t:sub(1, 3) == "\xEF\xBB\xBF" then inp.p = 4 end
 end
 
+-- A COMMENT'S BYTES ARE TEXT (docs/SPEC-TABLES.md §16.2): well-formed UTF-8
+-- and no NUL (0x00), in a line comment or a block comment. A comment holding
+-- an ill-formed sequence or a zero byte refuses the read; only LF ends a line
+-- comment, so a lone CR is an ordinary byte inside it.
+local function comment_text(inp: Input, from: number, to: number): boolean
+  local i = from
+  while i <= to do
+    local c = inp.t:byte(i)
+    if c == 0 then return false end
+    if c < 0x80 then
+      i = i + 1
+    else
+      local width = utf8_seq(inp.t, i)
+      if width < 0 then return false end
+      i = i + width
+    end
+  end
+  return true
+end
+
 local function space(inp: Input)
   while inp.p <= #inp.t do
     local c = inp.t:byte(inp.p)
@@ -103,11 +123,14 @@ local function space(inp: Input)
     elseif c == 47 then
       local n = inp.t:byte(inp.p + 1)
       if n == 47 then
-        inp.p = inp.p + 2
+        local start = inp.p + 2
+        inp.p = start
         while inp.p <= #inp.t and inp.t:byte(inp.p) ~= 10 do inp.p = inp.p + 1 end
+        if not comment_text(inp, start, inp.p - 1) then inp.bad = true; return end
       elseif n == 42 then
         local e = inp.t:find("*/", inp.p + 2, true)
         if e == nil then inp.bad = true; inp.p = #inp.t + 1; return end
+        if not comment_text(inp, inp.p + 2, e - 1) then inp.bad = true; return end
         inp.p = e + 2
       else
         inp.bad = true
