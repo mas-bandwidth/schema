@@ -123,7 +123,7 @@ pub fn mixed_event_fixed_scatter(b: &[u8], value: &mut MixedEventRow, report: &m
 pub fn mixed_event_fixed_dead(b: &[u8]) -> bool {
     let _ = b;
     let tag = b[0] as u64;
-    if tag == 0 || tag > 3 {
+    if tag == 0 {
         return b[1..14].iter().any(|&x| x != 0);
     }
     match tag {

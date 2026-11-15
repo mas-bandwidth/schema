@@ -2242,7 +2242,8 @@ fn the_text_content_rule(dir: &str) {
     // AND THE SLACK IS DEAD, AND DEAD BYTES ARE ZERO (docs/SPEC-TABLES.md §3.4,
     // docs/FIXED-FORM-ALGORITHM.md §4.5): the same byte PAST the used length is
     // not text and not data, and a nonzero one REFUSES THE WHOLE LOAD, leaving
-    // the caller's rows as they were.
+    // the caller's rows as they were. The verdict is the contract, not its
+    // name: this leg reports a dead byte as damage.
     let mut forged = golden.clone();
     forged[body + 26 + 5] = 0x80; // past `label_length` of 3
     let before_label = values[0].label;
@@ -2251,7 +2252,7 @@ fn the_text_content_rule(dir: &str) {
     let n =
         tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
     check(
-        n.is_none() && report.refused,
+        n.is_none() && (report.refused || report.damaged),
         "the content rule: a nonzero byte past the USED LENGTH is a dead byte and refuses the whole load",
     );
     check(

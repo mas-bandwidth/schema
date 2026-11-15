@@ -874,7 +874,10 @@ func (g *gen) emitFixedDeadField(f *ir.Field, base int64, indent int) {
 	g.emitFixedDeadPayload(f, start, indent+4)
 	g.pf("%s}", ind)
 	if payload > 0 {
-		g.pf(" else if b[%d..%d].iter().any(|&x| x != 0) {\n", start, start+payload)
+		// Only a cleared flag (0) makes the payload dead. A present byte
+		// other than 0 or 1 is the hostile-byte path, which discards the
+		// load as damage and resets every caller row to its default.
+		g.pf(" else if b[%d] == 0 && b[%d..%d].iter().any(|&x| x != 0) {\n", base, start, start+payload)
 		g.pf("%s    return true;\n%s}", ind, ind)
 	}
 	g.pf("\n")
@@ -956,8 +959,9 @@ func (g *gen) emitFixedDeadElement(f *ir.Field, at string, indent int) {
 }
 
 // emitFixedDeadUnion is one union image's dead bytes: the whole arm span under
-// tag 0 (and under any tag this build does not name), the bytes past a narrower
-// taken arm, and the dead regions inside the taken arm itself.
+// tag 0, the bytes past a narrower taken arm, and the dead regions inside the
+// taken arm itself. A tag no arm names is not dead: the bounds pass refuses it
+// as out of range.
 func (g *gen) emitFixedDeadUnion(un *ir.Union) {
 	tagw := ir.TableFixedUnionTagBytes(un)
 	span := ir.TableFixedUnionBytes(un)
@@ -970,7 +974,7 @@ func (g *gen) emitFixedDeadUnion(un *ir.Union) {
 		g.pf("    let tag = %s::from_le_bytes(b[0..%d].try_into().expect(\"the tag's width\")) as u64;\n",
 			fixedRawUint(tagw), tagw)
 	}
-	g.pf("    if tag == 0 || tag > %d {\n", len(un.Variants))
+	g.pf("    if tag == 0 {\n")
 	if span > tagw {
 		g.pf("        return b[%d..%d].iter().any(|&x| x != 0);\n", tagw, span)
 	} else {
