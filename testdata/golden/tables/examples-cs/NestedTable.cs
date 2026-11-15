@@ -2103,7 +2103,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = ArchiveConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (ArchiveConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(ArchiveConfigFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(ArchiveConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)

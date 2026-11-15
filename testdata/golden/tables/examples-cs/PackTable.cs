@@ -142,7 +142,7 @@ namespace Tabledemo
         public static bool GunnerSettingsCollectTyped(GunnerSettings v, ref TableWire.Ids ids)
         {
             TableFieldInfo[] fields = GunnerSettingsTableType().Fields;
-            if (!float.IsFinite(v.Reaction)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Reaction));
             if (BitConverter.SingleToUInt32Bits(v.Reaction) != 0x3e4ccccdu && !ids.Add(0xb75aa3662201646aul)) return false;
             if (v.Tracking != false && !ids.Add(0xa6bf719a4602b0bcul)) return false;
             if (!TableWire.CollectField(v, fields[2], ref ids)) return false;
@@ -256,9 +256,9 @@ namespace Tabledemo
         {
             TableFieldInfo[] fields = ShipEntryTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
-            if (!float.IsFinite(v.Health)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Health));
             if (BitConverter.SingleToUInt32Bits(v.Health) != 0x42c80000u && !ids.Add(0x7f69d4b5288ba9cful)) return false;
-            if (!float.IsFinite(v.Mass)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Mass));
             if (BitConverter.SingleToUInt32Bits(v.Mass) != 0x3f800000u && !ids.Add(0x1f3757a2ce7b0ab1ul)) return false;
             if (!TableWire.CollectField(v, fields[3], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[4], ref ids)) return false;
@@ -1471,7 +1471,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = GunnerSettingsFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (GunnerSettingsFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(GunnerSettingsFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(GunnerSettingsFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -2090,7 +2090,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = ShipEntryFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (ShipEntryFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(ShipEntryFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(ShipEntryFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -2677,7 +2677,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = GlobalSettingsFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (GlobalSettingsFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(GlobalSettingsFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(GlobalSettingsFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -3668,7 +3668,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = PackConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (PackConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(PackConfigFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(PackConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
