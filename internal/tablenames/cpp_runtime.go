@@ -36,7 +36,7 @@ func cppRuntimeNames() []Name {
 		}},
 		{what: "the strict form-1 walk, its cursor, its body walk and its bounds (docs/SPEC-TABLES.md §6.5)", names: []string{
 			"TableStrict", "TableStrictArray", "TableStrictArrayElemKind", "TableStrictBody",
-			"TableStrictContent", "TableStrictKeyed", "TableStrictKeyedElemKind", "TableStrictPayload",
+			"TableStrictContent", "TableStrictFailed", "TableStrictKeyed", "TableStrictKeyedElemKind", "TableStrictPayload",
 			"TableStrictScalar", "TableStrictSeen", "TableStrictUnion", "TableStrictWalk",
 			"TableStrictWidth", "kTableStrictMaxDepth", "kTableStrictSeenWords",
 		}},
