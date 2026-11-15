@@ -10,11 +10,7 @@ from typing import Any, Iterator
 
 from . import InvalidValue
 from . import descriptor, kinds
-<<<<<<< HEAD
-from . import kind_map, kind_optional
-=======
-from . import kind_array, kind_blob, kind_map, kind_unsupported
->>>>>>> a07c863f3804c4f8d8ab60ba2812defb2aad5ce4
+from . import kind_array, kind_blob, kind_map, kind_optional, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1
@@ -208,21 +204,17 @@ def _collect(value: Any, ctx: Ctx, blobs: list[int]) -> None:
     desc: TableDesc = value.descriptor
     for field in desc.fields:
         current = getattr(value, field.name)
-<<<<<<< HEAD
         if field.codec == "optional":
             if current is None:
                 continue
             if field.inner == "table":
-                _collect(current, ctx)
+                _collect(current, ctx, blobs)
             elif field.inner == "array" and field.elem is not None and field.elem.codec == "table":
                 # A present array's elements own their edges, in slot order;
                 # an absent one owns none (docs/SPEC-TABLES.md §2.3).
                 for item in current:
-                    _collect(item, ctx)
-            continue
-        if field.codec == "pointer":
-=======
-        if field.codec == "string_blob" or field.codec == "bytes_blob":
+                    _collect(item, ctx, blobs)
+        elif field.codec == "string_blob" or field.codec == "bytes_blob":
             if current is None:
                 continue
             body = kind_blob._encode(field, current, _path(desc.name, field.name))
@@ -230,7 +222,6 @@ def _collect(value: Any, ctx: Ctx, blobs: list[int]) -> None:
             ctx.order.append(kind_blob._BlobNode(field.codec == "string_blob", body))
             blobs.append(index)
         elif field.codec == "pointer":
->>>>>>> a07c863f3804c4f8d8ab60ba2812defb2aad5ce4
             if current is None:
                 continue
             key = id(current)

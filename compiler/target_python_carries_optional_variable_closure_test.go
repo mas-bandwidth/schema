@@ -51,7 +51,7 @@ func TestPythonCarriesOptionalVariableClosure(t *testing.T) {
 		t.Fatal(err)
 	}
 	module := string(files["probe/Probe.py"])
-	for _, want := range []string{`codec="optional",`, `inner="array",`, `array_kind="counted",`} {
+	for _, want := range []string{`codec="optional",`, `inner="array",`, `array_kind=2,`} {
 		if !strings.Contains(module, want) {
 			t.Errorf("the generated optional array lacks %q:\n%s", want, module)
 		}

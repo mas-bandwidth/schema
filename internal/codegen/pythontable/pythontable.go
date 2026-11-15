@@ -677,13 +677,11 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
 		}
 		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
-<<<<<<< HEAD
 		if innerCodecOf(f) == "array" {
 			emitOptionalArrayElem(b, f)
-=======
+		}
 		if codecOf(f) == "keyed" {
 			emitKeyedDesc(b, f)
->>>>>>> a07c863f3804c4f8d8ab60ba2812defb2aad5ce4
 		}
 		fmt.Fprintf(b, "        ),\n")
 	}
@@ -1116,7 +1114,6 @@ func codecOf(f *ir.Field) string {
 		}
 		return "map"
 	}
-<<<<<<< HEAD
 	if f.KeyEnum != "" {
 		return "unsupported"
 	}
@@ -1124,8 +1121,6 @@ func codecOf(f *ir.Field) string {
 		return "optional"
 	}
 	if f.Array != ir.ArrayNone {
-=======
-	if f.KeyEnum != "" || f.Type.Optional || f.Array != ir.ArrayNone {
 		return "unsupported"
 	}
 	switch f.Type.Kind {
@@ -1161,7 +1156,6 @@ func codecOf(f *ir.Field) string {
 // stays unsupported until that card lands.
 func elementCodecOf(f *ir.Field) string {
 	if f.Type.Pointer {
->>>>>>> a07c863f3804c4f8d8ab60ba2812defb2aad5ce4
 		return "unsupported"
 	}
 	switch f.Type.Kind {
@@ -1214,9 +1208,10 @@ func optionalElemCodecOf(f *ir.Field) string {
 	return codecOf(&elem)
 }
 
-// emitOptionalArrayElem writes the elem, array_kind and array_min entries of
-// an optional array's descriptor: the element's own codec, wire kind, range,
-// target and zero value, so the optional kind delegates each element.
+// emitOptionalArrayElem writes the elem entry of an optional array's
+// descriptor: the element's own codec, wire kind, range, target and zero
+// value, so the optional kind delegates each element. The outer emit writes
+// array_kind and array_min (the array shape's own numbers) for every field.
 func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 	lo, hi := intRange(f)
 	codec := optionalElemCodecOf(f)
@@ -1237,12 +1232,6 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
 	fmt.Fprintf(b, "                default=%s,\n", def)
 	fmt.Fprintf(b, "            ),\n")
-	kind := "counted"
-	if f.Array == ir.ArrayFixed {
-		kind = "fixed"
-	}
-	fmt.Fprintf(b, "            array_kind=%s,\n", strconv.Quote(kind))
-	fmt.Fprintf(b, "            array_min=%d,\n", f.ArrayMin)
 }
 
 func targetName(f *ir.Field) string {

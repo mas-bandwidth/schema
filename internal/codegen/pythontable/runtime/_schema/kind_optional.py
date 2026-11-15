@@ -39,7 +39,7 @@ def _validate_array(fd: FieldDesc, value: Any, path: str) -> None:
     """Hold a present optional array to its shape and every element to its kind."""
     if type(value) is not list:
         raise InvalidValue(path, "not a list")
-    if fd.array_kind == "fixed":
+    if fd.array_kind == 1:  # [N]T
         if len(value) != fd.bound:
             raise InvalidValue(path, f"a fixed array holds exactly {fd.bound} elements, not {len(value)}")
     elif len(value) < fd.array_min or len(value) > fd.bound:
@@ -107,7 +107,7 @@ def _read_array(r: Any, fd: FieldDesc, ctx: Any) -> Any:
         values.append(_read_element(sub, elem, ctx))
     if sub.pos != sub.end:
         raise Refused("wire_damaged", "bytes left inside an array body")
-    if fd.array_kind == "fixed":
+    if fd.array_kind == 1:  # [N]T
         # An older writer's shorter bound pads with the element's defaults.
         while len(values) < fd.bound:
             values.append(_zero(elem))

@@ -44,16 +44,10 @@ class FieldDesc:
         "variant_ids",
         "deprecated",
         "default",
-<<<<<<< HEAD
-        "elem",
-        "array_kind",
-        "array_min",
-=======
         "elem_codec",
         "element",
         "elem",
         "keys",
->>>>>>> a07c863f3804c4f8d8ab60ba2812defb2aad5ce4
     )
 
     name: str
@@ -78,16 +72,10 @@ class FieldDesc:
     variant_ids: tuple[int, ...]
     deprecated: frozenset[int]
     default: Any
-<<<<<<< HEAD
-    elem: "FieldDesc | None"
-    array_kind: str
-    array_min: int
-=======
     elem_codec: str
     element: FieldDesc | None
     elem: "FieldDesc | None"
     keys: tuple[int, ...]
->>>>>>> a07c863f3804c4f8d8ab60ba2812defb2aad5ce4
 
     def __init__(
         self,
@@ -112,16 +100,10 @@ class FieldDesc:
         variant_ids: tuple[int, ...] = (),
         deprecated: tuple[int, ...] = (),
         default: Any = None,
-<<<<<<< HEAD
         inner: str = "",
-        elem: "FieldDesc | None" = None,
-        array_kind: str = "",
-        array_min: int = 0,
-=======
         elem_codec: str = "",
         elem: "FieldDesc | None" = None,
         keys: tuple[int, ...] = (),
->>>>>>> a07c863f3804c4f8d8ab60ba2812defb2aad5ce4
     ) -> None:
         self.name = name
         self.field_id = field_id
@@ -146,11 +128,6 @@ class FieldDesc:
         # the ordinals of the variants marked `| deprecated` (§2.15)
         self.deprecated = frozenset(deprecated)
         self.default = default
-<<<<<<< HEAD
-        self.elem = elem
-        self.array_kind = array_kind
-        self.array_min = array_min
-=======
         self.elem_codec = elem_codec
         self.element = (
             FieldDesc(
@@ -168,7 +145,6 @@ class FieldDesc:
         )
         self.elem = elem
         self.keys = keys
->>>>>>> a07c863f3804c4f8d8ab60ba2812defb2aad5ce4
 
     def is_default(self, value: Any) -> bool:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""
