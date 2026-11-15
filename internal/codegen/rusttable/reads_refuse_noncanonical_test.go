@@ -6,8 +6,9 @@ package rusttable
 // value but that no conforming writer of a lawful lineage version produces.
 // Every row of testdata/wire/non-canonical/MANIFEST.tsv is generated for this
 // leg and run through the read entries the leg has for its form: the plain
-// load, the retaining load, the load measure where it answers a verdict, the
-// message batch load, and AnnounceRead for the announcement. A canonical row
+// load, the retaining load, the load measure on a canonical row (a measure is
+// a framing bound, not a verdict, §4.2), the message batch load, and
+// AnnounceRead for the announcement. A canonical row
 // reads and re-saves to the same bytes; every other row is refused. The
 // verdict is the contract, so no row compares a refusal's reason.
 
@@ -28,6 +29,7 @@ type rustNonCanonicalRow struct {
 	file, form, spelling, verdict string
 	unitPath, unitDir, root       string
 }
+
 
 func TestRustReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
@@ -57,7 +59,14 @@ func TestRustReadsRefuseNonCanonical(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: generate: %v", unitPath, err)
 		}
+		// Every message row is read under its own unit's announcement, the
+		// announcement.bin beside its vectors.
+		ann, err := os.ReadFile(filepath.Join(unitRows[0].unitDir, "announcement.bin"))
+		if err != nil {
+			t.Fatalf("%s: %v", unitPath, err)
+		}
 		var body strings.Builder
+		fmt.Fprintf(&body, "const ANN: [u8; %d] = [%s];\n", len(ann), rustBytes(ann))
 		for i, row := range unitRows {
 			wire, err := os.ReadFile(filepath.Join(vectors, row.file))
 			if err != nil {
@@ -65,87 +74,21 @@ func TestRustReadsRefuseNonCanonical(t *testing.T) {
 			}
 			fmt.Fprintf(&body, "const WIRE_%d: [u8; %d] = [%s];\n", i, len(wire), rustBytes(wire))
 		}
-		var announcements = map[string]int{}
 		for i, row := range unitRows {
-			if row.form != "announcement" {
-				continue
-			}
-			wire, err := os.ReadFile(filepath.Join(vectors, row.file))
-			if err != nil {
-				t.Fatalf("%s: %v", row.file, err)
-			}
-			body.WriteString(fmt.Sprintf("const ANN_%d: [u8; %d] = [%s];\n", i, len(wire), rustBytes(wire)))
-			announcements[row.unitDir] = i
-		}
-		for i, row := range unitRows {
-			root := ir.RustSnake(row.root)
+			var probe string
 			switch row.form {
 			case "variable":
-				fmt.Fprintf(&body, `
-{
-    let wire = &WIRE_%d[..];
-    let mut report = TableReport::default();
-    match %s_load(wire, &mut report) {
-        Some(v) if !report.damaged => {
-            let saved = %s_save(&v);
-            println!("%s plain read %s", if saved == wire { "same" } else { "diff" });
-        }
-        _ => println!("%s plain refused"),
-    }
-    let mut retain = TableRetain { bytes: Vec::with_capacity(1 << 16), ids: Vec::with_capacity(256), nodes: Default::default() };
-    let mut rreport = TableReport::default();
-    match %s_load_retain(wire, &mut retain, &mut rreport) {
-        Some(v) if !rreport.damaged => {
-            let saved = %s_save_retain(&v, &mut retain, &mut TableReport::default());
-            println!("%s retain read %s", if saved == wire { "same" } else { "diff" });
-        }
-        _ => println!("%s retain refused"),
-    }
-    println!("%s measure %s", if %s_load_measure(wire) > 0 { "read" } else { "refused" });
-}
-`, i, root, root, row.spelling, row.spelling, root, root, row.spelling, row.spelling, row.spelling, root)
+				probe = rustNonCanonicalVariableProbe
 			case "message":
-				ann, ok := announcements[row.unitDir]
-				if !ok {
-					t.Fatalf("%s: no announcement row for %s", row.file, row.unitDir)
-				}
-				fmt.Fprintf(&body, `
-{
-    let wire = &WIRE_%d[..];
-    let mut storage = vec![TableMessageEntry::default(); 64];
-    let mut vocab = TableVocabulary::new(&mut storage);
-    let mut arep = TableReport::default();
-    let announced = announce_read(&mut vocab, &ANN_%d, &mut arep);
-    let mut values = vec![%s_message_default(); 1];
-    let mut report = TableReport::default();
-    if !announced || arep.damaged {
-        println!("%s message refused");
-    } else {
-        let (count, ok) = %s_load_messages(&mut values, &vocab, wire, &mut report);
-        if ok && !report.damaged {
-            let need = %s_measure_messages(&values[..count], &mut TableReport::default());
-            let mut buf = vec![0u8; need.max(0) as usize];
-            let wrote = %s_save_messages(&values[..count], &mut buf, &mut TableReport::default());
-            println!("%s message read %s", if wrote >= 0 && &buf[..wrote as usize] == wire { "same" } else { "diff" });
-        } else {
-            println!("%s message refused");
-        }
-    }
-}
-`, i, ann, root, row.spelling, root, root, root, row.spelling, row.spelling)
+				probe = rustNonCanonicalMessageProbe
 			case "announcement":
-				fmt.Fprintf(&body, `
-{
-    let mut storage = vec![TableMessageEntry::default(); 64];
-    let mut vocab = TableVocabulary::new(&mut storage);
-    let mut report = TableReport::default();
-    let ok = announce_read(&mut vocab, &WIRE_%d, &mut report);
-    println!("%s announce %s", if ok && !report.damaged { "read" } else { "refused" });
-}
-`, i, row.spelling)
+				probe = rustNonCanonicalAnnounceProbe
 			default:
 				t.Fatalf("MANIFEST.tsv: form %q", row.form)
 			}
+			probe = strings.ReplaceAll(probe, "ROW", fmt.Sprint(i))
+			probe = strings.ReplaceAll(probe, "root_", ir.RustSnake(row.root)+"_")
+			body.WriteString(probe)
 		}
 		out, err := runRustGeneratedFilesProbe(t, files, body.String())
 		if err != nil {
@@ -159,33 +102,102 @@ func TestRustReadsRefuseNonCanonical(t *testing.T) {
 			}
 			got[f[0]+" "+f[1]] = f[2]
 		}
-		for _, row := range unitRows {
+		for i, row := range unitRows {
+			// The measure is a framing bound and not a verdict
+			// (docs/SPEC-TABLES.md §4.2, §6.5): a measure refusal implies a
+			// Load refusal, so it is held on the canonical rows, where the
+			// Load reads and the measure must answer a size.
 			var entries []string
 			switch row.form {
 			case "variable":
-				entries = []string{"plain", "retain", "measure"}
+				entries = []string{"plain", "retain"}
+				if row.verdict == "read" {
+					entries = append(entries, "measure")
+				}
 			case "message":
 				entries = []string{"message"}
 			case "announcement":
 				entries = []string{"announce"}
 			}
 			for _, entry := range entries {
-				answer, ok := got[row.spelling+" "+entry]
+				answer, ok := got[fmt.Sprint(i)+" "+entry]
 				if !ok {
 					t.Errorf("%s %s: the probe printed no answer", row.file, entry)
 					continue
 				}
-				if answer != row.verdict && !(row.verdict == "read" && entry != "measure" && answer == "same") {
-					t.Errorf("%s %s: verdict %q, the manifest says %q", row.file, entry, answer, row.verdict)
-					continue
-				}
-				if row.verdict == "read" && (entry == "plain" || entry == "retain" || entry == "message") && answer != "same" {
-					t.Errorf("%s %s: canonical read did not re-save the same bytes (%q)", row.file, entry, answer)
+				switch {
+				case row.verdict == "refused" && answer != "refused":
+					t.Errorf("%s %s (%s): the read answered %q, the manifest says refused", row.file, entry, row.spelling, answer)
+				case row.verdict == "read" && answer == "refused":
+					t.Errorf("%s %s (%s): the read refused, the manifest says read", row.file, entry, row.spelling)
+				case row.verdict == "read" && entry != "measure" && entry != "announce" && answer != "same":
+					t.Errorf("%s %s: the canonical read did not re-save the same bytes (%q)", row.file, entry, answer)
 				}
 			}
 		}
 	}
 }
+
+// The probes print "<row> <entry> <answer>": refused, or read with same or
+// diff for whether the read value re-saves to the input bytes.
+const rustNonCanonicalVariableProbe = `
+{
+    let wire = &WIRE_ROW[..];
+    let mut report = TableReport::default();
+    match root_load(wire, &mut report) {
+        Some(v) if !report.damaged => {
+            let saved = root_save(&v);
+            println!("ROW plain {}", if saved == wire { "same" } else { "diff" });
+        }
+        _ => println!("ROW plain refused"),
+    }
+    let mut retain = TableRetain { bytes: Vec::with_capacity(1 << 16), ids: Vec::with_capacity(256), nodes: Default::default() };
+    let mut rreport = TableReport::default();
+    match root_load_retain(wire, &mut retain, &mut rreport) {
+        Some(v) if !rreport.damaged => {
+            let saved = root_save_retain(&v, &mut retain, &mut TableReport::default());
+            println!("ROW retain {}", if saved == wire { "same" } else { "diff" });
+        }
+        _ => println!("ROW retain refused"),
+    }
+    println!("ROW measure {}", if root_load_measure(wire) > 0 { "read" } else { "refused" });
+}
+`
+
+const rustNonCanonicalMessageProbe = `
+{
+    let wire = &WIRE_ROW[..];
+    let mut storage = vec![TableMessageEntry::default(); 64];
+    let mut vocab = TableVocabulary::new(&mut storage);
+    let mut arep = TableReport::default();
+    let announced = announce_read(&mut vocab, &ANN, &mut arep);
+    let mut values = vec![root_message_default(); 4];
+    let mut report = TableReport::default();
+    if !announced || arep.damaged {
+        println!("ROW message refused");
+    } else {
+        let (count, ok) = root_load_messages(&mut values, &vocab, wire, &mut report);
+        if ok && !report.damaged {
+            let need = root_measure_messages(&values[..count], &mut TableReport::default());
+            let mut buf = vec![0u8; need.max(0) as usize];
+            let wrote = root_save_messages(&values[..count], &mut buf, &mut TableReport::default());
+            println!("ROW message {}", if wrote >= 0 && &buf[..wrote as usize] == wire { "same" } else { "diff" });
+        } else {
+            println!("ROW message refused");
+        }
+    }
+}
+`
+
+const rustNonCanonicalAnnounceProbe = `
+{
+    let mut storage = vec![TableMessageEntry::default(); 64];
+    let mut vocab = TableVocabulary::new(&mut storage);
+    let mut report = TableReport::default();
+    let ok = announce_read(&mut vocab, &WIRE_ROW, &mut report);
+    println!("ROW announce {}", if ok && !report.damaged { "read" } else { "refused" });
+}
+`
 
 func rustNonCanonicalRows(t *testing.T, repo, vectors string) []rustNonCanonicalRow {
 	t.Helper()
