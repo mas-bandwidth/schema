@@ -78,7 +78,7 @@ func quantFiniteBatch(width int, steps ...uint64) []byte {
 	var acc uint64
 	n := 0
 	put := func(v uint64, w int) {
-		for i := 0; i < w; i++ {
+		for i := range w {
 			acc |= ((v >> i) & 1) << n
 			n++
 			if n == 8 {

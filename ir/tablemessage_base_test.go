@@ -50,7 +50,6 @@ func TestDecodeShapeRangedBaseInsideKind(t *testing.T) {
 		TableKindI128,
 	}
 	for _, kind := range kinds {
-		kind := kind
 		bits := TableMessageKindBits(kind)
 		lawful := highestLawfulBase(kind, bits)
 		past := new(big.Int).Add(lawful, big.NewInt(1))
@@ -97,7 +96,6 @@ func TestDecodeShapeRangedBaseInsideKind(t *testing.T) {
 			{"uint128", TableKindU128, 8, big.NewInt(-1)},
 		}
 		for _, row := range rows {
-			row := row
 			t.Run(row.name, func(t *testing.T) {
 				t.Parallel()
 				if _, ok := decodeEncodedShape(t, row.kind, TableMessageShape{
