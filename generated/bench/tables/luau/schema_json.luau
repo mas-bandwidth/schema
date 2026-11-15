@@ -2713,6 +2713,14 @@ local function from_string(s: any, capacity: number?): buffer
   return b
 end
 
+-- a byte array is the element storage the constructor gives a buffer: a
+-- unsigned 8-bit integer, 0-based (docs/PORT-LUAU.md, THE TYPE MAPPING)
+local function is_byte_array(fd: any): boolean
+  local e = fd.elem
+  return e ~= nil and e.raw ~= nil and e.raw.s == "int"
+    and e.raw.kw == 1 and e.raw.signed == false
+end
+
 local function enum_name(fd: any, n: any): string
   local i = typeof(n) == "number" and n or 0
   if i == 0 then return "None" end
@@ -2765,9 +2773,18 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
     end
     return out
   elseif s == "array" then
+    if is_byte_array(fd) then
+      -- a [N]uint8, [..N]uint8 or [E]uint8 rides in a 0-based buffer
+      local n = #x
+      local cap = fd.bound or 0
+      if cap < n then cap = n end
+      local out = buffer.create(cap)
+      for i = 1, n do buffer.writeu8(out, i - 1, x[i]) end
+      return out
+    end
     if typeof(x) == "buffer" then
       local out = {}
-      -- a [N]uint8 or an array of string buffers
+      -- an array of string buffers
       return out
     end
     local out = {}
@@ -2882,6 +2899,16 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
     end
     return out
   elseif s == "array" then
+    if typeof(x) == "buffer" then
+      -- a [N]uint8, [..N]uint8 or [E]uint8 is its buffer's live bytes,
+      -- 0-based in the storage and 1-based in the walk
+      local out = {}
+      local n = memo.count[x]
+      if n == nil then n = buffer.len(x) end
+      if n > buffer.len(x) then n = buffer.len(x) end
+      for i = 1, n do out[i] = buffer.readu8(x, i - 1) end
+      return out
+    end
     local out = {}
     local n = memo.count[x]
     if n == nil then n = #x end
