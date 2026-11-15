@@ -20,7 +20,6 @@ type Input = { t: string, p: number, bad: boolean, zero: boolean?, notutf8: bool
 
 local MAX_DEPTH = 128
 local MAX_KEY = 255
-local MAX_NUMBER = 511
 local BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
 -- A float32's text is C's %.*g at the fewest digits from 6 up to this cap that
@@ -271,7 +270,7 @@ local function scan_number(inp: Input): string?
     while digit() do inp.p = inp.p + 1 end
   end
   local n = inp.p - start
-  if n <= 0 or n > MAX_NUMBER then return nil end
+  if n <= 0 then return nil end
   return inp.t:sub(start, inp.p - 1)
 end
 
