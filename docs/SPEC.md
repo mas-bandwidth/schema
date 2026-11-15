@@ -2222,8 +2222,8 @@ whose fields are the objects, or the leg's bit-offset entry where it has one
 (§6.1), and the one end check runs once, after the last. Dart reports bits
 consumed through a second entry, `read<T>Bits(value, view, numBits,
 bitOffset)`, which returns the bits consumed or -1 and runs no end check; its
-`read<T>` returns a boolean. The JavaScript `Read<T>Flat` returns a boolean
-only; it does not report bits consumed today. That is an open question for the
+`read<T>` returns a boolean. The JavaScript `Read<T>Flat` entries return a
+boolean only; they do not report bits consumed today. That is an open question for the
 owner, not changed here.
 
 **Writes check what the declaration does not admit in every packet target, by the leg's own mechanism (§5.1).** A language verifies correctness the way that language verifies
