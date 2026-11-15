@@ -1119,22 +1119,23 @@
     {
       "row": "surface json-hostile",
       "lang": "c",
-      "status": "relaxed",
-      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-c (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
+      "job": "CI full / conformance (c)",
+      "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
     {
       "row": "surface json-hostile",
       "lang": "cs",
       "status": "relaxed",
-      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "why": "1 case(s) fail: json-hostile/str-zero-escape-unknown-key",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-cs (docs/relaxed.md)"
     },
     {
       "row": "surface json-hostile",
       "lang": "dart",
       "status": "relaxed",
-      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "why": "1 case(s) fail: json-hostile/str-zero-escape-unknown-key",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-dart (docs/relaxed.md)"
     },
     {
@@ -1155,7 +1156,7 @@
       "row": "surface json-hostile",
       "lang": "goose",
       "status": "relaxed",
-      "why": "2 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key",
+      "why": "1 case(s) fail: json-hostile/str-zero-escape-unknown-key",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-goose (docs/relaxed.md)"
     },
     {
@@ -2832,21 +2833,21 @@
       "row": "cases tabledemo",
       "lang": "c",
       "status": "relaxed",
-      "why": "3 case(s) fail: json-hostile/base64-unpadded, json-hostile/str-zero-escape-unknown-key, write-refusal-json/jref_zero_byte",
+      "why": "1 case(s) fail: write-refusal-json/jref_zero_byte",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/hostile-rows-c (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "cs",
       "status": "relaxed",
-      "why": "8 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 5 more",
+      "why": "7 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 4 more",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/cook-dead-slots-zero-ports (docs/relaxed.md)"
     },
     {
       "row": "cases tabledemo",
       "lang": "dart",
       "status": "relaxed",
-      "why": "7 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 4 more",
+      "why": "6 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 3 more",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-dart (docs/relaxed.md)"
     },
     {
@@ -2867,7 +2868,7 @@
       "row": "cases tabledemo",
       "lang": "goose",
       "status": "relaxed",
-      "why": "7 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 4 more",
+      "why": "6 case(s) fail: cook-write/archive, cook-write/loadout_full, cook-write/profile_elide and 3 more",
       "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-goose (docs/relaxed.md)"
     },
     {

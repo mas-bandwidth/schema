@@ -647,6 +647,25 @@ func TestCyclicWireIsRefusedC(t *testing.T) {
 	cyclePatch(t, unreached, 4, 2)
 	body.WriteString(cycleProbe(unreached, false, "cycle: a cycle the root does not reach loaded"))
 
+	// root(1) -> A(2) -> B(3) -> L(4), and root.right -> L too; B's pointer
+	// at L (the later of the two, B's body follows the root's) turned back
+	// at A. Every node stays reached, so the cycle verdict alone refuses it:
+	// the reach rule cannot (tables-c-cycle-negative-control aims here).
+	reached := []cycleLink{{0, "left", 1}, {1, "left", 2}, {2, "left", 3}, {0, "right", 3}}
+	allTwin := cycleEncode(t, m, 4, nil, reached)
+	body.WriteString(cycleProbe(allTwin, true, "cycle: the acyclic twin of the every-node-reached case was refused"))
+	all := cycleEncode(t, m, 4, nil, reached)
+	allAt := bytes.LastIndex(all, []byte{byte(ir.TableKindPointer), 4})
+	if allAt < 0 || bytes.Count(all, []byte{byte(ir.TableKindPointer), 4}) != 2 {
+		t.Fatal("L is not named by exactly two pointer slots")
+	}
+	all[allAt+1] = 2
+	var allReport tabletext.Report
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Node")), all, &allReport); ok || !tablewire.ReadRefusal(err) {
+		t.Fatalf("the engine does not refuse the every-node-reached cycle: ok=%v err=%v", ok, err)
+	}
+	body.WriteString(cycleProbe(all, false, "cycle: a cycle with every node reached loaded"))
+
 	// root(1) -> A(2), A.on and A.side -> L(3); the guard turned off on the
 	// wire with the slot kept, and the slot turned back at A
 	guarded := []cycleLink{{0, "left", 1}, {1, "side", 2}}

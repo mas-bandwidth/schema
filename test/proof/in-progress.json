@@ -15,11 +15,6 @@
     },
     {
       "row": "surface json-hostile",
-      "lang": "c",
-      "slug": "relax/hostile-rows-c"
-    },
-    {
-      "row": "surface json-hostile",
       "lang": "cs",
       "slug": "relax/hostile-rows-cs"
     },

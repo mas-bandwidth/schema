@@ -363,3 +363,36 @@ WIP for every proof slug: none unless named here.
   `test/conformance/relaxed.txt` relaxes for moo. A relaxed row that reads
   right is a red line ("drop it from mooHostileRelaxed"). Real fix: as the
   hostile-rows entry above; then empty `mooHostileRelaxed`. WIP: none.
+
+The maintainer's rule again: green now by tracked relaxation. These entries
+change the 2026-11-14 hostile-row slugs above; where they disagree, this
+section is the current state.
+
+- `relax/hostile-rows-lua` (added site): the Lua port's hostile-corpus unit
+  gate (`internal/ci/schema_lua_runs_hostile_corpus_test.go`,
+  `luaHostileCarriedList`, `RELAXED 2026-11-15`) carries
+  conformance-base64-unpadded and conformance-str-zero-escape-unknown-key as
+  findings at accept/-: the Lua JSON read accepts unpadded Base64
+  (json-base64-canonical) and a zero escape in a skipped value. Real fix: the
+  Lua JSON read refuses both; then the two carried rows go, with the
+  conformance lines and proof cells this slug already holds.
+- `relax/hostile-rows-c` (narrowed): the C JSON read now refuses both hostile
+  rows and the C table-base64 run passes canonical, so the json-hostile lines
+  in `test/conformance/relaxed.txt`, `-relax` in
+  `make/checks/table-base64.mk`, both carried rows in
+  `test/c-hostile/known-findings.tsv` and the `surface json-hostile / c` proof
+  cell are gone. What is left: write-refusal-json `jref_zero_byte` (the C
+  text writer writes a zero byte) in the conformance leg and the proof cells
+  `surface write-refusal-json / c` and `cases tabledemo / c`.
+- `relax/hostile-rows-cs` (narrowed): the C# JSON read refuses unpadded
+  Base64, so the base64-unpadded line, `-relax` on the C# table-base64 run
+  and the base64 row in `test/cs-hostile/known-findings.tsv` are gone. What
+  is left: json-hostile str-zero-escape-unknown-key (conformance and the
+  hostile-corpus run) and write-refusal-json `jref_zero_byte`.
+- `relax/hostile-rows-dart` (narrowed): the Dart JSON read refuses unpadded
+  Base64; its conformance line and the base64 row in
+  `test/dart-hostile/known-findings.tsv` are gone. What is left:
+  str-zero-escape-unknown-key in both.
+- `relax/hostile-rows-goose` (narrowed): the Goose JSON read refuses unpadded
+  Base64; its conformance line is gone. What is left:
+  str-zero-escape-unknown-key.
