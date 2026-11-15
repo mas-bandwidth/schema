@@ -4588,14 +4588,14 @@ static void test_json_pinned_text()
             failures++;
         }
     }
-    // ... and UNPADDED base64 still reads, so a text from elsewhere lands
+    // ... and UNPADDED base64 is refused: it decodes, but it is not the
+    // canonical spelling the writer writes (docs/SPEC-TABLES.md §16.2, §16.8,
+    // docs/rulings.json json-base64-canonical)
     {
         tabledemo::ProfileConfig profile;
         tabledemo::TableReport report;
         const char * unpadded = "{ \"icon\": \"AQI\" }";
-        CHECK( tabledemo::ProfileConfigFromJson( profile, unpadded, (int64_t) strlen( unpadded ), &report ) );
-        CHECK( profile.icon_length == 2 && profile.icon[0] == 1 && profile.icon[1] == 2 );
-        CHECK( !report.damaged );
+        CHECK( !tabledemo::ProfileConfigFromJson( profile, unpadded, (int64_t) strlen( unpadded ), &report ) );
     }
 }
 
@@ -8841,8 +8841,8 @@ static void test_blob_json()
 
     // The variable-size reader counts, allocates, then decodes. Exercise both
     // passes with partial groups, padding and high-bit alphabet indices.
-    for ( const auto & row : { std::pair<const char *, std::string>( "//==", std::string( "\xff", 1 ) ),
-                              { "/w==", std::string( "\xff", 1 ) } } )
+    for ( const auto & row : { std::pair<const char *, std::string>( "/w==", std::string( "\xff", 1 ) ),
+                              { "//8=", std::string( "\xff\xff", 2 ) } } )
     {
         std::string input = std::string( "{\"thumb\":\"" ) + row.first + "\"}";
         blobdemo::CatalogBuilder b;
@@ -8853,6 +8853,16 @@ static void test_blob_json()
         blobdemo::TableBytesView bytes = blobdemo::TableBytesAt( ctx, b.GetRoot()->thumb );
         CHECK( bytes.data != NULL && bytes.length == (int64_t) row.second.size() );
         CHECK( bytes.length == 0 || memcmp( bytes.data, row.second.data(), (size_t) bytes.length ) == 0 );
+    }
+    // Base64 that decodes but is not the canonical spelling of its bytes (pad
+    // bits set, or unpadded) refuses the read (§16.2, §16.8; the verdict is
+    // the contract, the reason name only recommended).
+    for ( const char * spelling : { "//==", "/w", "//9=" } )
+    {
+        std::string input = std::string( "{\"thumb\":\"" ) + spelling + "\"}";
+        blobdemo::CatalogBuilder b;
+        blobdemo::TableReport r;
+        CHECK( !blobdemo::CatalogFromJson( b, input.data(), (int64_t) input.size(), &r ) );
     }
     // Invalid Base64 (including mid-string padding, lone symbols, and lone '=')
     // is a kind mismatch that refuses the read (#715).

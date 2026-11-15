@@ -85,7 +85,7 @@ listed case that passes fails the leg until its line is removed.
   C++, C#, Rust, Java and Dart; a refusal in every build elsewhere). Then the
   leg's lines go. WIP: none.
   - `relax/hostile-rows-c`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-cpp`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings) and in the pack hostile-value gate (`Makefile`, `HOSTILE_ENGINE_RELAXED`).
+  - `relax/hostile-rows-cpp`: both hostile rows, jref_zero_byte, table-base64, and the str-zero-escape-unknown-key row in the port's hostile-corpus run (carried findings; its base64-unpadded row is re-enabled, the C++ JSON read refuses it since sm-a1-cpp-json-base64-canonical) and in the pack hostile-value gate (`Makefile`, `HOSTILE_ENGINE_RELAXED`).
   - `relax/hostile-rows-cs`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-dart`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-elixir`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
