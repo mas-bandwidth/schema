@@ -108,8 +108,10 @@ func(w *tableCookWriter) record(p unsafe.Pointer,t *TableTypeInfo,at int64,live 
 }
 func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool {
  p:=unsafe.Add(base,f.Offset);dest:=at+int64(f.CookOffset)
- if f.Optional {v:=uint64(0);if *(*bool)(unsafe.Add(base,f.PresentOffset)){v=1};w.put(at+int64(f.CookPresentOffset),v,1)}
+ present:=true
+ if f.Optional {present=*(*bool)(unsafe.Add(base,f.PresentOffset));v:=uint64(0);if present{v=1};w.put(at+int64(f.CookPresentOffset),v,1)}
  if f.List||f.Map {return w.container(p,f,dest,live)}
+ if !present {return true}
  count:=int32(1);used:=int32(1)
  if f.Counted {used=*(*int32)(unsafe.Add(base,f.CountOffset));if used<0||!f.UnboundedContainer&&used>f.ArrayBound{return false};w.put(at+int64(f.CookCountOffset),uint64(used),4)}
  if !f.Pointer&&(f.TypeName=="string"||f.TypeName=="bytes") {
@@ -120,6 +122,7 @@ func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,li
 }
 func(w *tableCookWriter) value(p unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool {
  if f.Pointer{return w.reference((*int64)(p),at)}
+ if !live {return true}
  if f.Arms!=nil {u:=f.Arms();tag:=tableJSONGetRaw(unsafe.Add(p,u.TagOffset),u.TagSize);if tag>=uint64(len(u.Arms)){return false};w.put(at,tag,u.CookTagSize);if tag==0||u.Arms[tag].Void{return true};return w.field(p,&u.Arms[tag].Field,at,live)}
  if f.Table!=nil{return w.record(p,f.Table(),at,live)}
  width:=f.CookElemSize

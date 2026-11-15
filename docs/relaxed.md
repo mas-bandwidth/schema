@@ -148,17 +148,15 @@ listed case that passes fails the leg until its line is removed.
 - `relax/cook-dead-slots-zero-ports`: since #3424 (fixed-dead-bytes-are-zero)
   the tool and the C writer leave a counted array's slots past its count zero,
   and #3486 regenerated the five cook-write fixtures (archive, loadout_full,
-  profile_elide, root_default, root_full) to match; the C++ and Go cook writers
-  still write the element defaults (the C++ reference behind
-  `tables-tool-cook-differential` too). Files: internal/codegen/gotable/cookwrite_test.go,
-  whose `TestCookWriterMatchesIndependentLayout/fixed` skips (the Go writer
-  writes the defaults the tool now zeroes). Real fix: every cook writer zeroes
-  the dead slots, and the Go case runs again.
+  profile_elide, root_default, root_full) to match; the C++ cook writer
+  still writes the element defaults (the C++ reference behind
+  `tables-tool-cook-differential` too). Real fix: every cook writer zeroes
+  the dead slots.
   The same slug relaxes the ten cook-write cases (the five rows, both orders)
-  of the conformance legs cpp, cs, dart, go, elixir, goose, lobster, luau,
+  of the conformance legs cpp, cs, dart, elixir, goose, lobster, luau,
   moo and squirrel in `test/conformance/relaxed.txt`: each still writes
   the element defaults into dead counted slots (CI full 43656719730). C, JS
-  (its ten cases pass and are gated again, 2026-11-15) and the tool are
+  (its ten cases pass and are gated again, 2026-11-15), Go and the tool are
   right. WIP: none.
 
 ## CI time (the 110 s per-commit wall)
