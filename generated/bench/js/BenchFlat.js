@@ -139,6 +139,9 @@ export function WriteBenchPacketFlat(view, value) {
   v = SC.getUint32(0, true);
   view.setUint32(16, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
+  if (typeof value.big !== "bigint" || value.big < 0n || value.big > 18446744073709551615n) { // a bare integer must fit its width
+    return -1;
+  }
   SC.setBigUint64(0, value.big, true);
   v = SC.getUint32(0, true);
   view.setUint32(20, (lo | (v << 25)) >>> 0, true);
@@ -150,6 +153,9 @@ export function WriteBenchPacketFlat(view, value) {
   lo = 0;
   wi = 32;
   for (let i0 = 0; i0 < 17; i0++) {
+    if (!Number.isInteger(value.blob[i0]) || value.blob[i0] < 0 || value.blob[i0] > 255) { // a bare integer must fit its width
+      return -1;
+    }
     v = (((value.blob[i0]) & 0xff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 8;
@@ -1342,6 +1348,9 @@ export function WriteBenchMixedFlat(view, value) {
     return -1;
   }
   lo = (((value.ackSequence) & 0xffff));
+  if (typeof value.sessionId !== "bigint" || value.sessionId < 0n || value.sessionId > 18446744073709551615n) { // a bare integer must fit its width
+    return -1;
+  }
   v = ((value.ackBits >>> 0)) >>> 0;
   view.setUint32(4, (lo | (v << 16)) >>> 0, true);
   lo = v >>> 16;
@@ -1352,6 +1361,9 @@ export function WriteBenchMixedFlat(view, value) {
   v = SC.getUint32(4, true);
   view.setUint32(12, (lo | (v << 16)) >>> 0, true);
   lo = v >>> 16;
+  if (!Number.isInteger(value.clientId) || value.clientId < 0 || value.clientId > 4294967295) { // a bare integer must fit its width
+    return -1;
+  }
   if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
     return -1;
   }
@@ -1600,6 +1612,9 @@ export function WriteBenchMixedFlat(view, value) {
     }
   }
   for (let i0 = 0; i0 < 4; i0++) {
+    if (!Number.isInteger(value.loadout[i0]) || value.loadout[i0] < 0 || value.loadout[i0] > 255) { // a bare integer must fit its width
+      return -1;
+    }
     v = (((value.loadout[i0]) & 0xff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 8;
@@ -1790,6 +1805,9 @@ export function WriteBenchMixedFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (typeof value.wideKey !== "bigint" || value.wideKey < 0n || value.wideKey > 340282366920938463463374607431768211455n) { // a bare integer must fit its width
+    return -1;
   }
   bg = value.wideKey;
   SC.setBigUint64(0, bg, true);

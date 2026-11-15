@@ -565,6 +565,8 @@ local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, na
 			local lo, hi = V.f32to64(bits)
 			if V.cmp64(lo, hi, f.flo[1], f.flo[2]) < 0 or V.cmp64(lo, hi, f.fhi[1], f.fhi[2]) > 0 then
 				refuse("out_of_range", false, fieldName(named))
+			elseif bits == 0x80000000 then
+				return 0 -- a -0 lands as +0, uncounted (§3.3)
 			end
 		end
 		return bits
