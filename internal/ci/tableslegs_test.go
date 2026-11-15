@@ -77,17 +77,25 @@ func makeInvokes(text, target string) bool {
 	return strings.Contains(text, "$(MAKE) "+target)
 }
 
-// TestEveryNamedTableLegRunsOnEveryPullRequest holds a NAMED list of table legs
+// TestEveryNamedTableLegRunsOnItsPullRequests holds a NAMED list of table legs
 // and refuses any leg that no pull-request-triggered workflow invokes. Three
 // clauses, and the third is what stops a shard from being a lie: the leg (and
 // every shard the row declares) must be a real make target, and every shard
 // must still be invoked by `make test`, so splitting a leg for the PR gate
 // cannot quietly drop a build configuration from the suite.
 //
+// WHICH pull requests (the owner, 2026-11-15: heavy suite failure on main is
+// fine, like a hierarchical merge): the C# leg's job, ci-full.yml cs-tables,
+// runs on a pull request whose diff touches the C# leg's paths or a shared
+// root, which ci-full.yml pr-select decides (TestCIFullPRSelect holds its
+// selection, TestCIFullPRSelectMatchesTheFastPlan holds it to ci-fast.yml's
+// plan), and on every merge, nightly and dispatch. A fourth clause holds the
+// job to that selection.
+//
 // "Pull-request-triggered" means an `on:` block with a line whose text is
 // exactly `pull_request:`. `pull_request_target:` is deliberately NOT a code
 // gate: cla.yml signs the CAA and runs no `make`.
-func TestEveryNamedTableLegRunsOnEveryPullRequest(t *testing.T) {
+func TestEveryNamedTableLegRunsOnItsPullRequests(t *testing.T) {
 	root := repoRoot(t)
 	wfs := workflows(t, root)
 
@@ -156,5 +164,23 @@ func TestEveryNamedTableLegRunsOnEveryPullRequest(t *testing.T) {
 				t.Errorf("%s: %q is declared as a shard but no make source invokes $(MAKE) %s — splitting the leg must not drop a configuration from make test", leg.leg, shard, shard)
 			}
 		}
+	}
+
+	// Clause 4 — THE C# LEG'S PULL REQUESTS. cs-tables runs on a same-repository
+	// pull request exactly when pr-select selects the C# leg, and on a push.
+	full := wfs["ci-full.yml"]
+	pr := ciEvent{Name: "pull_request", Branch: "main", HeadRef: "sprint/schema-main/card", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}
+	for _, tc := range []struct {
+		cs   string
+		want bool
+	}{{"yes", true}, {"no", false}} {
+		ev := pr
+		ev.PRCS = tc.cs
+		if ok, err := jobSelectsSelfHosted(full, "cs-tables", ev); err != nil || ok != tc.want {
+			t.Errorf("ci-full.yml:cs-tables on a pull request with pr-select cs=%s ran=%v (err=%v), want %v", tc.cs, ok, err, tc.want)
+		}
+	}
+	if ok, err := jobSelectsSelfHosted(full, "cs-tables", ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"}); err != nil || !ok {
+		t.Errorf("ci-full.yml:cs-tables did not run on a push to main (err=%v)", err)
 	}
 }
