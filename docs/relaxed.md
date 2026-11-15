@@ -153,8 +153,13 @@ listed case that passes fails the leg until its line is removed.
   `tables-tool-cook-differential` too). Real fix: every cook writer zeroes
   the dead slots.
   The same slug relaxes the ten cook-write cases (the five rows, both orders)
+<<<<<<< HEAD
   of the conformance legs cpp, cs, dart, elixir, goose, lobster, luau,
   moo and squirrel in `test/conformance/relaxed.txt`: each still writes
+=======
+  of the conformance legs cpp, cs, dart, go, elixir, goose, lobster, luau
+  and moo in `test/conformance/relaxed.txt`: each still writes
+>>>>>>> 7d5ff2626cbd11cb7242a0386f3bc1e3e1d2894a
   the element defaults into dead counted slots (CI full 43656719730). C, JS
   (its ten cases pass and are gated again, 2026-11-15), Go and the tool are
   right. WIP: none.
@@ -270,7 +275,6 @@ PR 3290. WIP for every proof slug: none unless named here.
   answers that recipe row (the same open gap as relax/rust-cookwrite-test-red
   on the Rust side).
 
-- `relax/proof-cook-write-java`: 1 cell(s): `surface cook-write / java` (60 case(s) answered absent with no ruling: cook-write/archive, cook-write/archive-be, cook-write/chain_optional and 57 more). Real fix: the leg answers cook-write for every unit.
 - `relax/proof-i15-elixir`: 1 cell(s): `porting I15 / elixir` (❌ #492 — `tables-elixir-wire-fuzz-all` drives the harness over the default roster (plain arm) and is red: a fixed-class root it cannot o...). Real fix: the porting register's I15 cell for elixir is proven (docs/PORTING.md).
 - `relax/proof-i3-luau`: 1 cell(s): `porting I3 / luau` (❌ #381 — card schema-luau-fuzz-differential (docs/PORT-LUAU.md, THE CARD MAP)). Real fix: the porting register's I3 cell for luau is proven (docs/PORTING.md).
 - `relax/proof-i3-moo`: 1 cell(s): `porting I3 / moo` (❌ #381 — partial: `tables-moo-block-forgery-fuzz` and its negative control validate production BlockOpen over 8,000 mutants of two block...). Real fix: the porting register's I3 cell for moo is proven (docs/PORTING.md).

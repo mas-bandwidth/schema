@@ -87,16 +87,6 @@ moo cook-write root_default relax/cook-dead-slots-zero-ports
 moo cook-write root_default-be relax/cook-dead-slots-zero-ports
 moo cook-write root_full relax/cook-dead-slots-zero-ports
 moo cook-write root_full-be relax/cook-dead-slots-zero-ports
-squirrel cook-write archive relax/cook-dead-slots-zero-ports
-squirrel cook-write archive-be relax/cook-dead-slots-zero-ports
-squirrel cook-write loadout_full relax/cook-dead-slots-zero-ports
-squirrel cook-write loadout_full-be relax/cook-dead-slots-zero-ports
-squirrel cook-write profile_elide relax/cook-dead-slots-zero-ports
-squirrel cook-write profile_elide-be relax/cook-dead-slots-zero-ports
-squirrel cook-write root_default relax/cook-dead-slots-zero-ports
-squirrel cook-write root_default-be relax/cook-dead-slots-zero-ports
-squirrel cook-write root_full relax/cook-dead-slots-zero-ports
-squirrel cook-write root_full-be relax/cook-dead-slots-zero-ports
 #
 # relax/hostile-rows-<lang>: #3486 flipped json-hostile base64-unpadded and
 # str-zero-escape-unknown-key, and write-refusal-json jref_zero_byte, to
