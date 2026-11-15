@@ -1022,9 +1022,10 @@ fixed table ShipConfig
 	}
 }
 
-// THE RESOLVING WALK'S CAP COUNTS NESTED FRAMED VALUES (docs/SPEC-TABLES.md
-// §6.6): the last depth the cap admits rides and one past it is dropped. The C
-// target pins the same pair in TestCTableRetainFramedDepth.
+// THE RESOLVING WALK PERMITS §4's 128 FRAMED LEVELS (docs/SPEC-TABLES.md
+// §6.6): an unknown field nested as deep as the plain read accepts is kept;
+// a depth is not a retention capacity. The C target pins the same depths in
+// TestCTableRetainFramedDepth.
 func TestCppTableRetainFramedDepth(t *testing.T) {
 	t.Parallel()
 	old := unitFromSource(t, "package probe\ntable Root { next *Root }\n")
@@ -1032,7 +1033,7 @@ func TestCppTableRetainFramedDepth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, depth := range []int{64, 65} {
+	for _, depth := range []int{64, 65, 128} {
 		t.Run(fmt.Sprint(depth), func(t *testing.T) {
 			var schema, fixture strings.Builder
 			schema.WriteString("package probe\ntable Root { next *Root\nextra T0 }\n")
@@ -1058,10 +1059,6 @@ func TestCppTableRetainFramedDepth(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			kept := 0
-			if depth == 64 {
-				kept = 1
-			}
 			referenceCompileRun(t, files, fmt.Sprintf(`#include "ProbeTable.h"
 #include <cstdio>
 #include <cstdlib>
@@ -1074,11 +1071,11 @@ int main(){
  retain.bytes=store;retain.capacity=sizeof(store);retain.ids=ids;retain.id_capacity=256;
  const int64_t need=RootLoadMeasure(wire,sizeof(wire));CHECK(need>0);uint8_t * region=(uint8_t *)malloc((size_t)need);CHECK(region);
  const Root * root=RootLoadRetain(region,need,wire,sizeof(wire),&retain,&report);
- CHECK(root!=NULL&&!report.damaged&&report.refuse_reason==ok&&!report.refused&&report.unknown==1&&report.retained==%d&&report.retain_lost==%d);
+ CHECK(root!=NULL&&!report.damaged&&report.refuse_reason==ok&&!report.refused&&report.unknown==1&&report.retained==1&&report.retain_lost==0);
  const int64_t bytes=RootMeasureRetain(root,&retain);CHECK(bytes>=0);CHECK(RootSaveRetain(root,&retain,out,sizeof(out),&report)==bytes);
  free(region);
  return 0;}
-`, cppWire(wire), kept, 1-kept))
+`, cppWire(wire)))
 		})
 	}
 }

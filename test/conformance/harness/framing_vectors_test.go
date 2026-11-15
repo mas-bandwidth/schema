@@ -242,24 +242,49 @@ func depthTables(levels int) []byte {
 	return body
 }
 
-// depthArrays is a root body whose one unknown field holds `levels` arrays
-// nested by value: each array carries one element of kind 14.
+// depthArrays is a root body whose one unknown field nests arrays through
+// table elements to depth `levels`: an array of tables (element kind 13)
+// at every odd depth, and at every even depth the table element holding the
+// next array as its one field. THE ELEMENT KINDS ARE CLOSED
+// (docs/SPEC-TABLES.md §3): no declaration produces an array whose element is
+// an array (kind 14 is damage as an element kind), so arrays nest only through
+// a table element, each a level of its own (§4). The innermost payload, at
+// depth `levels`, is an empty array of tables or an empty table body.
 func depthArrays(levels int) []byte {
-	content := b(14, 0)
-	for i := 1; i < levels; i++ {
-		content = cat(b(14, 1), leb(uint64(len(content))), content)
-	}
-	return cat(b(1, 14), leb(uint64(len(content))), content, b(0))
+	return depthThroughTables(levels, 14, func(table []byte) []byte {
+		return cat(b(13, 1), leb(uint64(len(table))), table)
+	})
 }
 
-// depthKeyed is a root body whose one unknown field holds `levels` keyed
-// bodies nested by value: each slot's element is the next keyed body.
+// depthKeyed is depthArrays over enum-keyed bodies: a keyed body of tables
+// (element kind 13) at every odd depth whose one slot, key 1, holds the table
+// element carrying the next keyed body. Element kind 16 is damage (§3), so a
+// keyed body of keyed bodies nests through a table element (§4).
 func depthKeyed(levels int) []byte {
-	content := b(16, 0)
-	for i := 1; i < levels; i++ {
-		content = cat(b(16, 1), b(1), leb(uint64(len(content))), content)
+	return depthThroughTables(levels, 16, func(table []byte) []byte {
+		return cat(b(13, 1), b(1), leb(uint64(len(table))), table)
+	})
+}
+
+// depthThroughTables builds the root body for depthArrays and depthKeyed: the
+// root (depth 0) and every even depth is a table body holding field 1 of
+// `kind`; every odd depth is that kind's body over element kind 13, which
+// `wrap` frames around the one table element below it.
+func depthThroughTables(levels int, kind byte, wrap func(table []byte) []byte) []byte {
+	var content []byte
+	if levels%2 == 1 {
+		content = b(13, 0)
+	} else {
+		content = b(0)
 	}
-	return cat(b(1, 16), leb(uint64(len(content))), content, b(0))
+	for d := levels - 1; d >= 0; d-- {
+		if d%2 == 1 {
+			content = wrap(content)
+		} else {
+			content = cat(b(1, kind), leb(uint64(len(content))), content, b(0))
+		}
+	}
+	return content
 }
 
 // depthUnionTables is a root body whose one unknown field is a union whose arm
@@ -662,8 +687,11 @@ var framingVectors = []framingVector{
 		body: cat(b(11, 13, 4, 7, 17, 2, 0), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
 	{name: "graph_reach_unknown_union_arm", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
 		body: cat(b(11, 15, 17, 17, 1, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
+	// The keyed body's element is a table whose field 7 is the pointer: element
+	// kind 17 is not on the keyed list (§3), so a keyed slot reaches the graph
+	// through a table element.
 	{name: "graph_reach_unknown_keyed_slot", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
-		body: cat(b(11, 16, 5, 17, 1, 18, 1, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
+		body: cat(b(11, 16, 8, 13, 1, 18, 4, 7, 17, 2, 0), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
 }
 
 // counting is n distinct raw entries, 1..n: a reader checks distinctness and

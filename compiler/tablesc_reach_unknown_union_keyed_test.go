@@ -75,7 +75,7 @@ func TestCTableReachThroughUnknownUnionAndKeyed(t *testing.T) {
 		{"graph_reach_unknown_field", file(reachCat(reachB(11, 17, 2), nodeTable(1, unknown), reachB(0))), true},
 		{"graph_reach_unknown_nested", file(reachCat(reachB(11, 13, 4, 7, 17, 2, 0), nodeTable(1, unknown), reachB(0))), true},
 		{"graph_reach_unknown_union_arm", file(reachCat(reachB(11, 15, 17, 17, 1, 2), nodeTable(1, unknown), reachB(0))), true},
-		{"graph_reach_unknown_keyed_slot", file(reachCat(reachB(11, 16, 5, 17, 1, 18, 1, 2), nodeTable(1, unknown), reachB(0))), true},
+		{"graph_reach_unknown_keyed_slot", file(reachCat(reachB(11, 16, 8, 13, 1, 18, 4, 7, 17, 2, 0), nodeTable(1, unknown), reachB(0))), true},
 		{"graph_unknown_type_unreached", file(reachCat(nodeTable(1, unknown), reachB(0))), false},
 	}
 
