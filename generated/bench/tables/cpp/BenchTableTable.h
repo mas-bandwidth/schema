@@ -16679,6 +16679,7 @@ TABLE_FIXED_INLINE bool TableMixedFixedInRange( const TableMixed & value )
     // bits(48) width clamp
     bad |= (int) ( value.frame_tick > 281474976710655ull );
     bad |= (int) ( value.server_time < 0.0f ) | (int) ( value.server_time > 65535.0f );
+    bad |= (int) ( table_float_to_bits( value.server_time ) == 0x80000000u );
     for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
         bad |= (int) !TableEntityFixedInRange( value.entities[i] );
@@ -16709,10 +16710,14 @@ TABLE_FIXED_INLINE bool TableMixedFixedInRange( const TableMixed & value )
     }
     bad |= (int) !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length );
     bad |= (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
+    bad |= (int) ( table_float_to_bits( value.aim_x ) == 0x80000000u );
     bad |= (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
+    bad |= (int) ( table_float_to_bits( value.aim_y ) == 0x80000000u );
     bad |= (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
+    bad |= (int) ( table_float_to_bits( value.aim_z ) == 0x80000000u );
     bad |= (int) ( value.flux < -1000000000000000000ll ) | (int) ( value.flux > 1000000000000000000ll );
     bad |= (int) ( value.ping < 0.0f ) | (int) ( value.ping > 250.0f );
+    bad |= (int) ( table_float_to_bits( value.ping ) == 0x80000000u );
     // bits(24) width clamp
     bad |= (int) ( value.crc_hint > 16777215ull );
     bad |= (int) ( value.extra < 0 ) | (int) ( value.extra > 255 );
@@ -16790,6 +16795,7 @@ inline void TableMixedFixedClampBody( TableMixed & value, int32_t & TABLE_CLAMP_
     value.frame_tick = ( value.frame_tick > 281474976710655ull ) ? 281474976710655ull : value.frame_tick;
     oor_count += (int) ( value.server_time < 0.0f ) | (int) ( value.server_time > 65535.0f );
     value.server_time = ( value.server_time < 0.0f ) ? 0.0f : ( ( value.server_time > 65535.0f ) ? 65535.0f : value.server_time );
+    if ( !( value.server_time < 0.0f ) && !( value.server_time > 0.0f ) ) { value.server_time = 0.0f; }
     for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
         TableEntityFixedClampBody( value.entities[i], oor_count, damaged );
@@ -16824,14 +16830,18 @@ inline void TableMixedFixedClampBody( TableMixed & value, int32_t & TABLE_CLAMP_
     }
     oor_count += (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
     value.aim_x = ( value.aim_x < -1.0f ) ? -1.0f : ( ( value.aim_x > 1.0f ) ? 1.0f : value.aim_x );
+    if ( !( value.aim_x < 0.0f ) && !( value.aim_x > 0.0f ) ) { value.aim_x = 0.0f; }
     oor_count += (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
     value.aim_y = ( value.aim_y < -1.0f ) ? -1.0f : ( ( value.aim_y > 1.0f ) ? 1.0f : value.aim_y );
+    if ( !( value.aim_y < 0.0f ) && !( value.aim_y > 0.0f ) ) { value.aim_y = 0.0f; }
     oor_count += (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
     value.aim_z = ( value.aim_z < -1.0f ) ? -1.0f : ( ( value.aim_z > 1.0f ) ? 1.0f : value.aim_z );
+    if ( !( value.aim_z < 0.0f ) && !( value.aim_z > 0.0f ) ) { value.aim_z = 0.0f; }
     oor_count += (int) ( value.flux < -1000000000000000000ll ) | (int) ( value.flux > 1000000000000000000ll );
     value.flux = ( value.flux < -1000000000000000000ll ) ? -1000000000000000000ll : ( ( value.flux > 1000000000000000000ll ) ? 1000000000000000000ll : value.flux );
     oor_count += (int) ( value.ping < 0.0f ) | (int) ( value.ping > 250.0f );
     value.ping = ( value.ping < 0.0f ) ? 0.0f : ( ( value.ping > 250.0f ) ? 250.0f : value.ping );
+    if ( !( value.ping < 0.0f ) && !( value.ping > 0.0f ) ) { value.ping = 0.0f; }
     // bits(24) width clamp
     oor_count += ( value.crc_hint > 16777215ull );
     value.crc_hint = ( value.crc_hint > 16777215ull ) ? 16777215ull : value.crc_hint;
