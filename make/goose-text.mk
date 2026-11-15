@@ -55,8 +55,8 @@ conformance-negative-control-goose-walk: build/conformance-harness build/conform
 # runtime/schema_json.goose): each control breaks one clause of that walk in
 # the emitter and requires exactly its surface red on one unit — `label` the
 # writer's `&node` (json-write) on graphdemo, `share` the reader's reference
-# resolution (json-read on listdemo, whose one hostile row carries no
-# reference), `total` the read's hold of a text list's total (json-hostile,
+# resolution (json-read and the shared-node-by-label hostile row, json-hostile,
+# on graphdemo), `total` the read's hold of a text list's total (json-hostile,
 # §2.13) on featurewitnesses, and `count` an element past [..N] (json-hostile,
 # §2.13) on tabledemo's array-past-bound.
 .PHONY: conformance-negative-control-goose-json-label conformance-negative-control-goose-json-share conformance-negative-control-goose-json-total conformance-negative-control-goose-json-count
