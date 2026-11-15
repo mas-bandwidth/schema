@@ -6418,15 +6418,19 @@ defmodule Benchtable.Table do
     {0, (1 <<< bits) - 1}
   end
 
-  # json_decode_base64 reads §16.2's bytes spelling: standard base64, padded
-  # or unpadded (docs/SPEC-TABLES.md §16.2).
+  # json_decode_base64 reads §16.2's bytes spelling: CANONICAL base64
+  # (§16.8: standard alphabet, padded, pad bits zero) of the JSON string's
+  # decoded value, the text the writer writes. Any other spelling that decodes,
+  # unpadded or with a pad bit set, is refused (docs/SPEC-TABLES.md §16.2).
   defp json_decode_base64(""), do: {:ok, <<>>}
 
   defp json_decode_base64(raw) do
-    if String.contains?(raw, "=") do
-      Base.decode64(raw)
-    else
-      Base.decode64(raw, padding: false)
+    case Base.decode64(raw) do
+      {:ok, bytes} ->
+        if Base.encode64(bytes) == raw, do: {:ok, bytes}, else: :error
+
+      :error ->
+        :error
     end
   end
 
