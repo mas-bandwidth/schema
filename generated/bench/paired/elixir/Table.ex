@@ -6043,8 +6043,16 @@ defmodule Bench.Table do
   defp json_read_field(%{t: :int, flags: names}, raw, report) when is_list(raw) do
     Enum.reduce(raw, {0, report}, fn n, {mask, report} ->
       case Enum.find_index(names, &(&1 == n)) do
-        nil -> {mask, %{report | unknown: report.unknown + 1}}
-        i -> {mask ||| 1 <<< i, report}
+        nil ->
+          {mask, %{report | unknown: report.unknown + 1}}
+
+        i ->
+          # A FLAGS NAME TWICE IN ONE ARRAY IS DAMAGE (§16.2): a repeated
+          # known name is a repeated key and refuses the read. An unknown
+          # name keeps the skip-and-count treatment above.
+          bit = 1 <<< i
+          if (mask &&& bit) != 0, do: throw(:wire_damaged)
+          {mask ||| bit, report}
       end
     end)
   end
