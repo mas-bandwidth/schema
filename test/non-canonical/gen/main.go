@@ -153,7 +153,11 @@ func variableCases(u *ir.Unit, m *tabletext.Model, canonical []byte) map[string]
 
 	// AN UNUSED ID-TABLE ENTRY: one entry no body references.
 	f = mustParse(canonical)
-	f.extra = append(f.extra, ir.TableWireId("unused"))
+	other := u.Tables["OtherNode"]
+	if other == nil {
+		fatal("the unit declares no table OtherNode")
+	}
+	f.extra = append(f.extra, ir.TableWireId(other.WireName()))
 	cases["variable-unused-id-entry.bin"] = encodeFile(f)
 
 	// AN ID TABLE OUT OF FIRST-USE ORDER: the first two entries swapped and

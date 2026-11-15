@@ -13,6 +13,11 @@ table Node
     value uint8
 }
 
+table OtherNode
+{
+    value uint8
+}
+
 type Leaf
 {
     tag uint8
