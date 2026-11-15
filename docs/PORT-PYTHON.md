@@ -249,8 +249,7 @@ per unit, named for the unit's package:
 
 ```
 <dir>/<package>/__init__.py      re-exports the unit's types, Refused and InvalidValue
-<dir>/<package>/<Base>.py        one module per schema file: its packet declarations
-                                and its table classes side by side
+<dir>/<package>/<Base>.py        one module per schema file
 <dir>/<package>/_schema/         the runtime: serialize.py and the table runtime
 ```
 
@@ -339,10 +338,12 @@ generated class per table and per map entry, each with its descriptor
 
   - `?map[K]V`: refused
 
-  - unions with table arms: refused
+  - unions with table arms, and arrays of them: carried
+    ([the table unions](port-python/table-unions.md))
 
-- **A packet type is carried by value** in a table field, an array element, a
-  union arm or a map value ([the table packet types](port-python/table-packet-types.md)).
+- **A packet-typed field is carried by value.** A packet `type` in a table
+  field, array element, map value or union arm is carried
+  ([the table packet types](port-python/table-packet-types.md)).
 - **The compiler keeps the shared carry checks.** Before table dispatch it
   refuses constructs outside the registered carry set, just as the packet
   target does. The table emitter can describe future codec layers directly;
