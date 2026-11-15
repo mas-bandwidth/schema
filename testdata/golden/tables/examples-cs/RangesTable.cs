@@ -1672,6 +1672,20 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(RangedSignedFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, RangedSignedFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
+            }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
@@ -2366,6 +2380,20 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(RangedUnsignedFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, RangedUnsignedFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
+            }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
@@ -2973,6 +3001,20 @@ namespace Tabledemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(RangedWidthsFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, RangedWidthsFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the

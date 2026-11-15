@@ -1851,6 +1851,20 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(TeamConfigFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, TeamConfigFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
+            }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
@@ -2407,6 +2421,20 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(GunnerConfigFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, GunnerConfigFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
+            }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
@@ -2798,7 +2826,7 @@ namespace Tabledemo
             new TableFixedFill(0u, 5u),
         };
 
-        public const int TurretConfigFixedPlanSplit = 5;
+        public const int TurretConfigFixedPlanSplit = 3;
 
         public static readonly byte[] TurretConfigFixedGuardPool = new byte[] {
         };
@@ -2807,8 +2835,8 @@ namespace Tabledemo
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(4u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(8u, 2u, 1u, 5u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
-            new TableFixedEntry(9u, 3u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(13u, 4u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
+            new TableFixedEntry(9u, 3u, 4u, 0u, 8u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(13u, 4u, 1u, 0u, 8u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
         });
 
         private static readonly byte[] TurretConfigFixedLayout0 = new byte[] {
@@ -2994,6 +3022,20 @@ namespace Tabledemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(TurretConfigFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, TurretConfigFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -3447,7 +3489,7 @@ namespace Tabledemo
             new TableFixedFill(0u, 17u),
         };
 
-        public const int HullConfigFixedPlanSplit = 17;
+        public const int HullConfigFixedPlanSplit = 11;
 
         public static readonly byte[] HullConfigFixedGuardPool = new byte[] {
         };
@@ -3458,18 +3500,18 @@ namespace Tabledemo
             new TableFixedEntry(8u, 2u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(12u, 3u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(16u, 4u, 1u, 5u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
-            new TableFixedEntry(17u, 5u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(21u, 6u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(22u, 7u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(26u, 8u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(30u, 9u, 1u, 5u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
-            new TableFixedEntry(31u, 10u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(35u, 11u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(36u, 12u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(40u, 13u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(44u, 14u, 1u, 5u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
-            new TableFixedEntry(45u, 15u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(49u, 16u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
+            new TableFixedEntry(17u, 5u, 4u, 0u, 16u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(21u, 6u, 1u, 0u, 16u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(31u, 10u, 4u, 0u, 30u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(35u, 11u, 1u, 0u, 30u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(45u, 15u, 4u, 0u, 44u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(49u, 16u, 1u, 0u, 44u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
         });
 
         private static readonly byte[] HullConfigFixedLayout0 = new byte[] {
@@ -3664,6 +3706,20 @@ namespace Tabledemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(HullConfigFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, HullConfigFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -4342,7 +4398,7 @@ namespace Tabledemo
             new TableFixedFill(0u, 63u),
         };
 
-        public const int KeyedConfigFixedPlanSplit = 60;
+        public const int KeyedConfigFixedPlanSplit = 42;
 
         public static readonly byte[] KeyedConfigFixedGuardPool = new byte[] {
         };
@@ -4359,55 +4415,55 @@ namespace Tabledemo
             new TableFixedEntry(80u, 11u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(84u, 12u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(88u, 13u, 1u, 5u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
-            new TableFixedEntry(89u, 14u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(93u, 15u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(94u, 16u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(98u, 17u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(102u, 18u, 1u, 5u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
-            new TableFixedEntry(103u, 19u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(107u, 20u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(108u, 21u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(112u, 22u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(116u, 23u, 1u, 5u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
-            new TableFixedEntry(117u, 24u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(121u, 25u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(122u, 26u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(126u, 27u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(130u, 28u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(134u, 29u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(138u, 30u, 1u, 5u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
-            new TableFixedEntry(139u, 31u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(143u, 32u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(144u, 33u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(148u, 34u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(152u, 35u, 1u, 5u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
-            new TableFixedEntry(153u, 36u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(157u, 37u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(158u, 38u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(162u, 39u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(166u, 40u, 1u, 5u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
-            new TableFixedEntry(167u, 41u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(171u, 42u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(172u, 43u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(176u, 44u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(180u, 45u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(184u, 46u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(188u, 47u, 1u, 5u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
-            new TableFixedEntry(189u, 48u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(193u, 49u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(194u, 50u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(198u, 51u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(202u, 52u, 1u, 5u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
-            new TableFixedEntry(203u, 53u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(207u, 54u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(208u, 55u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(212u, 56u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(216u, 57u, 1u, 5u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 1, 1),
-            new TableFixedEntry(217u, 58u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(221u, 59u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(222u, 60u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(226u, 61u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(230u, 62u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(89u, 14u, 4u, 0u, 88u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(93u, 15u, 1u, 0u, 88u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(103u, 19u, 4u, 0u, 102u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(107u, 20u, 1u, 0u, 102u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(117u, 24u, 4u, 0u, 116u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(121u, 25u, 1u, 0u, 116u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(139u, 31u, 4u, 0u, 138u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(143u, 32u, 1u, 0u, 138u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(153u, 36u, 4u, 0u, 152u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(157u, 37u, 1u, 0u, 152u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(167u, 41u, 4u, 0u, 166u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(171u, 42u, 1u, 0u, 166u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(189u, 48u, 4u, 0u, 188u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(193u, 49u, 1u, 0u, 188u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(203u, 53u, 4u, 0u, 202u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(207u, 54u, 1u, 0u, 202u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
+            new TableFixedEntry(217u, 58u, 4u, 0u, 216u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(221u, 59u, 1u, 0u, 216u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
         });
 
         private static readonly byte[] KeyedConfigFixedLayout0 = new byte[] {
@@ -4628,6 +4684,20 @@ namespace Tabledemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(KeyedConfigFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, KeyedConfigFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
