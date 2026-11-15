@@ -4,16 +4,16 @@ package cpptable
 // docs/SPEC-TABLES.md §4, §6.5): the strict read is one read — the whole
 // value or a refusal — and the framing battery's vectors are form-1 files,
 // so a root declared `fixed table` is read there through its form-1 read
-// with its class variable. Ten of the battery's rows are damaged wires the
-// generated C++ readers decoded as values: an inert array, keyed or map
-// body (H2), a repeated field id (R5), an unknown field whose skipped bytes
-// are themselves damage (R2), a node table riding twice (R5, T1), a node
-// record no pointer reaches (T1) and an unknown node table whose record's
-// type reference is 0 (T4). The driver now walks the whole wire by the
-// wire-alone rules before it decodes (test/conformance/cpp/main.cpp,
-// framing_strict_ok), and this test holds the built driver to every
-// framing row of the manifest: the verdict the row owes, the §16 text of
-// the value a read row leaves, and its canonical write-back wire.
+// with its class variable. The generated readers hold the framing: their own
+// declaration-free strict walk (the emitted TableStrictWalk) refuses the
+// battery's damaged wires before any value is decoded, and the driver reads
+// through the generated load alone and reports its verdict. The rows the
+// walk holds are the strict rows below: an inert array, keyed or map body
+// (H2), bytes left inside an array's, keyed array's or map's L after its
+// count (L6), a repeated field id (R5), an unknown field whose skipped bytes
+// are themselves damage (R2), a node table riding twice (R5, T1), a record
+// body with bytes after its terminator (L3) and an unknown node table in a
+// reader with no reference that could reach a node (T1, T4).
 //
 // It builds and runs the real driver, so it is a functional test: it skips
 // by name without SCHEMA_SLOW, and fails by name under
@@ -33,14 +33,13 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// cppFramingStrictRows are the form-1 rows that must refuse and did not:
-// the negative control below is held to turning exactly these back into
-// reads when the strict walk is taken out of the driver. The four rows of
-// bytes inside L past a count and after a record terminator (8ad2632bc) are
-// refused by the same walk. node_index_null is not here: its null pointer
-// leaves a record no pointer reaches, which the C++ read's own
-// declaration-free graph walk refuses (§3.1, §6.5), so taking the driver's
-// strict walk out does not turn it back into a read.
+// cppFramingStrictRows are the form-1 rows the emitted strict walk refuses
+// and no other generated check does: the negative control below is held to
+// turning exactly these back into reads when the walk's verdict is discarded
+// from a copy of the generated code. node_index_null is not here: its null
+// pointer leaves a record no pointer reaches, which the pointered read's own
+// graph check refuses (§3.1, §6.5), so discarding the walk does not turn it
+// back into a read.
 var cppFramingStrictRows = []string{
 	"array_L0_inert",
 	"array_L1_inert",
@@ -55,6 +54,9 @@ var cppFramingStrictRows = []string{
 	"node_record_bytes_after_terminator",
 	"node_table_twice",
 	"node_unknown_to_fixed_reader",
+	"frame_unknown_array_count_over_cap",
+	"frame_unknown_keyed_count_over_cap",
+	"frame_unknown_float_non_finite",
 }
 
 type cppFramingRow struct {
@@ -77,6 +79,39 @@ func cppFramingManifestRows(t *testing.T, root string) []cppFramingRow {
 	}
 	if len(rows) == 0 {
 		t.Fatal("the manifest carries no framing rows")
+	}
+	return rows
+}
+
+// cppFramingUnknownWireRows changes an unknown field in a pinned form-1
+// fixture into a count above the extent cap or a non-finite float. The
+// declared reader skips that field, so only its generated strict walk can
+// refuse the wire-alone condition inside it.
+func cppFramingUnknownWireRows(t *testing.T, root string) []cppFramingRow {
+	t.Helper()
+	base, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "framing", "frame_unknown_id_length.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const prefix = "\x01\x10\x0d\x03\xaa\xbb\xcc"
+	if !bytes.HasPrefix(base, []byte(prefix)) {
+		t.Fatal("framing fixture no longer starts with the unknown field to replace")
+	}
+	var rows []cppFramingRow
+	for _, tc := range []struct {
+		name    string
+		payload []byte
+	}{
+		{"frame_unknown_array_count_over_cap", []byte{14, 6, 1, 0x80, 0x80, 0x80, 0x80, 8}},
+		{"frame_unknown_keyed_count_over_cap", []byte{16, 6, 1, 0x80, 0x80, 0x80, 0x80, 8}},
+		{"frame_unknown_float_non_finite", []byte{10, 0, 0, 0xc0, 0x7f}},
+	} {
+		wire := append(append([]byte{1, 16}, tc.payload...), base[len(prefix):]...)
+		path := filepath.Join(t.TempDir(), tc.name+".bin")
+		if err := os.WriteFile(path, wire, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		rows = append(rows, cppFramingRow{name: tc.name, unit: "tblr1", root: "Cfg", wire: path, verdict: "refused"})
 	}
 	return rows
 }
@@ -209,7 +244,7 @@ func cppConformanceRoot(t *testing.T) string {
 // value and its write-back wire.
 func TestCppDriverRefusesFormOneFraming(t *testing.T) {
 	root := cppConformanceRoot(t)
-	rows := cppFramingManifestRows(t, root)
+	rows := append(cppFramingManifestRows(t, root), cppFramingUnknownWireRows(t, root)...)
 	cppConformanceMake(t, root, "build/conformance-cpp")
 	answers := cppFramingRun(t, root, filepath.Join(root, "build", "conformance-cpp"), rows)
 	for _, wrong := range cppFramingCheck(t, root, answers, rows) {
@@ -217,41 +252,107 @@ func TestCppDriverRefusesFormOneFraming(t *testing.T) {
 	}
 }
 
-// TestCppDriverRefusesFormOneFramingNegativeControl plants its fault in
-// the real artifact: the strict form-1 walk is taken out of a COPY of the
-// driver (no tracked file is written to), the copy is built with the
-// Makefile's own flags against the driver's own table objects, and the
-// framing battery must go red on exactly the strict rows — each read again,
-// as the unsabotaged readers left them. A control that stayed green, or
-// went red anywhere else, would prove the walk is not what refuses them.
+// discardStrictWalk replaces the generated strict walk's body — from its one
+// definition, which `anchor` spells exactly — with a body that returns true, so
+// the walk's verdict is discarded and nothing it checked refuses the read.
+func discardStrictWalk(src []byte, anchor string) []byte {
+	i := bytes.Index(src, []byte(anchor))
+	if i < 0 {
+		return src
+	}
+	open := bytes.IndexByte(src[i:], '{')
+	if open < 0 {
+		return src
+	}
+	open += i
+	depth := 0
+	end := open
+	for ; end < len(src); end++ {
+		switch src[end] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				end++
+				replacement := []byte(anchor + "\n{\n    (void) body;\n    (void) body_bytes;\n    (void) table;\n    (void) report;\n    return true; // SABOTAGED: the strict walk's verdict is discarded\n}\n")
+				out := make([]byte, 0, len(src))
+				out = append(out, src[:i]...)
+				out = append(out, replacement...)
+				out = append(out, src[end:]...)
+				return out
+			}
+		}
+	}
+	return src
+}
+
+// TestCppDriverRefusesFormOneFramingNegativeControl plants its fault in the
+// generated reader: the strict walk's verdict is discarded from a COPY of
+// every generated Table header (no tracked file is written to), the driver is
+// built against that copy with the Makefile's own flags and the driver's own
+// table objects, and the framing battery must go red on exactly the strict
+// rows — each read again, as the unsabotaged readers left them. A control that
+// stayed green, or went red anywhere else, would prove the walk is not what
+// refuses them.
 func TestCppDriverRefusesFormOneFramingNegativeControl(t *testing.T) {
 	root := cppConformanceRoot(t)
-	rows := cppFramingManifestRows(t, root)
-	src, err := os.ReadFile(filepath.Join(root, "test", "conformance", "cpp", "main.cpp"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	const anchor = "framing_strict_ok( wire.data(), wire.size() )"
-	if n := bytes.Count(src, []byte(anchor)); n != 1 {
-		t.Fatalf("NEGATIVE CONTROL FAILED: the strict walk's call %q appears %d times in test/conformance/cpp/main.cpp, want 1: the plant below has nothing to take out", anchor, n)
-	}
-	planted := bytes.Replace(src, []byte(anchor), []byte("( framing_strict_ok( wire.data(), wire.size() ), true ) /* SABOTAGED: the walk runs and its verdict is discarded */"), 1)
+	rows := append(cppFramingManifestRows(t, root), cppFramingUnknownWireRows(t, root)...)
+	// generate the Table headers and compile the objects the driver links
+	cppConformanceMake(t, root, "conformance-cpp-objects")
 
 	scratch, err := os.MkdirTemp(filepath.Join(root, "build"), "cpp-framing-negative-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(scratch) })
-	plantedSrc := filepath.Join(scratch, "main.cpp")
-	if err := os.WriteFile(plantedSrc, planted, 0o600); err != nil {
+
+	// discard the walk's verdict from a scratch copy of every generated header:
+	// a Table header's walk returns true, so no wire-alone condition refuses
+	// through it and the framing battery answers what the decode alone would
+	// answer. Every other header is copied verbatim, because the driver's
+	// includes reach packet and wire headers beside the table ones.
+	const anchor = "inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const TableIdTable & table, TableReport * report )"
+	headers, err := filepath.Glob(filepath.Join(root, "build", "tables-generated", "*", "*.h"))
+	if err != nil {
 		t.Fatal(err)
 	}
+	sabotaged := 0
+	for _, header := range headers {
+		src, err := os.ReadFile(header)
+		if err != nil {
+			t.Fatal(err)
+		}
+		planted := src
+		if strings.HasSuffix(header, "Table.h") {
+			if n := bytes.Count(src, []byte(anchor)); n != 1 {
+				t.Fatalf("NEGATIVE CONTROL FAILED: the generated strict walk %q appears %d times in %s, want 1: the plant below has nothing to take out", anchor, n, header)
+			}
+			planted = discardStrictWalk(src, anchor)
+			sabotaged++
+		}
+		rel, err := filepath.Rel(filepath.Join(root, "build", "tables-generated"), header)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dst := filepath.Join(scratch, rel)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dst, planted, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if sabotaged == 0 {
+		t.Fatal("NEGATIVE CONTROL FAILED: no generated Table header carried the strict walk")
+	}
+
 	bin := filepath.Join(scratch, "driver-bin")
 	mk := filepath.Join(scratch, "negative.mk")
-	// the planted main.cpp links the table objects the driver links (the
-	// Makefile's conformance-cpp-objects), so the control compiles one
-	// translation unit, not the driver's every table source over again
-	rule := fmt.Sprintf("%s: conformance-cpp-objects\n\t$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) %s $(CONFORMANCE_OBJECTS) -o %s\n", bin, plantedSrc, bin)
+	// the planted headers shadow the generated ones for the driver's own main.cpp
+	// alone; the table objects the driver links are the unsabotaged ones, so the
+	// control recompiles one translation unit, not every table source over again
+	rule := fmt.Sprintf("NEGATIVE_SCRATCH := %s\n%s: conformance-cpp-objects\n\t$(CXX) $(TABLES_CXXFLAGS) $(subst -Ibuild/tables-generated,-I$(NEGATIVE_SCRATCH),$(CONFORMANCE_INCLUDES)) %s $(CONFORMANCE_OBJECTS) -o %s\n", scratch, bin, filepath.Join(root, "test", "conformance", "cpp", "main.cpp"), bin)
 	if err := os.WriteFile(mk, []byte(rule), 0o600); err != nil {
 		t.Fatal(err)
 	}
