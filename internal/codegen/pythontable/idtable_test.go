@@ -9,15 +9,19 @@ package pythontable
 // is returned. An unknown field riding under the ESCAPE (31) or PAYLOAD-FREE
 // (32) kind is skipped and counted unknown, and the save writes the value's
 // canonical wire; a kind 32 with a nonzero L, a known field riding under the
-// escape, and an enum reference past the id table are damage or a kind
-// mismatch and refuse the whole load.
+// escape, and an enum reference past the id table (on a known field, on an
+// unknown field, and as an element of an unknown enum array) are damage or a
+// kind mismatch and refuse the whole load with the Go engine's own reason,
+// which the test reads from tablewire.Decode first.
 //
-// TestPythonVtIdtableNegativeControl plants one defect in a copy of the
-// emitted enum codec and one in a copy of the emitted escape skipper, and
-// requires the probe to go red by name under each pinned interpreter.
+// TestPythonVtIdtableNegativeControl plants one defect at a time in a copy of
+// the emitted runtime (each check this file adds) and requires the probe to go
+// red by name under each pinned interpreter.
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -167,27 +171,80 @@ func idtableInputs(t *testing.T, u *ir.Unit) map[string][]byte {
 		append(idtableHeader(1, ir.TableKindEscape, idtableL([]byte{1, 2, 3})), 0), unknownID)
 	inputs["unknown_nopayload.wire"] = idtableWire(
 		append(idtableHeader(1, ir.TableKindNoPayload, idtableL(nil)), 0), unknownID)
-	// an unknown array whose element kind is ENUM (30), with a real variant
-	// reference: the escape is skipped whole, its element kind judged only by
-	// the framing an unknown field owes.
+	// an unknown array whose element kind is ENUM (30): skipped and counted
+	// unknown, but a skipped value is still validated, as the engine's wire
+	// check does: each element's variant reference must name an id-table
+	// entry. One element in the table reads; one past it is damage.
 	arrayBody := append([]byte{byte(ir.TableKindEnum)}, idtableVarint(1)...)
 	arrayBody = append(arrayBody, idtableVarint(2)...)
 	inputs["unknown_enum_array.wire"] = idtableWire(
 		append(idtableHeader(1, ir.TableKindArray, idtableL(arrayBody)), 0), unknownArrayID, greenID)
+	pastBody := append([]byte{byte(ir.TableKindEnum)}, idtableVarint(2)...)
+	pastBody = append(pastBody, idtableVarint(1)...)
+	pastBody = append(pastBody, idtableVarint(5)...)
+	inputs["unknown_enum_array_past.wire"] = idtableWire(
+		append(idtableHeader(1, ir.TableKindArray, idtableL(pastBody)), 0), unknownArrayID, greenID)
 	// a variant reference this enum cannot name is ordinary unknown: the field
 	// reads None and the save writes the value's canonical wire.
 	inputs["unknown_variant.wire"] = idtableWire(
 		append(idtableHeader(1, ir.TableKindEnum, idtableVarint(2)), 0),
 		hueID, ir.TableWireId("retired_variant"))
 	// the refusals: a payload-free kind with a nonzero L, a known field riding
-	// under the escape, and a variant reference past the id table.
+	// under the escape, and a variant reference past the id table, on an
+	// unknown field (the skip's check) and on the known field hue (the enum
+	// codec's check).
 	inputs["nopayload_nonzero.wire"] = idtableWire(
 		append(idtableHeader(1, ir.TableKindNoPayload, idtableL([]byte{0xaa})), 0), unknownID)
 	inputs["known_escape.wire"] = idtableWire(
 		append(idtableHeader(1, ir.TableKindEscape, idtableL(nil)), 0), hueID)
 	inputs["enum_ref_past.wire"] = idtableWire(
 		append(idtableHeader(1, ir.TableKindEnum, idtableVarint(2)), 0), unknownID)
+	inputs["known_enum_ref_past.wire"] = idtableWire(
+		append(idtableHeader(1, ir.TableKindEnum, idtableVarint(2)), 0), hueID)
 	return inputs
+}
+
+// idtableAccepted are the hand-built wires the read accepts, each with one
+// field skipped and counted unknown, read at Alone.
+var idtableAccepted = []string{"unknown_escape", "unknown_nopayload", "unknown_enum_array", "unknown_variant"}
+
+// idtableRefusals are the hand-built wires the read refuses at Alone, with the
+// reason the Go engine gives: TestPythonVtIdtable holds the engine to each
+// reason before the probe holds Python to it.
+var idtableRefusals = []struct{ name, reason string }{
+	{"nopayload_nonzero", tablewire.ReasonWireDamaged},
+	{"known_escape", tablewire.ReasonKindMismatch},
+	{"enum_ref_past", tablewire.ReasonWireDamaged},
+	{"known_enum_ref_past", tablewire.ReasonWireDamaged},
+	{"unknown_enum_array_past", tablewire.ReasonWireDamaged},
+}
+
+// idtableEngineVerdict is the Go engine's read of a wire at root: "read" with
+// its unknown count, or the refusal's reason.
+func idtableEngineVerdict(t *testing.T, u *ir.Unit, root string, wire []byte) (string, int) {
+	t.Helper()
+	m := tabletext.NewModel(u)
+	inst := m.New(u.Tables[root])
+	var report tabletext.Report
+	ok, err := tablewire.Decode(m, inst, wire, &report)
+	if ok {
+		return "read", report.Unknown
+	}
+	var refusal *tablewire.Refusal
+	if !errors.As(err, &refusal) {
+		t.Fatalf("the Go engine refuses with %v, not a reasoned refusal", err)
+	}
+	return refusal.Reason, 0
+}
+
+// idtableProbeText is the probe with one load_refusal call per refusal, so the
+// probe and the engine check share the one list.
+func idtableProbeText() string {
+	var calls strings.Builder
+	for _, r := range idtableRefusals {
+		fmt.Fprintf(&calls, "load_refusal(%q, Alone, %q)\n", r.name, r.reason)
+	}
+	return strings.Replace(idtableProbe, "#REFUSALS#\n", calls.String(), 1)
 }
 
 const idtableProbe = `from idtable import Alone, Chain, Defaulted, Hue, InvalidValue, LoadReport, Mood, Nested, Outer, Pair, Refused, Wide
@@ -237,23 +294,27 @@ unknown("unknown_nopayload", Alone)
 unknown("unknown_enum_array", Alone)
 unknown("unknown_variant", Alone)
 
-def load_refusal(name, cls):
+def load_refusal(name, cls, reason):
     try:
         cls.load(wire(name))
-    except Refused:
-        print("load", name, "refused")
+    except Refused as err:
+        if err.reason != reason:
+            raise SystemExit("idtable_" + name + ": refused " + err.reason + ", not " + reason)
+        print("load", name, "refused", err.reason)
+    except Exception as err:
+        raise SystemExit("idtable_" + name + ": raised " + type(err).__name__ + ", not Refused")
     else:
         raise SystemExit("idtable_" + name + ": read")
 
-load_refusal("nopayload_nonzero", Alone)
-load_refusal("known_escape", Alone)
-load_refusal("enum_ref_past", Alone)
+#REFUSALS#
 
 def write_refusal(name, build):
     try:
         build().save()
     except InvalidValue:
         print("write", name, "refused")
+    except Exception as err:
+        raise SystemExit("idtable_write_" + name + ": raised " + type(err).__name__ + ", not InvalidValue")
     else:
         raise SystemExit("idtable_write_" + name + ": wrote")
 
@@ -285,7 +346,7 @@ func idtableRun(t *testing.T, files map[string][]byte) string {
 	dir := t.TempDir()
 	writeTree(t, dir, files)
 	inputs := idtableInputs(t, loadUnit(t, idtableSchema))
-	inputs["main.py"] = []byte(pyrun.ImportPrelude + idtableProbe)
+	inputs["main.py"] = []byte(pyrun.ImportPrelude + idtableProbeText())
 	got := string(pyrun.Run(t, dir, "main.py", inputs))
 	floor := string(pyrun.RunFloor(t, dir, "main.py", inputs))
 	if got != floor {
@@ -309,8 +370,21 @@ func TestPythonVtIdtable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// THE ENGINE'S VERDICT FIRST: every hand-built wire the probe reads is
+	// read or refused by the Go engine exactly as the probe requires of Python.
+	inputs := idtableInputs(t, u)
+	for _, name := range idtableAccepted {
+		if verdict, unknown := idtableEngineVerdict(t, u, "Alone", inputs[name+".wire"]); verdict != "read" || unknown != 1 {
+			t.Errorf("the Go engine answers %s with %s (unknown %d), not a read with one unknown", name, verdict, unknown)
+		}
+	}
+	for _, r := range idtableRefusals {
+		if verdict, _ := idtableEngineVerdict(t, u, "Alone", inputs[r.name+".wire"]); verdict != r.reason {
+			t.Errorf("the Go engine answers %s with %s, not %s", r.name, verdict, r.reason)
+		}
+	}
 	got := idtableRun(t, files)
-	for _, line := range []string{
+	want := []string{
 		"alone same hue=2",
 		"defaulted same hue=1",
 		"defaulted_default same hue=3",
@@ -323,24 +397,26 @@ func TestPythonVtIdtable(t *testing.T) {
 		"unknown_nopayload 1 True",
 		"unknown_enum_array 1 True",
 		"unknown_variant 1 True",
-		"load nopayload_nonzero refused",
-		"load known_escape refused",
-		"load enum_ref_past refused",
 		"write bad_enum refused",
 		"write bad_bool refused",
 		"write bad_nested refused",
 		"OK",
-	} {
+	}
+	for _, r := range idtableRefusals {
+		want = append(want, "load "+r.name+" refused "+r.reason)
+	}
+	for _, line := range want {
 		if !strings.Contains(got, line+"\n") {
 			t.Errorf("the probe output lacks %q:\n%s", line, got)
 		}
 	}
 }
 
-// TestPythonVtIdtableNegativeControl moves the enum field kind in a copy of
-// the emitted enum codec and turns the payload-free skip's zero-length check
-// off in a copy of the emitted reader, and requires the probe to go red by
-// name under each pinned interpreter.
+// TestPythonVtIdtableNegativeControl plants one fault at a time in a copy of
+// the emitted runtime: the enum codec's variant reference, its read-side
+// past-table check and its write validation, and the reader's payload-free
+// zero-length check, unknown-enum past-table check and unknown enum array
+// walk. Each must turn the probe red by name under each pinned interpreter.
 //
 // Functional (pythonBinary): run with SCHEMA_SLOW=1.
 func TestPythonVtIdtableNegativeControl(t *testing.T) {
@@ -352,7 +428,7 @@ func TestPythonVtIdtableNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	inputs := idtableInputs(t, u)
-	inputs["main.py"] = []byte(pyrun.ImportPrelude + idtableProbe)
+	inputs["main.py"] = []byte(pyrun.ImportPrelude + idtableProbeText())
 	for _, control := range []struct {
 		name, file, from, to, marker string
 	}{
@@ -363,6 +439,19 @@ func TestPythonVtIdtableNegativeControl(t *testing.T) {
 		// payload anyway: a payload-free field with a nonzero L reads where the
 		// wire is damage.
 		{"escape-nonzero", "idtable/_schema/load.py", "        if length != 0:\n            raise Refused(\"wire_damaged\", \"kind 32 with a nonzero L\")\n        return", "        reader.take(length)\n        return", "idtable_nopayload_nonzero"},
+		// the enum codec drops its past-table check: a known enum field whose
+		// reference is past the id table indexes off the table instead of
+		// refusing wire_damaged.
+		{"enum-read-past", "idtable/_schema/kind_enum.py", "        if reference > len(ctx.ids):\n            raise Refused(\"wire_damaged\", \"a variant reference is past the id table\")\n", "", "idtable_known_enum_ref_past"},
+		// the reader's kind-30 skip drops its past-table check: an unknown
+		// enum field whose reference is past the id table reads.
+		{"skip-read-past", "idtable/_schema/load.py", "        if reference > len(reader.ids):\n            raise Refused(\"wire_damaged\", \"a variant reference is past the id table\")\n", "", "idtable_enum_ref_past"},
+		// the reader skips an unknown enum array opaquely again: an element
+		// reference past the id table reads where the engine refuses.
+		{"array-read-past", "idtable/_schema/load.py", "            _skip_enum_array(Reader(content, 1, length, reader.ids))\n", "            pass\n", "idtable_unknown_enum_array_past"},
+		// the enum codec validates nothing: an out-of-range enum value reaches
+		// the write instead of raising InvalidValue.
+		{"enum-validate", "idtable/_schema/kind_enum.py", "    def validate(self, fd: FieldDesc, value: Any, path: str) -> None:\n", "    def validate(self, fd: FieldDesc, value: Any, path: str) -> None:\n        return\n", "idtable_write_bad_enum"},
 	} {
 		t.Run(control.name, func(t *testing.T) {
 			t.Parallel()

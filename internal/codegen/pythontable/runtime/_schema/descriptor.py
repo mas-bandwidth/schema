@@ -30,6 +30,8 @@ class FieldDesc:
         "key_enum",
         "default",
         "variants",
+        "wire_of",
+        "value_of",
     )
 
     name: str
@@ -48,6 +50,8 @@ class FieldDesc:
     key_enum: str
     default: Any
     variants: tuple[tuple[int, int], ...]
+    wire_of: dict[int, int]
+    value_of: dict[int, int]
 
     def __init__(
         self,
@@ -84,6 +88,8 @@ class FieldDesc:
         self.key_enum = key_enum
         self.default = default
         self.variants = variants
+        self.wire_of = {value: wire_id for value, wire_id in variants}
+        self.value_of = {wire_id: value for value, wire_id in variants}
 
     def is_default(self, value: Any) -> bool:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""

@@ -1053,7 +1053,7 @@
     {
       "name": "python-vt-idtable",
       "when": "pull-request",
-      "why": "the id-table wire's enum and escape kinds (make/python.mk): in a copy of the emitted runtime the enum codec references the wrong variant id, and in another the payload-free skipper accepts a nonzero L; TestPythonVtIdtableNegativeControl must go red on each by name under both pinned interpreters. One SCHEMA_SLOW go test, the cost of the pin cache restore rather than the run.",
+      "why": "the id-table wire's enum and escape kinds (make/python.mk): in a copy of the emitted runtime, one fault at a time: the enum codec references the wrong variant id, drops its read-side past-table check, or validates nothing; the payload-free skipper accepts a nonzero L; the unknown-enum skip drops its past-table check; an unknown enum array is skipped without walking its elements. TestPythonVtIdtableNegativeControl must go red on each by name under both pinned interpreters. One SCHEMA_SLOW go test, the cost of the pin cache restore rather than the run.",
       "targets": [
         "python-vt-idtable-negative-control"
       ],

@@ -270,7 +270,13 @@ def _skip(reader: Reader, kind: int) -> None:
         if reference > len(reader.ids):
             raise Refused("wire_damaged", "a variant reference is past the id table")
         return
-    if kind in (12, 13, 14, 16) or kind == 31:
+    if kind == 14:
+        length = reader.varint()
+        content = reader.take(length)
+        if length > 0 and content[0] == 30:
+            _skip_enum_array(Reader(content, 1, length, reader.ids))
+        return
+    if kind in (12, 13, 16) or kind == 31:
         length = reader.varint()
         reader.take(length)
         return
@@ -287,3 +293,18 @@ def _skip(reader: Reader, kind: int) -> None:
             reader.take(length)
         return
     raise Refused("wire_damaged", f"kind {kind} is not in this build's closed set")
+
+
+def _skip_enum_array(elements: Reader) -> None:
+    """Walk a skipped array of ENUM (30) elements as the engine does.
+
+    A skipped value is still validated (docs/SPEC-TABLES.md §3, §4): each
+    element is a variant reference that must name an entry of the file's id
+    table, and the count's elements consume the array's L exactly.
+    """
+    count = elements.varint()
+    for _ in range(count):
+        if elements.varint() > len(elements.ids):
+            raise Refused("wire_damaged", "an array element's variant reference is past the id table")
+    if elements.pos != elements.end:
+        raise Refused("wire_damaged", "bytes left inside an array's L after its elements")
