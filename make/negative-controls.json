@@ -2956,6 +2956,15 @@
       "lobster": "v2026.8"
     },
     {
+      "name": "lobster-packet",
+      "when": "pull-request",
+      "why": "the Lobster packet Write's compressed-float range check (SPEC §5.1 row 10; test/packet-write-cfloat): the emitter's debug assert is removed from a copy through go test -overlay, and TestLobsterPacketWriteCFloatRange must red exactly the three off-range cases while the non-finite and lawful cases stay as they were. One overlay build and one run over the shared cases.",
+      "targets": [
+        "packet-write-cfloat-lobster-negative-control"
+      ],
+      "lobster": "v2026.8"
+    },
+    {
       "name": "moo-cards",
       "when": "pull-request",
       "why": "Native moo owning cards: analyzer and unit checks plus all 43 shared cases across nine surfaces precede three real facade-source sabotages (render separator, retaining save and task-hash length frame). Each must red only its target surface. The IO-only Go host runs the pinned moo CLI; card behavior never runs in the host. The complete group, including the tagged compiler rebuild, took 3.19 seconds on Studio at GOMAXPROCS=4.",
