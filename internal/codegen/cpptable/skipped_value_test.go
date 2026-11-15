@@ -366,7 +366,7 @@ func TestCppSkippedValueIsValidated(t *testing.T) {
 		t.Fatalf("the skipped-value probe: %v\n%s", err, out)
 	}
 	got := map[string]string{}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		f := strings.Split(line, "\t")
 		if len(f) == 3 && f[0] == "ROW" {
 			got[f[1]] = f[2]

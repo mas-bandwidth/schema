@@ -531,6 +531,18 @@ static SCHEMA_UNUSED int tabledemo_table_reader_array_header( tabledemo_table_re
     ok = tabledemo_table_reader_leb( &header, count ); sub->offset = header.offset;
     return ok;
 }
+/* THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3, §4): an array body
+   (kind 14) opens with 1-13, 15, 17 or 18-30, and an enum-keyed body (kind
+   16) with 1-11, 13 or 18-30. Any other element kind is damage under any
+   count, a count of 0 included, in a declared field and an unknown one. */
+static SCHEMA_UNUSED int tabledemo_table_array_element_kind_allowed( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 13 ) || kind == 15 || kind == 17 || ( kind >= 18 && kind <= 30 );
+}
+static SCHEMA_UNUSED int tabledemo_table_keyed_element_kind_allowed( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 11 ) || kind == 13 || ( kind >= 18 && kind <= 30 );
+}
 static SCHEMA_UNUSED int tabledemo_table_reader_skip( tabledemo_table_reader_t * r, uint8_t kind )
 {
     int width = 0; uint64_t n;
@@ -631,6 +643,7 @@ static SCHEMA_UNUSED int tabledemo_table_skip_array( tabledemo_table_reader_t * 
     if ( sub->size < 2 ) { return 0; }
     elem_kind = tabledemo_table_reader_get8( sub );
     if ( !tabledemo_table_reader_leb( sub, &count ) ) { return 0; }
+    if ( keyed ? !tabledemo_table_keyed_element_kind_allowed( elem_kind ) : !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { return 0; }
     if ( count > 2147483647ull ) { return 0; }
     if ( count > (uint64_t)(sub->size - sub->offset) ) { return 0; }
     if ( !keyed )
@@ -2731,13 +2744,13 @@ static SCHEMA_UNUSED int tabledemo_table_report_finish( tabledemo_table_report_t
 
 #ifndef SCHEMA_TABLEDEMO_TABLE_ALLOCATOR_RUNTIME
 #define SCHEMA_TABLEDEMO_TABLE_ALLOCATOR_RUNTIME
-#ifndef schema_tabledemo_allocate
+#ifndef schema_allocate
 #include <stdlib.h>
-#define schema_tabledemo_allocate(bytes) calloc(1,(size_t)(bytes))
+#define schema_allocate(bytes) calloc(1,(size_t)(bytes))
 #endif
-#ifndef schema_tabledemo_release
+#ifndef schema_release
 #include <stdlib.h>
-#define schema_tabledemo_release(pointer) free(pointer)
+#define schema_release(pointer) free(pointer)
 #endif
 typedef struct tabledemo_table_allocator_t
 {
@@ -2746,9 +2759,9 @@ typedef struct tabledemo_table_allocator_t
     void * context;
 } tabledemo_table_allocator_t;
 static SCHEMA_UNUSED void * tabledemo_table_default_allocate(void * context,int64_t bytes)
-{ (void)context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_tabledemo_allocate(bytes) : NULL; }
+{ (void)context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_allocate(bytes) : NULL; }
 static SCHEMA_UNUSED void tabledemo_table_default_release(void * context,void * pointer)
-{ (void)context; schema_tabledemo_release(pointer); }
+{ (void)context; schema_release(pointer); }
 static SCHEMA_UNUSED tabledemo_table_allocator_t tabledemo_table_default_allocator(void)
 {
     tabledemo_table_allocator_t allocator={tabledemo_table_default_allocate,tabledemo_table_default_release,NULL}; return allocator;
@@ -3646,6 +3659,7 @@ static SCHEMA_UNUSED void tabledemo_table_mark_framed( tabledemo_table_reader_t 
         case 14: case 16:
             if ( sub.size < 2 ) { return; }
             elem_kind = tabledemo_table_reader_get8( &sub );
+            if ( kind == 14 ? !tabledemo_table_array_element_kind_allowed( elem_kind ) : !tabledemo_table_keyed_element_kind_allowed( elem_kind ) ) { g->damaged = 1; return; }
             if ( !tabledemo_table_reader_leb( &sub, &count ) ) { return; }
             if ( count > 2147483647ull ) { return; }
             if ( count > (uint64_t)( sub.size - sub.offset ) ) { return; }
@@ -6524,6 +6538,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_load_body( tabledemo_table_read
                     if ( !tabledemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
+                        if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                         if ( elem_kind != 3 )
                         {
                             if ( !(tabledemo_table_kind_widens(elem_kind,3)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
@@ -8031,6 +8046,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_load_body( tabledemo_table_re
                     if ( !tabledemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     else
                     {
+                        if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                         if ( elem_kind != 9 )
                         {
                             if ( !(tabledemo_table_kind_widens(elem_kind,9)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; break; }
@@ -9650,6 +9666,9 @@ static SCHEMA_UNUSED const tabledemo_table_fixed_dst_t tabledemo_ranged_signed_f
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly
@@ -9717,6 +9736,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_ranged_signed_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_ranged_signed_fixed_layout ) ) ) / ( 8 + 72 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_ranged_signed_fixed_layout ) + count * ( 8 + 72 );
 }
 
@@ -10026,6 +10046,9 @@ static SCHEMA_UNUSED const tabledemo_table_fixed_dst_t tabledemo_ranged_unsigned
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly
@@ -10093,6 +10116,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_ranged_unsigned_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_ranged_unsigned_fixed_layout ) ) ) / ( 8 + 96 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_ranged_unsigned_fixed_layout ) + count * ( 8 + 96 );
 }
 
@@ -10377,6 +10401,9 @@ static SCHEMA_UNUSED const tabledemo_table_fixed_dst_t tabledemo_ranged_widths_f
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
    FIRST, then the arms, then any guardless present-defaults entry that must
    run after the guarded payload it replaces: the entries that are nearly
@@ -10430,6 +10457,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_ranged_widths_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_ranged_widths_fixed_layout ) ) ) / ( 8 + 32 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_ranged_widths_fixed_layout ) + count * ( 8 + 32 );
 }
 
@@ -11881,6 +11909,9 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_load_body_retain( tabledemo_tab
                     }
                     else
                     {
+                        if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                        }
                         if ( elem_kind != 3 )
                         {
                             if ( !(tabledemo_table_kind_widens(elem_kind,3)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
@@ -13174,6 +13205,9 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_load_body_retain( tabledemo_t
                     }
                     else
                     {
+                        if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                        }
                         if ( elem_kind != 9 )
                         {
                             if ( !(tabledemo_table_kind_widens(elem_kind,9)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;

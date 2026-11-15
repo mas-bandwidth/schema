@@ -493,3 +493,26 @@ packet-end-lua-negative-control: packet-end-lua
 	@if grep -F 'FAILED: ' build/packet-end/lua-negative/log | grep -Fvq -e 'FAILED: trailing: ' -e 'FAILED: padding: '; then \
 		cat build/packet-end/lua-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the end check went red'; exit 1; fi
 	@echo 'packet end Lua negative control: removed end check accepts the trailing byte and the set padding'
+
+# Compressed-float packet writes must refuse values outside their range.
+build/packet-write-cfloat/lua/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema
+	@rm -rf build/packet-write-cfloat/lua && mkdir -p build/packet-write-cfloat/lua
+	./bin/schema generate --lang lua --out build/packet-write-cfloat/lua/generated test/packet-write-cfloat/CFloat.schema
+	@touch $@
+
+PACKET_WRITE_CFLOAT_LUA_DIR ?= build/packet-write-cfloat/lua/generated
+.PHONY: packet-write-cfloat-lua packet-write-cfloat-lua-negative-control
+packet-write-cfloat-lua: toolchain-lua build/packet-write-cfloat/lua/.stamp
+	$(LUA) test/packet-write-cfloat/lua/main.lua $(PACKET_WRITE_CFLOAT_LUA_DIR) test/packet-write-cfloat
+
+packet-write-cfloat-lua-negative-control: packet-write-cfloat-lua
+	@rm -rf build/packet-write-cfloat/lua-negative && mkdir -p build/packet-write-cfloat/lua-negative/generated
+	@cp -R build/packet-write-cfloat/lua/generated/. build/packet-write-cfloat/lua-negative/generated/
+	go run ./tools/sabotage -name packet-write-cfloat-lua-range -out build/packet-write-cfloat/lua-negative/generated/CFloat.lua build/packet-write-cfloat/lua/generated/CFloat.lua
+	@if $(MAKE) packet-write-cfloat-lua PACKET_WRITE_CFLOAT_LUA_DIR=build/packet-write-cfloat/lua-negative/generated > build/packet-write-cfloat/lua-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: packet-write-cfloat-lua stayed green'; exit 1; fi
+	@sed -n 's/^FAILED: \([^:]*\):.*/\1/p' build/packet-write-cfloat/lua-negative/log | sort > build/packet-write-cfloat/lua-negative/actual
+	@diff -u test/packet-write-cfloat/lua/write.expected build/packet-write-cfloat/lua-negative/actual
+	@echo 'packet-write-cfloat-lua negative control: range check removal refused by packet-write-cfloat-lua'
+
+test-lua: packet-write-cfloat-lua packet-write-cfloat-lua-negative-control

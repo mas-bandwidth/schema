@@ -68,7 +68,6 @@ const blockModuleBanner = `//
 // many there are and how far apart they sit — and then those rows, each array
 // at a fixed pitch. This side reads those three facts and points.
 
-#![allow(clippy::missing_safety_doc)]
 #![allow(clippy::manual_range_contains)]
 
 `
@@ -209,7 +208,8 @@ func (b *blockGen) emitBlock(bl *ir.BlockLayout) {
 	b.pf("}\n\n")
 
 	b.pf("impl Default for %sBlockProjection {\n    fn default() -> Self {\n", name)
-	b.pf("        // a projection is plain bytes with no niche in it\n")
+	b.pf("        // a projection's zero form is a value of the type: zero is valid for\n")
+	b.pf("        // every scalar, and false is a valid bool\n")
 	b.pf("        unsafe { core::mem::zeroed() }\n    }\n}\n\n")
 
 	// THE LAYOUT CONTRACT
@@ -300,6 +300,10 @@ func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	b.pf("// §19.1), the Rust spelling of gotable/blockbuild.go's %sBlockBegin:\n", n)
 	b.pf("// storage, every count and the whole extent are checked before any byte\n")
 	b.pf("// of the extent changes, and it returns the used extent, rounded to 64.\n")
+	b.pf("///\n")
+	b.pf("/// # Safety\n")
+	b.pf("/// `buf` must point at `capacity` writable bytes that stay put and are not\n")
+	b.pf("/// written through any other pointer for the duration of the call.\n")
 	b.pf("pub unsafe fn %s(buf: *mut u8, capacity: i64, counts: &%sCounts) -> Option<i64> {\n", fn(n, "block_begin"), n)
 	b.pf("    if buf.is_null() {\n        return None;\n    }\n")
 	b.pf("    let _ = counts;\n")
@@ -598,7 +602,15 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("    // offset_of near 2^63 must refuse, and an addition that carried past\n")
 	b.pf("    // the top of the type would be the undefined behaviour the check after\n")
 	b.pf("    // it was supposed to catch.\n")
-	b.pf("    ///\n    /// # Safety\n    /// `base` must point at `bytes` readable bytes that outlive the handle.\n")
+	b.pf("    ///\n")
+	b.pf("    /// # Safety\n")
+	b.pf("    /// `base` must point at `bytes` readable bytes, and those bytes must be a\n")
+	b.pf("    /// genuine block of this build: the prologue and every triple it names\n")
+	b.pf("    /// lie in the extent, every count is within its declared bound, and every\n")
+	b.pf("    /// bool byte is 0 or 1. The extent must stay put and must not be written\n")
+	b.pf("    /// for as long as this handle or anything borrowed from it lives; a bool\n")
+	b.pf("    /// byte that is not 0 or 1 is undefined behaviour the moment a row\n")
+	b.pf("    /// reference is formed.\n")
 	b.pf("    pub unsafe fn open(base: *const u8, bytes: i64) -> Option<%sBlock> {\n", name)
 	b.pf("        unsafe {\n")
 	b.pf("            if base.is_null() || bytes < %d {\n                return None;\n            }\n", bl.Projection.Size)

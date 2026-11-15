@@ -99,12 +99,12 @@ func TestLobsterTableSaveRefusesASharedBlob(t *testing.T) {
 // test above refuses.
 func TestLobsterTableSaveRefusesASharedBlobNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = "                g.blob_shared = true\n"
+	const anchor = "            g.blob_shared = true\n"
 	out := runBlobShared(t, func(src string) string {
 		if n := strings.Count(src, anchor); n != 1 {
 			t.Fatalf("the blob_shared anchor is in the emitted runtime %d times, want 1", n)
 		}
-		return strings.Replace(src, anchor, "                g.blob_shared = false\n", 1)
+		return strings.Replace(src, anchor, "            g.blob_shared = false\n", 1)
 	})
 	if !strings.HasPrefix(out[1], "save accepted ") || out[1] == "save accepted 0" {
 		t.Fatalf("the patched save still refuses: %q", out[1])

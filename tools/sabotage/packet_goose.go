@@ -3,6 +3,10 @@ package main
 // The Goose packet wire's controls (make/goose-packet.mk). Each removes one
 // rule from the emitter and must fail exactly the rows that rule holds.
 func init() {
+	sabotages["packet-write-cfloat-goose"] = []edit{{
+		old: `w.Pf("%sif %s < %s || %s > %s { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }\n", ind, expr, floatLit32(min32), expr, floatLit32(float32(f.FMax)))`,
+		new: `// SABOTAGED: range check removed`,
+	}}
 	// SPEC §4.7: the read's UTF-8 validation; the harness's mutation sweep
 	// must then disagree with the C++ reader.
 	sabotages["packet-utf8-goose-read"] = []edit{{

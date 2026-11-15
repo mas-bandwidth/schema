@@ -543,6 +543,9 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     const ek = r.u8();
     const count = r.leb();
     if (r.bad) { report.damaged = true; r.at = end; return true; }
+    // THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind is held to
+    // the array list first, under any count (docs/SPEC-TABLES.md §3, §4).
+    if (!TableVariableArrayElementKindAllowed(ek)) { report.damaged = true; r.at = end; return false; }
     if (ek !== 13) { report.mismatch++; r.at = end; return undefined; }
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     const m = new Map();
@@ -604,6 +607,9 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   const ek = r.u8();
   const count = r.leb();
   if (r.bad) { report.damaged = true; r.at = end; return true; }
+  // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST, judged under any
+  // count before the reader's declaration (docs/SPEC-TABLES.md §3, §4).
+  if (!TableVariableKeyedElementKindAllowed(ek)) { report.damaged = true; r.at = end; return false; }
   const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
   if (ek !== fd.ek) {
     if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; r.at = end; return undefined; }
@@ -830,26 +836,23 @@ function TableVariableJsonUnion(u, val, depth, g, out) {
   return true;
 }
 
+// the integer spelling: digits with an optional minus, no fraction, no
+// exponent, no plus, no leading zero and not -0 (docs/SPEC-TABLES.md §16.2)
+function TableVariableIntegerToken(text) {
+  if (text === "-0") { return false; }
+  return /^-?(?:0|[1-9][0-9]*)$/.test(text);
+}
+
 // a map key's text (placeMapKey): a string key is the key; an integer key is
-// ONE JSON number, integral in VALUE (2.0 and 1e3 are integers) and inside the
-// key kind's range — anything else of that shape is a kind mismatch, and a
-// token that is not one JSON number is damaged
+// ONE JSON number spelling the integer token — digits with an optional minus,
+// no fraction, no exponent, no negative zero — and inside the key kind's range.
+// A fraction, an exponent, -0 or an out-of-range value is a kind mismatch, and
+// a token that is not one JSON number is damaged.
 function TableVariableMapKeyNumber(kd, s) {
   const m = /^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$/.exec(s);
   if (m === null) { return { status: "damaged" }; }
-  const frac = m[3] === undefined ? "" : m[3];
-  let digits = BigInt(m[2] + frac);
-  let exp = (m[4] === undefined ? 0 : parseInt(m[4], 10)) - frac.length;
-  if (digits !== 0n) {
-    if (exp > 40) { return { status: "mismatch" }; }
-    if (exp >= 0) { digits *= 10n ** BigInt(exp); }
-    else {
-      if (-exp > 400) { return { status: "mismatch" }; }
-      const p = 10n ** BigInt(-exp);
-      if (digits % p !== 0n) { return { status: "mismatch" }; }
-      digits /= p;
-    }
-  }
+  if (!TableVariableIntegerToken(s)) { return { status: "mismatch" }; }
+  const digits = BigInt(m[2]);
   const x = m[1] === "-" ? -digits : digits;
   if (x < kd.dlo || x > kd.dhi) { return { status: "mismatch" }; }
   return { status: "ok", key: kd.big ? x : Number(x) };
@@ -865,7 +868,7 @@ function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
     return true;
   }
   holder[fd.n] = TableVariableFieldDefault(fd);
-  if (shape !== fd.js) {
+  if (!TableVariableShapeMatches(fd.js, shape)) {
     report.mismatch++;
     return inp.skip(depth, graph, report);
   }
@@ -944,7 +947,7 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
     if (slot === undefined) {
       report.unknown++;
       if (!inp.skip(depth + 1, graph, report)) { return false; }
-    } else if (inp.shape() !== fd.e.js) {
+    } else if (!TableVariableShapeMatches(fd.e.js, inp.shape())) {
       report.mismatch++;
       if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else if (!TableVariableTextScalar(fd.e, inp, arr, slot, depth + 1, graph, report)) {
@@ -998,7 +1001,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
       if (!inp.literal("null")) { return false; }
       h.value = null;
       holder[key] = h;
-    } else if (shape !== arm.f.js) {
+    } else if (!TableVariableShapeMatches(arm.f.js, shape)) {
       report.mismatch++;
       if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else {

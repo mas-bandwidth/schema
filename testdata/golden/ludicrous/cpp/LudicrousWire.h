@@ -107,7 +107,7 @@ SCHEMA_WRITE_INLINE bool WriteFixedProbe( serialize::WriteStream & stream, const
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadFixedProbe( serialize::ReadStream & stream, FixedProbe & value )
+SCHEMA_READ_INLINE bool ReadFixedProbeBody( serialize::ReadStream & stream, FixedProbe & value )
 {
     read_fixed( stream, value.angle, 16, 16, -180, 180 );
     read_fixed( stream, value.position, 48, 16, -MaxWorldUnits, MaxWorldUnits );
@@ -117,6 +117,17 @@ SCHEMA_READ_INLINE bool ReadFixedProbe( serialize::ReadStream & stream, FixedPro
     {
         read_fixed( stream, value.samples[i], 16, 16, -8, 8 );
     }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadFixedProbe( serialize::ReadStream & stream, FixedProbe & value )
+{
+    if ( !ReadFixedProbeBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -150,7 +161,7 @@ SCHEMA_WRITE_INLINE bool WriteUnsignedProbe( serialize::WriteStream & stream, co
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadUnsignedProbe( serialize::ReadStream & stream, UnsignedProbe & value )
+SCHEMA_READ_INLINE bool ReadUnsignedProbeBody( serialize::ReadStream & stream, UnsignedProbe & value )
 {
     read_fixed( stream, value.angle, 16, 16, 0, 360 );
     read_fixed( stream, value.span, 48, 16, 0, 281474976710655 );
@@ -169,6 +180,17 @@ SCHEMA_READ_INLINE bool ReadUnsignedProbe( serialize::ReadStream & stream, Unsig
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadUnsignedProbe( serialize::ReadStream & stream, UnsignedProbe & value )
+{
+    if ( !ReadUnsignedProbeBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
+}
+
 SCHEMA_WRITE_INLINE bool WriteWideProbe( serialize::WriteStream & stream, const WideProbe & value )
 {
     write_uint128( stream, value.entity_id );
@@ -179,13 +201,24 @@ SCHEMA_WRITE_INLINE bool WriteWideProbe( serialize::WriteStream & stream, const 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadWideProbe( serialize::ReadStream & stream, WideProbe & value )
+SCHEMA_READ_INLINE bool ReadWideProbeBody( serialize::ReadStream & stream, WideProbe & value )
 {
     read_uint128( stream, value.entity_id );
     read_int128( stream, value.energy, -5000000000, 5000000000 );
     read_int128( stream, value.flux, serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ), serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
     read_int128( stream, value.bias, -1000, 1000 );
     read_uint128( stream, value.seed );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadWideProbe( serialize::ReadStream & stream, WideProbe & value )
+{
+    if ( !ReadWideProbeBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -209,15 +242,15 @@ SCHEMA_WRITE_INLINE bool WriteLudicrousState( serialize::WriteStream & stream, c
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadLudicrousState( serialize::ReadStream & stream, LudicrousState & value )
+SCHEMA_READ_INLINE bool ReadLudicrousStateBody( serialize::ReadStream & stream, LudicrousState & value )
 {
     {
         int32_t enum_value = 0;
         read_int( stream, enum_value, 0, 3 ); // DriveMode::Max
         value.mode = DriveMode( enum_value );
     }
-    schema_read_object( stream, ReadFixedProbe, value.probe );
-    schema_read_object( stream, ReadWideProbe, value.wide );
+    schema_read_object( stream, ReadFixedProbeBody, value.probe );
+    schema_read_object( stream, ReadWideProbeBody, value.wide );
     read_int( stream, value.keys_count, 0, 4 );
     for ( int32_t i = 0; i < value.keys_count; i++ )
     {
@@ -235,6 +268,17 @@ SCHEMA_READ_INLINE bool ReadLudicrousState( serialize::ReadStream & stream, Ludi
     return true;
 }
 
+SCHEMA_READ_INLINE bool ReadLudicrousState( serialize::ReadStream & stream, LudicrousState & value )
+{
+    if ( !ReadLudicrousStateBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
+    return true;
+}
+
 SCHEMA_WRITE_INLINE bool WriteDegenerateProbe( serialize::WriteStream & stream, const DegenerateProbe & value )
 {
     serialize_assert( int64_t( value.locked_fixed ) == -196608ll );
@@ -244,7 +288,7 @@ SCHEMA_WRITE_INLINE bool WriteDegenerateProbe( serialize::WriteStream & stream, 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadDegenerateProbe( serialize::ReadStream & stream, DegenerateProbe & value )
+SCHEMA_READ_INLINE bool ReadDegenerateProbeBody( serialize::ReadStream & stream, DegenerateProbe & value )
 {
     value.locked_fixed = int32_t( -196608ll );
     value.locked_int = int32_t( 7 );
@@ -254,6 +298,17 @@ SCHEMA_READ_INLINE bool ReadDegenerateProbe( serialize::ReadStream & stream, Deg
         read_bits( stream, raw_value, 8 );
         value.tail = uint8_t( raw_value );
     }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadDegenerateProbe( serialize::ReadStream & stream, DegenerateProbe & value )
+{
+    if ( !ReadDegenerateProbeBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -274,11 +329,22 @@ SCHEMA_WRITE_INLINE bool WriteFixedVec( serialize::WriteStream & stream, const F
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadFixedVec( serialize::ReadStream & stream, FixedVec & value )
+SCHEMA_READ_INLINE bool ReadFixedVecBody( serialize::ReadStream & stream, FixedVec & value )
 {
     read_fixed( stream, value.x, 48, 16, -100000, 100000 );
     read_fixed( stream, value.y, 48, 16, -100000, 100000 );
     read_fixed( stream, value.z, 48, 16, -100000, 100000 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadFixedVec( serialize::ReadStream & stream, FixedVec & value )
+{
+    if ( !ReadFixedVecBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 
@@ -303,12 +369,23 @@ SCHEMA_WRITE_INLINE bool WriteFixedQuat( serialize::WriteStream & stream, const 
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadFixedQuat( serialize::ReadStream & stream, FixedQuat & value )
+SCHEMA_READ_INLINE bool ReadFixedQuatBody( serialize::ReadStream & stream, FixedQuat & value )
 {
     read_fixed( stream, value.x, 2, 30, -1, 1 );
     read_fixed( stream, value.y, 2, 30, -1, 1 );
     read_fixed( stream, value.z, 2, 30, -1, 1 );
     read_fixed( stream, value.w, 2, 30, -1, 1 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadFixedQuat( serialize::ReadStream & stream, FixedQuat & value )
+{
+    if ( !ReadFixedQuatBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 

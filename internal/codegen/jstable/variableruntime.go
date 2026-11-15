@@ -1086,9 +1086,23 @@ function TableVariableNoteCount(count, report) {
   return true;
 }
 
+// THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3, §4): an array body
+// (kind 14) opens with 1–13, 15, 17 or 18–30, and an enum-keyed body (kind 16)
+// with 1–11, 13 or 18–30. Every other element kind is damage under ANY count,
+// a count of 0 included, in a declared field and in an unknown one alike, and
+// it is judged before any comparison with the reader's own element kind.
+function TableVariableArrayElementKindAllowed(kind) {
+  return (kind >= 1 && kind <= 13) || kind === 15 || kind === 17 || (kind >= 18 && kind <= 30);
+}
+
+function TableVariableKeyedElementKindAllowed(kind) {
+  return (kind >= 1 && kind <= 11) || kind === 13 || (kind >= 18 && kind <= 30);
+}
+
 function TableVariableNoteArray(inner, table, st, report, depth) {
   if (inner.end - inner.at < 2) { return false; }
   const ek = inner.u8();
+  if (!TableVariableArrayElementKindAllowed(ek)) { return false; }
   const count = inner.leb();
   if (inner.bad || !TableVariableNoteCount(count, report)) { return false; }
   for (let i = 0; i < count; i++) {
@@ -1100,6 +1114,7 @@ function TableVariableNoteArray(inner, table, st, report, depth) {
 function TableVariableNoteKeyed(inner, table, st, report, depth) {
   if (inner.end - inner.at < 2) { return false; }
   const ek = inner.u8();
+  if (!TableVariableKeyedElementKindAllowed(ek)) { return false; }
   const count = inner.leb();
   if (inner.bad || !TableVariableNoteCount(count, report)) { return false; }
   let seen = null;
@@ -1449,6 +1464,13 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     const ek = r.u8();
     const count = r.leb();
     if (r.bad) {
+      report.damaged = true;
+      if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
+      return false;
+    }
+    // THE ELEMENT KIND IS CLOSED, judged under any count before the comparison
+    // with the reader's declaration (docs/SPEC-TABLES.md §3, §4).
+    if (!TableVariableArrayElementKindAllowed(ek)) {
       report.damaged = true;
       if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
       return false;
@@ -2159,8 +2181,13 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
         out.push(TableVariableJsonString(stamp));
         return true;
       }
-      if (d.k >= 20 && d.k <= 29) { out.push(TableVariableFormatFixed(val, d.frac)); return true; }
-      out.push(String(val));
+      if (d.k >= 20 && d.k <= 29) {
+        const fixed = TableVariableFormatFixed(val, d.frac);
+        out.push(d.big ? TableVariableJsonString(fixed) : fixed);
+        return true;
+      }
+      // a kind wider than 32 bits is a STRING of decimal digits (§16.2, W10)
+      out.push(d.big ? TableVariableJsonString(String(val)) : String(val));
       return true;
   }
   return false;
@@ -2466,6 +2493,13 @@ function TableVariableFromJson(c, text, report) {
   return v;
 }
 
+// a wide integer declares "N" and reads as a string OR a number; every other
+// JSON shape is exact (§16.2, tabletext read.go shapeMatches)
+function TableVariableShapeMatches(want, got) {
+  if (want === got) { return true; }
+  return want === "N" && (got === "s" || got === "n");
+}
+
 function TableVariableReadTable(c, inp, v, depth, graph, report) {
   if (depth > 128) { inp.bad = true; return false; }
   if (c.jsonArray) {
@@ -2527,7 +2561,7 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
         // here is present, at its default until a value is placed — a value of
         // the wrong shape included
         if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
-        if (shape !== fd.js) {
+        if (!TableVariableShapeMatches(fd.js, shape)) {
           report.mismatch++;
           if (!inp.skip(depth + 1, graph, report)) { return false; }
         } else {
@@ -2673,7 +2707,7 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
     } else if (e.s === "ptr" && shape === "z") {
       if (!inp.literal("null")) { return false; }
       out[placed++] = null;
-    } else if (shape !== e.js) {
+    } else if (!TableVariableShapeMatches(e.js, shape)) {
       report.mismatch++;
       if (!inp.skip(depth + 1, graph, report)) { return false; }
       out[placed++] = TableVariableZero(e);
@@ -2842,10 +2876,11 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
 // (kinds 20..29), docs/SPEC-TABLES.md §16.2. The token converts to the RAW
 // integer, value × 2^F, with no rounding: a value Q I.F cannot spell is the
 // wrong shape for the field, a kind mismatch, and nothing is placed (SPEC.md
-// §4.6's rule for a fixed default). A magnitude past the 128-bit domain of the
-// kind's signedness saturates and counts a clamp; the declared range clamps
-// after it, as for every bounded scalar (§4).
+// §4.6's rule for a fixed default). A 128-bit integer holds the integer-token
+// rule; a magnitude past the kind's domain, or outside its declared range,
+// REFUSES out_of_range and nothing is placed (§4, §16.2).
 function TableVariableTextWide(d, tok, holder, key, report) {
+  if ((d.k === 18 || d.k === 19) && !TableVariableIntegerToken(tok)) { report.mismatch++; return false; }
   let i = 0, neg = false;
   if (tok[i] === "-" || tok[i] === "+") { neg = tok[i] === "-"; i++; }
   const digit = () => i < tok.length && tok[i] >= "0" && tok[i] <= "9";
@@ -2867,16 +2902,16 @@ function TableVariableTextWide(d, tok, holder, key, report) {
   digits = digits.replace(/0+$/, "");
   const signed = d.dlo < 0n;
   const lo = signed ? -(1n << 127n) : 0n, hi = signed ? (1n << 127n) - 1n : (1n << 128n) - 1n;
-  let raw = 0n, saturated = false;
+  let raw = 0n;
   if (digits.length > 0) {
     // the decimal band (wideDecimalBand, 40): above it the value is past 2^128
     // whatever the digits say, below it finer than any F can spell
     if (point > 40) {
-      raw = neg ? lo : hi;
-      saturated = true;
+      report.oor++;
+      return false;
     } else if (point < -40) {
       report.mismatch++;
-      return true;
+      return false;
     } else {
       const scale = point - digits.length;
       raw = BigInt(digits) << BigInt(d.frac);
@@ -2884,60 +2919,52 @@ function TableVariableTextWide(d, tok, holder, key, report) {
         raw *= 10n ** BigInt(scale);
       } else {
         const den = 10n ** BigInt(-scale);
-        if (raw % den !== 0n) { report.mismatch++; return true; }
+        if (raw % den !== 0n) { report.mismatch++; return false; }
         raw /= den;
       }
       if (neg) { raw = -raw; }
-      if (raw < lo) { raw = lo; saturated = true; } else if (raw > hi) { raw = hi; saturated = true; }
+      if (raw < lo || raw > hi) { report.oor++; return false; }
     }
   }
-  if (saturated) { report.oor++; }
   if (d.tlo !== null) {
-    if (raw < d.tlo) { raw = d.tlo; report.oor++; }
-    else if (raw > d.thi) { raw = d.thi; report.oor++; }
+    if (raw < d.tlo || raw > d.thi) { report.oor++; return false; }
   }
   // the storage landing: every fixed field declares a range inside its width,
   // so this binds only a wide kind declaring none, whose domain is the 128 above
-  if (raw < d.dlo) { raw = d.dlo; report.oor++; }
-  else if (raw > d.dhi) { raw = d.dhi; report.oor++; }
+  if (raw < d.dlo || raw > d.dhi) { report.oor++; return false; }
   holder[key] = d.big ? raw : Number(raw);
   return true;
 }
 
-// an integer field takes any token whose VALUE is integral (2, 2.0, 1e3); a
-// fractional value is the wrong shape. The declared range clamps first, then
-// the storage domain, the wire's order (§4, read.go placeInteger).
+// an integer field takes an INTEGER TOKEN only — digits with an optional
+// minus, no fraction, no exponent, not -0 (§16.2, docs/rulings.json
+// json-integer-token-only). A wide integer (int64, uint64) also takes the
+// string form, holding the same digits. The value never passes through a
+// double, and the declared range and the storage domain are tested on the exact
+// value, refusing out_of_range rather than clamping (§4, read.go placeInteger).
+function TableVariableTextIntegerToken(d, tok, holder, key, report) {
+  let t = tok, neg = false;
+  if (t[0] === "-") { neg = true; t = t.slice(1); }
+  let x = BigInt(t);
+  if (neg) { x = -x; }
+  if (d.tlo !== null && (x < d.tlo || x > d.thi)) { report.oor++; return false; }
+  if (x < d.dlo || x > d.dhi) { report.oor++; return false; }
+  holder[key] = d.big ? x : Number(x);
+  return true;
+}
+
 function TableVariableTextInt(d, inp, holder, key, report) {
+  if (inp.shape() === "s") {
+    const s = inp.str();
+    if (s === null) { return false; }
+    if (d.k >= 18 && d.k <= 29) { return TableVariableTextWide(d, s, holder, key, report); }
+    if (!TableVariableIntegerToken(s)) { report.mismatch++; return false; }
+    return TableVariableTextIntegerToken(d, s, holder, key, report);
+  }
   const n = inp.number();
   if (n === null) { inp.bad = true; return false; }
   if (d.k >= 18 && d.k <= 29) { return TableVariableTextWide(d, n.tok, holder, key, report); }
-  let neg = false, mag = 0n;
-  if (n.integral) {
-    let t = n.tok;
-    if (t[0] === "-") { neg = true; t = t.slice(1); }
-    mag = BigInt(t);
-    if (mag > 0xffffffffffffffffn) { mag = 0xffffffffffffffffn; report.oor++; }
-  } else {
-    const x = Number(n.tok);
-    if (!Number.isFinite(x)) { report.mismatch++; return true; }
-    neg = x < 0 || Object.is(x, -0);
-    const a = Math.abs(x);
-    if (a >= 18446744073709551616) {
-      mag = 0xffffffffffffffffn;
-      report.oor++;
-    } else {
-      if (Math.trunc(a) !== a) { report.mismatch++; return true; }
-      mag = BigInt(a);
-    }
-  }
-  let x = neg ? -mag : mag;
-  if (d.tlo !== null) {
-    if (x < d.tlo) { x = d.tlo; report.oor++; }
-    else if (x > d.thi) { x = d.thi; report.oor++; }
-  }
-  if (x < d.dlo) { x = d.dlo; report.oor++; }
-  else if (x > d.dhi) { x = d.dhi; report.oor++; }
-  holder[key] = d.big ? x : Number(x);
-  return true;
+  if (!n.integral || !TableVariableIntegerToken(n.tok)) { report.mismatch++; return false; }
+  return TableVariableTextIntegerToken(d, n.tok, holder, key, report);
 }
 `
