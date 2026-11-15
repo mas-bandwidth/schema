@@ -454,15 +454,23 @@ static class Held
 
     // "damage anywhere in a form-2 batch refuses the whole batch, malformed
     // counts, and nothing the read produced is a value to use." M is three:
-    // body 1 empty, body 2's first reference 0xF above the announced entry
-    // count, body 3 empty. A reference is four bits, low bit first, so byte 0
-    // holds body 1's low nibble and body 2's high nibble.
+    // body 1 empty, body 2 opens with a reference to field a (an int32) and the
+    // batch ends inside its payload, so body 3 never arrives. A reference is
+    // the announced vocabulary's RefBits wide, low bit first, and the pair is
+    // built from that width: with three entries every reference a width of two
+    // bits can spell names one, so no reference past the count exists to forge.
     static void DamageInsideBody()
     {
         const string row = "damage_inside_body";
         var vocab = Open();
         if (!vocab.Announced) { Fail(row, "announce"); return; }
-        byte[] wire = new byte[]{2, 2, 0xF0, 0x00};
+        int bits = vocab.RefBits; ulong id = Schema.RootTableType().Fields[0].Id; int at = -1;
+        for (int i = 0; i < vocab.Count; i++) { if (vocab.Entries[i].Id == id) { at = i + 1; break; } }
+        if (at < 0) { Fail(row, "no announced entry for a"); return; }
+        ulong refs = (ulong)at << bits;
+        byte[] wire = new byte[2 + (2 * bits + 7) / 8];
+        wire[0] = 2; wire[1] = 2;
+        for (int i = 2; i < wire.Length; i++) { wire[i] = (byte)(refs >> (8 * (i - 2))); }
         Root[] storage = Bodies(3);
         var report = new TableReport();
         Schema.RootLoadMessages(storage, wire, vocab, report, out int count);
@@ -538,6 +546,33 @@ static class Held
         }
         return buf;
     }
+    // PackKeyed is a keyed array at depth under a four-entry vocabulary
+    // (three-bit references): depth nested bodies, the keyed reference, a
+    // count of 2, two slots keyed by the names 3 and 4 each with an element of
+    // elemBits zero bits, then every body's terminator. Its only fault, if
+    // any, is depth.
+    static byte[] PackKeyed(int depth, int elemBits)
+    {
+        const int width = 3;
+        int bits = 16 + depth * width + width + 2 + 2 * (width + elemBits) + (depth + 1) * width;
+        byte[] buf = new byte[(bits + 7) / 8];
+        buf[0] = 2;
+        int at = 16;
+        void Put(int n, int value)
+        {
+            for (int b = 0; b < n; b++)
+            {
+                if (((value >> b) & 1) != 0) buf[at >> 3] |= (byte)(1 << (at & 7));
+                at++;
+            }
+        }
+        for (int i = 0; i < depth; i++) { Put(width, 1); }
+        Put(width, 2);
+        Put(2, 2);
+        Put(width, 3); at += elemBits;
+        Put(width, 4); at += elemBits;
+        return buf;
+    }
     static TableVocabulary Vocab(params TableMessageEntry[] entries)
     {
         return new TableVocabulary { Entries = entries, Announced = true };
@@ -569,9 +604,12 @@ static class Held
         var body = Vocab(Entry(1, 13));
         var arm = Vocab(Entry(1, 15));
         var array = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 14, Shape = new TableMessageShape { Min = 1, Max = 1, Elem = 13, Inner = new TableMessageShape() } });
-        var keyed6 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 6, Inner = new TableMessageShape() } });
-        var keyed32 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 32, Inner = new TableMessageShape() } });
-        var keyed13 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 13, Inner = new TableMessageShape() } });
+        // A KEYED SLOT'S KEY RESOLVES ON THE SKIP PATH TOO (§3.2, §3.3): it
+        // names a payload-free entry, never twice, so each keyed vocabulary
+        // carries two names (ids 3 and 4) for its two slots.
+        var keyed6 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 6, Inner = new TableMessageShape() } }, Entry(3, 0), Entry(4, 0));
+        var keyed32 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 32, Inner = new TableMessageShape() } }, Entry(3, 0), Entry(4, 0));
+        var keyed13 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 13, Inner = new TableMessageShape() } }, Entry(3, 0), Entry(4, 0));
         ExpectOk("skip_depth_body_below_128", body, Pack(1, 127, 1, 0, 0, 128));
         byte[] at = Pack(1, 128, 1, 0, 0, 129);
         ExpectOk("skip_depth_body_at_128", body, at);
@@ -586,9 +624,9 @@ static class Held
         ExpectOk("skip_depth_array_below_128", array, Pack(2, 125, 1, 1, 2, 127));
         ExpectOk("skip_depth_array_at_128", array, Pack(2, 126, 1, 1, 2, 128));
         ExpectBad("skip_depth_above_128_array", array, Pack(2, 127, 1, 1, 2, 129));
-        ExpectOk("skip_depth_keyed_fixed_at_128", keyed6, Pack(2, 128, 1, 2, 2, 139));
-        ExpectOk("skip_depth_keyed_nopayload_at_128", keyed32, Pack(2, 128, 1, 2, 2, 131));
-        ExpectBad("skip_depth_above_128_keyed", keyed13, Pack(2, 127, 1, 2, 2, 132));
+        ExpectOk("skip_depth_keyed_fixed_at_128", keyed6, PackKeyed(128, 8));
+        ExpectOk("skip_depth_keyed_nopayload_at_128", keyed32, PackKeyed(128, 0));
+        ExpectBad("skip_depth_above_128_keyed", keyed13, PackKeyed(127, 3));
     }
 }
 

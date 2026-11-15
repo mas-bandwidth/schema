@@ -284,8 +284,9 @@ func goDriverCheckAll(t *testing.T, root, bin string, reports []goReportRow, ret
 	return wrong
 }
 
-// buildWideBlobOpenedDriver drops the noFileForm bind and the generated
-// form-1 Load guard, so WideBlobLoad reads the variable form again.
+// buildWideBlobOpenedDriver drops the noFileForm bind, the generated form-1
+// Load guard and the generated save refusal, so WideBlob is back on the
+// variable form's pair.
 func buildWideBlobOpenedDriver(t *testing.T, root string) string {
 	t.Helper()
 	goEnsureGeneratedTables(t, root)
@@ -319,7 +320,22 @@ func buildWideBlobOpenedDriver(t *testing.T, root string) string {
 	if bytes.Count(wideSrc, guard) != 1 {
 		t.Fatalf("NEGATIVE CONTROL FAILED: WideBlob form-1 Load guard appears %d times", bytes.Count(wideSrc, guard))
 	}
-	plant(wideRel, bytes.Replace(wideSrc, guard, nil, 1))
+	wideSrc = bytes.Replace(wideSrc, guard, nil, 1)
+	// and its form-1 save back: a root with no file form refuses its save
+	// (§3.4), so the read that now accepts form 1 is handed the form-1 writer
+	// it would have had, and the gate sees a verdict, not a refused write-back
+	for _, r := range []struct{ site, form1 string }{
+		{"func WideBlobMeasure(_ *WideBlob) int64 { return -1 }\n",
+			"func WideBlobMeasure(value *WideBlob) int64 { var ids TableIds; w := TableWriter{Measuring: true, Ids: &ids}; w.Put8(1); if !WideBlobSaveBody(&w, value) { return -1 }; w.Trailer(); if w.Overflow || ids.Overflow { return -1 }; return w.Offset }\n"},
+		{"func WideBlobSave(_ *WideBlob, _ []byte) int64 { return -1 }\n",
+			"func WideBlobSave(value *WideBlob, buffer []byte) int64 { var ids TableIds; w := TableWriter{Buffer: buffer, Ids: &ids}; w.Put8(1); if !WideBlobSaveBody(&w, value) { return -1 }; w.Trailer(); if w.Overflow || ids.Overflow { return -1 }; return w.Offset }\n"},
+	} {
+		if bytes.Count(wideSrc, []byte(r.site)) != 1 {
+			t.Fatalf("NEGATIVE CONTROL FAILED: WideBlob's refusing save %q appears %d times", r.site, bytes.Count(wideSrc, []byte(r.site)))
+		}
+		wideSrc = bytes.Replace(wideSrc, []byte(r.site), []byte(r.form1), 1)
+	}
+	plant(wideRel, wideSrc)
 	overlayData, err := json.Marshal(struct {
 		Replace map[string]string
 	}{Replace: repl})

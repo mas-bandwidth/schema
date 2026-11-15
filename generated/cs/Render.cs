@@ -69,7 +69,7 @@ namespace Example
             {
                 // flat run: 138 bits in 3 chunk(s) — the field placement is folded
                 Debug.Assert((uint)value.Team <= 2, "value.Team above the enum wire range [0, 2]"); // headroom above the wire range cannot ride
-                ulong f0 = (ulong)value.SortKey;
+                ulong f0 = unchecked((ulong)value.SortKey);
                 ulong f1 = ((ulong)(value.MeshId)) & 0xffffffffUL;
                 ulong f2 = ((ulong)(value.MaterialId)) & 0xffffffffUL;
                 ulong f3 = ((ulong)(value.Layer)) & 0xffUL;
@@ -94,6 +94,15 @@ namespace Example
         }
 
         public static bool ReadRenderSprite(ReadStream stream, ref RenderSprite value)
+        {
+            if (!ReadRenderSpriteBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadRenderSpriteBody(ReadStream stream, ref RenderSprite value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadRenderSpriteBatch(ref batch, ref value);
@@ -121,11 +130,11 @@ namespace Example
                 ulong v0 = c0;
                 value.SortKey = v0;
                 ulong v1 = c1 & 0xffffffffUL;
-                value.MeshId = (uint)(uint)v1;
+                value.MeshId = unchecked((uint)(uint)v1);
                 ulong v2 = (c1 >> 32) & 0xffffffffUL;
-                value.MaterialId = (uint)(uint)v2;
+                value.MaterialId = unchecked((uint)(uint)v2);
                 ulong v3 = c2 & 0xffUL;
-                value.Layer = (byte)(uint)v3;
+                value.Layer = unchecked((byte)(uint)v3);
             }
             {
                 int enumValue = 0;
@@ -181,7 +190,7 @@ namespace Example
             }
             Debug.Assert(value.SpritesCount >= 0 && value.SpritesCount <= (int)RenderBlockMaxSprites, "value.SpritesCount out of range [0, (int)RenderBlockMaxSprites]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
             {
-                uint offsetValue = (uint)(value.SpritesCount);
+                uint offsetValue = unchecked((uint)(value.SpritesCount));
                 if (!batch.SerializeBits(ref offsetValue, 7))
                 {
                     return false;
@@ -198,6 +207,15 @@ namespace Example
         }
 
         public static bool ReadRenderBlock(ReadStream stream, ref RenderBlock value)
+        {
+            if (!ReadRenderBlockBody(stream, ref value))
+            {
+                return false;
+            }
+            return stream.SerializeEnd();
+        }
+
+        private static bool ReadRenderBlockBody(ReadStream stream, ref RenderBlock value)
         {
             ReadBatch batch = stream.BeginBatch();
             bool result = ReadRenderBlockBatch(ref batch, ref value);
@@ -219,9 +237,9 @@ namespace Example
                     return false;
                 }
                 ulong v0 = c0 & 0xffffffffUL;
-                value.WorkerIndex = (uint)(uint)v0;
+                value.WorkerIndex = unchecked((uint)(uint)v0);
                 ulong v1 = (c0 >> 32) & 0xffffffffUL;
-                value.SpriteCountHint = (uint)(uint)v1;
+                value.SpriteCountHint = unchecked((uint)(uint)v1);
             }
             if (!batch.SerializeInt(ref value.SpritesCount, 0, (int)RenderBlockMaxSprites)) // the count guards the loop (§6.3)
             {

@@ -11,6 +11,7 @@ package javatable
 
 import (
 	"fmt"
+	"math/big"
 	"sort"
 	"strings"
 
@@ -70,6 +71,7 @@ func generateMessageFiles(u *ir.Unit) (map[string][]byte, error) {
 	refBits := ir.TableMessageRefBits(len(vocab))
 
 	annBody := strings.Replace(tableMessageSurface, "%%ANNOUNCEMENT%%", javaByteArrayLiteral(tablewire.Announce(u)), 1)
+	annBody = strings.Replace(annBody, "%%BUILDVERSION%%", fmt.Sprintf("0x%016xL", ir.BuildVersion(u)), 1)
 	out := map[string][]byte{
 		messageAnnouncementClass + ".java": javaFile(u, "the MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3), form byte 2", annBody),
 		messageRuntimeClass + ".java":      javaFile(u, "the MESSAGE FORM's batch bit stream and vocabulary walk (docs/SPEC-TABLES.md §3.3), form byte 2", tableMessageBatchSurface),
@@ -118,6 +120,10 @@ public final class TableVocabulary {
     // ` + "`announceMeasure`" + ` as a constant byte array and its length (§3.3).
     static final byte[] tableAnnouncement = %%ANNOUNCEMENT%%;
 
+    // THE UNIT'S OWN BUILD VERSION is the fact a strict announcement compares
+    // the peer's against (docs/SPEC-TABLES.md §3.3).
+    private static final long tableBuildVersion = %%BUILDVERSION%%;
+
     public static int announceMeasure() {
         return tableAnnouncement.length;
     }
@@ -162,6 +168,10 @@ public final class TableVocabulary {
         public String reason;
         public int unknown;
         public int widened;
+        // The peer's and the unit's own build versions a strict announcement
+        // refusal carries (docs/SPEC-TABLES.md §3.3).
+        public long buildVersionRemote;
+        public long buildVersionOwn;
 
         public void zero() {
             damaged = false;
@@ -169,6 +179,8 @@ public final class TableVocabulary {
             reason = null;
             unknown = 0;
             widened = 0;
+            buildVersionRemote = 0;
+            buildVersionOwn = 0;
         }
 
         public void refuse(String why) {
@@ -185,6 +197,7 @@ public final class TableVocabulary {
     public long buildVersion;
     public boolean announced;
     public boolean refused;
+    public boolean strict;
     public int maxEntries = 4096;
     public int maxBytes = 65536;
 
@@ -195,6 +208,7 @@ public final class TableVocabulary {
         this.buildVersion = 0;
         this.announced = false;
         this.refused = false;
+        this.strict = false;
         this.maxEntries = capacity;
         this.maxBytes = 65536;
     }
@@ -223,75 +237,111 @@ public final class TableVocabulary {
     // the trailer of ids. The two strict checks are the two facts an
     // announcement's body must carry, and a failed one is MALFORMED, not a
     // refusal (docs/SPEC-TABLES.md §3.3).
+    // keepBuildVersion preserves §3.3's "kept the moment it is read" fact on a
+    // read the form-1 open already refused or damaged: it decides no verdict
+    // and moves no counter, it only walks the body far enough to keep the
+    // build version. The walk uses the form-1 reader's own skip.
+    private static void keepBuildVersion(TableVocabulary v, byte[] data) {
+        if (data == null || data.length < 9 || (data[0] & 0xff) != 1) {
+            return;
+        }
+        TableVariable.Report ignored = new TableVariable.Report();
+        int base = TableVariable.trailerBase(data, ignored);
+        if (base < 0) {
+            return;
+        }
+        int count = (data.length - 8 - base) / 8;
+        long[] ids = new long[count];
+        for (int i = 0; i < count; i++) {
+            ids[i] = TableVariable.u64(data, base + i * 8);
+        }
+        TableVariable.Reader r = new TableVariable.Reader(data, ids, ignored);
+        r.off = 1;
+        r.limit = base;
+        r.rootBody = true;
+        while (true) {
+            long ref = r.leb();
+            if (r.fail) {
+                return;
+            }
+            if (ref == 0) {
+                return;
+            }
+            long id = r.resolve(ref);
+            if (r.fail || !r.has(1)) {
+                return;
+            }
+            int kind = r.get8();
+            if (id == -2L) {
+                if (kind == 9 && r.has(8)) {
+                    v.buildVersion = r.get64();
+                }
+                return;
+            }
+            r.skip(kind);
+            if (r.fail) {
+                return;
+            }
+        }
+    }
+
     private static boolean announceReadInner(TableVocabulary v, byte[] data, Report report) {
-        if (data == null || data.length == 0) {
+        if (data == null) {
             report.damaged = true;
             return false;
         }
-        if ((data[0] & 0xff) != 1) {
-            report.refused = true;
-            report.reason = (data[0] & 0xff) == 2 ? "message_form_as_file" : "newer_form";
+        // THE FORM-1 READER'S OWN OPEN: the form byte, the trailer's bound and
+        // distinctness, the body extent and every wire-alone rule over every
+        // byte, with the announcement's two reserved ids admitted in the root
+        // body (§3, §3.3, §4).
+        TableVariable.Report opened = new TableVariable.Report();
+        TableVariable.Reader r = TableVariable.openAnnouncement(data, opened);
+        if (r == null) {
+            report.damaged = opened.damaged;
+            report.refused = opened.refused;
+            report.reason = opened.reason;
+            keepBuildVersion(v, data);
             return false;
         }
-        if (data.length < 9) {
-            report.damaged = true;
-            return false;
-        }
-        long entryCount = readU64(data, data.length - 8);
-        if (entryCount < 0 || entryCount > (data.length - 9) / 8) {
-            report.damaged = true;
-            return false;
-        }
-        int idsStart = data.length - 8 - (int) entryCount * 8;
-        Reader r = new Reader(data, 1);
+        int idsStart = r.limit;
         int versionCount = 0;
         int vocabCount = 0;
         byte[] vocab = null;
         while (true) {
             long ref = r.leb();
-            if (r.err) {
+            if (r.fail) {
                 report.damaged = true;
                 return false;
             }
             if (ref == 0) {
                 break;
             }
-            if (Long.compareUnsigned(ref, entryCount) > 0) {
+            long id = r.resolve(ref);
+            if (r.fail || !r.has(1)) {
                 report.damaged = true;
                 return false;
             }
-            long id = readU64(data, idsStart + (int) (ref - 1) * 8);
-            int kind = r.u8();
-            if (r.err) {
-                report.damaged = true;
-                return false;
-            }
+            int kind = r.get8();
             if (id == -2L) { // the reserved build-version id, 0xFFFFFFFFFFFFFFFE
                 if (kind != 9 || !r.has(8)) {
                     report.damaged = true;
                     return false;
                 }
-                v.buildVersion = r.u64();
+                v.buildVersion = r.get64();
                 versionCount++;
             } else if (id == -3L) { // the reserved vocabulary id, 0xFFFFFFFFFFFFFFFD
                 if (kind != 14) {
                     report.damaged = true;
                     return false;
                 }
-                long len = r.leb();
-                if (r.err || len < 0 || len > r.buf.length - r.at) {
+                TableVariable.Reader sub = r.body();
+                if (sub == null || !sub.has(1)) {
                     report.damaged = true;
                     return false;
                 }
-                int bodyStart = r.at;
-                Reader sub = new Reader(r.buf, bodyStart);
-                int elem = sub.u8();
-                if (sub.err || elem != 6) {
-                    report.damaged = true;
-                    return false;
-                }
+                int elem = sub.get8();
                 long n = sub.leb();
-                if (sub.err || n < 0 || n != len - (sub.at - bodyStart)) {
+                if (sub.fail || elem != 6 || n < 0 || n != sub.limit - sub.off) {
                     report.damaged = true;
                     return false;
                 }
@@ -305,18 +355,18 @@ public final class TableVocabulary {
                     return false;
                 }
                 vocab = new byte[(int) n];
-                System.arraycopy(r.buf, sub.at, vocab, 0, (int) n);
-                r.at = bodyStart + (int) len;
+                System.arraycopy(sub.buf, sub.off, vocab, 0, (int) n);
                 vocabCount++;
             } else {
                 report.unknown++;
-                if (!skip(r, kind)) {
+                r.skip(kind);
+                if (r.fail) {
                     report.damaged = true;
                     return false;
                 }
             }
         }
-        if (r.at != idsStart) {
+        if (r.off != idsStart) {
             report.damaged = true;
             return false;
         }
@@ -327,11 +377,24 @@ public final class TableVocabulary {
             report.damaged = true;
             return false;
         }
+        // "STRICT MODE IS OPT-IN, and the default is unchanged." With 'strict'
+        // set, an announcement whose build version is not the unit's own is
+        // refused by name, sets no vocabulary, keeps the peer's build version,
+        // moves no counter, is never damage, and is terminal like every
+        // refused first announcement (§3.3).
+        if (v.strict && v.buildVersion != tableBuildVersion) {
+            report.buildVersionRemote = v.buildVersion;
+            report.buildVersionOwn = tableBuildVersion;
+            report.refuse("build_version_mismatch");
+            return false;
+        }
         // Resolve the vocabulary once: every entry an id, a kind and a shape.
-        // The ENTRY bound is the caller's capacity, narrowed by maxEntries when
+        // The ENTRY bound is the caller's storage, narrowed by maxEntries when
         // the receiver sets one, and an announcement above it is refused by
-        // name as vocabulary_too_large before an entry is touched (§3.3).
-        int entryBound = v.entries.length;
+        // name as vocabulary_too_large before an entry is touched (§3.3). A
+        // vocabulary in its constructed state has declared no storage, so its
+        // bound is zero and the first entry is refused by name.
+        int entryBound = v.entries == null ? 0 : v.entries.length;
         if (v.maxEntries > 0 && v.maxEntries < entryBound) {
             entryBound = v.maxEntries;
         }
@@ -445,14 +508,6 @@ public final class TableVocabulary {
         }
     }
 
-    static long readU64(byte[] buf, int at) {
-        long v = 0;
-        for (int i = 0; i < 8; i++) {
-            v |= (long) (buf[at + i] & 0xff) << (8 * i);
-        }
-        return v;
-    }
-
     static int bitCount(long n) {
         if (n <= 0) {
             return 0;
@@ -501,34 +556,6 @@ public final class TableVocabulary {
         }
     }
 
-    // Skip an unknown field by its announced kind (§3.3): a strict reader
-    // steps over a field it cannot name exactly, by the width the kind states.
-    static boolean skip(Reader r, int kind) {
-        int w = kindWidth(kind);
-        if (w > 0) {
-            if (!r.has(w)) {
-                return false;
-            }
-            r.at += w;
-            return true;
-        }
-        switch (kind) {
-            case 12:
-            case 13:
-            case 14:
-                { // string, table, array: a length then its bytes
-                    long n = r.leb();
-                    if (r.err || n < 0 || n > r.buf.length - r.at) {
-                        return false;
-                    }
-                    r.at += (int) n;
-                    return true;
-                }
-            default:
-                return false;
-        }
-    }
-
     static Shape shapeRead(Reader r, int kind) {
         Shape s = new Shape();
         s.kind = kind;
@@ -547,7 +574,7 @@ public final class TableVocabulary {
             }
             if (s.packing == 1 && kind != 10) {
                 long bits = r.leb();
-                if (r.err || bits > (long) kindWidth(kind) * 8) {
+                if (r.err || Long.compareUnsigned(bits, (long) kindWidth(kind) * 8) > 0) {
                     return null;
                 }
                 s.bits = bits;
@@ -598,7 +625,7 @@ public final class TableVocabulary {
         }
         if (kind == 12) {
             long max = r.leb();
-            if (r.err || max > 0x7fffffffL) {
+            if (r.err || Long.compareUnsigned(max, 0x7fffffffL) > 0) {
                 return null;
             }
             s.max = max;
@@ -607,13 +634,13 @@ public final class TableVocabulary {
         if (kind == 14 || kind == 16) {
             if (kind == 14) {
                 long min = r.leb();
-                if (r.err || min > 0xffffffffL) {
+                if (r.err || Long.compareUnsigned(min, 0xffffffffL) > 0) {
                     return null;
                 }
                 s.min = min;
             }
             long max = r.leb();
-            if (r.err || max > 0xffffffffL || max < s.min) {
+            if (r.err || Long.compareUnsigned(max, 0xffffffffL) > 0 || Long.compareUnsigned(max, s.min) < 0) {
                 return null;
             }
             s.max = max;
@@ -641,7 +668,9 @@ public final class TableVocabulary {
                 return false;
             }
             int elem = r.u8();
-            if (!knownKind(elem) || elem == 12) {
+            // AN ELEMENT KIND OF 12 IS AN ANNOUNCED SHAPE LIKE ANY OTHER
+            // (§3.3): a string element's shape is the max its kind names.
+            if (!knownKind(elem)) {
                 return false;
             }
             e.element = shapeRead(r, elem);
@@ -653,7 +682,12 @@ public final class TableVocabulary {
                     return false;
                 }
                 int inner = r.u8();
-                if (!knownKind(inner) || inner == 12) {
+                if (!knownKind(inner)) {
+                    return false;
+                }
+                // The inner element's own shape follows its kind byte, and a
+                // kind 12 there reads its max like any other announced shape.
+                if (inner == 12 && shapeRead(r, inner) == null) {
                     return false;
                 }
             }
@@ -1020,7 +1054,10 @@ public final class TableMessage {
             case 12: {
                 long n = r.get(TableVocabulary.bitCount(s.max));
                 if (r.err || !r.align()) { return false; }
-                return r.skipBits(n * 8L);
+                // A SKIPPED STRING IS HELD TO THE TEXT RULE (§3.3, §4): bytes
+                // this reader does not keep are still damage when ill-formed.
+                final int start = r.atByte();
+                return r.skipBits(n * 8L) && utf8Valid(r.buf, start, (int) n);
             }
             case 31: {
                 if (!r.align()) { return false; }
@@ -1666,6 +1703,7 @@ func messageGuardExprs(st *ir.Struct, owner string) map[string]string {
 func (g *messageGen) emitSaveBody(st *ir.Struct, valType string) {
 	g.pf("    public static boolean saveMessageBody(TableMessage.Writer w, %s v) {\n", valType)
 	g.pf("        if (v == null) { return false; }\n")
+	g.pf("        assert checkWrite(v);\n")
 	guards := messageGuardExprs(st, "v")
 	for _, f := range st.Fields {
 		g.emitSaveField(f, "v", guards[f.Name], 8)
@@ -1673,6 +1711,160 @@ func (g *messageGen) emitSaveBody(st *ir.Struct, valType string) {
 	g.pf("        w.put(0L, %d);\n", g.refBits)
 	g.pf("        return !w.overflow;\n")
 	g.pf("    }\n\n")
+	g.emitCheckWrite(st, valType)
+}
+
+// emitCheckWrite is saveMessageBody's contract walk, called once through
+// `assert` — the packet codec's own predicate-extraction form, shared with the
+// fixed form. THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer
+// trusts, which is what makes a save one body walk and a bit stream. Rows 1,
+// 2 and 8 are here; rows 3-7 answer through the body's own refusals, which
+// run in every build.
+func (g *messageGen) emitCheckWrite(st *ir.Struct, valType string) {
+	var lines []string
+	for _, f := range st.Fields {
+		g.messageCheckField(f, "v."+javaName(f.Name), 8, &lines)
+	}
+	g.pf("    // checkWrite is saveMessageBody's contract walk, called once through `assert`.\n")
+	g.pf("    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts.\n")
+	g.pf("    private static boolean checkWrite(%s v) {\n", valType)
+	g.pf("        assert v != null;\n")
+	for _, line := range lines {
+		g.pf("%s", line)
+	}
+	g.pf("        return true;\n    }\n\n")
+}
+
+// messageCheckField checks one field's payload when it rides: an absent
+// optional's storage never reaches the wire, and neither does an unselected
+// union arm's.
+func (g *messageGen) messageCheckField(f *ir.Field, expr string, indent int, lines *[]string) {
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Optional {
+		*lines = append(*lines, ind+"if ("+expr+"Present) {\n")
+		g.messageCheckValue(f, expr, indent+4, lines)
+		*lines = append(*lines, ind+"}\n")
+		return
+	}
+	g.messageCheckValue(f, expr, indent, lines)
+}
+
+// messageCheckValue checks one value expression of f's type. A nested table's
+// body asserts its own predicate when it is saved, so this walk stops there.
+func (g *messageGen) messageCheckValue(f *ir.Field, expr string, indent int, lines *[]string) {
+	ind := strings.Repeat(" ", indent)
+	switch {
+	case f.KeyEnum != "":
+		elem := *f
+		elem.Array = ir.ArrayNone
+		elem.KeyEnum = ""
+		elem.KeyEnumRef = nil
+		elem.Type.Optional = false
+		elem.Required = false
+		idx := g.nextTemp("i")
+		*lines = append(*lines, fmt.Sprintf("%sfor (int %s = 0; %s < %s.length; %s++) {\n", ind, idx, idx, expr, idx))
+		g.messageCheckValue(&elem, expr+"["+idx+"]", indent+4, lines)
+		*lines = append(*lines, ind+"}\n")
+
+	case f.Array != ir.ArrayNone:
+		elem := *f
+		elem.Array = ir.ArrayNone
+		elem.KeyEnum = ""
+		elem.KeyEnumRef = nil
+		elem.Type.Optional = false
+		elem.Required = false
+		idx := g.nextTemp("i")
+		bound := expr + ".length"
+		if f.Array == ir.ArrayCounted {
+			bound = "Math.min(" + expr + "Count, " + expr + ".length)"
+		}
+		*lines = append(*lines, fmt.Sprintf("%sfor (int %s = 0; %s < %s; %s++) {\n", ind, idx, idx, bound, idx))
+		g.messageCheckValue(&elem, expr+"["+idx+"]", indent+4, lines)
+		*lines = append(*lines, ind+"}\n")
+
+	case isStructType(f.Type):
+		// the field's own saveMessageBody asserts its own checkWrite.
+
+	case isUnionType(f.Type):
+		un := f.Type.Ref.(*ir.Union)
+		*lines = append(*lines, ind+"switch ("+expr+".type) {\n")
+		for i, v := range un.Variants {
+			if v.Void() {
+				continue
+			}
+			arm := expr + "." + javaName(v.F.Name)
+			*lines = append(*lines, fmt.Sprintf("%s    case %d:\n", ind, i+1))
+			g.messageCheckField(v.F, arm, indent+8, lines)
+			*lines = append(*lines, ind+"        break;\n")
+		}
+		*lines = append(*lines, ind+"}\n")
+
+	case f.Type.Kind == ir.TString && f.Array == ir.ArrayNone && f.KeyEnum == "":
+		// ROW 8: the bytes the reader refuses are the bytes the writer must
+		// not produce. The length guard keeps a past-N length in the storage
+		// refusal the body already makes rather than reading past the buffer.
+		*lines = append(*lines, fmt.Sprintf("%sassert %sLength < 0 || %sLength > %d || TableMessage.utf8Valid(%s, 0, %sLength);\n",
+			ind, expr, expr, f.Type.Size, expr, expr))
+
+	default:
+		for _, cond := range messageScalarBounds(f, expr) {
+			*lines = append(*lines, ind+"assert "+cond+";\n")
+		}
+	}
+}
+
+// messageScalarBounds holds rows 1 and 2: a ranged integer or fixed-point raw
+// value off its declared ends, and a bits(N) value wider than N. The ranges are
+// the same raw-scale ranges the reader clamps against (ir.TableRawRange).
+func messageScalarBounds(f *ir.Field, expr string) []string {
+	switch f.Type.Kind {
+	case ir.TInt, ir.TFixed, ir.TBits:
+	default:
+		return nil
+	}
+	var conds []string
+	if f.HasIntRange {
+		if lo, hi, ok := ir.TableRawRange(f); ok {
+			conds = append(conds, messageScalarRange(f, expr, lo, hi)...)
+		}
+	}
+	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+		maxv := uint64(1)<<uint(f.Type.Width) - 1
+		conds = append(conds, fmt.Sprintf("%s >= 0 && %s <= %dL", expr, expr, maxv))
+	}
+	return conds
+}
+
+func messageScalarRange(f *ir.Field, expr string, lo, hi *big.Int) []string {
+	signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
+	typ := fixedScalarType(f.Type)
+	if typ == "Int128" || typ == "UInt128" {
+		loLo, loHi := fixed128Halves(lo)
+		hiLo, hiHi := fixed128Halves(hi)
+		cmp := "TableMessage.compareUnsigned128"
+		if signed {
+			cmp = "TableMessage.compareSigned128"
+		}
+		return []string{
+			fmt.Sprintf("%s(%s.lo, %s.hi, %sL, %sL) >= 0", cmp, expr, expr, fixedHexLong(loLo), fixedHexLong(loHi)),
+			fmt.Sprintf("%s(%s.lo, %s.hi, %sL, %sL) <= 0", cmp, expr, expr, fixedHexLong(hiLo), fixedHexLong(hiHi)),
+		}
+	}
+	if signed {
+		return []string{
+			fmt.Sprintf("%s >= %sL", expr, fixedHexLong(uint64(lo.Int64()))),
+			fmt.Sprintf("%s <= %sL", expr, fixedHexLong(uint64(hi.Int64()))),
+		}
+	}
+	width := ir.TableFixedStorageBytes(f.Type)
+	mask := ^uint64(0)
+	if width < 8 {
+		mask = (uint64(1) << (8 * uint(width))) - 1
+	}
+	return []string{
+		fmt.Sprintf("Long.compareUnsigned((%s) & %sL, %sL) >= 0", expr, fixedHexLong(mask), fixedHexLong(lo.Uint64())),
+		fmt.Sprintf("Long.compareUnsigned((%s) & %sL, %sL) <= 0", expr, fixedHexLong(mask), fixedHexLong(hi.Uint64())),
+	}
 }
 
 func (g *messageGen) emitSaveField(f *ir.Field, owner, guard string, indent int) {
@@ -1741,9 +1933,9 @@ func (g *messageGen) emitWriteBoundsCheck(f *ir.Field, owner string, indent int)
 	expr := owner + "." + name
 	switch {
 	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Array == ir.ArrayNone && f.KeyEnum == "":
-		g.pf("%sif (%sLength < 0 || %sLength > %d) { return false; }\n", ind, expr, expr, f.Type.Size)
+		g.pf("%sassert %sLength >= 0 && %sLength <= %d;\n", ind, expr, expr, f.Type.Size)
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
-		g.pf("%sif (%sCount < %d || %sCount > %d) { return false; }\n", ind, expr, f.ArrayMin, expr, f.ArrayBound)
+		g.pf("%sassert %sCount >= %d && %sCount <= %d;\n", ind, expr, f.ArrayMin, expr, f.ArrayBound)
 	}
 }
 
@@ -2347,12 +2539,30 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 			if rlo, rhi, ok := ir.TableRawRange(f); ok && f.HasIntRange {
 				minLit, maxLit, hasRange = rlo.Int64(), rhi.Int64(), true
 			}
+			if !hasRange && f.Type.Kind == ir.TInt && f.Type.Width > 0 && f.Type.Width < 64 {
+				// A FIELD THAT DECLARES NO RANGE IS STILL HELD TO ITS KIND'S
+				// DOMAIN (docs/SPEC-TABLES.md §3.3): an int8 holds -128
+				// through 127, and a value outside it refuses rather than
+				// landing narrowed in the cell.
+				minLit = -(int64(1) << uint(f.Type.Width-1))
+				maxLit = (int64(1) << uint(f.Type.Width-1)) - 1
+				hasRange = true
+			}
 			g.pf("%s    long %s = TableMessage.readSigned(r, %s, %dL, %dL, %t);\n", ind, vVar, shapeExpr, minLit, maxLit, hasRange)
 		} else {
 			var minLit, maxLit uint64
 			hasRange := false
 			if rlo, rhi, ok := ir.TableRawRange(f); ok && f.HasIntRange {
 				minLit, maxLit, hasRange = rlo.Uint64(), rhi.Uint64(), true
+			}
+			if !hasRange && f.Type.Kind == ir.TInt && f.Type.Width > 0 && f.Type.Width < 64 {
+				// A FIELD THAT DECLARES NO RANGE IS STILL HELD TO ITS KIND'S
+				// DOMAIN (docs/SPEC-TABLES.md §3.3): a uint8 holds 0 through
+				// 255, and a value outside it refuses rather than landing
+				// masked in the cell.
+				minLit = 0
+				maxLit = (uint64(1) << uint(f.Type.Width)) - 1
+				hasRange = true
 			}
 			bitsWidth := 0
 			if f.Type.Kind == ir.TBits {
@@ -2451,7 +2661,8 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("            }\n")
 	g.pf("            return -1;\n")
 	g.pf("        }\n")
-	g.pf("        if (values == null || count > values.length) { return -1; }\n")
+	g.pf("        if (values == null) { return -1; }\n")
+	g.pf("        assert count <= values.length;\n")
 	g.pf("        TableMessage.Writer w = new TableMessage.Writer(null, 2, true);\n")
 	g.pf("        for (int i = 0; i < count; i++) {\n")
 	g.pf("            if (values[i] == null || !saveMessageBody(w, values[i])) { return -1; }\n")
@@ -2480,10 +2691,11 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("            return -1;\n")
 	g.pf("        }\n")
 	if st.Integrity != "" {
-		g.pf("        if (values == null || count > values.length || buffer == null || buffer.length < 6) { return -1; }\n")
+		g.pf("        if (values == null || buffer == null || buffer.length < 6) { return -1; }\n")
 	} else {
-		g.pf("        if (values == null || count > values.length || buffer == null || buffer.length < 2) { return -1; }\n")
+		g.pf("        if (values == null || buffer == null || buffer.length < 2) { return -1; }\n")
 	}
+	g.pf("        assert count <= values.length;\n")
 	g.pf("        TableMessage.Writer mw = new TableMessage.Writer(null, 2, true);\n")
 	g.pf("        for (int i = 0; i < count; i++) {\n")
 	g.pf("            if (values[i] == null || !saveMessageBody(mw, values[i])) { return -1; }\n")

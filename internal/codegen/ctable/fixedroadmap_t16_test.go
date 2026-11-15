@@ -184,7 +184,7 @@ int main(void)
         Root back;
         root_reset(&back);
         memset(&r, 0, sizeof(r));
-        table_fixed_run(plan, made, guarded, body, (uint8_t *) (void *) &back, &r, NULL);
+        table_fixed_run(plan, made, guarded, body, (uint8_t *) (void *) &back, &r, NULL, NULL);
         CHECK(back.many == MANY_V299);
         CHECK(back.pick.type == PICK_TYPE_A299);
         CHECK(back.pick.as.a299.n == 777);
@@ -195,7 +195,7 @@ int main(void)
         /* FORGED ORDINAL PAST THE WRITER'S SET LANDS None. */
         body[0] = 0x2D; body[1] = 0x01;          /* 301 */
         root_reset(&back);
-        table_fixed_run(plan, made, guarded, body, (uint8_t *) (void *) &back, &r, NULL);
+        table_fixed_run(plan, made, guarded, body, (uint8_t *) (void *) &back, &r, NULL, NULL);
         CHECK(back.many == MANY_NONE);
     }
     /* BOTH GUARD LANES HOLD AN ORDINAL ABOVE MaxUint32 (§4.1). */
@@ -212,11 +212,11 @@ int main(void)
         e.guard2 = 8; e.arg2 = tag; e.argw2 = 8; e.op = kTableFixedCopy;
         memset(out, 0, sizeof(out));
         memset(&r, 0, sizeof(r));
-        table_fixed_run(&e, 1, 0, src, out, &r, NULL);
+        table_fixed_run(&e, 1, 0, src, out, &r, NULL, NULL);
         CHECK(out[0] == 7 && out[3] == 7);
         e.arg = 1;
         memset(out, 0, sizeof(out));
-        table_fixed_run(&e, 1, 0, src, out, &r, NULL);
+        table_fixed_run(&e, 1, 0, src, out, &r, NULL, NULL);
         CHECK(out[0] == 0);
     }
     /* THE 64-BIT ORDINAL TEMPORARY (§4.5) AND THE LENGTH-WORD REFUSAL. */
@@ -237,17 +237,17 @@ int main(void)
         memcpy(src, &raw, 8);
         memset(out, 0, sizeof(out));
         memset(&r, 0, sizeof(r));
-        table_fixed_run(bigplan, 1, 1, src, out, &r, NULL);
+        table_fixed_run(bigplan, 1, 1, src, out, &r, NULL, NULL);
         CHECK(out[0] == 0 && out[7] == 0);
         raw = 70000;
         memcpy(src, &raw, 8);
         memset(out, 0, sizeof(out));
-        table_fixed_run(bigplan, 1, 1, src, out, &r, NULL);
+        table_fixed_run(bigplan, 1, 1, src, out, &r, NULL, NULL);
         CHECK(out[0] == 0 && out[7] == 0);
         raw = 2;
         memcpy(src, &raw, 8);
         memset(out, 0, sizeof(out));
-        table_fixed_run(bigplan, 1, 1, src, out, &r, NULL);
+        table_fixed_run(bigplan, 1, 1, src, out, &r, NULL, NULL);
         CHECK(out[0] == 2);
         /* PAST THE uint16 LENGTH WORD THE PLAN REFUSES (§5.8 row 14):
            lay_table records the overflow compile surfaces as plan_too_large. */

@@ -199,16 +199,16 @@ func (g *tableGen) wireBarePayload(f *ir.Field, expr, ind string) {
 	case f.IsList() || f.IsMap():
 		g.emitSequenceWrite(f, expr)
 	case f.Type.Kind == ir.TString && !f.Type.Blob():
-		g.pf("%sif ( %s_length < 0 || %s_length > %d ) { return 0; }\n", ind, expr, expr, f.Type.Size)
+		g.writeStorageBound(expr+"_length", f.Type.Size, ind)
 		g.pf("%stable_writer_raw( w, %s, %s_length );\n", ind, expr, expr)
 	case f.Type.Kind == ir.TBytes && !f.Type.Blob():
-		g.pf("%sif ( %s_length < 0 || %s_length > %d ) { return 0; }\n", ind, expr, expr, f.Type.Size)
+		g.writeStorageBound(expr+"_length", f.Type.Size, ind)
 		g.pf("%stable_writer_put8( w, 6 ); table_writer_leb( w, (uint64_t)%s_length ); table_writer_raw( w, %s, %s_length );\n", ind, expr, expr, expr)
 	case f.Array != ir.ArrayNone:
 		n := fmt.Sprint(f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
 			n = expr + "_count"
-			g.pf("%sif ( %s < 0 || %s > %d ) { return 0; }\n", ind, n, n, f.ArrayBound)
+			g.writeStorageBound(n, f.ArrayBound, ind)
 		}
 		g.pf("%s{ int32_t i; table_writer_put8( w, %d ); table_writer_leb( w, (uint64_t)(%s) );\n", ind, ir.TableWireScalarKind(f), n)
 		g.pf("%s  for ( i=0; i<%s; i++ ) {\n", ind, n)

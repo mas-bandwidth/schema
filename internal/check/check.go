@@ -2197,6 +2197,10 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 				c.errf(a.Pos, "json = \"\" names nothing — json records the key this field reads and writes in the text form (docs/SPEC-TABLES.md §16.4)")
 				continue
 			}
+			if strings.ContainsRune(lit.Value, '\x00') {
+				c.errf(a.Pos, "json key %q holds U+0000 — a field key cannot contain a zero that the text reader refuses (docs/SPEC-TABLES.md §16.4)", lit.Value)
+				continue
+			}
 			out.JsonKey = lit.Value
 		}
 	}
@@ -4558,6 +4562,9 @@ var tableGeneratedVerbs = []string{
 	// singular verbs are not claimed beside them: a surface with both would let
 	// a caller write one message a call and never learn where the bandwidth is
 	"MeasureMessages", "SaveMessages", "LoadMessages", "LoadMessagesMeasure", "SaveMessageBody", "LoadMessageBody",
+	// and the JavaScript message body's write preflight, a module-scope
+	// function per root that refuses in every build (docs/SPEC.md §5.1)
+	"MessageBodyOk",
 	"Reset", "LoadMeasure", "LoadMeasureReason", "MeasureReason", "CookMeasureReason", "LoadBuilder", "TableType", "Builder",
 	// the read's two entries over a caller's region and a builder, which the
 	// plain Load and LoadBuilder and the integrity form call (docs/SPEC-TABLES.md §6.5)
@@ -4586,6 +4593,10 @@ var tableGeneratedVerbs = []string{
 	"LoadBodyRetain", "LoadMessageBodyRetain", "MeasureBodyRetain", "SaveBodyRetain", "SaveBodyFieldsRetain",
 	"MeasureWireRetain", "SaveWireRetain", "NodeBodyRetain",
 	"FromJson", "ToJson", "ToJsonMeasure", "ToJsonMeasureReason",
+	// The variable-form JavaScript module also carries the bytes entry beside
+	// the string entry (docs/SPEC-TABLES.md §16.2), so its suffix is claimed
+	// on this list's own rule.
+	"FromJsonBytes",
 	// docs/SPEC-TABLES.md §16.2's three options ride in the Go backend's With
 	// calls beside the plain three, so their suffixes are claimed on the same rule
 	"FromJsonWith", "ToJsonWith", "ToJsonMeasureWith",
@@ -4635,6 +4646,9 @@ var tableGeneratedVerbs = []string{
 	// The bound probe is also an exported package-level helper emitted for
 	// each root (docs/SPEC-TABLES.md, “The bound probes”, §4).
 	"FixedResetImage", "FixedHoles", "FixedLineageHoles", "FixedPlanMax", "GenPastBound",
+	// and the plain load's package plan buffer, which the form-3 read passes
+	// to <Name>FixedLoad (docs/SPEC-TABLES.md §3.4)
+	"FixedReadPlan",
 	// THE READING TIER'S OWN SIX (internal/codegen/jstable). A language with no
 	// struct layout cannot land a plan at `offsetof( T, member )`, so it lands
 	// it in a canonical body image and then PROJECTS that image into the

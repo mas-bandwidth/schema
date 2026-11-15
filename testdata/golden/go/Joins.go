@@ -42,6 +42,9 @@ const ArmsAgreeMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteArmsAgree(stream *serialize.WriteStream, value *ArmsAgree) error {
+	if value.Lead > 31 { // a value above the bits(5) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Lead) & 0x1f
 	f1 := uint64(0)
 	if value.Flag {
@@ -50,9 +53,18 @@ func WriteArmsAgree(stream *serialize.WriteStream, value *ArmsAgree) error {
 	w0 := uint32(f0 | f1<<5)
 	stream.SerializeBits(&w0, 6)
 	if value.Flag {
+		if value.A > 2047 { // a value above the bits(11) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		stream.SerializeBits(&value.A, 11)
 	} else {
+		if value.B > 2047 { // a value above the bits(11) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		stream.SerializeBits(&value.B, 11)
+	}
+	if value.Tail > 127 { // a value above the bits(7) wire width cannot ride
+		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBits(&value.Tail, 7)
 	return stream.Err()
@@ -112,6 +124,9 @@ const ArmsDisagreeMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteArmsDisagree(stream *serialize.WriteStream, value *ArmsDisagree) error {
+	if value.Lead > 31 { // a value above the bits(5) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Lead) & 0x1f
 	f1 := uint64(0)
 	if value.Flag {
@@ -120,9 +135,18 @@ func WriteArmsDisagree(stream *serialize.WriteStream, value *ArmsDisagree) error
 	w0 := uint32(f0 | f1<<5)
 	stream.SerializeBits(&w0, 6)
 	if value.Flag {
+		if value.A > 2047 { // a value above the bits(11) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		stream.SerializeBits(&value.A, 11)
 	} else {
+		if value.B > 7 { // a value above the bits(3) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		stream.SerializeBits(&value.B, 3)
+	}
+	if value.Tail > 127 { // a value above the bits(7) wire width cannot ride
+		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBits(&value.Tail, 7)
 	return stream.Err()
@@ -178,6 +202,9 @@ const ArmEmptyMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteArmEmpty(stream *serialize.WriteStream, value *ArmEmpty) error {
+	if value.Lead > 31 { // a value above the bits(5) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Lead) & 0x1f
 	f1 := uint64(0)
 	if value.Flag {
@@ -186,7 +213,13 @@ func WriteArmEmpty(stream *serialize.WriteStream, value *ArmEmpty) error {
 	w0 := uint32(f0 | f1<<5)
 	stream.SerializeBits(&w0, 6)
 	if value.Flag {
+		if value.A > 524287 { // a value above the bits(19) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		stream.SerializeBits(&value.A, 19)
+	}
+	if value.Tail > 127 { // a value above the bits(7) wire width cannot ride
+		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBits(&value.Tail, 7)
 	return stream.Err()
@@ -252,6 +285,9 @@ const ArmsNestedMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteArmsNested(stream *serialize.WriteStream, value *ArmsNested) error {
+	if value.Lead > 7 { // a value above the bits(3) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Lead) & 0x7
 	f1 := uint64(0)
 	if value.Outer {
@@ -262,12 +298,24 @@ func WriteArmsNested(stream *serialize.WriteStream, value *ArmsNested) error {
 	if value.Outer {
 		stream.SerializeBool(&value.Inner)
 		if value.Inner {
+			if value.X > 536870911 { // a value above the bits(29) wire width cannot ride
+				return serialize.ErrValueOutOfRange
+			}
 			stream.SerializeBits(&value.X, 29)
 		} else {
+			if value.Y > 31 { // a value above the bits(5) wire width cannot ride
+				return serialize.ErrValueOutOfRange
+			}
 			stream.SerializeBits(&value.Y, 5)
 		}
 	} else {
+		if value.Z > 8191 { // a value above the bits(13) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		stream.SerializeBits(&value.Z, 13)
+	}
+	if value.Tail > 63 { // a value above the bits(6) wire width cannot ride
+		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBits(&value.Tail, 6)
 	return stream.Err()
@@ -337,6 +385,9 @@ const ArmAlignMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteArmAlign(stream *serialize.WriteStream, value *ArmAlign) error {
+	if value.Lead > 31 { // a value above the bits(5) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Lead) & 0x1f
 	f1 := uint64(0)
 	if value.Flag {
@@ -363,7 +414,13 @@ func WriteArmAlign(stream *serialize.WriteStream, value *ArmAlign) error {
 		}
 		stream.SerializeBytes(value.S[:value.SLength])
 	} else {
+		if value.B > 1023 { // a value above the bits(10) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		stream.SerializeBits(&value.B, 10)
+	}
+	if value.Tail > 127 { // a value above the bits(7) wire width cannot ride
+		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBits(&value.Tail, 7)
 	return stream.Err()
@@ -445,6 +502,9 @@ const ArmArrayMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteArmArray(stream *serialize.WriteStream, value *ArmArray) error {
+	if value.Lead > 31 { // a value above the bits(5) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Lead) & 0x1f
 	f1 := uint64(0)
 	if value.Flag {
@@ -469,7 +529,13 @@ func WriteArmArray(stream *serialize.WriteStream, value *ArmArray) error {
 			stream.SerializeBits(&offsetValue2, 13)
 		}
 	} else {
+		if value.B > 511 { // a value above the bits(9) wire width cannot ride
+			return serialize.ErrValueOutOfRange
+		}
 		stream.SerializeBits(&value.B, 9)
+	}
+	if value.Tail > 127 { // a value above the bits(7) wire width cannot ride
+		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBits(&value.Tail, 7)
 	return stream.Err()
@@ -532,6 +598,9 @@ const NarrowMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteNarrow(stream *serialize.WriteStream, value *Narrow) error {
+	if value.N > 7 { // a value above the bits(3) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeBits(&value.N, 3)
 	return stream.Err()
 }
@@ -562,6 +631,9 @@ const WideMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteWide(stream *serialize.WriteStream, value *Wide) error {
+	if value.W > 137438953471 { // a value above the bits(37) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeBits64(&value.W, 37)
 	return stream.Err()
 }
@@ -690,9 +762,15 @@ const HoldsUnevenMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteHoldsUneven(stream *serialize.WriteStream, value *HoldsUneven) error {
+	if value.Lead > 31 { // a value above the bits(5) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeBits(&value.Lead, 5)
 	if err := WriteUneven(stream, &value.U); err != nil {
 		return err
+	}
+	if value.Tail > 2047 { // a value above the bits(11) wire width cannot ride
+		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBits(&value.Tail, 11)
 	return stream.Err()
@@ -731,6 +809,9 @@ const ArrUnevenMaxBytes = 16
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteArrUneven(stream *serialize.WriteStream, value *ArrUneven) error {
+	if value.Lead > 31 { // a value above the bits(5) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeBits(&value.Lead, 5)
 	if value.ItemsCount < 0 || value.ItemsCount > 3 {
 		return serialize.ErrValueOutOfRange
@@ -744,6 +825,9 @@ func WriteArrUneven(stream *serialize.WriteStream, value *ArrUneven) error {
 		if err := WriteUneven(stream, &value.Items[i]); err != nil {
 			return err
 		}
+	}
+	if value.Tail > 7 { // a value above the bits(3) wire width cannot ride
+		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBits(&value.Tail, 3)
 	return stream.Err()
@@ -796,6 +880,9 @@ const RegainAfterAlignMaxBytes = 24
 // cannot carry) or the stream's error; the size written is
 // stream.BitsProcessed().
 func WriteRegainAfterAlign(stream *serialize.WriteStream, value *RegainAfterAlign) error {
+	if value.Lead > 31 { // a value above the bits(5) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeBits(&value.Lead, 5)
 	if value.ItemsCount < 0 || value.ItemsCount > 3 {
 		return serialize.ErrValueOutOfRange
@@ -829,6 +916,15 @@ func WriteRegainAfterAlign(stream *serialize.WriteStream, value *RegainAfterAlig
 		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBytes(value.S[:value.SLength])
+	if value.Q > 536870911 { // a value above the bits(29) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.R > 524287 { // a value above the bits(19) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Tail > 15 { // a value above the bits(4) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.P) & 0xffffffff
 	f1 := uint64(value.Q) & 0x1fffffff
 	f2 := uint64(value.R) & 0x7ffff

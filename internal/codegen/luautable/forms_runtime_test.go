@@ -104,8 +104,9 @@ func TestLuauUndeclaredUnitKeepsTableAndRuntime(t *testing.T) {
 // this constant. Moved when every table module began registering the unit's wire
 // ids (retainids.go, docs/SPEC-TABLES.md §6.6), and again when the announcement
 // became the message closure's alone: a unit with no fixed table announces an
-// empty vocabulary (docs/SPEC-TABLES.md §3.3).
-const wantUndeclaredSchemaDigest = "4e7ca9fdb0964002048cf223520272ee634a10c63359ece469d9d8fd5351dac2"
+// empty vocabulary (docs/SPEC-TABLES.md §3.3), and again when every table module
+// began registering the table type ids a pointer slot declares (§3.1).
+const wantUndeclaredSchemaDigest = "09481d7b333823e1aa3c9b10cb0c4d8329561c7de5bd43b91bbf6340af052512"
 
 // schemaModuleDigest hashes the named schema-dependent modules of a unit —
 // name then bytes, in sorted name order — so an edit to either is pinned
