@@ -308,25 +308,31 @@ generated class per table and per map entry, each with its descriptor
   straight-line pair is kept: its save is faster on both pins, and its load is
   faster on the floor.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables and `*T` pointers to tables, for both the fixed and the
-  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
-  with table arms have descriptors in this cut and refuse by name through
-  `kind_unsupported.py` until their cards land.
+  the plain floats (`float32`, `float64`), by-value tables and `*T` pointers to
+  tables, for both the fixed and the variable class. `*bytes`, `*string`, `?T`,
+  `[]T`, `[E]T`, maps and unions with table arms have descriptors in this cut
+  and refuse by name through `kind_unsupported.py` until their cards land.
 - **Widening on read** (SPEC-TABLES §4) is `_schema/widen.py`, one rule
   shared by the straight-line load and the descriptor walk: where a field's
   kind byte is not its declared kind, an integer field accepts every narrower
-  kind on its own signedness ladder (2, 3, 4, 5, 18 and 6, 7, 8, 9, 19),
-  decodes it at the writer's width with the wire kind's sign, holds it to the
-  declared range and counts one `widened`; every other pair, narrowings
-  included, refuses `kind_mismatch`. It is not a codec, so it sits beside
-  `kinds.py` rather than in it, and it is not a §2 construct, so the compiler
-  registers no carry for it. The float rung (10 into 11) and the rule at an
-  arm, an array element and a map key land with the cards that carry those
-  kinds, through the same `_accepts`/`_read` pair. `TestPythonVtWidening`
-  holds the ladder (12 declarations by 15 wire kinds, both shapes, both pins)
-  to the reference engine's read and write. The corpus rows that widen sit on
-  constructs not carried yet (a packet type in a table, lists, maps), apart
-  from `k1_as_k2`, which it holds; the test names the rest. The bench
+  kind on its own signedness ladder (2, 3, 4, 5, 18 and 6, 7, 8, 9, 19), and a
+  `float64` field accepts `float32`, the float rung (10 into 11). The integer
+  payload is decoded at the writer's width with the wire kind's sign, the
+  float32 exactly as the finite double it is; the value is held to the
+  declared range (a float has none), one `widened` counts, and a non-finite
+  float32 refuses `non_finite_float`. Every other pair, narrowings included,
+  refuses `kind_mismatch`. The rule is the KIND PAIR's and not the codec
+  string's, so it holds at a field's kind, an arm's, an array's element kind
+  and a map's key kind; an array or a map counts one `widened` for the field.
+  It is not a §2 construct, so the compiler registers no carry for it. The
+  construct loaders for arms, elements and map keys land with the cards that
+  carry those kinds, through the same `_accepts`/`_read` pair;
+  `TestPythonVtWidening/sites` holds the pair at each of those kinds now.
+  `TestPythonVtWidening` holds the ladder (13 declarations by 15 wire kinds,
+  both shapes, both pins) to the reference engine's read and write. The corpus
+  rows that widen sit on constructs not carried yet (a packet type in a table,
+  the fixed form, lists, maps), apart from `k1_as_k2`, which it holds; the test
+  asserts the rest stay un-carried and names each one. The bench
   (`TestPythonTableCoreShapeBench`, on the fleet host) moved by under 1% on
   every load figure, inside its run-to-run noise.
 - **A packet-typed field is refused by name.** A table field whose type is a

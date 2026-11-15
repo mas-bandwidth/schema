@@ -450,8 +450,9 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 		b.WriteString("                raise Refused(\"wire_damaged\", \"a body carries one field twice\")\n")
 		b.WriteString("            seen.add(field_id)\n")
 		fmt.Fprintf(b, "            if kind != fields[%d].kind:\n", i)
-		if codecOf(f) != "int" {
-			// a bool widens into nothing (docs/SPEC-TABLES.md §4)
+		if codecOf(f) == "bool" {
+			// a bool widens into nothing (docs/SPEC-TABLES.md §4); every other
+			// scalar asks the widening rule, whose kind pair decides
 			fmt.Fprintf(b, "                raise Refused(\"kind_mismatch\", f\"{obj.descriptor.name}.{fields[%d].name} rides under kind {kind}, not {fields[%d].kind}\")\n", i, i)
 			fmt.Fprintf(b, "            obj.%s = _s_kinds._REGISTRY[fields[%d].codec].read(reader, fields[%d], ctx)\n", f.Name, i, i)
 			continue
@@ -669,6 +670,8 @@ func codecOf(f *ir.Field) string {
 		return "bool"
 	case ir.TInt, ir.TFixed, ir.TBits:
 		return "int"
+	case ir.TFloat32, ir.TFloat64:
+		return "float"
 	case ir.TNamed:
 		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
 			return "table"
@@ -809,6 +812,11 @@ func descriptorDefault(f *ir.Field) string {
 			return f.DefInt.String()
 		}
 		return "0"
+	case "float":
+		if f.HasDefault {
+			return strconv.FormatFloat(f.DefFloat, 'g', -1, 64)
+		}
+		return "0.0"
 	}
 	return "None"
 }

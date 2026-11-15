@@ -1046,7 +1046,7 @@
     {
       "name": "python-vt-widening",
       "when": "pull-request",
-      "why": "widening on read (make/python.mk): one rule of the generated runtime's widen.py is broken at a time in a copy (the signed ladder zero-extended, every rung closed, the widened count dropped, a narrowing accepted), and the pinned-interpreter ladder must go red against the reference engine on the cell that rule decides. Eight short interpreter runs, about 1 s of test time on a bench, so the row is the pins' cache restore.",
+      "why": "widening on read (make/python.mk): one rule of the generated runtime's widen.py is broken at a time in a copy (the signed ladder zero-extended, every rung closed, the widened count dropped, a narrowing accepted, the float rung closed), and the pinned-interpreter ladder must go red against the reference engine on the cell that rule decides. Ten short interpreter runs, about 1 s of test time on a bench, so the row is the pins' cache restore.",
       "targets": [
         "python-vt-widening-negative-control"
       ],

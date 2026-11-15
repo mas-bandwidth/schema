@@ -9,7 +9,7 @@ from typing import Any, TypeVar
 
 from . import InvalidValue, LoadReport, Refused
 from . import descriptor, kinds, widen
-from . import kind_bool, kind_int, kind_pointer, kind_table, kind_unsupported
+from . import kind_bool, kind_float, kind_int, kind_pointer, kind_table, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
 _T = TypeVar("_T")
