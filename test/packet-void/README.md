@@ -39,3 +39,29 @@ declared defaults before decoding. The controls plant the extra bit on a
 payload-free arm, so a reader or writer that spends payload bits on an arm
 without one fails the exact bit-count assertion by name; no count is relaxed
 for a runtime that reads or writes more.
+
+## Python
+
+`make packet-void-python` checks the same SPEC §4.8 rules through the Python
+packet core, under both pinned interpreters and mypy --strict. `Python.schema`
+keeps the union shapes of `Void.schema` but uses only the kinds the Python core
+carries today: its bit fields and arrays belong to later cards, so `Frame`
+uses one-bit bools around its tag and the `Batch` row is absent. `python/main.py`
+reads and writes `python/goldens.txt`, whose bytes are calculated here and
+never produced by the writer under test:
+
+| Value | Calculation | Byte |
+|---|---|---|
+| Mixed None | tag 0 | `00` |
+| Mixed Ping | tag 1 | `01` |
+| Mixed Pong | tag 3 | `03` |
+| Mixed Payload, count -1, marker true | `2 + (0xFFFF << 2) + (1 << 18)` | `FE FF 07` |
+| Frame, lead true, Ping, tail true | `1 + (1 << 1) + (1 << 3)` | `0B` |
+| Tags None | tag 0 | `00` |
+| Tags Pong, all arms void | tag 2 | `02` |
+| Single Ack | tag 1 | `01` |
+| Empty None, no declared arms | no bits | none |
+
+`TestPythonPacketUnionsNegativeControl` plants one extra set bit on the
+writer's payload-free arms in a copy of the generated code, and the probe must
+go red by name; the target is registered in `make/negative-controls.json`.

@@ -16,10 +16,21 @@
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
 .PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control
+.PHONY: packet-void-python packet-void-python-negative-control
 test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
 update-goldens-python: ;
+
+# packet-void-python: the leg's half of test/packet-void (SPEC §4.8), the
+# carried-kind union fixture read and written under both pinned interpreters
+# with mypy --strict. Its control plants an extra void-arm bit in a copy of
+# the generated code and must go red by name.
+packet-void-python:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketUnions$$' ./internal/codegen/python/
+
+packet-void-python-negative-control:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketUnionsNegativeControl$$' ./internal/codegen/python/
 
 # python-packet-core-negative-control: the packet core's own control. It edits
 # a COPY of a generated reader and requires TestPythonPacketCoreNegativeControl
