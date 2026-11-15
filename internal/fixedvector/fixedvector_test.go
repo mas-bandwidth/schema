@@ -77,3 +77,56 @@ func TestWriterRangeNamesEveryVector(t *testing.T) {
 		}
 	}
 }
+
+// builtCorpus is the C++ reference's corpus on the bench. A bare tree has none;
+// under SCHEMA_REQUIRE_CORPUS=1 a missing corpus is a failure by name, never a
+// skip, so a leg's gate cannot report green having read nothing.
+func builtCorpus(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.Abs("../../build/fixedform-corpus")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, NegativeZeroFile)); err != nil {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the C++ reference's corpus has no %s in %s (make tables-fixedform-corpus): %v", NegativeZeroFile, dir, err)
+		}
+		t.Skip("the C++ reference's byte oracle is not built: make tables-fixedform-corpus")
+	}
+	return dir
+}
+
+func TestNegativeZeroVectors(t *testing.T) {
+	t.Parallel()
+	corpus := builtCorpus(t)
+	if len(NegativeZero) == 0 {
+		t.Fatal("NegativeZero names no vector")
+	}
+	for _, vec := range NegativeZero {
+		t.Run(vec.Name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := os.Stat(filepath.Join(corpus, vec.File)); err != nil {
+				t.Fatalf("the negative-zero vector %s is not in the built corpus: %v", vec.File, err)
+			}
+			e, err := Read(corpus, vec.File)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if e.Refused {
+				t.Fatalf("%s: the manifest carries no expect= for a file the rule reads as +0", vec.File)
+			}
+			leaves, err := e.Leaves()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(leaves) == 0 {
+				t.Fatalf("%s: the manifest expects no field", vec.File)
+			}
+			for _, leaf := range leaves {
+				if leaf.Value != 0 {
+					t.Errorf("%s: the manifest expects %s=%d, want 0 (+0)", vec.File, leaf.Path, leaf.Value)
+				}
+			}
+		})
+	}
+}

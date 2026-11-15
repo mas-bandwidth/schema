@@ -39,6 +39,13 @@ const RangeWidenArrayHostile = "hostile_range_widen_array.bin"
 // number, inside the range, and lands it.
 const RangeWidenU64Hostile = "hostile_range_widen_u64.bin"
 
+// NegativeZeroFile is the compressed float's negative-zero vector
+// (docs/SPEC-TABLES.md §3.3): the reference writer's file holding -0's bits in
+// its compressed float field. The rule reads it as +0, uncounted, and writes
+// +0 for it, so the canonical bytes are the same record with all-zero bytes in
+// that field. The file is named for what it holds.
+const NegativeZeroFile = "negative_zero.bin"
+
 // Vector names one writer's-range vector: its corpus file, a Name that tells
 // it from the others (a leg's subtest), the versioning row whose pair it reads
 // (VOLD_<Row> in the lineage of the reader VNEW_<Row>), and the fixed root
@@ -53,6 +60,12 @@ var WriterRange = []Vector{
 	{File: RangeWidenHostile, Name: "range_widen", Row: "range_widen", Root: "RangeWiden"},
 	{File: RangeWidenArrayHostile, Name: "range_widen_array", Row: "range_widen", Root: "RangeWiden"},
 	{File: RangeWidenU64Hostile, Name: "range_widen_u64", Row: "range_widen", Root: "RangeWiden"},
+}
+
+// NegativeZero is every compressed-float negative-zero vector
+// (docs/SPEC-TABLES.md §3.3), the list each leg runs.
+var NegativeZero = []Vector{
+	{File: NegativeZeroFile, Name: "negative_zero", Root: "NegZero"},
 }
 
 // Expect is one vector's answer: Refused when the reference refused the whole
@@ -117,7 +130,9 @@ func (e Expect) Int(path string) (int64, error) {
 }
 
 // Read returns file's answer from its line in corpus/manifest.txt: Refused
-// when the line carries no `expect=`, else the `expect=` values.
+// when the line carries no `expect=`, else the `expect=` values. A vector
+// line names the cell it forged; a writer's file the rule lands carries an
+// `expect=` and no forge.
 func Read(corpus, file string) (Expect, error) {
 	f, err := os.Open(filepath.Join(corpus, "manifest.txt"))
 	if err != nil {
@@ -153,9 +168,14 @@ func Read(corpus, file string) (Expect, error) {
 				return Expect{}, err
 			}
 		}
-		var err error
-		if e.ForgedPath, e.ForgedAt, err = parseForged(file, forged); err != nil {
-			return Expect{}, err
+		if forged != "" {
+			var err error
+			if e.ForgedPath, e.ForgedAt, err = parseForged(file, forged); err != nil {
+				return Expect{}, err
+			}
+		}
+		if expect == "" && forged == "" {
+			return Expect{}, fmt.Errorf("fixedvector: %s is not a vector: its manifest line carries neither expect= nor forged=", file)
 		}
 		return e, nil
 	}
