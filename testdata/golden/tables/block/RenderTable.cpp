@@ -47,7 +47,7 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
 // the FIRST key of an object the walk is skipping begins with `&`: the cursor is
 // on its value. A dropped definition still takes its label (§16.7); a fixed reader
 // skips the value whole, as it skips everything else it does not place.
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t depth );
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t depth );
 
 // ---- the map and list adapters (docs/SPEC-TABLES.md §2.8, §2.9, §16) ----
 //
@@ -1861,6 +1861,14 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
     return true;
 }
 
+// A NAME MATCHES WHOLE (docs/SPEC-TABLES.md §16.2): a scanned key may hold a
+// U+0000 escape, so the bytes after its first zero are still part of the key.
+// Compare the key's LENGTH and its bytes; strcmp would stop at a zero byte.
+inline bool TableJsonKeyEquals( const char * name, const char * key, int32_t key_length )
+{
+    return name != NULL && (int32_t) strlen( name ) == key_length && memcmp( name, key, (size_t) key_length ) == 0;
+}
+
 // One CHARACTER of a base64 body, after the JSON layer has had its say
 // (docs/SPEC-TABLES.md §16.2): a bytes field is a JSON string whose DECODED
 // value is base64, so an escape is undone first and the character it names
@@ -2565,7 +2573,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
             // — in a pointered unit; a fixed unit skips the value whole.
             char key[kTableJsonMaxKey];
             int32_t key_length = 0;
-            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
             if ( TableJsonPeek( in ) != ':' )
             {
@@ -2581,7 +2589,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
                     in.bad = true;
                     return false;
                 }
-                if ( !TableJsonSkippedAmpersand( in, key, depth ) ) { return false; }
+                if ( !TableJsonSkippedAmpersand( in, key, key_length, depth ) ) { return false; }
                 first = false;
                 c = TableJsonPeek( in );
                 if ( c == ',' )
@@ -2890,7 +2898,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         }
         char key[kTableJsonMaxKey];
         int32_t key_length = 0;
-        if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+        if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
         key[key_length] = 0;
         if ( TableJsonPeek( in ) != ':' )
         {
@@ -2901,7 +2909,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         int64_t tag = 0;
         for ( int64_t t = 1; t <= f->enum_max; t++ )
         {
-            if ( strcmp( f->enum_name( (uint64_t) t ), key ) == 0 )
+            if ( TableJsonKeyEquals( f->enum_name( (uint64_t) t ), key, key_length ) )
             {
                 tag = t;
                 break;
@@ -3017,7 +3025,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         name[name_length] = 0;
         for ( int64_t v = 0; v <= f->enum_max; v++ )
         {
-            if ( strcmp( f->enum_name( (uint64_t) v ), name ) == 0 )
+            if ( TableJsonKeyEquals( f->enum_name( (uint64_t) v ), name, name_length ) )
             {
                 TableJsonSetRaw( storage, f->elem_size, (uint64_t) v );
                 return true;
@@ -3066,7 +3074,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 bool found = false;
                 for ( int64_t bit = 0; bit <= f->enum_max; bit++ )
                 {
-                    if ( strcmp( f->enum_name( (uint64_t) bit ), name ) == 0 )
+                    if ( TableJsonKeyEquals( f->enum_name( (uint64_t) bit ), name, name_length ) )
                     {
                         bits |= uint64_t( 1 ) << bit;
                         found = true;
@@ -3495,7 +3503,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             }
             char key[kTableJsonMaxKey];
             int32_t key_length = 0;
-            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
             {
                 bool repeated = false;
@@ -3533,7 +3541,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 // nothing is stored for None, so "None" finds no slot and is
                 // an unknown key like any other name this reader cannot place
                 if ( !TableJsonKeyedSlotValid( f, v ) ) { continue; }
-                if ( strcmp( f->key_name( TableJsonKeyedSlotKey( v ) ), key ) == 0 )
+                if ( TableJsonKeyEquals( f->key_name( TableJsonKeyedSlotKey( v ) ), key, key_length ) )
                 {
                     slot = v;
                     break;
@@ -3684,7 +3692,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     return TableJsonReadScalar( in, storage, f, depth );
 }
 
-inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key );
+inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key, int32_t first_key_length );
 
 // ONE table object: keys are field keys, unknown ones are skipped and
 // counted, a repeated key is last-wins and counted. The instance is already
@@ -3715,7 +3723,7 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
         return false;
     }
     in.pos++;
-    return TableJsonReadTableKeys( in, base, info, depth, NULL );
+    return TableJsonReadTableKeys( in, base, info, depth, NULL, 0 );
 }
 
 // The keys of an object whose brace is already consumed. A pointer's object
@@ -3723,7 +3731,7 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
 // and the adapter that reads it has to scan the key to know — so it hands the
 // key it scanned in as `first_key`, with the colon consumed, and this places
 // it before scanning the rest.
-inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key )
+inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key, int32_t first_key_length )
 {
     // repeated tracking, bounded and allocation-free: a table with more
     // fields than this still reads, its repeats simply stop being counted
@@ -3731,10 +3739,12 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
     for ( ;; )
     {
         char key[kTableJsonMaxKey];
+        int32_t key_length = 0;
         char c = 0;
         if ( first_key != NULL )
         {
-            memcpy( key, first_key, strlen( first_key ) + 1 ); // scanned into a buffer this size by the caller
+            key_length = first_key_length;
+            memcpy( key, first_key, (size_t) key_length + 1 ); // scanned into a buffer this size by the caller
             first_key = NULL;
         }
         else
@@ -3750,8 +3760,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
                 in.bad = true;
                 return false;
             }
-            int32_t key_length = 0;
-            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length, NULL, true ) ) { return false; }
             key[key_length] = 0;
             if ( TableJsonPeek( in ) != ':' )
             {
@@ -3763,7 +3772,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
         int32_t index = -1;
         for ( int32_t i = 0; i < info->num_fields; i++ )
         {
-            if ( strcmp( info->fields[i].json, key ) == 0 )
+            if ( TableJsonKeyEquals( info->fields[i].json, key, key_length ) )
             {
                 index = i;
                 break;
@@ -3960,7 +3969,7 @@ inline bool TableJsonWritePointer( TableJsonOut &, const void *, const TableFiel
     return false;
 }
 
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t depth )
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t, int32_t depth )
 {
     return TableJsonSkipValue( in, depth + 1 );
 }
