@@ -334,8 +334,11 @@ put = function(w, value, n) {
   }
   local start = w.bits; w.bits += n;
   if (w.measuring) return;
-  if (w.bits > w.b.len() * 8) { w.bad = true; return; }
-  for (local i = 0; i < n; i++) {
+  // A BIT PAST THE BUFFER IS NOT PUT: an all-default nested body is written
+  // and then rolled back (writeBody), so a write may reach past the measured
+  // end for a moment; writeBatch holds the measured batch to the buffer.
+  local cap = w.b.len() * 8;
+  for (local i = 0; i < n && start + i < cap; i++) {
     local at = (start + i) / 8, bit = (start + i) % 8;
     local mask = 1 << bit;
     if (((value >> i) & 1) != 0) w.b[at] = (w.b[at] | mask) & 0xff;
@@ -950,19 +953,22 @@ writeBody = function(T, w, d, value, depth) {
     if(!(fd.member in value))continue;
     local val=value[fd.member];
     if(defaultValue(fd,val,value))continue;
-    if(fd.shape=="tab"&&!fd.optional&&!("required" in fd && fd.required)){
-      local probe=newWriter(null,true);
-      probe.owner=d.name;probe.field=fd.name;
-      writePayload(T,probe,fd,val,depth+1);
-      if(probe.bad){w.bad=true;w.reason=probe.reason;return;}
-      if(probe.bits<=T.TableMessageRefBitsHere)continue;
-    }
-    local ref=findSlot(T,fd.id);if(ref==0){w.bad=true;return;}
+    // AN ALL-DEFAULT NESTED BODY ELIDES (docs/SPEC-TABLES.md §3.3): the
+    // table is written once, and when it came to its reference and the
+    // terminator alone it is rolled back to the mark, as the Go engine's
+    // encoder does, so each level is written once whatever the depth
+    local elides=fd.shape=="tab"&&!fd.optional&&!("required" in fd && fd.required);
+    local ref=findSlot(T,fd.id);if(ref==0&&!elides){w.bad=true;return;}
+    local mark=w.bits;
     put(w,ref,T.TableMessageRefBitsHere);
     w.owner = d.name;
     w.field = fd.name;
     writePayload(T,w,fd,val,depth+1);
     if(w.bad)return;
+    if(elides&&w.bits-mark==2*T.TableMessageRefBitsHere){
+      // the rolled-back bits are cleared, so the buffer holds only the batch
+      w.bits=mark;put(w,0,2*T.TableMessageRefBitsHere);w.bits=mark;
+    }else if(ref==0){w.bad=true;return;}
   }
   put(w,0,T.TableMessageRefBitsHere);
 };
@@ -1019,6 +1025,10 @@ local writeBatch = function(T, root, values, out, measuring, report) {
   foreach(m in (measuring?[true]:[true,false])){
     w=newWriter(m?null:out,m);put(w,2,8);put(w,values.len()-1,8);
     foreach(v in values){writeBody(T,w,d,v,0);if(w.bad){if(report!=null){report.bodyDamaged<-true;report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}}
+    // A BUFFER SHORTER THAN THE MEASURED BATCH IS REFUSED BEFORE THE FIRST BIT
+    // IS PUT, as a body that did not fit; past that, put may reach past the
+    // end only for a body it rolls back
+    if(m&&!measuring&&w.bits>out.len()*8){if(report!=null){report.bodyDamaged<-true;report.refused<-true;}return -1;}
   }
   local pad=(-w.bits)&7;put(w,0,pad);
   if(w.bad){if(report!=null){report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}
