@@ -24,6 +24,7 @@ type Leaf
 {
     value int32
     count uint16
+    wide  uint128
 }
 
 union Choice
@@ -90,7 +91,7 @@ func loadPaths(t *testing.T, paths ...string) *ir.Unit {
 
 // packetValueText is the engine's value: a packet type in a table field, in an
 // array and in a union arm.
-const packetValueText = `{"direct":{"value":7,"count":9},"many":[{"value":1,"count":2},{"value":3,"count":4}],"pick":{"leaf":{"value":5,"count":6}}}`
+const packetValueText = `{"direct":{"value":7,"count":9,"wide":"340282366920938463463374607431768211455"},"many":[{"value":1,"count":2},{"value":3,"count":4}],"pick":{"leaf":{"value":5,"count":6}}}`
 
 // TestPythonTablePacketTypes holds the card's one read on read-then-write: a
 // Go-engine construct with a packet type by value in a table field, in an
@@ -115,6 +116,7 @@ from packetvalues import Field
 with open("wire.bin", "rb") as handle:
     data = handle.read()
 value = Field.load(data)
+print("wide", value.direct.wide, value.many[0].wide)
 print("value", value.direct.value, value.direct.count, len(value.many),
       value.many[0].value, value.many[1].count, value.pick.type, value.pick.leaf.value)
 written = value.save()
@@ -137,6 +139,7 @@ print("OK")
 	}
 	for _, line := range []string{
 		"value 7 9 2 1 4 1 5",
+		"wide 340282366920938463463374607431768211455 0",
 		"wire " + hexString(wire),
 		"damaged refused wire_damaged",
 		"OK",
