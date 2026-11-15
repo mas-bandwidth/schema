@@ -627,9 +627,9 @@ var unionControls = []struct {
 }{
 	{"canonical-arm-length", "kind_union.py", "w.varint(len(payload))", "w.varint(len(payload) + 1)", "union_canonical_bytes True"},
 	{"arm-zero-read", "kind_union.py", "    if reference == 0:\n", "    if reference == 0:\n        raise Refused(\"wire_damaged\", \"arm 0\")\n", "case arm-zero-field "},
-	{"unknown-arm-check", "kind_union.py", "        _load.check_content(payload, kind, ctx.ids)\n", "", "case unknown-arm-kind99 "},
-	{"unknown-field-check", "load.py", "        check_content(reader.take(reader.varint()), kind, reader.ids, depth)\n        return\n    raise", "        reader.take(reader.varint())\n        return\n    raise", "case unknown-field-kind32-nonzero-l "},
-	{"damage-outranks-mismatch", "load.py", "            check_file(view, ids)\n", "            pass\n", "case arm-kind-mismatch-then-damage "},
+	{"unknown-arm-check", "kind_union.py", "        _load._check_content(payload, kind, ctx.ids)\n", "", "case unknown-arm-kind99 "},
+	{"unknown-field-check", "load.py", "        _check_content(reader.take(reader.varint()), kind, reader.ids, depth)\n        return\n    raise", "        reader.take(reader.varint())\n        return\n    raise", "case unknown-field-kind32-nonzero-l "},
+	{"damage-outranks-mismatch", "load.py", "            _check_file(view, ids)\n", "            pass\n", "case arm-kind-mismatch-then-damage "},
 	{"arm-kind-check", "kind_union.py", "    if kind != arm.kind:\n", "    if False:\n", "case arm-kind-mismatch "},
 	{"void-arm-length", "kind_union.py", "        if length != 0:\n", "        if False:\n", "case void-arm-nonzero-l "},
 	{"arm-trailing", "kind_union.py", "    if sub.pos != sub.end:\n        raise Refused(\"wire_damaged\", \"bytes left inside an arm's L after its payload\")", "    if False:\n        raise Refused(\"wire_damaged\", \"bytes left inside an arm's L after its payload\")", "case arm-long-width "},

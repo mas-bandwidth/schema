@@ -136,7 +136,7 @@ def load_table(cls: type[_T], data: Any, report: LoadReport | None = None) -> _T
             # compares a byte with a declaration, so damage anywhere outranks
             # a kind mismatch or a range met first; the walk runs only on this
             # refusal path.
-            check_file(view, ids)
+            _check_file(view, ids)
         raise
     _resolve(ctx)
     if report is not None:
@@ -298,18 +298,18 @@ def _skip(reader: Reader, kind: int, depth: int = 0) -> None:
         arm_kind = reader.byte()
         payload = reader.take(reader.varint())
         if arm_kind in _STRUCTURAL:
-            if depth >= MAX_DEPTH:
+            if depth >= _MAX_DEPTH:
                 raise Refused("wire_damaged", "a union arm nested past the binary bound")
             depth += 1
-        check_content(payload, arm_kind, reader.ids, depth)
+        _check_content(payload, arm_kind, reader.ids, depth)
         return
     if kind in (12, 13, 14, 16, 31, 32):
-        check_content(reader.take(reader.varint()), kind, reader.ids, depth)
+        _check_content(reader.take(reader.varint()), kind, reader.ids, depth)
         return
     raise Refused("wire_damaged", f"kind {kind} is a kind no reader can skip")
 
 
-MAX_DEPTH = 128
+_MAX_DEPTH = 128
 _STRUCTURAL = frozenset((13, 14, 15, 16))
 _ARRAY_ELEMENT_KINDS = frozenset((*range(1, 14), 15, 17, *range(18, 31)))
 _KEYED_ELEMENT_KINDS = frozenset((*range(1, 12), 13, *range(18, 31)))
@@ -317,7 +317,7 @@ _EXTENT_CAP = 0x7FFFFFFF
 _RESERVED_IDS = frozenset((0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFD))
 
 
-def check_content(data: memoryview, kind: int, ids: list[int], depth: int = 0) -> None:
+def _check_content(data: memoryview, kind: int, ids: list[int], depth: int = 0) -> None:
     """Judge a payload its length already frames: it must be consumed exactly.
 
     The port of the engine's wire check over a field's, an arm's or a keyed
@@ -339,7 +339,7 @@ def check_content(data: memoryview, kind: int, ids: list[int], depth: int = 0) -
             raise Refused("wire_damaged", "kind 32 with a nonzero L")
         return
     if kind in (13, 14, 16):
-        if depth >= MAX_DEPTH:
+        if depth >= _MAX_DEPTH:
             raise Refused("wire_damaged", "a framed payload nested past the binary bound")
         reader = Reader(data, 0, len(data), ids)
         if kind == 13:
@@ -380,7 +380,7 @@ def _check_text(data: memoryview) -> None:
         raise Refused("wire_damaged", "ill-formed text") from None
 
 
-def check_file(view: memoryview, ids: list[int]) -> None:
+def _check_file(view: memoryview, ids: list[int]) -> None:
     """Raise the wire check's damage over the whole root body, if any.
 
     The root body is walked as a nested one is, except that it may hold the
@@ -465,6 +465,6 @@ def _check_keyed(reader: Reader, depth: int) -> None:
         if key in seen:
             raise Refused("wire_damaged", "the same keyed slot twice in one keyed body")
         seen.add(key)
-        check_content(reader.take(reader.varint()), element_kind, reader.ids, depth)
+        _check_content(reader.take(reader.varint()), element_kind, reader.ids, depth)
     if reader.pos != reader.end:
         raise Refused("wire_damaged", "bytes left inside a keyed array's L after its slots")

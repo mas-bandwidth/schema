@@ -13,7 +13,7 @@
   field whose arm reference is `0` reads as `None`, as the engine reads it; an
   arm this reader cannot name reads as `None`, counted unknown, and its
   payload is judged by the engine's wire-alone rules, as is any skipped field
-  (`load.check_content`, the port of `wirecheck.go`). The engine judges the
+  (`load._check_content`, the port of `wirecheck.go`). The engine judges the
   whole file's framing before its decode compares a byte with a declaration,
   so a refusal that is not damage runs that walk over the file first, on the
   refusal path only, and damage anywhere outranks it. A count past the bound

@@ -92,7 +92,7 @@ table Root
 		t.Fatal(err)
 	}
 	_, err = compiler.New().Generate(u, "python", compiler.Options{})
-	if err == nil || !strings.Contains(err.Error(), "an array of packet unions in a table closure (Root.shapes)") {
+	if err == nil || !strings.Contains(err.Error(), "an array of unions in a table closure (Root.shapes) whose arms are all packet types") {
 		t.Fatalf("the packet union array was not refused by name: %v", err)
 	}
 }

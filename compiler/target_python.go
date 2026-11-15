@@ -86,8 +86,17 @@ func pythonRefusePacketUnionArrays(u *ir.Unit) error {
 		return nil
 	}
 	sort.Strings(fields)
-	return fmt.Errorf("unit declares an array of packet unions in a table closure (%s) — the python table frame carries arrays of table-side unions, and an array of a union whose arms are all packet types is the packet layer's named follow-on; wrap the union in a table and declare an array of that (docs/PORT-PYTHON.md, docs/SPEC-TABLES.md §2.6, §11)",
-		englishList(fields))
+	// the shared refusal's wording and carrier list, less python itself,
+	// which carries only the table-side form
+	var others []string
+	for _, t := range unionArrayTargets {
+		if t != "python" {
+			others = append(others, t)
+		}
+	}
+	carry, flags := carriers(others)
+	return fmt.Errorf("unit declares an array of unions in a table closure (%s) whose arms are all packet types — such an array is %s only today, and the python form is the packet layer's named follow-on (the python table frame carries arrays of table-side unions); generate with %s, or wrap the union in a table and declare an array of that (docs/SPEC-TABLES.md §2.6, §11)",
+		englishList(fields), englishList(carry), englishList(flags))
 }
 
 func init() {
