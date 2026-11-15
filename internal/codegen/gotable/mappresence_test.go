@@ -20,9 +20,10 @@ import (
 //     reads as absent;
 //   - retain-unknown (§6.6) and the cooked form (§7) keep the presence, and
 //     the view's descriptor names the field optional with its present offset;
-//   - a reader built WITHOUT the `?` reads the present-empty wire as an empty
-//     map, the entries wire as its entries, and the absent wire as empty, each
-//     silently (§2.8: one framing with two spellings).
+//   - a reader built WITHOUT the `?` reads the absent wire as empty and the
+//     entries wire as its entries, and refuses the present-empty wire: it is
+//     an explicit empty at a plain map field's declared default, a spelling no
+//     writer produces (§2.8, §4).
 func TestGoMapPresence(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, mapPresenceSchema, mapPresenceProbe)
@@ -321,11 +322,18 @@ GOLDENS
 func TestPlainReader(t *testing.T) {
 	for _, tc := range []struct {
 		name, golden string
-		count       int32
-	}{{"absent", goldenAbsent, 0}, {"empty", goldenEmpty, 0}, {"entries", goldenEntries, 1}} {
+		count        int32
+		read         bool
+	}{{"absent", goldenAbsent, 0, true}, {"empty", goldenEmpty, 0, false}, {"entries", goldenEntries, 1, true}} {
 		wire, _ := hex.DecodeString(tc.golden)
 		var report TableReport
 		got := MLoad(make([]byte, 1<<16), wire, &report)
+		if !tc.read {
+			if got != nil || report.Err() == nil {
+				t.Fatalf("%s: plain load read=%v %+v; want the refusal at the map's declared default", tc.name, got != nil, report)
+			}
+			continue
+		}
 		if got == nil || report != (TableReport{}) {
 			t.Fatalf("%s: plain load %+v", tc.name, report)
 		}
