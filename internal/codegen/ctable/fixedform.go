@@ -510,9 +510,17 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 				armBytes = un.arms[e.Arg]
 			}
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d, %du, %du, %du, %d }, /* %s */\n",
+		// THE PRESENT LANE: an entry inside an optional's payload carries the
+		// enclosing present byte, plus one, so an absent payload's entries do
+		// not run and validate nothing; zero is "under no optional". The span
+		// the present-defaults entry judges is the whole absent payload.
+		present := int64(0)
+		if at := dead.presentOf(e.Src); at >= 0 {
+			present = at + 1
+		}
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d, %du, %du, %du, %d, %du }, /* %s */\n",
 			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
-			e.GuardCount, guardIndex, split.Elems[i], deadBytes, armBytes, armCount, tagWidth, e.Note)
+			e.GuardCount, guardIndex, split.Elems[i], deadBytes, armBytes, armCount, tagWidth, present, e.Note)
 	}
 	g.pf("};\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(split.Plan))
@@ -894,7 +902,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        int32_t rec_widened = report->widened;\n")
 	}
 	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
-	g.fixedBoolDamagePass(st)
 	g.pf("        /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,\n")
 	g.pf("           §5.3 step 11): a non-zero one refuses the whole load as\n")
 	g.pf("           wire_damaged in this check pass, before any byte of the record lands. */\n")
@@ -902,6 +909,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            int64_t j;\n            for ( j = 0; j < k; ++j ) { %s( values + j ); }\n", g.api(st.Name, "reset"))
 	g.pf("            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;\n")
 	g.pf("            return -1;\n        }\n")
+	g.fixedBoolDamagePass(st)
 	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
 	runDefaults := "NULL"
 	if presentDefaults {
@@ -979,6 +987,10 @@ func (g *tableGen) fixedBoolDamagePass(st *ir.Struct) {
 	g.pf("                const TableFixedEntry * p = &entries[i];\n")
 	g.pf("                uint32_t bool_bytes, b;\n")
 	g.pf("                if ( p->op != kTableFixedBool && p->op != kTableFixedPresentDefaults ) { continue; }\n")
+	g.pf("                /* AN ABSENT OPTIONAL'S PAYLOAD DOES NOT RUN (§3.1, §4.5): its\n")
+	g.pf("                   bytes are dead, and the dead-byte check above has already\n")
+	g.pf("                   judged them as a whole. Nothing here reads them as values. */\n")
+	g.pf("                if ( p->present != 0 && ( at + 8 )[p->present - 1u] == 0 ) { continue; }\n")
 	g.pf("                if ( i >= entry_guarded )\n                {\n")
 	g.pf("                    if ( p->guard_count > 0 )\n                    {\n")
 	g.pf("                        int matches = 1;\n")
@@ -1297,7 +1309,9 @@ emitFixedTextContent is THE ONE CONTENT RULE THE WIRE HAS (§3, §4), the C
 	with no zero among them, checked over the USED LENGTH and nothing else. A payload
 	that is not text is a REFUSAL BY NAME, not damage: the `damaged` flag the
 	root's clamp turns into `refused` + `text_ill_formed`, nothing decoded and
-	no counter moved (§4.5, fix 11). The slack is unspecified and not judged.
+	no counter moved (§4.5, fix 11). The bytes past the used length are DEAD:
+	they must be zero, and the dead-byte check judges them, not this rule
+	(docs/rulings.json fixed-dead-bytes-are-zero).
 */
 func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 	call := fmt.Sprintf("table_wire_utf8( (const uint8_t *) %s%s, (uint64_t) %s%s_length )", val, f.Name, val, f.Name)

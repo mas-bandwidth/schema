@@ -3,6 +3,7 @@ package ctable
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
@@ -67,4 +68,55 @@ func cDeadBytesBody(vec fixedvector.DeadVector, snake string) string {
         if ( memcmp( out, data, (size_t) len ) != 0 ) { printf( "%[1]s: the control did not save back byte for byte\n" ); return 1; }
     }
 `, vec.Name, snake)
+}
+
+// AN ABSENT OPTIONAL'S PAYLOAD ENTRIES DO NOT RUN (docs/rulings.json
+// fixed-dead-bytes-are-zero; docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step
+// 11). Each entry inside an optional's payload carries the INNERMOST enclosing
+// present byte (offset plus one) so the run and the bool/present damage pass
+// skip it when that byte is 0; the whole payload is then judged by the
+// present-defaults entry's dead span, never read as a value.
+func TestFixedAbsentOptionalPayloadHasPresentLane(t *testing.T) {
+	t.Parallel()
+	const snake = "dead_root"
+	header := cT12Header(t, cReadSchema(t, "DeadBytes"))
+	cases := []struct{ comment, want string }{
+		{"label", "1u"},      /* text inside the absent optional's payload */
+		{"nums count", "1u"}, /* counted array inside it */
+		{"flag", "1u"},       /* bool inside it */
+		{"child", "30u"},     /* payload of the nested optional */
+		{"child present, absent payload defaults", "1u"}, /* the nested flag is itself under the outer optional */
+		{"opt present, absent payload defaults", "0u"},   /* the outermost flag is under no optional */
+	}
+	for _, c := range cases {
+		line := cDeadPlanLine(t, header, snake, c.comment)
+		inner := line[strings.Index(line, "{")+1 : strings.LastIndex(line, "}")]
+		fields := strings.Split(inner, ",")
+		got := strings.TrimSpace(fields[len(fields)-1])
+		if got != c.want {
+			t.Errorf("%s: the present lane is %s, want %s", c.comment, got, c.want)
+		}
+	}
+}
+
+// cDeadPlanLine is the one published plan entry whose comment is `comment`.
+func cDeadPlanLine(t *testing.T, header, snake, comment string) string {
+	t.Helper()
+	marker := snake + "_fixed_plan[] = {\n"
+	at := strings.Index(header, marker)
+	if at < 0 {
+		t.Fatalf("the header publishes no %s_fixed_plan", snake)
+	}
+	body := header[at+len(marker):]
+	end := strings.Index(body, "};")
+	if end < 0 {
+		t.Fatalf("the header's %s_fixed_plan has no closing brace", snake)
+	}
+	for line := range strings.SplitSeq(body[:end], "\n") {
+		if strings.Contains(line, "/* "+comment+" */") {
+			return line
+		}
+	}
+	t.Fatalf("the %s_fixed_plan has no entry commented %s", snake, comment)
+	return ""
 }

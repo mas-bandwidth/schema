@@ -72,6 +72,20 @@ func (m fixedDeadMeta) walkPayload(u *ir.Unit, f *ir.Field, at int64) {
 	}
 }
 
+// presentOf is the wire offset of the INNERMOST optional present byte whose
+// payload contains src, or -1 when src is under no optional. The plan carries it
+// as the entry's present lane so an absent payload's entries do not run
+// (docs/rulings.json fixed-dead-bytes-are-zero).
+func (m fixedDeadMeta) presentOf(src int64) int64 {
+	best := int64(-1)
+	for at, width := range m.presents {
+		if src > at && src <= at+width && at > best {
+			best = at
+		}
+	}
+	return best
+}
+
 func (m fixedDeadMeta) walkElement(u *ir.Unit, f *ir.Field, at int64) {
 	if f.Type.Kind != ir.TNamed {
 		return
