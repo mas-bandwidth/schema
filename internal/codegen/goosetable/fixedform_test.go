@@ -31,6 +31,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -385,6 +386,8 @@ func TestGooseFixedFormNegativeControl(t *testing.T) {
 // any one value.
 func TestGooseFixedFormRoundTripsEveryFixedRoot(t *testing.T) {
 	t.Parallel()
+	// each root runs under the slow gate; without it the sweep counts none
+	slowtest.Gate(t, "the Goose toolchain")
 	var paths []string
 	for _, glob := range []string{"test/tables/*.schema", "tables/examples/*.schema"} {
 		hits, err := filepath.Glob(filepath.Join(fixedRoot, glob))
