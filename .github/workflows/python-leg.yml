@@ -59,7 +59,7 @@ jobs:
           - { os: fleet, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: macos-latest, runner: macos-latest }
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
