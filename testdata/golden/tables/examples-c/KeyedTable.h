@@ -4318,8 +4318,10 @@ static SCHEMA_UNUSED int tabledemo_table_message_shape_read(const uint8_t * in,i
 }
 static SCHEMA_UNUSED int tabledemo_table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,tabledemo_table_message_entry_t * e)
 {
- tabledemo_table_message_shape_facts_t own={0},elem={0};
+ tabledemo_table_message_shape_facts_t own,elem;
  int i;
+ memset(&own,0,sizeof(own));
+ memset(&elem,0,sizeof(elem));
  if(*at<0||*at>size-9)return 0;
  memset(e,0,sizeof(*e));
  e->value_bits=e->elem_value_bits=-1;
@@ -4433,8 +4435,9 @@ refused:
 }
 static SCHEMA_UNUSED int tabledemo_announce_read(tabledemo_table_vocabulary_t * v,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
 {
- tabledemo_table_report_t ignored={0};
+ tabledemo_table_report_t ignored;
  int ok;
+ memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  if(v->announced||v->refused){report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_SECOND_ANNOUNCEMENT;
@@ -5772,11 +5775,12 @@ static SCHEMA_UNUSED int tabledemo_team_config_load_message_body(tabledemo_table
 /* team_config_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
 static SCHEMA_UNUSED int tabledemo_team_config_load_messages(tabledemo_team_config_t * values,int64_t * count,const tabledemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
 {
- tabledemo_table_report_t ignored={0};
+ tabledemo_table_report_t ignored;
  tabledemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
  int32_t non_finite_before;
  int ok;
+ memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  memset(report,0,sizeof(*report));
  if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -6049,11 +6053,12 @@ static SCHEMA_UNUSED int tabledemo_gunner_config_load_message_body(tabledemo_tab
 /* gunner_config_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
 static SCHEMA_UNUSED int tabledemo_gunner_config_load_messages(tabledemo_gunner_config_t * values,int64_t * count,const tabledemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
 {
- tabledemo_table_report_t ignored={0};
+ tabledemo_table_report_t ignored;
  tabledemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
  int32_t non_finite_before;
  int ok;
+ memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  memset(report,0,sizeof(*report));
  if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -6384,11 +6389,12 @@ static SCHEMA_UNUSED int tabledemo_turret_config_load_message_body(tabledemo_tab
 /* turret_config_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
 static SCHEMA_UNUSED int tabledemo_turret_config_load_messages(tabledemo_turret_config_t * values,int64_t * count,const tabledemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
 {
- tabledemo_table_report_t ignored={0};
+ tabledemo_table_report_t ignored;
  tabledemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
  int32_t non_finite_before;
  int ok;
+ memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  memset(report,0,sizeof(*report));
  if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -6868,11 +6874,12 @@ static SCHEMA_UNUSED int tabledemo_hull_config_load_message_body(tabledemo_table
 /* hull_config_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
 static SCHEMA_UNUSED int tabledemo_hull_config_load_messages(tabledemo_hull_config_t * values,int64_t * count,const tabledemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
 {
- tabledemo_table_report_t ignored={0};
+ tabledemo_table_report_t ignored;
  tabledemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
  int32_t non_finite_before;
  int ok;
+ memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  memset(report,0,sizeof(*report));
  if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -7495,11 +7502,12 @@ static SCHEMA_UNUSED int tabledemo_keyed_config_load_message_body(tabledemo_tabl
 /* keyed_config_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
 static SCHEMA_UNUSED int tabledemo_keyed_config_load_messages(tabledemo_keyed_config_t * values,int64_t * count,const tabledemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
 {
- tabledemo_table_report_t ignored={0};
+ tabledemo_table_report_t ignored;
  tabledemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
  int32_t non_finite_before;
  int ok;
+ memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  memset(report,0,sizeof(*report));
  if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -7884,11 +7892,12 @@ static SCHEMA_UNUSED int tabledemo_score_board_load_message_body(tabledemo_table
 /* score_board_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
 static SCHEMA_UNUSED int tabledemo_score_board_load_messages(tabledemo_score_board_t * values,int64_t * count,const tabledemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
 {
- tabledemo_table_report_t ignored={0};
+ tabledemo_table_report_t ignored;
  tabledemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
  int32_t non_finite_before;
  int ok;
+ memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  memset(report,0,sizeof(*report));
  if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -8371,9 +8380,9 @@ static SCHEMA_UNUSED int64_t tabledemo_team_config_fixed_load( tabledemo_team_co
     if ( data[0] != TABLEDEMO_K_TABLE_FIXED_FORM )
     {
         report->refused = 1;
-        report->reason = data[0] == 1 ? SCHEMA_TABLEDEMO_TABLE_PREVIOUS_FORM
-                       : data[0] == 2 ? SCHEMA_TABLEDEMO_TABLE_MESSAGE_FORM_AS_FILE
-                       : SCHEMA_TABLEDEMO_TABLE_NEWER_FORM;
+        report->reason = data[0] == 1 ? (int)SCHEMA_TABLEDEMO_TABLE_PREVIOUS_FORM
+                       : data[0] == 2 ? (int)SCHEMA_TABLEDEMO_TABLE_MESSAGE_FORM_AS_FILE
+                       : (int)SCHEMA_TABLEDEMO_TABLE_NEWER_FORM;
         return -1;
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
@@ -8658,9 +8667,9 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_config_fixed_load( tabledemo_gunne
     if ( data[0] != TABLEDEMO_K_TABLE_FIXED_FORM )
     {
         report->refused = 1;
-        report->reason = data[0] == 1 ? SCHEMA_TABLEDEMO_TABLE_PREVIOUS_FORM
-                       : data[0] == 2 ? SCHEMA_TABLEDEMO_TABLE_MESSAGE_FORM_AS_FILE
-                       : SCHEMA_TABLEDEMO_TABLE_NEWER_FORM;
+        report->reason = data[0] == 1 ? (int)SCHEMA_TABLEDEMO_TABLE_PREVIOUS_FORM
+                       : data[0] == 2 ? (int)SCHEMA_TABLEDEMO_TABLE_MESSAGE_FORM_AS_FILE
+                       : (int)SCHEMA_TABLEDEMO_TABLE_NEWER_FORM;
         return -1;
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
@@ -8957,9 +8966,9 @@ static SCHEMA_UNUSED int64_t tabledemo_turret_config_fixed_load( tabledemo_turre
     if ( data[0] != TABLEDEMO_K_TABLE_FIXED_FORM )
     {
         report->refused = 1;
-        report->reason = data[0] == 1 ? SCHEMA_TABLEDEMO_TABLE_PREVIOUS_FORM
-                       : data[0] == 2 ? SCHEMA_TABLEDEMO_TABLE_MESSAGE_FORM_AS_FILE
-                       : SCHEMA_TABLEDEMO_TABLE_NEWER_FORM;
+        report->reason = data[0] == 1 ? (int)SCHEMA_TABLEDEMO_TABLE_PREVIOUS_FORM
+                       : data[0] == 2 ? (int)SCHEMA_TABLEDEMO_TABLE_MESSAGE_FORM_AS_FILE
+                       : (int)SCHEMA_TABLEDEMO_TABLE_NEWER_FORM;
         return -1;
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
@@ -9286,9 +9295,9 @@ static SCHEMA_UNUSED int64_t tabledemo_hull_config_fixed_load( tabledemo_hull_co
     if ( data[0] != TABLEDEMO_K_TABLE_FIXED_FORM )
     {
         report->refused = 1;
-        report->reason = data[0] == 1 ? SCHEMA_TABLEDEMO_TABLE_PREVIOUS_FORM
-                       : data[0] == 2 ? SCHEMA_TABLEDEMO_TABLE_MESSAGE_FORM_AS_FILE
-                       : SCHEMA_TABLEDEMO_TABLE_NEWER_FORM;
+        report->reason = data[0] == 1 ? (int)SCHEMA_TABLEDEMO_TABLE_PREVIOUS_FORM
+                       : data[0] == 2 ? (int)SCHEMA_TABLEDEMO_TABLE_MESSAGE_FORM_AS_FILE
+                       : (int)SCHEMA_TABLEDEMO_TABLE_NEWER_FORM;
         return -1;
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are
@@ -9753,9 +9762,9 @@ static SCHEMA_UNUSED int64_t tabledemo_keyed_config_fixed_load( tabledemo_keyed_
     if ( data[0] != TABLEDEMO_K_TABLE_FIXED_FORM )
     {
         report->refused = 1;
-        report->reason = data[0] == 1 ? SCHEMA_TABLEDEMO_TABLE_PREVIOUS_FORM
-                       : data[0] == 2 ? SCHEMA_TABLEDEMO_TABLE_MESSAGE_FORM_AS_FILE
-                       : SCHEMA_TABLEDEMO_TABLE_NEWER_FORM;
+        report->reason = data[0] == 1 ? (int)SCHEMA_TABLEDEMO_TABLE_PREVIOUS_FORM
+                       : data[0] == 2 ? (int)SCHEMA_TABLEDEMO_TABLE_MESSAGE_FORM_AS_FILE
+                       : (int)SCHEMA_TABLEDEMO_TABLE_NEWER_FORM;
         return -1;
     }
     /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are

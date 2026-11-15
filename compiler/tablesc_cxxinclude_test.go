@@ -68,7 +68,7 @@ func TestCTablePointerHeaderIncludesFromCxx(t *testing.T) {
 				}
 				// The C++ leg holds the compile the extern "C" block promises;
 				// the C leg below holds the header warning-clean.
-				if output, err := exec.Command(cxx, "-std=c++17", "-fsyntax-only", "-I", dir, cpp).CombinedOutput(); err != nil {
+				if output, err := exec.Command(cxx, "-std=c++17", "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-I", dir, cpp).CombinedOutput(); err != nil {
 					t.Errorf("%s included from C++: %v\n%s", header, err, output)
 				}
 				if output, err := exec.Command(cc, "-std=c99", "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-I", dir, c).CombinedOutput(); err != nil {

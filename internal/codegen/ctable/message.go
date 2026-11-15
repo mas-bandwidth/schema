@@ -212,7 +212,8 @@ static SCHEMA_UNUSED int table_message_shape_read(const uint8_t * in,int64_t siz
 }
 static SCHEMA_UNUSED int table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,TableMessageEntry * e)
 {
- TableMessageShapeFacts own={0},elem={0};int i;
+ TableMessageShapeFacts own,elem;int i;
+ memset(&own,0,sizeof(own));memset(&elem,0,sizeof(elem));
  if(*at<0||*at>size-9)return 0;memset(e,0,sizeof(*e));e->value_bits=e->elem_value_bits=-1;
  for(i=0;i<8;i++)e->id|=(uint64_t)in[*at+i]<<(8*i);e->kind=in[*at+8];*at+=9;
  if(!table_message_known_kind(e->kind)||!table_message_shape_read(in,size,at,e->kind,&own))return 0;
@@ -278,7 +279,8 @@ refused:
 }
 static SCHEMA_UNUSED int announce_read(TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
 {
- TableReport ignored={0};int ok;
+ TableReport ignored;int ok;
+ memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  if(v->announced||v->refused){report->refused=1;report->reason=SCHEMA_TABLE_SECOND_ANNOUNCEMENT;return 0;}
  ok=table_announce_once(v,buffer,bytes,report);if(!ok)v->refused=1;return ok;

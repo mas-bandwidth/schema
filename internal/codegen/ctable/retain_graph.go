@@ -71,7 +71,7 @@ func (g *tableGen) emitRetainFileRoot(st *ir.Struct) {
 		blobSharedFinish = "||table_report_finish(report,1)"
 	}
 	g.pf("static SCHEMA_UNUSED const %s * %s(uint8_t * region,int64_t region_bytes,const uint8_t * wire,int64_t wire_bytes,TableRetain * retain,TableReport * report)\n{\n", n, g.api(n, "load_retain"))
-	g.pf(" TableReport ignored={0};TableReader reader;TableNodeMap nodes;TableNodeDirEntry * directory;TableRegionSink place;TableSink sink;TableRetainWalk retention;int64_t data,records,total;int refused_before,reason_before;int32_t non_finite_before;\n if(report==NULL)report=&ignored;refused_before=report->refused;reason_before=report->reason;non_finite_before=report->non_finite_floats;report->refused=0;table_retain_reset(retain,NULL,NULL);\n")
+	g.pf(" TableReport ignored;TableReader reader;TableNodeMap nodes;TableNodeDirEntry * directory;TableRegionSink place;TableSink sink;TableRetainWalk retention;int64_t data,records,total;int refused_before,reason_before;int32_t non_finite_before;memset(&ignored,0,sizeof(ignored));\n if(report==NULL)report=&ignored;refused_before=report->refused;reason_before=report->reason;non_finite_before=report->non_finite_floats;report->refused=0;table_retain_reset(retain,NULL,NULL);\n")
 	if st.Integrity != "" {
 		g.pf(" if(wire_bytes>0&&wire!=NULL&&wire[0]==1&&!schema_table_integrity_holds_(wire,wire_bytes)){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;return NULL;}\n if(wire_bytes>0&&wire!=NULL&&wire[0]==1)wire_bytes-=4;\n")
 	}

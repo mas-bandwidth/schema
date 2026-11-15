@@ -4318,8 +4318,10 @@ static SCHEMA_UNUSED int tabledemo_table_message_shape_read(const uint8_t * in,i
 }
 static SCHEMA_UNUSED int tabledemo_table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,tabledemo_table_message_entry_t * e)
 {
- tabledemo_table_message_shape_facts_t own={0},elem={0};
+ tabledemo_table_message_shape_facts_t own,elem;
  int i;
+ memset(&own,0,sizeof(own));
+ memset(&elem,0,sizeof(elem));
  if(*at<0||*at>size-9)return 0;
  memset(e,0,sizeof(*e));
  e->value_bits=e->elem_value_bits=-1;
@@ -4433,8 +4435,9 @@ refused:
 }
 static SCHEMA_UNUSED int tabledemo_announce_read(tabledemo_table_vocabulary_t * v,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
 {
- tabledemo_table_report_t ignored={0};
+ tabledemo_table_report_t ignored;
  int ok;
+ memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  if(v->announced||v->refused){report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_SECOND_ANNOUNCEMENT;
@@ -6410,7 +6413,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_retain_(tabledemo_ta
 }
 static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load_retain(uint8_t * region,int64_t region_bytes,const uint8_t * wire,int64_t wire_bytes,tabledemo_table_retain_t * retain,tabledemo_table_report_t * report)
 {
- tabledemo_table_report_t ignored={0};
+ tabledemo_table_report_t ignored;
  tabledemo_table_reader_t reader;
  tabledemo_table_node_map_t nodes;
  tabledemo_table_node_dir_entry_t * directory;
@@ -6420,6 +6423,7 @@ static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load_retain(uin
  int64_t data,records,total;
  int refused_before,reason_before;
  int32_t non_finite_before;
+ memset(&ignored,0,sizeof(ignored));
  if(report==NULL)report=&ignored;
  refused_before=report->refused;
  reason_before=report->reason;

@@ -380,7 +380,7 @@ func (g *tableGen) emitFixedMessageRead(st *ir.Struct) {
 	// refuses at the first condition it meets.
 	g.pf("/* %s is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */\n", g.api(st.Name, "load_messages"))
 	g.pf("static SCHEMA_UNUSED int %s(%s * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)\n{\n", g.api(st.Name, "load_messages"), st.Name)
-	g.pf(" TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;int32_t non_finite_before;int ok;if(report==NULL)report=&ignored;memset(report,0,sizeof(*report));\n if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}capacity=*count;*count=0;\n")
+	g.pf(" TableReport ignored;TableMessageReader r;int64_t capacity,bodies,i;int32_t non_finite_before;int ok;memset(&ignored,0,sizeof(ignored));if(report==NULL)report=&ignored;memset(report,0,sizeof(*report));\n if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}capacity=*count;*count=0;\n")
 	if st.Integrity != "" {
 		g.pf(" if(bytes<1||buffer==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}\n if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;report->refuse_reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM;return 0;}\n if(bytes<6||!schema_table_integrity_holds_(buffer,bytes)){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;return 0;}\n bytes-=4;\n")
 	}
