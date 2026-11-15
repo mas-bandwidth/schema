@@ -614,8 +614,13 @@ fn jw_view(c: JvOut&, s: i64, d: FieldDesc) -> const u8[:] {
 }
 
 // ---- PASS ONE (§16.7): every written slot that names a node, counted ----
+//
+// The count walk is an explicit work list, so a long pointer chain costs no
+// stack per node. Only by-value nesting recurses while the slots are
+// collected, and its depth is the declaration's.
 
-recursive fn jw_count_rec(c: JvOut&, tab: i64, rec: i64) {
+// jw_count_edges appends one record's pointer edges, in field order.
+recursive fn jw_count_edges(c: JvOut&, tab: i64, rec: i64, out: i64[>..<]&) {
     let n = c.unit.tables[tab].fields.len;
     var i: i64 = 0;
     while i < n {
@@ -623,46 +628,31 @@ recursive fn jw_count_rec(c: JvOut&, tab: i64, rec: i64) {
         let d = c.unit.tables[tab].fields[i];
         let s = jv_slot(c.vals, rec, i);
         if jv_guard(c.unit, c.vals, tab, rec, i) && !(d.optional && jv_state(c.vals, s) == ValAbsent) {
-            jw_count_value(c, s, d);
+            jw_count_value(c, s, d, out);
         }
         i += 1;
     }
 }
 
-fn jw_count_node(c: JvOut&, wire: i64) {
-    if wire <= 0 { return; }
-    c.count[wire] += 1;
-    if c.open[wire] {
-        c.bad = true; // a data cycle (§3.1)
-        return;
-    }
-    if c.count[wire] > 1 || wire < 2 { return; }
-    let n = wire - 2;
-    if c.nodes[n].blob != 0 || c.nodes[n].tab < 0 || c.nodes[n].val < 0 { return; }
-    c.open[wire] = true;
-    jw_count_rec(c, c.nodes[n].tab, c.nodes[n].val);
-    c.open[wire] = false;
-}
-
-recursive fn jw_count_value(c: JvOut&, s: i64, d: FieldDesc) {
+recursive fn jw_count_value(c: JvOut&, s: i64, d: FieldDesc, out: i64[>..<]&) {
     if s < 0 { return; }
     if d.shape == ShapePtr || d.shape == ShapeSBlob || d.shape == ShapeBBlob {
-        jw_count_node(c, jw_edge(c, s));
+        out.push(jw_edge(c, s));
         return;
     }
     if d.shape == ShapeTab {
-        if c.vals[s].made { jw_count_rec(c, c.vals[s].tab, s); }
+        if c.vals[s].made { jw_count_edges(c, c.vals[s].tab, s, out); }
         return;
     }
     if d.shape == ShapeUnion {
-        jw_count_arm(c, s, d.ref);
+        jw_count_arm(c, s, d.ref, out);
         return;
     }
     if d.shape == ShapeMap {
         if !c.vals[s].made { return; }
         for k in c.vals[s].len {
             let e = c.vals[s].first + k;
-            if c.vals[e].made { jw_count_rec(c, c.vals[e].tab, e); }
+            if c.vals[e].made { jw_count_edges(c, c.vals[e].tab, e, out); }
         }
         return;
     }
@@ -673,17 +663,63 @@ recursive fn jw_count_value(c: JvOut&, s: i64, d: FieldDesc) {
         let live = if d.array == ArrayCounted || d.array == ArrayList { c.vals[s].len } else { c.vals[s].count };
         for k in live {
             let es = c.vals[s].first + k;
-            jw_count_value(c, es, e);
+            jw_count_value(c, es, e, out);
         }
     }
 }
 
-fn jw_count_arm(c: JvOut&, s: i64, name: const u8[:]) {
+recursive fn jw_count_arm(c: JvOut&, s: i64, name: const u8[:], out: i64[>..<]&) {
     let tag = c.vals[s].bits.lo as! i64;
     if c.vals[s].state != ValPresent || tag == 0 || !c.vals[s].made { return; }
     let u = jv_union(c.unit, name);
     if u < 0 || tag > c.unit.unions[u].arms.len { return; }
-    jw_count_value(c, c.vals[s].first, c.unit.unions[u].arms[tag - 1]);
+    jw_count_value(c, c.vals[s].first, c.unit.unions[u].arms[tag - 1], out);
+}
+
+// jw_count_graph counts every written slot that names a node. Each work entry
+// enters a wire node or closes one still open; a node still open when it is
+// entered again is a data cycle (§3.1).
+fn jw_count_graph(c: JvOut&, tab: i64, rec: i64) {
+    var pending: i64[>..<] = [];
+    var stack: i64[>..<] = [];
+    var closing: bool[>..<] = [];
+    jw_count_edges(c, tab, rec, pending);
+    var at = pending.len;
+    while at > 0 {
+        at -= 1;
+        stack.push(pending[at]);
+        closing.push(false);
+    }
+    while stack.len > 0 {
+        let wire = stack[stack.len - 1];
+        let close = closing[closing.len - 1];
+        stack.resize(stack.len - 1);
+        closing.resize(closing.len - 1);
+        if close {
+            c.open[wire] = false;
+            continue;
+        }
+        if wire <= 0 || c.bad { continue; }
+        c.count[wire] += 1;
+        if c.open[wire] {
+            c.bad = true; // a data cycle (§3.1)
+            continue;
+        }
+        if c.count[wire] > 1 || wire < 2 { continue; }
+        let n = wire - 2;
+        if c.nodes[n].blob != 0 || c.nodes[n].tab < 0 || c.nodes[n].val < 0 { continue; }
+        c.open[wire] = true;
+        pending.resize(0);
+        jw_count_edges(c, c.nodes[n].tab, c.nodes[n].val, pending);
+        stack.push(wire);
+        closing.push(true);
+        var next = pending.len;
+        while next > 0 {
+            next -= 1;
+            stack.push(pending[next]);
+            closing.push(false);
+        }
+    }
 }
 
 // ---- PASS TWO: the text ----
@@ -1078,7 +1114,7 @@ fn json_save_table(unit: LoadUnit, text_unit: JsonUnit, root: const u8[:], data:
     // the root is open for the whole first pass: a reference back at it is a
     // cycle, and it takes no label (§16.7)
     c.open[1] = true;
-    jw_count_rec(c, t, at);
+    jw_count_graph(c, t, at);
     if c.bad { return -1; }
     var text: u8[>..] = [];
     if !jw_rec(c, text, t, at, 0) { return -1; }
