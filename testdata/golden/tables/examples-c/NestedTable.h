@@ -4550,8 +4550,10 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip(tabledemo_table_message_re
    return tabledemo_table_message_skip_run(r,n,width);
   }
   for(i=0;i<n;i++) {
+   int64_t before;
    if(e->kind==16 && !tabledemo_table_message_ref(r,&entry,1))return 0;
-   if(!tabledemo_table_message_skip_deeper(r,&elem))return 0;
+   before=r->bits.offset;
+   if(!tabledemo_table_message_skip_deeper(r,&elem)||r->bits.offset==before)return 0;
   }return 1;
  }
  default:return e->value_bits>=0 && tabledemo_table_bit_skip(&r->bits,e->value_bits);
