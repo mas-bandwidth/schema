@@ -159,7 +159,18 @@ listed case that passes fails the leg until its line is removed.
   moo and squirrel in `test/conformance/relaxed.txt`: each still writes
   the element defaults into dead counted slots (CI full 43656719730). C, JS
   (its ten cases pass and are gated again, 2026-11-15) and the tool are
-  right. WIP: none.
+  right. WIP: none. The same five rows are skipped by name in
+  `TestSquirrelCookWriterMatchesTheCorpus` (internal/codegen/squirreltable/cookwrite_test.go,
+  `squirrelCookRelaxed`).
+- `relax/squirrel-cook-write-zero-bytes`: `TestSquirrelCookWriterMatchesTheCorpus`
+  (nightly, SCHEMA_SLOW) also differs in six more cook-write rows, keyed_config,
+  keyed_default, v1_cfg, v2_cfg, scalars_default and scalars_edges: the
+  fixtures were regenerated in 695103dad with an absent optional's payload
+  zeroed, and the Squirrel cook writer still writes its defaults there.
+  Files: internal/codegen/squirreltable/cookwrite_test.go (`squirrelCookRelaxed`;
+  a relaxed row that matches fails the test). Real fix: find the bytes the
+  Squirrel cook writer zero an absent optional's payload, as the C writer
+  and the tool do, and drop the rows from the map. WIP: none.
 
 ## CI time (the 110 s per-commit wall)
 
