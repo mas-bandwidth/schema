@@ -395,12 +395,12 @@ func TestPythonVtFixedClassElisionNegativeControl(t *testing.T) {
 		name, path, anchor, replacement, red string
 	}{
 		// the nested table never elides: every all-default case is red
-		{"never_elides", "vtel/_schema/kind_table.py", "if len(body) <= 1:", "if len(body) < 1:", "vt_elide_all_default"},
-		{"declared_defaults", "vtel/_schema/kind_table.py", "if len(body) <= 1:", "if len(body) < 1:", "vt_elide_declared_defaults"},
+		{"never_elides", "vtel/_schema/kind_table.py", "if body_len <= 1:", "if body_len < 1:", "vt_elide_all_default"},
+		{"declared_defaults", "vtel/_schema/kind_table.py", "if body_len <= 1:", "if body_len < 1:", "vt_elide_declared_defaults"},
 		// a small body elides: a table one field off its default is lost
-		{"one_off", "vtel/_schema/kind_table.py", "if len(body) <= 1:", "if len(body) <= 8:", "vt_elide_one_off"},
+		{"one_off", "vtel/_schema/kind_table.py", "if body_len <= 1:", "if body_len <= 8:", "vt_elide_one_off"},
 		// the old equality elision: a table holding a fixed array of tables elides
-		{"equality_elision", "vtel/_schema/kind_table.py", "if len(body) <= 1:", "if value == descriptor.new_by_name(fd.target):", "vt_elide_fixed_array_rides"},
+		{"equality_elision", "vtel/_schema/kind_table.py", "if body_len <= 1:", "if value == descriptor.new_by_name(fd.target):", "vt_elide_fixed_array_rides"},
 		// a plain float judged by == elides -0.0 under a 0.0 default
 		{"neg_zero", "vtel/_schema/descriptor.py", "return struct.pack(\"<f\", value) == struct.pack(\"<f\", fd.default)", "return bool(value == fd.default)", "vt_elide_neg_zero"},
 		// the ids an elided body interned are kept: two levels deep is red
