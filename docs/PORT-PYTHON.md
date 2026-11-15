@@ -277,6 +277,8 @@ per unit, named for the unit's package:
 | `internal/codegen/python` | the type surface's emitter (`Generate`), the identifier rules (`CheckNames`) and, from the packet layer, its codec |
 | `internal/codegen/python/runtime/_schema/` | the runtime, embedded and emitted verbatim: the errors, and serialize.py vendored by sha256 (`runtime/SERIALIZE_PIN`, `make vendor-serialize-python`) |
 | `internal/codegen/python/pyrun` | the test helper (THE HARNESS) |
+| `internal/codegen/pythontable/runtime/_schema/block.py` | the block form's read side: Open, its refusals, and the descriptor-only row dump |
+| `internal/codegen/pythontable/runtime/_schema/blockbuild.py` | the block form's builder: Begin, BlockMaxBytes and BlockBytes |
 | `internal/codegen/pythontable` | the table surface's emitter and codec, from the table layers (P5) |
 | `internal/tablenames/python.go` | the table runtime's claimed names, from the table layers (P5) |
 | `make/python-toolchain.mk`, `make/python.mk`, `make/python-*.mk` | the pin, the leg, and one fragment per gate |
@@ -366,6 +368,42 @@ generated load is 2% slower on 3.15.2 and 4% faster on 3.11.18. Save and load
 together, the generated pair is 2% faster on 3.15.2 and 11% faster on 3.11.18,
 so the pair is kept. `TestPythonTableCoreShapeBench` re-measures it and holds
 both shapes to the same value.
+
+## THE BLOCK FORM
+
+A fixed table has a third projection beside its wire and its cook: the block
+form (docs/SPEC-TABLES.md §19). Nothing declares it. The generated class
+carries its `block` and `block_row` descriptors as constant data built once at
+import from the compiler's own `ir.Blocks` layout; the runtime derives no
+layout of its own.
+
+- **Read.** `block.BlockOpen(T, name, data, build_version=None, base_offset=0)`
+  returns a handle or raises `Refused`. It checks the three-word prologue
+  (magic, byte order, build version), then every out-of-line array's pitch,
+  count, offset and extent, then the used extent against the bytes passed, and
+  last the base's alignment. A Python `bytes` object has no address, so
+  `base_offset` is the caller's offset into the buffer the bytes view; a
+  non-zero, non-multiple-of-64 offset is `unaligned_base`. `block.Dump(handle)`
+  is the canonical row dump (testdata/conformance/tables/FORMAT.md), read
+  through the descriptors alone.
+- **Build.** `blockbuild.Begin(T, root, counts=None)` writes the prologue and
+  each array's sixteen-byte `(offset_of, count, stride)` triple, refuses a
+  count outside `[0, maximum]` with `InvalidValue` naming the array, and
+  touches no row. `BlockMaxBytes` is the storage size over the maxima and
+  `BlockBytes` is the used extent. The bytes are a `bytearray`, so a caller
+  may fill rows in place; the base offset is supplied at Open, not stamped by
+  Begin.
+- **The shape is fixed.** The block form has one code shape, the descriptor
+  walk: D1's two shapes are the packet and scalar-table hot paths, and the
+  block read is a pointer walk over generated layout data with no alternative
+  to measure.
+- **The corpus.** `TestPythonBlockRead` reads both committed images
+  (`block_render`, `block_padded`) value for value against Go's dump under
+  both pins; its refusal battery and the builder's byte comparison to the
+  generated Go builder live beside it, each with a negative control
+  (`TestPythonBlockReadNegativeControls`, `TestPythonBlockBuilderNegativeControls`).
+- **The surfaces.** The conformance driver answers `block`, `block-foreign`,
+  `block-dump` and `forgery` from the same runtime.
 
 ## IDENTIFIERS
 
