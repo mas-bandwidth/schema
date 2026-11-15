@@ -59,10 +59,13 @@ schema-cs-runs-hostile-corpus-negative-control: $(CS_HOSTILE_BUILD)/bin/.stamp
 		$(CS_HOSTILE_BUILD)/plant/pass $(CS_HOSTILE_CORPUS)/manifest.tsv); \
 	ref=$$(awk -F'\t' 'NR == FNR { ok[$$0] = 1; next } !/^#/ && $$7 == "refuse" && ($$1 in ok) { print $$1; exit }' \
 		$(CS_HOSTILE_BUILD)/plant/pass $(CS_HOSTILE_CORPUS)/manifest.tsv); \
-	if [ -z "$$acc" ] || [ -z "$$ref" ]; then echo 'NEGATIVE CONTROL FAILED: no passing accepted and refused case to plant'; exit 1; fi; \
-	awk -F'\t' -v OFS='\t' -v acc="$$acc" -v ref="$$ref" \
+	out=$$(awk -F'\t' -v acc="$$acc" -v ref="$$ref" 'NR == FNR { ok[$$0] = 1; next } !/^#/ && $$7 == "accept" && ($$1 in ok) && $$1 != acc && $$1 != ref { print $$1; exit }' \
+		$(CS_HOSTILE_BUILD)/plant/pass $(CS_HOSTILE_CORPUS)/manifest.tsv); \
+	if [ -z "$$acc" ] || [ -z "$$ref" ] || [ -z "$$out" ]; then echo 'NEGATIVE CONTROL FAILED: no passing accepted and refused case to plant'; exit 1; fi; \
+	awk -F'\t' -v OFS='\t' -v acc="$$acc" -v ref="$$ref" -v out="$$out" \
 		'$$1 == acc { $$7 = "refuse"; $$8 = "damaged"; $$9 = "-" } \
-		 $$1 == ref { $$7 = "accept"; $$8 = "-"; $$9 = "0000000000000000000000000000000000000000000000000000000000000000" } { print }' \
+		 $$1 == ref { $$7 = "accept"; $$8 = "-"; $$9 = "0000000000000000000000000000000000000000000000000000000000000000" } \
+		 $$1 == out { $$5 = "inputs/../manifest.tsv" } { print }' \
 		$(CS_HOSTILE_CORPUS)/manifest.tsv > $(CS_HOSTILE_BUILD)/plant/corpus/manifest.tsv; \
 	if cmp -s $(CS_HOSTILE_CORPUS)/manifest.tsv $(CS_HOSTILE_BUILD)/plant/corpus/manifest.tsv; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted verdicts did not apply'; exit 1; fi; \
@@ -74,4 +77,7 @@ schema-cs-runs-hostile-corpus-negative-control: $(CS_HOSTILE_BUILD)/bin/.stamp
 			{ echo "NEGATIVE CONTROL FAILED: the runner went red without naming the planted case $$name"; \
 			  cat $(CS_HOSTILE_BUILD)/plant/log; exit 1; }; \
 	done; \
-	echo "cs hostile-corpus negative control: planted verdicts on $$acc and $$ref red the corpus; unplanted it is green"
+	grep -q "^FAIL $$out .*outside the corpus" $(CS_HOSTILE_BUILD)/plant/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the runner read an input outside the corpus without refusing it"; \
+		  cat $(CS_HOSTILE_BUILD)/plant/log; exit 1; }; \
+	echo "cs hostile-corpus negative control: planted verdicts on $$acc and $$ref and an outside input on $$out red the corpus; unplanted it is green"
