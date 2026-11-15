@@ -297,9 +297,11 @@ static void test_exact_capacity()
 
 // ---- storage invariants: a count or length past its storage is the caller's
 // ---- bug, caught by the debug assert and by nothing in a release build
-// ---- (docs/SPEC.md §5.1). This unit compiles with asserts LIVE, so each case
-// ---- runs in a forked child that must die on the assert.
+// ---- (docs/SPEC.md §5.1). The assert cases below run in a forked child that
+// ---- must die on the assert, and are debug-only; the union-tag refusal stays
+// ---- in every build.
 
+#ifndef NDEBUG
 template <typename Write> static void expect_storage_assert( const char * what, Write write )
 {
     fflush( stdout );
@@ -321,11 +323,13 @@ template <typename Write> static void expect_storage_assert( const char * what, 
         failures++;
     }
 }
+#endif
 
 static void test_storage_invariants()
 {
     static uint8_t buffer[4096];
 
+#ifndef NDEBUG
     // a count above the bound must not read out of the array into the wire
     tabledemo::RootConfig root;
     root.weapons_count = 9; // bound is 8
@@ -350,6 +354,7 @@ static void test_storage_invariants()
     profile.loadout.attachments_count = -5;
     expect_storage_assert( "nested count (measure)", [&] { (void) tabledemo::ProfileConfigMeasure( profile ); } );
     expect_storage_assert( "nested count (save)", [&] { (void) tabledemo::ProfileConfigSave( profile, buffer, sizeof( buffer ) ); } );
+#endif
 
     // an out-of-range union tag refuses in measure exactly as in write
     // (a row the leg still refuses in every build)
