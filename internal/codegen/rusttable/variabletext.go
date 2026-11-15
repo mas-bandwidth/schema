@@ -1594,7 +1594,9 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		if fl := isFlags(f); fl != nil {
 			// a FLAGS MASK reads from the array of its bits' names
 			// (docs/SPEC-TABLES.md §16.2): a name no variant spells counts
-			// unknown, an element that is not a string counts kind_mismatch
+			// unknown, an element that is not a string counts kind_mismatch,
+			// and a KNOWN variant named twice refuses the read as a repeated
+			// key does
 			fmt.Fprintf(b, "%sif jr.peek() == b'[' {\n", in)
 			fmt.Fprintf(b, "%s    jr.p += 1;\n", in)
 			fmt.Fprintf(b, "%s    let mut bits: u64 = 0;\n", in)
@@ -1604,7 +1606,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			fmt.Fprintf(b, "%s            match jr.read_string() {\n", in)
 			fmt.Fprintf(b, "%s                Some(s) => match s.as_str() {\n", in)
 			for i, v := range fl.Variants {
-				fmt.Fprintf(b, "%s                    %q => bits |= 1u64 << %d,\n", in, v, i)
+				fmt.Fprintf(b, "%s                    %q => { let bit = 1u64 << %d; if bits & bit != 0 { jr.damaged = true; } bits |= bit; },\n", in, v, i)
 			}
 			fmt.Fprintf(b, "%s                    _ => jr.unknown += 1,\n", in)
 			fmt.Fprintf(b, "%s                },\n", in)
