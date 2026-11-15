@@ -459,6 +459,10 @@ func TestPythonVtWidening(t *testing.T) {
 	})
 	t.Run("manifest", func(t *testing.T) {
 		t.Parallel()
+		// both pins up front: without SCHEMA_SLOW the whole manifest skips by
+		// name here, so the tally below never counts a row the pins skipped
+		pyrun.Interpreter(t)
+		pyrun.Floor(t)
 		repo := filepath.Join("..", "..", "..")
 		units, rows, expect := widenManifest(t, repo)
 		var mu sync.Mutex
