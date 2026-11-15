@@ -103,10 +103,10 @@ local NOT_GENERATED = "unit not generated for lua: docs/SPEC-TABLES.md §15"
 ---------------------------------------------------------------------------
 
 -- the runtime modules a surface may reach, required when the unit loads so no
--- later require runs against another unit's search path
+-- later require runs against another unit's search path; the order is stable
+-- so every unit loads the same modules the same way
 local RUNTIME = {
-  "load", "save", "json", "retain", "message", "cook",
-  "cookwrite", "block",
+  "block", "cook", "cookwrite", "json", "load", "message", "retain", "save",
 }
 
 -- the unit's table module is <Package>Tables.lua beside its runtime; the
@@ -147,10 +147,11 @@ local function unit(key)
   end
   package.path = dir .. "/?.lua"
   package.cpath = ""
-  u = { T = require(modpath:match("([^/]+)%.lua$")) }
+  u = {}
   for _, m in ipairs(RUNTIME) do
     u[m] = require(m)
   end
+  u.T = require(modpath:match("([^/]+)%.lua$"))
   units[key] = u
   return u
 end
