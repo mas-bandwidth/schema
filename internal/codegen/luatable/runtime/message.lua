@@ -605,6 +605,10 @@ read_value = function(R, T, f, holder, key, ctx, e)
       ctx.reason = "length_over_bound"
       return false
     end
+    -- ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3.3): a string payload
+    -- that is not well-formed UTF-8 or carries a zero byte discards the batch.
+    -- A bytes(N) payload is not text.
+    if s == "string" and not D.text_ok(raw) then return false end
     holder[key] = raw
     return true
   elseif s == "enum" then
