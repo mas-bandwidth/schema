@@ -530,6 +530,18 @@ static SCHEMA_UNUSED int bench_table_reader_array_header( bench_table_reader_t *
     ok = bench_table_reader_leb( &header, count ); sub->offset = header.offset;
     return ok;
 }
+/* THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3, §4): an array body
+   (kind 14) opens with 1-13, 15, 17 or 18-30, and an enum-keyed body (kind
+   16) with 1-11, 13 or 18-30. Any other element kind is damage under any
+   count, a count of 0 included, in a declared field and an unknown one. */
+static SCHEMA_UNUSED int bench_table_array_element_kind_allowed( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 13 ) || kind == 15 || kind == 17 || ( kind >= 18 && kind <= 30 );
+}
+static SCHEMA_UNUSED int bench_table_keyed_element_kind_allowed( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 11 ) || kind == 13 || ( kind >= 18 && kind <= 30 );
+}
 static SCHEMA_UNUSED int bench_table_reader_skip( bench_table_reader_t * r, uint8_t kind )
 {
     int width = 0; uint64_t n;
@@ -630,6 +642,7 @@ static SCHEMA_UNUSED int bench_table_skip_array( bench_table_reader_t * sub, int
     if ( sub->size < 2 ) { return 0; }
     elem_kind = bench_table_reader_get8( sub );
     if ( !bench_table_reader_leb( sub, &count ) ) { return 0; }
+    if ( keyed ? !bench_table_keyed_element_kind_allowed( elem_kind ) : !bench_table_array_element_kind_allowed( elem_kind ) ) { return 0; }
     if ( count > 2147483647ull ) { return 0; }
     if ( count > (uint64_t)(sub->size - sub->offset) ) { return 0; }
     if ( !keyed )

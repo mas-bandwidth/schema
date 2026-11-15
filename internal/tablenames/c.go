@@ -262,6 +262,8 @@ func init() {
 		Name{Name: "table_json_write_wide", What: "the C table wide numeric and text runtime"},
 
 		Name{Name: "table_reader_array_header", What: "the form-1 array header reader"},
+		Name{Name: "table_array_element_kind_allowed", What: "the closed array element-kind list"},
+		Name{Name: "table_keyed_element_kind_allowed", What: "the closed enum-keyed element-kind list"},
 		Name{Name: "table_kind_widens", What: "the form-1 file wire runtime"},
 		Name{Name: "table_reader_child", What: "the form-1 file wire runtime"},
 		Name{Name: "table_reader_id_at", What: "the form-1 file wire runtime"},
