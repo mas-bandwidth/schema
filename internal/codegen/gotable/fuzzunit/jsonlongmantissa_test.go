@@ -40,6 +40,9 @@ func TestGeneratedJSONLongMantissaReadsByValue(t *testing.T) {
 			t.Errorf("%s: precision landed %v, want %v", c.name, v.Precision, c.want)
 		}
 	}
+	// An integer takes an integer token only (§16.2): an exponent is not one,
+	// at any length. A run of digits past the field is out of range, and the
+	// length of that token is not what refuses it.
 	for _, c := range []struct {
 		name string
 		text string
@@ -48,14 +51,11 @@ func TestGeneratedJSONLongMantissaReadsByValue(t *testing.T) {
 		{"1000 zeros", "1" + zeros(1000) + "e-1000"},
 		{"5000 zeros", "1" + zeros(5000) + "e-5000"},
 		{"799 zeros control", "1" + zeros(799) + "e-799"},
+		{"digits past the range", "1" + zeros(600)},
 	} {
-		v, ok := read(`{"experience":` + c.text + `}`)
-		if !ok {
-			t.Errorf("%s: experience refused", c.name)
-			continue
-		}
-		if v.Experience != 1 {
-			t.Errorf("%s: experience landed %d, want 1", c.name, v.Experience)
+		_, ok := read(`{"experience":` + c.text + `}`)
+		if ok {
+			t.Errorf("%s: experience accepted %s", c.name, c.text)
 		}
 	}
 }

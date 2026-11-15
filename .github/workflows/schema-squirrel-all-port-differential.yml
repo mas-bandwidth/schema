@@ -23,21 +23,8 @@ name: Squirrel all-port differential
 #     -timeout 600s.
 
 on:
-  push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-    paths:
-      - 'make/schema-squirrel-all-port-differential.mk'
-      - '.github/workflows/schema-squirrel-all-port-differential.yml'
-      - 'internal/ci/schema_squirrel_all_port_differential_test.go'
-      - 'testdata/conformance/tables/**'
-      - 'internal/tablewire/**'
-  pull_request:
-    paths:
-      - 'make/schema-squirrel-all-port-differential.mk'
-      - '.github/workflows/schema-squirrel-all-port-differential.yml'
-      - 'internal/ci/schema_squirrel_all_port_differential_test.go'
-      - 'testdata/conformance/tables/**'
-      - 'internal/tablewire/**'
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     - cron: '43 7 * * *'
   workflow_dispatch:

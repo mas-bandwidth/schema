@@ -20,37 +20,8 @@ name: schema-luau generated analyze strict gate
 # job presence-checks the pinned tools instead of installing them.
 
 on:
-  push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-    paths:
-      - 'make/schema-luau-generated-analyze-strict-gate.mk'
-      - 'make/luau.mk'
-      - '.github/workflows/schema-luau-generated-analyze-strict-gate.yml'
-      - 'internal/ci/schema_luau_generated_analyze_strict_gate_test.go'
-      - 'internal/codegen/luau/**'
-      - 'internal/codegen/luautable/**'
-      - 'compiler/target_luau.go'
-      - 'examples/**'
-      - 'examples128/**'
-      - 'bench/corpus/**'
-      - 'tables/**'
-      - 'test/tables/**'
-      - 'testdata/conformance/tables/MANIFEST.txt'
-  pull_request:
-    paths:
-      - 'make/schema-luau-generated-analyze-strict-gate.mk'
-      - 'make/luau.mk'
-      - '.github/workflows/schema-luau-generated-analyze-strict-gate.yml'
-      - 'internal/ci/schema_luau_generated_analyze_strict_gate_test.go'
-      - 'internal/codegen/luau/**'
-      - 'internal/codegen/luautable/**'
-      - 'compiler/target_luau.go'
-      - 'examples/**'
-      - 'examples128/**'
-      - 'bench/corpus/**'
-      - 'tables/**'
-      - 'test/tables/**'
-      - 'testdata/conformance/tables/MANIFEST.txt'
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     # nightly, after the other language lenses
     - cron: '0 3 * * *'

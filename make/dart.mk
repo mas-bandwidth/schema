@@ -664,8 +664,11 @@ build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) t
 # scalars (the WIDE KINDS as array elements) are carried by two pieces of
 # cookwrite_form1.go / cookwrite.go. Each leg removes one from a COPY of the
 # emitter, regenerates that unit beside the tree, compiles a copy of the driver
-# against it, and requires the harness to go red on that unit's cook-write
-# rows and on nothing else. No tracked file is written to.
+# against it, and requires the harness to go red on that unit's cook-write rows
+# and on nothing else. The clean driver's own failure set is the baseline, so a
+# row another group already owns is not read as this plant's; every row this
+# plant adds beyond its own still fails the control. No tracked file is written
+# to.
 DART_COOKWRITE_NC := build/dart-cookwrite-nc
 # $(1) leg, $(2) emitter file, $(3) sed sabotage, $(4) unit dir in the tree,
 # $(5) schema source, $(6) the failing rows' name prefix
@@ -682,6 +685,15 @@ define dart-cookwrite-nc-leg
 	     -e "s|../../../build/|$(CURDIR)/build/|g" \
 		test/conformance/dart/main.dart > $(DART_COOKWRITE_NC)/$(1)/main.dart
 	$(DART) compile exe -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
+	@printf 'dart %s/build/conformance-dart\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt
+	@./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt \
+			--work $(DART_COOKWRITE_NC)/$(1)/clean-work > $(DART_COOKWRITE_NC)/$(1)/clean-log 2>&1 || true
+	@awk '/^FAILURES/ { f = 1; next } f && /^  / { sub(/^  /, ""); print }' \
+		$(DART_COOKWRITE_NC)/$(1)/clean-log | LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt
+	@if grep -q "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt; then \
+		echo "NEGATIVE CONTROL FAILED: the clean leg is already red on a $(6) cook-write row"; \
+		grep "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt; exit 1; \
+	fi
 	@printf 'dart %s/$(DART_COOKWRITE_NC)/$(1)/driver-bin\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/drivers.txt
 	@if ./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/drivers.txt \
 			--work $(DART_COOKWRITE_NC)/$(1)/work > $(DART_COOKWRITE_NC)/$(1)/log 2>&1; then \
@@ -691,8 +703,14 @@ define dart-cookwrite-nc-leg
 	@grep -q "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a $(6) cook-write row"; \
 		  tail -30 $(DART_COOKWRITE_NC)/$(1)/log; exit 1; }
-	@if awk '/^FAILURES/ { f = 1; next } f && /^  /' $(DART_COOKWRITE_NC)/$(1)/log | grep -v "dart / cook-write: $(6)"; then \
-		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage turned another row red too"; exit 1; \
+	@awk '/^FAILURES/ { f = 1; next } f && /^  / { sub(/^  /, ""); print }' \
+		$(DART_COOKWRITE_NC)/$(1)/log | grep -v "dart / cook-write: $(6)" \
+		| LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/other-failures.txt
+	@if grep -v -F -x -f $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt \
+			$(DART_COOKWRITE_NC)/$(1)/other-failures.txt | grep -q .; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage turned another row red too"; \
+		grep -v -F -x -f $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt \
+			$(DART_COOKWRITE_NC)/$(1)/other-failures.txt; exit 1; \
 	fi
 	@grep -m1 "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log
 endef
@@ -1834,38 +1852,41 @@ tables-dart-forged-ordinal-negative-control: tables-fixedform-corpus
 		  cat $(DART_ORDINAL_NC)/log; exit 1; }
 	@echo "negative control: a Dart compiled plan that lands a forged ordinal turns TestFixedVersioningForgedOrdinalBothPlans RED"
 
-# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1). A counted array whose count is
-# past the storage it indexes is refused in EVERY build, so this gate compiles
-# the generated writer AOT, where every assert is gone, and requires the cook
-# writer to refuse before the first byte. The control strips the generated
-# guard and requires the same release gate to go red.
-STORAGE_RELEASE_DART := build/storage-release-dart
-.PHONY: write-refusal-storage-release-dart write-refusal-storage-release-dart-negative-control
-write-refusal-storage-release-dart: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/dart/storage_release.dart
-	@rm -rf $(STORAGE_RELEASE_DART) && mkdir -p $(STORAGE_RELEASE_DART)/generated
-	./bin/schema generate --lang dart --out $(STORAGE_RELEASE_DART)/generated $(STORAGE_RELEASE_SCHEMA)
-	@cp test/conformance/dart/storage_release.dart $(STORAGE_RELEASE_DART)/generated/storage_release_main.dart
-	$(DART) compile exe -o $(STORAGE_RELEASE_DART)/gate $(STORAGE_RELEASE_DART)/generated/storage_release_main.dart >/dev/null
-	./$(STORAGE_RELEASE_DART)/gate
+# THE DEBUG STORAGE GATE (docs/SPEC.md §5.1). Dart is an assert leg: a count or
+# a length past the storage it indexes is a debug assert in the cook writer and
+# nothing in a release build. This gate runs the generated writer with asserts
+# on and requires each over-long case to end in the assert, which the driver
+# answers as refused. The control runs the gate first, then strips the
+# generated count and length asserts and requires the same gate to go red on
+# both.
+STORAGE_DEBUG_DART := build/storage-debug-dart
+.PHONY: write-refusal-storage-debug-dart write-refusal-storage-debug-dart-negative-control
+write-refusal-storage-debug-dart: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/dart/storage_debug.dart
+	@rm -rf $(STORAGE_DEBUG_DART) && mkdir -p $(STORAGE_DEBUG_DART)/generated
+	./bin/schema generate --lang dart --out $(STORAGE_DEBUG_DART)/generated $(STORAGE_RELEASE_SCHEMA)
+	@cp test/conformance/dart/storage_debug.dart $(STORAGE_DEBUG_DART)/generated/storage_debug_main.dart
+	$(DART) --enable-asserts $(STORAGE_DEBUG_DART)/generated/storage_debug_main.dart
 
-write-refusal-storage-release-dart-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/dart/storage_release.dart
-	@rm -rf $(STORAGE_RELEASE_DART)-negative && mkdir -p $(STORAGE_RELEASE_DART)-negative/generated
-	./bin/schema generate --lang dart --out $(STORAGE_RELEASE_DART)-negative/generated $(STORAGE_RELEASE_SCHEMA)
-	@sed -i.bak 's/if (value.itemsCount < 0 || value.itemsCount > 8) return false;/if (false) return false; \/\/ SABOTAGED/g' \
-		$(STORAGE_RELEASE_DART)-negative/generated/StorageCook.dart
-	@grep -q 'SABOTAGED' $(STORAGE_RELEASE_DART)-negative/generated/StorageCook.dart || \
-		{ echo "NEGATIVE CONTROL FAILED: the storage guard sabotage did not apply"; exit 1; }
-	@cp test/conformance/dart/storage_release.dart $(STORAGE_RELEASE_DART)-negative/generated/storage_release_main.dart
-	$(DART) compile exe -o $(STORAGE_RELEASE_DART)-negative/gate $(STORAGE_RELEASE_DART)-negative/generated/storage_release_main.dart >/dev/null
-	@if ./$(STORAGE_RELEASE_DART)-negative/gate > $(STORAGE_RELEASE_DART)-negative/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the release storage gate passed with the guard removed"; \
-		cat $(STORAGE_RELEASE_DART)-negative/log; exit 1; \
+write-refusal-storage-debug-dart-negative-control: write-refusal-storage-debug-dart bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/dart/storage_debug.dart
+	@rm -rf $(STORAGE_DEBUG_DART)-negative && mkdir -p $(STORAGE_DEBUG_DART)-negative/generated
+	./bin/schema generate --lang dart --out $(STORAGE_DEBUG_DART)-negative/generated $(STORAGE_RELEASE_SCHEMA)
+	@sed -i.bak -e 's/assert(value.itemsCount <= 8);/\/\/ SABOTAGED count/' \
+		-e 's/assert(value.nameLength <= 16);/\/\/ SABOTAGED length/' \
+		-e 's/assert(value.nameLength <= value.name.length);/\/\/ SABOTAGED storage/' \
+		$(STORAGE_DEBUG_DART)-negative/generated/StorageCook.dart
+	@test "$$(grep -c 'SABOTAGED' $(STORAGE_DEBUG_DART)-negative/generated/StorageCook.dart)" = 3 || \
+		{ echo "NEGATIVE CONTROL FAILED: the storage assert sabotage did not apply"; exit 1; }
+	@cp test/conformance/dart/storage_debug.dart $(STORAGE_DEBUG_DART)-negative/generated/storage_debug_main.dart
+	@if $(DART) --enable-asserts $(STORAGE_DEBUG_DART)-negative/generated/storage_debug_main.dart > $(STORAGE_DEBUG_DART)-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the debug storage gate passed with the asserts removed"; \
+		cat $(STORAGE_DEBUG_DART)-negative/log; exit 1; \
 	fi
-	@grep -q 'FAIL storage release' $(STORAGE_RELEASE_DART)-negative/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the storage refusal"; \
-		  cat $(STORAGE_RELEASE_DART)-negative/log; exit 1; }
-	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_DART)-negative/log
-	@echo "negative control: removing the Dart storage guard turns the release gate RED"
+	@grep -q 'FAIL storage debug count' $(STORAGE_DEBUG_DART)-negative/log && \
+		grep -q 'FAIL storage debug length' $(STORAGE_DEBUG_DART)-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on both storage asserts"; \
+		  cat $(STORAGE_DEBUG_DART)-negative/log; exit 1; }
+	@grep 'FAIL storage debug' $(STORAGE_DEBUG_DART)-negative/log
+	@echo "negative control: removing the Dart storage asserts turns the debug gate RED"
 
 # THE PACKET END CHECK (SPEC §5, packet-canonical-end): the generated public
 # read runs the end check once, after the top-level object, refusing a whole
@@ -1910,3 +1931,47 @@ packet-end-dart-negative-control: packet-end-dart
 	@echo 'negative control: with no end check, the trailing byte and the set final-byte bits are accepted'
 
 test-dart: packet-end-dart packet-end-dart-negative-control
+
+# PACKET COMPRESSED FLOATS HOLD THEIR RANGE (docs/SPEC.md §5.1 row 10,
+# docs/PACKET-WIRE-ALGORITHM.md §2.5): the writer checks the value finite and
+# inside [min, max] before quantizing, and the integer clamp after rounding
+# stays. The shared cases run on the checked twin, where every refused case
+# must fire the assert; the release twin trusts the caller by design, so it
+# only writes the lawful cases and reads them back.
+build/packet-write-cfloat/dart/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/dart.mk
+	./bin/schema generate --lang dart --out build/packet-write-cfloat/dart test/packet-write-cfloat/CFloat.schema
+	@touch $@
+
+.PHONY: packet-write-cfloat-dart packet-write-cfloat-dart-negative-control
+packet-write-cfloat-dart: build/packet-write-cfloat/dart/.stamp
+	$(DART) analyze build/packet-write-cfloat/dart test/packet-write-cfloat/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-write-cfloat/dart test/packet-write-cfloat/dart
+	$(DART) --enable-asserts test/packet-write-cfloat/dart/main.dart test/packet-write-cfloat/cases.txt
+	$(DART) compile exe -o build/packet-write-cfloat/dart/checker test/packet-write-cfloat/dart/main.dart >/dev/null
+	./build/packet-write-cfloat/dart/checker test/packet-write-cfloat/cases.txt
+
+packet-write-cfloat-dart-negative-control: packet-write-cfloat-dart
+	@rm -rf build/packet-write-cfloat/dart-negative && mkdir -p build/packet-write-cfloat/dart-negative
+	go run ./tools/sabotage -name packet-write-cfloat-dart-range -out build/packet-write-cfloat/dart-negative/functions.gotext internal/codegen/dart/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/dart/functions.go":"%s/build/packet-write-cfloat/dart-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-write-cfloat/dart-negative/overlay.json
+	go run -overlay=build/packet-write-cfloat/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-write-cfloat/dart-negative/generated test/packet-write-cfloat/CFloat.schema
+	@sed 's|../../../build/packet-write-cfloat/dart/|$(CURDIR)/build/packet-write-cfloat/dart-negative/generated/|' test/packet-write-cfloat/dart/main.dart > build/packet-write-cfloat/dart-negative/main.dart
+	@if $(DART) --enable-asserts build/packet-write-cfloat/dart-negative/main.dart test/packet-write-cfloat/cases.txt > build/packet-write-cfloat/dart-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the range check is removed and the driver stayed green'; \
+		cat build/packet-write-cfloat/dart-negative/log; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-cfloat above-max: off-range value was written' build/packet-write-cfloat/dart-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: above-max was not the failure'; cat build/packet-write-cfloat/dart-negative/log; exit 1; }
+	@grep -Fq 'FAILED: packet-write-cfloat below-min: off-range value was written' build/packet-write-cfloat/dart-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: below-min was not the failure'; cat build/packet-write-cfloat/dart-negative/log; exit 1; }
+	@grep -Fq 'FAILED: packet-write-cfloat largest-finite-float32: off-range value was written' build/packet-write-cfloat/dart-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: largest-finite-float32 was not the failure'; cat build/packet-write-cfloat/dart-negative/log; exit 1; }
+	@if grep -F 'FAILED: ' build/packet-write-cfloat/dart-negative/log | grep -Fvq \
+		-e 'FAILED: packet-write-cfloat above-max: off-range value was written' \
+		-e 'FAILED: packet-write-cfloat below-min: off-range value was written' \
+		-e 'FAILED: packet-write-cfloat largest-finite-float32: off-range value was written'; then \
+		echo 'NEGATIVE CONTROL FAILED: a case other than the three finite off-range values went red'; \
+		cat build/packet-write-cfloat/dart-negative/log; exit 1; fi
+	@grep -m1 'FAILED: packet-write-cfloat above-max: off-range value was written' build/packet-write-cfloat/dart-negative/log
+	@echo 'negative control: with no range check, the three finite off-range cases are written and nothing else goes red'
+
+test-dart: packet-write-cfloat-dart packet-write-cfloat-dart-negative-control
