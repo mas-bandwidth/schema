@@ -366,7 +366,7 @@ func TeamConfigLoad(value *TeamConfig, data []byte, report *TableReport) bool {
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]TeamConfig
-		if TeamConfigFixedLoad(fixed[:], data, tableFixedReadPlanTeamConfig, read) != 1 {
+		if TeamConfigFixedLoad(fixed[:], data, TeamConfigFixedReadPlan, read) != 1 {
 			TeamConfigReset(value)
 			return false
 		}
@@ -786,7 +786,7 @@ func GunnerConfigLoad(value *GunnerConfig, data []byte, report *TableReport) boo
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]GunnerConfig
-		if GunnerConfigFixedLoad(fixed[:], data, tableFixedReadPlanGunnerConfig, read) != 1 {
+		if GunnerConfigFixedLoad(fixed[:], data, GunnerConfigFixedReadPlan, read) != 1 {
 			GunnerConfigReset(value)
 			return false
 		}
@@ -1200,7 +1200,7 @@ func TurretConfigLoad(value *TurretConfig, data []byte, report *TableReport) boo
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]TurretConfig
-		if TurretConfigFixedLoad(fixed[:], data, tableFixedReadPlanTurretConfig, read) != 1 {
+		if TurretConfigFixedLoad(fixed[:], data, TurretConfigFixedReadPlan, read) != 1 {
 			TurretConfigReset(value)
 			return false
 		}
@@ -1953,7 +1953,7 @@ func HullConfigLoad(value *HullConfig, data []byte, report *TableReport) bool {
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]HullConfig
-		if HullConfigFixedLoad(fixed[:], data, tableFixedReadPlanHullConfig, read) != 1 {
+		if HullConfigFixedLoad(fixed[:], data, HullConfigFixedReadPlan, read) != 1 {
 			HullConfigReset(value)
 			return false
 		}
@@ -3236,7 +3236,7 @@ func KeyedConfigLoad(value *KeyedConfig, data []byte, report *TableReport) bool 
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]KeyedConfig
-		if KeyedConfigFixedLoad(fixed[:], data, tableFixedReadPlanKeyedConfig, read) != 1 {
+		if KeyedConfigFixedLoad(fixed[:], data, KeyedConfigFixedReadPlan, read) != 1 {
 			KeyedConfigReset(value)
 			return false
 		}
@@ -5442,7 +5442,7 @@ var TeamConfigFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanTeamConfig = make([]TableFixedEntry, int(TeamConfigFixedPlanMax))
+var TeamConfigFixedReadPlan = make([]TableFixedEntry, int(TeamConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -5684,7 +5684,7 @@ var GunnerConfigFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanGunnerConfig = make([]TableFixedEntry, int(GunnerConfigFixedPlanMax))
+var GunnerConfigFixedReadPlan = make([]TableFixedEntry, int(GunnerConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -5938,7 +5938,7 @@ var TurretConfigFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanTurretConfig = make([]TableFixedEntry, int(TurretConfigFixedPlanMax))
+var TurretConfigFixedReadPlan = make([]TableFixedEntry, int(TurretConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -6218,7 +6218,7 @@ var HullConfigFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanHullConfig = make([]TableFixedEntry, int(HullConfigFixedPlanMax))
+var HullConfigFixedReadPlan = make([]TableFixedEntry, int(HullConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -6577,7 +6577,7 @@ var KeyedConfigFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanKeyedConfig = make([]TableFixedEntry, int(KeyedConfigFixedPlanMax))
+var KeyedConfigFixedReadPlan = make([]TableFixedEntry, int(KeyedConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.

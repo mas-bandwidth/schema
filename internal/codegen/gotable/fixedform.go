@@ -1191,7 +1191,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// THE PLAIN LOAD'S PLAN: it passes the capacity the fixed reader checks,
 	// and the read never writes the plan, so one package buffer serves
 	// concurrent plain reads without an allocation per call (§4.3).
-	g.pf("var tableFixedReadPlan%s = make([]TableFixedEntry, int(%sFixedPlanMax))\n\n", st.Name, st.Name)
+	g.pf("var %sFixedReadPlan = make([]TableFixedEntry, int(%sFixedPlanMax))\n\n", st.Name, st.Name)
 
 	g.pf("// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,\n")
 	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")

@@ -106,7 +106,7 @@ var squirrelModuleKeys = map[string][]string{
 		"LoadRetain", "LoadText", "LoadTextForm", "MeasureMessages", "MeasureRetain", "Names", "ReadStrict",
 		"ReadStrictNames", "Rows", "SaveMessages", "SaveRetain", "SaveText", "SaveTextForm",
 		"Set", "ToJson", "ToJsonMeasure", "blobOf", "blobOfHex", "cyclic", "get", "getF32", "getF64", "geti32", "getu", "keyed",
-		"link", "load", "loadWalk", "mapWriteOrder", "measure", "noteStringOrigin", "numberForCook", "put", "putF32", "putF64", "puti32", "report", "save",
+		"link", "load", "loadWalk", "mapKeyCmp", "mapWriteOrder", "measure", "noteStringOrigin", "numberForCook", "put", "putF32", "putF64", "puti32", "report", "save",
 		"stringIdentity", "textIllFormed", "u32le", "u64le",
 	},
 }
