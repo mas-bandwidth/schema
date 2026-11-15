@@ -4,9 +4,10 @@
   own kind module, so a later element kind arrives without an edit to the
   array walk.
 - **Scope.** The runtime carries unbounded arrays `[]T` of bool, the integers
-  and by-value tables of both classes (a
-  `fixed table` element and a variable one), by-value tables and `*T` pointers
-  to tables, for both the fixed and the variable class. An unbounded array is a
+  (bits included) and by-value tables of both classes (a `fixed table` element
+  and a variable one), for both the fixed and the variable class. A `*T`
+  pointer rides only inside a by-value table element; `[]*T` belongs to the
+  pointer-array card. An unbounded array is a
   kind `14` counted array with no declared bound, so it rides the same bytes a
   `[..N]T` writes. Its count is held to the read's resource bounds: a body
   shorter than its header, a count past the int32 storage cap, a count the
