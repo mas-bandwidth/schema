@@ -53,7 +53,6 @@ else:
 	}
 
 	for _, vec := range fixedvector.DeadBytes {
-		vec := vec
 		t.Run(vec.Name, func(t *testing.T) {
 			want, err := os.ReadFile(filepath.Join(corpus, vec.File))
 			if err != nil {

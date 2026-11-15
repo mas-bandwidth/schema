@@ -143,7 +143,7 @@ func emitWriteScalar(m *Module, val string, f *ir.Field, indent string) {
 		case f.HasIntRange:
 			emitWriteRangedInt(m, val, f, indent)
 		default:
-			m.Printf("%sif (typeof %s != \"integer\") return false;\n", indent, val)
+			emitBareIntGuard(m, val, t, indent)
 			expr := val
 			if t.Signed && t.Width < 64 {
 				expr = fmt.Sprintf("%s & 0x%x", val, uint64(1)<<uint(t.Width)-1)
@@ -161,6 +161,11 @@ func emitWriteScalar(m *Module, val string, f *ir.Field, indent string) {
 		emitCall(m, indent, val, fn, strconv.Itoa(t.IntBits), strconv.Itoa(t.FracBits), IntLit(f.IntMin), IntLit(f.IntMax))
 	case ir.TFloat32:
 		if f.HasFloatRange {
+			// A Squirrel float is not bounded by float32. Refuse before the
+			// runtime call so NaN cannot reach its raising path and an
+			// out-of-range finite value cannot be clamped into the declaration.
+			m.Printf("%sif (%s != %s || %s < %s || %s > %s) return false; // SPEC §5.1 row 10\n",
+				indent, val, val, val, Float32Lit(f.FMin), val, Float32Lit(f.FMax))
 			emitCall(m, indent, val, "serializeCompressedFloat", Float32Lit(f.FMin), Float32Lit(f.FMax), Float32Lit(f.Resolution))
 		} else {
 			emitCall(m, indent, val, "serializeFloat")
@@ -193,6 +198,23 @@ func emitCall(m *Module, indent, expr, fn string, args ...string) {
 	h := m.Helper(holder)
 	m.Printf("%s%s.value = %s;\n", indent, h, expr)
 	m.Printf("%sif (!stream.%s(%s)) return false;\n", indent, fn, strings.Join(append([]string{h}, args...), ", "))
+}
+
+// emitBareIntGuard refuses a bare intN/uintN value its declared width cannot
+// carry (SPEC §5.1 row 11): a value that is not an integer, and below 64 bits
+// one outside [-2^(N-1), 2^(N-1)-1] signed or [0, 2^N-1] unsigned. At 64 bits
+// every integer is in the width: a uint64 above 2^63 - 1 is the same bits
+// stored signed (docs/PORT-SQUIRREL.md, 64-BIT AND 128-BIT INTEGERS).
+func emitBareIntGuard(m *Module, val string, t ir.FieldType, indent string) {
+	if t.Width >= 64 {
+		m.Printf("%sif (typeof %s != \"integer\") return false;\n", indent, val)
+		return
+	}
+	lo, hi := int64(0), int64(1)<<uint(t.Width)-1
+	if t.Signed {
+		lo, hi = -(int64(1) << uint(t.Width-1)), int64(1)<<uint(t.Width-1)-1
+	}
+	m.Printf("%sif (typeof %s != \"integer\" || %s < %d || %s > %d) return false;\n", indent, val, val, lo, val, hi)
 }
 
 // emitWriteRangedInt writes an integer with a declared range on the same

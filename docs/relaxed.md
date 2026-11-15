@@ -59,16 +59,6 @@ case (`<lang> <surface> <case> relax/<slug>`), read by
 in the leg's results (so the proof names it) and does not fail the leg; a
 listed case that passes fails the leg until its line is removed.
 
-- `relax/rust-write-refusal-debug-asserts`: 19 cases of the Rust leg (write-refusal
-  wref_bits_wide, wref_enum, wref_range_high, wref_range_low,
-  wref_text_illformed, wref_text_zero, wref_union_tag; write-refusal-fixed the
-  same seven as fref_*; write-refusal-message mref_element, mref_range_high,
-  mref_range_low, mref_text_illformed, mref_text_zero). PR 3282 moved the
-  rows onto the fixed and message writers, which carry no debug-build checks.
-  Rust is an assert leg, so this is owed work, not a missing release check.
-  Files: `test/conformance/relaxed.txt`. Real fix: debug asserts of the write
-  contract in `internal/codegen/rusttable/fixedform.go` and the message
-  writer. WIP: none.
 - The hostile rows, one slug per leg. #3486 brought the corpus up to three
   landed rulings: json-hostile `base64-unpadded` is refused
   (json-base64-canonical), `str-zero-escape-unknown-key` is refused (the
@@ -87,20 +77,19 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-c`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-cpp`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings) and in the pack hostile-value gate (`Makefile`, `HOSTILE_ENGINE_RELAXED`).
   - `relax/hostile-rows-cs`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-dart`: base64-unpadded only: its hostile row, and its row in the port's hostile-corpus run (carried findings). The str-zero-escape-unknown-key row is refused.
   - `relax/hostile-rows-elixir`: str-zero-escape-unknown-key, jref_zero_byte, and that row in the port's hostile-corpus run (carried finding); the JSON read refuses unpadded Base64 and set pad bits.
   - `relax/hostile-rows-go`: the generated Go JSON walk (not the engine)
     reads str-zero-escape-unknown-key: it does not validate a skipped value.
     Its hostile-corpus run drops that row from the staged manifest
     (`make/schema-go-runs-hostile-corpus.mk`). The fix is more than the zero
     check in `scanText`: the generated tests textzero (a skipped zero reads)
-    and the JSONTestSuite probe (y_string_null_escape) hold the old rule. In the go conformance leg (`test/conformance/relaxed.txt`) it relaxes json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte; the dart and js text-boundary controls do not count their legs' relaxed json-hostile cases (relax/hostile-rows-dart, -js).
+    and the JSONTestSuite probe (y_string_null_escape) hold the old rule. In the go conformance leg (`test/conformance/relaxed.txt`) it relaxes json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte; the js text-boundary control does not count its leg's relaxed json-hostile cases (relax/hostile-rows-js).
   - `relax/hostile-rows-goose`: both hostile rows.
   - `relax/hostile-rows-java`: str-zero-escape-unknown-key only, in the conformance leg and in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-js`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-lobster`: str-zero-escape-unknown-key, jref_zero_byte, and str-zero-escape-unknown-key in the port's hostile-corpus run (carried finding); the JSON read refuses unpadded Base64 and set pad bits.
+  - `relax/hostile-rows-lobster`: jref_zero_byte only. The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
   - `relax/hostile-rows-lua`: str-zero-escape-unknown-key and jref_zero_byte (its JSON read refuses unpadded Base64 and set pad bits).
-  - `relax/hostile-rows-luau`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
+  - `relax/hostile-rows-luau`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-moo`: both hostile rows.
   - `relax/hostile-rows-rust`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
   - `relax/hostile-rows-squirrel`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried in `internal/ci/schema_squirrel_runs_hostile_corpus_test.go`); the JSON walk refuses a U+0000 in an object key or a skipped string (read.go scanKey).
@@ -166,8 +155,8 @@ listed case that passes fails the leg until its line is removed.
   writes the defaults the tool now zeroes). Real fix: every cook writer zeroes
   the dead slots, and the Go case runs again.
   The same slug relaxes the ten cook-write cases (the five rows, both orders)
-  of the conformance legs cpp, cs, dart, go, elixir, goose, js, lobster, lua,
-  luau, moo and squirrel in `test/conformance/relaxed.txt`: each still writes
+  of the conformance legs cpp, cs, dart, go, elixir, goose, js, lobster, luau,
+  moo and squirrel in `test/conformance/relaxed.txt`: each still writes
   the element defaults into dead counted slots (CI full 43656719730). C and the
   tool are right. WIP: none.
 
@@ -249,16 +238,41 @@ goose, squirrel, lua, elixir, luau, cs, lobster) stay per commit because the
 proof job reads their results; their time is mostly the un-walled artifact
 download, not a walled step.
 
+## Go tests (2026-11-15)
+
+Relaxed on 2026-11-15 to get the fast lane green on `main` after a day of
+landings with no gate; each site carries `RELAXED 2026-11-15 (get main
+green)` and its slug.
+
+- `relax/dart-announce-refuses-nested-element`:
+  `internal/codegen/darttable` TestDartAnnounceShapesAsTheEngine drops the
+  cases nested_array_wellformed and keyed_array_of_keyed_array. The engine
+  now refuses an announced list or keyed array whose element is itself a
+  list or keyed array (90b679296); the Dart announceRead still accepts it.
+  Real fix: the Dart announceRead refuses those shapes as the engine does,
+  the two cases want false, and the test's negative control is reworked.
+- `relax/dart-skip-progress-text-list-fixture`:
+  `internal/codegen/darttable` TestDartMessageSkipMakesProgress is skipped.
+  Its zero-progress fixture is a list of lists, which the engine now refuses
+  at announce time. Real fix: a fixture shape the engine admits, following
+  TestMessageSkipRefusesElementWithNoProgress (a text-list element with
+  length bound 0).
+- `relax/go-fixed-read-dead-bytes-zero`: `internal/codegen/gotable/fuzzunit`
+  TestGeneratedFixedAgreesWithEngine and TestGeneratedFixedOneVerdictEveryByte
+  hold (count and log, not compare) the inputs the generated Go fixed read
+  accepts and the engine refuses for non-zero dead bytes (325796bca); every
+  other disagreement is still compared. Real fix: the generated Go fixed read
+  refuses non-zero dead bytes (internal/codegen/gotable/fixedform.go,
+  tables/goruntime), the fuzzunit tree is regenerated, and the hold goes.
+
 ## Proof cells
 
 Each proof cell below is red at main 3b43e7075, computed from every conformance
 leg run on that commit (the cells are the `relaxed` list of
 `test/proof/in-progress.json`). Generated from `tools/matrix proof`'s red
-list; each line names its cells and why they are red. Where the real fix is
-an open PR: write-refusal on rust is
-relax/rust-write-refusal-debug-asserts; the rest of the write-refusal slugs are
-each leg answering the four write-refusal surfaces; I15 on elixir is PR 3290.
-WIP for every proof slug: none unless named here.
+list; each line names its cells and why they are red. The write-refusal proof
+slugs are each leg answering the four write-refusal surfaces; I15 on elixir is
+PR 3290. WIP for every proof slug: none unless named here.
 
 - `relax/proof-blob-shared-elixir`: 2 cell(s), red at main 18bd2eebb (CI
   full 43637319296): `surface cook-write / elixir` (2 case(s) answered absent

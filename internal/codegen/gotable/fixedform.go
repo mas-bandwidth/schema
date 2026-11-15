@@ -210,7 +210,7 @@ func (w *fixedWalk) push(e fixedLayoutEntry, dst string) {
 	w.dst = append(w.dst, dst)
 }
 
-func dstGo(dst, stride, aux string, counted, arg int) string {
+func dstGo(dst, stride, aux string, counted, arg int, minCount ...int64) string {
 	if dst == "" {
 		dst = "0"
 	}
@@ -220,7 +220,11 @@ func dstGo(dst, stride, aux string, counted, arg int) string {
 	if aux == "" {
 		aux = "0"
 	}
-	return fmt.Sprintf("{%s, %s, %s, %d, %d, %d}", dst, stride, aux, counted, arg, arg)
+	min := int64(0)
+	if len(minCount) > 0 {
+		min = minCount[0]
+	}
+	return fmt.Sprintf("{%s, %s, %s, %d, %d, %d, %d}", dst, stride, aux, min, counted, arg, arg)
 }
 
 // offGo is a destination over the storage the unit actually holds: in a
@@ -283,7 +287,7 @@ func (g *tableGen) fixedWalkPayload(w *fixedWalk, off func(string) string, f *ir
 			counted, aux = 1, off("Count")
 		}
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			dstGo(off(""), g.sizeofGo(f), aux, counted, fixedDstArg(0, f.Deprecated)))
+			dstGo(off(""), g.sizeofGo(f), aux, counted, fixedDstArg(0, f.Deprecated), f.ArrayMin))
 		g.fixedWalkElement(w, f, 0, "element", "0", false)
 	case f.Type.Kind == ir.TBytes:
 		// `bytes(N)` is an ARRAY of u8 on this wire (ir/fixedform.go, the
@@ -649,8 +653,8 @@ func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedElementLoop(st, f, base, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
-		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
-			base, g.offGo(st.Name, member(f)+"Count"), f.ArrayBound, fixedElementBytes(f), f.Name)
+		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: %d, Min: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
+			base, g.offGo(st.Name, member(f)+"Count"), f.ArrayBound, f.ArrayMin, fixedElementBytes(f), f.Name)
 		g.pf("\tn++\n")
 		g.emitFixedElementLoop(st, f, base+fixedCountBytes, f.ArrayBound)
 	case f.Type.Kind == ir.TString:
@@ -775,8 +779,8 @@ func (g *tableGen) emitFixedArmLeaves(un *ir.Union, v ir.UnionVariant, src, dst 
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedArmLoop(f, src, valueDst, strconv.FormatInt(f.ArrayBound, 10), tabs)
 	case f.Array == ir.ArrayCounted:
-		g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s, Size: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
-			ind, src, dst+" + "+g.fixedArmOffGo(un, v, "Count"), f.ArrayBound, fixedElementBytes(f), v.Name)
+		g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s, Size: %d, Min: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
+			ind, src, dst+" + "+g.fixedArmOffGo(un, v, "Count"), f.ArrayBound, f.ArrayMin, fixedElementBytes(f), v.Name)
 		g.pf("%sn++\n", ind)
 		g.emitFixedArmLoop(f, src+" + "+strconv.FormatInt(fixedCountBytes, 10), valueDst, strconv.FormatInt(f.ArrayBound, 10), tabs)
 	case f.Type.Kind == ir.TString:
@@ -1206,16 +1210,16 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 
 	// THE WRITE-SIDE CONTRACT (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md
 	// "Writes are the caller's responsibility"): Go has no debug-only idiom, so
-	// FixedSave REFUSES in every build — a count past Max, a length past N, a
-	// value off its min/max, an ordinal past its set, ill-formed text — with -1,
-	// and FixedSaveReason names it TableRefuseInvalidValue. The whole batch is
-	// checked before the first byte is stored, so a refused batch leaves the
-	// buffer untouched; nothing is clamped.
+	// FixedSave REFUSES in every build — an empty batch, a count past Max, a
+	// length past N, a value off its min/max, an ordinal past its set,
+	// ill-formed text — with -1, and FixedSaveReason names it TableRefuseInvalidValue.
+	// The whole batch is checked before the first byte is stored, so a refused
+	// batch leaves the buffer untouched; nothing is clamped.
 	g.pf("// %sFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a\n", st.Name)
-	g.pf("// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.\n")
+	g.pf("// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.\n")
 	g.pf("func %sFixedSave(values []%s, buffer []byte) int64 {\n", st.Name, st.Name)
 	g.pf("\tneed := %sFixedMeasure(int64(len(values)))\n", st.Name)
-	g.pf("\tif int64(len(buffer)) < need {\n\t\treturn -1\n\t}\n")
+	g.pf("\tif len(values) == 0 || int64(len(buffer)) < need {\n\t\treturn -1\n\t}\n")
 	if fixedCheckNeededStruct(st, map[string]bool{}) {
 		g.pf("\tfor k := range values {\n\t\tif !%sFixedCheckBody(&values[k]) {\n\t\t\treturn -1\n\t\t}\n\t}\n", st.Name)
 	}
@@ -1349,6 +1353,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\trest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)\n")
 	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 || (rest == 0 && len(values) == 1) {\n\t\treport.Refuse(TableRefuseWireDamaged, \"\")\n\t\treport.Reason = TableRefuseTruncated.Error()\n\t\treturn -1\n\t}\n")
 	g.pf("\tn := rest / recordBytes\n")
+	// A FIXED FILE HOLDS AT LEAST ONE RECORD (§5.3 steps 9 and 10, §22.6): the
+	// guard names an empty batch when the destination holds one value; n == 0
+	// names it for every other capacity. Either verdict is truncated.
+	g.pf("\tif n == 0 {\n\t\treport.Refuse(TableRefuseWireDamaged, \"\")\n\t\treport.Reason = TableRefuseTruncated.Error()\n\t\treturn -1\n\t}\n")
 	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())\n\t}\n")
 	// Prefill is the dest ranges the winning plan does not land, copied from
 	// one Reset image laid once at init (§4.3). Identity's list on Go is the
@@ -1699,7 +1707,7 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, tabs int, pass
 		loop(fmt.Sprint(f.ArrayBound), false)
 	case f.Array == ir.ArrayCounted:
 		if chk {
-			g.pf("%sif %s.%sCount < 0 || %s.%sCount > %d { return false }\n", ind, val, member(f), val, member(f), f.ArrayBound)
+			g.pf("%sif %s.%sCount < %d || %s.%sCount > %d { return false }\n", ind, val, member(f), f.ArrayMin, val, member(f), f.ArrayBound)
 		}
 		loop(fmt.Sprintf("int64(%s.%sCount)", val, member(f)), chk)
 	default:
