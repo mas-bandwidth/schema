@@ -13,6 +13,11 @@
 #include <stdlib.h> /* the text form: exact number conversion */
 #include <locale.h> /* the text form: the runtime's decimal point */
 
+#include <assert.h> /* the text writer's zero-byte refusal, in a debug build */
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---- json walk: begin ----
 
    The TEXT form (docs/SPEC-TABLES.md §16): one table, one text, one walk over the
@@ -533,6 +538,11 @@ static SCHEMA_UNUSED void benchtable_table_json_write_string( benchtable_table_j
     for ( i = 0; i < length; i++ )
     {
         unsigned char c = (unsigned char) s[i];
+        /* A zero byte is not text for this writer either (docs/SPEC-TABLES.md
+           §16.3, §16.14 W0): no read stores U+0000, so a program-built value
+           holding one is off the write contract (docs/SPEC.md §5.1 row 8).
+           C is an assert leg, so the refusal is a debug assert. */
+        schema_assert( c != 0 );
         switch ( c )
         {
             case '"':  benchtable_table_json_raw( out, "\\\"", 2 ); break;

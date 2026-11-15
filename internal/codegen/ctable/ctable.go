@@ -1143,6 +1143,12 @@ func tableSource(u *ir.Unit, f *ir.File, g *tableGen, cg *tableGen, members []*i
 	c.WriteString("#include <stdlib.h> /* the text form: exact number conversion */\n")
 	c.WriteString("#include <locale.h> /* the text form: the runtime's decimal point */\n\n")
 	if len(members) > 0 && jsonAllowed {
+		// THE TEXT WRITER'S ZERO-BYTE CHECK IS A DEBUG ASSERT (docs/SPEC.md
+		// §5.1 row 8): the unit takes <assert.h> and defines schema_assert
+		// where its header did not already. NDEBUG removes the check and its
+		// cost, exactly as the leg's other write contracts.
+		c.WriteString("#include <assert.h> /* the text writer's zero-byte refusal, in a debug build */\n")
+		c.WriteString("#ifndef schema_assert\n#define schema_assert assert\n#endif\n\n")
 		c.WriteString(tableJsonWalk(u.Package))
 		c.WriteString("\n")
 		if g.anyVariable {
