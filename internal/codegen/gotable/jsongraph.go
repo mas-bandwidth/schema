@@ -69,6 +69,18 @@ func tableJSONReadBlob(in *tableJSONIn,slot *int64,f *TableFieldInfo) bool {
 // A skipped definition keeps its label, without imposing graph syntax on a
 // value this reader is skipping. The ordinary JSON scanner still validates it.
 func tableJSONDropLabel(in *tableJSONIn) {
- if in.graph==nil||in.peek()!='{'{return};probe:=*in;probe.pos++;var key [16]byte;n,ok:=probe.scanKey(key[:]);if !ok||string(key[:n])!="&node"||probe.peek()!=':'{return};probe.pos++;label,ok:=tableJSONReadLabel(&probe);if !ok||probe.peek()!=','{return};if _,exists:=in.graph.getLabel(label);!exists{if !in.graph.setLabel(label,tableJSONLabel{}){in.bad=true}}
+ if in.graph==nil||in.peek()!='{' {return}
+ probe:=*in;probe.pos++
+ keyStart:=probe.pos
+ length,ok:=probe.scanString(nil)
+ if !ok||length!=int32(len("&node")) {return}
+ probe.pos=keyStart
+ var key [16]byte
+ n,ok:=probe.scanKey(key[:])
+ if !ok||string(key[:n])!="&node"||probe.peek()!=':' {return}
+ probe.pos++
+ label,ok:=tableJSONReadLabel(&probe)
+ if !ok||probe.peek()!=',' {return}
+ if _,exists:=in.graph.getLabel(label);!exists{if !in.graph.setLabel(label,tableJSONLabel{}){in.bad=true}}
 }
 `
