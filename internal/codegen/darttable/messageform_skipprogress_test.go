@@ -207,9 +207,9 @@ func TestDartMessageSkipMakesProgressNegativeControl(t *testing.T) {
 
 	out, err := runSkipProgressProbe(t, u, "Root", body, func(files map[string][]byte) {
 		const from = "        final before = r.bits.offset;\n" +
-			"        if (!tableMessageSkip(r, s.elem, inner, depth + 1)) return false;\n" +
+			"        if (!tableMessageSkip(r, elem, inner, elemDepth)) return false;\n" +
 			"        if (r.bits.offset == before) return false;\n"
-		const to = "        if (!tableMessageSkip(r, s.elem, inner, depth + 1)) return false;\n"
+		const to = "        if (!tableMessageSkip(r, elem, inner, elemDepth)) return false;\n"
 		removed := 0
 		for name, src := range files {
 			text := string(src)

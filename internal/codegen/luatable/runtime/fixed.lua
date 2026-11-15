@@ -531,7 +531,15 @@ local function compat_old(d, node)
   local s = d.shape
   if s == "int" then
     if d.timestamp then return node.kind == 36 and node.size == 8 end
-    if d.bits then return node.kind == 32 and (node.size == 4 or node.size == 8) end
+    if d.bits then
+      -- A bits(N) rides at its declared storage width under the unsigned
+      -- integer kind its bit count picks (ir.TableFixedLeafKind,
+      -- ir.TableFixedStorageBytes): kinds 6, 7 and 8 at four bytes and kind
+      -- 9 at eight. An older writer may have declared a narrower bits(N), so
+      -- every kind the walk assigns at those widths is a lawful source.
+      if node.size == 4 then return node.kind >= 6 and node.kind <= 8 end
+      return node.size == 8 and node.kind == 9
+    end
     if d.kind and d.kind >= 20 and d.kind <= 29 then return node.kind == d.kind and node.size == d.width end
     return node.kind >= 2 and node.kind <= 9 and node.size <= d.width
   elseif s == "wide" then
@@ -757,36 +765,6 @@ local function strict_value(T, d, v, ranges, wr)
   end
 end
 
--- F.read is the batch read at a capacity of one record
--- (docs/FIXED-FORM-ALGORITHM.md §4, §2 step 7, §5.3) and returns that record.
--- A file of zero records stays refused. A batch past maxRecords keeps the
--- name plan_too_large.
-local function read_impl(T, name, buf, strict)
-  if #buf < 1 then error("malformed") end
-  local ok, out, h, l = pcall(F.load, T, name, buf, strict, 1)
-  if not ok then
-    if out == "batch_too_large" then
-      local okN, outN = pcall(F.load, T, name, buf, strict, maxRecords)
-      if not okN and outN == "batch_too_large" then error("plan_too_large") end
-    end
-    error(out, 0)
-  end
-  if #out ~= 1 then error("malformed") end
-  -- this compare is the one a control inverts; the batch read's own compare
-  -- is a different call and would not be the line it plants
-  local hash = h
-  local at = 21 + string.unpack("<I4", buf, 17)
-  if string.unpack("<I8", buf, at) ~= hash then error("no_layout") end
-  return out[1], h, l
-end
-
--- F.read is one record's read: the value and its layout hash and bytes.
-function F.read(T, name, buf, strict)
-  local ok, v, h, l = pcall(read_impl, T, name, buf, strict)
-  if not ok then error(v, 0) end
-  return v, h, l
-end
-
 -- F.write writes the header and ONE record (docs/FIXED-FORM-ALGORITHM.md §2,
 -- §3.1): the template is the hash and a zeroed body, and each field lands at
 -- its constant offset, little-endian, at its declared width.
@@ -821,6 +799,10 @@ function F.save(T, name, values)
   local f = T.Fixed[name]
   if f == nil then error("fixed: no fixed descriptor for table " .. tostring(name)) end
   values = values or {}
+  -- A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/FIXED-FORM-ALGORITHM.md
+  -- §5.3 step 9, docs/SPEC-TABLES.md §22.6): an empty batch is refused, by
+  -- the leg's refusal value, before a byte is written.
+  if #values == 0 then return nil, "invalid_value" end
   local parts = { f.header }
   local hPrefix = f.hashPrefix
   for i = 1, #values do
@@ -885,12 +867,18 @@ local function load_impl(T, name, buf, strict, cap)
   end
   local recSize = entry ~= nil and entry.record or (8 + rootSize)
   local rest = #buf - 20 - layoutLen
-  if recSize <= 8 or rest % recSize ~= 0 then error("truncated", 0) end
+  -- A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, SPEC-TABLES
+  -- §22.6): a header and a layout with no record behind them is refused,
+  -- never read as a batch of none.
+  if recSize <= 8 or rest <= 0 or rest % recSize ~= 0 then error("truncated", 0) end
   local nRec = rest // recSize
   -- THE CAPACITY IS THE CALLER'S ARGUMENT, AND ITS DEFAULT IS 4,096: an
   -- omitted (or nil) capacity is the default, never an unbounded read, while
   -- a caller that sets 4,097 or more may read that many records.
   cap = cap or maxRecords
+  -- a read into ONE value holds no value to read from a file of none (§5.3
+  -- step 9), as the Go engine refuses it at a capacity of one
+  if nRec == 0 and cap == 1 then error("truncated", 0) end
   if nRec > cap then error("batch_too_large", 0) end
   local rep = (entry ~= nil and entry.hash ~= fixed.hash) and { widened = 0 } or nil
   local unknown = rep ~= nil and entry.unknown or 0
@@ -918,6 +906,15 @@ function F.load(T, name, buf, strict, cap)
   local ok, out, h, l, w, u = pcall(load_impl, T, name, buf, strict, cap)
   if not ok then error(out, 0) end
   return out, h, l, w, u
+end
+
+-- F.read is one record's read, and it is the load at a capacity of one
+-- (docs/FIXED-FORM-ALGORITHM.md §4, ONE path): every file gets the load's
+-- verdict, and the value, its layout hash and bytes come back.
+function F.read(T, name, buf, strict)
+  local ok, out, h, l = pcall(load_impl, T, name, buf, strict, 1)
+  if not ok then error(out, 0) end
+  return out[1], h, l
 end
 
 -- F.prepare builds, once, every derived fact the fixed form reads from a
