@@ -27,6 +27,11 @@ C_HOSTILE_CFLAGS   := -std=c99 -Wall -Wextra -Werror -O1 -ffp-contract=off $(C_H
 # One sanitizer translation unit per core. Four-wide left the fleet runner's
 # other cores idle and the per-commit job died inside this compile.
 C_HOSTILE_JOBS     ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 8)
+# LeakSanitizer cannot attach to the case's threads when ptrace is unavailable,
+# and then fails every case at exit after it has already answered. The corpus
+# asks for crashes, undefined behaviour and the reader's verdict, so leak
+# detection is off here, as the Go sanitizer tests set it; ASan and UBSan stay on.
+C_HOSTILE_ASAN_OPTIONS ?= detect_leaks=0
 
 C_HOSTILE_UNITS := tabledemo:tables/examples \
 	messagedemo:tables/messages blobdemo:tables/blobs \
@@ -69,7 +74,7 @@ $(C_HOSTILE_BUILD)/hostilecorpusexec: $(wildcard tools/hostilecorpusexec/*.go in
 
 .PHONY: schema-c-runs-hostile-corpus
 schema-c-runs-hostile-corpus: $(C_HOSTILE_BUILD)/case $(C_HOSTILE_BUILD)/hostilecorpusexec
-	$(C_HOSTILE_BUILD)/hostilecorpusexec run -port c -exec $(C_HOSTILE_BUILD)/case \
+	ASAN_OPTIONS="$(C_HOSTILE_ASAN_OPTIONS)" $(C_HOSTILE_BUILD)/hostilecorpusexec run -port c -exec $(C_HOSTILE_BUILD)/case \
 		-corpus "$(C_HOSTILE_CORPUS)" -findings "$(C_HOSTILE_FINDINGS)"
 
 test-c: schema-c-runs-hostile-corpus
