@@ -1813,7 +1813,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 		clear(c.graph)
 		rec := c.records
 		for i := uint64(2); i <= c.nodes+1; i++ {
-			c.graph[2*(i-1)+1] = uint64(rec.Offset)
+			c.graph[2*(i-1)+1] = uint64(rec.Offset & 0x7fffffffffffffff)
 			ref, ok := rec.Leb()
 			if !ok {
 				return TableRefuseWireDamaged
@@ -1845,9 +1845,9 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 	}
 	// a blob named twice is shared, and a record no pointer names is unreachable
 	for i := uint64(2); i <= c.nodes+1; i++ {
-		if uint32(c.graph[2*(i-1)]) > 1 {
+		if uint32(c.graph[2*(i-1)]&0xffffffff) > 1 {
 			rec := c.records
-			rec.Offset = int64(c.graph[2*(i-1)+1])
+			rec.Offset = int64(c.graph[2*(i-1)+1] & 0x7fffffffffffffff)
 			ref, _ := rec.Leb()
 			if id, _ := rec.Resolve(ref); id == tableWireBytesID || id == tableWireStringID {
 				return TableRefuseBlobShared
@@ -1855,7 +1855,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 		}
 	}
 	for i := uint64(2); i <= c.nodes+1; i++ {
-		if uint32(c.graph[2*(i-1)]) == 0 {
+		if uint32(c.graph[2*(i-1)]&0xffffffff) == 0 {
 			return TableRefuseWireDamaged
 		}
 	}
