@@ -200,12 +200,8 @@ func itemsBlocker(u *ir.Unit, items []ir.Item, seen map[string]bool) string {
 			if k := itemsBlocker(u, item.Else, seen); k != "" {
 				return k
 			}
-		case *ir.ConstItem:
-			return "const"
-		case *ir.ReservedItem:
-			return "reserved"
-		case *ir.AlignItem:
-			return "align"
+		case *ir.ConstItem, *ir.ReservedItem, *ir.AlignItem:
+			// carried by the packet layout emitters
 		}
 	}
 	return ""

@@ -3235,6 +3235,15 @@
         "python-packet-core-negative-control"
       ],
       "python": "pin"
+    },
+    {
+      "name": "python-packet-layout",
+      "when": "pull-request",
+      "why": "the packet layout's controls (docs/PORT-PYTHON.md, THE PACKET CORE CUT): in a copy of the generated Layout module, the const comparison, the reserved comparison, the alignment read and the untaken side's zeroing are each planted out, and TestPythonPacketLayoutNegativeControl must go red by name on each. One SCHEMA_SLOW go test under the pinned interpreter, the cost of the pin cache restore rather than the run.",
+      "targets": [
+        "python-packet-layout-negative-control"
+      ],
+      "python": "pin"
     }
   ],
   "excluded": [

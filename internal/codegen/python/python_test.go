@@ -194,6 +194,9 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 			{Name: "alive", Type: ir.FieldType{Kind: ir.TBool}},
 		}}},
 		{"union", &ir.Union{Name: "Event"}},
+		{"const item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ConstItem{Value: big.NewInt(1), Bits: 8}}}},
+		{"reserved item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ReservedItem{Bits: 5}}}},
+		{"align item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.AlignItem{}}}},
 	}
 	for _, c := range generates {
 		u := emptyUnit("game", "Game")
@@ -215,9 +218,6 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 		{"bytes", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TBytes, Size: 8}}}}, "uses bytes"},
 		{"int128", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}}}, "uses int128"},
 		{"array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses array"},
-		{"const item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ConstItem{Value: big.NewInt(1), Bits: 8}}}, "uses const"},
-		{"reserved item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ReservedItem{Bits: 5}}}, "uses reserved"},
-		{"align item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.AlignItem{}}}, "uses align"},
 	}
 	for _, c := range refused {
 		u := emptyUnit("game", "Game")

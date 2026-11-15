@@ -15,7 +15,7 @@
 # generates into temp directories and runs the generated package under both
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
-.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control
+.PHONY: test-python update-goldens-python python-packet-core-negative-control python-packet-layout-negative-control python-table-core-negative-control
 test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
@@ -27,6 +27,14 @@ update-goldens-python: ;
 # because the probe runs under both pinned interpreters.
 python-packet-core-negative-control: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketCoreNegativeControl ./internal/codegen/python/
+
+# python-packet-layout-negative-control: the layout gate's own control. In a
+# COPY of the generated module it plants, one at a time, the const comparison,
+# the reserved comparison, the alignment read and the untaken side's zeroing
+# out of the reader, and requires TestPythonPacketLayoutNegativeControl to go
+# red by name on each.
+python-packet-layout-negative-control: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketLayoutNegativeControl ./internal/codegen/python/
 
 # build/schema-python is the tagged compiler the conformance tree is generated
 # with; the ordinary bin/schema does not carry the target until the packet
