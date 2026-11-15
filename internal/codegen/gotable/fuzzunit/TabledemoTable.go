@@ -3360,7 +3360,7 @@ func (s *tableNodeScan) next() (uint64, TableReader, bool) {
 		return 0, TableReader{}, false
 	}
 	id, ok := r.Resolve(ref)
-	if !ok {
+	if !ok || id >= 0xfffffffffffffffd {
 		s.bad = true
 		return 0, TableReader{}, false
 	}

@@ -92,6 +92,16 @@ func TestUnnamedGraph(t *testing.T) {
 	refuses(t, "a root's unknown field naming a cycle", file(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) },
 		node(&ids, func(w *TableWriter) { ptr(w, field(fNext), 3) }), node(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) })))
 
+	// a record whose TYPE reference resolves to a reserved transport id is
+	// malformed, whether a pointer reaches it or not (docs/SPEC-TABLES.md §3.1)
+	for _, id := range []uint64{0xffffffffffffffff, 0xfffffffffffffffe, 0xfffffffffffffffd} {
+		reserved := file(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) },
+			record{id, body(&ids, func(w *TableWriter) { w.Put8(0) })})
+		refuses(t, "a reached record whose type id is reserved", reserved)
+		if retainLoad(reserved) { t.Fatal("the retaining read accepted a record whose type id is reserved") }
+		if _, err := NodeReadStrict(reserved); err == nil { t.Fatal("ReadStrict accepted a record whose type id is reserved") }
+	}
+
 	// (c) many unreferenced records of unnameable types are all damage
 	var many []record
 	many = append(many, leaf(&ids, 3))
