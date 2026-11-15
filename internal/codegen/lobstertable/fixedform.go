@@ -84,7 +84,11 @@ func emitFixedTable(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("// %sSave writes values as a form-3 file: the header (%s, §2) once,\n", name, st.Name)
 	g.Pf("// then one hash-and-body record per value. A NaN or an infinity in any\n")
 	g.Pf("// float refuses the batch: the answer is \"\" (docs/SPEC-TABLES.md §3.3).\n")
+	g.Pf("// A fixed-form file holds at least one record, so an empty batch is\n")
+	g.Pf("// refused the same way (docs/SPEC-TABLES.md §22.6).\n")
 	g.Pf("def %sSave(values:[%s]) -> string:\n", name, st.Name)
+	g.Pf("    if length(values) == 0:\n")
+	g.Pf("        return \"\"\n")
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		g.Pf("    for(values) v:\n")
 		g.Pf("        if %sFixedFiniteBody(v) != \"\":\n", st.Name)

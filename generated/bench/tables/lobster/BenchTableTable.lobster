@@ -1273,7 +1273,11 @@ def TableEntityFixedPut(b:string, at:int, v:TableEntity) -> string:
 // TableEntityFixedSave writes values as a form-3 file: the header (TableEntity, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
+// A fixed-form file holds at least one record, so an empty batch is
+// refused the same way (docs/SPEC-TABLES.md §22.6).
 def TableEntityFixedSave(values:[TableEntity]) -> string:
+    if length(values) == 0:
+        return ""
     var body = ""
     for(values) v: body += schema_rt.fixed_record(TableEntityFixedHash, TableEntityFixedPut(schema_rt.zeros(51), 0, v))
     return schema_rt.fixed_file(TableEntityFixedLayoutBytes(), TableEntityFixedHash, body, length(values))
@@ -1353,7 +1357,11 @@ def TableStatFixedPut(b:string, at:int, v:TableStat) -> string:
 // TableStatFixedSave writes values as a form-3 file: the header (TableStat, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
+// A fixed-form file holds at least one record, so an empty batch is
+// refused the same way (docs/SPEC-TABLES.md §22.6).
 def TableStatFixedSave(values:[TableStat]) -> string:
+    if length(values) == 0:
+        return ""
     var body = ""
     for(values) v: body += schema_rt.fixed_record(TableStatFixedHash, TableStatFixedPut(schema_rt.zeros(8), 0, v))
     return schema_rt.fixed_file(TableStatFixedLayoutBytes(), TableStatFixedHash, body, length(values))
@@ -2696,7 +2704,11 @@ def TableMixedFixedPut(b:string, at:int, v:TableMixed) -> string:
 // TableMixedFixedSave writes values as a form-3 file: the header (TableMixed, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
+// A fixed-form file holds at least one record, so an empty batch is
+// refused the same way (docs/SPEC-TABLES.md §22.6).
 def TableMixedFixedSave(values:[TableMixed]) -> string:
+    if length(values) == 0:
+        return ""
     for(values) v:
         if TableMixedFixedFiniteBody(v) != "":
             return ""
@@ -2815,7 +2827,11 @@ def TableHitEventFixedPut(b:string, at:int, v:TableHitEvent) -> string:
 // TableHitEventFixedSave writes values as a form-3 file: the header (TableHitEvent, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
+// A fixed-form file holds at least one record, so an empty batch is
+// refused the same way (docs/SPEC-TABLES.md §22.6).
 def TableHitEventFixedSave(values:[TableHitEvent]) -> string:
+    if length(values) == 0:
+        return ""
     var body = ""
     for(values) v: body += schema_rt.fixed_record(TableHitEventFixedHash, TableHitEventFixedPut(schema_rt.zeros(13), 0, v))
     return schema_rt.fixed_file(TableHitEventFixedLayoutBytes(), TableHitEventFixedHash, body, length(values))
@@ -2895,7 +2911,11 @@ def TableChatEventFixedPut(b:string, at:int, v:TableChatEvent) -> string:
 // TableChatEventFixedSave writes values as a form-3 file: the header (TableChatEvent, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
+// A fixed-form file holds at least one record, so an empty batch is
+// refused the same way (docs/SPEC-TABLES.md §22.6).
 def TableChatEventFixedSave(values:[TableChatEvent]) -> string:
+    if length(values) == 0:
+        return ""
     var body = ""
     for(values) v: body += schema_rt.fixed_record(TableChatEventFixedHash, TableChatEventFixedPut(schema_rt.zeros(8), 0, v))
     return schema_rt.fixed_file(TableChatEventFixedLayoutBytes(), TableChatEventFixedHash, body, length(values))
@@ -2975,7 +2995,11 @@ def TablePickupEventFixedPut(b:string, at:int, v:TablePickupEvent) -> string:
 // TablePickupEventFixedSave writes values as a form-3 file: the header (TablePickupEvent, §2) once,
 // then one hash-and-body record per value. A NaN or an infinity in any
 // float refuses the batch: the answer is "" (docs/SPEC-TABLES.md §3.3).
+// A fixed-form file holds at least one record, so an empty batch is
+// refused the same way (docs/SPEC-TABLES.md §22.6).
 def TablePickupEventFixedSave(values:[TablePickupEvent]) -> string:
+    if length(values) == 0:
+        return ""
     var body = ""
     for(values) v: body += schema_rt.fixed_record(TablePickupEventFixedHash, TablePickupEventFixedPut(schema_rt.zeros(8), 0, v))
     return schema_rt.fixed_file(TablePickupEventFixedLayoutBytes(), TablePickupEventFixedHash, body, length(values))
@@ -3170,6 +3194,8 @@ def TableEntityFixedMeasure(count:int) -> int:
     return schema_rt.TableFixedHeaderBytes + 4 + 514 + count * (8 + 51)
 
 def TableEntityFixedSaveChecked(values:[TableEntity], buffer:string) -> int, string, string:
+    if length(values) == 0:
+        return -1, buffer, schema_rt.TableRefuseInvalidValue
     let need = TableEntityFixedMeasure(length(values))
     if length(buffer) < need:
         return -1, buffer, schema_rt.TableRefuseTruncated
@@ -3256,7 +3282,7 @@ def TableEntityFixedLoad(values:[TableEntity], data_in:string, plan:[schema_rt.T
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
-    if record_bytes <= 8 or (rest % record_bytes) != 0:
+    if rest == 0 or record_bytes <= 8 or (rest % record_bytes) != 0:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
         for(values) failed: TableEntityReset(failed)
@@ -3357,6 +3383,8 @@ def TableStatFixedMeasure(count:int) -> int:
     return schema_rt.TableFixedHeaderBytes + 4 + 55 + count * (8 + 8)
 
 def TableStatFixedSaveChecked(values:[TableStat], buffer:string) -> int, string, string:
+    if length(values) == 0:
+        return -1, buffer, schema_rt.TableRefuseInvalidValue
     let need = TableStatFixedMeasure(length(values))
     if length(buffer) < need:
         return -1, buffer, schema_rt.TableRefuseTruncated
@@ -3443,7 +3471,7 @@ def TableStatFixedLoad(values:[TableStat], data_in:string, plan:[schema_rt.Table
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
-    if record_bytes <= 8 or (rest % record_bytes) != 0:
+    if rest == 0 or record_bytes <= 8 or (rest % record_bytes) != 0:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
         for(values) failed: TableStatReset(failed)
@@ -3560,6 +3588,8 @@ def TableHitEventFixedMeasure(count:int) -> int:
     return schema_rt.TableFixedHeaderBytes + 4 + 89 + count * (8 + 13)
 
 def TableHitEventFixedSaveChecked(values:[TableHitEvent], buffer:string) -> int, string, string:
+    if length(values) == 0:
+        return -1, buffer, schema_rt.TableRefuseInvalidValue
     let need = TableHitEventFixedMeasure(length(values))
     if length(buffer) < need:
         return -1, buffer, schema_rt.TableRefuseTruncated
@@ -3646,7 +3676,7 @@ def TableHitEventFixedLoad(values:[TableHitEvent], data_in:string, plan:[schema_
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
-    if record_bytes <= 8 or (rest % record_bytes) != 0:
+    if rest == 0 or record_bytes <= 8 or (rest % record_bytes) != 0:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
         for(values) failed: TableHitEventReset(failed)
@@ -3747,6 +3777,8 @@ def TableChatEventFixedMeasure(count:int) -> int:
     return schema_rt.TableFixedHeaderBytes + 4 + 55 + count * (8 + 8)
 
 def TableChatEventFixedSaveChecked(values:[TableChatEvent], buffer:string) -> int, string, string:
+    if length(values) == 0:
+        return -1, buffer, schema_rt.TableRefuseInvalidValue
     let need = TableChatEventFixedMeasure(length(values))
     if length(buffer) < need:
         return -1, buffer, schema_rt.TableRefuseTruncated
@@ -3833,7 +3865,7 @@ def TableChatEventFixedLoad(values:[TableChatEvent], data_in:string, plan:[schem
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
-    if record_bytes <= 8 or (rest % record_bytes) != 0:
+    if rest == 0 or record_bytes <= 8 or (rest % record_bytes) != 0:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
         for(values) failed: TableChatEventReset(failed)
@@ -3934,6 +3966,8 @@ def TablePickupEventFixedMeasure(count:int) -> int:
     return schema_rt.TableFixedHeaderBytes + 4 + 55 + count * (8 + 8)
 
 def TablePickupEventFixedSaveChecked(values:[TablePickupEvent], buffer:string) -> int, string, string:
+    if length(values) == 0:
+        return -1, buffer, schema_rt.TableRefuseInvalidValue
     let need = TablePickupEventFixedMeasure(length(values))
     if length(buffer) < need:
         return -1, buffer, schema_rt.TableRefuseTruncated
@@ -4020,7 +4054,7 @@ def TablePickupEventFixedLoad(values:[TablePickupEvent], data_in:string, plan:[s
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
-    if record_bytes <= 8 or (rest % record_bytes) != 0:
+    if rest == 0 or record_bytes <= 8 or (rest % record_bytes) != 0:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
         for(values) failed: TablePickupEventReset(failed)
@@ -4502,6 +4536,8 @@ def TableMixedFixedMeasure(count:int) -> int:
     return schema_rt.TableFixedHeaderBytes + 4 + 1279 + count * (8 + 1224)
 
 def TableMixedFixedSaveChecked(values:[TableMixed], buffer:string) -> int, string, string:
+    if length(values) == 0:
+        return -1, buffer, schema_rt.TableRefuseInvalidValue
     let need = TableMixedFixedMeasure(length(values))
     if length(buffer) < need:
         return -1, buffer, schema_rt.TableRefuseTruncated
@@ -4588,7 +4624,7 @@ def TableMixedFixedLoad(values:[TableMixed], data_in:string, plan:[schema_rt.Tab
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
-    if record_bytes <= 8 or (rest % record_bytes) != 0:
+    if rest == 0 or record_bytes <= 8 or (rest % record_bytes) != 0:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
         for(values) failed: TableMixedReset(failed)
