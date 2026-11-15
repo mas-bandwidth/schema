@@ -560,10 +560,10 @@ func TestPythonVtBlobsNegativeControl(t *testing.T) {
         ctx.blob_next += 1
         index = ctx.refs.setdefault((id(ctx.current), fd.field_id), index)
 `
-	const sharedFrom = `        if index in seen_blob:
-            raise Refused("blob_shared", "one byte buffer is named from two slots")
+	const sharedFrom = `        if blob and names[k + 1] > 1:
+            raise Refused("blob_shared", "one blob record named from two slots")
 `
-	const sharedTo = `        if index in seen_blob:
+	const sharedTo = `        if blob and names[k + 1] > 1:
             continue
 `
 	for _, ctl := range []struct {
