@@ -287,6 +287,7 @@ _M.ReadProbeSample <- function(stream, value) {
 _M.WriteProbeSample <- function(stream, value) {
   _h.value = value.Active;
   if (!stream.serializeBool(_h)) return false;
+  if (value.Orientation != value.Orientation || value.Orientation < -180.0 || value.Orientation > 180.0) return false; // SPEC §5.1 row 10
   _h.value = value.Orientation;
   if (!stream.serializeCompressedFloat(_h, -180.0, 180.0, 0.009999999776482582)) return false;
   if (typeof value.RawDelta != "integer") return false;
@@ -899,6 +900,7 @@ _M.WriteTestData <- function(stream, value) {
   }
   _h.value = value.FloatValue;
   if (!stream.serializeFloat(_h)) return false;
+  if (value.CompressedFloatValue != value.CompressedFloatValue || value.CompressedFloatValue < 0.0 || value.CompressedFloatValue > 10.0) return false; // SPEC §5.1 row 10
   _h.value = value.CompressedFloatValue;
   if (!stream.serializeCompressedFloat(_h, 0.0, 10.0, 0.009999999776482582)) return false;
   _h.value = value.DoubleValue;
@@ -965,8 +967,10 @@ _M.ReadCompressedProbe <- function(stream, value) {
 
 // WriteCompressedProbe writes value in declared order; false on a refused value.
 _M.WriteCompressedProbe <- function(stream, value) {
+  if (value.Boundary != value.Boundary || value.Boundary < 0.0 || value.Boundary > 10.0) return false; // SPEC §5.1 row 10
   _h.value = value.Boundary;
   if (!stream.serializeCompressedFloat(_h, 0.0, 10.0, 0.009999999776482582)) return false;
+  if (value.Offset != value.Offset || value.Offset < -5.0 || value.Offset > 5.0) return false; // SPEC §5.1 row 10
   _h.value = value.Offset;
   if (!stream.serializeCompressedFloat(_h, -5.0, 5.0, 0.0010000000474974513)) return false;
   return true;
