@@ -1048,6 +1048,16 @@
       "python": "pin"
     },
     {
+      "name": "python-packet-text",
+      "when": "pull-request",
+      "why": "the Python packet leg's text controls (make/python.mk): TestPythonPacketTextNegativeControl plants a widened string buffer in a copy of the generated Narrow reader and a Latin-1 decode in a copy of the runtime it carries, and the corpus verdict must go red by name; packet-utf8-python-negative-control plants the same decode and the shared packet-text harness's mutation-only sweep against the C++ oracle must fail its verdict marker. One SCHEMA_SLOW go test and one harness run on the current pin, the cost of the pin cache restore rather than the runs.",
+      "targets": [
+        "python-packet-text-negative-control",
+        "packet-utf8-python-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",

@@ -105,6 +105,14 @@ func fieldKind(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "bool"
+	case ir.TString, ir.TBytes:
+		if f.Type.Unbounded || f.Type.Size < 1 {
+			return ""
+		}
+		if f.Type.Kind == ir.TString {
+			return "string"
+		}
+		return "bytes"
 	case ir.TInt:
 		if f.Type.Width <= 64 {
 			return "int"
@@ -743,6 +751,8 @@ func (m *pyModule) fieldBits(f *ir.Field, seen map[string]bool) int64 {
 	switch f.Type.Kind {
 	case ir.TBool:
 		return 1
+	case ir.TString, ir.TBytes:
+		return textBits(f.Type.Size)
 	case ir.TInt:
 		if f.HasIntRange {
 			return rangeBits64Big(f.IntMin, f.IntMax)
