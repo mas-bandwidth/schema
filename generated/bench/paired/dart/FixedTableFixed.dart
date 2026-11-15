@@ -401,7 +401,7 @@ final Int32List fixedTableFixedDst = Int32List.fromList(const <int>[
 /// THE IDENTITY PLAN, coalesced HERE rather than at run time: when a record's
 /// hash is this build's own the plan is the one the compiler already wrote.
 /// Because the reader's own storage in this language IS the wire's layout,
-/// source and destination advance together and the walk collapses to 12
+/// source and destination advance together and the walk collapses to 15
 /// entries — the same coalescer the plan compiler runs, reaching its best
 /// case
 /// rather than skipping a step. A COUNT and a TEXT LENGTH keep entries of
@@ -411,20 +411,23 @@ final Int32List fixedTableFixedDst = Int32List.fromList(const <int>[
 // dart format off
 final Int32List fixedTableFixedIdentity = Int32List.fromList(const <int>[
   0, 0, 0, 52, 0, -1, 0, 0, 1, 0, 0,
-  1, 52, 52, 8, 0, -1, 0, 0, 1, 0, 0, // entities count
+  1, 52, 52, 8, 51, -1, 0, 0, 1, 0, 0, // entities count
   0, 56, 56, 408, 0, -1, 0, 0, 1, 0, 0, // entities, whole
-  1, 464, 464, 80, 0, -1, 0, 0, 1, 0, 0, // stats count
+  1, 464, 464, 80, 8, -1, 0, 0, 1, 0, 0, // stats count
   0, 468, 468, 641, 0, -1, 0, 0, 1, 0, 0, // stats, whole
   0, 1122, 1122, 4, 0, -1, 0, 0, 1, 0, 0, // loadout, whole
   2, 1126, 1126, 15, 1130, -1, 0, 1, 1, 0, 0, // player_name
   2, 1145, 1145, 16, 1149, -1, 0, 3, 1, 0, 0, // payload
   0, 1165, 1165, 71, 0, -1, 0, 0, 1, 0, 0,
+  8, 1109, 1109, 13, 0, 1108, 0, 0, 1, 0, 0, // tag 0's dead arm
   0, 1109, 1109, 13, 0, 1108, 1, 0, 1, 0, 0,
+  8, 1117, 1117, 5, 0, 1108, 2, 0, 1, 0, 0, // dead past the taken arm
   0, 1109, 1109, 8, 0, 1108, 2, 0, 1, 0, 0,
+  8, 1117, 1117, 5, 0, 1108, 3, 0, 1, 0, 0, // dead past the taken arm
   0, 1109, 1109, 8, 0, 1108, 3, 0, 1, 0, 0,
 ]);
 // dart format on
-const int fixedTableFixedIdentityCount = 12;
+const int fixedTableFixedIdentityCount = 15;
 
 /// THE GUARD CHAIN'S POOL for the identity plan (§4.1): offset+count from an
 /// entry's guards lanes, (guard, arg, argw) a link, outermost first.
@@ -607,6 +610,9 @@ int fixedTableFixedSave(List<FixedTable> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
+  // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD: a save of none is refused
+  // in a debug build, this leg's idiom for every write check (§3.4).
+  assert(count > 0);
   // A NaN OR AN INFINITY IS REFUSED (docs/SPEC-TABLES.md §3.3): every
   // record is asked before the first byte is written, so a refusal
   // leaves the caller's bytes as they were.
@@ -772,8 +778,10 @@ int fixedTableFixedLoad(
   // not a hash of the layout bytes alone (§3, bill §13).
   final rest = byteLength - TableFixedLimits.layoutAt - layoutBytes;
   // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:
-  // the two ends of the file have met.
-  if (recordBytes <= 8 || rest % recordBytes != 0) {
+  // the two ends of the file have met. A FILE HOLDS AT LEAST ONE RECORD
+  // (§5.3 step 9): a header and a layout followed by no record reads zero
+  // records, and a batch of none holds no value to read.
+  if (rest == 0 || recordBytes <= 8 || rest % recordBytes != 0) {
     report.refused = TableFixedRefusal.damaged;
     return -1;
   }
@@ -903,7 +911,7 @@ int fixedTableLoadMessages(
   if (count < 0) return -1;
   if (count > values.length) {
     report.Refuse('batch_too_large');
-    return count;
+    return 0;
   }
   for (var i = 0; i < count; i++) {
     if (!fixedTableLoadMessageBody(r, values[i])) {

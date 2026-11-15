@@ -12,6 +12,7 @@ package compiler
 
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -19,17 +20,14 @@ type pythonTarget struct{}
 
 func (pythonTarget) Names() []string { return []string{"python"} }
 
-// Generate is the skeleton (docs/PORT-PYTHON.md, THE CARD MAP: P3). The shared
-// refusal chain every port calls refuses, by name, each construct the target
-// does not carry, as it does for every skeleton (docs/PORT-GOOSE.md, THE
-// CARRIES PATTERN); the constructs keyed in compiler/carries.go are refused by
-// the driver against the python carries set, which compiler/carries_python.go
-// registers empty. Then the emitter holds every name to the leg's identifier
-// rules and refuses each declaration kind it does not carry yet, naming the
-// layer that carries it. A unit that declares nothing generates its package.
+// Generate selects the table frame for a table unit and the packet core
+// otherwise. Each emitter holds the identifier rules and names any construct
+// outside its carried surface (docs/PORT-PYTHON.md).
 func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := ir.RefuseWideTableKinds(u, "python"); err != nil {
-		return nil, err
+	if len(u.Tables) == 0 {
+		if err := ir.RefuseWideTableKinds(u, "python"); err != nil {
+			return nil, err
+		}
 	}
 	if err := refuseUnported(u, "python"); err != nil {
 		return nil, err
@@ -42,6 +40,9 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	}
 	if err := refuseLists(u, "python"); err != nil {
 		return nil, err
+	}
+	if len(u.Tables) > 0 {
+		return pythontable.Generate(u)
 	}
 	if err := refuseTables(u, "python"); err != nil {
 		return nil, err

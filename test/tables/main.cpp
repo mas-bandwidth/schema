@@ -4077,7 +4077,7 @@ static void test_json_hostile_extents()
         const char * text = "{ \"version_note\": \"123456789012345\xc3\xa9\" }";
         CHECK( !tabledemo::RootConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.version_note_length == 0 );
-        CHECK( report.refuse_reason == tabledemo::out_of_range );
+        CHECK( report.refuse_reason == tabledemo::length_over_bound );
     }
     {
         // exactly at the bound, a multi-byte character included, lands whole
@@ -4090,7 +4090,7 @@ static void test_json_hostile_extents()
         // and one ASCII byte past it refuses
         const char * over = "{ \"version_note\": \"1234567890123\xe2\x9c\x93X\" }";
         CHECK( !tabledemo::RootConfigFromJson( value, over, (int64_t) strlen( over ), &report ) );
-        CHECK( value.version_note_length == 0 && report.refuse_reason == tabledemo::out_of_range );
+        CHECK( value.version_note_length == 0 && report.refuse_reason == tabledemo::length_over_bound );
     }
 
     // more array elements than the reader's bound refuse the whole read, the
@@ -8706,8 +8706,9 @@ static void test_blob_record_length_off_by_one()
 }
 
 // the type-id check both ways (§2.5, §3.1): a *string blob under a *bytes
-// slot is a kind mismatch, and a `bytes(N)` array under a `*bytes` slot is
-// kind 14 against kind 17 — mismatch in both directions, nothing misdecodes
+// slot is a wrong-type pointer target, which is damage, and a `bytes(N)` array
+// under a `*bytes` slot is kind 14 against kind 17 — a mismatch in both
+// directions, nothing misdecodes
 static void test_blob_kind_mismatch()
 {
     // a Catalog whose note (a *string blob) is named by thumb (*bytes):
@@ -8734,7 +8735,7 @@ static void test_blob_kind_mismatch()
     std::vector<uint8_t> region( (size_t) ( region_need > 0 ? region_need : 1 ) );
     blobdemo::TableReport report;
     const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, wire, (int64_t) n, &report );
-    CHECK( loaded == NULL && !report.damaged );
+    CHECK( loaded == NULL && report.damaged );
     CHECK( report.refuse_reason == blobdemo::kind_mismatch );
 
     // `bytes(N)` bytes arriving under the *bytes field id: kind 14 against 17

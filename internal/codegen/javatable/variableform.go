@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -744,6 +746,36 @@ public final class TableVariable {
         report.wireNonFinite = false;
         WireCheck wc = WIRE_CHECK.get();
         wc.reset(data, ids);
+        return openChecked(data, base, ids, report, wc, false);
+    }
+
+    // openAnnouncement is the same form-1 open for the one body whose transport
+    // the announcement's two reserved ids are (docs/SPEC-TABLES.md §3.3). The
+    // announcement is an ordinary form-1 file, so it takes the same trailer,
+    // distinctness and wire-alone checks a file takes; only the two reserved
+    // ids in the root body are admitted where a file refuses them.
+    static Reader openAnnouncement(byte[] data, Report report) {
+        if (report == null) {
+            report = new Report();
+        }
+        int base = trailerBase(data, report);
+        if (base < 0) {
+            return null;
+        }
+        int count = (data.length - 8 - base) / 8;
+        long[] ids = new long[count];
+        for (int i = 0; i < count; i++) {
+            ids[i] = u64(data, base + i * 8);
+        }
+        report.wireNonFinite = false;
+        WireCheck wc = WIRE_CHECK.get();
+        wc.reset(data, ids);
+        return openChecked(data, base, ids, report, wc, true);
+    }
+
+    private static Reader openChecked(
+            byte[] data, int base, long[] ids, Report report, WireCheck wc, boolean announcement) {
+        wc.announcement = announcement;
         switch (wc.file(base)) {
             case WireCheck.DAMAGED:
                 report.damaged = true;
@@ -761,8 +793,14 @@ public final class TableVariable {
                 }
                 return null;
             case WireCheck.NON_FINITE:
-                // the decode names the field where this reader declares it;
-                // settleNonFinite refuses for one it does not
+                // AN ANNOUNCEMENT IS A FILE'S WIRE CHECK, and a float it cannot
+                // name is damage there (§3.3); a file's decode names the field
+                // where this reader declares it and settleNonFinite refuses for
+                // one it does not
+                if (announcement) {
+                    report.damaged = true;
+                    return null;
+                }
                 report.wireNonFinite = true;
                 break;
             default:
@@ -784,12 +822,26 @@ public final class TableVariable {
         }
     }
 
+    // THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body
+    // (kind 14) opens with 1–13, 15, 17, 18–30, and an enum-keyed body (kind
+    // 16) with 1–11, 13, 18–30. Any other element kind is damage under ANY
+    // count, a count of 0 included, in a declared field and in an unknown one
+    // alike, so it is judged before any comparison with a declaration.
+    static boolean arrayElemKindClosed(int kind) {
+        return (kind >= 1 && kind <= 13) || kind == 15 || kind == 17 || (kind >= 18 && kind <= 30);
+    }
+
+    static boolean keyedElemKindClosed(int kind) {
+        return (kind >= 1 && kind <= 11) || kind == 13 || (kind >= 18 && kind <= 30);
+    }
+
     // THE CONDITIONS DECIDABLE FROM THE WIRE ALONE (docs/SPEC-TABLES.md §6.5,
     // "TWO KINDS OF CONDITION"), the oracle's own walk
     // (internal/tablewire/wirecheck.go) over a form-1 file. It takes no
     // declaration. It checks the framing (lengths, counts, terminators, an
     // array's, keyed array's or map's header inside its own L and no byte
-    // left inside that L after its elements, the id table's references,
+    // left inside that L after its elements, an array or keyed body's element
+    // kind on §3's closed list, the id table's references,
     // canonical LEB128, a kind no reader can skip, kind 32 with a nonzero L),
     // a bool byte other than 0 or 1, ill-formed text, a repeated field id or
     // keyed slot in one body, bytes left inside an arm after its payload, the
@@ -821,6 +873,9 @@ public final class TableVariable {
         int depth;
         int fail;
         boolean nonFinite;
+        // announcement admits the two reserved announcement ids in the root body,
+        // the one body whose transport they are (docs/SPEC-TABLES.md §3.3)
+        boolean announcement;
         // edges are the kind 17 payloads met, in wire order; edgeStart[k] is
         // where node k's begin (node 0 the root, node k record k - 1)
         long[] edges = new long[64];
@@ -846,7 +901,14 @@ public final class TableVariable {
             if (stamp.length <= ids.length) {
                 stamp = new int[Math.max(ids.length + 1, stamp.length * 2)];
                 gen = 0;
-            } else if (gen > Integer.MAX_VALUE - (1 << 20)) {
+            } else if (gen < 0 || gen > Integer.MAX_VALUE - buf.length) {
+                // A body and a keyed array each spend at least one byte, so
+                // this file stamps at most buf.length generations. Clear the
+                // stamps before the walk whenever those generations would
+                // carry the counter past Integer.MAX_VALUE, and whenever a
+                // counter from an older reset has already wrapped, so the
+                // counter never wraps between resets and a valid body never
+                // meets a stale generation.
                 java.util.Arrays.fill(stamp, 0);
                 gen = 0;
             }
@@ -969,6 +1031,13 @@ public final class TableVariable {
                     recBlob = java.util.Arrays.copyOf(recBlob, n * 2);
                 }
                 long typeId = ids[(int) ref - 1];
+                // A RESERVED ID IN A RECORD'S TYPE POSITION IS DAMAGE
+                // (docs/SPEC-TABLES.md §3.1): the node table, build-version
+                // and message-vocabulary ids belong to their own transports,
+                // never to a record's type.
+                if (typeId == NODE_ID || typeId == BUILD_ID || typeId == VOCAB_ID) {
+                    return DAMAGED;
+                }
                 recStart[n] = at;
                 recEnd[n] = at + (int) length;
                 recBlob[n] = typeId == BYTES_ID || typeId == STRING_ID;
@@ -1017,7 +1086,7 @@ public final class TableVariable {
                     continue;
                 }
                 if (index - 1 >= n || index < 0) {
-                    return damage();
+                    return damage(); // a reference above the entry count is damage
                 }
                 names[(int) index - 1]++;
             }
@@ -1103,7 +1172,9 @@ public final class TableVariable {
                 long id = ids[(int) ref - 1];
                 int kind = buf[p++] & 0xff;
                 if (id == BUILD_ID || id == VOCAB_ID) {
-                    return damage();
+                    if (!root || !announcement) {
+                        return damage();
+                    }
                 }
                 if (id == NODE_ID) {
                     if (!root || kind != 12) {
@@ -1331,6 +1402,11 @@ public final class TableVariable {
                 return false;
             }
             int kind = buf[off] & 0xff;
+            // THE ELEMENT KIND IS CLOSED, judged under any count and before
+            // any element is walked (docs/SPEC-TABLES.md §3, §4).
+            if (!arrayElemKindClosed(kind)) {
+                return damage();
+            }
             int p = at;
             for (long i = 0; i < count; i++) {
                 p = payload(p, end, kind);
@@ -1347,6 +1423,11 @@ public final class TableVariable {
                 return false;
             }
             int kind = buf[off] & 0xff;
+            // THE KEYED ELEMENT KIND IS ITS OWN CLOSED LIST, judged under any
+            // count (docs/SPEC-TABLES.md §3, §4).
+            if (!keyedElemKindClosed(kind)) {
+                return damage();
+            }
             int first = at;
             int g = ++gen;
             int p = first;
@@ -1421,11 +1502,29 @@ public final class TableVariable {
         }
     }
 
+    // THE ID TABLE'S DISTINCTNESS PROBE reuses one per-thread 8192-slot table,
+    // twice the 4096-entry bound so it is never more than half full (§3): the
+    // walk allocates nothing per call and every slot compares the stored id.
+    private static final ThreadLocal<IdProbe> ID_PROBE =
+            ThreadLocal.withInitial(IdProbe::new);
+
+    static final class IdProbe {
+        final long[] seen = new long[8192];
+        final byte[] used = new byte[8192];
+    }
+
     // trailerBase is open's every check, made IN PLACE on the caller's bytes:
     // the form byte, the id table's count and its repeated ids, and the
     // body's extent (§3). It answers the offset of the table's first entry, or
     // -1 with the report moved exactly as open moves it, and allocates nothing.
     public static int trailerBase(byte[] data, Report report) {
+        return trailerBase(data, report, true);
+    }
+
+    // trailerBase with the distinctness proof already made: a load's measure
+    // passes distinct false after its open proved the same bytes, so the
+    // bounded walk runs ONCE per load and never once per open and measure (§3).
+    private static int trailerBase(byte[] data, Report report, boolean distinct) {
         if (data.length < 1) {
             report.damaged = true;
             return -1;
@@ -1455,14 +1554,9 @@ public final class TableVariable {
             return -1;
         }
         int base = data.length - 8 - (int) count * 8;
-        for (int i = 0; i < count; i++) {
-            long id = u64(data, base + i * 8);
-            for (int j = 0; j < i; j++) {
-                if (u64(data, base + j * 8) == id) {
-                    report.damaged = true;
-                    return -1;
-                }
-            }
+        if (distinct && count > 1 && !idsDistinct(data, base, (int) count)) {
+            report.damaged = true;
+            return -1;
         }
         int end = bodyExtent(data, (int) count, 1, base);
         if (end >= 0 && end != base) {
@@ -1470,6 +1564,38 @@ public final class TableVariable {
             return -1;
         }
         return base;
+    }
+
+    // idsDistinct proves the entries distinct with ONE open-addressing probe
+    // over the fixed 8192-slot table (§3): the count bound above caps the walk
+    // at a fixed 8,386,560 slot-id comparisons, and there is no pairwise arm.
+    // A slot occupied by a different id compares the stored id, not the hash;
+    // the mix is the reference leg's tableOpen.
+    static boolean idsDistinct(byte[] data, int base, int count) {
+        IdProbe probe = ID_PROBE.get();
+        long[] seen = probe.seen;
+        byte[] used = probe.used;
+        java.util.Arrays.fill(used, (byte) 0);
+        for (int i = 0; i < count; i++) {
+            long id = u64(data, base + i * 8);
+            long hash = id;
+            hash ^= hash >>> 33;
+            hash *= 0xff51afd7ed558ccdL;
+            hash ^= hash >>> 33;
+            int slot = (int) hash & 8191;
+            while (true) {
+                if (used[slot] == 0) {
+                    used[slot] = 1;
+                    seen[slot] = id;
+                    break;
+                }
+                if (seen[slot] == id) {
+                    return false;
+                }
+                slot = (slot + 1) & 8191;
+            }
+        }
+        return true;
     }
 
     // u64 reads one little-endian u64 at at.
@@ -1827,6 +1953,12 @@ public final class TableVariable {
                 r.report.damaged = true;
                 return null;
             }
+            // A RESERVED ID IS NO RECORD'S TYPE (§3.1, §3.3, §5): it is damage
+            // anywhere but its own transport. The two blob ids are lawful types.
+            if (typeId == NODE_ID || typeId == BUILD_ID || typeId == VOCAB_ID) {
+                r.report.damaged = true;
+                return null;
+            }
             long size = r.leb();
             if (r.fail || size < 0 || !r.has((int) size)) {
                 r.report.damaged = true;
@@ -1895,11 +2027,17 @@ public final class TableVariable {
         // open is TableVariable.open over the caller's bytes into the one
         // reader: the same checks (trailerBase), the id table read in place.
         public Reader open(byte[] data) {
+            return open(data, true);
+        }
+
+        // open with the distinctness proof already made by the caller's open,
+        // so a load proves the entries distinct once and not again here (§3).
+        Reader open(byte[] data, boolean distinct) {
             report.reset();
             nodeRecords = -1;
             nodeBlobBytes = 0;
             nodeTableBytes = 0;
-            int base = trailerBase(data, report);
+            int base = trailerBase(data, report, distinct);
             if (base < 0) {
                 return null;
             }
@@ -2217,7 +2355,7 @@ public final class TableVariable {
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.damaged = true;
+            report.damaged = true; // a reference above the entry count is damage
             return null;
         }
         // a record this reader cannot name (or a text record that was not
@@ -2246,7 +2384,7 @@ public final class TableVariable {
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.damaged = true;
+            report.damaged = true; // a reference above the entry count is damage
             return null;
         }
         // a record this reader cannot name (or a text record that was not
@@ -2335,7 +2473,7 @@ public final class TableVariable {
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.damaged = true;
+            report.damaged = true; // a reference above the entry count is damage
             return null;
         }
         NodeRecord rec = recs[(int) (index - 2)];
@@ -2366,6 +2504,15 @@ public final class TableVariable {
         private long[] nodeType = new long[8];
         private boolean[] nodeBlob = new boolean[8];
         private int nodeCount;
+        // The graph walk's work list: one frame per field to visit, plus the
+        // close marker that ends a descended node. It is grow-only and reused
+        // like the arrays above, so numbering a graph recurses nowhere.
+        private Object[] workValue = new Object[16];
+        private int[] workKind = new int[16];
+        private int[] workField = new int[16];
+        private int[] workIndex = new int[16];
+        private Object[] workClose = new Object[16];
+        private int workSize;
         public final java.util.IdentityHashMap<Object, Long> labels =
                 new java.util.IdentityHashMap<>();
 
@@ -2378,9 +2525,44 @@ public final class TableVariable {
                 java.util.Arrays.fill(nodeValue, 0, nodeCount, null);
                 nodeCount = 0;
             }
+            if (workSize > 0) {
+                java.util.Arrays.fill(workValue, 0, workSize, null);
+                java.util.Arrays.fill(workClose, 0, workSize, null);
+                workSize = 0;
+            }
             if (!labels.isEmpty()) {
                 labels.clear();
             }
+        }
+
+        public void push(Object value, int kind, int field, int index, Object close) {
+            if (workSize == workValue.length) {
+                int cap = workSize * 2;
+                workValue = java.util.Arrays.copyOf(workValue, cap);
+                workKind = java.util.Arrays.copyOf(workKind, cap);
+                workField = java.util.Arrays.copyOf(workField, cap);
+                workIndex = java.util.Arrays.copyOf(workIndex, cap);
+                workClose = java.util.Arrays.copyOf(workClose, cap);
+            }
+            workValue[workSize] = value;
+            workKind[workSize] = kind;
+            workField[workSize] = field;
+            workIndex[workSize] = index;
+            workClose[workSize] = close;
+            workSize++;
+        }
+
+        public int workCount() { return workSize; }
+        public Object workValue(int i) { return workValue[i]; }
+        public int workKind(int i) { return workKind[i]; }
+        public int workField(int i) { return workField[i]; }
+        public int workIndex(int i) { return workIndex[i]; }
+        public Object workClose(int i) { return workClose[i]; }
+
+        public void pop() {
+            workSize--;
+            workValue[workSize] = null;
+            workClose[workSize] = null;
         }
 
         private int slot(Object obj) {
@@ -2622,6 +2804,7 @@ public final class TableJson {
     private TableJson() {}
 
     static void writeFlags(StringBuilder b, long bits, String[] names, int depth) {
+        assert names.length >= 64 || (bits >>> names.length) == 0 : "flags value sets a bit no variant names";
         b.append('[');
         boolean first = true;
         for (int i = 0; i < names.length; i++)
@@ -2652,11 +2835,16 @@ public final class TableJson {
                 in.rep.refuse("kind_mismatch");
                 in.skipValue();
             } else {
-                String name = in.scanString();
+                String name = in.scanName();
                 if (in.bad) return null;
                 boolean found = false;
                 for (int i = 0; i < names.length; i++)
                     if (names[i].equals(name)) {
+                        // A KNOWN VARIANT NAMED TWICE refuses the read, as a repeated
+                        // key does (docs/SPEC-TABLES.md §16.2).
+                        if ((bits & (1L << i)) != 0) {
+                            in.rep.refuse("text_damaged");
+                        }
                         bits |= 1L << i;
                         found = true;
                         break;
@@ -3078,17 +3266,31 @@ public final class TableJson {
                 if (c == '/' && p + 1 < t.length) {
                     if (t[p + 1] == '/') {
                         p += 2;
+                        int start = p;
                         while (p < t.length && t[p] != '\n') {
                             p++;
+                        }
+                        // §16.2: the bytes inside a comment are well-formed UTF-8
+                        // and hold no NUL, the same rule a string site keeps.
+                        if (!TableVariable.textValid(t, start, p - start)) {
+                            bad = true;
+                            return;
                         }
                         continue;
                     }
                     if (t[p + 1] == '*') {
                         p += 2;
+                        int start = p;
                         while (p + 1 < t.length && !(t[p] == '*' && t[p + 1] == '/')) {
                             p++;
                         }
                         if (p + 1 >= t.length) {
+                            bad = true;
+                            return;
+                        }
+                        // §16.2: the same UTF-8 and no-NUL rule inside a block
+                        // comment as inside a line comment.
+                        if (!TableVariable.textValid(t, start, p - start)) {
                             bad = true;
                             return;
                         }
@@ -3329,6 +3531,26 @@ public final class TableJson {
             }
         }
 
+        // scanName reads one string that NAMES a schema name — an object key
+        // naming a field, an enum variant, a flags element, a union arm, an
+        // &node name — and holds it to §16.2's 255-byte cap after decoding.
+        // A longer one refuses the read; a map key and a string value are data
+        // and go through scanString/scanStored, never this.
+        public String scanName() {
+            String s = scanString();
+            if (s == null) {
+                return null;
+            }
+            if (s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 255) {
+                bad = true;
+                if (rep != null) {
+                    rep.refuse("length_over_bound");
+                }
+                return null;
+            }
+            return s;
+        }
+
         // loneSurrogate refuses a string whose u-escape is a surrogate half
         // with no partner after it, as damage (strict-only decision 9).
         String loneSurrogate() {
@@ -3476,6 +3698,10 @@ public final class TableJson {
                     return 0;
                 }
                 if (signed) {
+                    if (Double.isFinite(d) && d >= 9223372036854775808.0) {
+                        rep.refuse("out_of_range");
+                        return max;
+                    }
                     if (!Double.isFinite(d) || d != (double) (long) d) {
                         rep.refuse("kind_mismatch");
                         rejected = true;
@@ -3609,6 +3835,7 @@ public final class TableJson {
                 return;
             }
             p++; // the opening bracket
+            java.util.Set<String> seenKey = null;
             while (true) {
                 int c = peek();
                 if (c == closing) {
@@ -3620,9 +3847,17 @@ public final class TableJson {
                     return;
                 }
                 if (closing == '}') {
-                    String key = scanString();
+                    String key = scanName();
                     if (bad) {
                         return;
+                    }
+                    // A SKIPPED OBJECT'S KEYS ARE HELD TO THE SAME RULE (§16.2,
+                    // §16.12): the set is per object and holds decoded text.
+                    if (seenKey == null) {
+                        seenKey = new java.util.HashSet<>();
+                    }
+                    if (!seenKey.add(key)) {
+                        rep.refuse("text_damaged");
                     }
                     if (peek() != ':') {
                         bad = true;
@@ -3694,7 +3929,13 @@ func unitCarriesForm(u *ir.Unit, form string) bool {
 
 func generateVariableFiles(u *ir.Unit) (map[string][]byte, error) {
 	tables := cardVariableTables(u)
-	if len(tables) == 0 {
+	// THE ANNOUNCEMENT IS AN ORDINARY FORM-1 FILE (docs/SPEC-TABLES.md §3.3),
+	// so a unit with a fixed root needs the form-1 reader even when every table
+	// it declares is fixed: the message form's announcement opens with that
+	// reader's own open and steps its unknown fields with that reader's own
+	// skip. A unit with neither a variable table nor a fixed root carries
+	// neither.
+	if len(tables) == 0 && len(fixedRoots(u)) == 0 {
 		return map[string][]byte{}, nil
 	}
 	out := map[string][]byte{
@@ -3958,6 +4199,7 @@ func hasFixedFile(u *ir.Unit, st *ir.Struct) bool {
 func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	st = variableStruct(st)
 	tables := cardVariableTables(u)
+	graphTypes, graphIndex := variableGraphTypes(u)
 	var b strings.Builder
 	b.WriteString("import java.nio.charset.StandardCharsets;\n")
 	b.WriteString("import java.util.ArrayList;\n")
@@ -3996,6 +4238,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 
 	// Constants
 	fmt.Fprintf(&b, "    public static final long TYPE_ID = 0x%016xL;\n", ir.TableWireId(st.WireName()))
+	fmt.Fprintf(&b, "    static final int GRAPH_KIND = %d;\n", graphIndex[st.Name])
 	for _, f := range st.Fields {
 		fmt.Fprintf(&b, "    public static final long F_%s = 0x%016xL;\n", varMember(f), ir.TableFieldWireId(f))
 	}
@@ -4027,14 +4270,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("    }\n\n")
 
 	// buildGraph
-	b.WriteString("    public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {\n")
-	b.WriteString("        if (v == null) { return true; }\n")
-	for _, f := range st.Fields {
-		open := openGuard(&b, st, f)
-		writeVariableGraphField(&b, f)
-		closeGuard(&b, open)
-	}
-	b.WriteString("        return true;\n    }\n\n")
+	writeVariableGraphWalk(&b, st, graphTypes)
 
 	// readFields
 	fmt.Fprintf(&b, "    public static boolean readFields(TableVariable.Reader r, Value v, TableVariable.NodeTable nt, TableVariable.Report report) {\n")
@@ -4284,7 +4520,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		// measureFields IS the oracle walk, and the load refuses exactly where
 		// loadMeasure answers -1, whatever the read reported.
 		fmt.Fprintf(&b, "        TableVariable.Measure measure = new TableVariable.Measure();\n")
-		fmt.Fprintf(&b, "        if (loadMeasure(data, measure) < 0) {\n")
+		fmt.Fprintf(&b, "        if (loadMeasure(data, measure, false) < 0) {\n")
 		fmt.Fprintf(&b, "            report.refused = true;\n")
 		fmt.Fprintf(&b, "            if (measure.report.reason != null) { report.reason = measure.report.reason; }\n")
 		fmt.Fprintf(&b, "            return null;\n")
@@ -4386,11 +4622,16 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "        return loadMeasure(data, new TableVariable.Measure());\n")
 	fmt.Fprintf(b, "    }\n\n")
 	fmt.Fprintf(b, "    public static long loadMeasure(byte[] data, TableVariable.Measure m) {\n")
+	fmt.Fprintf(b, "        return loadMeasure(data, m, true);\n")
+	fmt.Fprintf(b, "    }\n\n")
+	b.WriteString("    // A load whose open already proved the id table distinct over these bytes\n")
+	b.WriteString("    // passes distinct false, so a load runs the bounded walk exactly once (§3).\n")
+	fmt.Fprintf(b, "    static long loadMeasure(byte[] data, TableVariable.Measure m, boolean distinct) {\n")
 	if st.Integrity != "" {
 		fmt.Fprintf(b, "        data = TableVariable.integrityOpen(data, m.report);\n")
 		fmt.Fprintf(b, "        if (data == null) { return -1; }\n")
 	}
-	fmt.Fprintf(b, "        TableVariable.Reader r = m.open(data);\n")
+	fmt.Fprintf(b, "        TableVariable.Reader r = m.open(data, distinct);\n")
 	fmt.Fprintf(b, "        if (r == null) { return -1; }\n")
 	fmt.Fprintf(b, "        m.nodeSizer = NODE_SIZER;\n")
 	fmt.Fprintf(b, "        int start = r.off;\n")
@@ -4748,8 +4989,11 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "        TableJson.In in = new TableJson.In(text, report);\n")
 		fmt.Fprintf(b, "        in.byteOrderMark();\n")
 		fmt.Fprintf(b, "        Value v = new Value();\n")
-		fmt.Fprintf(b, "        jsonReadFields(in, v);\n")
-		fmt.Fprintf(b, "        if (in.bad) { report.damaged = true; }\n")
+		fmt.Fprintf(b, "        jsonReadFields(in, v, 0);\n")
+		fmt.Fprintf(b, "        // THE ROOT OBJECT IS THE WHOLE TEXT (§16.1): skip whitespace and\n")
+		fmt.Fprintf(b, "        // comments, then refuse unless the cursor is at the end of the text.\n")
+		fmt.Fprintf(b, "        in.space();\n")
+		fmt.Fprintf(b, "        if (in.bad || in.p != text.length) { report.damaged = true; }\n")
 		fmt.Fprintf(b, "        if (report.refused) { return null; }\n")
 		fmt.Fprintf(b, "        // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)\n")
 		fmt.Fprintf(b, "        if (report.damaged) { return null; }\n")
@@ -4816,16 +5060,17 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
 
-	fmt.Fprintf(b, "    public static Value readJsonPointer(TableJson.In in, long targetTypeId) {\n")
+	fmt.Fprintf(b, "    public static Value readJsonPointer(TableJson.In in, long targetTypeId, int depth) {\n")
 	b.WriteString("        if (in.peek() == 'n') { in.lit(\"null\"); return null; }\n")
+	b.WriteString("        if (depth + 1 > TableJson.In.MAX_JSON_DEPTH) { in.bad = true; return null; }\n")
 	b.WriteString("        if (in.peek() != '{') { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); return null; }\n")
 	b.WriteString("        int start = in.p;\n")
 	b.WriteString("        in.p++;\n")
 	b.WriteString("        in.space();\n")
-	b.WriteString("        if (in.peek() == '}') { in.p = start; Value v = new Value(); jsonReadFields(in, v); return v; }\n")
-	b.WriteString("        String key = in.scanString();\n")
+	b.WriteString("        if (in.peek() == '}') { in.p = start; Value v = new Value(); jsonReadFields(in, v, depth + 1); return v; }\n")
+	b.WriteString("        String key = in.scanName();\n")
 	b.WriteString("        if (in.bad || key == null) return null;\n")
-	b.WriteString("        if (!\"&node\".equals(key)) { in.p = start; Value v = new Value(); jsonReadFields(in, v); return v; }\n")
+	b.WriteString("        if (!\"&node\".equals(key)) { in.p = start; Value v = new Value(); jsonReadFields(in, v, depth + 1); return v; }\n")
 	b.WriteString("        if (in.peek() != ':') { in.bad = true; return null; }\n")
 	b.WriteString("        in.p++;\n")
 	b.WriteString("        long labelId = in.scanLabel();\n")
@@ -4845,7 +5090,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("            Value child = new Value();\n")
 	b.WriteString("            TableJson.LabelEntry entry = new TableJson.LabelEntry(child, targetTypeId, true);\n")
 	b.WriteString("            in.labels.put(labelId, entry);\n")
-	fmt.Fprintf(b, "            jsonReadFieldsBody(in, child);\n")
+	fmt.Fprintf(b, "            jsonReadFieldsBody(in, child, depth + 1);\n")
 	b.WriteString("            entry.open = false;\n")
 	b.WriteString("            return child;\n")
 	b.WriteString("        } else {\n")
@@ -4853,32 +5098,37 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
 
-	fmt.Fprintf(b, "    static void jsonReadFields(TableJson.In in, Value v) {\n")
+	fmt.Fprintf(b, "    static void jsonReadFields(TableJson.In in, Value v, int depth) {\n")
+	b.WriteString("        if (depth > TableJson.In.MAX_JSON_DEPTH) { in.bad = true; return; }\n")
 	if st.JsonArray && len(st.Fields) == 1 {
 		b.WriteString("        in.space();\n")
 		fmt.Fprintf(b, "        if (in.peek() != '[') { if (in.rep != null && in.rep.reason == null) { in.rep.reason = \"json_root_not_array: %s\"; } in.bad = true; return; }\n", st.DeclaredName())
 		fmt.Fprintf(b, "        v.%s.clear();\n", varMember(st.Fields[0]))
-		readJsonFieldValue(b, u, st, st.Fields[0])
+		readJsonFieldValue(b, u, st, st.Fields[0], "depth")
 		b.WriteString("    }\n\n")
 	} else {
 		b.WriteString("        in.space();\n")
 		b.WriteString("        if (in.peek() != '{') { in.bad = true; return; }\n")
 		b.WriteString("        in.p++;\n")
-		b.WriteString("        jsonReadFieldsBody(in, v);\n")
+		b.WriteString("        jsonReadFieldsBody(in, v, depth);\n")
 		b.WriteString("    }\n\n")
 	}
 
-	fmt.Fprintf(b, "    static void jsonReadFieldsBody(TableJson.In in, Value v) {\n")
+	fmt.Fprintf(b, "    static void jsonReadFieldsBody(TableJson.In in, Value v, int depth) {\n")
 	// A REPEATED FIELD KEY IS A DUPLICATE KEY (docs/SPEC-TABLES.md §16.2): the
 	// last occurrence wins whole, and the repeat is counted BEFORE the value's
 	// shape is judged, so a repeat the walk then refuses is still a repeat.
 	fmt.Fprintf(b, "        boolean[] seenField = new boolean[%d];\n", len(st.Fields))
+	b.WriteString("        java.util.Set<String> seenKey = new java.util.HashSet<>();\n")
 	b.WriteString("        while (true) {\n")
 	b.WriteString("            int c = in.peek();\n")
 	b.WriteString("            if (c == 0) { in.bad = true; return; }\n")
 	b.WriteString("            if (c == '}') { in.p++; break; }\n")
-	b.WriteString("            String key = in.scanString();\n")
+	b.WriteString("            String key = in.scanName();\n")
 	b.WriteString("            if (in.bad) { return; }\n")
+	b.WriteString("            // THE KEY SET HOLDS EVERY KEY OF THE OBJECT, declared or not,\n")
+	b.WriteString("            // compared by decoded text (§16.2, §16.12).\n")
+	b.WriteString("            if (!seenKey.add(key)) { in.rep.refuse(\"text_damaged\"); }\n")
 	b.WriteString("            if (key != null && key.startsWith(\"&\")) { in.bad = true; return; }\n")
 	b.WriteString("            if (in.peek() != ':') { in.bad = true; return; }\n")
 	b.WriteString("            in.p++;\n")
@@ -4908,12 +5158,15 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			}
 			fmt.Fprintf(b, "                if (repeated && %s) { v.%s = %s; }\n", takesNull, varMember(f), variableDefault(f))
 		}
-		readJsonFieldValue(b, u, st, f)
+		readJsonFieldValue(b, u, st, f, "depth")
 		b.WriteString("                }\n")
 		b.WriteString("            } else ")
 	}
 	b.WriteString("{\n")
-	b.WriteString("                in.skipValue(); in.rep.unknown++;\n")
+	// A key this reader cannot name is skipped one level deeper than the
+	// object that holds it, the same count as a placed value (§16.2):
+	// 128 containers are read and 129 refuse.
+	b.WriteString("                in.skipValue(depth + 1); in.rep.unknown++;\n")
 	b.WriteString("            }\n")
 	b.WriteString("            c = in.peek();\n")
 	b.WriteString("            if (c == ',') { in.p++; continue; }\n")
@@ -5046,7 +5299,7 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 				for j := range ref.Variants {
 					fmt.Fprintf(b, "                    case %d: TableJson.esc(b, %q); break;\n", j+1, ref.Variants[j])
 				}
-				b.WriteString("                    default: TableJson.esc(b, \"None\"); break;\n                }\n")
+				fmt.Fprintf(b, "                    default: assert v.%s.get(i) == 0 : \"enum value names no variant\"; TableJson.esc(b, \"None\"); break;\n                }\n", m)
 			case *ir.Flags:
 				fmt.Fprintf(b, "                TableJson.writeFlags(b,v.%s.get(i),%s,depth+1);\n", m, variableFlagNames(ref))
 			}
@@ -5058,7 +5311,7 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	b.WriteString("        }\n")
 }
 
-func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, depth string) {
 	m := varMember(f)
 	fmt.Fprintf(b, "                if (in.peek() == '[') {\n")
 	b.WriteString("                    in.p++;\n")
@@ -5123,12 +5376,12 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			if un := variableUnion(f); un != nil {
 				// §16.2: an element of the wrong JSON shape is skipped and
 				// counted kind_mismatch, exactly as the field gate does.
-				fmt.Fprintf(b, "                        if (ec != '{') { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); v.%s.add(new %sVariable.Value()); } else { v.%s.add(%sVariable.readJson(in)); }\n", m, un.Name, m, un.Name)
+				fmt.Fprintf(b, "                        if (ec != '{') { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); v.%s.add(new %sVariable.Value()); } else { v.%s.add(%sVariable.readJson(in, %s)); }\n", m, un.Name, m, un.Name, depth+" + 1")
 			}
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
 				b.WriteString("                        if (ec == '\"') {\n")
-				b.WriteString("                            String s = in.scanString();\n")
+				b.WriteString("                            String s = in.scanName();\n")
 				b.WriteString("                            if(\"None\".equals(s)){v." + m + ".add(0);}else ")
 				for j := range ref.Variants {
 					fmt.Fprintf(b, "                            if (%q.equals(s)) { v.%s.add(%d); }\n", ref.Variants[j], m, j+1)
@@ -5299,14 +5552,14 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 			for i := range enum.Variants {
 				fmt.Fprintf(b, "            case %d: TableJson.esc(b, %q); break;\n", i+1, enum.Variants[i])
 			}
-			b.WriteString("            default: TableJson.esc(b, \"None\"); break;\n        }\n")
+			fmt.Fprintf(b, "            default: assert v.%s == 0 : \"enum value names no variant\"; TableJson.esc(b, \"None\"); break;\n        }\n", m)
 		} else if _, ok := f.Type.Ref.(*ir.Flags); ok {
 			fmt.Fprintf(b, "        b.append(Long.toString(v.%s));\n", m)
 		}
 	}
 }
 
-func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, depth string) {
 	if variableWide(f) && f.Array == ir.ArrayNone && !f.Type.Optional {
 		writeVariableWideJsonRead(b, f, "v."+varMember(f), false)
 		return
@@ -5316,11 +5569,11 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		return
 	}
 	if un := variableUnion(f); un != nil && f.Array == ir.ArrayNone && !f.Type.Optional {
-		fmt.Fprintf(b, "                v.%s=%sVariable.readJson(in);\n", varMember(f), un.Name)
+		fmt.Fprintf(b, "                v.%s=%sVariable.readJson(in, %s);\n", varMember(f), un.Name, depth)
 		return
 	}
 	if f.KeyEnum != "" && !f.Type.Optional {
-		readJsonKeyedValue(b, u, st, f)
+		readJsonKeyedValue(b, u, st, f, depth)
 		return
 	}
 	if f.Type.Optional {
@@ -5332,12 +5585,12 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		if f.Array != ir.ArrayNone {
 			fmt.Fprintf(b, "                if(selected)v.%s.clear();\n", m)
 		}
-		readJsonFieldValue(b, u, st, &one)
+		readJsonFieldValue(b, u, st, &one, depth)
 		fmt.Fprintf(b, "                if(!in.bad)v.%sPresent=true;}\n", m)
 		return
 	}
 	if f.IsMap() {
-		readJsonMapValue(b, u, st, f)
+		readJsonMapValue(b, u, st, f, depth)
 		return
 	}
 	m := varMember(f)
@@ -5350,7 +5603,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                        int ec = in.peek();\n")
 		b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
 		b.WriteString("                        if (ec == 0) { in.bad = true; break; }\n")
-		fmt.Fprintf(b, "                        %sVariable.Value elem = %sVariable.readJsonPointer(in, %sVariable.TYPE_ID);\n", target.Name, target.Name, target.Name)
+		fmt.Fprintf(b, "                        %sVariable.Value elem = %sVariable.readJsonPointer(in, %sVariable.TYPE_ID, %s);\n", target.Name, target.Name, target.Name, depth+" + 1")
 		fmt.Fprintf(b, "                        v.%s.add(elem);\n", m)
 		b.WriteString("                        ec = in.peek();\n")
 		b.WriteString("                        if (ec == ',') { in.p++; continue; }\n")
@@ -5464,7 +5717,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			elemOpen = "'['"
 		}
 		fmt.Fprintf(b, "                        } else if (ec != %s) { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); v.%s.add(new %sVariable.Value()); }\n", elemOpen, m, target.Name)
-		fmt.Fprintf(b, "                        else { %sVariable.Value e = new %sVariable.Value(); %sVariable.jsonReadFields(in, e); v.%s.add(e); }\n", target.Name, target.Name, target.Name, m)
+		fmt.Fprintf(b, "                        else { %sVariable.Value e = new %sVariable.Value(); %sVariable.jsonReadFields(in, e, %s); v.%s.add(e); }\n", target.Name, target.Name, target.Name, depth+" + 2", m)
 		b.WriteString("                        idx++;\n")
 		b.WriteString("                        ec = in.peek();\n")
 		b.WriteString("                        if (ec == ',') { in.p++; continue; }\n")
@@ -5473,7 +5726,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                    }\n")
 		b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case isScalarArray(f):
-		readJsonArrayValue(b, u, st, f)
+		readJsonArrayValue(b, u, st, f, depth)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
 		fmt.Fprintf(b, "                else if (in.peek() == '\"') { v.%s = in.scanStored(); }\n", m)
@@ -5482,11 +5735,11 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
 		// §16.2: a string that is not base64 is the wrong shape for *bytes —
 		// counted kind_mismatch and left null, never a broken read.
-		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); if (s != null) { try { v.%s = java.util.Base64.getDecoder().decode(s); } catch (IllegalArgumentException invalid) { in.rep.refuse(\"kind_mismatch\"); v.%s = null; } } }\n", m, m)
+		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); if (s != null) { try { byte[] decoded = java.util.Base64.getDecoder().decode(s); if (!java.util.Base64.getEncoder().encodeToString(decoded).equals(s)) { in.rep.refuse(\"base64_not_canonical\"); v.%s = null; } else { v.%s = decoded; } } catch (IllegalArgumentException invalid) { in.rep.refuse(\"kind_mismatch\"); v.%s = null; } } }\n", m, m, m)
 		b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Pointer && isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "                v.%s = %sVariable.readJsonPointer(in, %sVariable.TYPE_ID);\n", m, target.Name, target.Name)
+		fmt.Fprintf(b, "                v.%s = %sVariable.readJsonPointer(in, %sVariable.TYPE_ID, %s);\n", m, target.Name, target.Name, depth)
 	case isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
 		elemOpen := "'{'"
@@ -5494,10 +5747,10 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			elemOpen = "'['"
 		}
 		fmt.Fprintf(b, "                if (in.peek() == %s) {\n", elemOpen)
-		fmt.Fprintf(b, "                    %sVariable.jsonReadFields(in, v.%s);\n", target.Name, m)
+		fmt.Fprintf(b, "                    %sVariable.jsonReadFields(in, v.%s, %s);\n", target.Name, m, depth+" + 1")
 		b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.refuse(\"out_of_range\");}catch(IllegalArgumentException invalid){in.rep.refuse(\"kind_mismatch\");}}}else {in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", f.Type.Size, m)
+		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);if(!java.util.Base64.getEncoder().encodeToString(bytes).equals(text)){in.rep.refuse(\"base64_not_canonical\");}else{int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.refuse(\"out_of_range\");}}catch(IllegalArgumentException invalid){in.rep.refuse(\"kind_mismatch\");}}}else {in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		if f.Type.TextUnbounded() {
 			fmt.Fprintf(b, "                if (in.peek() == '\"') { String s = in.scanStored(); v.%s = s == null ? \"\" : s; }\n", m)
@@ -5532,7 +5785,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	case f.Type.Kind == ir.TNamed:
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
 			b.WriteString("                if (in.peek() == '\"') {\n")
-			b.WriteString("                    String s = in.scanString();\n")
+			b.WriteString("                    String s = in.scanName();\n")
 			fmt.Fprintf(b, "                    if(\"None\".equals(s)){v.%s=0;}else ", m)
 			for i := range enum.Variants {
 				fmt.Fprintf(b, "                    if (%q.equals(s)) { v.%s = %d; }\n", enum.Variants[i], m, i+1)
@@ -5602,7 +5855,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		// the count is read with the kind byte, before either is judged:
 		// a damaged count is framing damage whatever the kind (arrayBody, §4)
 		fmt.Fprintf(b, "                        long n = %s;\n", countRead(f, "ar"))
-		fmt.Fprintf(b, "                        if (!ar.fail && ek != 17) { report.refuse(\"kind_mismatch\"); } else {\n")
+		fmt.Fprintf(b, "                        if (!ar.fail && !TableVariable.arrayElemKindClosed(ek)) { report.damaged = true; ar.fail = true; } else if (!ar.fail && ek != 17) { report.refuse(\"kind_mismatch\"); } else {\n")
 		// EVERY DECODED POINTER SLOT KEEPS ITS ROW (docs/SPEC-TABLES.md §2.1,
 		// §3.1, §3.3): a bad node table makes every index resolve to null, but
 		// the array still decoded its slots, so the value list stays as long
@@ -5659,7 +5912,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		// the count is read with the kind byte, before either is judged:
 		// a damaged count is framing damage whatever the kind (arrayBody, §4)
 		fmt.Fprintf(b, "                        long n = %s;\n", countRead(f, "ar"))
-		fmt.Fprintf(b, "                        if (!ar.fail && ek != %d) { report.refuse(\"kind_mismatch\"); } else {\n", expectedEk)
+		fmt.Fprintf(b, "                        if (!ar.fail && !TableVariable.arrayElemKindClosed(ek)) { report.damaged = true; ar.fail = true; } else if (!ar.fail && ek != %d) { report.refuse(\"kind_mismatch\"); } else {\n", expectedEk)
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            if (ar.fail) { /* damaged count keeps the prefix (§3, §4) */ } else {\n")
 		} else {
@@ -5775,7 +6028,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	// (docs/SPEC-TABLES.md §4, "Framing damage"): the field body's L says where
 	// the next field begins, so a short array loses only its missing tail.
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(b, "                if(kind==14){long L=r.leb();if(r.fail||L<0||L>r.limit-r.off){report.damaged=true;r.fail=true;}else if(L<2){r.off+=(int)L;}else {int end=r.off+(int)L;int ek=r.get8();long n=r.leb();if(r.fail){r.fail=false;report.damaged=true;}else if(ek!=6){report.refuse(\"kind_mismatch\");}else {long keep=n;if(Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.refuse(\"out_of_range\");}int avail=end-r.off;if(avail<0)avail=0;int take=(int)keep<avail?(int)keep:avail;v.%s=java.util.Arrays.copyOfRange(r.buf,r.off,r.off+take);if(take<(int)keep)report.damaged=true;}r.off=end;}}else {r.skip(kind);report.refuse(\"kind_mismatch\");}\n", f.Type.Size, f.Type.Size, m)
+		fmt.Fprintf(b, "                if(kind==14){long L=r.leb();if(r.fail||L<0||L>r.limit-r.off){report.damaged=true;r.fail=true;}else if(L<2){r.off+=(int)L;}else {int end=r.off+(int)L;int ek=r.get8();long n=r.leb();if(r.fail){r.fail=false;report.damaged=true;}else if(!TableVariable.arrayElemKindClosed(ek)){report.damaged=true;}else if(ek!=6){report.refuse(\"kind_mismatch\");}else {long keep=n;if(Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.refuse(\"out_of_range\");}int avail=end-r.off;if(avail<0)avail=0;int take=(int)keep<avail?(int)keep:avail;v.%s=java.util.Arrays.copyOfRange(r.buf,r.off,r.off+take);if(take<(int)keep)report.damaged=true;}r.off=end;}}else {r.skip(kind);report.refuse(\"kind_mismatch\");}\n", f.Type.Size, f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		if f.Type.TextUnbounded() {
 			fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.damaged = true; v.%s = %s; } else { v.%s = new String(r.buf, r.off, n, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.damaged = true; r.fail = true; } }\n", m, variableDefault(f), m)
@@ -5830,7 +6083,7 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	// judged (the engine's arrayBody, §3, §4): a damaged count is framing
 	// damage whatever the kind byte says, and only a whole header of another
 	// element kind is a kind mismatch.
-	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); long n = %s; if (ar.fail) { } else if (!(%s)) { report.refuse(\"kind_mismatch\"); } %s if (ek != %d) { report.widened++; } ", countRead(f, "ar"), cond, countCheck, ek)
+	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); long n = %s; if (ar.fail) { } else if (!TableVariable.arrayElemKindClosed(ek)) { report.damaged = true; } else if (!(%s)) { report.refuse(\"kind_mismatch\"); } %s if (ek != %d) { report.widened++; } ", countRead(f, "ar"), cond, countCheck, ek)
 	if f.Array != ir.ArrayFixed {
 		fmt.Fprintf(b, "v.%s.clear(); ", m)
 	}
@@ -6221,105 +6474,248 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	}
 }
 
-// Graph numbering descends only present payloads (§2.3, §3.1).
-func writeVariableGraphField(b *strings.Builder, f *ir.Field) {
-	if f.Type.Optional {
-		fmt.Fprintf(b, "        if(v.%sPresent){\n", varMember(f))
+// variableGraphType is one class the graph walk can enter: a generated table
+// (a variable-form struct) or a table-closure union. GRAPH_KIND names it in
+// the work list and the dispatchers, so a frame carries an int and no object
+// of its own.
+type variableGraphType struct {
+	name string
+	st   *ir.Struct
+	un   *ir.Union
+}
+
+// variableGraphTypes answers the classes a graph walk can reach, in the one
+// numbering the dispatchers use: every variable-form table, then every
+// table-closure union, each group in name order.
+func variableGraphTypes(u *ir.Unit) ([]variableGraphType, map[string]int) {
+	tables := cardVariableTables(u)
+	out := make([]variableGraphType, 0, len(tables))
+	index := make(map[string]int, len(tables))
+	for _, st := range tables {
+		index[st.Name] = len(out)
+		out = append(out, variableGraphType{name: st.Name, st: st})
 	}
+	var unions []*ir.Union
+	seen := map[string]bool{}
+	for _, byName := range []map[string]*ir.Union{u.Unions, u.TableUnions} {
+		for _, un := range byName {
+			if un == nil || seen[un.Name] {
+				continue
+			}
+			if refuseVariableFormClosure(variableUnionStruct(un), map[string]bool{}) != nil {
+				continue
+			}
+			seen[un.Name] = true
+			unions = append(unions, un)
+		}
+	}
+	sort.Slice(unions, func(i, j int) bool { return unions[i].Name < unions[j].Name })
+	for _, un := range unions {
+		index[un.Name] = len(out)
+		out = append(out, variableGraphType{name: un.Name, un: un})
+	}
+	return out, index
+}
+
+// writeVariableGraphWalk emits buildGraph as a work-list walk, not a recursion:
+// a frame is one field still to visit for one node, and a close marker ends a
+// descended node. The frames are LIFO, so the visit order — and the numbering
+// each pointer takes — is the depth-first pre-order §3.1 defines.
+func writeVariableGraphWalk(b *strings.Builder, st *ir.Struct, graphTypes []variableGraphType) {
+	b.WriteString("    public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {\n")
+	b.WriteString("        g.push(v, GRAPH_KIND, -2, 0, null);\n")
+	b.WriteString("        while (g.workCount() > 0) {\n")
+	b.WriteString("            int at = g.workCount() - 1;\n")
+	b.WriteString("            Object value = g.workValue(at);\n")
+	b.WriteString("            int kind = g.workKind(at);\n")
+	b.WriteString("            int field = g.workField(at);\n")
+	b.WriteString("            int index = g.workIndex(at);\n")
+	b.WriteString("            Object close = g.workClose(at);\n")
+	b.WriteString("            g.pop();\n")
+	b.WriteString("            if (field == -1) { g.setOpen(value, false); continue; }\n")
+	b.WriteString("            if (field == -2) {\n")
+	b.WriteString("                if (close != null) { g.push(close, 0, -1, 0, null); }\n")
+	b.WriteString("                if (!graphEnter(g, value, kind)) { return false; }\n")
+	b.WriteString("                continue;\n")
+	b.WriteString("            }\n")
+	b.WriteString("            if (!graphStep(g, value, kind, field, index)) { return false; }\n")
+	b.WriteString("        }\n")
+	b.WriteString("        return true;\n")
+	b.WriteString("    }\n\n")
+
+	b.WriteString("    static boolean graphEnter(TableVariable.NodeGraph g, Value v) {\n")
+	b.WriteString("        if (v == null) { return true; }\n")
+	for i := range slices.Backward(st.Fields) {
+		fmt.Fprintf(b, "        g.push(v, GRAPH_KIND, %d, 0, null);\n", i)
+	}
+	b.WriteString("        return true;\n")
+	b.WriteString("    }\n\n")
+
+	b.WriteString("    static boolean graphField(TableVariable.NodeGraph g, Value v, int field, int index) {\n")
+	b.WriteString("        switch (field) {\n")
+	for i, f := range st.Fields {
+		fmt.Fprintf(b, "            case %d: {\n", i)
+		writeVariableGraphFieldStep(b, st, f, i)
+		b.WriteString("                return true;\n")
+		b.WriteString("            }\n")
+	}
+	b.WriteString("            default: return true;\n")
+	b.WriteString("        }\n")
+	b.WriteString("    }\n\n")
+
+	b.WriteString("    static boolean graphEnter(TableVariable.NodeGraph g, Object v, int kind) {\n")
+	b.WriteString("        switch (kind) {\n")
+	for i, gt := range graphTypes {
+		fmt.Fprintf(b, "            case %d: return %sVariable.graphEnter(g, (%sVariable.Value) v);\n", i, gt.name, gt.name)
+	}
+	b.WriteString("            default: return false;\n")
+	b.WriteString("        }\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    static boolean graphStep(TableVariable.NodeGraph g, Object v, int kind, int field, int index) {\n")
+	b.WriteString("        switch (kind) {\n")
+	for i, gt := range graphTypes {
+		fmt.Fprintf(b, "            case %d: return %sVariable.graphField(g, (%sVariable.Value) v, field, index);\n", i, gt.name, gt.name)
+	}
+	b.WriteString("            default: return false;\n")
+	b.WriteString("        }\n")
+	b.WriteString("    }\n\n")
+}
+
+// writeVariableGraphFieldOnce emits the checks and order a field answers once,
+// before its elements are numbered: the declared range, a map's key order, and
+// the text-list bounds.
+func writeVariableGraphFieldOnce(b *strings.Builder, f *ir.Field, pad string) {
 	m := varMember(f)
 	if f.Required && f.Array == ir.ArrayNone && f.KeyEnum == "" {
 		if f.HasIntRange && !variableWide(f) {
 			min, max := jsonIntRange(f)
 			switch {
 			case f.Type.Signed && f.Type.Kind == ir.TInt:
-				fmt.Fprintf(b, "        if ((long) v.%s < %s || (long) v.%s > %s) return false;\n", m, min, m, max)
+				fmt.Fprintf(b, "%sif ((long) v.%s < %s || (long) v.%s > %s) return false;\n", pad, m, min, m, max)
 			case f.Type.Width <= 32:
-				fmt.Fprintf(b, "        if (Long.compareUnsigned(((long) v.%s) & 0xffffffffL, %s) < 0 || Long.compareUnsigned(((long) v.%s) & 0xffffffffL, %s) > 0) return false;\n", m, min, m, max)
+				fmt.Fprintf(b, "%sif (Long.compareUnsigned(((long) v.%s) & 0xffffffffL, %s) < 0 || Long.compareUnsigned(((long) v.%s) & 0xffffffffL, %s) > 0) return false;\n", pad, m, min, m, max)
 			default:
-				fmt.Fprintf(b, "        if (Long.compareUnsigned(v.%s, %s) < 0 || Long.compareUnsigned(v.%s, %s) > 0) return false;\n", m, min, m, max)
+				fmt.Fprintf(b, "%sif (Long.compareUnsigned(v.%s, %s) < 0 || Long.compareUnsigned(v.%s, %s) > 0) return false;\n", pad, m, min, m, max)
 			}
 		} else if f.HasFloatRange {
-			fmt.Fprintf(b, "        if ((double) v.%s < %s || (double) v.%s > %s) return false;\n", m, fixedDoubleLit(f.FMin), m, fixedDoubleLit(f.FMax))
+			fmt.Fprintf(b, "%sif ((double) v.%s < %s || (double) v.%s > %s) return false;\n", pad, m, fixedDoubleLit(f.FMin), m, fixedDoubleLit(f.FMax))
 		}
 	}
 	if f.IsMap() {
-		fmt.Fprintf(b, "        v.%s = order_%s(v.%s);\n", m, m, m)
+		fmt.Fprintf(b, "%sv.%s = order_%s(v.%s);\n", pad, m, m, m)
 	}
-	if un := variableUnion(f); un != nil {
-		if f.Array != ir.ArrayNone {
-			fmt.Fprintf(b, "        for (int i = 0, n = v.%s.size(); i < n; i++) { %sVariable.Value arm = v.%s.get(i); if (!%sVariable.buildGraph(g, arm)) return false; }\n", m, un.Name, m, un.Name)
+	if isStructArray(f) && f.IsTextList() {
+		target := f.Type.Ref.(*ir.Struct)
+		if f.ArrayBound > 0 {
+			fmt.Fprintf(b, "%sif (v.%s.size() > %d) return false;\n", pad, m, f.ArrayBound)
+		}
+		if f.TextTotal > 0 {
+			fmt.Fprintf(b, "%slong spent_%s = 0;\n", pad, m)
+		}
+		fmt.Fprintf(b, "%sfor (int ti = 0, tn = v.%s.size(); ti < tn; ti++) {\n", pad, m)
+		fmt.Fprintf(b, "%s    %sVariable.Value elem = v.%s.get(ti);\n", pad, target.Name, m)
+		if ir.TextListOptional(f) {
+			fmt.Fprintf(b, "%s    long elemBytes = (elem == null || !elem.valuePresent || elem.value == null) ? 0L : TableVariable.utf8Len(elem.value);\n", pad)
 		} else {
-			fmt.Fprintf(b, "        if(!%sVariable.buildGraph(g,v.%s))return false;\n", un.Name, m)
+			fmt.Fprintf(b, "%s    long elemBytes = (elem == null || elem.value == null) ? 0L : TableVariable.utf8Len(elem.value);\n", pad)
 		}
-		if f.Type.Optional {
-			b.WriteString("        }\n")
+		if !ir.TextListUnbounded(f) {
+			fmt.Fprintf(b, "%s    if (elemBytes > %dL) return false;\n", pad, ir.TextListValue(f).Type.Size)
 		}
-		return
+		if f.TextTotal > 0 {
+			fmt.Fprintf(b, "%s    spent_%s += elemBytes;\n", pad, m)
+			fmt.Fprintf(b, "%s    if (spent_%s > %dL) return false;\n", pad, m, f.TextTotal)
+		}
+		fmt.Fprintf(b, "%s}\n", pad)
+	}
+}
+
+// writeVariableGraphFieldStep emits one field's step in the work list. It
+// descends only present payloads (§2.3, §3.1), pushing each child's entry and
+// the continuation that visits this field's next array element beneath it.
+func writeVariableGraphFieldStep(b *strings.Builder, st *ir.Struct, f *ir.Field, field int) {
+	m := varMember(f)
+	base := "                "
+	pad := base
+	guard := variableGuard(st, f)
+	if guard != "" {
+		fmt.Fprintf(b, "%sif (%s) {\n", pad, strings.ReplaceAll(guard, " && ", "&&"))
+		pad += "    "
+	}
+	optPad := pad
+	if f.Type.Optional {
+		fmt.Fprintf(b, "%sif (v.%sPresent) {\n", pad, m)
+		pad += "    "
+	}
+	isArray := f.Array != ir.ArrayNone || f.KeyEnum != ""
+	var once strings.Builder
+	writeVariableGraphFieldOnce(&once, f, pad+"    ")
+	if once.Len() > 0 {
+		if isArray {
+			fmt.Fprintf(b, "%sif (index == 0) {\n", pad)
+			b.WriteString(once.String())
+			fmt.Fprintf(b, "%s}\n", pad)
+		} else {
+			b.WriteString(once.String())
+		}
 	}
 	switch {
+	case variableUnion(f) != nil:
+		un := variableUnion(f)
+		if isArray {
+			fmt.Fprintf(b, "%sif (index < v.%s.size()) {\n", pad, m)
+			fmt.Fprintf(b, "%s    if (index + 1 < v.%s.size()) { g.push(v, GRAPH_KIND, %d, index + 1, null); }\n", pad, m, field)
+			fmt.Fprintf(b, "%s    g.push(v.%s.get(index), %sVariable.GRAPH_KIND, -2, 0, null);\n", pad, m, un.Name)
+			fmt.Fprintf(b, "%s}\n", pad)
+		} else {
+			fmt.Fprintf(b, "%sg.push(v.%s, %sVariable.GRAPH_KIND, -2, 0, null);\n", pad, m, un.Name)
+		}
 	case f.Type.Kind == ir.TString && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%s != null) { if (v.%sIdx < 0) return false; v.%sIdx = g.recordBlob(v.%s, TableVariable.STRING_ID); }\n", m, m, m, m)
+		fmt.Fprintf(b, "%sif (v.%s != null) { if (v.%sIdx < 0) return false; v.%sIdx = g.recordBlob(v.%s, TableVariable.STRING_ID); }\n", pad, m, m, m, m)
 	case f.Type.Kind == ir.TBytes && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%s != null) { if (v.%sIdx < 0 || !g.recordPointer(v.%s, TableVariable.BYTES_ID, true)) return false; }\n", m, m, m)
+		fmt.Fprintf(b, "%sif (v.%s != null) { if (v.%sIdx < 0 || !g.recordPointer(v.%s, TableVariable.BYTES_ID, true)) return false; }\n", pad, m, m, m)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        for (int i = 0, n = v.%s.size(); i < n; i++) {\n", m)
-		fmt.Fprintf(b, "            %sVariable.Value elem = v.%s.get(i);\n", target.Name, m)
-		fmt.Fprintf(b, "            if (elem != null) {\n")
-		fmt.Fprintf(b, "                boolean isNew = !g.indexed(elem);\n")
-		fmt.Fprintf(b, "                if (!g.recordPointer(elem, %sVariable.TYPE_ID, false)) return false;\n", target.Name)
-		fmt.Fprintf(b, "                if (isNew) {\n")
-		fmt.Fprintf(b, "                    g.setOpen(elem, true);\n")
-		fmt.Fprintf(b, "                    if (!%sVariable.buildGraph(g, elem)) return false;\n", target.Name)
-		fmt.Fprintf(b, "                    g.setOpen(elem, false);\n")
-		fmt.Fprintf(b, "                }\n")
-		fmt.Fprintf(b, "            }\n")
-		fmt.Fprintf(b, "        }\n")
+		fmt.Fprintf(b, "%sif (index < v.%s.size()) {\n", pad, m)
+		fmt.Fprintf(b, "%s    %sVariable.Value elem = v.%s.get(index);\n", pad, target.Name, m)
+		fmt.Fprintf(b, "%s    if (elem != null) {\n", pad)
+		fmt.Fprintf(b, "%s        boolean isNew = !g.indexed(elem);\n", pad)
+		fmt.Fprintf(b, "%s        if (!g.recordPointer(elem, %sVariable.TYPE_ID, false)) return false;\n", pad, target.Name)
+		fmt.Fprintf(b, "%s        if (isNew) {\n", pad)
+		fmt.Fprintf(b, "%s            g.setOpen(elem, true);\n", pad)
+		fmt.Fprintf(b, "%s            if (index + 1 < v.%s.size()) { g.push(v, GRAPH_KIND, %d, index + 1, null); }\n", pad, m, field)
+		fmt.Fprintf(b, "%s            g.push(elem, %sVariable.GRAPH_KIND, -2, 0, elem);\n", pad, target.Name)
+		fmt.Fprintf(b, "%s            return true;\n", pad)
+		fmt.Fprintf(b, "%s        }\n", pad)
+		fmt.Fprintf(b, "%s    }\n", pad)
+		fmt.Fprintf(b, "%s    if (index + 1 < v.%s.size()) { g.push(v, GRAPH_KIND, %d, index + 1, null); }\n", pad, m, field)
+		fmt.Fprintf(b, "%s}\n", pad)
 	case f.Type.Pointer && isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (v.%s != null) {\n", m)
-		fmt.Fprintf(b, "            boolean isNew = !g.indexed(v.%s);\n", m)
-		fmt.Fprintf(b, "            if (!g.recordPointer(v.%s, %sVariable.TYPE_ID, false)) return false;\n", m, target.Name)
-		fmt.Fprintf(b, "            if (isNew) {\n")
-		fmt.Fprintf(b, "                g.setOpen(v.%s, true);\n", m)
-		fmt.Fprintf(b, "                if (!%sVariable.buildGraph(g, v.%s)) return false;\n", target.Name, m)
-		fmt.Fprintf(b, "                g.setOpen(v.%s, false);\n", m)
-		fmt.Fprintf(b, "            }\n")
-		fmt.Fprintf(b, "        }\n")
+		fmt.Fprintf(b, "%sif (v.%s != null) {\n", pad, m)
+		fmt.Fprintf(b, "%s    boolean isNew = !g.indexed(v.%s);\n", pad, m)
+		fmt.Fprintf(b, "%s    if (!g.recordPointer(v.%s, %sVariable.TYPE_ID, false)) return false;\n", pad, m, target.Name)
+		fmt.Fprintf(b, "%s    if (isNew) {\n", pad)
+		fmt.Fprintf(b, "%s        g.setOpen(v.%s, true);\n", pad, m)
+		fmt.Fprintf(b, "%s        g.push(v.%s, %sVariable.GRAPH_KIND, -2, 0, v.%s);\n", pad, m, target.Name, m)
+		fmt.Fprintf(b, "%s    }\n", pad)
+		fmt.Fprintf(b, "%s}\n", pad)
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		if f.IsTextList() {
-			if f.ArrayBound > 0 {
-				fmt.Fprintf(b, "        if (v.%s.size() > %d) return false;\n", m, f.ArrayBound)
-			}
-			if f.TextTotal > 0 {
-				fmt.Fprintf(b, "        long spent_%s = 0;\n", m)
-			}
-		}
-		fmt.Fprintf(b, "        for (int i = 0, n = v.%s.size(); i < n; i++) {\n", m)
-		fmt.Fprintf(b, "            %sVariable.Value elem = v.%s.get(i);\n", target.Name, m)
-		if f.IsTextList() {
-			if ir.TextListOptional(f) {
-				b.WriteString("            long elemBytes = (elem == null || !elem.valuePresent || elem.value == null) ? 0L : TableVariable.utf8Len(elem.value);\n")
-			} else {
-				b.WriteString("            long elemBytes = (elem == null || elem.value == null) ? 0L : TableVariable.utf8Len(elem.value);\n")
-			}
-			if !ir.TextListUnbounded(f) {
-				fmt.Fprintf(b, "            if (elemBytes > %dL) return false;\n", ir.TextListValue(f).Type.Size)
-			}
-			if f.TextTotal > 0 {
-				fmt.Fprintf(b, "            spent_%s += elemBytes;\n", m)
-				fmt.Fprintf(b, "            if (spent_%s > %dL) return false;\n", m, f.TextTotal)
-			}
-		}
-		fmt.Fprintf(b, "            if (elem != null) { if (!%sVariable.buildGraph(g, elem)) return false; }\n", target.Name)
-		fmt.Fprintf(b, "        }\n")
+		fmt.Fprintf(b, "%sif (index < v.%s.size()) {\n", pad, m)
+		fmt.Fprintf(b, "%s    %sVariable.Value elem = v.%s.get(index);\n", pad, target.Name, m)
+		fmt.Fprintf(b, "%s    if (index + 1 < v.%s.size()) { g.push(v, GRAPH_KIND, %d, index + 1, null); }\n", pad, m, field)
+		fmt.Fprintf(b, "%s    if (elem != null) { g.push(elem, %sVariable.GRAPH_KIND, -2, 0, null); }\n", pad, target.Name)
+		fmt.Fprintf(b, "%s}\n", pad)
 	case isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (v.%s != null) { if (!%sVariable.buildGraph(g, v.%s)) return false; }\n", m, target.Name, m)
+		fmt.Fprintf(b, "%sif (v.%s != null) { g.push(v.%s, %sVariable.GRAPH_KIND, -2, 0, null); }\n", pad, m, m, target.Name)
 	}
 	if f.Type.Optional {
-		b.WriteString("        }\n")
+		fmt.Fprintf(b, "%s}\n", optPad)
+	}
+	if guard != "" {
+		fmt.Fprintf(b, "%s}\n", base)
 	}
 }
 

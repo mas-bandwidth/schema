@@ -34,7 +34,6 @@ func init() {
 		Name{Name: "TableCookSpan", What: "a cooked map's or list's sixteen-byte self-relative reference and count slot (§2.8, §2.9, §6.3)"},
 		Name{Name: "TableRegionLayout", What: "the cook write's layout pass: every node of the numbering at its own alignment, the region rounded to the greatest (§7, §7.6)", Scoped: true},
 		Name{Name: "TableRegionUp", What: "the cook write's align-up (§7)", Scoped: true},
-		Name{Name: "TableReportWireFuzz", What: "the read report's wire-fuzz counters, zero on this leg, reached through TableReport"},
 		// THE FIXED FORM's runtime (docs/SPEC-TABLES.md §3.4), form byte 3.
 		// Emitted for a unit that carries a fixed root, and claimed beside
 		// any table on this list's own rule: a name free today is a
@@ -110,6 +109,11 @@ func init() {
 		Name{Name: "TableNodeReader", What: "the node table a load gathers before any body (§3.1)"},
 		Name{Name: "TableRefuseReason", What: "the variable form's refused-by-name result (§5), using the Go reference's names"},
 		Name{Name: "TableNodeSlot", What: "one record's state in a load's numbering (§3.1)"},
+		// the iterative Drop of a table that reaches its own type through a
+		// pointer (§3.1, §4): the trait, and its one method (table_unlink),
+		// which is reached through the trait and so claims nothing
+		Name{Name: "TableDropUnlink", What: "the iterative unlink a self-reaching table's Drop walks (§3.1, §4)"},
+		Name{Name: "TableUnlink", What: "TableDropUnlink's method, table_unlink (§3.1, §4)", Scoped: true},
 		Name{Name: "TableKindWidth", What: "a fixed-width kind's payload size (§3)", Scoped: true},
 		Name{Name: "TableKindWidens", What: "the widening ladder: a narrower kind decoded exactly into a wider declaration (§4)", Scoped: true},
 		Name{Name: "TableScalarRead", What: "one scalar read at its kind's own width (§3, §4)", Scoped: true},

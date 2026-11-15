@@ -35,6 +35,25 @@ func jsonUnsigned(f *ir.Field) string {
 	return "false"
 }
 
+// jsonIntegerWide reports whether an integer or bits field's JSON form is a
+// STRING of decimal digits because its storage is wider than 32 bits
+// (docs/SPEC-TABLES.md §16.2, docs/rulings.json json-wide-integers-are-strings).
+func jsonIntegerWide(f *ir.Field) bool {
+	return (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits) && f.Type.Width > 32
+}
+
+// jsonWideIntegerKind reports whether a kind is an integer-shaped scalar whose
+// storage is wider than 32 bits — int64, uint64, int128, uint128 and the 64-
+// and 128-bit fixed-point kinds (docs/SPEC-TABLES.md §16.2).
+func jsonWideIntegerKind(kind int) bool {
+	switch kind {
+	case ir.TableKindI64, ir.TableKindU64, ir.TableKindI128, ir.TableKindU128,
+		ir.TableKindFixed64, ir.TableKindUFixed64, ir.TableKindFixed128, ir.TableKindUFixed128:
+		return true
+	}
+	return false
+}
+
 // jsonIntBounds applies the storage width before any declared field range.
 func jsonIntBounds(f *ir.Field) (string, string) {
 	lo, hi := "null", "null"
@@ -171,8 +190,12 @@ const String _jsonHex = '0123456789abcdef';
 // _jsonString renders one Dart string as one JSON string (§16.3): the escapes
 // JSON names and every other code point whole, so a multi-byte character rides
 // as itself. A string holding an unpaired surrogate is not text: the write
-// refuses (invalid_value, §16.14 W0) and nothing is replaced.
+// refuses (invalid_value, §16.14 W0) and nothing is replaced. A zero byte is
+// storage that is not text too: the reader refuses the \u0000 escape this
+// writer would otherwise spell, so the write asserts in a debug build
+// (SPEC.md §5.1 row 8, §16.14 W0 and W8).
 String _jsonString(String s) {
+  assert(!s.contains('\u0000'), 'invalid_value: a string holds a zero byte (docs/SPEC-TABLES.md §16.3)');
   final b = StringBuffer();
   b.write('"');
   for (final rune in s.runes) {
@@ -244,44 +267,96 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def =
   return def;
 }
 
-// _jsonIntField reads one int field (§16.2): an integer token, or an integral
-// float, placed and range-checked; anything else is a kind mismatch. lo and hi
-// are the declared range, or the storage width below 64 bits; an unsigned
-// field's bounds are 64-bit patterns. A token an int holds is placed by int
-// compares. Every other integral value (a token at or past +-2^63, a negative
-// token in an unsigned field, an integral float) is placed EXACTLY as the
-// engine places it (internal/tabletext interpretInteger, integerInDomain): its
-// sign and magnitude, saturated at 2^64-1 and counted; the declared range;
-// then the 64-bit storage domain, each move counted.
-int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false, int def = 0]) {
-  if (val is int && (!unsigned || val >= 0)) {
-    var v = val;
-    if (unsigned) {
-      if (lo != null && _u64Below(v, lo)) { r.refuse('out_of_range'); return def; }
-      if (hi != null && _u64Above(v, hi)) { r.refuse('out_of_range'); return def; }
-    } else {
-      if (lo != null && v < lo) { r.refuse('out_of_range'); return def; }
-      if (hi != null && v > hi) { r.refuse('out_of_range'); return def; }
+// _JNumParts is one JSON number token split into its sign, its significant
+// digits and the point's place: the value is digits × 10^(point - digits.length).
+// Leading and trailing zeros are dropped with two index scans, never one copy
+// per digit, so a long token is read in one pass (§16.2).
+final class _JNumParts {
+  final bool negative;
+  final String digits;
+  final int point;
+  _JNumParts(this.negative, this.digits, this.point);
+}
+
+_JNumParts _jsonNumberParts(String token) {
+  var i = 0;
+  var negative = false;
+  if (i < token.length && (token[i] == '-' || token[i] == '+')) {
+    negative = token[i] == '-';
+    i++;
+  }
+  final intStart = i;
+  while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) i++;
+  final intDigits = token.substring(intStart, i);
+  var fracDigits = '';
+  if (i < token.length && token[i] == '.') {
+    i++;
+    final fracStart = i;
+    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) i++;
+    fracDigits = token.substring(fracStart, i);
+  }
+  var exp = 0;
+  if (i < token.length && (token[i] == 'e' || token[i] == 'E')) {
+    i++;
+    var expNegative = false;
+    if (i < token.length && (token[i] == '-' || token[i] == '+')) {
+      expNegative = token[i] == '-';
+      i++;
     }
-    return v;
-  }
-  BigInt wide;
-  if (val is int) {
-    wide = BigInt.from(val);
-  } else if (val is _JNum && val.integral) {
-    wide = BigInt.parse(val.token);
-  } else {
-    final d = val is _JNum ? val.d : (val is num ? val.toDouble() : double.nan);
-    if (!d.isFinite || d != d.truncateToDouble()) {
-      r.refuse('kind_mismatch');
-      return def;
+    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
+      if (exp < 100000) exp = exp * 10 + (token.codeUnitAt(i) - 0x30);
+      i++;
     }
-    wide = d.abs() >= 18446744073709551616.0 ? (d.isNegative ? -_jsonU64Span : _jsonU64Span) : BigInt.from(d);
+    if (expNegative) exp = -exp;
   }
-  if (wide.abs() > _jsonU64Max) {
-    r.refuse('out_of_range');
-    return def;
+  final all = intDigits + fracDigits;
+  var start = 0;
+  var point = intDigits.length + exp;
+  while (start < all.length && all.codeUnitAt(start) == 0x30) {
+    start++;
+    point--;
   }
+  var end = all.length;
+  while (end > start && all.codeUnitAt(end - 1) == 0x30) end--;
+  if (start == end) return _JNumParts(false, '', point);
+  return _JNumParts(negative, all.substring(start, end), point);
+}
+
+// _jsonIntegerToken reports whether text is an integer token — an optional
+// minus, digits with no leading zero, and not -0 (§16.2, §16.14 W10). Every
+// integer field, of every width, takes this spelling and no other: no
+// fraction, no exponent, no plus and no negative zero.
+bool _jsonIntegerToken(String text) {
+  var i = 0;
+  var negative = false;
+  if (i < text.length && text.codeUnitAt(i) == 0x2d) {
+    negative = true;
+    i++;
+  }
+  if (i >= text.length) return false;
+  if (text.codeUnitAt(i) == 0x30) {
+    return !negative && i + 1 == text.length;
+  }
+  final c0 = text.codeUnitAt(i);
+  if (c0 < 0x31 || c0 > 0x39) return false;
+  for (; i < text.length; i++) {
+    final c = text.codeUnitAt(i);
+    if (c < 0x30 || c > 0x39) return false;
+  }
+  return true;
+}
+
+// _jsonIntegerDigits is an integer token's digit count, its sign excluded. A
+// token with more than twenty digits is past every 64-bit integer domain, so
+// the range is decided before BigInt.parse and a long token stays linear
+// (§16.2, §16.12).
+int _jsonIntegerDigits(String text) => text.startsWith('-') ? text.length - 1 : text.length;
+
+// _jsonPlaceInteger places one exact integer value in a field's storage: the
+// declared range, then the 64-bit storage domain, both tested on the EXACT
+// value and never through a double (§16.2). An unsigned bound is a 64-bit
+// pattern stored as a Dart int.
+int _jsonPlaceInteger(BigInt wide, TableTextReport r, int? lo, int? hi, bool unsigned, int def) {
   BigInt bound(int b) => unsigned ? BigInt.from(b).toUnsigned(64) : BigInt.from(b);
   if (lo != null && wide < bound(lo)) {
     r.refuse('out_of_range');
@@ -291,7 +366,7 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
     return def;
   }
   if (unsigned) {
-    if (wide.isNegative) { r.refuse('out_of_range'); return def; }
+    if (wide.isNegative || wide > _jsonU64Max) { r.refuse('out_of_range'); return def; }
   } else if (wide < _jsonI64Min) {
     r.refuse('out_of_range');
     return def;
@@ -300,6 +375,53 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
     return def;
   }
   return wide.toSigned(64).toInt();
+}
+
+// _jsonIntField reads one int field of a kind 32 bits or narrower (§16.2): an
+// integer token only — digits with an optional minus, no fraction, no
+// exponent, no negative zero — placed and range-checked on its exact value.
+// Anything else is a kind mismatch. lo and hi are the declared range, or the
+// storage width below 64 bits; an unsigned field's bounds are 64-bit patterns.
+int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false, int def = 0]) {
+  BigInt wide;
+  if (val is int) {
+    wide = BigInt.from(val);
+  } else if (val is _JNum && val.integral && _jsonIntegerToken(val.token)) {
+    if (_jsonIntegerDigits(val.token) > 20) {
+      r.refuse('out_of_range');
+      return def;
+    }
+    wide = BigInt.parse(val.token);
+  } else {
+    r.refuse('kind_mismatch');
+    return def;
+  }
+  return _jsonPlaceInteger(wide, r, lo, hi, unsigned, def);
+}
+
+// _jsonWideIntField reads one int field whose storage is wider than 32 bits
+// (§16.2): it accepts the string form and the number form, and either one
+// must be an integer token — digits with an optional minus, no fraction, no
+// exponent, no negative zero. The value never passes through a double, and its
+// range is tested on the exact value.
+int _jsonWideIntField(dynamic val, TableTextReport r, int? lo, int? hi, bool unsigned, [int def = 0]) {
+  String? token;
+  if (val is String) {
+    token = val;
+  } else if (val is int) {
+    token = val.toString();
+  } else if (val is _JNum) {
+    token = val.token;
+  }
+  if (token == null || !_jsonIntegerToken(token)) {
+    r.refuse('kind_mismatch');
+    return def;
+  }
+  if (_jsonIntegerDigits(token) > 20) {
+    r.refuse('out_of_range');
+    return def;
+  }
+  return _jsonPlaceInteger(BigInt.parse(token), r, lo, hi, unsigned, def);
 }
 
 final _jsonU64Span = BigInt.one << 64;
@@ -530,42 +652,27 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
 }
 
 int _cmpDecimalToMidpoint(String token, BigInt n, int e2) {
-  var i = 0;
-  if (i < token.length && (token[i] == '-' || token[i] == '+')) i++;
-  final intDigits = StringBuffer();
-  final fracDigits = StringBuffer();
-  while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-    intDigits.write(token[i++]);
-  }
-  if (i < token.length && token[i] == '.') {
-    i++;
-    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-      fracDigits.write(token[i++]);
+  final parts = _jsonNumberParts(token);
+  if (parts.digits.isEmpty) return -1;
+  // The midpoint is n × 2^e2 with n below 2^53, so at the float32 widths
+  // this helper is reached from its decimal spelling has fewer than 200
+  // significant digits. A longer token is decided by its first 512 digits
+  // and whether any digit follows them (§16.2): BigInt.parse stays bounded
+  // and the compare stays linear in the token.
+  const keep = 512;
+  var sig = parts.digits;
+  var sticky = false;
+  if (sig.length > keep) {
+    for (var k = keep; k < sig.length; k++) {
+      if (sig.codeUnitAt(k) != 0x30) {
+        sticky = true;
+        break;
+      }
     }
+    sig = sig.substring(0, keep);
   }
-  var exp = 0;
-  if (i < token.length && (token[i] == 'e' || token[i] == 'E')) {
-    i++;
-    var neg = false;
-    if (i < token.length && (token[i] == '-' || token[i] == '+')) neg = token[i++] == '-';
-    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-      if (exp < 100000) exp = exp * 10 + (token.codeUnitAt(i) - 0x30);
-      i++;
-    }
-    if (neg) exp = -exp;
-  }
-  var digits = intDigits.toString() + fracDigits.toString();
-  var point = intDigits.length + exp;
-  while (digits.isNotEmpty && digits[0] == '0') {
-    digits = digits.substring(1);
-    point--;
-  }
-  while (digits.isNotEmpty && digits[digits.length - 1] == '0') {
-    digits = digits.substring(0, digits.length - 1);
-  }
-  if (digits.isEmpty) return -1;
-  final e10 = point - digits.length;
-  var lhs = BigInt.parse(digits);
+  final e10 = parts.point - sig.length;
+  var lhs = BigInt.parse(sig);
   var rhs = n;
   final ten = BigInt.from(10);
   if (e10 >= 0) {
@@ -578,7 +685,9 @@ int _cmpDecimalToMidpoint(String token, BigInt n, int e2) {
   } else {
     lhs <<= -e2;
   }
-  return lhs.compareTo(rhs);
+  final cmp = lhs.compareTo(rhs);
+  if (cmp == 0 && sticky) return 1;
+  return cmp;
 }
 
 double? _narrowF32(double d, String token) {
@@ -714,7 +823,11 @@ String _jsonPrepare(String text, TableTextReport r) {
     if (c == 0x2c) {
       var j = i + 1;
       while (j < stripped.length && stripped[j] <= 0x20) j++;
-      if (j < stripped.length && (stripped[j] == 0x7d || stripped[j] == 0x5d)) continue;
+      if (j < stripped.length && (stripped[j] == 0x7d || stripped[j] == 0x5d)) {
+        var k = i - 1;
+        while (k >= 0 && stripped[k] <= 0x20) k--;
+        if (k >= 0 && stripped[k] != 0x7b && stripped[k] != 0x5b && stripped[k] != 0x2c && stripped[k] != 0x3a) continue;
+      }
     }
     clean.add(c);
   }
@@ -771,6 +884,7 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 	none := g.enumConst(e, 0)
 	g.pf("%s %sFromName(dynamic val, TableTextReport r, [%s? def]) {\n", g.enumType(e), dn, g.enumType(e))
 	g.pf("\tif (val is! String) { r.refuse('kind_mismatch'); return def ?? %s; }\n", none)
+	g.pf("\tif (!_jsonName(val, r)) return def ?? %s;\n", none)
 	g.pf("\tswitch (val) {\n")
 	g.pf("\t\tcase \"None\": return %s;\n", none)
 	for i, name := range e.Variants {
@@ -912,9 +1026,15 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 			case wireKindEnum:
 				g.pf("\t\t\tout.raw(_jsonEnum(e, %sName, '%s.%s'));\n", dartName(enumRef(f).Name), st.Name, f.Name)
 			default:
-				if f.Type.Kind == ir.TInt && !f.Type.Signed && f.Type.Width == 64 {
+				elem := singleOf(f)
+				switch {
+				case jsonIntegerWide(elem) && elem.Type.Kind == ir.TInt && elem.Type.Signed:
+					g.pf("\t\t\tout.raw(_jsonString(e.toString()));\n")
+				case jsonIntegerWide(elem):
+					g.pf("\t\t\tout.raw(_jsonString(BigInt.from(e).toUnsigned(64).toString()));\n")
+				case f.Type.Kind == ir.TInt && !f.Type.Signed && f.Type.Width == 64:
 					g.pf("\t\t\tout.raw(BigInt.from(e).toUnsigned(64).toString());\n")
-				} else {
+				default:
 					g.pf("\t\t\tout.raw(e.toString());\n")
 				}
 			}
@@ -925,6 +1045,10 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 		}
 	case f.Type.Kind == ir.TBool:
 		g.pf("\tout.raw(v.%s ? 'true' : 'false');\n", name)
+	case jsonIntegerWide(f) && f.Type.Kind == ir.TInt && f.Type.Signed:
+		g.pf("\tout.raw(_jsonString(v.%s.toString()));\n", name)
+	case jsonIntegerWide(f):
+		g.pf("\tout.raw(_jsonString(BigInt.from(v.%s).toUnsigned(64).toString()));\n", name)
 	case f.Type.Kind == ir.TInt && !f.Type.Signed && f.Type.Width == 64:
 		g.pf("\tout.raw(BigInt.from(v.%s).toUnsigned(64).toString());\n", name)
 	case f.Type.Kind == ir.TInt, f.Type.Kind == ir.TBits:
@@ -959,20 +1083,26 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 		g.pf("\tfinal entries = <MapEntry<String, dynamic>>[MapEntry(%s, obj)];\n", strconv.Quote(ir.TableFieldJsonKey(st.Fields[0])))
 	} else {
 		g.pf("\tfinal entries = _jsonEntries(obj);\n")
+		g.pf("\tif (entries == null) return;\n")
 	}
-	g.pf("\tif (entries == null) return;\n")
 	g.pf("\tfinal seen = <String>{};\n")
 	g.pf("\tfor (final entry in entries) {\n")
 	g.pf("\t\tfinal key = entry.key;\n")
+	// EVERY OBJECT KEY is held to the text rules a placed value is held to,
+	// whether it names a field or none (docs/SPEC-TABLES.md §16.3, §4): a key
+	// that decodes to U+0000 refuses the read.
+	g.pf("\t\t_jsonText(key);\n")
 	g.pf("\t\tfinal val = entry.value;\n")
+	g.pf("\t\tif (!_jsonName(key, r)) return;\n")
 	g.pf("\t\tswitch (key) {\n")
 	g.pf("\t\t\tcase '&node':\n\t\t\t\tif (!pointer) throw const FormatException('label outside pointer');\n\t\t\t\tbreak;\n")
 	for _, f := range st.Fields {
 		g.emitTextFromJsonField(f)
 	}
 	// an unknown key is skipped and counted, and its repeat is damage like a
-	// known key's (§2.8)
-	g.pf("\t\t\tdefault:\n\t\t\t\tif (!seen.add(key)) r.refuse('text_damaged');\n\t\t\t\tr.unknown++;\n")
+	// known key's (§2.8). Its VALUE is held to the grammar and text rules a
+	// placed value is held to (§16.3, §4), so damage inside it refuses.
+	g.pf("\t\t\tdefault:\n\t\t\t\tif (!seen.add(key)) r.refuse('text_damaged');\n\t\t\t\t_jsonSkipValue(val, r);\n\t\t\t\tr.unknown++;\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
 	g.emitRequiredCheck(st, false, "\t")
@@ -1051,7 +1181,11 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 				if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 					hi = fmt.Sprintf("%d", uint64(1)<<f.Type.Width-1)
 				}
-				g.pf("\t\t\t\t\tv.%s.add(_jsonIntField(item, r, %s, %s, %s));\n", name, lo, hi, jsonUnsigned(f))
+				if jsonIntegerWide(singleOf(f)) {
+					g.pf("\t\t\t\t\tv.%s.add(_jsonWideIntField(item, r, %s, %s, %s));\n", name, lo, hi, jsonUnsigned(f))
+				} else {
+					g.pf("\t\t\t\t\tv.%s.add(_jsonIntField(item, r, %s, %s, %s));\n", name, lo, hi, jsonUnsigned(f))
+				}
 			}
 		}
 		g.pf("\t\t\t\t}\n")
@@ -1061,7 +1195,11 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TInt:
 		lo, hi := jsonIntBounds(f)
-		g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, %s, %s, %s, v.%s);\n", name, lo, hi, jsonUnsigned(f), name)
+		if jsonIntegerWide(f) {
+			g.pf("\t\t\t\tv.%s = _jsonWideIntField(val, r, %s, %s, %s, v.%s);\n", name, lo, hi, jsonUnsigned(f), name)
+		} else {
+			g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, %s, %s, %s, v.%s);\n", name, lo, hi, jsonUnsigned(f), name)
+		}
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TString:
 		g.pf("\t\t\t\tv.%s = _jsonStringField(val, %d, r, v.%s);\n", name, textBound(f), name)
@@ -1071,7 +1209,11 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		if f.Type.Width < 64 {
 			hi = fmt.Sprintf("%d", uint64(1)<<f.Type.Width-1)
 		}
-		g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, null, %s, true, v.%s);\n", name, hi, name)
+		if jsonIntegerWide(f) {
+			g.pf("\t\t\t\tv.%s = _jsonWideIntField(val, r, null, %s, true, v.%s);\n", name, hi, name)
+		} else {
+			g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, null, %s, true, v.%s);\n", name, hi, name)
+		}
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBytes:
 		g.pf("\t\t\t\tv.%s = _jsonBytesField(val, r, %d, v.%s);\n", name, f.Type.Size, name)
@@ -1140,10 +1282,12 @@ func (g *wireGen) emitTextToJson(st *ir.Struct) {
 	if bytesBlob, stringBlob := ir.PointerReachableBlobs(st); bytesBlob || stringBlob {
 		// §2.5: text must refuse shared blobs before expanding their contents.
 		g.pf("\tfinal state = WireState()..refuseSharedBlob = true;\n")
-		g.pf("\tstate.indexRoot(v);\n\t%sNumber(state, v, <Object>{v});\n", dartName(st.Name))
+	} else {
+		g.pf("\tfinal state = WireState();\n")
 	}
+	g.pf("\tstate.numberGraph(v, (obj) { _numberNode(state, obj); });\n")
 	g.pf("\tfinal sh = _Share();\n")
-	g.pf("\t%sCount(sh, v);\n", dartName(st.Name))
+	g.pf("\tstate.countTextPointers((obj) { sh.see(obj); });\n")
 	g.pf("\tfinal out = _JOut();\n")
 	g.pf("\t%sToJsonBody(out, v, 0, sh);\n", dartName(st.Name))
 	g.pf("\tout.raw('\\n');\n")
@@ -1164,12 +1308,15 @@ func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	g.pf("\tfinal root = _jsonDecodeExact(_jsonPrepare(text, r));\n")
 	if st.JsonArray {
 		g.pf("\tif (root is! List) throw const FormatException('json_root_not_array: %s');\n", st.Name)
+		// The throw above already leaves root a List here, so the call takes
+		// no second shape test.
+		g.pf("\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
 	} else {
 		g.pf("\tif (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: %s');\n", st.Name)
+		g.pf("\tif (%s) {\n", jsonTableShape(st, "root"))
+		g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
+		g.pf("\t}\n")
 	}
-	g.pf("\tif (%s) {\n", jsonTableShape(st, "root"))
-	g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
-	g.pf("\t}\n")
 	// A caller who supplied a report reads the verdict from it and lands the
 	// type's defaults; a caller who did not gets the refusal as a throw.
 	g.pf("\tif (r.refused) {\n")

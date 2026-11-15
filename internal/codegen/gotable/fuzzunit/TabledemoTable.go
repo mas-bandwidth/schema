@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"github.com/mas-bandwidth/schema/v2/tables/goruntime"
 	"math"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -27,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x3874a951f98d7507)
-const _ = uint64(0x3874a951f98d7507 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xad5850dc4545aec9)
+const _ = uint64(0xad5850dc4545aec9 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -1349,11 +1350,13 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 	}
 	start := len(data) - 8 - int(n)*8
 	r.Buffer, r.Ids = data[1:start], data[start:len(data)-8]
-	// Count is attacker-capped by (bytes-9)/8 and the 4096-entry bound. The
-	// open-addressed path runs at 8<=n<=4096 with 8192 slots and compares the
-	// stored id, not the hash. n<8 stays pairwise: 21 comparisons at 7 versus
-	// 40 KiB of slot zeroing on every open, including a two-entry trailer. The
-	// mix is C's table_writer_id.
+	// Count is attacker-capped by (bytes-9)/8 and the 4096-entry bound. At
+	// 8<=n<=4096 a sort over a fixed scratch copy compares neighbours, so
+	// the work is n log n whatever the ids are. n<8 stays pairwise: 21
+	// comparisons at 7 versus the scratch array on every open, including a
+	// two-entry trailer. The scratch copy is a fixed array, so the open still
+	// allocates nothing, and the neighbour compare keeps duplicate ids refused.
+	// The 4096-entry cap above still bounds the scratch copy.
 	if n > 1 {
 		if n < 8 {
 			for i := 0; i < len(r.Ids); i += 8 {
@@ -1365,25 +1368,22 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 				}
 			}
 		} else {
-			var seen [8192]uint64
-			var used [8192]uint8
+			var ids [4096]uint64
 			for i := range n {
-				id := binary.LittleEndian.Uint64(r.Ids[i*8:])
-				hash := id
-				hash ^= hash >> 33
-				hash *= 0xff51afd7ed558ccd
-				hash ^= hash >> 33
-				slot := uint32(hash) & 8191
-				for {
-					if used[slot] == 0 {
-						used[slot] = 1
-						seen[slot] = id
-						break
-					}
-					if seen[slot] == id {
-						return r, TableOpenDamaged
-					}
-					slot = (slot + 1) & 8191
+				ids[i] = binary.LittleEndian.Uint64(r.Ids[i*8:])
+			}
+			slices.SortFunc(ids[:n], func(a, b uint64) int {
+				if a < b {
+					return -1
+				}
+				if a > b {
+					return 1
+				}
+				return 0
+			})
+			for i := 1; i < int(n); i++ {
+				if ids[i-1] == ids[i] {
+					return r, TableOpenDamaged
 				}
 			}
 		}
@@ -1796,7 +1796,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 		clear(c.graph)
 		rec := c.records
 		for i := uint64(2); i <= c.nodes+1; i++ {
-			c.graph[2*(i-1)+1] = uint64(rec.Offset)
+			c.graph[2*(i-1)+1] = uint64(rec.Offset & 0x7fffffffffffffff)
 			ref, ok := rec.Leb()
 			if !ok {
 				return TableRefuseWireDamaged
@@ -1828,9 +1828,9 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 	}
 	// a blob named twice is shared, and a record no pointer names is unreachable
 	for i := uint64(2); i <= c.nodes+1; i++ {
-		if uint32(c.graph[2*(i-1)]) > 1 {
+		if uint32(c.graph[2*(i-1)]&0xffffffff) > 1 {
 			rec := c.records
-			rec.Offset = int64(c.graph[2*(i-1)+1])
+			rec.Offset = int64(c.graph[2*(i-1)+1] & 0x7fffffffffffffff)
 			ref, _ := rec.Leb()
 			if id, _ := rec.Resolve(ref); id == tableWireBytesID || id == tableWireStringID {
 				return TableRefuseBlobShared
@@ -1838,7 +1838,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 		}
 	}
 	for i := uint64(2); i <= c.nodes+1; i++ {
-		if uint32(c.graph[2*(i-1)]) == 0 {
+		if uint32(c.graph[2*(i-1)]&0xffffffff) == 0 {
 			return TableRefuseWireDamaged
 		}
 	}
@@ -2398,7 +2398,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// bounded at 4 must land 4 and COUNT, not be admitted because this
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
-			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Min: d.Min, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)

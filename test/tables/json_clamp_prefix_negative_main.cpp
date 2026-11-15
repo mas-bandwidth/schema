@@ -3,7 +3,7 @@
 //
 // A string longer than its field used to clamp to a code-point prefix and
 // count `clamped`. The strict read REFUSES the whole value instead
-// (out_of_range), so the prefix is never handed to a caller and the one thing
+// (length_over_bound), so the prefix is never handed to a caller and the one thing
 // left to guard is the verdict. A walker that forgot the refusal would hand
 // back a silently shortened string, and only a test that reads the verdict on
 // an over-long input can see that.
@@ -13,7 +13,7 @@
 //
 //   0  the read ACCEPTED the over-long string and stored the code-point
 //      prefix                         -> the sabotaged arm requires this
-//   2  the read REFUSED with out_of_range and the field at its default
+//   2  the read REFUSED with length_over_bound and the field at its default
 //                                     -> the honest arm requires this
 //   1  anything else                  -> neither arm may pass on it
 //
@@ -49,10 +49,10 @@ int main()
         return 0;
     }
 
-    if ( report.refuse_reason != tabledemo::out_of_range )
+    if ( report.refuse_reason != tabledemo::length_over_bound )
     {
         printf( "FAIL over-long string negative control: the read refused for reason %d, not\n"
-                "      out_of_range, so the bound was never what stopped it\n",
+                "      length_over_bound, so the bound was never what stopped it\n",
                 (int) report.refuse_reason );
         return 1;
     }
@@ -64,7 +64,7 @@ int main()
         return 1;
     }
 
-    printf( "over-long string negative control: the read refused with out_of_range and the\n"
+    printf( "over-long string negative control: the read refused with length_over_bound and the\n"
             "      field at its default: the honest verdict\n" );
     return 2;
 }

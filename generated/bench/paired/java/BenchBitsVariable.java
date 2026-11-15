@@ -26,6 +26,7 @@ public final class BenchBitsVariable {
     }
 
     public static final long TYPE_ID = 0xa404df3668cb76f5L;
+    static final int GRAPH_KIND = 0;
     public static final long F_b7 = 0x08a60107b54d7b16L;
     public static final long F_b13 = 0xff95751912ada03dL;
     public static final long F_b23 = 0xff9fe51912b6b312L;
@@ -218,10 +219,150 @@ public final class BenchBitsVariable {
     }
 
     public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
+        g.push(v, GRAPH_KIND, -2, 0, null);
+        while (g.workCount() > 0) {
+            int at = g.workCount() - 1;
+            Object value = g.workValue(at);
+            int kind = g.workKind(at);
+            int field = g.workField(at);
+            int index = g.workIndex(at);
+            Object close = g.workClose(at);
+            g.pop();
+            if (field == -1) {
+                g.setOpen(value, false);
+                continue;
+            }
+            if (field == -2) {
+                if (close != null) {
+                    g.push(close, 0, -1, 0, null);
+                }
+                if (!graphEnter(g, value, kind)) {
+                    return false;
+                }
+                continue;
+            }
+            if (!graphStep(g, value, kind, field, index)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static boolean graphEnter(TableVariable.NodeGraph g, Value v) {
         if (v == null) {
             return true;
         }
+        g.push(v, GRAPH_KIND, 7, 0, null);
+        g.push(v, GRAPH_KIND, 6, 0, null);
+        g.push(v, GRAPH_KIND, 5, 0, null);
+        g.push(v, GRAPH_KIND, 4, 0, null);
+        g.push(v, GRAPH_KIND, 3, 0, null);
+        g.push(v, GRAPH_KIND, 2, 0, null);
+        g.push(v, GRAPH_KIND, 1, 0, null);
+        g.push(v, GRAPH_KIND, 0, 0, null);
         return true;
+    }
+
+    static boolean graphField(TableVariable.NodeGraph g, Value v, int field, int index) {
+        switch (field) {
+            case 0:
+                {
+                    return true;
+                }
+            case 1:
+                {
+                    return true;
+                }
+            case 2:
+                {
+                    return true;
+                }
+            case 3:
+                {
+                    return true;
+                }
+            case 4:
+                {
+                    return true;
+                }
+            case 5:
+                {
+                    return true;
+                }
+            case 6:
+                {
+                    return true;
+                }
+            case 7:
+                {
+                    return true;
+                }
+            default:
+                return true;
+        }
+    }
+
+    static boolean graphEnter(TableVariable.NodeGraph g, Object v, int kind) {
+        switch (kind) {
+            case 0:
+                return BenchBitsVariable.graphEnter(g, (BenchBitsVariable.Value) v);
+            case 1:
+                return BenchIntsVariable.graphEnter(g, (BenchIntsVariable.Value) v);
+            case 2:
+                return BenchMixedVariable.graphEnter(g, (BenchMixedVariable.Value) v);
+            case 3:
+                return BenchPacketVariable.graphEnter(g, (BenchPacketVariable.Value) v);
+            case 4:
+                return FixedTableVariable.graphEnter(g, (FixedTableVariable.Value) v);
+            case 5:
+                return MixedChatEventVariable.graphEnter(g, (MixedChatEventVariable.Value) v);
+            case 6:
+                return MixedEntityVariable.graphEnter(g, (MixedEntityVariable.Value) v);
+            case 7:
+                return MixedHitEventVariable.graphEnter(g, (MixedHitEventVariable.Value) v);
+            case 8:
+                return MixedPickupEventVariable.graphEnter(g, (MixedPickupEventVariable.Value) v);
+            case 9:
+                return MixedStatVariable.graphEnter(g, (MixedStatVariable.Value) v);
+            case 10:
+                return MixedEventVariable.graphEnter(g, (MixedEventVariable.Value) v);
+            default:
+                return false;
+        }
+    }
+
+    static boolean graphStep(TableVariable.NodeGraph g, Object v, int kind, int field, int index) {
+        switch (kind) {
+            case 0:
+                return BenchBitsVariable.graphField(g, (BenchBitsVariable.Value) v, field, index);
+            case 1:
+                return BenchIntsVariable.graphField(g, (BenchIntsVariable.Value) v, field, index);
+            case 2:
+                return BenchMixedVariable.graphField(g, (BenchMixedVariable.Value) v, field, index);
+            case 3:
+                return BenchPacketVariable.graphField(
+                        g, (BenchPacketVariable.Value) v, field, index);
+            case 4:
+                return FixedTableVariable.graphField(g, (FixedTableVariable.Value) v, field, index);
+            case 5:
+                return MixedChatEventVariable.graphField(
+                        g, (MixedChatEventVariable.Value) v, field, index);
+            case 6:
+                return MixedEntityVariable.graphField(
+                        g, (MixedEntityVariable.Value) v, field, index);
+            case 7:
+                return MixedHitEventVariable.graphField(
+                        g, (MixedHitEventVariable.Value) v, field, index);
+            case 8:
+                return MixedPickupEventVariable.graphField(
+                        g, (MixedPickupEventVariable.Value) v, field, index);
+            case 9:
+                return MixedStatVariable.graphField(g, (MixedStatVariable.Value) v, field, index);
+            case 10:
+                return MixedEventVariable.graphField(g, (MixedEventVariable.Value) v, field, index);
+            default:
+                return false;
+        }
     }
 
     public static boolean readFields(
@@ -664,7 +805,7 @@ public final class BenchBitsVariable {
             return null;
         }
         TableVariable.Measure measure = new TableVariable.Measure();
-        if (loadMeasure(data, measure) < 0) {
+        if (loadMeasure(data, measure, false) < 0) {
             report.refused = true;
             if (measure.report.reason != null) {
                 report.reason = measure.report.reason;
@@ -740,7 +881,13 @@ public final class BenchBitsVariable {
     }
 
     public static long loadMeasure(byte[] data, TableVariable.Measure m) {
-        TableVariable.Reader r = m.open(data);
+        return loadMeasure(data, m, true);
+    }
+
+    // A load whose open already proved the id table distinct over these bytes
+    // passes distinct false, so a load runs the bounded walk exactly once (§3).
+    static long loadMeasure(byte[] data, TableVariable.Measure m, boolean distinct) {
+        TableVariable.Reader r = m.open(data, distinct);
         if (r == null) {
             return -1;
         }
@@ -816,8 +963,11 @@ public final class BenchBitsVariable {
         TableJson.In in = new TableJson.In(text, report);
         in.byteOrderMark();
         Value v = new Value();
-        jsonReadFields(in, v);
-        if (in.bad) {
+        jsonReadFields(in, v, 0);
+        // THE ROOT OBJECT IS THE WHOLE TEXT (§16.1): skip whitespace and
+        // comments, then refuse unless the cursor is at the end of the text.
+        in.space();
+        if (in.bad || in.p != text.length) {
             report.damaged = true;
         }
         if (report.refused) {
@@ -939,9 +1089,13 @@ public final class BenchBitsVariable {
         }
     }
 
-    public static Value readJsonPointer(TableJson.In in, long targetTypeId) {
+    public static Value readJsonPointer(TableJson.In in, long targetTypeId, int depth) {
         if (in.peek() == 'n') {
             in.lit("null");
+            return null;
+        }
+        if (depth + 1 > TableJson.In.MAX_JSON_DEPTH) {
+            in.bad = true;
             return null;
         }
         if (in.peek() != '{') {
@@ -955,15 +1109,15 @@ public final class BenchBitsVariable {
         if (in.peek() == '}') {
             in.p = start;
             Value v = new Value();
-            jsonReadFields(in, v);
+            jsonReadFields(in, v, depth + 1);
             return v;
         }
-        String key = in.scanString();
+        String key = in.scanName();
         if (in.bad || key == null) return null;
         if (!"&node".equals(key)) {
             in.p = start;
             Value v = new Value();
-            jsonReadFields(in, v);
+            jsonReadFields(in, v, depth + 1);
             return v;
         }
         if (in.peek() != ':') {
@@ -1002,7 +1156,7 @@ public final class BenchBitsVariable {
             Value child = new Value();
             TableJson.LabelEntry entry = new TableJson.LabelEntry(child, targetTypeId, true);
             in.labels.put(labelId, entry);
-            jsonReadFieldsBody(in, child);
+            jsonReadFieldsBody(in, child, depth + 1);
             entry.open = false;
             return child;
         } else {
@@ -1011,18 +1165,23 @@ public final class BenchBitsVariable {
         }
     }
 
-    static void jsonReadFields(TableJson.In in, Value v) {
+    static void jsonReadFields(TableJson.In in, Value v, int depth) {
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            in.bad = true;
+            return;
+        }
         in.space();
         if (in.peek() != '{') {
             in.bad = true;
             return;
         }
         in.p++;
-        jsonReadFieldsBody(in, v);
+        jsonReadFieldsBody(in, v, depth);
     }
 
-    static void jsonReadFieldsBody(TableJson.In in, Value v) {
+    static void jsonReadFieldsBody(TableJson.In in, Value v, int depth) {
         boolean[] seenField = new boolean[8];
+        java.util.Set<String> seenKey = new java.util.HashSet<>();
         while (true) {
             int c = in.peek();
             if (c == 0) {
@@ -1033,9 +1192,14 @@ public final class BenchBitsVariable {
                 in.p++;
                 break;
             }
-            String key = in.scanString();
+            String key = in.scanName();
             if (in.bad) {
                 return;
+            }
+            // THE KEY SET HOLDS EVERY KEY OF THE OBJECT, declared or not,
+            // compared by decoded text (§16.2, §16.12).
+            if (!seenKey.add(key)) {
+                in.rep.refuse("text_damaged");
             }
             if (key != null && key.startsWith("&")) {
                 in.bad = true;
@@ -1215,7 +1379,7 @@ public final class BenchBitsVariable {
                     }
                 }
             } else {
-                in.skipValue();
+                in.skipValue(depth + 1);
                 in.rep.unknown++;
             }
             c = in.peek();

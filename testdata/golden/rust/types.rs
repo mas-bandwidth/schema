@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -47,6 +47,13 @@ pub fn write_vec3(stream: &mut WriteStream<'_>, value: &Vec3) -> Result {
 
 #[inline]
 pub fn read_vec3(stream: &mut ReadStream<'_>, value: &mut Vec3) -> Result {
+    read_vec3_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_vec3_body(stream: &mut ReadStream<'_>, value: &mut Vec3) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: x[0..32]
     stream.serialize_bits(&mut c, 32)?;
@@ -134,6 +141,13 @@ pub fn write_quat(stream: &mut WriteStream<'_>, value: &Quat) -> Result {
 
 #[inline]
 pub fn read_quat(stream: &mut ReadStream<'_>, value: &mut Quat) -> Result {
+    read_quat_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_quat_body(stream: &mut ReadStream<'_>, value: &mut Quat) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: x[0..32]
     stream.serialize_bits(&mut c, 32)?;
@@ -212,6 +226,13 @@ pub fn write_handle(stream: &mut WriteStream<'_>, value: &Handle) -> Result {
 
 #[inline]
 pub fn read_handle(stream: &mut ReadStream<'_>, value: &mut Handle) -> Result {
+    read_handle_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_handle_body(stream: &mut ReadStream<'_>, value: &mut Handle) -> Result {
     let mut c: u32 = 0;
     // word 0, 22 bits: object_id[0..14], object_sequence[0..8]
     stream.serialize_bits(&mut c, 22)?;
@@ -260,6 +281,13 @@ pub fn write_quantized_position(stream: &mut WriteStream<'_>, value: &QuantizedP
 
 #[inline]
 pub fn read_quantized_position(stream: &mut ReadStream<'_>, value: &mut QuantizedPosition) -> Result {
+    read_quantized_position_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_quantized_position_body(stream: &mut ReadStream<'_>, value: &mut QuantizedPosition) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: x[0..25], y[0..7]
     stream.serialize_bits(&mut c, 32)?;
@@ -322,6 +350,13 @@ pub fn write_quantized_velocity(stream: &mut WriteStream<'_>, value: &QuantizedV
 
 #[inline]
 pub fn read_quantized_velocity(stream: &mut ReadStream<'_>, value: &mut QuantizedVelocity) -> Result {
+    read_quantized_velocity_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_quantized_velocity_body(stream: &mut ReadStream<'_>, value: &mut QuantizedVelocity) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: x[0..23], y[0..9]
     stream.serialize_bits(&mut c, 32)?;
@@ -385,6 +420,13 @@ pub fn write_quantized_rotation(stream: &mut WriteStream<'_>, value: &QuantizedR
 
 #[inline]
 pub fn read_quantized_rotation(stream: &mut ReadStream<'_>, value: &mut QuantizedRotation) -> Result {
+    read_quantized_rotation_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_quantized_rotation_body(stream: &mut ReadStream<'_>, value: &mut QuantizedRotation) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: x[0..12], y[0..12], z[0..8]
     stream.serialize_bits(&mut c, 32)?;
@@ -452,12 +494,19 @@ pub fn write_rigid_body(stream: &mut WriteStream<'_>, value: &RigidBody) -> Resu
 
 #[inline]
 pub fn read_rigid_body(stream: &mut ReadStream<'_>, value: &mut RigidBody) -> Result {
-    read_vec3(stream, &mut value.position)?;
-    read_quat(stream, &mut value.orientation)?;
+    read_rigid_body_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_rigid_body_body(stream: &mut ReadStream<'_>, value: &mut RigidBody) -> Result {
+    read_vec3_body(stream, &mut value.position)?;
+    read_quat_body(stream, &mut value.orientation)?;
     stream.serialize_bool(&mut value.at_rest)?;
     if !value.at_rest {
-        read_vec3(stream, &mut value.linear_velocity)?;
-        read_vec3(stream, &mut value.angular_velocity)?;
+        read_vec3_body(stream, &mut value.linear_velocity)?;
+        read_vec3_body(stream, &mut value.angular_velocity)?;
     } else {
         value.linear_velocity = Vec3::default();
         value.angular_velocity = Vec3::default();
@@ -527,6 +576,13 @@ pub fn write_input(stream: &mut WriteStream<'_>, value: &Input) -> Result {
 
 #[inline]
 pub fn read_input(stream: &mut ReadStream<'_>, value: &mut Input) -> Result {
+    read_input_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_input_body(stream: &mut ReadStream<'_>, value: &mut Input) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: stick_x[0..32]
     stream.serialize_bits(&mut c, 32)?;
@@ -640,6 +696,13 @@ pub fn write_input_packet(stream: &mut WriteStream<'_>, value: &InputPacket) -> 
 
 #[inline]
 pub fn read_input_packet(stream: &mut ReadStream<'_>, value: &mut InputPacket) -> Result {
+    read_input_packet_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_input_packet_body(stream: &mut ReadStream<'_>, value: &mut InputPacket) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: synchronize_sequence[0..16], current_frame[0..16]
     stream.serialize_bits(&mut c, 32)?;
@@ -664,7 +727,7 @@ pub fn read_input_packet(stream: &mut ReadStream<'_>, value: &mut InputPacket) -
     value.start_frame = v2;
     stream.serialize_int(&mut value.inputs_count, 0, MAX_INPUTS_PER_PACKET as i32)?; // the count guards the loop (§6.3)
     for i in 0..value.inputs_count as usize {
-        read_input(stream, &mut value.inputs[i])?;
+        read_input_body(stream, &mut value.inputs[i])?;
     }
     Ok(())
 }
@@ -730,14 +793,21 @@ pub fn write_ship_create(stream: &mut WriteStream<'_>, value: &ShipCreate) -> Re
 
 #[inline]
 pub fn read_ship_create(stream: &mut ReadStream<'_>, value: &mut ShipCreate) -> Result {
+    read_ship_create_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_ship_create_body(stream: &mut ReadStream<'_>, value: &mut ShipCreate) -> Result {
     {
         let mut enum_value: i32 = 0;
         stream.serialize_int(&mut enum_value, 0, 5)?;
         value.ship_type = ShipType(enum_value as u8);
     }
-    read_quantized_position(stream, &mut value.position)?;
-    read_quantized_rotation(stream, &mut value.rotation)?;
-    read_quantized_velocity(stream, &mut value.linear_velocity)?;
+    read_quantized_position_body(stream, &mut value.position)?;
+    read_quantized_rotation_body(stream, &mut value.rotation)?;
+    read_quantized_velocity_body(stream, &mut value.linear_velocity)?;
     stream.serialize_bool(&mut value.has_flags)?;
     if value.has_flags {
         {
@@ -810,6 +880,13 @@ pub fn write_expression_probe(stream: &mut WriteStream<'_>, value: &ExpressionPr
 
 #[inline]
 pub fn read_expression_probe(stream: &mut ReadStream<'_>, value: &mut ExpressionProbe) -> Result {
+    read_expression_probe_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_expression_probe_body(stream: &mut ReadStream<'_>, value: &mut ExpressionProbe) -> Result {
     let mut c: u32 = 0;
     // word 0, 16 bits: hardpoint_index[0..5], spin_rate[0..11]
     stream.serialize_bits(&mut c, 16)?;
@@ -893,6 +970,13 @@ pub fn write_extreme_probe(stream: &mut WriteStream<'_>, value: &ExtremeProbe) -
 
 #[inline]
 pub fn read_extreme_probe(stream: &mut ReadStream<'_>, value: &mut ExtremeProbe) -> Result {
+    read_extreme_probe_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_extreme_probe_body(stream: &mut ReadStream<'_>, value: &mut ExtremeProbe) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: floor_bound[0..32]
     stream.serialize_bits(&mut c, 32)?;
@@ -999,6 +1083,13 @@ pub fn write_extreme_row(stream: &mut WriteStream<'_>, value: &ExtremeRow) -> Re
 
 #[inline]
 pub fn read_extreme_row(stream: &mut ReadStream<'_>, value: &mut ExtremeRow) -> Result {
+    read_extreme_row_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_extreme_row_body(stream: &mut ReadStream<'_>, value: &mut ExtremeRow) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: clamped_floor[0..32]
     stream.serialize_bits(&mut c, 32)?;

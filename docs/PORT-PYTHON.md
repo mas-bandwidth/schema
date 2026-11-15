@@ -103,7 +103,6 @@ holds a value to its width.
 | an enum `E` | `int` | the default variant's number, else `0` |
 | a `flags` set `F` | `int`: the uint64 mask | `0`, or the default mask |
 | `string(N)` | `str` | `""`, or the default |
-| `wstring(N)` | `str`, at most N UTF-16 code units | `""` (a `wstring` takes no default) |
 | `bytes(N)` | `bytes` on read; `bytes`, `bytearray` or a byte-format `memoryview` on write | `b""`, or the default |
 | `[N]T` | `list` of exactly N | each element at its default |
 | `[..N]T`, `[A..N]T` | `list`; its length is the count, in [A, N] | A elements at their defaults (SPEC §4.6) |
@@ -182,9 +181,6 @@ Each table class also carries its **descriptor**, the table as data
   `InvalidValue`, and a read of an encoded surrogate refuses as `Refused`
   (`invalid_utf8`). A packet `string(N)` refuses an embedded NUL, and its bound
   is N bytes of UTF-8, not N characters.
-- **Wide text** (`wstring(N)`) is `str` whose UTF-16 encoding is at most N code
-  units. A write refuses a lone surrogate and an interior zero code unit (SPEC
-  §4.12), and a read refuses both.
 - **Bytes.** A read returns `bytes`, which the caller owns, never a view that
   pins the input buffer. A write accepts `bytes`, `bytearray`, or a
   `memoryview` whose format is `"B"`; any other `memoryview` is refused rather
@@ -285,6 +281,62 @@ per unit, named for the unit's package:
 | `internal/tablenames/python.go` | the table runtime's claimed names, from the table layers (P5) |
 | `make/python-toolchain.mk`, `make/python.mk`, `make/python-*.mk` | the pin, the leg, and one fragment per gate |
 | `test/conformance/python/` | the conformance driver and `ci.json` |
+
+## THE TABLE FRAME
+
+The table core (P5/P6, cut so the other table cards run beside it) emits a
+generated class per table and per map entry, each with its descriptor
+(SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
+
+- **One module per field kind.** `_schema/kinds.py` is the dispatch table;
+  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
+  the kinds this cut carries. A later card adds its module and one registration
+  line, never an edit to the body walk. `kind_unsupported.py` is the named
+  placeholder for a construct whose descriptor exists but whose codec has not
+  landed; a read or write that reaches it refuses by name.
+- **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
+  the whole value or raise `Refused`, validate a write before writing a byte
+  and raise `InvalidValue`, write the flat node table for `*T`, and fill a
+  `LoadReport` on success only. `Measure` runs the same walk into a counting
+  sink, so measure and save agree by construction.
+- **The shape is measured.** A table whose fields are all bools and integers
+  gets the straight-line generated save/load pair, unrolled with each field
+  descriptor bound to a local; every table, and every construct a later card
+  adds, keeps the descriptor walk over `_schema/kinds.py`. The two shapes run
+  on the same table, under both pinned interpreters, in
+  `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
+  straight-line pair is kept: its save is faster on both pins, and its load is
+  faster on the floor.
+- **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
+  by-value tables and `*T` pointers to tables, for both the fixed and the
+  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
+  with table arms have descriptors in this cut and refuse by name through
+  `kind_unsupported.py` until their cards land.
+- **A packet-typed field is refused by name.** A table field whose type is a
+  packet `type` reaches `refusePacketValues` and is refused naming the field
+  and the type, until P4 carries packet types into tables.
+- **The compiler keeps the shared carry checks.** Before table dispatch it
+  refuses constructs outside the registered carry set, just as the packet
+  target does. The table emitter can describe future codec layers directly;
+  those descriptors do not claim that the compiler carries their constructs.
+
+### Bench
+
+The shape bench runs a ten-field fixed-point table (the five storage widths,
+signed and unsigned) under both pins, on the fleet host. Each figure is the
+minimum of five rounds of 10,000 iterations after warm-up, in nanoseconds per
+operation:
+
+| operation | 3.15.2 generated | 3.15.2 descriptor | 3.11.18 generated | 3.11.18 descriptor |
+|---|---:|---:|---:|---:|
+| save | 11,560 | 12,332 | 10,277 | 12,544 |
+| load | 12,700 | 12,455 | 13,590 | 14,159 |
+
+The generated save is 6% faster on 3.15.2 and 18% faster on 3.11.18; the
+generated load is 2% slower on 3.15.2 and 4% faster on 3.11.18. Save and load
+together, the generated pair is 2% faster on 3.15.2 and 11% faster on 3.11.18,
+so the pair is kept. `TestPythonTableCoreShapeBench` re-measures it and holds
+both shapes to the same value.
 
 ## IDENTIFIERS
 
@@ -407,3 +459,62 @@ in P3. serialize.py is staged in `third_party/serialize.py/` and secured there
 by the family corpus, because its own repository does not exist yet; the
 runtime vendors it by sha256 from that directory (`SERIALIZE_PIN`), and from
 its releases once the repository exists.
+
+## THE PACKET CORE CUT
+
+The packet layer (P4 above) lands in steps. The target carries the wire's core
+today and refuses every other packet kind by name. This section records where
+the core stands against the P4 row; the rules of this page are unchanged.
+
+- **The class surface is complete; the codec is not.** Every packet
+  declaration is emitted now: module constants, the enum and flags classes
+  with their name tables, a class per type and per union with every field
+  born at its default, `__eq__` by value (a float's bits included) and a
+  readable `__repr__`. The codec carries `bool`, `int8` to `uint64` (bare or
+  ranged), enums, flags, types by value, unions, and `if`/`else` branches. A
+  field or item of any other kind (`bits`, `fixed`, `float32`, `float64`,
+  `string`, `bytes`, an array, `const`, `reserved`, `align`, or a 128-bit
+  integer) is refused at generate time by its kind, naming P4 the packet
+  wire. The class surface knows how to birth and compare those kinds already;
+  only their wire emitters are still to come.
+- **The implicit enum zero is `None_`.** Python will not let a class body
+  assign to `None`, so the zero every leg spells `None` is spelled `None_`
+  in generated code. The name tables keep the schema spelling `"None"`, and
+  a schema variant may not be named `None_` (it would replace the member).
+  Flags keep their variant spelling; a flags set exports `Count` and a name
+  table, and a variant may not be named `Count` or `NAMES`.
+- **A union's tag attribute is `type`.** The value mapping's `type` is the
+  attribute; a union arm may not be named `type`, `read`, `write`, `load`,
+  `save` or `descriptor`, the members the generated class defines, or export
+  `None_`, `Max` or `NAMES` on `<Union>Type`.
+- **The golden harness reads single-root pins.** A C++-pinned packet golden
+  that is one value with one root type is read and written back; the
+  multi-root concatenations (`clauses`, `joins`, `degenerate`) and the table
+  wire's pins are listed as skipped with the reason. Every packet root whose
+  kinds are all carried is read from its pin and must write back byte for
+  byte; a root blocked by an uncarried kind names that kind.
+
+## THE PACKET CORE BENCH
+
+D1 names two code shapes for the hot path: straight-line generated code with
+locals bound, and a descriptor walk. Each method binds its reusable `Ref`
+holders, `stream.serialize_*` callables and `type`/`int`/`bool` checks into
+method locals once at entry, and validates scalar types and integer bounds
+inline before constructing an error path. The core keeps the straight-line
+shape, because it measured faster on both sides of the wire under both pinned
+interpreters. The instrument is the `BenchInts` fixture (ten ranged `int32`
+fields, 110 wire bits), read from `testdata/wire/bench_ints.bin` and written
+back, 200,000 iterations after a 1,000-iteration warmup, over five interleaved
+sittings per interpreter:
+
+| interpreter | shape | read | write |
+|---|---|---|---|
+| CPython 3.11.18 (floor) | straight-line generated code (kept) | 7.33–7.48 µs/op | 6.80–7.03 µs/op |
+| CPython 3.11.18 (floor) | descriptor walk (prototype loop) | 7.80–8.10 µs/op | 7.51–7.81 µs/op |
+| CPython 3.15.2 (current) | straight-line generated code (kept) | 7.68–8.00 µs/op | 7.02–7.11 µs/op |
+| CPython 3.15.2 (current) | descriptor walk (prototype loop) | 8.28–8.61 µs/op | 7.56–7.95 µs/op |
+
+The straight-line reader is 3–8% faster and the writer 7–11% faster across
+every sitting on both pins, because attribute load and store on `__slots__`
+avoid `getattr`/`setattr` and loop dispatch, so the generator emits it and no
+descriptor walk ships.

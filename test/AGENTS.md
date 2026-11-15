@@ -35,6 +35,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `elixir-tables/` | Elixir table tests | `make test-elixir` | `make test-elixir` |
 | `elixir-view/` | Elixir view tests | `make test-elixir` | `make test-elixir` |
 | `elixir-warning-control/` | Elixir warning-control tests | `make test-elixir` | `make test-elixir` |
+| `fixed-empty-batch/` | fixed-form empty-batch and record-size fixtures | `go test -run TestSpecFixedFormEdges ./compiler/` | `go test -run TestSpecFixedFormEdges ./compiler/` |
 | `generated-tree/` | committed generated/ verify | `test/generated-tree/verify` | `make generated-current` |
 | `go/` | Go packet tests | `make test-go` | `make test-go` |
 | `go-hostile/` | generated Go hostile-corpus runner | `make schema-go-runs-hostile-corpus` | `make schema-go-runs-hostile-corpus` |
@@ -59,11 +60,18 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `lua/` | Lua interpreter harness | `make test-lua` | `make test-lua` |
 | `luau-ludicrous/` | Luau int128 tests | `make test-luau` | `make test-luau` |
 | `luau-runtime-home/` | Luau runtime-home check | `make tables-luau-runtime-home` | `make tables-luau-runtime-home` |
+| `message-one-encoding/` | message form one-encoding fixture | `make test-go` | `go test -run TestSpecMessageFormHasOneEncoding ./compiler/` |
 | `moo-runtime-home/` | moo runtime-home check | `make tables-moo-runtime-home` | `make tables-moo-runtime-home` |
+| `non-canonical/` | non-canonical spelling wire vectors | `go test -run TestCorpusNonCanonicalSpellings ./compiler/` | `go test -run TestCorpusNonCanonicalSpellings ./compiler/` |
 | `packet-defaults/` | packet default-value gates | `make test` | `make test` |
+| `packet-end/` | packet end-check fixture | `make test-go` | `go test -run TestSpecPacketEndIsChecked ./compiler/` |
 | `packet-finite/` | packet finite-float gates | `make test-go, make test-dart, make test-elixir, make test-lua, make test-luau` | `make packet-finite-go packet-finite-dart packet-finite-elixir packet-finite-lua packet-finite-luau` |
 | `packet-text/` | packet UTF-8 gates | `make test` | `make test` |
 | `packet-void/` | packet void-arm gates | `make test` | `make test` |
+| `packet-write-bareint/` | packet Write bare-integer width fixture | `go test -run TestSpecPacketWriteBareIntWidth ./compiler/` | `go test -run TestSpecPacketWriteBareIntWidth ./compiler/` |
+| `packet-write-cfloat/` | packet Write compressed-float range fixture | `make test-go` | `go test -run TestSpecPacketWriteRefusesOffRangeCompressedFloat ./compiler/` |
+| `packet-write-text/` | packet text write contract fixtures | `go test -run TestSpecPacketWriteChecksText ./compiler/` | `go test -run TestSpecPacketWriteChecksText ./compiler/` |
+| `pointer-target-type/` | pointer target-type fixtures | `go test -run TestSpecPointerTargetTypeChecked ./compiler/` | `go test -run TestSpecPointerTargetTypeChecked ./compiler/` |
 | `proof/` | 3.0.0 proof snapshot (internal gate) | `make proof` | `make proof-write` |
 | `rust/` | Rust packet tests | `make test-rust` | `make test-rust` |
 | `rust-agree/` | Rust accessor/descriptor agreement gate | `make tables-rust-accessor-descriptor-agreement` | `make tables-rust-accessor-descriptor-agreement` |
@@ -75,6 +83,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `rust-ludicrous/` | Rust int128 tests | `make test-rust` | `make test-rust` |
 | `rust-soak/` | Rust tables soak, allocator call count | `make tables-rust-soak` | `make tables-rust-soak` |
 | `rust-view/` | Rust unit-view listing driver | `make tables-rust-view` | `make tables-rust-view` |
+| `skipped-value/` | skipped-value validation fixtures | `go test -run TestSpecSkippedValueIsValidated ./compiler/` | `go test -run TestSpecSkippedValueIsValidated ./compiler/` |
 | `slowgate/` | SCHEMA_SLOW proof wrapper | `make slow-gate-scan` | `make slow-gate-scan` |
 | `table-base64/` | table base64 gates | `make test` | `make test` |
 | `tables/` | C++ table tests | `make test` | `./build/schema_test_tables` |

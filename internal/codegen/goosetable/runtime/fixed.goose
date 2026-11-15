@@ -161,9 +161,7 @@ fn fixed_put_bool(out: u8[>..]&, v: bool) {
 // §3: the IEEE-754 bit pattern, no canonicalisation). Float to bits is a
 // `bytes_of` view of a one-element array; bits to float is a verified
 // one-element image through `from_bytes`, which moves the bytes and never
-// converts them, so a signalling NaN and its payload survive. Both are pure
-// Goose: the C sidecar is schema-goose-serialize-vendor's and is not vendored
-// yet.
+// converts them. Both are pure Goose.
 fn fixed_f32_bits(x: f32) -> u32 {
     let a: f32[1] = [x];
     let b = bytes_of(a);
@@ -306,6 +304,18 @@ fn fixed_scan_text(b: const u8[:], at: i64, cap: i64, flavour: i64) -> i64 {
     return 0;
 }
 
+// fixed_scan_zero holds every DEAD byte to zero (docs/FIXED-FORM-ALGORITHM.md
+// §4.5, §5.3 step 11): a non-zero one refuses the whole load as wire_damaged
+// before any destination byte is written.
+fn fixed_scan_zero(b: const u8[:], at: i64, n: i64) -> i64 {
+    var i: i64 = 0;
+    while i < n {
+        if b[at + i] != 0 { return FixedRefuseWireDamaged; }
+        i += 1;
+    }
+    return 0;
+}
+
 // fixed_refuse records a refusal by name; the framing-damage ones also set
 // malformed (docs/FIXED-FORM-ALGORITHM.md §2, §5.3).
 fn fixed_refuse(report: FixedReport&, code: i64, damaged: bool) -> i64 {
@@ -365,7 +375,7 @@ fn fixed_load_frame(b: const u8[:], layout: const u8[:], hash: u64, record_bytes
         i += 1;
     }
     let rest = b.len - FixedHeaderBytes - 4 - layout_length;
-    if record_bytes <= 8 || rest % record_bytes != 0 { return fixed_refuse(report, FixedRefuseTruncated, true); }
+    if rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 { return fixed_refuse(report, FixedRefuseTruncated, true); }
     let n = rest / record_bytes;
     if n > capacity { return fixed_refuse(report, FixedRefuseBatchTooLarge, false); }
     var at: i64 = FixedHeaderBytes + 4 + layout_length;

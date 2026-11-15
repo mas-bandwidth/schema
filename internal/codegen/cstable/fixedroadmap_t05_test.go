@@ -372,10 +372,10 @@ func t05CsR18(t *testing.T) {
 		t.Error("R18: a ranged table reports no clamp is needed")
 	}
 	_, rsrc := t02Table(t, t05Ranged)
-	if !strings.Contains(rsrc, "public static void TFixedClamp(") {
+	if !strings.Contains(rsrc, "public static bool TFixedClamp(") {
 		t.Error("R18: a ranged table emitted no clamp pass")
 	}
-	if !strings.Contains(t02Norm(rsrc), "TFixedClamp(values[k], report);") {
+	if !strings.Contains(t02Norm(rsrc), "if (!TFixedClamp(values[k], report)) { refused = true; }") {
 		t.Error("R18: the load does not run the clamp pass for a ranged table")
 	}
 }
@@ -416,7 +416,8 @@ func t05CsC4(t *testing.T) {
 
 // t05CsR24 holds R24 to the emitted runtime: ill-formed text in the USED units
 // refuses by name (text_ill_formed); text is counted in bytes with the clamp in
-// units; slack is unspecified on read and not a refusal.
+// units. The bytes past the used length are dead and a non-zero one refuses
+// wire_damaged in the dead-byte check pass.
 func t05CsR24(t *testing.T) {
 	op := t05TextOp(t)
 	ill := tableFixedWireSource
@@ -430,8 +431,9 @@ func t05CsR24(t *testing.T) {
 		t.Error("R24: bytes(N) is content-validated; bytes carries no text rule (§4.5)")
 	}
 	t05Has(t, op, "TextIllFormed(p.Meta, (uint)v, textBytes)", "the text op scopes validation to the used units (§5.8)")
-	// The copy is the whole span, and nothing validates past the used length.
-	t05Has(t, op, "textBytes = src.Slice((int)p.Src + 4, (int)p.Size)", "the copy reads the whole span; slack is unspecified on read (§4.5, SPEC-TABLES §3.4)")
+	// The copy is the whole span; the dead bytes past the used length are held
+	// to zero by the check pass, not read as text.
+	t05Has(t, op, "textBytes = src.Slice((int)p.Src + 4, (int)p.Size)", "the copy reads the whole span; the bytes past the used length are dead and a non-zero one refuses wire_damaged in the check pass (§4.5, SPEC-TABLES §3.4)")
 	t05Has(t, t05Load(t), `report.Reason = run_why;`, "the refusal is by name, the load's own path (§5.8 row 8)")
 	t05Utf8Rejections(t, t05TextUtf8Arm(t))
 }

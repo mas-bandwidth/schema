@@ -542,12 +542,39 @@ defmodule Bench.Bench do
 
     v = value_c + 1_000_000
     scratch = scratch ||| v <<< 24
+
+    if value_bits7 < 0 do
+      raise ArgumentError, "value.bits7 is below the wire minimum"
+    end
+
+    if value_bits7 > 127 do
+      raise ArgumentError, "value.bits7 is above the wire maximum"
+    end
+
     v = value_bits7 &&& 0x7F
     scratch = scratch ||| v <<< 45
+
+    if value_bits13 < 0 do
+      raise ArgumentError, "value.bits13 is below the wire minimum"
+    end
+
+    if value_bits13 > 8191 do
+      raise ArgumentError, "value.bits13 is above the wire maximum"
+    end
+
     v = value_bits13 &&& 0x1FFF
     sc0 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 4
+
+    if value_bits23 < 0 do
+      raise ArgumentError, "value.bits23 is below the wire minimum"
+    end
+
+    if value_bits23 > 8_388_607 do
+      raise ArgumentError, "value.bits23 is above the wire maximum"
+    end
+
     v = value_bits23 &&& 0x7FFFFF
     scratch = scratch ||| v <<< 17
     v = if value_flag, do: 1, else: 0
@@ -588,7 +615,7 @@ defmodule Bench.Bench do
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_bench_packet_blob(value_blob, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZbench_packetZblob(value_blob, data, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
@@ -614,7 +641,7 @@ defmodule Bench.Bench do
           {:ok, Bench.BenchPacket.t(), non_neg_integer()} | :error
   def read_bench_packet_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -660,7 +687,7 @@ defmodule Bench.Bench do
       # nonzero padding is refused (SPEC §4.3)
       if rd(data, 249, 7) != 0, do: throw(:invalid)
       if 392 > num_bits, do: throw(:invalid)
-      {bits_read, v_blob} = r_bench_packet_blob_align(17, [], data, num_bits, 256)
+      {bits_read, v_blob} = rZbench_packetZblobZalign(17, [], data, num_bits, 256)
 
       value = %Bench.BenchPacket{
         a: v_a,
@@ -690,8 +717,17 @@ defmodule Bench.Bench do
   @spec read_bench_packet(binary(), non_neg_integer()) :: {:ok, Bench.BenchPacket.t()} | :error
   def read_bench_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_bench_packet_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -882,7 +918,7 @@ defmodule Bench.Bench do
           {:ok, Bench.BenchInts.t(), non_neg_integer()} | :error
   def read_bench_ints_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -950,8 +986,17 @@ defmodule Bench.Bench do
   @spec read_bench_ints(binary(), non_neg_integer()) :: {:ok, Bench.BenchInts.t()} | :error
   def read_bench_ints(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_bench_ints_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -995,24 +1040,95 @@ defmodule Bench.Bench do
       b48: value_b48
     } = value
 
+    if value_b7 < 0 do
+      raise ArgumentError, "value.b7 is below the wire minimum"
+    end
+
+    if value_b7 > 127 do
+      raise ArgumentError, "value.b7 is above the wire maximum"
+    end
+
     v = value_b7 &&& 0x7F
     scratch = v
+
+    if value_b13 < 0 do
+      raise ArgumentError, "value.b13 is below the wire minimum"
+    end
+
+    if value_b13 > 8191 do
+      raise ArgumentError, "value.b13 is above the wire maximum"
+    end
+
     v = value_b13 &&& 0x1FFF
     scratch = scratch ||| v <<< 7
+
+    if value_b23 < 0 do
+      raise ArgumentError, "value.b23 is below the wire minimum"
+    end
+
+    if value_b23 > 8_388_607 do
+      raise ArgumentError, "value.b23 is above the wire maximum"
+    end
+
     v = value_b23 &&& 0x7FFFFF
     scratch = scratch ||| v <<< 20
+
+    if value_b3 < 0 do
+      raise ArgumentError, "value.b3 is below the wire minimum"
+    end
+
+    if value_b3 > 7 do
+      raise ArgumentError, "value.b3 is above the wire maximum"
+    end
+
     v = value_b3 &&& 0x7
     scratch = scratch ||| v <<< 43
+
+    if value_b32 < 0 do
+      raise ArgumentError, "value.b32 is below the wire minimum"
+    end
+
+    if value_b32 > 4_294_967_295 do
+      raise ArgumentError, "value.b32 is above the wire maximum"
+    end
+
     v = value_b32 &&& 0xFFFFFFFF
     sc0 = scratch
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 6
+
+    if value_b11 < 0 do
+      raise ArgumentError, "value.b11 is below the wire minimum"
+    end
+
+    if value_b11 > 2047 do
+      raise ArgumentError, "value.b11 is above the wire maximum"
+    end
+
     v = value_b11 &&& 0x7FF
     scratch = scratch ||| v <<< 38
+
+    if value_b19 < 0 do
+      raise ArgumentError, "value.b19 is below the wire minimum"
+    end
+
+    if value_b19 > 524_287 do
+      raise ArgumentError, "value.b19 is above the wire maximum"
+    end
+
     v = value_b19 &&& 0x7FFFF
     sc1 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 1
+
+    if value_b48 < 0 do
+      raise ArgumentError, "value.b48 is below the wire minimum"
+    end
+
+    if value_b48 > 281_474_976_710_655 do
+      raise ArgumentError, "value.b48 is above the wire maximum"
+    end
+
     v = value_b48 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< 20
     v = value_b48 >>> 32 &&& 0xFFFF
@@ -1051,7 +1167,7 @@ defmodule Bench.Bench do
           {:ok, Bench.BenchBits.t(), non_neg_integer()} | :error
   def read_bench_bits_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1105,8 +1221,17 @@ defmodule Bench.Bench do
   @spec read_bench_bits(binary(), non_neg_integer()) :: {:ok, Bench.BenchBits.t()} | :error
   def read_bench_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_bench_bits_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1293,6 +1418,14 @@ defmodule Bench.Bench do
       firing: value_firing
     } = value
 
+    if value_entity_id < 0 do
+      raise ArgumentError, "value.entity_id is below the wire minimum"
+    end
+
+    if value_entity_id > 4095 do
+      raise ArgumentError, "value.entity_id is above the wire maximum"
+    end
+
     v = value_entity_id &&& 0xFFF
     scratch = v
 
@@ -1330,8 +1463,26 @@ defmodule Bench.Bench do
     sc0 = scratch
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 2
+
+    if value_yaw < 0 do
+      raise ArgumentError, "value.yaw is below the wire minimum"
+    end
+
+    if value_yaw > 511 do
+      raise ArgumentError, "value.yaw is above the wire maximum"
+    end
+
     v = value_yaw &&& 0x1FF
     scratch = scratch ||| v <<< 17
+
+    if value_pitch < 0 do
+      raise ArgumentError, "value.pitch is below the wire minimum"
+    end
+
+    if value_pitch > 511 do
+      raise ArgumentError, "value.pitch is above the wire maximum"
+    end
+
     v = value_pitch &&& 0x1FF
     scratch = scratch ||| v <<< 26
 
@@ -1425,7 +1576,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedEntity.t(), non_neg_integer()} | :error
   def read_mixed_entity_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1501,8 +1652,17 @@ defmodule Bench.Bench do
   @spec read_mixed_entity(binary(), non_neg_integer()) :: {:ok, Bench.MixedEntity.t()} | :error
   def read_mixed_entity(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_entity_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1534,6 +1694,15 @@ defmodule Bench.Bench do
   @spec write_mixed_stat!(Bench.MixedStat.t()) :: binary()
   def write_mixed_stat!(value) do
     %{stat_id: value_stat_id, delta: value_delta} = value
+
+    if value_stat_id < 0 do
+      raise ArgumentError, "value.stat_id is below the wire minimum"
+    end
+
+    if value_stat_id > 255 do
+      raise ArgumentError, "value.stat_id is above the wire maximum"
+    end
+
     v = value_stat_id &&& 0xFF
     scratch = v
 
@@ -1575,7 +1744,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedStat.t(), non_neg_integer()} | :error
   def read_mixed_stat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1600,8 +1769,17 @@ defmodule Bench.Bench do
   @spec read_mixed_stat(binary(), non_neg_integer()) :: {:ok, Bench.MixedStat.t()} | :error
   def read_mixed_stat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_stat_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1640,6 +1818,14 @@ defmodule Bench.Bench do
       hit_kind: value_hit_kind,
       crit: value_crit
     } = value
+
+    if value_target_id < 0 do
+      raise ArgumentError, "value.target_id is below the wire minimum"
+    end
+
+    if value_target_id > 4095 do
+      raise ArgumentError, "value.target_id is above the wire maximum"
+    end
 
     v = value_target_id &&& 0xFFF
     scratch = v
@@ -1695,7 +1881,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedHitEvent.t(), non_neg_integer()} | :error
   def read_mixed_hit_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1732,8 +1918,17 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedHitEvent.t()} | :error
   def read_mixed_hit_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_hit_event_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1776,6 +1971,15 @@ defmodule Bench.Bench do
 
     v = value_channel
     scratch = v
+
+    if value_speaker < 0 do
+      raise ArgumentError, "value.speaker is below the wire minimum"
+    end
+
+    if value_speaker > 4095 do
+      raise ArgumentError, "value.speaker is above the wire maximum"
+    end
+
     v = value_speaker &&& 0xFFF
     scratch = scratch ||| v <<< 2
     data = <<scratch::little-size(1)-unit(8)>>
@@ -1806,7 +2010,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedChatEvent.t(), non_neg_integer()} | :error
   def read_mixed_chat_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1832,8 +2036,17 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedChatEvent.t()} | :error
   def read_mixed_chat_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_chat_event_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -1865,6 +2078,15 @@ defmodule Bench.Bench do
   @spec write_mixed_pickup_event!(Bench.MixedPickupEvent.t()) :: binary()
   def write_mixed_pickup_event!(value) do
     %{item_id: value_item_id, amount: value_amount} = value
+
+    if value_item_id < 0 do
+      raise ArgumentError, "value.item_id is below the wire minimum"
+    end
+
+    if value_item_id > 1023 do
+      raise ArgumentError, "value.item_id is above the wire maximum"
+    end
+
     v = value_item_id &&& 0x3FF
     scratch = v
 
@@ -1908,7 +2130,7 @@ defmodule Bench.Bench do
   def read_mixed_pickup_event_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1934,8 +2156,17 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedPickupEvent.t()} | :error
   def read_mixed_pickup_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_pickup_event_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -2011,6 +2242,14 @@ defmodule Bench.Bench do
             crit: value_hit_crit
           } = value_hit
 
+          if value_hit_target_id < 0 do
+            raise ArgumentError, "value.hit.target_id is below the wire minimum"
+          end
+
+          if value_hit_target_id > 4095 do
+            raise ArgumentError, "value.hit.target_id is above the wire maximum"
+          end
+
           v = value_hit_target_id &&& 0xFFF
           scratch = scratch ||| v <<< 2
 
@@ -2055,6 +2294,15 @@ defmodule Bench.Bench do
 
           v = value_chat_channel
           scratch = scratch ||| v <<< 2
+
+          if value_chat_speaker < 0 do
+            raise ArgumentError, "value.chat.speaker is below the wire minimum"
+          end
+
+          if value_chat_speaker > 4095 do
+            raise ArgumentError, "value.chat.speaker is above the wire maximum"
+          end
+
           v = value_chat_speaker &&& 0xFFF
           scratch = scratch ||| v <<< 4
           data = <<data::binary, scratch::little-size(2)-unit(8)>>
@@ -2064,6 +2312,15 @@ defmodule Bench.Bench do
 
         {:pickup, value_pickup} ->
           %{item_id: value_pickup_item_id, amount: value_pickup_amount} = value_pickup
+
+          if value_pickup_item_id < 0 do
+            raise ArgumentError, "value.pickup.item_id is below the wire minimum"
+          end
+
+          if value_pickup_item_id > 1023 do
+            raise ArgumentError, "value.pickup.item_id is above the wire maximum"
+          end
+
           v = value_pickup_item_id &&& 0x3FF
           scratch = scratch ||| v <<< 2
 
@@ -2113,7 +2370,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedEvent.t(), non_neg_integer()} | :error
   def read_mixed_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2187,8 +2444,17 @@ defmodule Bench.Bench do
   @spec read_mixed_event(binary(), non_neg_integer()) :: {:ok, Bench.MixedEvent.t()} | :error
   def read_mixed_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_event_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
@@ -2282,6 +2548,15 @@ defmodule Bench.Bench do
     # const(0xC0DE, 16) rides the wire (SPEC §4.3)
     v = 49374
     scratch = v
+
+    if value_sequence < 0 do
+      raise ArgumentError, "value.sequence is below the wire minimum"
+    end
+
+    if value_sequence > 65535 do
+      raise ArgumentError, "value.sequence is above the wire maximum"
+    end
+
     v = value_sequence &&& 0xFFFF
     scratch = scratch ||| v <<< 16
 
@@ -2295,6 +2570,15 @@ defmodule Bench.Bench do
 
     v = value_ack_sequence
     scratch = scratch ||| v <<< 32
+
+    if value_ack_bits < 0 do
+      raise ArgumentError, "value.ack_bits is below the wire minimum"
+    end
+
+    if value_ack_bits > 4_294_967_295 do
+      raise ArgumentError, "value.ack_bits is above the wire maximum"
+    end
+
     v = value_ack_bits &&& 0xFFFFFFFF
     sc0 = scratch
     scratch = v
@@ -2337,6 +2621,15 @@ defmodule Bench.Bench do
     scratch = v
     v = w >>> 32
     scratch = scratch ||| v <<< 32
+
+    if value_frame_tick < 0 do
+      raise ArgumentError, "value.frame_tick is below the wire minimum"
+    end
+
+    if value_frame_tick > 281_474_976_710_655 do
+      raise ArgumentError, "value.frame_tick is above the wire maximum"
+    end
+
     v = value_frame_tick &&& 0xFFFFFFFF
     sc7 = scratch
     scratch = scratch >>> 40
@@ -2379,7 +2672,7 @@ defmodule Bench.Bench do
     scratch_bits = 4
 
     {data, scratch, scratch_bits} =
-      w_bench_mixed_entities(value_entities, data, scratch, scratch_bits)
+      wZbench_mixedZentities(value_entities, data, scratch, scratch_bits)
 
     n = length(value_stats)
 
@@ -2394,7 +2687,7 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    {data, scratch, scratch_bits} = w_bench_mixed_stats(value_stats, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZbench_mixedZstats(value_stats, data, scratch, scratch_bits)
 
     v =
       case value_game_event do
@@ -2431,6 +2724,14 @@ defmodule Bench.Bench do
             hit_kind: value_game_event_hit_hit_kind,
             crit: value_game_event_hit_crit
           } = value_game_event_hit
+
+          if value_game_event_hit_target_id < 0 do
+            raise ArgumentError, "value.game_event.hit.target_id is below the wire minimum"
+          end
+
+          if value_game_event_hit_target_id > 4095 do
+            raise ArgumentError, "value.game_event.hit.target_id is above the wire maximum"
+          end
 
           v = value_game_event_hit_target_id &&& 0xFFF
           scratch = scratch ||| v <<< scratch_bits
@@ -2485,6 +2786,15 @@ defmodule Bench.Bench do
           v = value_game_event_chat_channel
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 2
+
+          if value_game_event_chat_speaker < 0 do
+            raise ArgumentError, "value.game_event.chat.speaker is below the wire minimum"
+          end
+
+          if value_game_event_chat_speaker > 4095 do
+            raise ArgumentError, "value.game_event.chat.speaker is above the wire maximum"
+          end
+
           v = value_game_event_chat_speaker &&& 0xFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 12
@@ -2499,6 +2809,14 @@ defmodule Bench.Bench do
             item_id: value_game_event_pickup_item_id,
             amount: value_game_event_pickup_amount
           } = value_game_event_pickup
+
+          if value_game_event_pickup_item_id < 0 do
+            raise ArgumentError, "value.game_event.pickup.item_id is below the wire minimum"
+          end
+
+          if value_game_event_pickup_item_id > 1023 do
+            raise ArgumentError, "value.game_event.pickup.item_id is above the wire maximum"
+          end
 
           v = value_game_event_pickup_item_id &&& 0x3FF
           scratch = scratch ||| v <<< scratch_bits
@@ -2531,7 +2849,7 @@ defmodule Bench.Bench do
     end
 
     {data, scratch, scratch_bits} =
-      w_bench_mixed_loadout(value_loadout, data, scratch, scratch_bits)
+      wZbench_mixedZloadout(value_loadout, data, scratch, scratch_bits)
 
     if byte_size(value_player_name) > 15 do
       raise ArgumentError, "value.player_name longer than the declared 15-byte bound"
@@ -2628,6 +2946,15 @@ defmodule Bench.Bench do
     scratch = scratch >>> 24
     # align: zero-pad to the byte boundary (SPEC §4.3)
     data = <<data::binary, scratch>>
+
+    if value_crc_hint < 0 do
+      raise ArgumentError, "value.crc_hint is below the wire minimum"
+    end
+
+    if value_crc_hint > 16_777_215 do
+      raise ArgumentError, "value.crc_hint is above the wire maximum"
+    end
+
     v = value_crc_hint &&& 0xFFFFFF
     scratch = v
     v = if value_has_extra, do: 1, else: 0
@@ -2682,7 +3009,7 @@ defmodule Bench.Bench do
           {:ok, Bench.BenchMixed.t(), non_neg_integer()} | :error
   def read_bench_mixed_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2740,7 +3067,7 @@ defmodule Bench.Bench do
       v = rv &&& 0x7
       n = v + 1
       if 356 + n * 135 > num_bits, do: throw(:invalid)
-      {bits_read, v_entities} = r_bench_mixed_entities(n, [], data, num_bits, 356)
+      {bits_read, v_entities} = rZbench_mixedZentities(n, [], data, num_bits, 356)
       if bits_read + 7 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x7F
@@ -2748,7 +3075,7 @@ defmodule Bench.Bench do
       if v > 80, do: throw(:invalid)
       n = v
       if bits_read + 7 + n * 18 > num_bits, do: throw(:invalid)
-      {bits_read, v_stats} = r_bench_mixed_stats_align(n, [], data, num_bits, bits_read + 7)
+      {bits_read, v_stats} = rZbench_mixedZstatsZalign(n, [], data, num_bits, bits_read + 7)
       if bits_read + 2 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x3
@@ -2816,7 +3143,7 @@ defmodule Bench.Bench do
         end
 
       if bits_read + 32 > num_bits, do: throw(:invalid)
-      {bits_read, v_loadout} = r_bench_mixed_loadout_align(4, [], data, num_bits, bits_read)
+      {bits_read, v_loadout} = rZbench_mixedZloadoutZalign(4, [], data, num_bits, bits_read)
       if bits_read + 4 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xF
@@ -2989,14 +3316,23 @@ defmodule Bench.Bench do
   @spec read_bench_mixed(binary(), non_neg_integer()) :: {:ok, Bench.BenchMixed.t()} | :error
   def read_bench_mixed(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_bench_mixed_bits(data, num_bits) do
-      {:ok, value, _bits_read} -> {:ok, value}
-      :error -> :error
+      {:ok, value, bits_read} ->
+        if byte_size(data) == div(bits_read + 7, 8) and
+             (rem(bits_read, 8) == 0 or
+                :binary.at(data, byte_size(data) - 1) >>> rem(bits_read, 8) == 0) do
+          {:ok, value}
+        else
+          :error
+        end
+
+      :error ->
+        :error
     end
   end
 
-  defp w_bench_packet_blob([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZbench_packetZblob([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_bench_packet_blob([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZbench_packetZblob([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     v = e1 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3013,10 +3349,10 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_bench_packet_blob(rest, data, scratch, scratch_bits)
+    wZbench_packetZblob(rest, data, scratch, scratch_bits)
   end
 
-  defp w_bench_packet_blob([e | rest], data, scratch, scratch_bits) do
+  defp wZbench_packetZblob([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3024,13 +3360,13 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_bench_packet_blob(rest, data, scratch, scratch_bits)
+    wZbench_packetZblob(rest, data, scratch, scratch_bits)
   end
 
-  defp r_bench_packet_blob(0, acc, _data, _num_bits, bits_read),
+  defp rZbench_packetZblob(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_packetZblob(remaining, acc, data, num_bits, bits_read)
        when remaining >= 4 do
     rv = rd(data, bits_read, 32)
     v = rv &&& 0xFF
@@ -3041,17 +3377,17 @@ defmodule Bench.Bench do
     e3 = v
     v = rv >>> 24
     e4 = v
-    r_bench_packet_blob(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
+    rZbench_packetZblob(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
   end
 
-  defp r_bench_packet_blob(remaining, acc, data, num_bits, bits_read) do
+  defp rZbench_packetZblob(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 8)
     v = rv
     e = v
-    r_bench_packet_blob(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
+    rZbench_packetZblob(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
   end
 
-  defp r_bench_packet_blob_align(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_packetZblobZalign(remaining, acc, data, num_bits, bits_read)
        when remaining >= 9 do
     i = bits_read >>> 3
     q = bits_read &&& 7
@@ -3059,15 +3395,15 @@ defmodule Bench.Bench do
     if q == 0 do
       case data do
         <<_::binary-size(^i), rest::binary>> ->
-          r_bench_packet_blob_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+          rZbench_packetZblobZfast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
 
         _ ->
-          r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+          rZbench_packetZblob(remaining, acc, data, num_bits, bits_read)
       end
     else
       case data do
         <<_::binary-size(^i), b0, rest::binary>> ->
-          r_bench_packet_blob_fast(
+          rZbench_packetZblobZfast(
             remaining,
             acc,
             data,
@@ -3079,15 +3415,15 @@ defmodule Bench.Bench do
           )
 
         _ ->
-          r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+          rZbench_packetZblob(remaining, acc, data, num_bits, bits_read)
       end
     end
   end
 
-  defp r_bench_packet_blob_align(remaining, acc, data, num_bits, bits_read),
-    do: r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_packetZblobZalign(remaining, acc, data, num_bits, bits_read),
+    do: rZbench_packetZblob(remaining, acc, data, num_bits, bits_read)
 
-  defp r_bench_packet_blob_fast(
+  defp rZbench_packetZblobZfast(
          remaining,
          acc,
          data,
@@ -3120,7 +3456,7 @@ defmodule Bench.Bench do
     e9 = v
 
     {bits_read, tail} =
-      r_bench_packet_blob_fast(
+      rZbench_packetZblobZfast(
         remaining - 9,
         acc,
         data,
@@ -3134,12 +3470,12 @@ defmodule Bench.Bench do
     {bits_read, [e1, e2, e3, e4, e5, e6, e7, e8, e9 | tail]}
   end
 
-  defp r_bench_packet_blob_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
-    do: r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_packetZblobZfast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: rZbench_packetZblob(remaining, acc, data, num_bits, bits_read)
 
-  defp w_bench_mixed_entities([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZbench_mixedZentities([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_bench_mixed_entities([e | rest], data, scratch, scratch_bits) do
+  defp wZbench_mixedZentities([e | rest], data, scratch, scratch_bits) do
     %{
       entity_id: e_entity_id,
       pos_x: e_pos_x,
@@ -3156,6 +3492,14 @@ defmodule Bench.Bench do
       moving: e_moving,
       firing: e_firing
     } = e
+
+    if e_entity_id < 0 do
+      raise ArgumentError, "e.entity_id is below the wire minimum"
+    end
+
+    if e_entity_id > 4095 do
+      raise ArgumentError, "e.entity_id is above the wire maximum"
+    end
 
     v = e_entity_id &&& 0xFFF
     scratch = scratch ||| v <<< scratch_bits
@@ -3200,9 +3544,27 @@ defmodule Bench.Bench do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
+
+    if e_yaw < 0 do
+      raise ArgumentError, "e.yaw is below the wire minimum"
+    end
+
+    if e_yaw > 511 do
+      raise ArgumentError, "e.yaw is above the wire maximum"
+    end
+
     v = e_yaw &&& 0x1FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
+
+    if e_pitch < 0 do
+      raise ArgumentError, "e.pitch is below the wire minimum"
+    end
+
+    if e_pitch > 511 do
+      raise ArgumentError, "e.pitch is above the wire maximum"
+    end
+
     v = e_pitch &&& 0x1FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
@@ -3283,13 +3645,22 @@ defmodule Bench.Bench do
 
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_bench_mixed_entities(rest, data, scratch, scratch_bits)
+    wZbench_mixedZentities(rest, data, scratch, scratch_bits)
   end
 
-  defp w_bench_mixed_stats([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZbench_mixedZstats([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_bench_mixed_stats([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZbench_mixedZstats([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     %{stat_id: e1_stat_id, delta: e1_delta} = e1
+
+    if e1_stat_id < 0 do
+      raise ArgumentError, "e.stat_id is below the wire minimum"
+    end
+
+    if e1_stat_id > 255 do
+      raise ArgumentError, "e.stat_id is above the wire maximum"
+    end
+
     v = e1_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3306,6 +3677,15 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
     %{stat_id: e2_stat_id, delta: e2_delta} = e2
+
+    if e2_stat_id < 0 do
+      raise ArgumentError, "e.stat_id is below the wire minimum"
+    end
+
+    if e2_stat_id > 255 do
+      raise ArgumentError, "e.stat_id is above the wire maximum"
+    end
+
     v = e2_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3322,6 +3702,15 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
     %{stat_id: e3_stat_id, delta: e3_delta} = e3
+
+    if e3_stat_id < 0 do
+      raise ArgumentError, "e.stat_id is below the wire minimum"
+    end
+
+    if e3_stat_id > 255 do
+      raise ArgumentError, "e.stat_id is above the wire maximum"
+    end
+
     v = e3_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3342,6 +3731,15 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
     %{stat_id: e4_stat_id, delta: e4_delta} = e4
+
+    if e4_stat_id < 0 do
+      raise ArgumentError, "e.stat_id is below the wire minimum"
+    end
+
+    if e4_stat_id > 255 do
+      raise ArgumentError, "e.stat_id is above the wire maximum"
+    end
+
     v = e4_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3361,11 +3759,20 @@ defmodule Bench.Bench do
     data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_bench_mixed_stats(rest, data, scratch, scratch_bits)
+    wZbench_mixedZstats(rest, data, scratch, scratch_bits)
   end
 
-  defp w_bench_mixed_stats([e | rest], data, scratch, scratch_bits) do
+  defp wZbench_mixedZstats([e | rest], data, scratch, scratch_bits) do
     %{stat_id: e_stat_id, delta: e_delta} = e
+
+    if e_stat_id < 0 do
+      raise ArgumentError, "e.stat_id is below the wire minimum"
+    end
+
+    if e_stat_id > 255 do
+      raise ArgumentError, "e.stat_id is above the wire maximum"
+    end
+
     v = e_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3385,12 +3792,12 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_bench_mixed_stats(rest, data, scratch, scratch_bits)
+    wZbench_mixedZstats(rest, data, scratch, scratch_bits)
   end
 
-  defp w_bench_mixed_loadout([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZbench_mixedZloadout([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_bench_mixed_loadout([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZbench_mixedZloadout([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     v = e1 &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3407,10 +3814,10 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_bench_mixed_loadout(rest, data, scratch, scratch_bits)
+    wZbench_mixedZloadout(rest, data, scratch, scratch_bits)
   end
 
-  defp w_bench_mixed_loadout([e | rest], data, scratch, scratch_bits) do
+  defp wZbench_mixedZloadout([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -3418,13 +3825,13 @@ defmodule Bench.Bench do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_bench_mixed_loadout(rest, data, scratch, scratch_bits)
+    wZbench_mixedZloadout(rest, data, scratch, scratch_bits)
   end
 
-  defp r_bench_mixed_entities(0, acc, _data, _num_bits, bits_read),
+  defp rZbench_mixedZentities(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_bench_mixed_entities(remaining, acc, data, num_bits, bits_read) do
+  defp rZbench_mixedZentities(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFF
     e_entity_id = v
@@ -3482,13 +3889,13 @@ defmodule Bench.Bench do
       firing: e_firing
     }
 
-    r_bench_mixed_entities(remaining - 1, [e | acc], data, num_bits, bits_read + 135)
+    rZbench_mixedZentities(remaining - 1, [e | acc], data, num_bits, bits_read + 135)
   end
 
-  defp r_bench_mixed_stats(0, acc, _data, _num_bits, bits_read),
+  defp rZbench_mixedZstats(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZstats(remaining, acc, data, num_bits, bits_read)
        when remaining >= 2 do
     rv = rdw(data, bits_read, 36)
     v = rv &&& 0xFF
@@ -3501,20 +3908,20 @@ defmodule Bench.Bench do
     v = rv >>> 26
     e2_delta = v - 512
     e2 = %Bench.MixedStat{stat_id: e2_stat_id, delta: e2_delta}
-    r_bench_mixed_stats(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read + 36)
+    rZbench_mixedZstats(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read + 36)
   end
 
-  defp r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read) do
+  defp rZbench_mixedZstats(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 18)
     v = rv &&& 0xFF
     e_stat_id = v
     v = rv >>> 8
     e_delta = v - 512
     e = %Bench.MixedStat{stat_id: e_stat_id, delta: e_delta}
-    r_bench_mixed_stats(remaining - 1, [e | acc], data, num_bits, bits_read + 18)
+    rZbench_mixedZstats(remaining - 1, [e | acc], data, num_bits, bits_read + 18)
   end
 
-  defp r_bench_mixed_stats_align(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZstatsZalign(remaining, acc, data, num_bits, bits_read)
        when remaining >= 4 do
     i = bits_read >>> 3
     q = bits_read &&& 7
@@ -3522,15 +3929,15 @@ defmodule Bench.Bench do
     if q == 0 do
       case data do
         <<_::binary-size(^i), rest::binary>> ->
-          r_bench_mixed_stats_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+          rZbench_mixedZstatsZfast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
 
         _ ->
-          r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+          rZbench_mixedZstats(remaining, acc, data, num_bits, bits_read)
       end
     else
       case data do
         <<_::binary-size(^i), b0, rest::binary>> ->
-          r_bench_mixed_stats_fast(
+          rZbench_mixedZstatsZfast(
             remaining,
             acc,
             data,
@@ -3542,15 +3949,15 @@ defmodule Bench.Bench do
           )
 
         _ ->
-          r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+          rZbench_mixedZstats(remaining, acc, data, num_bits, bits_read)
       end
     end
   end
 
-  defp r_bench_mixed_stats_align(remaining, acc, data, num_bits, bits_read),
-    do: r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZstatsZalign(remaining, acc, data, num_bits, bits_read),
+    do: rZbench_mixedZstats(remaining, acc, data, num_bits, bits_read)
 
-  defp r_bench_mixed_stats_fast(
+  defp rZbench_mixedZstatsZfast(
          remaining,
          acc,
          data,
@@ -3585,7 +3992,7 @@ defmodule Bench.Bench do
     e4 = %Bench.MixedStat{stat_id: e4_stat_id, delta: e4_delta}
 
     {bits_read, tail} =
-      r_bench_mixed_stats_fast(
+      rZbench_mixedZstatsZfast(
         remaining - 4,
         acc,
         data,
@@ -3599,13 +4006,13 @@ defmodule Bench.Bench do
     {bits_read, [e1, e2, e3, e4 | tail]}
   end
 
-  defp r_bench_mixed_stats_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
-    do: r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZstatsZfast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: rZbench_mixedZstats(remaining, acc, data, num_bits, bits_read)
 
-  defp r_bench_mixed_loadout(0, acc, _data, _num_bits, bits_read),
+  defp rZbench_mixedZloadout(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZloadout(remaining, acc, data, num_bits, bits_read)
        when remaining >= 4 do
     rv = rd(data, bits_read, 32)
     v = rv &&& 0xFF
@@ -3616,17 +4023,17 @@ defmodule Bench.Bench do
     e3 = v
     v = rv >>> 24
     e4 = v
-    r_bench_mixed_loadout(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
+    rZbench_mixedZloadout(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
   end
 
-  defp r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read) do
+  defp rZbench_mixedZloadout(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 8)
     v = rv
     e = v
-    r_bench_mixed_loadout(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
+    rZbench_mixedZloadout(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
   end
 
-  defp r_bench_mixed_loadout_align(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZloadoutZalign(remaining, acc, data, num_bits, bits_read)
        when remaining >= 4 do
     i = bits_read >>> 3
     q = bits_read &&& 7
@@ -3634,15 +4041,15 @@ defmodule Bench.Bench do
     if q == 0 do
       case data do
         <<_::binary-size(^i), rest::binary>> ->
-          r_bench_mixed_loadout_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+          rZbench_mixedZloadoutZfast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
 
         _ ->
-          r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+          rZbench_mixedZloadout(remaining, acc, data, num_bits, bits_read)
       end
     else
       case data do
         <<_::binary-size(^i), b0, rest::binary>> ->
-          r_bench_mixed_loadout_fast(
+          rZbench_mixedZloadoutZfast(
             remaining,
             acc,
             data,
@@ -3654,15 +4061,15 @@ defmodule Bench.Bench do
           )
 
         _ ->
-          r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+          rZbench_mixedZloadout(remaining, acc, data, num_bits, bits_read)
       end
     end
   end
 
-  defp r_bench_mixed_loadout_align(remaining, acc, data, num_bits, bits_read),
-    do: r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZloadoutZalign(remaining, acc, data, num_bits, bits_read),
+    do: rZbench_mixedZloadout(remaining, acc, data, num_bits, bits_read)
 
-  defp r_bench_mixed_loadout_fast(
+  defp rZbench_mixedZloadoutZfast(
          remaining,
          acc,
          data,
@@ -3684,7 +4091,7 @@ defmodule Bench.Bench do
     e4 = v
 
     {bits_read, tail} =
-      r_bench_mixed_loadout_fast(
+      rZbench_mixedZloadoutZfast(
         remaining - 4,
         acc,
         data,
@@ -3698,6 +4105,6 @@ defmodule Bench.Bench do
     {bits_read, [e1, e2, e3, e4 | tail]}
   end
 
-  defp r_bench_mixed_loadout_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
-    do: r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+  defp rZbench_mixedZloadoutZfast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: rZbench_mixedZloadout(remaining, acc, data, num_bits, bits_read)
 end

@@ -159,12 +159,11 @@ func TestFixedRoadmapCppT07Writes(t *testing.T) {
 // docs/roadmap.sexp cpp/C14, "bounds pass walks live only"; the law is the
 // generated read-side pass's own rule (internal/codegen/cpptable/fixedform.go,
 // the comment above emitFixedClamp: "It walks only what a read can have written
-// — a counted array's LIVE elements and never its slack"). The wire is written
-// with two live elements, the second out of range, and the two unused slots
-// overlaid with 0x5A5A5A5A, an out-of-range value no writer wrote. Under the
-// strict-only read the one live out-of-range element refuses the whole load
-// as out_of_range; the slack's poisoned slots are never walked, so they can
-// neither refuse nor land.
+// — a counted array's LIVE elements and never its slack"). Two cases: a live
+// out-of-range element with the writer's zero slack refuses out_of_range, so the
+// bounds pass still holds the live data; then live values in range with the
+// unused slots stained 0x5A refuse as DEAD bytes (§4.5, §5.3 step 11), so the
+// pass never treats the slack as a value.
 func cppT07C14(t *testing.T) {
 	src := `package c14
 fixed table C14 {
@@ -183,34 +182,52 @@ fixed table C14 {
     one.tail = 4;
     const int64_t need = C14FixedMeasure( 1 );
     C14FixedSave( &one, 1, buf, need );
-    const uint8_t * b = buf + kTableFixedHeaderBytes + 4 + C14FixedLayoutBytes + 8;
-    // xs: count at body+4, elements at body+8 (n is 4 bytes, so xs starts at 4).
-    for ( int i = 8 + 2 * 4; i < 8 + 4 * 4; ++i ) { ((uint8_t *) b)[i] = 0x5A; }
-    C14 back;
-    C14Reset( back );
-    TableReport r;
-    memset( &r, 0, sizeof( r ) );
-    static TableFixedEntry plan[1024];
-    const int64_t n = C14FixedLoad( &back, 1, buf, need, plan, 1024, NULL, &r );
-    if ( n != -1 || !r.refused || r.refuse_reason != out_of_range )
-        { printf( "C14: the live out-of-range value did not refuse out_of_range: n=%lld refused=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.refuse_reason ); return 1; }
+    {
+        C14 back;
+        C14Reset( back );
+        TableReport r;
+        memset( &r, 0, sizeof( r ) );
+        static TableFixedEntry plan[1024];
+        const int64_t n = C14FixedLoad( &back, 1, buf, need, plan, 1024, NULL, &r );
+        if ( n != -1 || !r.refused || r.refuse_reason != out_of_range )
+            { printf( "C14: the live out-of-range value did not refuse out_of_range: n=%lld refused=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.refuse_reason ); return 1; }
+    }
+    // THE DEAD SLOTS: the live values are in range and the unused slots carry a
+    // value no writer wrote. The dead-byte check refuses the whole load.
+    one.xs[1] = 5;
+    C14FixedSave( &one, 1, buf, need );
+    {
+        uint8_t * b = buf + kTableFixedHeaderBytes + 4 + C14FixedLayoutBytes + 8;
+        // xs: count at body+4, elements at body+8 (n is 4 bytes, so xs starts at 4).
+        for ( int i = 8 + 2 * 4; i < 8 + 4 * 4; ++i ) { b[i] = 0x5A; }
+        C14 back;
+        C14Reset( back );
+        TableReport r;
+        memset( &r, 0, sizeof( r ) );
+        static TableFixedEntry plan[1024];
+        const int64_t n = C14FixedLoad( &back, 1, buf, need, plan, 1024, NULL, &r );
+        if ( n != -1 || !r.refused || r.refuse_reason != wire_damaged )
+            { printf( "C14: a non-zero dead slot did not refuse wire_damaged: n=%lld refused=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.refuse_reason ); return 1; }
+    }
     printf( "C14 ok\n" );
 `
-	out, err := cppT07Run(t, src, "c14", body)
+	// The body saves a live out-of-range value to forge what the load must
+	// refuse; the C++ writer asserts the write contract in debug builds only
+	// (an assert leg), so the probe is a release build.
+	out, err := cppT07Run(t, src, "c14", body, "-DNDEBUG")
 	if err != nil {
 		t.Fatalf("C14: %v\n%s", err, out)
 	}
 }
 
-// ---- CPP/W4 read slack unspecified -----------------------------------------
+// ---- CPP/W4 read slack is dead bytes ---------------------------------------
 //
-// docs/roadmap.sexp cpp/W4, "read slack unspecified"; docs/SPEC-TABLES.md §3.4
-// and the read pass's rule (fixedform.go: "a counted array's LIVE elements and
-// never its slack"). An endpoint leaves non-zero garbage in the declared slack of a
-// text field and of a counted array; the read must succeed, move NO counter and
-// name no refusal, while the live prefix reads and the field past the slack
-// stands. The first read of the same writer's own file proves the garbage is
-// the only difference and that the wire really carries it.
+// docs/roadmap.sexp cpp/W4, "read slack"; docs/SPEC-TABLES.md §3.4 and
+// docs/FIXED-FORM-ALGORITHM.md §4.5: a counted array's slots past its count and
+// a text's bytes past its used length are DEAD, and every dead byte is zero. A
+// clean record reads with the live values intact; an endpoint that leaves
+// non-zero garbage in the declared slack is refused whole, with no destination
+// byte landing.
 func cppT07W4(t *testing.T) {
 	src := `package w4
 fixed table W4 {
@@ -228,26 +245,41 @@ fixed table W4 {
     const int64_t need = W4FixedMeasure( 1 );
     W4FixedSave( &one, 1, buf, need );
     const uint8_t * b = buf + kTableFixedHeaderBytes + 4 + W4FixedLayoutBytes + 8;
-    // label: length(4) + 8 bytes at body 0..12; marks: count(4) + 16 at 12..32; tail 32..36.
+    // THE CLEAN CONTROL: the writer's zeros past the used extent read.
+    {
+        W4 back;
+        W4Reset( back );
+        TableReport r;
+        memset( &r, 0, sizeof( r ) );
+        static TableFixedEntry plan[256];
+        const int64_t n = W4FixedLoad( &back, 1, buf, need, plan, 256, NULL, &r );
+        if ( n != 1 || r.refused || r.unknown || r.widened || r.damaged )
+            { printf( "W4: a clean slack did not read: n=%lld u=%d w=%d m=%d x=%d\n", (long long) n, r.unknown, r.widened, (int) r.damaged, (int) r.refused ); return 1; }
+        if ( back.label_length != 2 || back.label[0] != 'h' || back.label[1] != 'i' )
+            { printf( "W4: the used text did not read\n" ); return 1; }
+        if ( back.marks_count != 1 || back.marks[0] != 7 )
+            { printf( "W4: the live prefix did not read\n" ); return 1; }
+        if ( back.tail != 42 )
+            { printf( "W4: the field past the slack moved: %d\n", back.tail ); return 1; }
+    }
+    // THE DEAD SLACK: non-zero garbage past the used extents refuses the load.
     for ( int i = 4 + 2; i < 4 + 8; ++i ) { ((uint8_t *) b)[i] = 0xAA; }
     for ( int i = 12 + 4 + 4; i < 12 + 4 + 16; ++i ) { ((uint8_t *) b)[i] = 0x5A; }
-    // NOT VACUOUS: the wire really carries non-zero garbage in the declared slack.
     if ( b[4 + 2] == 0 || b[12 + 4 + 4] == 0 ) { printf( "W4: the wire slack was not poisoned\n" ); return 1; }
-    W4 back;
-    W4Reset( back );
-    TableReport r;
-    memset( &r, 0, sizeof( r ) );
-    static TableFixedEntry plan[256];
-    const int64_t n = W4FixedLoad( &back, 1, buf, need, plan, 256, NULL, &r );
-    if ( n != 1 ) { printf( "W4: an endpoint's garbage in the slack refused the record: n=%lld\n", (long long) n ); return 1; }
-    if ( r.refused || r.unknown || r.widened || r.damaged )
-        { printf( "W4: read slack unspecified: garbage in declared slack moved a counter: u=%d w=%d m=%d x=%d\n", r.unknown, r.widened, (int) r.damaged, (int) r.refused ); return 1; }
-    if ( back.label_length != 2 || back.label[0] != 'h' || back.label[1] != 'i' )
-        { printf( "W4: the used text did not read\n" ); return 1; }
-    if ( back.marks_count != 1 || back.marks[0] != 7 )
-        { printf( "W4: the live prefix did not read\n" ); return 1; }
-    if ( back.tail != 42 )
-        { printf( "W4: the field past the slack moved: %d\n", back.tail ); return 1; }
+    {
+        W4 back;
+        W4Reset( back );
+        W4 before;
+        memcpy( (void *) &before, (const void *) &back, sizeof( back ) );
+        TableReport r;
+        memset( &r, 0, sizeof( r ) );
+        static TableFixedEntry plan[256];
+        const int64_t n = W4FixedLoad( &back, 1, buf, need, plan, 256, NULL, &r );
+        if ( n != -1 || !r.refused || r.refuse_reason != wire_damaged )
+            { printf( "W4: a non-zero dead slack did not refuse wire_damaged: n=%lld refused=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.refuse_reason ); return 1; }
+        if ( memcmp( (const void *) &back, (const void *) &before, sizeof( back ) ) != 0 )
+            { printf( "W4: a refused load wrote the caller's destination\n" ); return 1; }
+    }
     printf( "W4 ok\n" );
 `
 	out, err := cppT07Run(t, src, "w4", body)
@@ -301,8 +333,8 @@ fixed table W1 {
 //
 // docs/roadmap.sexp cpp/W3, "zero behind a narrower arm"; docs/FIXED-FORM-
 // ALGORITHM.md §3.1 ("A union writes the tag and the taken arm only, zero behind
-// a narrower one") and docs/SPEC-TABLES.md §3.4 ("ZERO on write behind a
-// narrower arm, IGNORED on read, never a refusal"). The union's slot is a
+// a narrower one") and docs/SPEC-TABLES.md §3.4: the bytes past a narrower arm
+// are DEAD on read and a non-zero one refuses the whole load. The union's slot is a
 // one-byte tag then the widest arm, an int64, so NarrowArm's single byte is
 // followed by seven bytes of declared slack. The output is stained 0x5A. The
 // control writes the SAME slot on the wide arm and fills those bytes, so the

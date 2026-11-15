@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package example — protocol id 0xeb26c970fde3fd71 — the Luau type surface (docs/PORT-LUAU.md)
+-- package example — protocol id 0xf35accd0582cdd84 — the Luau type surface (docs/PORT-LUAU.md)
 
 local _Rt = require("./schema_runtime")
 local _Wire = require("./Wire")
@@ -138,15 +138,16 @@ function _M.ZeroDefaultArm(value: any)
   value.Marker = 0
 end
 
--- ReadDefaultArm reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadDefaultArmBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadDefaultArm(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadDefaultArm is the one-packet read (SPEC §5).
+function _M.ReadDefaultArmBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, 0, 2) then -- the count guards the loop (SPEC §6.3)
     return false
   end
   value.EntriesCount = BITS.value
   for i = 1, value.EntriesCount do
-    if not _Wire.ReadProbeConfig(stream, value.Entries[i]) then
+    if not _Wire.ReadProbeConfigBody(stream, value.Entries[i]) then
       return false
     end
   end
@@ -155,6 +156,13 @@ function _M.ReadDefaultArm(stream: any, value: any): boolean
   end
   value.Marker = BITS.value
   return true
+end
+
+-- ReadDefaultArm reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadDefaultArm(stream: any, value: any): boolean
+  if not _M.ReadDefaultArmBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitDefaultChoice resets the union to what NewDefaultChoice builds, in place: None, and every
@@ -170,20 +178,28 @@ function _M.ZeroDefaultChoice(value: any)
   value.Type = 0
 end
 
-function _M.ReadDefaultChoice(stream: any, value: any): boolean
+-- ReadDefaultChoiceBody reads the union wire; it does not end the packet (SPEC §5).
+function _M.ReadDefaultChoiceBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, 0, 2) then -- rejects a tag above the count (SPEC §4.8)
     return false
   end
   value.Type = BITS.value
   if value.Type == _M.DefaultChoiceType.First then
     _M.InitDefaultArm(value.First) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)
-    return _M.ReadDefaultArm(stream, value.First)
+    return _M.ReadDefaultArmBody(stream, value.First)
   end
   if value.Type == _M.DefaultChoiceType.Second then
     _M.InitDefaultArm(value.Second) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)
-    return _M.ReadDefaultArm(stream, value.Second)
+    return _M.ReadDefaultArmBody(stream, value.Second)
   end
   return true -- None
+end
+
+-- ReadDefaultChoice reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadDefaultChoice(stream: any, value: any): boolean
+  if not _M.ReadDefaultChoiceBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitDefaultChoicePacket resets a value to what NewDefaultChoicePacket builds, in place: its declared defaults
@@ -198,13 +214,21 @@ function _M.ZeroDefaultChoicePacket(value: any)
   _M.ZeroDefaultChoice(value.Choice)
 end
 
--- ReadDefaultChoicePacket reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadDefaultChoicePacketBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadDefaultChoicePacket(stream: any, value: any): boolean
-  if not _M.ReadDefaultChoice(stream, value.Choice) then
+-- It does not end the packet: the public ReadDefaultChoicePacket is the one-packet read (SPEC §5).
+function _M.ReadDefaultChoicePacketBody(stream: any, value: any): boolean
+  if not _M.ReadDefaultChoiceBody(stream, value.Choice) then
     return false
   end
   return true
+end
+
+-- ReadDefaultChoicePacket reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadDefaultChoicePacket(stream: any, value: any): boolean
+  if not _M.ReadDefaultChoicePacketBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitDefaultBulkArm resets a value to what NewDefaultBulkArm builds, in place: its declared defaults
@@ -223,10 +247,11 @@ function _M.ZeroDefaultBulkArm(value: any)
   value.DataLength = 0
 end
 
--- ReadDefaultBulkArm reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadDefaultBulkArmBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadDefaultBulkArm(stream: any, value: any): boolean
-  if not _M.ReadDefaultArm(stream, value.Payload) then
+-- It does not end the packet: the public ReadDefaultBulkArm is the one-packet read (SPEC §5).
+function _M.ReadDefaultBulkArmBody(stream: any, value: any): boolean
+  if not _M.ReadDefaultArmBody(stream, value.Payload) then
     return false
   end
   do -- length, align, bytes into the pre-allocated buffer (SPEC §4.7)
@@ -244,6 +269,13 @@ function _M.ReadDefaultBulkArm(stream: any, value: any): boolean
   return true
 end
 
+-- ReadDefaultBulkArm reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadDefaultBulkArm(stream: any, value: any): boolean
+  if not _M.ReadDefaultBulkArmBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitDefaultBulkChoice resets the union to what NewDefaultBulkChoice builds, in place: None, and every
 -- payload arm at its declared defaults (SPEC §4.8).
 function _M.InitDefaultBulkChoice(value: any)
@@ -257,20 +289,28 @@ function _M.ZeroDefaultBulkChoice(value: any)
   value.Type = 0
 end
 
-function _M.ReadDefaultBulkChoice(stream: any, value: any): boolean
+-- ReadDefaultBulkChoiceBody reads the union wire; it does not end the packet (SPEC §5).
+function _M.ReadDefaultBulkChoiceBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, 0, 2) then -- rejects a tag above the count (SPEC §4.8)
     return false
   end
   value.Type = BITS.value
   if value.Type == _M.DefaultBulkChoiceType.First then
     _M.InitDefaultBulkArm(value.First) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)
-    return _M.ReadDefaultBulkArm(stream, value.First)
+    return _M.ReadDefaultBulkArmBody(stream, value.First)
   end
   if value.Type == _M.DefaultBulkChoiceType.Second then
     _M.InitDefaultBulkArm(value.Second) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)
-    return _M.ReadDefaultBulkArm(stream, value.Second)
+    return _M.ReadDefaultBulkArmBody(stream, value.Second)
   end
   return true -- None
+end
+
+-- ReadDefaultBulkChoice reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadDefaultBulkChoice(stream: any, value: any): boolean
+  if not _M.ReadDefaultBulkChoiceBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- DefaultArmMaxBits is the longest wire path, align padding at its worst case;

@@ -149,18 +149,18 @@ func t07C14(t *testing.T) {
 	body := t07Filter(t, out)
 	t07Has(t, body, "root_tiers_fixed_list(_bin, 0, c, m), do: {[], c, m}", "C14 the identity walk stops at the count")
 	t07Has(t, body, "R.past(c, f_e_0, 2)", "C14 an enum ordinal's bound runs only over live elements")
-	t07Has(t, body, "c = if(p_opt != 0, do: c_opt, else: c)", "C14 an optional's payload is held to a bound only when present")
+	t07Has(t, body, "c = if(p_opt, do: c_opt, else: c)", "C14 an optional's payload is held to a bound only when present")
 }
 
 // ---- elixir/W4 --------------------------------------------------------------
 
-// t07W4 holds elixir/W4 to §3.1: slack is UNSPECIFIED on read and not a
-// refusal — a reader validates the USED UNITS only. The read binds a text
-// field's whole span, decodes the used units, and never refuses or counts the
-// bytes behind them; the writer's own `text_slack` is the only site that
-// touches the slack.
+// t07W4 holds elixir/W4 to §3.1 and the dead-byte ruling: the content rule
+// reads the USED UNITS only, and the bytes behind them are DEAD — a non-zero
+// one refuses the whole load. The read binds a text field's whole span, decodes
+// the used units, and the check pass holds the rest to zero.
 func t07W4(t *testing.T) {
 	t07Has(t, fixedRuntimeBody, "def text(used, _default, m, present) do", "W4 the read decodes the used bytes")
+	t07Has(t, fixedRuntimeBody, "defp dead_run([{:dead_text", "W4 a non-zero dead byte behind a text refuses")
 	t07Has(t, fixedRuntimeBody, "def text_slack(bytes, n) when is_binary(bytes) and byte_size(bytes) <= n,", "W4 the writer owns the slack")
 
 	out, err := Generate(unitFrom(t, t07LiveSource))
@@ -202,7 +202,7 @@ func t07W1(t *testing.T) {
 		t.Fatalf("W1: Generate: %v", err)
 	}
 	body := t07Filter(t, out)
-	t07Has(t, body, "0::size(R.text_slack(v_name, 8))-unit(8)", "W1 a short string pads its slack with zeros")
+	t07Has(t, body, "0::size(R.string_slack(v_name, 8))-unit(8)", "W1 a short string pads its slack with zeros")
 	t07Has(t, body, "0::size((4 - n_tiers) * 1)-unit(8)", "W1 a short counted array pads its unused slots with zeros")
 	t07Has(t, body, "0::size(8)-unit(8)", "W1 a union's unnamed arm is zeros at the widest width")
 }

@@ -31,7 +31,9 @@
 // Functions per type: write<Name>(value, view) -> bytes written (trusted
 // writer, contracts asserted); read<Name>(value, view, numBits) -> bool (the
 // family read verdict — reads validate EVERYTHING and never throw on hostile
-// bytes); zero<Name>(value) -> the §5 zero form. No measure function is
+// bytes); read<Name>Bits(value, view, numBits, bitOffset) -> bits consumed or
+// -1 (the framing entry, SPEC §5 and §6.3: the same read from a bit offset,
+// with no end-of-packet check); zero<Name>(value) -> the §5 zero form. No measure function is
 // generated (SPEC §6.1): write returns the size.
 // Buffers are caller-owned ByteData views: write buffers hold <name>MaxBytes
 // (a multiple of 8 — the family write-buffer granularity); read buffers need
@@ -94,10 +96,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 
 // unitNeeds128 reports whether any field of the unit stores as the emulated
 // 128-bit pair (int128/uint128, or fixed point of storage width 128). It
-// scans the unit's TABLES as well as its structs: a table-only unit's fixed
-// form (internal/codegen/darttable) spells int128/uint128 with the same
-// Int128/UInt128 pair, so the support library must be emitted beside it even
-// when no plain struct carries a 128-bit field.
+// scans the unit's TABLES and TABLE UNIONS as well as its structs: a table
+// unit's fixed form (internal/codegen/darttable) spells int128/uint128 with
+// the same Int128/UInt128 pair, so the support library must be emitted beside
+// it even when no plain struct carries a 128-bit field.
 func unitNeeds128(u *ir.Unit) bool {
 	for _, st := range u.Structs {
 		for _, f := range st.Fields {
@@ -109,6 +111,13 @@ func unitNeeds128(u *ir.Unit) bool {
 	for _, st := range u.Tables {
 		for _, f := range st.Fields {
 			if is128(f.Type) {
+				return true
+			}
+		}
+	}
+	for _, un := range u.TableUnions {
+		for _, v := range un.Variants {
+			if v.F != nil && is128(v.F.Type) {
 				return true
 			}
 		}
@@ -328,6 +337,10 @@ func (g *gen) assemble() []byte {
 		h.WriteString("// static run, ranges, wire constants, reserved and align padding, union\n")
 		h.WriteString("// tags — and NEVER throw on hostile bytes. No slack past the payload is\n")
 		h.WriteString("// required: the reader prices its 64-bit windows inside the buffer.\n")
+		h.WriteString("//\n")
+		h.WriteString("// read<Name>Bits(value, view, numBits, bitOffset) -> the bits consumed, or\n")
+		h.WriteString("// -1 on the same refusals: the framing entry, read from a bit offset with\n")
+		h.WriteString("// no end-of-packet check, so several objects read in turn from one buffer.\n")
 		h.WriteString("//\n")
 		h.WriteString("// zero<Name>(value) -> the §5 zero form. There is no measure function\n")
 		h.WriteString("// (SPEC §6.1): write returns the size, <name>MaxBytes sizes buffers.\n")

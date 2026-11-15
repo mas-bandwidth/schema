@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 package example;
 
@@ -151,7 +151,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readVec2Bits(Vec2 value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -161,7 +164,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 128 > numBits) {
+        if ((long) bitsRead + 128 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -188,9 +191,21 @@ public final class Degenerate {
     }
 
     // readVec2 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readVec2(Vec2 value, byte[] data, int numBits) {
-        return readVec2Bits(value, data, 0, numBits) >= 0;
+        final int end = readVec2Bits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type SpanF64
@@ -262,7 +277,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readSpanF64Bits(SpanF64 value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -272,7 +290,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 128 > numBits) {
+        if ((long) bitsRead + 128 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 2; i0++) {
@@ -291,9 +309,21 @@ public final class Degenerate {
     }
 
     // readSpanF64 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readSpanF64(SpanF64 value, byte[] data, int numBits) {
-        return readSpanF64Bits(value, data, 0, numBits) >= 0;
+        final int end = readSpanF64Bits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type SpanU64
@@ -358,7 +388,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readSpanU64Bits(SpanU64 value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -368,7 +401,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 128 > numBits) {
+        if ((long) bitsRead + 128 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 2; i0++) {
@@ -384,9 +417,21 @@ public final class Degenerate {
     }
 
     // readSpanU64 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readSpanU64(SpanU64 value, byte[] data, int numBits) {
-        return readSpanU64Bits(value, data, 0, numBits) >= 0;
+        final int end = readSpanU64Bits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type SpanI64
@@ -451,7 +496,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readSpanI64Bits(SpanI64 value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -461,7 +509,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 128 > numBits) {
+        if ((long) bitsRead + 128 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 2; i0++) {
@@ -477,9 +525,21 @@ public final class Degenerate {
     }
 
     // readSpanI64 decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readSpanI64(SpanI64 value, byte[] data, int numBits) {
-        return readSpanI64Bits(value, data, 0, numBits) >= 0;
+        final int end = readSpanI64Bits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type SpanOne
@@ -544,7 +604,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readSpanOneBits(SpanOne value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -554,7 +617,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 64 > numBits) {
+        if ((long) bitsRead + 64 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 1; i0++) {
@@ -570,9 +633,21 @@ public final class Degenerate {
     }
 
     // readSpanOne decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readSpanOne(SpanOne value, byte[] data, int numBits) {
-        return readSpanOneBits(value, data, 0, numBits) >= 0;
+        final int end = readSpanOneBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type SpanChunk
@@ -639,7 +714,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readSpanChunkBits(SpanChunk value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -648,7 +726,7 @@ public final class Degenerate {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 64 > numBits) {
+        if ((long) bitsRead + 64 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 4; i0++) {
@@ -660,9 +738,21 @@ public final class Degenerate {
     }
 
     // readSpanChunk decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readSpanChunk(SpanChunk value, byte[] data, int numBits) {
-        return readSpanChunkBits(value, data, 0, numBits) >= 0;
+        final int end = readSpanChunkBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type SpanTail
@@ -741,7 +831,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readSpanTailBits(SpanTail value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -751,7 +844,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 160 > numBits) {
+        if ((long) bitsRead + 160 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 2; i0++) {
@@ -773,9 +866,21 @@ public final class Degenerate {
     }
 
     // readSpanTail decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readSpanTail(SpanTail value, byte[] data, int numBits) {
-        return readSpanTailBits(value, data, 0, numBits) >= 0;
+        final int end = readSpanTailBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type SpanTwice
@@ -861,7 +966,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readSpanTwiceBits(SpanTwice value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -871,7 +979,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 256 > numBits) {
+        if ((long) bitsRead + 256 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 2; i0++) {
@@ -902,9 +1010,21 @@ public final class Degenerate {
     }
 
     // readSpanTwice decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readSpanTwice(SpanTwice value, byte[] data, int numBits) {
-        return readSpanTwiceBits(value, data, 0, numBits) >= 0;
+        final int end = readSpanTwiceBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type Trio
@@ -942,6 +1062,12 @@ public final class Degenerate {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + TRIO_MAX_BITS;
+        assert value.a >= 0;
+        assert value.a <= 1048575;
+        assert value.b >= 0;
+        assert value.b <= 1048575;
+        assert value.c >= 0;
+        assert value.c <= 16777215;
         return true;
     }
 
@@ -975,7 +1101,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readTrioBits(Trio value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -984,7 +1113,7 @@ public final class Degenerate {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 64 > numBits) {
+        if ((long) bitsRead + 64 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffffL;
@@ -1000,9 +1129,21 @@ public final class Degenerate {
     }
 
     // readTrio decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readTrio(Trio value, byte[] data, int numBits) {
-        return readTrioBits(value, data, 0, numBits) >= 0;
+        final int end = readTrioBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type TrioSole
@@ -1059,11 +1200,14 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readTrioSoleBits(TrioSole value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         int bitsRead = bitOffset;
-        if (bitsRead + 64 > numBits) {
+        if ((long) bitsRead + 64 > numBits) {
             return -1;
         }
         bitsRead = readTrioBits(value.inner, data, bitsRead, numBits);
@@ -1074,9 +1218,21 @@ public final class Degenerate {
     }
 
     // readTrioSole decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readTrioSole(TrioSole value, byte[] data, int numBits) {
-        return readTrioSoleBits(value, data, 0, numBits) >= 0;
+        final int end = readTrioSoleBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type Vec3Sole
@@ -1133,11 +1289,14 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readVec3SoleBits(Vec3Sole value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         int bitsRead = bitOffset;
-        if (bitsRead + 192 > numBits) {
+        if ((long) bitsRead + 192 > numBits) {
             return -1;
         }
         bitsRead = Types.readVec3Bits(value.v, data, bitsRead, numBits);
@@ -1148,9 +1307,21 @@ public final class Degenerate {
     }
 
     // readVec3Sole decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readVec3Sole(Vec3Sole value, byte[] data, int numBits) {
-        return readVec3SoleBits(value, data, 0, numBits) >= 0;
+        final int end = readVec3SoleBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type TrioFirst
@@ -1185,6 +1356,8 @@ public final class Degenerate {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + TRIO_FIRST_MAX_BITS;
+        assert value.trailer >= 0;
+        assert value.trailer <= 65535;
         return true;
     }
 
@@ -1215,7 +1388,10 @@ public final class Degenerate {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readTrioFirstBits(TrioFirst value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1224,7 +1400,7 @@ public final class Degenerate {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 80 > numBits) {
+        if ((long) bitsRead + 80 > numBits) {
             return -1;
         }
         bitsRead = readTrioBits(value.inner, data, bitsRead, numBits);
@@ -1238,9 +1414,21 @@ public final class Degenerate {
     }
 
     // readTrioFirst decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readTrioFirst(TrioFirst value, byte[] data, int numBits) {
-        return readTrioFirstBits(value, data, 0, numBits) >= 0;
+        final int end = readTrioFirstBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type TrioStraddle
@@ -1290,6 +1478,8 @@ public final class Degenerate {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + TRIO_STRADDLE_MAX_BITS;
+        assert value.pad5 >= 0;
+        assert value.pad5 <= 16777215;
         return true;
     }
 
@@ -1341,7 +1531,10 @@ public final class Degenerate {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readTrioStraddleBits(
             TrioStraddle value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1351,7 +1544,7 @@ public final class Degenerate {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 408 > numBits) {
+        if ((long) bitsRead + 408 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -1400,8 +1593,20 @@ public final class Degenerate {
     }
 
     // readTrioStraddle decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readTrioStraddle(TrioStraddle value, byte[] data, int numBits) {
-        return readTrioStraddleBits(value, data, 0, numBits) >= 0;
+        final int end = readTrioStraddleBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 }

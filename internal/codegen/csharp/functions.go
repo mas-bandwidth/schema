@@ -17,8 +17,8 @@
 //
 // So every caller-error check this emitter puts on the write path — a ranged
 // integer, an enum's headroom, a flags mask above the wire width, a union
-// tag, a counted array's count, a string/bytes/wstring length, a wide
-// string's interior null, a degenerate fixed or int128 raw — is a
+// tag, a counted array's count, a string/bytes length, a string's
+// interior null, a degenerate fixed or int128 raw — is a
 // Debug.Assert, which is [Conditional("DEBUG")] and therefore gone from a
 // release build, call and arguments both. That is the idiom of the runtime
 // this code calls: serialize.cs's WriteStream documents values, capacity,
@@ -104,14 +104,20 @@ func (g *gen) emitPair(pair, typ string, writeBody, readBody func()) {
 		g.inBatch = false
 		g.sf("}\n\n")
 	}
+	// The public read is the one-packet read (SPEC §5 "Read termination"): it
+	// reads the top-level object through the per-type body and then asks the
+	// runtime to check the packet's end. Nested generated reads call the body,
+	// never this entry, so the end is checked once, after the top-level object.
+	g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", pair, typ)
+	g.sf("    if (!Read%sBody(stream, %svalue))\n    {\n        return false;\n    }\n", pair, r)
+	g.sf("    return stream.SerializeEnd();\n}\n\n")
+	g.sf("private static bool Read%sBody(ReadStream stream, %s value)\n{\n", pair, typ)
 	if batched {
-		g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", pair, typ)
 		g.sf("    ReadBatch batch = stream.BeginBatch();\n")
 		g.sf("    bool result = Read%sBatch(ref batch, %svalue);\n", pair, r)
 		g.sf("    batch.End();\n")
 		g.sf("    return result;\n}\n\n")
 	} else {
-		g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", pair, typ)
 		readBody()
 		g.sf("}\n\n")
 	}
@@ -461,6 +467,9 @@ func (g *gen) armCall(dir string, v ir.UnionVariant) string {
 	if g.inBatch {
 		return fmt.Sprintf("%s%sBatch(ref batch, %svalue.%s)", dir, v.Type, g.byRef(v.Type), ir.GoExportName(v.Name))
 	}
+	if dir == "Read" {
+		return fmt.Sprintf("Read%sBody(stream, %svalue.%s)", v.Type, g.byRef(v.Type), ir.GoExportName(v.Name))
+	}
 	return fmt.Sprintf("%s%s(stream, %svalue.%s)", dir, v.Type, g.byRef(v.Type), ir.GoExportName(v.Name))
 }
 
@@ -689,9 +698,9 @@ func (g *gen) emitWriteFoldedRange(expr, lo, hi string, min, max *big.Int, wide,
 		loCast = fmt.Sprintf("unchecked((%s)(%s))", typ, lo)
 	}
 	if min.Sign() == 0 {
-		g.sf("%s{\n%s    %s offsetValue = (%s)(%s);\n", ind, ind, typ, typ, expr)
+		g.sf("%s{\n%s    %s offsetValue = unchecked((%s)(%s));\n", ind, ind, typ, typ, expr)
 	} else {
-		g.sf("%s{\n%s    %s offsetValue = (%s)(%s) - %s;\n", ind, ind, typ, typ, expr, loCast)
+		g.sf("%s{\n%s    %s offsetValue = unchecked((%s)(%s) - %s);\n", ind, ind, typ, typ, expr, loCast)
 	}
 	g.call(ind+"    ", fmt.Sprintf("%s.%s(ref offsetValue, %d)", g.rv(), fn, bits), "")
 	g.sf("%s}\n", ind)
@@ -878,9 +887,18 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		if f.HasFloatRange {
 			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 			min32 := float32(f.FMin)
-			delta := float32(f.FMax) - min32
+			max32 := float32(f.FMax)
+			delta := max32 - min32
 			// a temp so the wire quantization cannot write back into the input
 			g.sf("%s{\n%s    float compressedValue = %s;\n", ind, ind, name)
+			// SPEC §5.1 row 10: the packet writer holds the value to finite and
+			// inside [min, max] before quantizing. Write-side checks are caller
+			// error, so this one is a Debug.Assert like every other.
+			msg := fmt.Sprintf("%s out of range [%s, %s]", name,
+				formatFloat32(float64(min32)), formatFloat32(float64(max32)))
+			g.writeAssert(ind+"    ",
+				fmt.Sprintf("float.IsFinite(compressedValue) && compressedValue >= %s && compressedValue <= %s",
+					formatFloat32(float64(min32)), formatFloat32(float64(max32))), msg, "")
 			g.call(ind+"    ", fmt.Sprintf("%s.SerializeCompressedFloatPrecomputed(ref compressedValue, %du, %d, %s, %s)",
 				g.rv(), steps, wireBits, formatFloat32(float64(delta)), formatFloat32(float64(min32))), "")
 			g.sf("%s}\n", ind)
@@ -957,7 +975,7 @@ func (g *gen) emitWriteFoldedEnum(ref *ir.Enum, name, ind string) {
 func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
 	if f.Type.Width == 64 {
 		if f.Type.Signed {
-			g.sf("%s{\n%s    ulong rawValue = (ulong)%s;\n", ind, ind, name)
+			g.sf("%s{\n%s    ulong rawValue = unchecked((ulong)%s);\n", ind, ind, name)
 			g.call(ind+"    ", g.rv()+".SerializeBits64(ref rawValue, 64)", "")
 			g.sf("%s}\n", ind)
 			return
@@ -978,10 +996,10 @@ func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
 // 32-bit) bare integer: signed narrows go through the same-width unsigned.
 func fmt32Cast(f *ir.Field, name string) string {
 	if f.Type.Signed && f.Type.Width < 32 {
-		return "(" + csUint(f.Type.Width) + ")" + name
+		return "unchecked((" + csUint(f.Type.Width) + ")" + name + ")"
 	}
 	if f.Type.Signed {
-		return "(uint)" + name
+		return "unchecked((uint)" + name + ")"
 	}
 	return name // byte/ushort widen implicitly
 }
@@ -1186,13 +1204,13 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			if g.inBatch {
 				g.call(ind, fmt.Sprintf("Read%sBatch(ref batch, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			} else {
-				g.call(ind, fmt.Sprintf("Read%s(stream, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
+				g.call(ind, fmt.Sprintf("Read%sBody(stream, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			}
 		case *ir.Union:
 			if g.inBatch {
 				g.call(ind, fmt.Sprintf("Read%sBatch(ref batch, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			} else {
-				g.call(ind, fmt.Sprintf("Read%s(stream, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
+				g.call(ind, fmt.Sprintf("Read%sBody(stream, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			}
 		}
 	}
@@ -1203,7 +1221,7 @@ func (g *gen) emitReadBareInt(f *ir.Field, name, ind string) {
 		if f.Type.Signed {
 			g.sf("%s{\n%s    ulong rawValue = 0;\n", ind, ind)
 			g.call(ind+"    ", g.rv()+".SerializeBits64(ref rawValue, 64)", "")
-			g.sf("%s    %s = (long)rawValue;\n%s}\n", ind, name, ind)
+			g.sf("%s    %s = unchecked((long)rawValue);\n%s}\n", ind, name, ind)
 			return
 		}
 		g.call(ind, fmt.Sprintf("%s.SerializeBits64(ref %s, 64)", g.rv(), name), "")
@@ -1217,10 +1235,10 @@ func (g *gen) emitReadBareInt(f *ir.Field, name, ind string) {
 	g.call(ind+"    ", fmt.Sprintf("%s.SerializeBits(ref rawValue, %d)", g.rv(), f.Type.Width), "")
 	if f.Type.Signed && f.Type.Width < 32 {
 		// back through the same-width unsigned so the sign bit lands right
-		g.sf("%s    %s = (%s)(%s)rawValue;\n%s}\n", ind, name, csInt(f.Type.Width), csUint(f.Type.Width), ind)
+		g.sf("%s    %s = unchecked((%s)(%s)rawValue);\n%s}\n", ind, name, csInt(f.Type.Width), csUint(f.Type.Width), ind)
 		return
 	}
-	g.sf("%s    %s = (%s)rawValue;\n%s}\n", ind, name, g.csFieldType(f.Type), ind)
+	g.sf("%s    %s = unchecked((%s)rawValue);\n%s}\n", ind, name, g.csFieldType(f.Type), ind)
 }
 
 // emitReadFlags reads a flags value through an unsigned temp — a ulong past

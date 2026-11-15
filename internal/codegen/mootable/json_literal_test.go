@@ -1,7 +1,6 @@
 package mootable
 
 import (
-	"encoding/binary"
 	"fmt"
 	"math"
 	"math/big"
@@ -224,14 +223,6 @@ func (l *literal) instance(inst *tabletext.Instance) string {
 
 func bufferLit(size int64, data []byte) string {
 	return fmt.Sprintf("(function() local b = buffer.create(%d); buffer.writestring(b, 0, %s); return b end)()", size, mooString(data))
-}
-
-func unitsBytes(units []uint16) []byte {
-	out := make([]byte, 0, 2*len(units))
-	for _, u := range units {
-		out = binary.LittleEndian.AppendUint16(out, u)
-	}
-	return out
 }
 
 // field assigns one field's storage on the record at rec.

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 import { MaxHealth, MaxInputsPerPacket, MaxObjects, MaxPositionUnits, MaxVelocityUnits, RotationUnits, ShipMaxLasers, ShipMaxMissiles } from "./Constants.js";
 import { Pending, ShipType, Team } from "./Enums.js";
@@ -57,7 +57,7 @@ export function WriteVec3(stream, value) {
   return true;
 }
 
-export function ReadVec3(stream, value) {
+export function ReadVec3(stream, value, nested) {
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
@@ -70,7 +70,7 @@ export function ReadVec3(stream, value) {
     return false;
   }
   value.z = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type Quat
@@ -124,7 +124,7 @@ export function WriteQuat(stream, value) {
   return true;
 }
 
-export function ReadQuat(stream, value) {
+export function ReadQuat(stream, value, nested) {
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
@@ -141,7 +141,7 @@ export function ReadQuat(stream, value) {
     return false;
   }
   value.w = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type Handle
@@ -184,7 +184,7 @@ export function WriteHandle(stream, value) {
   return true;
 }
 
-export function ReadHandle(stream, value) {
+export function ReadHandle(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, MaxObjects - 1)) {
     return false;
   }
@@ -193,7 +193,7 @@ export function ReadHandle(stream, value) {
     return false;
   }
   value.objectSequence = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type QuantizedPosition
@@ -249,7 +249,7 @@ export function WriteQuantizedPosition(stream, value) {
   return true;
 }
 
-export function ReadQuantizedPosition(stream, value) {
+export function ReadQuantizedPosition(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -MaxPositionUnits, MaxPositionUnits)) {
     return false;
   }
@@ -262,7 +262,7 @@ export function ReadQuantizedPosition(stream, value) {
     return false;
   }
   value.z = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type QuantizedVelocity
@@ -318,7 +318,7 @@ export function WriteQuantizedVelocity(stream, value) {
   return true;
 }
 
-export function ReadQuantizedVelocity(stream, value) {
+export function ReadQuantizedVelocity(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -MaxVelocityUnits, MaxVelocityUnits)) {
     return false;
   }
@@ -331,7 +331,7 @@ export function ReadQuantizedVelocity(stream, value) {
     return false;
   }
   value.z = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type QuantizedRotation
@@ -397,7 +397,7 @@ export function WriteQuantizedRotation(stream, value) {
   return true;
 }
 
-export function ReadQuantizedRotation(stream, value) {
+export function ReadQuantizedRotation(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -RotationUnits, RotationUnits)) {
     return false;
   }
@@ -414,7 +414,7 @@ export function ReadQuantizedRotation(stream, value) {
     return false;
   }
   value.w = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type RigidBody
@@ -476,11 +476,11 @@ export function WriteRigidBody(stream, value) {
   return true;
 }
 
-export function ReadRigidBody(stream, value) {
-  if (!ReadVec3(stream, value.position)) {
+export function ReadRigidBody(stream, value, nested) {
+  if (!ReadVec3(stream, value.position, true)) {
     return false;
   }
-  if (!ReadQuat(stream, value.orientation)) {
+  if (!ReadQuat(stream, value.orientation, true)) {
     return false;
   }
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -488,17 +488,17 @@ export function ReadRigidBody(stream, value) {
   }
   value.atRest = BOOL_SCRATCH.value;
   if (!value.atRest) {
-    if (!ReadVec3(stream, value.linearVelocity)) {
+    if (!ReadVec3(stream, value.linearVelocity, true)) {
       return false;
     }
-    if (!ReadVec3(stream, value.angularVelocity)) {
+    if (!ReadVec3(stream, value.angularVelocity, true)) {
       return false;
     }
   } else {
     ZeroVec3(value.linearVelocity);
     ZeroVec3(value.angularVelocity);
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type Input
@@ -615,7 +615,7 @@ export function WriteInput(stream, value) {
   return true;
 }
 
-export function ReadInput(stream, value) {
+export function ReadInput(stream, value, nested) {
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
@@ -668,7 +668,7 @@ export function ReadInput(stream, value) {
     return false;
   }
   value.ping = BOOL_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type InputPacket
@@ -738,7 +738,7 @@ export function WriteInputPacket(stream, value) {
   return true;
 }
 
-export function ReadInputPacket(stream, value) {
+export function ReadInputPacket(stream, value, nested) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
@@ -756,11 +756,11 @@ export function ReadInputPacket(stream, value) {
   }
   value.inputsCount = NUMBER_SCRATCH.value;
   for (let i = 0; i < value.inputsCount; i++) {
-    if (!ReadInput(stream, value.inputs[i])) {
+    if (!ReadInput(stream, value.inputs[i], true)) {
       return false;
     }
   }
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type ShipCreate
@@ -876,18 +876,18 @@ export function WriteShipCreate(stream, value) {
   return true;
 }
 
-export function ReadShipCreate(stream, value) {
+export function ReadShipCreate(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 5)) {
     return false;
   }
   value.shipType = NUMBER_SCRATCH.value;
-  if (!ReadQuantizedPosition(stream, value.position)) {
+  if (!ReadQuantizedPosition(stream, value.position, true)) {
     return false;
   }
-  if (!ReadQuantizedRotation(stream, value.rotation)) {
+  if (!ReadQuantizedRotation(stream, value.rotation, true)) {
     return false;
   }
-  if (!ReadQuantizedVelocity(stream, value.linearVelocity)) {
+  if (!ReadQuantizedVelocity(stream, value.linearVelocity, true)) {
     return false;
   }
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -918,7 +918,7 @@ export function ReadShipCreate(stream, value) {
     return false;
   }
   value.pending = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type ExpressionProbe
@@ -964,7 +964,7 @@ export function WriteExpressionProbe(stream, value) {
   return true;
 }
 
-export function ReadExpressionProbe(stream, value) {
+export function ReadExpressionProbe(stream, value, nested) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, (ShipMaxLasers + ShipMaxMissiles) - 1)) {
     return false;
   }
@@ -973,7 +973,7 @@ export function ReadExpressionProbe(stream, value) {
     return false;
   }
   value.spinRate = NUMBER_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 export const FloorLimit = -9223372036854775808n;
@@ -1015,21 +1015,21 @@ export function ZeroExtremeProbe(value) {
 }
 
 export function WriteExtremeProbe(stream, value) {
-  if (value.floorBound > 100n) {
+  if (value.floorBound < -9223372036854775808n || value.floorBound > 100n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.floorBound - -9223372036854775808n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.doubledFloor > 100n) {
+  if (value.doubledFloor < -9223372036854775808n || value.doubledFloor > 100n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.doubledFloor - -9223372036854775808n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.ceilingRange < 1n) {
+  if (value.ceilingRange < 1n || value.ceilingRange > 18446744073709551615n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.ceilingRange - 1n);
@@ -1047,7 +1047,7 @@ export function WriteExtremeProbe(stream, value) {
   return true;
 }
 
-export function ReadExtremeProbe(stream, value) {
+export function ReadExtremeProbe(stream, value, nested) {
   if (!stream.serializeInt64(BIGINT_SCRATCH, -9223372036854775808n, 100n)) {
     return false;
   }
@@ -1071,7 +1071,7 @@ export function ReadExtremeProbe(stream, value) {
     return false;
   }
   value.ceilingDefault = BIGINT_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 
 // type ExtremeRow
@@ -1106,7 +1106,7 @@ export function ZeroExtremeRow(value) {
 }
 
 export function WriteExtremeRow(stream, value) {
-  if (value.clampedFloor > 100n) {
+  if (value.clampedFloor < -9223372036854775808n || value.clampedFloor > 100n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.clampedFloor - -9223372036854775808n);
@@ -1131,7 +1131,7 @@ export function WriteExtremeRow(stream, value) {
   return true;
 }
 
-export function ReadExtremeRow(stream, value) {
+export function ReadExtremeRow(stream, value, nested) {
   if (!stream.serializeInt64(BIGINT_SCRATCH, -9223372036854775808n, 100n)) {
     return false;
   }
@@ -1151,6 +1151,6 @@ export function ReadExtremeRow(stream, value) {
     return false;
   }
   value.ceilingDef = BIGINT_SCRATCH.value;
-  return true;
+  return nested === true || stream.serializeEnd(); // the packet's one end check (SPEC §5)
 }
 

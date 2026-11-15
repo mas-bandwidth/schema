@@ -615,10 +615,11 @@ const (
 	// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 	TableRefuseBlobShared
 	// The fixed form's own refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3,
-	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the one refusal enum: every
-	// fixed-form refusal name is a TableRefuseReason member, appended after
-	// TableRefuseBlobShared so no existing value renumbers, in §6.5's table order so
-	// names, order and spelling agree in all ports. Each member's Error() is its
+	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the reference's one refusal
+	// enum: every fixed-form refusal name is a TableRefuseReason member, appended
+	// after TableRefuseBlobShared so no existing value renumbers, in §6.5's
+	// recommended table order so a port that follows it spells them alike; the
+	// verdict, not the names, is the contract. Each member's Error() is its
 	// snake_case name, and TableReport.Err() maps a fixed report whose Reason is
 	// that name to the member, so errors.Is(err, TableRefuseLayoutUnknown) holds
 	// for a fixed load that refused. The form-byte refusals keep answering
@@ -1377,11 +1378,13 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 	}
 	start := len(data) - 8 - int(n)*8
 	r.Buffer, r.Ids = data[1:start], data[start:len(data)-8]
-	// Count is attacker-capped by (bytes-9)/8 and the 4096-entry bound. The
-	// open-addressed path runs at 8<=n<=4096 with 8192 slots and compares the
-	// stored id, not the hash. n<8 stays pairwise: 21 comparisons at 7 versus
-	// 40 KiB of slot zeroing on every open, including a two-entry trailer. The
-	// mix is C's table_writer_id.
+	// Count is attacker-capped by (bytes-9)/8 and the 4096-entry bound. At
+	// 8<=n<=4096 a sort over a fixed scratch copy compares neighbours, so
+	// the work is n log n whatever the ids are. n<8 stays pairwise: 21
+	// comparisons at 7 versus the scratch array on every open, including a
+	// two-entry trailer. The scratch copy is a fixed array, so the open still
+	// allocates nothing, and the neighbour compare keeps duplicate ids refused.
+	// The 4096-entry cap above still bounds the scratch copy.
 	if n > 1 {
 		if n < 8 {
 			for i := 0; i < len(r.Ids); i += 8 {
@@ -1393,25 +1396,22 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 				}
 			}
 		} else {
-			var seen [8192]uint64
-			var used [8192]uint8
+			var ids [4096]uint64
 			for i := range n {
-				id := binary.LittleEndian.Uint64(r.Ids[i*8:])
-				hash := id
-				hash ^= hash >> 33
-				hash *= 0xff51afd7ed558ccd
-				hash ^= hash >> 33
-				slot := uint32(hash) & 8191
-				for {
-					if used[slot] == 0 {
-						used[slot] = 1
-						seen[slot] = id
-						break
-					}
-					if seen[slot] == id {
-						return r, TableOpenDamaged
-					}
-					slot = (slot + 1) & 8191
+				ids[i] = binary.LittleEndian.Uint64(r.Ids[i*8:])
+			}
+			slices.SortFunc(ids[:n], func(a, b uint64) int {
+				if a < b {
+					return -1
+				}
+				if a > b {
+					return 1
+				}
+				return 0
+			})
+			for i := 1; i < int(n); i++ {
+				if ids[i-1] == ids[i] {
+					return r, TableOpenDamaged
 				}
 			}
 		}
@@ -1869,7 +1869,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 		clear(c.graph)
 		rec := c.records
 		for i := uint64(2); i <= c.nodes+1; i++ {
-			c.graph[2*(i-1)+1] = uint64(rec.Offset)
+			c.graph[2*(i-1)+1] = uint64(rec.Offset & 0x7fffffffffffffff)
 			ref, ok := rec.Leb()
 			if !ok {
 				return TableRefuseWireDamaged
@@ -1901,9 +1901,9 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 	}
 	// a blob named twice is shared, and a record no pointer names is unreachable
 	for i := uint64(2); i <= c.nodes+1; i++ {
-		if uint32(c.graph[2*(i-1)]) > 1 {
+		if uint32(c.graph[2*(i-1)]&0xffffffff) > 1 {
 			rec := c.records
-			rec.Offset = int64(c.graph[2*(i-1)+1])
+			rec.Offset = int64(c.graph[2*(i-1)+1] & 0x7fffffffffffffff)
 			ref, _ := rec.Leb()
 			if id, _ := rec.Resolve(ref); id == tableWireBytesID || id == tableWireStringID {
 				return TableRefuseBlobShared
@@ -1911,7 +1911,7 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
 		}
 	}
 	for i := uint64(2); i <= c.nodes+1; i++ {
-		if uint32(c.graph[2*(i-1)]) == 0 {
+		if uint32(c.graph[2*(i-1)]&0xffffffff) == 0 {
 			return TableRefuseWireDamaged
 		}
 	}
@@ -2145,7 +2145,7 @@ const tableFixedMaxDepth int32 = 64
 // tag 0x0101 is not arm 1. Arg is the arm ordinal and carries NO BYTE LANE
 // (§5.8 row 5): a 256-arm union's ordinal does not fit a byte.
 type TableFixedEntry struct {
-	Src, Dst, Size, Aux, Guard uint32
+	Src, Dst, Size, Aux, Guard, Min uint32
 	// Arg IS THE GUARD'S ORDINAL AT FULL WIDTH (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
 	// §4.1: arg : u64, "no byte lane anywhere"): a union past 255 arms or an
 	// enum past 65535 variants holds its ordinal whole in this lane, and the
@@ -2204,8 +2204,8 @@ func (p TableFixedEntry) chainHolds(plan []TableFixedEntry, src []byte) bool {
 }
 
 type TableFixedDst struct {
-	Dst, Stride, Aux   uint32
-	Counted, Arg, Meta uint8
+	Dst, Stride, Aux, Min uint32
+	Counted, Arg, Meta    uint8
 }
 
 // Arg's high bit marks a deprecated destination field: every compiled lineage
@@ -2507,8 +2507,8 @@ func tableFixedCopyRun(d, s []byte, n uint32) {
 // side to native on the destination side. On a little-endian host the two
 // orders are one and the conversion is the byte copy it always was.
 // tableFixedPutNative lands v in storage at the given width; a width past
-// eight (a 128-bit lane) takes the low word native and zeroes the rest,
-// which is what the widen that uses it always wrote past its value.
+// eight (a 128-bit lane) takes the low word native and zeroes the rest. A
+// widen whose source is negative writes the high word's sign itself.
 func tableFixedPutNative(b []byte, v uint64, size uint32) {
 	if size > 8 {
 		binary.NativeEndian.PutUint64(b, v)
@@ -2660,6 +2660,13 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 				}
 			}
 			tableFixedPutNative(dst[p.Dst:], raw, uint32(p.DstSize))
+			// A SIXTEEN-BYTE DESTINATION takes the source's sign through its
+			// high word: all ones for a negative signed value, zero otherwise.
+			if p.DstSize > 8 && p.Sign != 0 && int64(raw) < 0 {
+				for i := p.Dst + 8; i < p.Dst+uint32(p.DstSize); i++ {
+					dst[i] = 0xFF
+				}
+			}
 			report.Widened++
 		case tableFixedWidenF:
 			// THE FLOAT RUNG IS THE ORDINARY CONVERSION (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3,
@@ -2777,7 +2784,7 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		switch p.Op {
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 || v > int32(p.Size) {
+			if v < 0 || int64(v) < int64(p.Min) || v > int32(p.Size) {
 				return TableRefuseCountOverBound.Error()
 			}
 			if p.Aux != 0 && uint32(v) < p.Size {
@@ -3413,7 +3420,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// bounded at 4 must land 4 and COUNT, not be admitted because this
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
-			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Min: d.Min, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
@@ -4049,20 +4056,17 @@ func TableEntityMeasureBody(value *TableEntity, ids *TableIds) int64 {
 }
 
 func TableEntityMeasure(value *TableEntity) int64 {
-	var ids TableIds
-	body := TableEntityMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	if !TableEntityFixedCheckBody(value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	return TableEntityFixedMeasure(1)
 }
 
 func TableEntityMeasureReason(value *TableEntity) (int64, error) {
-	size := TableEntityMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !TableEntityFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return TableEntityMeasure(value), nil
 }
 func TableEntitySaveBody(w *TableWriter, value *TableEntity) bool {
 	{
@@ -4257,17 +4261,7 @@ func TableEntitySaveBody(w *TableWriter, value *TableEntity) bool {
 }
 
 func TableEntitySave(value *TableEntity, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !TableEntitySaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return TableEntityFixedSave([]TableEntity{*value}, buffer)
 }
 
 func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
@@ -4761,9 +4755,8 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 }
 
 // TableEntity is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// TableEntityFixedLoad reads form 3.
+// so this Load reads that form through TableEntityFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // TableEntityLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -4780,6 +4773,15 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 		read.Refuse(TableRefusePreviousForm, "")
 		TableEntityReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]TableEntity
+		if TableEntityFixedLoad(fixed[:], data, TableEntityFixedReadPlan, read) != 1 {
+			TableEntityReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableEntityLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -4838,20 +4840,17 @@ func TableStatMeasureBody(value *TableStat, ids *TableIds) int64 {
 }
 
 func TableStatMeasure(value *TableStat) int64 {
-	var ids TableIds
-	body := TableStatMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	if !TableStatFixedCheckBody(value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	return TableStatFixedMeasure(1)
 }
 
 func TableStatMeasureReason(value *TableStat) (int64, error) {
-	size := TableStatMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !TableStatFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return TableStatMeasure(value), nil
 }
 func TableStatSaveBody(w *TableWriter, value *TableStat) bool {
 	{
@@ -4881,17 +4880,7 @@ func TableStatSaveBody(w *TableWriter, value *TableStat) bool {
 }
 
 func TableStatSave(value *TableStat, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !TableStatSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return TableStatFixedSave([]TableStat{*value}, buffer)
 }
 
 func TableStatLoadBody(r *TableReader, value *TableStat) bool {
@@ -5005,9 +4994,8 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 }
 
 // TableStat is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// TableStatFixedLoad reads form 3.
+// so this Load reads that form through TableStatFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // TableStatLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -5024,6 +5012,15 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 		read.Refuse(TableRefusePreviousForm, "")
 		TableStatReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]TableStat
+		if TableStatFixedLoad(fixed[:], data, TableStatFixedReadPlan, read) != 1 {
+			TableStatReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableStatLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -5104,25 +5101,17 @@ func TableMixedMeasureBody(value *TableMixed, ids *TableIds) int64 {
 }
 
 func TableMixedMeasure(value *TableMixed) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !TableMixedSaveBody(&w, value) {
+	if !TableMixedFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return TableMixedFixedMeasure(1)
 }
 
 func TableMixedMeasureReason(value *TableMixed) (int64, error) {
-	size := TableMixedMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !TableMixedFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return TableMixedMeasure(value), nil
 }
 func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 	var arrayLengths [80]int64
@@ -5681,17 +5670,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 }
 
 func TableMixedSave(value *TableMixed, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !TableMixedSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return TableMixedFixedSave([]TableMixed{*value}, buffer)
 }
 
 func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
@@ -6719,9 +6698,8 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 }
 
 // TableMixed is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// TableMixedFixedLoad reads form 3.
+// so this Load reads that form through TableMixedFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // TableMixedLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -6738,6 +6716,15 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 		read.Refuse(TableRefusePreviousForm, "")
 		TableMixedReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]TableMixed
+		if TableMixedFixedLoad(fixed[:], data, TableMixedFixedReadPlan, read) != 1 {
+			TableMixedReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableMixedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -7883,14 +7870,14 @@ func TableMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 54, Dst: dst + uint32(unsafe.Offsetof(TableMixed{}.EntitiesCount)), Size: 8, Aux: 51, Guard: tableFixedNoGuard, Op: tableFixedCount} // entities count
+	out[n] = TableFixedEntry{Src: src + 54, Dst: dst + uint32(unsafe.Offsetof(TableMixed{}.EntitiesCount)), Size: 8, Min: 1, Aux: 51, Guard: tableFixedNoGuard, Op: tableFixedCount} // entities count
 	n++
 	for i := range uint32(8) {
 		es := src + 58 + i*51
 		ed := dst + uint32(unsafe.Offsetof(TableMixed{}.Entities)) + i*uint32(unsafe.Sizeof(TableEntity{}))
 		n += TableEntityFixedLeaves(out[n:], links[n:], es, ed)
 	}
-	out[n] = TableFixedEntry{Src: src + 466, Dst: dst + uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), Size: 80, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
+	out[n] = TableFixedEntry{Src: src + 466, Dst: dst + uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), Size: 80, Min: 0, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
 	n++
 	for i := range uint32(80) {
 		es := src + 470 + i*8
@@ -8370,7 +8357,7 @@ func TableMixedFixedCheckBody(value *TableMixed) bool {
 	if value.ServerTime != value.ServerTime || value.ServerTime < 0.0 || value.ServerTime > 65535.0 {
 		return false
 	}
-	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+	if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 		return false
 	}
 	for i := int64(value.EntitiesCount) - 1; i >= 0; i-- {
@@ -8489,7 +8476,7 @@ func TableMixedFixedCheckBodyExact(value *TableMixed) bool {
 	if value.ServerTime != value.ServerTime || value.ServerTime < 0.0 || value.ServerTime > 65535.0 {
 		return false
 	}
-	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+	if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 		return false
 	}
 	for i := int64(value.EntitiesCount) - 1; i >= 0; i-- {
@@ -8618,36 +8605,36 @@ var TableEntityFixedLayout = []byte{
 }
 
 var TableEntityFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // TableEntity
-	{uint32(unsafe.Offsetof(TableEntity{}.EntityID)), 0, 0, 0, 0, 0}, // entity_id
-	{uint32(unsafe.Offsetof(TableEntity{}.PosX)), 0, 0, 0, 0, 0},     // pos_x
-	{uint32(unsafe.Offsetof(TableEntity{}.PosY)), 0, 0, 0, 0, 0},     // pos_y
-	{uint32(unsafe.Offsetof(TableEntity{}.PosZ)), 0, 0, 0, 0, 0},     // pos_z
-	{uint32(unsafe.Offsetof(TableEntity{}.Yaw)), 0, 0, 0, 0, 0},      // yaw
-	{uint32(unsafe.Offsetof(TableEntity{}.Pitch)), 0, 0, 0, 0, 0},    // pitch
-	{uint32(unsafe.Offsetof(TableEntity{}.VelX)), 0, 0, 0, 0, 0},     // vel_x
-	{uint32(unsafe.Offsetof(TableEntity{}.VelY)), 0, 0, 0, 0, 0},     // vel_y
-	{uint32(unsafe.Offsetof(TableEntity{}.VelZ)), 0, 0, 0, 0, 0},     // vel_z
-	{uint32(unsafe.Offsetof(TableEntity{}.Health)), 0, 0, 0, 0, 0},   // health
-	{uint32(unsafe.Offsetof(TableEntity{}.Weapon)), 0, 0, 0, 0, 0},   // weapon
-	{0, 0, 0, 0, 0, 0}, // Fists
-	{0, 0, 0, 0, 0, 0}, // Pistol
-	{0, 0, 0, 0, 0, 0}, // Shotgun
-	{0, 0, 0, 0, 0, 0}, // Rifle
-	{0, 0, 0, 0, 0, 0}, // Sniper
-	{0, 0, 0, 0, 0, 0}, // Smg
-	{0, 0, 0, 0, 0, 0}, // Rocket
-	{0, 0, 0, 0, 0, 0}, // Grenade
-	{0, 0, 0, 0, 0, 0}, // Plasma
-	{0, 0, 0, 0, 0, 0}, // Railgun
-	{0, 0, 0, 0, 0, 0}, // Flamer
-	{0, 0, 0, 0, 0, 0}, // Mine
-	{0, 0, 0, 0, 0, 0}, // Turret
-	{0, 0, 0, 0, 0, 0}, // Drone
-	{0, 0, 0, 0, 0, 0}, // Repair
-	{uint32(unsafe.Offsetof(TableEntity{}.Damage)), 0, 0, 0, 0, 0}, // damage
-	{uint32(unsafe.Offsetof(TableEntity{}.Moving)), 0, 0, 0, 0, 0}, // moving
-	{uint32(unsafe.Offsetof(TableEntity{}.Firing)), 0, 0, 0, 0, 0}, // firing
+	{0, 0, 0, 0, 0, 0, 0}, // TableEntity
+	{uint32(unsafe.Offsetof(TableEntity{}.EntityID)), 0, 0, 0, 0, 0, 0}, // entity_id
+	{uint32(unsafe.Offsetof(TableEntity{}.PosX)), 0, 0, 0, 0, 0, 0},     // pos_x
+	{uint32(unsafe.Offsetof(TableEntity{}.PosY)), 0, 0, 0, 0, 0, 0},     // pos_y
+	{uint32(unsafe.Offsetof(TableEntity{}.PosZ)), 0, 0, 0, 0, 0, 0},     // pos_z
+	{uint32(unsafe.Offsetof(TableEntity{}.Yaw)), 0, 0, 0, 0, 0, 0},      // yaw
+	{uint32(unsafe.Offsetof(TableEntity{}.Pitch)), 0, 0, 0, 0, 0, 0},    // pitch
+	{uint32(unsafe.Offsetof(TableEntity{}.VelX)), 0, 0, 0, 0, 0, 0},     // vel_x
+	{uint32(unsafe.Offsetof(TableEntity{}.VelY)), 0, 0, 0, 0, 0, 0},     // vel_y
+	{uint32(unsafe.Offsetof(TableEntity{}.VelZ)), 0, 0, 0, 0, 0, 0},     // vel_z
+	{uint32(unsafe.Offsetof(TableEntity{}.Health)), 0, 0, 0, 0, 0, 0},   // health
+	{uint32(unsafe.Offsetof(TableEntity{}.Weapon)), 0, 0, 0, 0, 0, 0},   // weapon
+	{0, 0, 0, 0, 0, 0, 0}, // Fists
+	{0, 0, 0, 0, 0, 0, 0}, // Pistol
+	{0, 0, 0, 0, 0, 0, 0}, // Shotgun
+	{0, 0, 0, 0, 0, 0, 0}, // Rifle
+	{0, 0, 0, 0, 0, 0, 0}, // Sniper
+	{0, 0, 0, 0, 0, 0, 0}, // Smg
+	{0, 0, 0, 0, 0, 0, 0}, // Rocket
+	{0, 0, 0, 0, 0, 0, 0}, // Grenade
+	{0, 0, 0, 0, 0, 0, 0}, // Plasma
+	{0, 0, 0, 0, 0, 0, 0}, // Railgun
+	{0, 0, 0, 0, 0, 0, 0}, // Flamer
+	{0, 0, 0, 0, 0, 0, 0}, // Mine
+	{0, 0, 0, 0, 0, 0, 0}, // Turret
+	{0, 0, 0, 0, 0, 0, 0}, // Drone
+	{0, 0, 0, 0, 0, 0, 0}, // Repair
+	{uint32(unsafe.Offsetof(TableEntity{}.Damage)), 0, 0, 0, 0, 0, 0}, // damage
+	{uint32(unsafe.Offsetof(TableEntity{}.Moving)), 0, 0, 0, 0, 0, 0}, // moving
+	{uint32(unsafe.Offsetof(TableEntity{}.Firing)), 0, 0, 0, 0, 0, 0}, // firing
 }
 
 var TableEntityFixedPlan = tableFixedBuildPlan(TableEntityFixedLeaves, 14)
@@ -8735,6 +8722,8 @@ var TableEntityFixedPlanMax = func() int32 {
 	}
 	return m
 }()
+
+var TableEntityFixedReadPlan = make([]TableFixedEntry, int(TableEntityFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -8877,7 +8866,7 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -8888,8 +8877,8 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !TableEntityFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !TableEntityFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				TableEntityReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
@@ -8928,9 +8917,9 @@ var TableStatFixedLayout = []byte{
 }
 
 var TableStatFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // TableStat
-	{uint32(unsafe.Offsetof(TableStat{}.StatID)), 0, 0, 0, 0, 0}, // stat_id
-	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0, 0},  // delta
+	{0, 0, 0, 0, 0, 0, 0}, // TableStat
+	{uint32(unsafe.Offsetof(TableStat{}.StatID)), 0, 0, 0, 0, 0, 0}, // stat_id
+	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0, 0, 0},  // delta
 }
 
 var TableStatFixedPlan = tableFixedBuildPlan(TableStatFixedLeaves, 2)
@@ -8989,6 +8978,8 @@ var TableStatFixedPlanMax = func() int32 {
 	}
 	return m
 }()
+
+var TableStatFixedReadPlan = make([]TableFixedEntry, int(TableStatFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -9131,7 +9122,7 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -9142,8 +9133,8 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !TableStatFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !TableStatFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				TableStatReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
@@ -9258,81 +9249,81 @@ var TableMixedFixedLayout = []byte{
 }
 
 var TableMixedFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // TableMixed
-	{uint32(unsafe.Offsetof(TableMixed{}.ProtocolMagic)), 0, 0, 0, 0, 0},                                                                                 // protocol_magic
-	{uint32(unsafe.Offsetof(TableMixed{}.Sequence)), 0, 0, 0, 0, 0},                                                                                      // sequence
-	{uint32(unsafe.Offsetof(TableMixed{}.AckSequence)), 0, 0, 0, 0, 0},                                                                                   // ack_sequence
-	{uint32(unsafe.Offsetof(TableMixed{}.AckBits)), 0, 0, 0, 0, 0},                                                                                       // ack_bits
-	{uint32(unsafe.Offsetof(TableMixed{}.SessionID)), 0, 0, 0, 0, 0},                                                                                     // session_id
-	{uint32(unsafe.Offsetof(TableMixed{}.ClientID)), 0, 0, 0, 0, 0},                                                                                      // client_id
-	{uint32(unsafe.Offsetof(TableMixed{}.Nonce)), 0, 0, 0, 0, 0},                                                                                         // nonce
-	{uint32(unsafe.Offsetof(TableMixed{}.WorldTime)), 0, 0, 0, 0, 0},                                                                                     // world_time
-	{uint32(unsafe.Offsetof(TableMixed{}.FrameTick)), 0, 0, 0, 0, 0},                                                                                     // frame_tick
-	{uint32(unsafe.Offsetof(TableMixed{}.ServerTime)), 0, 0, 0, 0, 0},                                                                                    // server_time
-	{uint32(unsafe.Offsetof(TableMixed{}.Entities)), uint32(unsafe.Sizeof(TableEntity{})), uint32(unsafe.Offsetof(TableMixed{}.EntitiesCount)), 1, 0, 0}, // entities
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(TableEntity{}.EntityID)), 0, 0, 0, 0, 0}, // entity_id
-	{uint32(unsafe.Offsetof(TableEntity{}.PosX)), 0, 0, 0, 0, 0},     // pos_x
-	{uint32(unsafe.Offsetof(TableEntity{}.PosY)), 0, 0, 0, 0, 0},     // pos_y
-	{uint32(unsafe.Offsetof(TableEntity{}.PosZ)), 0, 0, 0, 0, 0},     // pos_z
-	{uint32(unsafe.Offsetof(TableEntity{}.Yaw)), 0, 0, 0, 0, 0},      // yaw
-	{uint32(unsafe.Offsetof(TableEntity{}.Pitch)), 0, 0, 0, 0, 0},    // pitch
-	{uint32(unsafe.Offsetof(TableEntity{}.VelX)), 0, 0, 0, 0, 0},     // vel_x
-	{uint32(unsafe.Offsetof(TableEntity{}.VelY)), 0, 0, 0, 0, 0},     // vel_y
-	{uint32(unsafe.Offsetof(TableEntity{}.VelZ)), 0, 0, 0, 0, 0},     // vel_z
-	{uint32(unsafe.Offsetof(TableEntity{}.Health)), 0, 0, 0, 0, 0},   // health
-	{uint32(unsafe.Offsetof(TableEntity{}.Weapon)), 0, 0, 0, 0, 0},   // weapon
-	{0, 0, 0, 0, 0, 0}, // Fists
-	{0, 0, 0, 0, 0, 0}, // Pistol
-	{0, 0, 0, 0, 0, 0}, // Shotgun
-	{0, 0, 0, 0, 0, 0}, // Rifle
-	{0, 0, 0, 0, 0, 0}, // Sniper
-	{0, 0, 0, 0, 0, 0}, // Smg
-	{0, 0, 0, 0, 0, 0}, // Rocket
-	{0, 0, 0, 0, 0, 0}, // Grenade
-	{0, 0, 0, 0, 0, 0}, // Plasma
-	{0, 0, 0, 0, 0, 0}, // Railgun
-	{0, 0, 0, 0, 0, 0}, // Flamer
-	{0, 0, 0, 0, 0, 0}, // Mine
-	{0, 0, 0, 0, 0, 0}, // Turret
-	{0, 0, 0, 0, 0, 0}, // Drone
-	{0, 0, 0, 0, 0, 0}, // Repair
-	{uint32(unsafe.Offsetof(TableEntity{}.Damage)), 0, 0, 0, 0, 0},                                                                               // damage
-	{uint32(unsafe.Offsetof(TableEntity{}.Moving)), 0, 0, 0, 0, 0},                                                                               // moving
-	{uint32(unsafe.Offsetof(TableEntity{}.Firing)), 0, 0, 0, 0, 0},                                                                               // firing
-	{uint32(unsafe.Offsetof(TableMixed{}.Stats)), uint32(unsafe.Sizeof(TableStat{})), uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), 1, 0, 0}, // stats
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(TableStat{}.StatID)), 0, 0, 0, 0, 0}, // stat_id
-	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0, 0},  // delta
-	{uint32(unsafe.Offsetof(TableMixed{}.GameEvent)), 0, uint32(unsafe.Offsetof(TableMixed{}.GameEvent)) + uint32(unsafe.Offsetof(TableEvent{}.Type)), 0, 0, 0}, // game_event
-	{uint32(unsafe.Offsetof(TableEvent{}.Hit)), 0, 0, 0, 0, 0},                                   // hit
-	{uint32(unsafe.Offsetof(TableHitEvent{}.TargetID)), 0, 0, 0, 0, 0},                           // target_id
-	{uint32(unsafe.Offsetof(TableHitEvent{}.Damage)), 0, 0, 0, 0, 0},                             // damage
-	{uint32(unsafe.Offsetof(TableHitEvent{}.HitKind)), 0, 0, 0, 0, 0},                            // hit_kind
-	{uint32(unsafe.Offsetof(TableHitEvent{}.Crit)), 0, 0, 0, 0, 0},                               // crit
-	{uint32(unsafe.Offsetof(TableEvent{}.Chat)), 0, 0, 0, 0, 0},                                  // chat
-	{uint32(unsafe.Offsetof(TableChatEvent{}.Channel)), 0, 0, 0, 0, 0},                           // channel
-	{uint32(unsafe.Offsetof(TableChatEvent{}.Speaker)), 0, 0, 0, 0, 0},                           // speaker
-	{uint32(unsafe.Offsetof(TableEvent{}.Pickup)), 0, 0, 0, 0, 0},                                // pickup
-	{uint32(unsafe.Offsetof(TablePickupEvent{}.ItemID)), 0, 0, 0, 0, 0},                          // item_id
-	{uint32(unsafe.Offsetof(TablePickupEvent{}.Amount)), 0, 0, 0, 0, 0},                          // amount
-	{uint32(unsafe.Offsetof(TableMixed{}.Loadout)), uint32(unsafe.Sizeof(uint8(0))), 0, 0, 0, 0}, // loadout
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(TableMixed{}.PlayerNameLength)), 0, uint32(unsafe.Offsetof(TableMixed{}.PlayerName)), 0, 1, 1}, // player_name
-	{uint32(unsafe.Offsetof(TableMixed{}.Payload)), 1, uint32(unsafe.Offsetof(TableMixed{}.PayloadLength)), 1, 3, 3},       // payload
-	{0, 0, 0, 0, 0, 0}, // u8
-	{uint32(unsafe.Offsetof(TableMixed{}.AimX)), 0, 0, 0, 0, 0},      // aim_x
-	{uint32(unsafe.Offsetof(TableMixed{}.AimY)), 0, 0, 0, 0, 0},      // aim_y
-	{uint32(unsafe.Offsetof(TableMixed{}.AimZ)), 0, 0, 0, 0, 0},      // aim_z
-	{uint32(unsafe.Offsetof(TableMixed{}.Recoil)), 0, 0, 0, 0, 0},    // recoil
-	{uint32(unsafe.Offsetof(TableMixed{}.Drift)), 0, 0, 0, 0, 0},     // drift
-	{uint32(unsafe.Offsetof(TableMixed{}.WideKey)), 0, 0, 0, 0, 0},   // wide_key
-	{uint32(unsafe.Offsetof(TableMixed{}.Flux)), 0, 0, 0, 0, 0},      // flux
-	{uint32(unsafe.Offsetof(TableMixed{}.Ping)), 0, 0, 0, 0, 0},      // ping
-	{uint32(unsafe.Offsetof(TableMixed{}.CrcHint)), 0, 0, 0, 0, 0},   // crc_hint
-	{uint32(unsafe.Offsetof(TableMixed{}.HasExtra)), 0, 0, 0, 0, 0},  // has_extra
-	{uint32(unsafe.Offsetof(TableMixed{}.Extra)), 0, 0, 0, 0, 0},     // extra
-	{uint32(unsafe.Offsetof(TableMixed{}.IdleTicks)), 0, 0, 0, 0, 0}, // idle_ticks
+	{0, 0, 0, 0, 0, 0, 0}, // TableMixed
+	{uint32(unsafe.Offsetof(TableMixed{}.ProtocolMagic)), 0, 0, 0, 0, 0, 0},                                                                                 // protocol_magic
+	{uint32(unsafe.Offsetof(TableMixed{}.Sequence)), 0, 0, 0, 0, 0, 0},                                                                                      // sequence
+	{uint32(unsafe.Offsetof(TableMixed{}.AckSequence)), 0, 0, 0, 0, 0, 0},                                                                                   // ack_sequence
+	{uint32(unsafe.Offsetof(TableMixed{}.AckBits)), 0, 0, 0, 0, 0, 0},                                                                                       // ack_bits
+	{uint32(unsafe.Offsetof(TableMixed{}.SessionID)), 0, 0, 0, 0, 0, 0},                                                                                     // session_id
+	{uint32(unsafe.Offsetof(TableMixed{}.ClientID)), 0, 0, 0, 0, 0, 0},                                                                                      // client_id
+	{uint32(unsafe.Offsetof(TableMixed{}.Nonce)), 0, 0, 0, 0, 0, 0},                                                                                         // nonce
+	{uint32(unsafe.Offsetof(TableMixed{}.WorldTime)), 0, 0, 0, 0, 0, 0},                                                                                     // world_time
+	{uint32(unsafe.Offsetof(TableMixed{}.FrameTick)), 0, 0, 0, 0, 0, 0},                                                                                     // frame_tick
+	{uint32(unsafe.Offsetof(TableMixed{}.ServerTime)), 0, 0, 0, 0, 0, 0},                                                                                    // server_time
+	{uint32(unsafe.Offsetof(TableMixed{}.Entities)), uint32(unsafe.Sizeof(TableEntity{})), uint32(unsafe.Offsetof(TableMixed{}.EntitiesCount)), 1, 1, 0, 0}, // entities
+	{0, 0, 0, 0, 0, 0, 0}, // element
+	{uint32(unsafe.Offsetof(TableEntity{}.EntityID)), 0, 0, 0, 0, 0, 0}, // entity_id
+	{uint32(unsafe.Offsetof(TableEntity{}.PosX)), 0, 0, 0, 0, 0, 0},     // pos_x
+	{uint32(unsafe.Offsetof(TableEntity{}.PosY)), 0, 0, 0, 0, 0, 0},     // pos_y
+	{uint32(unsafe.Offsetof(TableEntity{}.PosZ)), 0, 0, 0, 0, 0, 0},     // pos_z
+	{uint32(unsafe.Offsetof(TableEntity{}.Yaw)), 0, 0, 0, 0, 0, 0},      // yaw
+	{uint32(unsafe.Offsetof(TableEntity{}.Pitch)), 0, 0, 0, 0, 0, 0},    // pitch
+	{uint32(unsafe.Offsetof(TableEntity{}.VelX)), 0, 0, 0, 0, 0, 0},     // vel_x
+	{uint32(unsafe.Offsetof(TableEntity{}.VelY)), 0, 0, 0, 0, 0, 0},     // vel_y
+	{uint32(unsafe.Offsetof(TableEntity{}.VelZ)), 0, 0, 0, 0, 0, 0},     // vel_z
+	{uint32(unsafe.Offsetof(TableEntity{}.Health)), 0, 0, 0, 0, 0, 0},   // health
+	{uint32(unsafe.Offsetof(TableEntity{}.Weapon)), 0, 0, 0, 0, 0, 0},   // weapon
+	{0, 0, 0, 0, 0, 0, 0}, // Fists
+	{0, 0, 0, 0, 0, 0, 0}, // Pistol
+	{0, 0, 0, 0, 0, 0, 0}, // Shotgun
+	{0, 0, 0, 0, 0, 0, 0}, // Rifle
+	{0, 0, 0, 0, 0, 0, 0}, // Sniper
+	{0, 0, 0, 0, 0, 0, 0}, // Smg
+	{0, 0, 0, 0, 0, 0, 0}, // Rocket
+	{0, 0, 0, 0, 0, 0, 0}, // Grenade
+	{0, 0, 0, 0, 0, 0, 0}, // Plasma
+	{0, 0, 0, 0, 0, 0, 0}, // Railgun
+	{0, 0, 0, 0, 0, 0, 0}, // Flamer
+	{0, 0, 0, 0, 0, 0, 0}, // Mine
+	{0, 0, 0, 0, 0, 0, 0}, // Turret
+	{0, 0, 0, 0, 0, 0, 0}, // Drone
+	{0, 0, 0, 0, 0, 0, 0}, // Repair
+	{uint32(unsafe.Offsetof(TableEntity{}.Damage)), 0, 0, 0, 0, 0, 0},                                                                               // damage
+	{uint32(unsafe.Offsetof(TableEntity{}.Moving)), 0, 0, 0, 0, 0, 0},                                                                               // moving
+	{uint32(unsafe.Offsetof(TableEntity{}.Firing)), 0, 0, 0, 0, 0, 0},                                                                               // firing
+	{uint32(unsafe.Offsetof(TableMixed{}.Stats)), uint32(unsafe.Sizeof(TableStat{})), uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), 0, 1, 0, 0}, // stats
+	{0, 0, 0, 0, 0, 0, 0}, // element
+	{uint32(unsafe.Offsetof(TableStat{}.StatID)), 0, 0, 0, 0, 0, 0}, // stat_id
+	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0, 0, 0},  // delta
+	{uint32(unsafe.Offsetof(TableMixed{}.GameEvent)), 0, uint32(unsafe.Offsetof(TableMixed{}.GameEvent)) + uint32(unsafe.Offsetof(TableEvent{}.Type)), 0, 0, 0, 0}, // game_event
+	{uint32(unsafe.Offsetof(TableEvent{}.Hit)), 0, 0, 0, 0, 0, 0},                                   // hit
+	{uint32(unsafe.Offsetof(TableHitEvent{}.TargetID)), 0, 0, 0, 0, 0, 0},                           // target_id
+	{uint32(unsafe.Offsetof(TableHitEvent{}.Damage)), 0, 0, 0, 0, 0, 0},                             // damage
+	{uint32(unsafe.Offsetof(TableHitEvent{}.HitKind)), 0, 0, 0, 0, 0, 0},                            // hit_kind
+	{uint32(unsafe.Offsetof(TableHitEvent{}.Crit)), 0, 0, 0, 0, 0, 0},                               // crit
+	{uint32(unsafe.Offsetof(TableEvent{}.Chat)), 0, 0, 0, 0, 0, 0},                                  // chat
+	{uint32(unsafe.Offsetof(TableChatEvent{}.Channel)), 0, 0, 0, 0, 0, 0},                           // channel
+	{uint32(unsafe.Offsetof(TableChatEvent{}.Speaker)), 0, 0, 0, 0, 0, 0},                           // speaker
+	{uint32(unsafe.Offsetof(TableEvent{}.Pickup)), 0, 0, 0, 0, 0, 0},                                // pickup
+	{uint32(unsafe.Offsetof(TablePickupEvent{}.ItemID)), 0, 0, 0, 0, 0, 0},                          // item_id
+	{uint32(unsafe.Offsetof(TablePickupEvent{}.Amount)), 0, 0, 0, 0, 0, 0},                          // amount
+	{uint32(unsafe.Offsetof(TableMixed{}.Loadout)), uint32(unsafe.Sizeof(uint8(0))), 0, 0, 0, 0, 0}, // loadout
+	{0, 0, 0, 0, 0, 0, 0}, // element
+	{uint32(unsafe.Offsetof(TableMixed{}.PlayerNameLength)), 0, uint32(unsafe.Offsetof(TableMixed{}.PlayerName)), 0, 0, 1, 1}, // player_name
+	{uint32(unsafe.Offsetof(TableMixed{}.Payload)), 1, uint32(unsafe.Offsetof(TableMixed{}.PayloadLength)), 0, 1, 3, 3},       // payload
+	{0, 0, 0, 0, 0, 0, 0}, // u8
+	{uint32(unsafe.Offsetof(TableMixed{}.AimX)), 0, 0, 0, 0, 0, 0},      // aim_x
+	{uint32(unsafe.Offsetof(TableMixed{}.AimY)), 0, 0, 0, 0, 0, 0},      // aim_y
+	{uint32(unsafe.Offsetof(TableMixed{}.AimZ)), 0, 0, 0, 0, 0, 0},      // aim_z
+	{uint32(unsafe.Offsetof(TableMixed{}.Recoil)), 0, 0, 0, 0, 0, 0},    // recoil
+	{uint32(unsafe.Offsetof(TableMixed{}.Drift)), 0, 0, 0, 0, 0, 0},     // drift
+	{uint32(unsafe.Offsetof(TableMixed{}.WideKey)), 0, 0, 0, 0, 0, 0},   // wide_key
+	{uint32(unsafe.Offsetof(TableMixed{}.Flux)), 0, 0, 0, 0, 0, 0},      // flux
+	{uint32(unsafe.Offsetof(TableMixed{}.Ping)), 0, 0, 0, 0, 0, 0},      // ping
+	{uint32(unsafe.Offsetof(TableMixed{}.CrcHint)), 0, 0, 0, 0, 0, 0},   // crc_hint
+	{uint32(unsafe.Offsetof(TableMixed{}.HasExtra)), 0, 0, 0, 0, 0, 0},  // has_extra
+	{uint32(unsafe.Offsetof(TableMixed{}.Extra)), 0, 0, 0, 0, 0, 0},     // extra
+	{uint32(unsafe.Offsetof(TableMixed{}.IdleTicks)), 0, 0, 0, 0, 0, 0}, // idle_ticks
 }
 
 var TableMixedFixedPlan = tableFixedBuildPlan(TableMixedFixedLeaves, 311)
@@ -9467,6 +9458,8 @@ var TableMixedFixedPlanMax = func() int32 {
 	}
 	return m
 }()
+
+var TableMixedFixedReadPlan = make([]TableFixedEntry, int(TableMixedFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -9610,7 +9603,7 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := range n {
+	for k := range values[:n] {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -9619,8 +9612,8 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
-		if why := TableMixedFixedFiniteBody(&values[k]); why != "" {
-			for j := range k + 1 {
+		if why := TableMixedFixedFiniteBody(&values[k : k+1][0]); why != "" {
+			for j := range values[:k+1] {
 				TableMixedReset(&values[j])
 			}
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
@@ -9629,8 +9622,8 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
-		if !TableMixedFixedBounds(&values[k]) {
-			for j := range k + 1 {
+		if !TableMixedFixedBounds(&values[k : k+1][0]) {
+			for j := range values[:k+1] {
 				TableMixedReset(&values[j])
 			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())

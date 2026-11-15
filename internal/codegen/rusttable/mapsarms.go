@@ -707,7 +707,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%s    None => { report.damaged = true; }\n", i2)
 	fmt.Fprintf(b, "%s    Some(count) => {\n", i2)
 	i3 := i2 + "        "
-	fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { %sreport.damaged = true; }\n", i3, ek, ek, requiredCollectionSkip(f))
+	fmt.Fprintf(b, "%sif !table_keyed_element_kind_allowed(ek) || (ek != %d && !table_kind_widens(ek, %d)) { %sreport.damaged = true; }\n", i3, ek, ek, requiredCollectionSkip(f))
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
 	fmt.Fprintf(b, "%sif ek != %d { report.widened += 1; }\n", i4, ek)
@@ -749,7 +749,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	case vPointer:
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
 		fmt.Fprintf(b, "%sif let Some(index) = leb_read(wire, &mut o) {\n", i5)
-		fmt.Fprintf(b, "%s    if o <= eend { let e; ", i5)
+		fmt.Fprintf(b, "%s    if o == eend { let e; ", i5)
 		emitPointerResolve(b, f, "e", "")
 		fmt.Fprintf(b, "%s[slot] = e; } else { report.damaged = true; }\n", field)
 		fmt.Fprintf(b, "%s} else { report.damaged = true; }\n", i5)
@@ -759,6 +759,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%s{ let off = &mut o;\n", i5)
 		g.withArmIndex("slot as u32", func() { g.emitUnionDecode(b, f, "e", "eend", ordinal, i5+"    ", true) })
 		fmt.Fprintf(b, "%s}\n", i5)
+		fmt.Fprintf(b, "%sif o != eend { report.damaged = true; }\n", i5)
 		fmt.Fprintf(b, "%s%s[slot] = e;\n", i5, field)
 	case vEnum:
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
@@ -766,11 +767,13 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%s{ let off = &mut o; 'enum_decode: {\n", i5)
 		emitEnumDecode(b, f, "e", "eend", "break 'enum_decode;", i5+"    ")
 		fmt.Fprintf(b, "%s} }\n", i5)
+		fmt.Fprintf(b, "%sif o != eend { report.damaged = true; }\n", i5)
 		fmt.Fprintf(b, "%s%s[slot] = e;\n", i5, field)
 	default:
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
 		fmt.Fprintf(b, "%sif let Some(raw) = %s(wire, &mut o, eend, ek) {\n", i5, scalarReadFn(f))
 		emitScalarConvert(b, f, g.floatOwner(f), "let e", "ek", i5+"    ")
+		fmt.Fprintf(b, "%s    if o != eend { report.damaged = true; }\n", i5)
 		fmt.Fprintf(b, "%s    %s[slot] = e;\n", i5, field)
 		fmt.Fprintf(b, "%s} else { report.damaged = true; }\n", i5)
 	}
@@ -808,7 +811,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%s    None => { report.damaged = true; }\n", i2)
 	fmt.Fprintf(b, "%s    Some(count) => {\n", i2)
 	i3 := i2 + "        "
-	fmt.Fprintf(b, "%sif ek != %d { %sreport.damaged = true; }\n", i3, ir.TableKindTable, requiredCollectionSkip(f))
+	fmt.Fprintf(b, "%sif !table_array_element_kind_allowed(ek) || ek != %d { %sreport.damaged = true; }\n", i3, ir.TableKindTable, requiredCollectionSkip(f))
 	fmt.Fprintf(b, "%selse if count > 0x7fffffff { return nodes.refuse_count(report); }\n", i3)
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
@@ -1070,7 +1073,7 @@ func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, a
 	}
 	fmt.Fprintf(b, "%s    Some(count) => {\n", in)
 	i2 := in + "        "
-	fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { report.damaged = true; %s = false; }\n", i2, ek, ek, okVar)
+	fmt.Fprintf(b, "%sif !table_array_element_kind_allowed(ek) || (ek != %d && !table_kind_widens(ek, %d)) { report.damaged = true; %s = false; }\n", i2, ek, ek, okVar)
 	fmt.Fprintf(b, "%selse {\n", i2)
 	i3 := i2 + "    "
 	fmt.Fprintf(b, "%sif ek != %d { report.widened += 1; }\n", i3, ek)
@@ -1191,7 +1194,7 @@ func (g *gen) emitKeyedTextRead(b *strings.Builder, f *ir.Field, field, ind stri
 	fmt.Fprintf(b, "%slet mut seen_unknown: Vec<String> = Vec::new();\n", in)
 	fmt.Fprintf(b, "%sloop {\n", in)
 	fmt.Fprintf(b, "%s    if jr.peek() == b'}' { jr.p += 1; break; }\n", in)
-	fmt.Fprintf(b, "%s    let Some(ks) = jr.read_string() else { jr.damaged = true; break; };\n", in)
+	fmt.Fprintf(b, "%s    let Some(ks) = jr.read_name() else { jr.damaged = true; break; };\n", in)
 	fmt.Fprintf(b, "%s    jr.space();\n", in)
 	fmt.Fprintf(b, "%s    if jr.peek() != b':' { jr.damaged = true; break; }\n", in)
 	fmt.Fprintf(b, "%s    jr.p += 1;\n", in)
@@ -1271,7 +1274,7 @@ func (g *gen) emitUnionText(b *strings.Builder, names []string) {
 		fmt.Fprintf(b, "    jr.p += 1;\n")
 		fmt.Fprintf(b, "    *v = %s::None;\n", un.Name)
 		fmt.Fprintf(b, "    if jr.peek() == b'}' { jr.p += 1; return; }\n")
-		fmt.Fprintf(b, "    let Some(key) = jr.read_string() else { jr.damaged = true; return; };\n")
+		fmt.Fprintf(b, "    let Some(key) = jr.read_name() else { jr.damaged = true; return; };\n")
 		fmt.Fprintf(b, "    if jr.peek() != b':' { jr.damaged = true; return; }\n")
 		fmt.Fprintf(b, "    jr.p += 1;\n")
 		fmt.Fprintf(b, "    match key.as_str() {\n")
@@ -1381,10 +1384,18 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 		fmt.Fprintf(b, "%s    }\n", in)
 		fmt.Fprintf(b, "%s    %s.%s = ks;\n", in, ent, keyName)
 	} else {
-		fmt.Fprintf(b, "%s    match ks.parse::<%s>() {\n", in, scalarRust(key))
-		fmt.Fprintf(b, "%s        Ok(n) => %s.%s = n,\n", in, ent, keyName)
-		fmt.Fprintf(b, "%s        Err(_) => { jr.damaged = true; jr.skip_value(); let c = jr.peek(); if c == b',' { jr.p += 1; continue; } else if c == b'}' { jr.p += 1; break; } jr.damaged = true; break; }\n", in)
-		fmt.Fprintf(b, "%s    }\n", in)
+		// an integer key is read by the integer rule and nothing else
+		// (docs/SPEC-TABLES.md §16.2, **Numbers**): the same digits a wide
+		// integer field writes, and its range tested on the exact value
+		lo, hi := textIntRange(key)
+		fmt.Fprintf(b, "%s    let key_ok = match json_integer_literal(ks.as_bytes(), %v) {\n", in, key.Type.Signed)
+		fmt.Fprintf(b, "%s        Some(raw) => {\n", in)
+		fmt.Fprintf(b, "%s            let x = raw as i128;\n", in)
+		fmt.Fprintf(b, "%s            if x < %si128 || x > %si128 { jr.damaged = true; false } else { %s.%s = x as %s; true }\n", in, lo, hi, ent, keyName, scalarRust(key))
+		fmt.Fprintf(b, "%s        }\n", in)
+		fmt.Fprintf(b, "%s        None => { jr.damaged = true; false }\n", in)
+		fmt.Fprintf(b, "%s    };\n", in)
+		fmt.Fprintf(b, "%s    if !key_ok { jr.skip_value(); let c = jr.peek(); if c == b',' { jr.p += 1; continue; } else if c == b'}' { jr.p += 1; break; } jr.damaged = true; break; }\n", in)
 	}
 	g.emitTextReadValue(b, val, ent+"."+valName, in+"    ")
 	fmt.Fprintf(b, "%s    if jr.damaged || jr.missing_required != 0 { break; }\n", in)

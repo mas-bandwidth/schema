@@ -638,7 +638,7 @@ func (b *fixedRootBuild) addScalarSlot(f *ir.Field, expr string) {
 			})
 		} else {
 			b.slots = append(b.slots, fixedSlot{
-				setRaw: fmt.Sprintf("(t, v) => %s = (%s)v", expr, typ),
+				setRaw: fmt.Sprintf("(t, v) => %s = unchecked((%s)v)", expr, typ),
 				reset:  reset,
 			})
 		}
@@ -806,7 +806,14 @@ func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, 
 			arg:   arg,
 		})
 		*wireOff += fixedPresentBytes
+		payload := len(b.plan)
 		b.buildPayload(owner, f, expr, baseSlot, wireOff, id, size-fixedPresentBytes, guard, arg)
+		// AN ABSENT OPTIONAL'S PAYLOAD IS DEAD, never a value: the payload's
+		// entries answer to the present byte, so a clear flag skips every one
+		// of them and the destination keeps its declared defaults. The CHECK
+		// pass holds the whole payload to zero (docs/rulings.json
+		// fixed-dead-bytes-are-zero).
+		b.stampGuard(payload, fieldWireBase, 1, 1)
 		return
 	}
 
@@ -1297,7 +1304,9 @@ func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, e
 			arg:   arg,
 		})
 		*wireOff += fixedPresentBytes
+		payload := len(b.plan)
 		b.buildPayloadSlotsAndPlan(owner, f, expr, baseSlot, wireOff, size-fixedPresentBytes, guard, arg)
+		b.stampGuard(payload, fieldWireBase, 1, 1)
 		return
 	}
 
@@ -1470,6 +1479,10 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range bodies {
 		g.emitFixedClampBodyFn(st)
 	}
+	// THE WRITE CHECK, the same walk with the text content rule (§5.1).
+	for _, st := range bodies {
+		g.emitFixedWriteCheckBodyFn(st)
+	}
 	// THE FINITE PASS, in the same order (docs/SPEC-TABLES.md §3.3): the read
 	// runs it before the bounds pass and the writer before its first byte.
 	for _, st := range bodies {
@@ -1477,6 +1490,7 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	}
 	for _, st := range roots {
 		g.emitFixedClamp(st)
+		g.emitFixedWriteAdmits(st)
 		g.emitFixedRoot(st)
 	}
 }
@@ -1700,37 +1714,65 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 		case 1:
 			g.pf("%s%s[0] = unchecked((byte)%s);\n", ind, slice, expr)
 		case 2:
-			g.pf("%sBinaryPrimitives.WriteInt16LittleEndian(%s, (short)%s);\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%sBinaryPrimitives.WriteInt16LittleEndian(%s, (short)%s);\n", ind, slice, expr)
+			} else {
+				g.pf("%sBinaryPrimitives.WriteInt16LittleEndian(%s, unchecked((short)%s));\n", ind, slice, expr)
+			}
 		case 4:
-			g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s, (int)%s);\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s, (int)%s);\n", ind, slice, expr)
+			} else {
+				g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s, unchecked((int)%s));\n", ind, slice, expr)
+			}
 		case 8:
-			g.pf("%sBinaryPrimitives.WriteInt64LittleEndian(%s, (long)%s);\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%sBinaryPrimitives.WriteInt64LittleEndian(%s, (long)%s);\n", ind, slice, expr)
+			} else {
+				g.pf("%sBinaryPrimitives.WriteInt64LittleEndian(%s, unchecked((long)%s));\n", ind, slice, expr)
+			}
 		case 16:
 			if f.Type.Signed {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)(unchecked((UInt128)(Int128)%s)));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), (ulong)(unchecked((UInt128)(Int128)%s) >> 64));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(UInt128)(Int128)%s));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((UInt128)(Int128)%s >> 64)));\n", ind, slice, expr)
 			} else {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)(unchecked((UInt128)%s)));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), (ulong)(unchecked((UInt128)%s) >> 64));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(UInt128)%s));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((UInt128)%s >> 64)));\n", ind, slice, expr)
 			}
 		}
 	default:
 		switch w {
 		case 1:
-			g.pf("%s%s[0] = (byte)%s;\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%s%s[0] = unchecked((byte)%s);\n", ind, slice, expr)
+			} else {
+				g.pf("%s%s[0] = (byte)%s;\n", ind, slice, expr)
+			}
 		case 2:
-			g.pf("%sBinaryPrimitives.WriteUInt16LittleEndian(%s, (ushort)%s);\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%sBinaryPrimitives.WriteUInt16LittleEndian(%s, unchecked((ushort)%s));\n", ind, slice, expr)
+			} else {
+				g.pf("%sBinaryPrimitives.WriteUInt16LittleEndian(%s, (ushort)%s);\n", ind, slice, expr)
+			}
 		case 4:
-			g.pf("%sBinaryPrimitives.WriteUInt32LittleEndian(%s, (uint)%s);\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%sBinaryPrimitives.WriteUInt32LittleEndian(%s, unchecked((uint)%s));\n", ind, slice, expr)
+			} else {
+				g.pf("%sBinaryPrimitives.WriteUInt32LittleEndian(%s, (uint)%s);\n", ind, slice, expr)
+			}
 		case 8:
-			g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)%s);\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)%s));\n", ind, slice, expr)
+			} else {
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)%s);\n", ind, slice, expr)
+			}
 		case 16:
 			if f.Type.Signed {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)(unchecked((UInt128)(Int128)%s)));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), (ulong)(unchecked((UInt128)(Int128)%s) >> 64));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(UInt128)(Int128)%s));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((UInt128)(Int128)%s >> 64)));\n", ind, slice, expr)
 			} else {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)(unchecked((UInt128)%s)));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), (ulong)(unchecked((UInt128)%s) >> 64));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(UInt128)%s));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((UInt128)%s >> 64)));\n", ind, slice, expr)
 			}
 		}
 	}
@@ -1936,7 +1978,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("// THE WRITER'S OWN BOUNDS per lineage entry, as one delegate array the\n")
 		g.pf("// load indexes by pick: null for the identity entry and for entries that\n")
 		g.pf("// bound nothing.\n")
-		g.pf("public static readonly System.Action<%s, TableReport>[] %sFixedClampKnown = new System.Action<%s, TableReport>[] {\n", name, name, name)
+		g.pf("public static readonly System.Func<%s, TableReport, bool>[] %sFixedClampKnown = new System.Func<%s, TableReport, bool>[] {\n", name, name, name)
 		for i, rows := range entryBounds {
 			if len(rows) == 0 {
 				g.pf("    null,\n")
@@ -1951,12 +1993,21 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    return TableFixedWire.HeaderBytes + 4 + %sFixedLayoutBytes + count * %sFixedRecordBytes + %d;\n}\n\n", name, name, integrityTrailerBytes(st))
 
 	g.pf("public static long %sFixedSave(ReadOnlySpan<%s> values, Span<byte> buffer)\n{\n", name, name)
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+	// the writer refuses an empty batch, a debug-only assert as every write
+	// contract on this leg is (docs/SPEC.md §5.1).
+	g.pf("    System.Diagnostics.Debug.Assert(values.Length > 0, \"a fixed-form file holds at least one record\");\n")
 	g.pf("    long need = %sFixedMeasure(values.Length);\n", name)
 	g.pf("    if (values.Length < 0 || buffer.Length < need) { return -1; }\n")
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// a NaN or an infinity is refused by every writer (docs/SPEC-TABLES.md
 		// §3.3), before the first output byte
 		g.pf("    for (int k = 0; k < values.Length; ++k) { if (%sFixedFiniteBody(values[k]) != null) { return -1; } }\n", name)
+	}
+	if g.fixedWriteAdmits(st) != "" {
+		g.pf("    for (int k = 0; k < values.Length; ++k)\n    {\n")
+		g.emitFixedWriteAssert(st, "values[k]", "        ")
+		g.pf("    }\n")
 	}
 	g.pf("    buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();\n")
 	g.pf("    buffer[0] = TableFixedWire.Form;\n")
@@ -2057,7 +2108,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("    // §4.6, bill §12.5): held after the plan run, before this reader's own\n")
 		g.pf("    // pass, so a value forged past what the writer could have written lands\n")
 		g.pf("    // the writer's bound and counts, never this reader's wider own.\n")
-		g.pf("    System.Action<%s, TableReport> writerClamp = null;\n", name)
+		g.pf("    System.Func<%s, TableReport, bool> writerClamp = null;\n", name)
 	}
 	// THE IDENTITY LANE IS AN INDEX COMPARISON (§5.3): the reader's own entry is
 	// the LAST lineage entry (§5.2 appends the current layout last), so the lane
@@ -2094,13 +2145,32 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        writerClamp = %sFixedClampKnown[pick];\n", name)
 	}
 	g.pf("    }\n")
-	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0)\n    {\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6,
+	// docs/FIXED-FORM-ALGORITHM.md §5.3 step 9): a header and a layout followed
+	// by no record is truncated, whatever capacity the caller offered.
+	g.pf("    if (record_bytes <= 8 || rest == 0 || rest %% record_bytes != 0)\n    {\n")
 	g.pf("        if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    long n = rest / record_bytes;\n")
 	g.pf("    if (n > values.Length)\n    {\n")
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"batch_too_large\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
+	// THE DEAD-BYTE CHECK PASS (docs/rulings.json fixed-dead-bytes-are-zero;
+	// docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11). EVERY record's
+	// dead bytes are held to zero BEFORE the first record lands, so a refusal
+	// leaves the caller's destination as it was. The walk follows the WRITER's
+	// layout (the identity entry's own bytes, or the selected lineage entry's)
+	// and reads this reader's rows only for counted-ness and the bytes flavour.
+	g.pf("    {\n")
+	g.pf("        TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);\n")
+	g.pf("        TableFixedLayoutView dead_reader = TableFixedWire.View(%sFixedLayout);\n", name)
+	g.pf("        for (int k = 0; k < n; ++k)\n        {\n")
+	g.pf("            ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));\n")
+	g.pf("            string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, %sFixedDst, rec.Slice(8, (int)(record_bytes - 8)));\n", name)
+	g.pf("            if (dead_why != null)\n            {\n")
+	g.pf("                if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("                return -1;\n            }\n")
+	g.pf("        }\n    }\n")
 	// THE WIDEN SCRATCH IS HOISTED OUT OF THE RECORD LOOP. A widened run needs
 	// a buffer wider than the bytes it reads, and taking that buffer inside the
 	// loop charged one allocation per widened run PER RECORD. One buffer serves
@@ -2123,6 +2193,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// in the used units comes back as the name text_ill_formed, and the load
 	// refuses BY NAME — not malformed, and nothing decoded past it.
 	g.pf("        int forgedOrdinal = 0;\n")
+	g.pf("        bool refused = false;\n")
 	g.pf("        // Specialized per-table twin of TableFixedWire.Run(entries, %sFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.\n", name)
 	g.pf("        string run_why = %sFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);\n", name)
 	g.pf("        if (run_why != null)\n        {\n")
@@ -2145,18 +2216,21 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// STORAGE, so ONE pass covers BOTH plans (§4.6). A type that bounds nothing
 	// emits no pass and this line is not written at all.
 	if hasWriterBounds {
-		g.pf("        writerClamp?.Invoke(values[k], report);\n")
+		g.pf("        if (writerClamp != null && !writerClamp.Invoke(values[k], report)) { refused = true; }\n")
 	}
 	if ir.TableFixedClampNeeded(st) {
-		g.pf("        %sFixedClamp(values[k], report);\n", name)
+		g.pf("        if (!%sFixedClamp(values[k], report)) { refused = true; }\n", name)
 	}
 	// THE FORGED ORDINAL'S CLAMP IS THE BOUNDS STEP'S TOO (§5.4): the ordinal
 	// op lands `None` and moves nothing, recording the forge in the per-record
 	// lane; the count reaches the report here, beside the storage pass's own.
-	g.pf("        if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = \"out_of_range\"; }\n")
-	g.pf("        if (report != null && report.Refused)\n        {\n")
+	g.pf("        if (forgedOrdinal != 0)\n        {\n")
+	g.pf("            if (report != null && !report.Refused) { report.Refused = true; report.Reason = \"out_of_range\"; }\n")
+	g.pf("            refused = true;\n")
+	g.pf("        }\n")
+	g.pf("        if (refused)\n        {\n")
 	g.pf("            for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n")
-	g.pf("            report.Verdict = TableWire.Verdict.Refused;\n")
+	g.pf("            if (report != null) { report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
 	g.pf("        at = at.Slice((int)record_bytes);\n    }\n")
 	// THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, on a read that
@@ -2312,11 +2386,11 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                        if (p.Sign == 1)\n                        {\n")
 	g.pf("                            int bits = sw * 8;\n")
 	g.pf("                            ulong top = 1UL << (bits - 1);\n")
-	g.pf("                            if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }\n                        }\n")
+	g.pf("                            if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }\n                        }\n")
 	g.pf("                        Span<byte> cell = wide.Slice(e * dw, dw);\n")
-	g.pf("                        if (dw == 1) cell[0] = (byte)raw;\n")
-	g.pf("                        else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);\n")
-	g.pf("                        else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);\n")
+	g.pf("                        if (dw == 1) cell[0] = unchecked((byte)raw);\n")
+	g.pf("                        else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));\n")
+	g.pf("                        else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));\n")
 	g.pf("                        else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);\n                    }\n")
 	g.pf("                    %sFixedSetBytes(dst, p.Dst, wide, need);\n", name)
 	g.pf("                    if (report != null) { report.Widened += runs; }\n")
@@ -2361,9 +2435,9 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                        int bits = (int)p.Size * 8;\n")
 	g.pf("                        ulong top = 1UL << (bits - 1);\n")
 	g.pf("                        if ((raw & top) != 0)\n                        {\n")
-	g.pf("                            raw |= ~((top << 1) - 1UL);\n                        }\n                    }\n")
+	g.pf("                            raw |= unchecked(~((top << 1) - 1UL));\n                        }\n                    }\n")
 	g.pf("                    if (p.DstSize == 16)\n                    {\n")
-	g.pf("                        UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;\n")
+	g.pf("                        UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;\n")
 	g.pf("                        %sFixedSetWide(dst, p.Dst, w);\n", name)
 	g.pf("                    }\n")
 	g.pf("                    else\n                    {\n")
@@ -2377,6 +2451,9 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    if (report != null) { report.Widened++; }\n")
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Const:\n                {\n")
+	// THE UNION'S None CONST HOLDS THE WRITER'S ARM SET (§4.6), the twin of
+	// TableFixedWire.Run's Const case.
+	g.pf("                    if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return \"out_of_range\"; }\n")
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, p.Aux, report);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            default: break;\n        }\n    }\n    return null;\n}\n\n")

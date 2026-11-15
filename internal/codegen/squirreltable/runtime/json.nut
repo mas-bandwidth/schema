@@ -20,7 +20,6 @@ local MIN = 0x8000000000000000;
 local MAXU = 0xffffffffffffffff;
 local MAX_DEPTH = 128;  // §16.2's depth cap, carried by the writer too (§16.7)
 local MAX_KEY = 255;
-local MAX_NUMBER = 511;
 
 local tableDesc = function(T, name) { return T.Descriptors[name]; };
 local unionDesc = function(T, name) { return T[name + "Descriptor"]; };
@@ -568,6 +567,17 @@ local timestampParse = function(s) {
 
 local isKeyed = function(d) { return d.shape == "arr" && d.kind == 16; };
 
+// a wide integer reads as a string of digits or a number (docs/SPEC-TABLES.md
+// §16.2): int64, uint64, the 128-bit integers, and fixed-point storage wider
+// than 32 bits. The writer still spells one as a number.
+local jsonWideInteger = function(kind) {
+  return kind == 5 || kind == 9 || kind == 18 || kind == 19 || kind == 23 || kind == 24 || kind == 28 || kind == 29;
+};
+local shapeMatches = function(want, got) {
+  if (want == got) return true;
+  return want == 'N' && (got == 's' || got == 'n');
+};
+
 local shapeOf = function(T, d) {
   switch (d.shape) {
     case "str": case "bytes": case "sblob": case "bblob": case "enum": return 's';
@@ -578,6 +588,7 @@ local shapeOf = function(T, d) {
     case "bool": return 'b';
   }
   if (d.kind == 36) return 's';
+  if (jsonWideInteger(d.kind)) return 'N';
   return 'n';
 };
 local elemShapeOf = function(T, e) {
@@ -589,6 +600,7 @@ local elemShapeOf = function(T, e) {
     case "bool": return 'b';
   }
   if (e.kind == 36) return 's';
+  if (jsonWideInteger(e.kind)) return 'N';
   return 'n';
 };
 local takesNull = function(d) {
@@ -774,7 +786,8 @@ local jsonString = function(s) {
   while (i < n) {
     local c = s[i] & 0xff;
     local esc = null;
-    if (c == '"') esc = "\\\"";
+    if (c == 0) return null; // zero is not text for this writer (§16.3, W8)
+    else if (c == '"') esc = "\\\"";
     else if (c == '\\') esc = "\\\\";
     else if (c == 8) esc = "\\b";
     else if (c == 12) esc = "\\f";
@@ -947,6 +960,36 @@ countNode = function(T, c, node, g) {
   return true;
 };
 
+// THE WRITE CONTRACT (docs/SPEC.md §5.1, rows 1, 2 and 10): Squirrel refuses
+// in every build, so the text writer refuses a value its declaration does not
+// admit before that value's text is written, as Save does: an integer or a
+// fixed-point raw value off its declared range, a bits(N) value past N bits,
+// and a compressed float off its range (compared at the width it is written).
+local intAdmitted = function(d, val) {
+  if (wideKind(d.kind)) {
+    if (d.lo == null) return true;
+    local v = wideOf(d, val);
+    local lo = typeof d.lo == "array" ? svFromPair(d.lo, d.signed) : svFromInt(d.lo, d.signed);
+    local hi = typeof d.hi == "array" ? svFromPair(d.hi, d.signed) : svFromInt(d.hi, d.signed);
+    return svCmp(v, lo) >= 0 && svCmp(v, hi) <= 0;
+  }
+  if (d.lo != null) {
+    if (d.signed) {
+      if (val < d.lo || val > d.hi) return false;
+    } else if (ult(val, d.lo) || ult(d.hi, val)) {
+      return false;
+    }
+  }
+  if (d.bits > 0 && d.bits < 64 && ult((1 << d.bits) - 1, val)) return false;
+  return true;
+};
+local floatAdmitted = function(d, val) {
+  if (!has(d, "fmin")) return true;
+  local x = val.tofloat();
+  if (d.f32) x = widenF32(narrowF32(x, 0)[0]);
+  return x >= d.fmin && x <= d.fmax;
+};
+
 local writeValue, writeFields, writePointer, writeField, writeScalar, writeMap;
 
 // one instance's object, every field in declaration order, defaults included,
@@ -1011,6 +1054,16 @@ writeMap = function(T, d, val, depth, g, out) {
   local kd = d.mapkey, vd = d.mapvalue;
   local n = val == null ? 0 : val.len();
   if (n == 0) { out.append("{}"); return true; }
+  // every key is admitted before any text is written: a string key within
+  // its string(N), an integer key within its declaration (§5.1 rows 1, 4)
+  foreach (ent in val) {
+    local k = ent[kd.member];
+    if (kd.shape == "str") {
+      if (typeof k != "string" || k.len() > kd.bound) return false;
+    } else if (!intAdmitted(kd, k)) {
+      return false;
+    }
+  }
   local order = [];
   for (local i = 0; i < n; i++) order.append(i);
   local src = val;
@@ -1037,7 +1090,14 @@ writeMap = function(T, d, val, depth, g, out) {
 // `?string` elements as null. The storage is the generated element record;
 // textlist 1 is the plain spelling and 2 the optional one.
 local writeTextArray = function(T, d, val, depth, out) {
+  // Counted arrays hold their declared minimum through maximum; a fixed
+  // bound applies to the other bounded arrays (docs/SPEC.md §5.1 row 3).
+  // Text-list elements also refuse a text past their string(N) (row 4).
   local n = writeCount(d, val);
+  if (d.counted && n < d.min) return false;
+  if (!d.list && val != null && val.len() > d.bound) return false;
+  local bound = null;
+  foreach (fd in tableDesc(T, d.elem.table).fields) if (fd.member == "Value") bound = fd.bound;
   if (n == 0) { out.append("[]"); return true; }
   // A TEXT LIST'S TOTAL (§2.13): ToJson refuses a value whose elements hold
   // more bytes in all than the declared total, an absent element counting zero
@@ -1056,6 +1116,7 @@ local writeTextArray = function(T, d, val, depth, out) {
     out.append(indent(depth + 1));
     local rec = elemAt(T, d.elem, val, i);
     if (d.textlist == 2 && (rec == null || !rec.ValuePresent)) { out.append("null"); continue; }
+    if (rec != null && bound != null && rec.Value.len() > bound) return false;
     local s = jsonString(rec == null ? "" : rec.Value);
     if (s == null) return false;
     out.append(s);
@@ -1078,12 +1139,16 @@ writeField = function(T, d, val, depth, g, out) {
       out.append(b64Text(val));
       return true;
     case "str": {
+      if (val.len() > d.bound) return false; // past string(N) (§5.1 row 4)
       local s = jsonString(val);
       if (s == null) return false;
       out.append(s);
       return true;
     }
-    case "bytes": out.append(b64Text(val)); return true;
+    case "bytes":
+      if (val.len() > d.bound) return false; // past bytes(N) (§5.1 row 4)
+      out.append(b64Text(val));
+      return true;
     case "map": return writeMap(T, d, val, depth, g, out);
     case "arr": {
       if (d.textlist != 0) return writeTextArray(T, d, val, depth, out);
@@ -1102,7 +1167,11 @@ writeField = function(T, d, val, depth, g, out) {
         out.append(indent(depth) + "}");
         return true;
       }
+      // Counted arrays hold their declared minimum through maximum; a fixed
+      // bound applies to the other bounded arrays (docs/SPEC.md §5.1 row 3).
       local n = writeCount(d, val);
+      if (d.counted && n < d.min) return false;
+      if (!d.list && val != null && val.len() > d.bound) return false;
       if (n == 0) { out.append("[]"); return true; }
       out.append("[");
       for (local i = 0; i < n; i++) {
@@ -1110,6 +1179,7 @@ writeField = function(T, d, val, depth, g, out) {
         out.append(indent(depth + 1));
         local x = elemAt(T, e, val, i);
         if (e.shape == "str") {
+          if (x.len() > e.bound) return false; // past string(N) (§5.1 row 4)
           local s = jsonString(x);
           if (s == null) return false;
           out.append(s);
@@ -1186,14 +1256,21 @@ writeScalar = function(T, d, val, depth, g, out) {
       out.append(indent(depth) + "]");
       return true;
     }
-    case "bool": out.append(val ? "true" : "false"); return true;
+    case "bool":
+      if (typeof val != "bool") return false; // only a bool is a bool's value
+      out.append(val ? "true" : "false");
+      return true;
     case "float": {
+      // only a number is a float's value, refused before it is converted
+      if (typeof val != "float" && typeof val != "integer") return false;
       local t = floatText(val, d.f32);
       if (t == null) return false; // a non-finite float (§16.3)
+      if (!floatAdmitted(d, val)) return false;
       out.append(t);
       return true;
     }
     case "str": {
+      if (val.len() > d.bound) return false; // past string(N) (§5.1 row 4)
       local s = jsonString(val);
       if (s == null) return false;
       out.append(s);
@@ -1201,6 +1278,7 @@ writeScalar = function(T, d, val, depth, g, out) {
     }
   }
   if (d.kind == 36) { out.append(jsonString(timestampText(val))); return true; }
+  if (!intAdmitted(d, val)) return false;
   if (wideKind(d.kind)) {
     out.append(formatWide(wideOf(d, val), d.kind, has(d, "frac") ? d.frac : 0));
     return true;
@@ -1248,6 +1326,27 @@ local newIn = function(text, report, graph) {
   return { t = t, n = t.len(), p = 0, bad = false, report = report, graph = graph };
 };
 
+// A leading UTF-8 byte-order mark is skipped and the rest reads as the text
+// after it (docs/SPEC-TABLES.md §16.2, §16.12): EF BB BF as the text's first
+// three bytes, and nowhere else. No writer emits one.
+local byteOrderMark = function(r) {
+  if (r.p == 0 && r.n >= 3 && r.t[0] == 0xef && r.t[1] == 0xbb && r.t[2] == 0xbf) r.p = 3;
+};
+
+// A COMMENT'S BYTES ARE TEXT (docs/SPEC-TABLES.md §16.2): well-formed UTF-8
+// and no NUL, the same rule the string site holds (§16.3). Linear in the
+// comment's length.
+local commentText = function(s, from, to) {
+  local i = from;
+  while (i < to) {
+    if ((s[i] & 0xff) == 0) return false;
+    local w = utf8Sequence(s, i);
+    if (w < 0 || i + w > to) return false;
+    i += w;
+  }
+  return true;
+};
+
 // whitespace and comments: accepted on read, never written (§16.2); an
 // unclosed /* is malformed, and a lone slash is not JSON
 local space = function(r) {
@@ -1256,18 +1355,22 @@ local space = function(r) {
     local c = t[r.p];
     if (c == ' ' || c == '\t' || c == '\n' || c == '\r') { r.p++; continue; }
     if (c == '/' && r.p + 1 < n && t[r.p + 1] == '/') {
-      r.p += 2;
+      local start = r.p + 2;
+      r.p = start;
       while (r.p < n && t[r.p] != '\n') r.p++;
+      if (!commentText(t, start, r.p)) { r.bad = true; return; }
       continue;
     }
     if (c == '/' && r.p + 1 < n && t[r.p + 1] == '*') {
-      local q = r.p + 2;
+      local start = r.p + 2;
+      local q = start;
       local found = false;
       while (q + 1 < n) {
         if (t[q] == '*' && t[q + 1] == '/') { found = true; break; }
         q++;
       }
       if (!found) { r.bad = true; r.p = n; return; }
+      if (!commentText(t, start, q)) { r.bad = true; return; }
       r.p = q + 2;
       continue;
     }
@@ -1400,32 +1503,44 @@ local scanBytes = function(r, capacity) {
   r.p++;
   local out = [];
   local oor = false;
+  // whether ANY code point decoded to U+0000, one past the capacity included
+  local zero = false;
   for (;;) {
     local u = scanUnit(r);
     if (u == null) return null;
     if (u == "done") break;
+    if (u.len() == 1 && u[0] == 0) {
+      zero = true;
+    }
     // A CLAMP IS A PREFIX: once one code point does not fit, nothing after it
     // is placed
     if (oor || (capacity >= 0 && out.len() + u.len() > capacity)) { oor = true; continue; }
     out.extend(u);
   }
-  return [out, oor];
+  return [out, oor, zero];
 };
 
-// a key, compared as a string
+// a schema-name string — an object key, an enum or flag name, a union arm —
+// compared as a string. A name past MAX_KEY bytes refuses the whole read
+// (docs/SPEC-TABLES.md §16.2, §16.12); it is never a shorter name.
 local scanKey = function(r) {
   local s = scanBytes(r, MAX_KEY);
   if (s == null) return null;
+  if (s[1]) { r.bad = true; return null; }
   return bytesToString(s[0]);
 };
 
 // docs/SPEC-TABLES.md 16.3: a JSON string the read would place in text
 // storage that decodes to U+0000 refuses the read, its reason naming the
-// innermost field. A string the read only SKIPS stores nothing and is not
-// this event, so the check lives at the storage call sites and never in
-// scanBytes or scanKey.
+// innermost field. That check lives at the storage call sites, never in
+// scanBytes or scanKey: scanKey also reads enum and flag names, which the
+// rule does not cover.
 local hasZero = function(b) {
-  for (local i = 0; i < b.len(); i++) if (b[i] == 0) return true;
+  for (local i = 0; i < b.len(); i++) {
+    if (b[i] == 0) {
+      return true;
+    }
+  }
   return false;
 };
 local textZero = function(r, name) {
@@ -1434,10 +1549,27 @@ local textZero = function(r, name) {
   return false;
 };
 
+// an object key, or a string the walk only SKIPS (the value of an unknown
+// key), is held to a placed string's rule (docs/SPEC-TABLES.md §16.2, §16.3;
+// read.go scanKey): a U+0000 refuses the read, and so does a name past
+// MAX_KEY bytes (§16.12), in every object of the text, a skipped one included.
+// No field holds it, so the refusal is plain malformed, with no reason.
+local scanHeldKey = function(r) {
+  local s = scanBytes(r, MAX_KEY);
+  if (s == null) {
+    return null;
+  }
+  if (s[1] || s[2]) {
+    r.bad = true;
+    return null;
+  }
+  return bytesToString(s[0]);
+};
+
 // ONE RFC 8259 number (read.go walkNumber, scanNumber): [token, integral] or
-// null. "1-2", "+1", "01", ".5" and "3." are not JSON.
-local scanNumber = function(r, ...) {
-  local capped = vargv.len() == 0 || vargv[0];
+// null. Its length is never why a read refuses: the text's own size bounds the
+// scan. "1-2", "+1", "01", ".5" and "3." are not JSON.
+local scanNumber = function(r) {
   space(r);
   local t = r.t, n = r.n, start = r.p;
   local digit = function(i) { return i < n && t[i] >= '0' && t[i] <= '9'; };
@@ -1461,7 +1593,7 @@ local scanNumber = function(r, ...) {
     integral = false;
   }
   local len = r.p - start;
-  if (len <= 0 || (capped && len > MAX_NUMBER)) return null;
+  if (len <= 0) return null;
   local bs = [];
   for (local i = start; i < r.p; i++) bs.append(t[i]);
   return [bytesToString(bs), integral];
@@ -1502,13 +1634,23 @@ skipValue = function(r, depth) {
   local c = peek(r);
   if (c == '{') return skipContainer(r, '}', depth);
   if (c == '[') return skipContainer(r, ']', depth);
-  if (c == '"') return scanBytes(r, 0) != null;
+  if (c == '"') {
+    local s = scanBytes(r, 0);
+    if (s == null) {
+      return false;
+    }
+    if (s[2]) {
+      r.bad = true;
+      return false;
+    }
+    return true;
+  }
   if (c == 't') return literal(r, "true");
   if (c == 'f') return literal(r, "false");
   if (c == 'n') return literal(r, "null");
   if (c == 0) { r.bad = true; return false; }
-  // a skipped number is walked, with no length cap (read.go skipValue)
-  if (scanNumber(r, false) == null) { r.bad = true; return false; }
+  // a skipped number is walked like a placed one (read.go skipValue)
+  if (scanNumber(r) == null) { r.bad = true; return false; }
   return true;
 };
 
@@ -1522,7 +1664,7 @@ skipContainer = function(r, close, depth) {
     if (c == close) { r.p++; return true; }
     if (c == 0) { r.bad = true; return false; }
     if (close == '}') {
-      local key = scanKey(r);
+      local key = scanHeldKey(r);
       if (key == null) return false;
       if (peek(r) != ':') { r.bad = true; return false; }
       r.p++;
@@ -1590,7 +1732,7 @@ readKeys = function(T, c, r, v, depth, firstKey) {
       local ch = peek(r);
       if (ch == '}') { r.p++; return checkRequired(T, c, r, v, seen); }
       if (ch == 0) { r.bad = true; return false; }
-      key = scanKey(r);
+      key = scanHeldKey(r);
       if (key == null) return false;
       if (peek(r) != ':') { r.bad = true; return false; }
       r.p++;
@@ -1616,7 +1758,7 @@ readKeys = function(T, c, r, v, depth, firstKey) {
         v[fd.member] = c.make()[fd.member];
         if (fd.optional) v[fd.member + "Present"] = false;
       } else {
-        if (shape != shapeOf(T, fd)) {
+        if (!shapeMatches(shapeOf(T, fd), shape)) {
           r.report.mismatch++;
           if (!skipValue(r, depth + 1)) return false;
         } else if (!readField(T, c, fd, r, v, depth)) {
@@ -1634,9 +1776,12 @@ readKeys = function(T, c, r, v, depth, firstKey) {
   }
 };
 
-// a bytes(N) or *bytes body six bits at a time (read.go readBase64): '='
-// anywhere is padding, a byte outside the alphabet makes the body the wrong
-// shape (one kind mismatch), and past the bound the excess is oor.
+// a bytes(N) or *bytes body (read.go readBase64): the JSON string is decoded
+// first, then its text is held to canonical base64 — the standard alphabet,
+// padded, pad bits zero, exactly the text the writer writes (docs/SPEC-TABLES.md
+// §16.2, §16.8). A body outside the grammar is the wrong shape (one kind
+// mismatch), an unpadded body or one whose pad bits are set is refused
+// base64_not_canonical, and past the bound the excess is oor.
 // Answers [blob or null when not base64] or null where the text is not JSON.
 local b64val = function(c) {
   if (c >= 'A' && c <= 'Z') return c - 'A';
@@ -1647,19 +1792,47 @@ local b64val = function(c) {
   return -1;
 };
 local readBase64 = function(r, bound) {
-  if (peek(r) != '"') { r.bad = true; return null; }
-  r.p++;
+  local s = scanBytes(r, -1);
+  if (s == null) return null;
+  local raw = s[0];
+  local symbols = 0, pad = 0, damaged = false;
+  for (local i = 0; i < raw.len(); i++) {
+    local c = raw[i];
+    if (damaged) continue;
+    if (c == '=') { pad++; continue; }
+    if (pad > 0) { damaged = true; continue; }
+    if (b64val(c) < 0) { damaged = true; continue; }
+    symbols++;
+  }
+  if (!damaged) {
+    if (pad > 0) {
+      if (pad > 2 || (symbols + pad) % 4 != 0 || symbols % 4 < 2) damaged = true;
+    } else if (symbols % 4 == 1) {
+      damaged = true;
+    }
+  }
+  if (damaged) { r.report.mismatch++; return [null]; }
+  // the canonical spelling is padded standard base64 with zero pad bits: the
+  // bits a final quantum drops are zero, and a padded body's length is four
+  local canonical = symbols % 4 == 0;
+  if (pad == 1) {
+    local last = b64val(raw[raw.len() - 2]);
+    canonical = last >= 0 && (last & 0x03) == 0;
+  } else if (pad == 2) {
+    local last = b64val(raw[raw.len() - 3]);
+    canonical = last >= 0 && (last & 0x0f) == 0;
+  }
+  if (!canonical) {
+    if (!("reason" in r.report) || r.report.reason == null) r.report.reason <- "base64_not_canonical";
+    r.bad = true;
+    return [null];
+  }
   local out = [];
-  local acc = 0, held = 0, oor = false, bad = false;
-  for (;;) {
-    if (r.p >= r.n) { r.bad = true; return null; }
-    local c = r.t[r.p];
-    r.p++;
-    if (c == '"') break;
-    if (c == '=' || bad) continue;
-    local at = b64val(c);
-    if (at < 0) { bad = true; continue; }
-    acc = ((acc << 6) | at) & 0xffffff;
+  local acc = 0, held = 0, oor = false;
+  for (local i = 0; i < raw.len(); i++) {
+    local c = raw[i];
+    if (c == '=') break;
+    acc = ((acc << 6) | b64val(c)) & 0xffffff;
     held += 6;
     if (held >= 8) {
       held -= 8;
@@ -1667,7 +1840,6 @@ local readBase64 = function(r, bound) {
       else oor = true;
     }
   }
-  if (bad) { r.report.mismatch++; return [null]; }
   if (oor) r.report.oor++;
   return [bytesToBlob(out)];
 };
@@ -1749,7 +1921,7 @@ readArray = function(T, c, fd, r, v, depth) {
       if (!literal(r, "null")) return false;
       out[placed] = null;
       placed++;
-    } else if (vs != shape) {
+    } else if (!shapeMatches(shape, vs)) {
       r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
       placed++;
@@ -1866,7 +2038,7 @@ readKeyed = function(T, c, fd, r, v, depth) {
     local ch = peek(r);
     if (ch == '}') { r.p++; break; }
     if (ch == 0) { r.bad = true; return false; }
-    local key = scanKey(r);
+    local key = scanHeldKey(r);
     if (key == null) return false;
     if (peek(r) != ':') { r.bad = true; return false; }
     r.p++;
@@ -1886,7 +2058,7 @@ readKeyed = function(T, c, fd, r, v, depth) {
     if (slot < 0) {
       r.report.unknown++;
       if (!skipValue(r, depth + 1)) return false;
-    } else if (valueShape(r) != shape) {
+    } else if (!shapeMatches(shape, valueShape(r))) {
       r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
     } else if (!readScalar(T, e, r, out, slot, depth + 1, c.name + "." + fd.name)) {
@@ -1915,15 +2087,16 @@ readMap = function(T, c, fd, r, v, depth) {
   local kd = fd.mapkey, vd = fd.mapvalue;
   local ed = tableDesc(T, fd.entry);
   local out = [];
+  local seen = {};
   for (;;) {
     local ch = peek(r);
     if (ch == '}') { r.p++; break; }
     if (ch == 0) { r.bad = true; return false; }
     // A STRING KEY IS READ AT ITS OWN DECLARATION'S BOUND (§2.8): a key past
-    // its bound drops its entry as oor, never as a shorter key. An
-    // integer key's token is bounded by the number walk's own
-    // tableJsonMaxNumber, and a token past it is the wrong shape.
-    local kb = scanBytes(r, kd.shape == "str" ? -1 : MAX_NUMBER);
+    // its bound drops its entry as oor, never as a shorter key. An integer
+    // key is its whole spelling; the integer rule below decides it, and the
+    // token's length is never why.
+    local kb = scanBytes(r, -1);
     if (kb == null) return false;
     local key = bytesToString(kb[0]);
     if (peek(r) != ':') { r.bad = true; return false; }
@@ -1962,7 +2135,7 @@ readMap = function(T, c, fd, r, v, depth) {
         ent[vd.member] = fresh[vd.member];
         if (vd.optional) ent[vd.member + "Present"] = false;
         valueOk = true;
-      } else if (shape != shapeOf(T, vd)) {
+      } else if (!shapeMatches(shapeOf(T, vd), shape)) {
         r.report.mismatch++;
         if (!skipValue(r, depth + 1)) return false;
       } else if (!readField(T, ed, vd, r, ent, depth)) {
@@ -1973,13 +2146,12 @@ readMap = function(T, c, fd, r, v, depth) {
       }
     }
     if (valueOk) {
-      local at = -1;
-      for (local i = 0; i < out.len(); i++) {
-        if (mapKeyOrder(kd, out[i][kd.member], ent[kd.member]) == 0) { at = i; break; }
-      }
       // A REPEATED MAP KEY, judged as the reader decodes it, IS DAMAGE
-      // (decisions 5 and 11, §2.8)
-      if (at >= 0) { r.bad = true; return false; }
+      // (decisions 5 and 11, §2.8). The keys seen are held by identity, so
+      // the test is one lookup an entry rather than a scan of the entries
+      // read so far.
+      if (ent[kd.member] in seen) { r.bad = true; return false; }
+      seen[ent[kd.member]] <- true;
       out.append(ent);
     }
     ch = peek(r);
@@ -2015,7 +2187,7 @@ readPointerCell = function(T, c, r, holder, key, depth) {
   local ch = peek(r);
   if (ch == '}') { r.p++; holder[key] = c.make(); return true; }
   if (ch == 0) { r.bad = true; return false; }
-  local k = scanKey(r);
+  local k = scanHeldKey(r);
   if (k == null) return false;
   if (peek(r) != ':') { r.bad = true; return false; }
   r.p++;
@@ -2078,41 +2250,64 @@ local interpretInteger = function(tok, integral) {
   return out;
 };
 
-// a declared bound as the double the descriptors' clamp compares, then back
-// to a magnitude (read.go integerOf, bigToFloat)
-local integerOf = function(bound) {
-  local neg = bound < 0;
-  local whole = neg ? -bound : bound;
-  local mag;
-  if (whole >= 18446744073709551616.0) mag = MAXU;
-  else if (whole >= 9223372036854775808.0) mag = (whole - 9223372036854775808.0).tointeger() | MIN;
-  else mag = whole.tointeger();
-  return { mag = mag, neg = mag == 0 ? false : neg };
+// A DECLARED BOUND AS EXACT MAGNITUDE AND SIGN (read.go integerBound): the
+// descriptor's 64 bits, never a double, so a bound at or above 2^53 keeps its
+// exact value. An unsigned bound is its 64-bit pattern.
+local boundOf = function(bound, signed) {
+  if (signed && bound < 0)
+    return { mag = bound == MIN ? MIN : -bound, neg = true };
+  return { mag = bound, neg = false };
 };
 
-// an integer field takes any token whose VALUE is integral; a fractional
-// value is the wrong shape. THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH,
-// the wire's order (§4, read.go placeInteger).
+// compare two sign-and-magnitude integers: -1, 0 or 1
+local compareSigned = function(aNeg, aMag, bNeg, bMag) {
+  if (aNeg != bNeg) return aNeg ? -1 : 1;
+  if (aMag == bMag) return 0;
+  local less = ult(aMag, bMag);
+  return aNeg ? (less ? 1 : -1) : (less ? -1 : 1);
+};
+
+// digits and an optional minus, no fraction, no exponent, no leading zero,
+// not -0 (read.go integerToken). The token's length is not part of the test.
+local integerToken = function(tok) {
+  local i = 0;
+  local neg = false;
+  if (i < tok.len() && tok[i] == '-') { neg = true; i++; }
+  if (i >= tok.len()) return false;
+  if (tok[i] == '0') return !neg && (i + 1 == tok.len());
+  if (tok[i] < '1' || tok[i] > '9') return false;
+  for (i = i + 1; i < tok.len(); i++) {
+    if (tok[i] < '0' || tok[i] > '9') return false;
+  }
+  return true;
+};
+
+// an integer field takes an INTEGER TOKEN only (docs/SPEC-TABLES.md §16.2):
+// digits with an optional minus, no fraction, no exponent, not -0. A fraction
+// or an exponent is the wrong shape however many bytes the token spans. The
+// value never passes through a double. THE DECLARED RANGE FIRST, THEN THE
+// STORAGE WIDTH, the wire's order (§4, read.go placeInteger).
 local placeInteger = function(d, tok, integral, report) {
+  if (!integerToken(tok)) {
+    report.mismatch++;
+    return null;
+  }
   local signed = d.kind >= 2 && d.kind <= 5;
-  local num = interpretInteger(tok, integral);
+  local num = interpretInteger(tok, true);
   if (!num.finite || num.fractional) { report.mismatch++; return null; }
   if (num.saturated) report.oor++;
   local mag = num.mag, neg = num.neg;
-  local lo = null, hi = null;
   if (d.lo != null && typeof d.lo == "integer") {
-    lo = d.signed ? d.lo.tofloat() : utof(d.lo);
-    hi = d.signed ? d.hi.tofloat() : utof(d.hi);
+    local lo = boundOf(d.lo, d.signed), hi = boundOf(d.hi, d.signed);
+    if (compareSigned(neg, mag, lo.neg, lo.mag) < 0) {
+      mag = lo.mag; neg = lo.neg; report.oor++;
+    } else if (compareSigned(neg, mag, hi.neg, hi.mag) > 0) {
+      mag = hi.mag; neg = hi.neg; report.oor++;
+    }
   } else if (d.bits != null && d.bits > 0 && d.bits < 64) {
-    lo = 0.0;
-    hi = utof((1 << d.bits) - 1);
-  }
-  if (lo != null) {
-    local scale = neg ? -utof(mag) : utof(mag);
-    local b = null;
-    if (scale < lo) b = integerOf(lo);
-    else if (scale > hi) b = integerOf(hi);
-    if (b != null) { mag = b.mag; neg = b.neg; report.oor++; }
+    local hi = (1 << d.bits) - 1;
+    if (neg) { mag = 0; neg = false; report.oor++; }
+    else if (ult(hi, mag)) { mag = hi; report.oor++; }
   }
   local bytes = d.width;
   if (d.bits != null && d.bits > 0) bytes = d.bits <= 32 ? 4 : 8;
@@ -2163,6 +2358,8 @@ local placeFloat = function(d, tok, report) {
 // a magnitude past the storage saturates and counts; the declared raw range
 // clamps after it
 local placeWide = function(d, tok, report) {
+  // a 128-bit integer takes an integer token; a fixed kind keeps an exact decimal
+  if ((d.kind == 18 || d.kind == 19) && !integerToken(tok)) { report.mismatch++; return null; }
   local pw = parseWide(tok, d.kind, has(d, "frac") ? d.frac : 0);
   if (!pw[1]) { report.mismatch++; return null; }
   if (pw[2]) report.oor++;
@@ -2193,7 +2390,14 @@ local readFlags = function(d, r, depth) {
       if (name == null) return null;
       local found = false;
       for (local bit = 0; bit < names.len(); bit++) {
-        if (names[bit] == name) { bits = bits | (1 << bit); found = true; break; }
+        if (names[bit] == name) {
+          // A KNOWN NAME IS WRITTEN ONCE (§16.2): a bit already set is a
+          // repeated name, and the read refuses as a repeated key does
+          if ((bits & (1 << bit)) != 0) { r.bad = true; return null; }
+          bits = bits | (1 << bit);
+          found = true;
+          break;
+        }
       }
       if (!found) r.report.unknown++;
     }
@@ -2272,12 +2476,23 @@ readScalar = function(T, d, r, holder, key, depth, where) {
     holder[key] = ns;
     return true;
   }
-  local num = scanNumber(r);
-  if (num == null) { r.bad = true; return false; }
+  // a wide integer reads as a string of digits or a number (§16.2)
+  local tok, integral;
+  if (jsonWideInteger(d.kind) && peek(r) == '"') {
+    local s = scanBytes(r, -1);
+    if (s == null) return false;
+    tok = bytesToString(s[0]);
+    integral = true;
+  } else {
+    local num = scanNumber(r);
+    if (num == null) { r.bad = true; return false; }
+    tok = num[0];
+    integral = num[1];
+  }
   local x;
-  if (d.shape == "float") x = placeFloat(d, num[0], r.report);
-  else if (wideKind(d.kind)) x = placeWide(d, num[0], r.report);
-  else if (d.shape == "int") x = placeInteger(d, num[0], num[1], r.report);
+  if (d.shape == "float") x = placeFloat(d, tok, r.report);
+  else if (wideKind(d.kind)) x = placeWide(d, tok, r.report);
+  else if (d.shape == "int") x = placeInteger(d, tok, integral, r.report);
   else { r.bad = true; return false; }
   if (x != null) holder[key] = x;
   return true;
@@ -2292,7 +2507,7 @@ readUnion = function(T, u, r, holder, key, depth) {
   local inst = u.make();
   holder[key] = inst;
   if (peek(r) == '}') { r.p++; return true; }
-  local name = scanKey(r);
+  local name = scanHeldKey(r);
   if (name == null) return false;
   if (peek(r) != ':') { r.bad = true; return false; }
   r.p++;
@@ -2332,7 +2547,7 @@ readUnion = function(T, u, r, holder, key, depth) {
       if (!literal(r, "null")) return false;
       inst.Type = arm.tag;
       inst[p.member] = fresh[p.member];
-    } else if (shape != shapeOf(T, p)) {
+    } else if (!shapeMatches(shapeOf(T, p), shape)) {
       r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
     } else {
@@ -2382,6 +2597,7 @@ _M.fromJsonWalk <- function(T, rootName, text, report) {
   if (!("refused" in report)) report.refused <- false;
   local c = tableDesc(T, rootName);
   local r = newIn(text, report, c.variable ? {} : null);
+  byteOrderMark(r);
   local v = c.make();
   local ok = readTable(T, c, r, v, 0);
   if (ok) {

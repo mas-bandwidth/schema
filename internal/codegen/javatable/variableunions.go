@@ -77,9 +77,11 @@ func unionMembers(un *ir.Union) []string {
 func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 	st := variableUnionStruct(un)
 	mem := unionMembers(un)
+	_, graphIndex := variableGraphTypes(u)
 	var b strings.Builder
 	b.WriteString("import java.nio.charset.StandardCharsets;\nimport java.util.ArrayList;\nimport java.util.List;\n")
 	fmt.Fprintf(&b, "public final class %sVariable {private %sVariable(){}\n", un.Name, un.Name)
+	fmt.Fprintf(&b, "    static final int GRAPH_KIND = %d;\n", graphIndex[un.Name])
 	writeVariableMapHelpers(&b, u, st)
 	writeVariableKeyedHelpers(&b, u, st)
 	b.WriteString("    public static final class Value {public int tag;\n")
@@ -94,17 +96,36 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		}
 	}
 	b.WriteString("    }\n")
-	b.WriteString("    static boolean buildGraph(TableVariable.NodeGraph g,Value v){if(v==null)return false;switch(v.tag){case 0:return true;\n")
+	b.WriteString("    static boolean graphEnter(TableVariable.NodeGraph g, Value v) {\n")
+	b.WriteString("        if (v == null) { return false; }\n")
+	b.WriteString("        switch (v.tag) {\n")
+	b.WriteString("            case 0: return true;\n")
 	for i, arm := range un.Variants {
-		fmt.Fprintf(&b, "        case %d:{\n", i+1)
+		fmt.Fprintf(&b, "            case %d: {\n", i+1)
+		if !arm.Void() {
+			b.WriteString("                g.push(v, GRAPH_KIND, 0, 0, null);\n")
+		}
+		b.WriteString("                return true;\n")
+		b.WriteString("            }\n")
+	}
+	b.WriteString("            default: return false;\n")
+	b.WriteString("        }\n")
+	b.WriteString("    }\n")
+	b.WriteString("    static boolean graphField(TableVariable.NodeGraph g, Value v, int field, int index) {\n")
+	b.WriteString("        switch (v.tag) {\n")
+	for i, arm := range un.Variants {
+		fmt.Fprintf(&b, "            case %d: {\n", i+1)
 		if !arm.Void() {
 			one := *arm.F
 			one.Name = mem[i]
-			writeVariableGraphField(&b, &one)
+			writeVariableGraphFieldStep(&b, st, &one, 0)
 		}
-		b.WriteString("        return true;}\n")
+		b.WriteString("                return true;\n")
+		b.WriteString("            }\n")
 	}
-	b.WriteString("        default:return false;}}\n")
+	b.WriteString("            default: return true;\n")
+	b.WriteString("        }\n")
+	b.WriteString("    }\n")
 	b.WriteString("    static void resolveNodes(Value v,TableVariable.NodeTable nt,Object root,long rootTypeId,TableVariable.Report report){if(v==null)return;switch(v.tag){\n")
 	for i, arm := range un.Variants {
 		if !arm.Void() {
@@ -241,7 +262,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			b.WriteString("        break;}\n")
 		}
 		b.WriteString("        default:break;}TableJson.indent(b,depth);b.append('}');}\n")
-		b.WriteString("    static Value readJson(TableJson.In in){Value v=new Value();if(in.peek()!='{'){in.bad=true;return v;}in.p++;if(in.peek()=='}'){in.p++;return v;}String armName=in.scanString();if(in.bad)return v;if(in.peek()!=':'){in.bad=true;return v;}in.p++;\n")
+		b.WriteString("    static Value readJson(TableJson.In in,int depth){Value v=new Value();if(in.peek()!='{'){in.bad=true;return v;}in.p++;if(in.peek()=='}'){in.p++;return v;}String armName=in.scanName();if(in.bad)return v;if(in.peek()!=':'){in.bad=true;return v;}in.p++;\n")
 		for i, arm := range un.Variants {
 			fmt.Fprintf(&b, "        if(%q.equals(armName)){\n", arm.Name)
 			if arm.Void() {
@@ -254,7 +275,11 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 					shape = "(" + shape + "||in.peek()=='n')"
 				}
 				fmt.Fprintf(&b, "        if(%s){\n", shape)
-				readJsonFieldValue(&b, u, st, &one)
+				depthExpr := "depth + 1"
+				if arm.Body() {
+					depthExpr = "depth"
+				}
+				readJsonFieldValue(&b, u, st, &one, depthExpr)
 				fmt.Fprintf(&b, "        if(!in.bad)v.tag=%d;}else{in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", i+1)
 			}
 			b.WriteString("        }else ")
@@ -301,7 +326,7 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	if f.ArrayBound > 0 {
 		countCheck = fmt.Sprintf("else{if(count<0||count>%d){count=%d;report.refuse(\"count_over_bound\");}", f.ArrayBound, f.ArrayBound)
 	}
-	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=%s;if(!ar.fail){if(ek!=15){report.refuse(\"kind_mismatch\");}%sv.%s.clear();", countRead(f, "ar"), countCheck, m)
+	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=%s;if(!ar.fail){if(!TableVariable.arrayElemKindClosed(ek)){report.damaged=true;}else if(ek!=15){report.refuse(\"kind_mismatch\");}%sv.%s.clear();", countRead(f, "ar"), countCheck, m)
 	if retain {
 		fmt.Fprintf(b, "retain.discardField(path,depth,%d);", ordinal)
 	}

@@ -54,11 +54,11 @@ func fixedFunctionBody(src, name string) (string, bool) {
 		return "", false
 	}
 	rest := src[i:]
-	end := strings.Index(rest, "\n}\n")
-	if end < 0 {
+	before, _, ok := strings.Cut(rest, "\n}\n")
+	if !ok {
 		return "", false
 	}
-	return rest[:end], true
+	return before, true
 }
 
 // strictFixedProblems reports every way the generated artifact violates the
@@ -203,15 +203,18 @@ fn main() {
     let n_p = probe::TFixedLoad(dst, bad_pres, rep);
     print("pres_dmg ", n_p, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", dst[0].X);
 
-    // 8. Inactive optional payload (NotePresent = 0, Note = 9999) and counted-array slack (Leaves[1].Active = 255) are not live and succeed.
-    var slack: u8[>..] = [];
-    copy_bytes(clean, slack);
-    slack[rec1 + 15] = 0;
-    slack[rec1 + 16] = 0x0f; slack[rec1 + 17] = 0x27;
-    slack[rec1 + 25] = 255;
+    // 8. A non-zero dead byte refuses the whole load: the absent optional's
+    // payload (NotePresent = 0, Note = 9999) and a counted array's slot past
+    // its count (Leaves[1].Active = 255) are dead, and the refusal leaves the
+    // caller's destination as it was.
+    var dead: u8[>..] = [];
+    copy_bytes(clean, dead);
+    dead[rec1 + 15] = 0;
+    dead[rec1 + 16] = 0x0f; dead[rec1 + 17] = 0x27;
+    dead[rec1 + 25] = 255;
     dst = [probe::T { .. }; 2];
-    let n_sl = probe::TFixedLoad(dst, slack, rep);
-    print("slack_ok ", n_sl, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", !dst[1].NotePresent, " ", dst[1].LeavesCount);
+    let n_sl = probe::TFixedLoad(dst, dead, rep);
+    print("dead_refused ", n_sl, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", !dst[1].NotePresent, " ", dst[1].LeavesCount);
 }
 `
 
@@ -224,7 +227,7 @@ float_oor -1 out_of_range 0 2
 bool_dmg -1 wire_damaged 0 2
 leaf_bool_dmg -1 wire_damaged 0 2
 pres_dmg -1 wire_damaged 0 2
-slack_ok 2 ok 0 true 1`
+dead_refused -1 wire_damaged 0 true 0`
 
 func runStrictLoadFiles(t *testing.T, files map[string][]byte) string {
 	t.Helper()
@@ -306,9 +309,9 @@ func TestGooseFixedLoadRefusesNeverClampsNegativeControl(t *testing.T) {
 		t.Fatal("negative control: runtime probe still passed when TFixedLoad clamped instead of refusing")
 	}
 
-	tolerant := strings.Replace(code,
+	tolerant := strings.ReplaceAll(code,
 		"return schema_rt::FixedRefuseWireDamaged;",
-		"return 0;", -1)
+		"return 0;")
 	if tolerant == code {
 		t.Fatal("negative control: the wire_damaged refusal is not in the generated scan")
 	}

@@ -2,6 +2,7 @@
 //
 //	schema check      [dir|files...|saved-file]      parse + typecheck; a saved file answers its FORM BYTE (§3)
 //	schema generate   --lang cpp --out <dir> [dir]   emit generated code
+//	schema testgen    [--lang go|lua|squirrel] [--out generated] [--verbose] [dir|files...]  emit the round-trip and damage tests of every table
 //	schema id         [dir|files...]                 print the protocol id
 //	schema projection [dir|files...]                 print the wire shape the id hashes
 //	schema build-version [--facts] [dir|files...]    print the build version, or the cook projection it hashes
@@ -359,7 +360,6 @@ func main() {
 		fs := flag.NewFlagSet("pack", flag.ExitOnError)
 		root := fs.String("root", "", "the root `table` the tree mirrors")
 		out := fs.String("out", "", "file to write the root's wire bytes to")
-		tolerate := fs.Bool("tolerate", false, "exit 0 even when the report is not silent (see below)")
 		// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the same tree and the
 		// same text, written as the form byte and the root body alone. Its ids
 		// live in the CONNECTION's announced table, so `--announce <file>`
@@ -403,7 +403,7 @@ func main() {
 		// `--announce` before the gate would replace a prior announcement
 		// while leaving the prior message beside it. The gate runs first, and
 		// both files land atomically after it.
-		reportLine(report, verbose, *tolerate)
+		reportLine(report, verbose)
 		if *announce != "" {
 			announcement := c.Announce(unit)
 			if err := writeAtomic(*announce, announcement); err != nil {
@@ -427,7 +427,6 @@ func main() {
 		root := fs.String("root", "", "the root `table` the bytes carry")
 		in := fs.String("in", "", "file holding the root's wire bytes")
 		oneFile := fs.Bool("one-file", false, "write the root as one <Root>.json instead of a tree of fields")
-		tolerate := fs.Bool("tolerate", false, "exit 0 even when the report is not silent (see below)")
 		// A MESSAGE'S TABLE IS SOMEWHERE ELSE (docs/SPEC-TABLES.md §3.3), so
 		// reading one takes the announcement that carried it: a message stored
 		// on its own is not readable, and this flag is where the other half
@@ -454,7 +453,7 @@ func main() {
 				fail(derr)
 			}
 			fmt.Print(text)
-			reportLine(described, verbose, *tolerate)
+			reportLine(described, verbose)
 			return
 		}
 		dir, rest := packTree("unpack", fs.Args())
@@ -479,7 +478,7 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		reportLine(report, verbose, *tolerate)
+		reportLine(report, verbose)
 		if verbose {
 			fmt.Printf("unpacked %s into %s\n", *in, dir)
 		}
@@ -493,7 +492,6 @@ func main() {
 		out := fs.String("out", "", "file to write the cook to")
 		byteOrder := fs.String("byte-order", "little", "the byte order the cook is produced in: little or big")
 		attribution := fs.String("attribution", "", "write the attribution part to this file instead of into the cook, which then carries data alone")
-		tolerate := fs.Bool("tolerate", false, "exit 0 even when the wire report is not silent")
 		fs.BoolVar(&verbose, "verbose", false, "print the cook's header facts and the wire report")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		if *root == "" || *in == "" || *out == "" {
@@ -508,7 +506,7 @@ func main() {
 			fatalf("--byte-order takes little or big, not %q", *byteOrder)
 		}
 		unit := loadUnit(c, fs.Args())
-		wire, packed := cookInput(c, unit, *root, *in, verbose, *tolerate)
+		wire, packed := cookInput(c, unit, *root, *in, verbose)
 		bytes, cooked, report, err := c.Cook(unit, *root, wire, opts)
 		if err != nil {
 			fail(err)
@@ -522,7 +520,7 @@ func main() {
 		if packed {
 			stage = "cook"
 		}
-		reportLineStage(report, verbose, *tolerate, stage)
+		reportLineStage(report, verbose, stage)
 		if *attribution != "" {
 			// the attribution is SEPARABLE (§6.3): a caller may place the two
 			// parts together or apart, and a build that ships no tooling need
@@ -656,7 +654,7 @@ func main() {
 // format, and the game just points at it and works.
 // It answers whether it PACKED, which is whether the command read twice: the
 // caller labels its own report when it did.
-func cookInput(c *compiler.Compiler, unit *ir.Unit, root, in string, verbose, tolerate bool) ([]byte, bool) {
+func cookInput(c *compiler.Compiler, unit *ir.Unit, root, in string, verbose bool) ([]byte, bool) {
 	info, err := os.Stat(in)
 	if err != nil {
 		fatalf("%v", err)
@@ -672,7 +670,7 @@ func cookInput(c *compiler.Compiler, unit *ir.Unit, root, in string, verbose, to
 	if err != nil {
 		fail(err)
 	}
-	reportLineStage(report, verbose, tolerate, "pack")
+	reportLineStage(report, verbose, "pack")
 	if verbose {
 		for _, name := range skipped {
 			fmt.Printf("passed over %s: a hidden file that is not JSON\n", name)
@@ -734,19 +732,19 @@ func writeAtomic(path string, data []byte) error {
 
 // reportLine prints what a pack or unpack counted and decides the exit code. A
 // silent report — the data matched the schema exactly — says nothing unless
-// --verbose asks. Anything counted is printed and EXITS NONZERO: a value that
-// was skipped, renamed away or cut down is a thing a build pipeline has to be
-// able to fail on, and §17's "reported, never fatal" is about the walk not
-// stopping, not about the tool's exit code. --tolerate is the way to say the
-// report is expected.
-func reportLine(r compiler.TableReport, verbose, tolerate bool) {
-	reportLineStage(r, verbose, tolerate, "")
+// --verbose asks. A refusal is printed and EXITS NONZERO: a value the read
+// refused is a thing a build pipeline has to be able to fail on, and §17's
+// "reported, never fatal" is about the walk not stopping, not about the tool's
+// exit code. A report that counts only lawful evolution — an unknown field from
+// a newer writer, a widening — prints its line and exits 0.
+func reportLine(r compiler.TableReport, verbose bool) {
+	reportLineStage(r, verbose, "")
 }
 
 // reportLineStage is reportLine with the READ named. A command that reads once
 // leaves the stage empty and prints "report:"; `cook --in <dir>` packs and then
 // cooks, so it names "pack" and "cook" and the two lines are told apart.
-func reportLineStage(r compiler.TableReport, verbose, tolerate bool, stage string) {
+func reportLineStage(r compiler.TableReport, verbose bool, stage string) {
 	label := "report"
 	if stage != "" {
 		label = "report (" + stage + ")"
@@ -759,14 +757,9 @@ func reportLineStage(r compiler.TableReport, verbose, tolerate bool, stage strin
 	}
 	if r.Refused {
 		fmt.Printf("%s: refused: %s\n", label, r.Reason)
-	} else {
-		fmt.Printf("%s: unknown %d, widened %d\n", label, r.Unknown, r.Widened)
+		os.Exit(1)
 	}
-	if tolerate {
-		return
-	}
-	fmt.Fprintln(os.Stderr, "schema: the report is not silent — pass --tolerate to accept it")
-	os.Exit(1)
+	fmt.Printf("%s: unknown %d, widened %d\n", label, r.Unknown, r.Widened)
 }
 
 func usage() {
@@ -780,9 +773,9 @@ func usage() {
   schema tables-baseline [--update --reason "..."] [--verbose] [dir|files...]
   schema lock       [--print] [--verbose] [dir|files...]
   schema fmt        [--verbose] [dir|files...]
-  schema pack       --root <Table> --out <file> [--message [--announce <file>] [--batch <Table>=<dir>]...] [--tolerate] [--verbose] <tree-dir> [dir|files...]
-  schema unpack     --root <Table> --in  <file> [--announce <file>] [--one-file] [--tolerate] [--verbose] <tree-dir> [dir|files...]
-  schema cook       --root <Table> --in  <file|tree-dir> --out <file> [--byte-order little|big] [--attribution <file>] [--tolerate] [--verbose] [dir|files...]
+  schema pack       --root <Table> --out <file> [--message [--announce <file>] [--batch <Table>=<dir>]...] [--verbose] <tree-dir> [dir|files...]
+  schema unpack     --root <Table> --in  <file> [--announce <file>] [--one-file] [--verbose] <tree-dir> [dir|files...]
+  schema cook       --root <Table> --in  <file|tree-dir> --out <file> [--byte-order little|big] [--attribution <file>] [--verbose] [dir|files...]
   schema cook-check [--root <Table>] [--attribution <file>] [--verbose] <file.cook> [dir|files...]
   schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
   schema version
@@ -799,8 +792,9 @@ fmt is the only command that writes a schema file (schemafmt — one style, no
 options); a file already in format is not touched. Every other command reads
 the unit as it sits on disk and leaves it alone, so a read-only tree works and
 a check never edits what it checked. Success is silent: --verbose lists the
-files a command wrote. pack and unpack exit nonzero when their read report is
-not silent; --tolerate accepts it.
+files a command wrote. pack, unpack and cook exit nonzero when their read
+refuses the input; a report that counts only lawful evolution prints its line
+and exits 0.
 
 testgen writes the round-trip and damage tests of every table beside the code
 generate wrote: Go emits one <Base>Table_gen_test.go, Lua one
@@ -956,6 +950,9 @@ func writeGenerated(dir string, files map[string][]byte, lang string, removeStal
 	}
 	defer func() { _ = out.Close() }() // only the directory handle; file writes close and report their own errors
 	for _, name := range names {
+		if err := out.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+			return err
+		}
 		if err := out.WriteFile(name, files[name], 0o644); err != nil {
 			return err
 		}

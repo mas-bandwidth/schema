@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
@@ -14,11 +14,17 @@ export const FlatReadSlack = 8;
 
 // ---- type Vec2: the flat codec ----
 
-// WriteVec2Flat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold Vec2MaxBytes.
+// WriteVec2Flat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold Vec2MaxBytes.
 export function WriteVec2Flat(view, value) {
+  if (!Number.isFinite(value.x)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(0, value.x, true);
+  if (!Number.isFinite(value.y)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(8, value.y, true);
   return 16;
 }
@@ -30,18 +36,49 @@ export function ReadVec2Flat(view, numBits, value) {
     return false;
   }
   value.x = view.getFloat64(0, true);
+  if ((view.getUint32(4, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.y = view.getFloat64(8, true);
+  if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  if (((128 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
+}
+
+// ReadVec2FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadVec2Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadVec2FlatBits(view, numBits, value) {
+  if (128 > numBits) {
+    return false;
+  }
+  value.x = view.getFloat64(0, true);
+  if ((view.getUint32(4, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.y = view.getFloat64(8, true);
+  if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  return 128;
 }
 
 // ---- type SpanF64: the flat codec ----
 
-// WriteSpanF64Flat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold SpanF64MaxBytes.
+// WriteSpanF64Flat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold SpanF64MaxBytes.
 export function WriteSpanF64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
+    if (!Number.isFinite(value.values[i0])) { // a bare float must be finite
+      return -1;
+    }
     SC.setFloat64(0, value.values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -91,17 +128,60 @@ export function ReadSpanF64Flat(view, numBits, value) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
     value.values[i0] = SC.getFloat64(0, true);
     br += 32;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadSpanF64FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSpanF64Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSpanF64FlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (128 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
+    value.values[i0] = SC.getFloat64(0, true);
+    br += 32;
+  }
+  return br;
 }
 
 // ---- type SpanU64: the flat codec ----
 
 // WriteSpanU64Flat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold SpanU64MaxBytes.
+// writer contract. The buffer behind view must hold SpanU64MaxBytes.
 export function WriteSpanU64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
@@ -159,14 +239,53 @@ export function ReadSpanU64Flat(view, numBits, value) {
     value.values[i0] = bg;
     br += 32;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadSpanU64FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSpanU64Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSpanU64FlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (128 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    bg = SC.getBigUint64(0, true);
+    value.values[i0] = bg;
+    br += 32;
+  }
+  return br;
 }
 
 // ---- type SpanI64: the flat codec ----
 
 // WriteSpanI64Flat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold SpanI64MaxBytes.
+// writer contract. The buffer behind view must hold SpanI64MaxBytes.
 export function WriteSpanI64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
@@ -224,14 +343,53 @@ export function ReadSpanI64Flat(view, numBits, value) {
     value.values[i0] = BigInt.asIntN(64, bg);
     br += 32;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadSpanI64FlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSpanI64Flat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSpanI64FlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (128 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    bg = SC.getBigUint64(0, true);
+    value.values[i0] = BigInt.asIntN(64, bg);
+    br += 32;
+  }
+  return br;
 }
 
 // ---- type SpanOne: the flat codec ----
 
 // WriteSpanOneFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold SpanOneMaxBytes.
+// writer contract. The buffer behind view must hold SpanOneMaxBytes.
 export function WriteSpanOneFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 1; i0++) {
@@ -289,14 +447,53 @@ export function ReadSpanOneFlat(view, numBits, value) {
     value.values[i0] = bg;
     br += 32;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadSpanOneFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSpanOneFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSpanOneFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  let bg = 0n;
+  if (64 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 1; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    bg = SC.getBigUint64(0, true);
+    value.values[i0] = bg;
+    br += 32;
+  }
+  return br;
 }
 
 // ---- type SpanChunk: the flat codec ----
 
 // WriteSpanChunkFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold SpanChunkMaxBytes.
+// writer contract. The buffer behind view must hold SpanChunkMaxBytes.
 export function WriteSpanChunkFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 4; i0++) {
@@ -333,17 +530,49 @@ export function ReadSpanChunkFlat(view, numBits, value) {
     value.values[i0] = v;
     br += 16;
   }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadSpanChunkFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSpanChunkFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSpanChunkFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (64 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 4; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = (out & 0xffff) >>> 0;
+    value.values[i0] = v;
+    br += 16;
+  }
+  return br;
 }
 
 // ---- type SpanTail: the flat codec ----
 
-// WriteSpanTailFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold SpanTailMaxBytes.
+// WriteSpanTailFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold SpanTailMaxBytes.
 export function WriteSpanTailFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
+    if (!Number.isFinite(value.values[i0])) { // a bare float must be finite
+      return -1;
+    }
     SC.setFloat64(0, value.values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -402,6 +631,9 @@ export function ReadSpanTailFlat(view, numBits, value) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
     value.values[i0] = SC.getFloat64(0, true);
     br += 32;
   }
@@ -412,17 +644,70 @@ export function ReadSpanTailFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
   value.tail = v;
+  br += 32;
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
+  }
   return true;
+}
+
+// ReadSpanTailFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSpanTailFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSpanTailFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (160 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
+    value.values[i0] = SC.getFloat64(0, true);
+    br += 32;
+  }
+  bi = br >>> 3;
+  wlo = view.getUint32(bi, true);
+  whi = view.getUint32(bi + 4, true);
+  s2 = br & 7;
+  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  v = out >>> 0;
+  value.tail = v;
+  br += 32;
+  return br;
 }
 
 // ---- type SpanTwice: the flat codec ----
 
-// WriteSpanTwiceFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold SpanTwiceMaxBytes.
+// WriteSpanTwiceFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold SpanTwiceMaxBytes.
 export function WriteSpanTwiceFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
+    if (!Number.isFinite(value.a[i0])) { // a bare float must be finite
+      return -1;
+    }
     SC.setFloat64(0, value.a[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -444,6 +729,9 @@ export function WriteSpanTwiceFlat(view, value) {
     }
   }
   for (let i0 = 0; i0 < 2; i0++) {
+    if (!Number.isFinite(value.b[i0])) { // a bare float must be finite
+      return -1;
+    }
     SC.setFloat64(0, value.b[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
@@ -493,6 +781,9 @@ export function ReadSpanTwiceFlat(view, numBits, value) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
     value.a[i0] = SC.getFloat64(0, true);
     br += 32;
   }
@@ -512,20 +803,95 @@ export function ReadSpanTwiceFlat(view, numBits, value) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
     value.b[i0] = SC.getFloat64(0, true);
     br += 32;
+  }
+  s2 = (br + 7) >> 3;
+  if (s2 !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
+  if ((br & 7) !== 0 && (view.getUint8(br >>> 3) & ((0xff << (br & 7)) & 0xff)) !== 0) { // nonzero unused bits in the final byte
+    return false;
   }
   return true;
 }
 
+// ReadSpanTwiceFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadSpanTwiceFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadSpanTwiceFlatBits(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (256 > numBits) {
+    return false;
+  }
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
+    value.a[i0] = SC.getFloat64(0, true);
+    br += 32;
+  }
+  for (let i0 = 0; i0 < 2; i0++) {
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(0, v, true);
+    br += 32;
+    bi = br >>> 3;
+    wlo = view.getUint32(bi, true);
+    whi = view.getUint32(bi + 4, true);
+    s2 = br & 7;
+    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+    v = out >>> 0;
+    SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
+    value.b[i0] = SC.getFloat64(0, true);
+    br += 32;
+  }
+  return br;
+}
+
 // ---- type Trio: the flat codec ----
 
-// WriteTrioFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold TrioMaxBytes.
+// WriteTrioFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold TrioMaxBytes.
 export function WriteTrioFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.a) || value.a < 0 || value.a > 1048575) {
+    return -1;
+  }
+  if (!Number.isInteger(value.b) || value.b < 0 || value.b > 1048575) {
+    return -1;
+  }
   lo = ((value.a & 0xfffff));
+  if (!Number.isInteger(value.c) || value.c < 0 || value.c > 16777215) {
+    return -1;
+  }
   v = ((value.b & 0xfffff)) >>> 0;
   view.setUint32(0, (lo | (v << 20)) >>> 0, true);
   lo = v >>> 12;
@@ -550,17 +916,50 @@ export function ReadTrioFlat(view, numBits, value) {
   out = view.getUint32(5, true);
   v = (out & 0xffffff) >>> 0;
   value.c = v;
+  if (((64 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
+}
+
+// ReadTrioFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadTrioFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadTrioFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (64 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xfffff) >>> 0;
+  value.a = v;
+  out = (view.getUint32(2, true) >>> 4) | (view.getUint32(6, true) << 28);
+  v = (out & 0xfffff) >>> 0;
+  value.b = v;
+  out = view.getUint32(5, true);
+  v = (out & 0xffffff) >>> 0;
+  value.c = v;
+  return 64;
 }
 
 // ---- type TrioSole: the flat codec ----
 
-// WriteTrioSoleFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold TrioSoleMaxBytes.
+// WriteTrioSoleFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold TrioSoleMaxBytes.
 export function WriteTrioSoleFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.inner.a) || value.inner.a < 0 || value.inner.a > 1048575) {
+    return -1;
+  }
+  if (!Number.isInteger(value.inner.b) || value.inner.b < 0 || value.inner.b > 1048575) {
+    return -1;
+  }
   lo = ((value.inner.a & 0xfffff));
+  if (!Number.isInteger(value.inner.c) || value.inner.c < 0 || value.inner.c > 16777215) {
+    return -1;
+  }
   v = ((value.inner.b & 0xfffff)) >>> 0;
   view.setUint32(0, (lo | (v << 20)) >>> 0, true);
   lo = v >>> 12;
@@ -585,17 +984,50 @@ export function ReadTrioSoleFlat(view, numBits, value) {
   out = view.getUint32(5, true);
   v = (out & 0xffffff) >>> 0;
   value.inner.c = v;
+  if (((64 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
+}
+
+// ReadTrioSoleFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadTrioSoleFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadTrioSoleFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (64 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xfffff) >>> 0;
+  value.inner.a = v;
+  out = (view.getUint32(2, true) >>> 4) | (view.getUint32(6, true) << 28);
+  v = (out & 0xfffff) >>> 0;
+  value.inner.b = v;
+  out = view.getUint32(5, true);
+  v = (out & 0xffffff) >>> 0;
+  value.inner.c = v;
+  return 64;
 }
 
 // ---- type Vec3Sole: the flat codec ----
 
-// WriteVec3SoleFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold Vec3SoleMaxBytes.
+// WriteVec3SoleFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold Vec3SoleMaxBytes.
 export function WriteVec3SoleFlat(view, value) {
+  if (!Number.isFinite(value.v.x)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(0, value.v.x, true);
+  if (!Number.isFinite(value.v.y)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(8, value.v.y, true);
+  if (!Number.isFinite(value.v.z)) { // a bare float must be finite
+    return -1;
+  }
   view.setFloat64(16, value.v.z, true);
   return 24;
 }
@@ -607,22 +1039,69 @@ export function ReadVec3SoleFlat(view, numBits, value) {
     return false;
   }
   value.v.x = view.getFloat64(0, true);
+  if ((view.getUint32(4, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.v.y = view.getFloat64(8, true);
+  if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.v.z = view.getFloat64(16, true);
+  if ((view.getUint32(20, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  if (((192 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
+}
+
+// ReadVec3SoleFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadVec3SoleFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadVec3SoleFlatBits(view, numBits, value) {
+  if (192 > numBits) {
+    return false;
+  }
+  value.v.x = view.getFloat64(0, true);
+  if ((view.getUint32(4, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.v.y = view.getFloat64(8, true);
+  if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  value.v.z = view.getFloat64(16, true);
+  if ((view.getUint32(20, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
+  return 192;
 }
 
 // ---- type TrioFirst: the flat codec ----
 
-// WriteTrioFirstFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold TrioFirstMaxBytes.
+// WriteTrioFirstFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold TrioFirstMaxBytes.
 export function WriteTrioFirstFlat(view, value) {
   let v = 0, lo = 0;
+  if (!Number.isInteger(value.inner.a) || value.inner.a < 0 || value.inner.a > 1048575) {
+    return -1;
+  }
+  if (!Number.isInteger(value.inner.b) || value.inner.b < 0 || value.inner.b > 1048575) {
+    return -1;
+  }
   lo = ((value.inner.a & 0xfffff));
+  if (!Number.isInteger(value.inner.c) || value.inner.c < 0 || value.inner.c > 16777215) {
+    return -1;
+  }
   v = ((value.inner.b & 0xfffff)) >>> 0;
   view.setUint32(0, (lo | (v << 20)) >>> 0, true);
   lo = v >>> 12;
+  if (!Number.isInteger(value.trailer) || value.trailer < 0 || value.trailer > 65535) {
+    return -1;
+  }
   view.setUint32(4, (lo | (((value.inner.c & 0xffffff)) << 8)) >>> 0, true);
   lo = 0;
   lo = ((value.trailer & 0xffff));
@@ -649,45 +1128,99 @@ export function ReadTrioFirstFlat(view, numBits, value) {
   out = view.getUint32(8, true);
   v = (out & 0xffff) >>> 0;
   value.trailer = v;
+  if (((80 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
+}
+
+// ReadTrioFirstFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadTrioFirstFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadTrioFirstFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  if (80 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xfffff) >>> 0;
+  value.inner.a = v;
+  out = (view.getUint32(2, true) >>> 4) | (view.getUint32(6, true) << 28);
+  v = (out & 0xfffff) >>> 0;
+  value.inner.b = v;
+  out = view.getUint32(5, true);
+  v = (out & 0xffffff) >>> 0;
+  value.inner.c = v;
+  out = view.getUint32(8, true);
+  v = (out & 0xffff) >>> 0;
+  value.trailer = v;
+  return 80;
 }
 
 // ---- type TrioStraddle: the flat codec ----
 
-// WriteTrioStraddleFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold TrioStraddleMaxBytes.
+// WriteTrioStraddleFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold TrioStraddleMaxBytes.
 export function WriteTrioStraddleFlat(view, value) {
   let v = 0, lo = 0;
+  if (value.pad0 < 0n || value.pad0 > 18446744073709551615n) {
+    return -1;
+  }
   SC.setBigUint64(0, value.pad0, true);
   v = SC.getUint32(0, true);
   view.setUint32(0, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(4, v, true);
+  if (value.pad1 < 0n || value.pad1 > 18446744073709551615n) {
+    return -1;
+  }
   SC.setBigUint64(0, value.pad1, true);
   v = SC.getUint32(0, true);
   view.setUint32(8, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(12, v, true);
+  if (value.pad2 < 0n || value.pad2 > 18446744073709551615n) {
+    return -1;
+  }
   SC.setBigUint64(0, value.pad2, true);
   v = SC.getUint32(0, true);
   view.setUint32(16, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(20, v, true);
+  if (value.pad3 < 0n || value.pad3 > 18446744073709551615n) {
+    return -1;
+  }
   SC.setBigUint64(0, value.pad3, true);
   v = SC.getUint32(0, true);
   view.setUint32(24, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(28, v, true);
+  if (value.pad4 < 0n || value.pad4 > 18446744073709551615n) {
+    return -1;
+  }
   SC.setBigUint64(0, value.pad4, true);
   v = SC.getUint32(0, true);
   view.setUint32(32, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(36, v, true);
+  if (!Number.isInteger(value.pad5) || value.pad5 < 0 || value.pad5 > 16777215) {
+    return -1;
+  }
+  if (!Number.isInteger(value.inner.a) || value.inner.a < 0 || value.inner.a > 1048575) {
+    return -1;
+  }
   lo = ((value.pad5 & 0xffffff));
+  if (!Number.isInteger(value.inner.b) || value.inner.b < 0 || value.inner.b > 1048575) {
+    return -1;
+  }
   v = ((value.inner.a & 0xfffff)) >>> 0;
   view.setUint32(40, (lo | (v << 24)) >>> 0, true);
   lo = v >>> 8;
+  if (!Number.isInteger(value.inner.c) || value.inner.c < 0 || value.inner.c > 16777215) {
+    return -1;
+  }
   view.setUint32(44, (lo | (((value.inner.b & 0xfffff)) << 12)) >>> 0, true);
   lo = 0;
   lo = ((value.inner.c & 0xffffff));
@@ -755,6 +1288,74 @@ export function ReadTrioStraddleFlat(view, numBits, value) {
   out = view.getUint32(48, true);
   v = (out & 0xffffff) >>> 0;
   value.inner.c = v;
+  if (((408 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
+    return false;
+  }
   return true;
+}
+
+// ReadTrioStraddleFlatBits(view, numBits, value) -> bits consumed, or false
+// (SPEC §5, §6.3). The same refusals as ReadTrioStraddleFlat, without the
+// end-of-packet check, so a later object may follow in the buffer.
+// The buffer behind view must extend FlatReadSlack bytes past the payload.
+export function ReadTrioStraddleFlatBits(view, numBits, value) {
+  let v = 0, out = 0;
+  let bg = 0n;
+  if (408 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(4, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.pad0 = bg;
+  out = view.getUint32(8, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(12, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.pad1 = bg;
+  out = view.getUint32(16, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(20, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.pad2 = bg;
+  out = view.getUint32(24, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(28, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.pad3 = bg;
+  out = view.getUint32(32, true);
+  v = out >>> 0;
+  SC.setUint32(0, v, true);
+  out = view.getUint32(36, true);
+  v = out >>> 0;
+  SC.setUint32(4, v, true);
+  bg = SC.getBigUint64(0, true);
+  value.pad4 = bg;
+  out = view.getUint32(40, true);
+  v = (out & 0xffffff) >>> 0;
+  value.pad5 = v;
+  out = view.getUint32(43, true);
+  v = (out & 0xfffff) >>> 0;
+  value.inner.a = v;
+  out = (view.getUint32(45, true) >>> 4) | (view.getUint32(49, true) << 28);
+  v = (out & 0xfffff) >>> 0;
+  value.inner.b = v;
+  out = view.getUint32(48, true);
+  v = (out & 0xffffff) >>> 0;
+  value.inner.c = v;
+  return 408;
 }
 

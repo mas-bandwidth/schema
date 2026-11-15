@@ -75,7 +75,8 @@ public final class BenchMixedRetain {
             return null;
         }
         TableVariable.Measure measure = new TableVariable.Measure();
-        if (BenchMixedVariable.loadMeasure(data, measure) < 0) {
+        // open proved the id table distinct over these bytes: measure once (§3)
+        if (BenchMixedVariable.loadMeasure(data, measure, false) < 0) {
             report.refused = true;
             if (measure.report.reason != null) {
                 report.reason = measure.report.reason;
@@ -585,7 +586,10 @@ public final class BenchMixedRetain {
                     if (ar != null && ar.has(2)) {
                         int ek = ar.get8();
                         long n = ar.count(r.limit);
-                        if (!ar.fail && ek != 13) {
+                        if (!ar.fail && !TableVariable.arrayElemKindClosed(ek)) {
+                            report.damaged = true;
+                            ar.fail = true;
+                        } else if (!ar.fail && ek != 13) {
                             report.refuse("kind_mismatch");
                         } else {
                             if (ar.fail) {
@@ -625,7 +629,10 @@ public final class BenchMixedRetain {
                     if (ar != null && ar.has(2)) {
                         int ek = ar.get8();
                         long n = ar.count(r.limit);
-                        if (!ar.fail && ek != 13) {
+                        if (!ar.fail && !TableVariable.arrayElemKindClosed(ek)) {
+                            report.damaged = true;
+                            ar.fail = true;
+                        } else if (!ar.fail && ek != 13) {
                             report.refuse("kind_mismatch");
                         } else {
                             if (ar.fail) {
@@ -679,6 +686,8 @@ public final class BenchMixedRetain {
                             int ek = ar.get8();
                             long n = ar.count(r.limit);
                             if (ar.fail) {
+                            } else if (!TableVariable.arrayElemKindClosed(ek)) {
+                                report.damaged = true;
                             } else if (!(ek == 6)) {
                                 report.refuse("kind_mismatch");
                             } else {
@@ -746,6 +755,8 @@ public final class BenchMixedRetain {
                         long n = r.leb();
                         if (r.fail) {
                             r.fail = false;
+                            report.damaged = true;
+                        } else if (!TableVariable.arrayElemKindClosed(ek)) {
                             report.damaged = true;
                         } else if (ek != 6) {
                             report.refuse("kind_mismatch");

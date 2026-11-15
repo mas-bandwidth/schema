@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -40,6 +40,13 @@ pub fn write_vec2(stream: &mut WriteStream<'_>, value: &Vec2) -> Result {
 
 #[inline]
 pub fn read_vec2(stream: &mut ReadStream<'_>, value: &mut Vec2) -> Result {
+    read_vec2_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_vec2_body(stream: &mut ReadStream<'_>, value: &mut Vec2) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: x[0..32]
     stream.serialize_bits(&mut c, 32)?;
@@ -94,6 +101,13 @@ pub fn write_span_f64(stream: &mut WriteStream<'_>, value: &SpanF64) -> Result {
 
 #[inline]
 pub fn read_span_f64(stream: &mut ReadStream<'_>, value: &mut SpanF64) -> Result {
+    read_span_f64_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_span_f64_body(stream: &mut ReadStream<'_>, value: &mut SpanF64) -> Result {
     for i in 0..2 {
         stream.serialize_f64(&mut value.values[i])?;
     }
@@ -126,6 +140,13 @@ pub fn write_span_u64(stream: &mut WriteStream<'_>, value: &SpanU64) -> Result {
 
 #[inline]
 pub fn read_span_u64(stream: &mut ReadStream<'_>, value: &mut SpanU64) -> Result {
+    read_span_u64_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_span_u64_body(stream: &mut ReadStream<'_>, value: &mut SpanU64) -> Result {
     for i in 0..2 {
         stream.serialize_bits64(&mut value.values[i], 64)?;
     }
@@ -158,6 +179,13 @@ pub fn write_span_i64(stream: &mut WriteStream<'_>, value: &SpanI64) -> Result {
 
 #[inline]
 pub fn read_span_i64(stream: &mut ReadStream<'_>, value: &mut SpanI64) -> Result {
+    read_span_i64_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_span_i64_body(stream: &mut ReadStream<'_>, value: &mut SpanI64) -> Result {
     for i in 0..2 {
         {
             let mut raw_value: u64 = 0;
@@ -194,6 +222,13 @@ pub fn write_span_one(stream: &mut WriteStream<'_>, value: &SpanOne) -> Result {
 
 #[inline]
 pub fn read_span_one(stream: &mut ReadStream<'_>, value: &mut SpanOne) -> Result {
+    read_span_one_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_span_one_body(stream: &mut ReadStream<'_>, value: &mut SpanOne) -> Result {
     for i in 0..1 {
         stream.serialize_bits64(&mut value.values[i], 64)?;
     }
@@ -226,6 +261,13 @@ pub fn write_span_chunk(stream: &mut WriteStream<'_>, value: &SpanChunk) -> Resu
 
 #[inline]
 pub fn read_span_chunk(stream: &mut ReadStream<'_>, value: &mut SpanChunk) -> Result {
+    read_span_chunk_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_span_chunk_body(stream: &mut ReadStream<'_>, value: &mut SpanChunk) -> Result {
     for i in 0..4 {
         {
             let mut raw_value: u32 = 0;
@@ -267,6 +309,13 @@ pub fn write_span_tail(stream: &mut WriteStream<'_>, value: &SpanTail) -> Result
 
 #[inline]
 pub fn read_span_tail(stream: &mut ReadStream<'_>, value: &mut SpanTail) -> Result {
+    read_span_tail_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_span_tail_body(stream: &mut ReadStream<'_>, value: &mut SpanTail) -> Result {
     for i in 0..2 {
         stream.serialize_f64(&mut value.values[i])?;
     }
@@ -307,6 +356,13 @@ pub fn write_span_twice(stream: &mut WriteStream<'_>, value: &SpanTwice) -> Resu
 
 #[inline]
 pub fn read_span_twice(stream: &mut ReadStream<'_>, value: &mut SpanTwice) -> Result {
+    read_span_twice_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_span_twice_body(stream: &mut ReadStream<'_>, value: &mut SpanTwice) -> Result {
     for i in 0..2 {
         stream.serialize_f64(&mut value.a[i])?;
     }
@@ -348,6 +404,13 @@ pub fn write_trio(stream: &mut WriteStream<'_>, value: &Trio) -> Result {
 
 #[inline]
 pub fn read_trio(stream: &mut ReadStream<'_>, value: &mut Trio) -> Result {
+    read_trio_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_trio_body(stream: &mut ReadStream<'_>, value: &mut Trio) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: a[0..20], b[0..12]
     stream.serialize_bits(&mut c, 32)?;
@@ -385,7 +448,14 @@ pub fn write_trio_sole(stream: &mut WriteStream<'_>, value: &TrioSole) -> Result
 
 #[inline]
 pub fn read_trio_sole(stream: &mut ReadStream<'_>, value: &mut TrioSole) -> Result {
-    read_trio(stream, &mut value.inner)?;
+    read_trio_sole_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_trio_sole_body(stream: &mut ReadStream<'_>, value: &mut TrioSole) -> Result {
+    read_trio_body(stream, &mut value.inner)?;
     Ok(())
 }
 
@@ -410,7 +480,14 @@ pub fn write_vec3_sole(stream: &mut WriteStream<'_>, value: &Vec3Sole) -> Result
 
 #[inline]
 pub fn read_vec3_sole(stream: &mut ReadStream<'_>, value: &mut Vec3Sole) -> Result {
-    read_vec3(stream, &mut value.v)?;
+    read_vec3_sole_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_vec3_sole_body(stream: &mut ReadStream<'_>, value: &mut Vec3Sole) -> Result {
+    read_vec3_body(stream, &mut value.v)?;
     Ok(())
 }
 
@@ -441,7 +518,14 @@ pub fn write_trio_first(stream: &mut WriteStream<'_>, value: &TrioFirst) -> Resu
 
 #[inline]
 pub fn read_trio_first(stream: &mut ReadStream<'_>, value: &mut TrioFirst) -> Result {
-    read_trio(stream, &mut value.inner)?;
+    read_trio_first_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_trio_first_body(stream: &mut ReadStream<'_>, value: &mut TrioFirst) -> Result {
+    read_trio_body(stream, &mut value.inner)?;
     stream.serialize_bits(&mut value.trailer, 16)?;
     Ok(())
 }
@@ -502,6 +586,13 @@ pub fn write_trio_straddle(stream: &mut WriteStream<'_>, value: &TrioStraddle) -
 
 #[inline]
 pub fn read_trio_straddle(stream: &mut ReadStream<'_>, value: &mut TrioStraddle) -> Result {
+    read_trio_straddle_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_trio_straddle_body(stream: &mut ReadStream<'_>, value: &mut TrioStraddle) -> Result {
     let mut c: u32 = 0;
     // word 0, 32 bits: pad0[0..32]
     stream.serialize_bits(&mut c, 32)?;
@@ -549,7 +640,7 @@ pub fn read_trio_straddle(stream: &mut ReadStream<'_>, value: &mut TrioStraddle)
     value.pad4 = v0;
     let v1: u64 = c2 & 0xffffff;
     value.pad5 = v1 as u32;
-    read_trio(stream, &mut value.inner)?;
+    read_trio_body(stream, &mut value.inner)?;
     Ok(())
 }
 

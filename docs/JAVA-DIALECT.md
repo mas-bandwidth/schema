@@ -146,11 +146,24 @@ failure in their tree and not only in ours.
   `Weapon.MAX`), union tags (`ShapeType.NONE`), flag masks
   and counts (`PROBE_FLAGS_ARMED`, `PROBE_FLAGS_COUNT`), the bounds
   (`PROBE_SAMPLE_MAX_BITS`, `PROBE_SAMPLE_MAX_BYTES`) and `PROTOCOL_ID`.
-- **Unsigned storage is one size up**: uint8 and uint16 store `int`, uint32
-  and `bits(N <= 32)` store `long`, so a field reads as its value with no
-  mask; the writer's contract predicate asserts the width's range. uint64,
-  `bits(N > 32)` and flags store `long`, two's complement. A `[N]uint8` stays
-  a `byte[]`, and enums and union tags keep their narrow storage.
+- **Storage follows the surface.** In the packet codecs
+  (`internal/codegen/java`) a signed integer stores the same-width signed type
+  and an unsigned one stores the next type that holds every value: uint8 and
+  uint16 store `int`, uint32 and `bits(N <= 32)` store `long`, so a field
+  reads as its value with no mask; uint64, `bits(N > 32)` and flags store
+  `long`, two's complement; int8 and int16 store `byte` and `short`. A
+  `[N]uint8` stays a `byte[]`, enums and union tags keep their narrow storage,
+  and the writer's contract predicate asserts the width's range. In the table
+  backend (`internal/codegen/javatable`) the variable form's `Value` stores
+  every integer of at most 32 bits in `int` — uint8, uint16 and uint32, int8,
+  int16 and int32, and `bits(N <= 32)` alike, so uint32 and int8 both store
+  `int` — and 33 to 64 bits in `long`, wider integers as `Int128`/`UInt128`.
+  Where such storage is wider than the kind, the type does not bound the
+  value: the writer's checks hold the range the schema declares. A required
+  field's declared bounds are checked on save (`buildGraph` fails, so `save`
+  returns null), and a load clamps a wire value past them and reports
+  `out_of_range`; a field with no such bound takes no save check, and the save
+  writes only the kind's low bits.
 - **The packet codecs compose** (SPEC §6.1): `write<Name>Bits(value, data,
   bitOffset)` and `read<Name>Bits(value, data, bitOffset, numBits)` return
   the bit position after the value (`-1` on a refused read); `write<Name>` and
@@ -164,9 +177,16 @@ failure in their tree and not only in ours.
   `TableBlockInfo.java`, ...), so a runtime type's home is its name and never
   a file order. A schema file that spells a runtime type's name is refused by
   name (`checkNames`), never overwritten.
-- **Self-contained.** Only `java.lang`, `java.lang.invoke`, `java.nio` and
-  `java.util`; no runtime package and no JSON library
-  (`tables-java-standalone`).
+- **Self-contained.** The generated sources name only these JDK packages:
+  `java.lang`, `java.lang.invoke`, `java.lang.reflect`, `java.math`, `java.nio`
+  (including `java.nio.charset`) and `java.util` (including
+  `java.util.function`). The `tables-java-standalone` gate holds that the
+  generated `<Table>Block.java`, `<Table>Cook.java` and `<Table>Row.java`
+  sources name no serialize runtime package and no third-party JSON library:
+  it scans them — refusing below 12 Block/Cook files — for `Serialize`,
+  `com.fasterxml`, `com.google.gson` and `org.json`. The JSON readers are
+  emitted in `TableJson.java` and `TableVariable.java` over the descriptors,
+  not imported.
 
 ## The gates, and how to run each
 

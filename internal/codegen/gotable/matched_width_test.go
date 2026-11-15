@@ -118,6 +118,34 @@ const matchedWidthWireTest = `package probe
 import "testing"
 
 
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func rootForm1Save(value *Root, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -154,12 +182,12 @@ func TestMatchedWidthRoundTrip(t *testing.T) {
 	var value, loaded Root
 	value.A = 0x1234
 	value.B = -400
-	n := RootMeasure(&value)
+	n := rootForm1Measure(&value)
 	if n < 0 {
 		t.Fatal("measure")
 	}
 	wire := make([]byte, n)
-	if RootSave(&value, wire) != n {
+	if rootForm1Save(&value, wire) != n {
 		t.Fatal("save")
 	}
 	var report TableReport

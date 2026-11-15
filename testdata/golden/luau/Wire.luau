@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package example — protocol id 0xeb26c970fde3fd71 — the Luau type surface (docs/PORT-LUAU.md)
+-- package example — protocol id 0xf35accd0582cdd84 — the Luau type surface (docs/PORT-LUAU.md)
 
 local _Rt = require("./schema_runtime")
 
@@ -25,13 +25,25 @@ _M.Weapon = table.freeze({
 	Laser = 1,
 	Missile = 2,
 	Railgun = 3,
+	Flak = 4,
+	Beam = 5,
+	Plasma = 6,
+	Torpedo = 7,
+	Mine = 8,
+	Drone = 9,
+	Swarm = 10,
+	Pulse = 11,
+	Lance = 12,
+	Comet = 13,
+	Quake = 14,
+	Arc = 15,
 	Max = 15, -- the exported extent, the enum's only number (SPEC §4.2)
 })
 
 -- EnumNameWeapon: debug/log/tooling name for any Weapon wire value; the names
 -- table is the function's own upvalue, built once.
 _M.EnumNameWeapon = (function()
-	local names = table.freeze({ [0] = "None", [1] = "Laser", [2] = "Missile", [3] = "Railgun" })
+	local names = table.freeze({ [0] = "None", [1] = "Laser", [2] = "Missile", [3] = "Railgun", [4] = "Flak", [5] = "Beam", [6] = "Plasma", [7] = "Torpedo", [8] = "Mine", [9] = "Drone", [10] = "Swarm", [11] = "Pulse", [12] = "Lance", [13] = "Comet", [14] = "Quake", [15] = "Arc" })
 	return function(value: number): string
 		return names[value] or "???"
 	end
@@ -399,9 +411,10 @@ function _M.ZeroProbeHeader(value: any)
   value.ProbeId = 0i
 end
 
--- ReadProbeHeader reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadProbeHeaderBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadProbeHeader(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadProbeHeader is the one-packet read (SPEC §5).
+function _M.ReadProbeHeaderBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 8) then
     return false
   end
@@ -428,6 +441,13 @@ function _M.ReadProbeHeader(stream: any, value: any): boolean
   return true
 end
 
+-- ReadProbeHeader reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadProbeHeader(stream: any, value: any): boolean
+  if not _M.ReadProbeHeaderBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitProbeBits resets a value to what NewProbeBits builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -448,9 +468,10 @@ function _M.ZeroProbeBits(value: any)
   value.Nonce = 0i
 end
 
--- ReadProbeBits reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadProbeBitsBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadProbeBits(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadProbeBits is the one-packet read (SPEC §5).
+function _M.ReadProbeBitsBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 9) then
     return false
   end
@@ -472,6 +493,13 @@ function _M.ReadProbeBits(stream: any, value: any): boolean
   end
   value.Nonce = BIG.value
   return true
+end
+
+-- ReadProbeBits reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadProbeBits(stream: any, value: any): boolean
+  if not _M.ReadProbeBitsBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitProbeSample resets a value to what NewProbeSample builds, in place: its declared defaults
@@ -504,9 +532,10 @@ function _M.ZeroProbeSample(value: any)
   value.SamplesCount = 0
 end
 
--- ReadProbeSample reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadProbeSampleBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadProbeSample(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadProbeSample is the one-packet read (SPEC §5).
+function _M.ReadProbeSampleBody(stream: any, value: any): boolean
   if not stream:serializeBool(BOOL) then
     return false
   end
@@ -566,6 +595,13 @@ function _M.ReadProbeSample(stream: any, value: any): boolean
   return true
 end
 
+-- ReadProbeSample reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadProbeSample(stream: any, value: any): boolean
+  if not _M.ReadProbeSampleBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitProbeRing resets a value to what NewProbeRing builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -578,14 +614,22 @@ function _M.ZeroProbeRing(value: any)
   value.Radius = 0
 end
 
--- ReadProbeRing reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadProbeRingBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadProbeRing(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadProbeRing is the one-packet read (SPEC §5).
+function _M.ReadProbeRingBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 16) then
     return false
   end
   value.Radius = BITS.value
   return true
+end
+
+-- ReadProbeRing reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadProbeRing(stream: any, value: any): boolean
+  if not _M.ReadProbeRingBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitProbeSlab resets a value to what NewProbeSlab builds, in place: its declared defaults
@@ -602,9 +646,10 @@ function _M.ZeroProbeSlab(value: any)
   value.Height = 0
 end
 
--- ReadProbeSlab reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadProbeSlabBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadProbeSlab(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadProbeSlab is the one-packet read (SPEC §5).
+function _M.ReadProbeSlabBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, 0, 100) then
     return false
   end
@@ -614,6 +659,13 @@ function _M.ReadProbeSlab(stream: any, value: any): boolean
   end
   value.Height = BITS.value
   return true
+end
+
+-- ReadProbeSlab reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadProbeSlab(stream: any, value: any): boolean
+  if not _M.ReadProbeSlabBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitProbeShape resets the union to what NewProbeShape builds, in place: None, and every
@@ -629,20 +681,28 @@ function _M.ZeroProbeShape(value: any)
   value.Type = 0
 end
 
-function _M.ReadProbeShape(stream: any, value: any): boolean
+-- ReadProbeShapeBody reads the union wire; it does not end the packet (SPEC §5).
+function _M.ReadProbeShapeBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, 0, 2) then -- rejects a tag above the count (SPEC §4.8)
     return false
   end
   value.Type = BITS.value
   if value.Type == _M.ProbeShapeType.Ring then
     _M.InitProbeRing(value.Ring) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)
-    return _M.ReadProbeRing(stream, value.Ring)
+    return _M.ReadProbeRingBody(stream, value.Ring)
   end
   if value.Type == _M.ProbeShapeType.Slab then
     _M.InitProbeSlab(value.Slab) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)
-    return _M.ReadProbeSlab(stream, value.Slab)
+    return _M.ReadProbeSlabBody(stream, value.Slab)
   end
   return true -- None
+end
+
+-- ReadProbeShape reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadProbeShape(stream: any, value: any): boolean
+  if not _M.ReadProbeShapeBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitProbeCollider resets a value to what NewProbeCollider builds, in place: its declared defaults
@@ -665,17 +725,18 @@ function _M.ZeroProbeCollider(value: any)
   value.ExtrasCount = 0
 end
 
--- ReadProbeCollider reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadProbeColliderBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadProbeCollider(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadProbeCollider is the one-packet read (SPEC §5).
+function _M.ReadProbeColliderBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 8) then
     return false
   end
   value.Armor = BITS.value
-  if not _M.ReadProbeShape(stream, value.Shape) then
+  if not _M.ReadProbeShapeBody(stream, value.Shape) then
     return false
   end
-  if not _M.ReadProbeShape(stream, value.Backup) then
+  if not _M.ReadProbeShapeBody(stream, value.Backup) then
     return false
   end
   if not stream:serializeInt(BITS, 0, 2) then -- the count guards the loop (SPEC §6.3)
@@ -683,11 +744,18 @@ function _M.ReadProbeCollider(stream: any, value: any): boolean
   end
   value.ExtrasCount = BITS.value
   for i = 1, value.ExtrasCount do
-    if not _M.ReadProbeShape(stream, value.Extras[i]) then
+    if not _M.ReadProbeShapeBody(stream, value.Extras[i]) then
       return false
     end
   end
   return true
+end
+
+-- ReadProbeCollider reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadProbeCollider(stream: any, value: any): boolean
+  if not _M.ReadProbeColliderBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitProbeConfig resets a value to what NewProbeConfig builds, in place: its declared defaults
@@ -704,9 +772,10 @@ function _M.ZeroProbeConfig(value: any)
   value.Preferred = 0
 end
 
--- ReadProbeConfig reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadProbeConfigBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadProbeConfig(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadProbeConfig is the one-packet read (SPEC §5).
+function _M.ReadProbeConfigBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 32) then
     return false
   end
@@ -719,6 +788,13 @@ function _M.ReadProbeConfig(stream: any, value: any): boolean
   end
   value.Preferred = BITS.value
   return true
+end
+
+-- ReadProbeConfig reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadProbeConfig(stream: any, value: any): boolean
+  if not _M.ReadProbeConfigBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitProbeArray resets a value to what NewProbeArray builds, in place: its declared defaults
@@ -735,18 +811,26 @@ function _M.ZeroProbeArray(value: any)
   _M.ZeroProbeConfig(value.Config)
 end
 
--- ReadProbeArray reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadProbeArrayBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadProbeArray(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadProbeArray is the one-packet read (SPEC §5).
+function _M.ReadProbeArrayBody(stream: any, value: any): boolean
   for i = 1, 2 do
-    if not _M.ReadProbeSample(stream, value.Samples[i]) then
+    if not _M.ReadProbeSampleBody(stream, value.Samples[i]) then
       return false
     end
   end
-  if not _M.ReadProbeConfig(stream, value.Config) then
+  if not _M.ReadProbeConfigBody(stream, value.Config) then
     return false
   end
   return true
+end
+
+-- ReadProbeArray reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadProbeArray(stream: any, value: any): boolean
+  if not _M.ReadProbeArrayBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitHeartbeat resets a value to what NewHeartbeat builds, in place: its declared defaults
@@ -761,11 +845,19 @@ function _M.ZeroHeartbeat(value: any)
   -- empty body — nothing to reset (SPEC §4.6)
 end
 
--- ReadHeartbeat reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadHeartbeatBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadHeartbeat(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadHeartbeat is the one-packet read (SPEC §5).
+function _M.ReadHeartbeatBody(stream: any, value: any): boolean
   -- empty body — presence is the payload (SPEC §4.6)
   return true
+end
+
+-- ReadHeartbeat reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadHeartbeat(stream: any, value: any): boolean
+  if not _M.ReadHeartbeatBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitTest resets a value to what NewTest builds, in place: its declared defaults
@@ -786,9 +878,10 @@ function _M.ZeroTest(value: any)
   value.TestD = 0
 end
 
--- ReadTest reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadTestBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadTest(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadTest is the one-packet read (SPEC §5).
+function _M.ReadTestBody(stream: any, value: any): boolean
   if not stream:serializeBits(BITS, 16) then
     return false
   end
@@ -808,6 +901,13 @@ function _M.ReadTest(stream: any, value: any): boolean
   return true
 end
 
+-- ReadTest reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadTest(stream: any, value: any): boolean
+  if not _M.ReadTestBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitBlock resets a value to what NewBlock builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -822,9 +922,10 @@ function _M.ZeroBlock(value: any)
   value.DataLength = 0
 end
 
--- ReadBlock reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadBlockBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadBlock(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadBlock is the one-packet read (SPEC §5).
+function _M.ReadBlockBody(stream: any, value: any): boolean
   do -- length, align, bytes into the pre-allocated buffer (SPEC §4.7)
     if not stream:serializeInt(BITS, 0, 2000) then -- the length guards the payload (§6.3)
       return false
@@ -838,6 +939,13 @@ function _M.ReadBlock(stream: any, value: any): boolean
     value.DataLength = n
   end
   return true
+end
+
+-- ReadBlock reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadBlock(stream: any, value: any): boolean
+  if not _M.ReadBlockBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitChat resets a value to what NewChat builds, in place: its declared defaults
@@ -854,9 +962,10 @@ function _M.ZeroChat(value: any)
   value.TextLength = 0
 end
 
--- ReadChat reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadChatBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadChat(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadChat is the one-packet read (SPEC §5).
+function _M.ReadChatBody(stream: any, value: any): boolean
   do -- length, align, bytes into the pre-allocated buffer (SPEC §4.7)
     if not stream:serializeInt(BITS, 0, 256) then -- the length guards the payload (§6.3)
       return false
@@ -872,6 +981,13 @@ function _M.ReadChat(stream: any, value: any): boolean
     for k = 0, n - 1 do if buffer.readu8(value.Text, k) == 0 then return false end end -- interior null (SPEC §4.7)
   end
   return true
+end
+
+-- ReadChat reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadChat(stream: any, value: any): boolean
+  if not _M.ReadChatBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitProbeReport resets a value to what NewProbeReport builds, in place: its declared defaults
@@ -890,20 +1006,28 @@ function _M.ZeroProbeReport(value: any)
   _M.ZeroTest(value.Echo)
 end
 
--- ReadProbeReport reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadProbeReportBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadProbeReport(stream: any, value: any): boolean
-  if not _M.ReadProbeHeader(stream, value.Header) then
+-- It does not end the packet: the public ReadProbeReport is the one-packet read (SPEC §5).
+function _M.ReadProbeReportBody(stream: any, value: any): boolean
+  if not _M.ReadProbeHeaderBody(stream, value.Header) then
     return false
   end
   if not stream:serializeBits(BITS, 8) then
     return false
   end
   value.Flags = integer.create(BITS.value)
-  if not _M.ReadTest(stream, value.Echo) then
+  if not _M.ReadTestBody(stream, value.Echo) then
     return false
   end
   return true
+end
+
+-- ReadProbeReport reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadProbeReport(stream: any, value: any): boolean
+  if not _M.ReadProbeReportBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- InitTestData resets a value to what NewTestData builds, in place: its declared defaults
@@ -957,14 +1081,15 @@ function _M.ZeroTestData(value: any)
   value.Uint64Value = 0i
   value.Int64Full = 0i
   value.Int64Range = 0i
-  for i = 1, 17 do value.FixedBytes[i] = 0 end
+  buffer.fill(value.FixedBytes, 0, 0)
   buffer.fill(value.Text, 0, 0)
   value.TextLength = 0
 end
 
--- ReadTestData reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadTestDataBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadTestData(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadTestData is the one-packet read (SPEC §5).
+function _M.ReadTestDataBody(stream: any, value: any): boolean
   if not stream:serializeInt(BITS, -100, 100) then
     return false
   end
@@ -1077,6 +1202,13 @@ function _M.ReadTestData(stream: any, value: any): boolean
   return true
 end
 
+-- ReadTestData reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadTestData(stream: any, value: any): boolean
+  if not _M.ReadTestDataBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
 -- InitCompressedProbe resets a value to what NewCompressedProbe builds, in place: its declared defaults
 -- (SPEC §5), every buffer and nested value reused, so a reused value costs no
 -- allocation.
@@ -1091,9 +1223,10 @@ function _M.ZeroCompressedProbe(value: any)
   value.Offset = 0
 end
 
--- ReadCompressedProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
+-- ReadCompressedProbeBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream refusal rides stream:error(), named by the runtime's refusalName).
-function _M.ReadCompressedProbe(stream: any, value: any): boolean
+-- It does not end the packet: the public ReadCompressedProbe is the one-packet read (SPEC §5).
+function _M.ReadCompressedProbeBody(stream: any, value: any): boolean
   if not stream:serializeCompressedFloat(STR, 0.0, 10.0, 0.01) then
     return false
   end
@@ -1103,6 +1236,13 @@ function _M.ReadCompressedProbe(stream: any, value: any): boolean
   end
   value.Offset = STR.value
   return true
+end
+
+-- ReadCompressedProbe reads one packet: the type wire and the runtime's end check, once,
+-- after the top-level object (SPEC §5).
+function _M.ReadCompressedProbe(stream: any, value: any): boolean
+  if not _M.ReadCompressedProbeBody(stream, value) then return false end
+  return stream:serializeEnd()
 end
 
 -- ProbeHeaderMaxBits is the longest wire path, align padding at its worst case;

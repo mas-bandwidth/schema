@@ -187,7 +187,6 @@ final Map<String, Codec> codecs = {
     (v) {
       final t = v as mapdemo.Text;
       rev(t.names);
-      rev(t.wide);
       rev(t.blobs);
     },
   ),

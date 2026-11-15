@@ -305,8 +305,376 @@ func (g *Gen) Imports() []string {
 	return out
 }
 
-// Assemble returns the module: header, imports, namespace, forward class
-// declarations, body.
+// localMark is appended to every generated parameter and local name in a
+// module. Schema identifiers are [A-Za-z_][A-Za-z0-9_]* (SPEC §4.1), so no
+// schema const can spell a marked name; Lobster's identifiers accept any byte
+// at or above 0x80, which is what the mark is. A schema const is emitted as a
+// namespace-level let with the name the schema spells, so the mark is what
+// keeps a generated binding from shadowing one.
+const localMark = "·"
+
+// markGeneratedLocals appends localMark to every parameter, local and loop
+// variable in body. Each top-level def is marked with the names that def
+// binds, read from its own declarations, so a name a later emitter writes is
+// covered without a second registry and a name the def does not bind (a
+// schema const, a schema type) is left as the schema spells it. Only function
+// bodies are marked: a namespace-level let is a schema const, a class field is
+// not a variable, and a data literal's keys are not bindings. types is the
+// unit's type, enum, flags and union names, which a def may write in a type
+// position beside a local of the same spelling.
+func markGeneratedLocals(body string, types map[string]bool) string {
+	lines := strings.Split(body, "\n")
+	for i := 0; i < len(lines); {
+		if !strings.HasPrefix(strings.TrimSpace(lines[i]), "def ") {
+			i++
+			continue
+		}
+		ind := indentWidth(lines[i])
+		end := i + 1
+		for end < len(lines) && indentWidth(lines[end]) > ind {
+			end++
+		}
+		markDef(lines[i:end], types)
+		i = end
+	}
+	return strings.Join(lines, "\n")
+}
+
+// typeNames is the set of the unit's type, enum, flags and union names.
+func typeNames(u *ir.Unit) map[string]bool {
+	names := map[string]bool{}
+	if u == nil {
+		return names
+	}
+	for _, f := range u.Files {
+		for _, d := range f.Decls {
+			switch d := d.(type) {
+			case *ir.Enum:
+				names[d.Name] = true
+			case *ir.Flags:
+				names[d.Name] = true
+			case *ir.Struct:
+				names[d.Name] = true
+			case *ir.Union:
+				names[d.Name] = true
+			}
+		}
+	}
+	return names
+}
+
+// markDef marks one def, its first line the def line, in place.
+func markDef(lines []string, types map[string]bool) {
+	names := map[string]bool{}
+	for _, line := range lines {
+		trim := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trim, "def "):
+			for _, name := range defParamNames(trim) {
+				names[name] = true
+			}
+		case strings.HasPrefix(trim, "let "), strings.HasPrefix(trim, "var "):
+			for _, name := range bindingNames(trim[4:]) {
+				names[name] = true
+			}
+		case strings.HasPrefix(trim, "for("):
+			for _, name := range forNames(trim) {
+				names[name] = true
+			}
+		}
+	}
+	if len(names) == 0 {
+		return
+	}
+	for i, line := range lines {
+		trim := strings.TrimSpace(line)
+		lines[i] = markLine(line, names, types, strings.HasPrefix(trim, "def ") || strings.HasPrefix(trim, "for("))
+	}
+}
+
+func indentWidth(line string) int {
+	n := 0
+	for n < len(line) && (line[n] == ' ' || line[n] == '\t') {
+		n++
+	}
+	return n
+}
+
+func identStartByte(c byte) bool {
+	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c >= 0x80
+}
+
+func identPartByte(c byte) bool {
+	return identStartByte(c) || (c >= '0' && c <= '9')
+}
+
+// defParamNames reads the names a def's parameter list binds.
+func defParamNames(line string) []string {
+	open := strings.IndexByte(line, '(')
+	if open < 0 {
+		return nil
+	}
+	depth := 0
+	close := -1
+	for i := open; i < len(line); i++ {
+		switch line[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				close = i
+			}
+		}
+		if close >= 0 {
+			break
+		}
+	}
+	if close < 0 {
+		return nil
+	}
+	var names []string
+	for _, part := range strings.Split(line[open+1:close], ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		end := 0
+		for end < len(part) && identPartByte(part[end]) {
+			end++
+		}
+		if end > 0 {
+			names = append(names, part[:end])
+		}
+	}
+	return names
+}
+
+// bindingNames reads the names a let/var list binds, stopping at the = that
+// starts the initializer. A binding's type annotation is skipped to the next
+// top-level comma or the =.
+func bindingNames(s string) []string {
+	var names []string
+	i := 0
+	for {
+		for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+			i++
+		}
+		if i >= len(s) || s[i] == '=' {
+			break
+		}
+		start := i
+		if !identStartByte(s[i]) {
+			break
+		}
+		for i < len(s) && identPartByte(s[i]) {
+			i++
+		}
+		names = append(names, s[start:i])
+		for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+			i++
+		}
+		if i < len(s) && s[i] == ':' {
+			i++
+			depth := 0
+			for i < len(s) {
+				c := s[i]
+				switch c {
+				case '[', '(', '<':
+					depth++
+				case ']', ')', '>':
+					if depth > 0 {
+						depth--
+					}
+				case ',', '=':
+					if depth == 0 {
+						goto typed
+					}
+				}
+				i++
+			}
+		typed:
+		}
+		for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+			i++
+		}
+		if i < len(s) && s[i] == ',' {
+			i++
+			continue
+		}
+		break
+	}
+	return names
+}
+
+// forNames reads the loop variables a for(expr) list binds.
+func forNames(line string) []string {
+	open := strings.IndexByte(line, '(')
+	if open < 0 {
+		return nil
+	}
+	depth := 0
+	close := -1
+	for i := open; i < len(line); i++ {
+		switch line[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				close = i
+			}
+		}
+		if close >= 0 {
+			break
+		}
+	}
+	if close < 0 {
+		return nil
+	}
+	rest := line[close+1:]
+	if colon := strings.IndexByte(rest, ':'); colon >= 0 {
+		rest = rest[:colon]
+	}
+	return bindingNames(rest)
+}
+
+// markLine appends localMark to the local/parameter identifiers in one line.
+// String literals and comments are copied verbatim; an identifier after a dot
+// is a namespaced or field name, and an identifier followed by a colon after
+// an opening brace, a comma or the line start is a literal key, so neither is
+// a binding. A type position is never a binding either, and a schema type may
+// share a local's spelling: an annotation (a colon with no space after it), a
+// return type (after ->), the operand of is, a constructor (a name before {)
+// and, for a name in types, a conversion (a name before ().
+func markLine(line string, names, types map[string]bool, defLine bool) string {
+	const (
+		typeNone = iota
+		typeAnnotation
+		typeReturn
+	)
+	var b strings.Builder
+	prev := byte(0)
+	prevWord := ""
+	typeMode := typeNone
+	depth := 0
+	for i := 0; i < len(line); {
+		c := line[i]
+		if c == '/' && i+1 < len(line) && line[i+1] == '/' {
+			b.WriteString(line[i:])
+			break
+		}
+		if c == '-' && i+1 < len(line) && line[i+1] == '>' {
+			b.WriteString("->")
+			typeMode, depth = typeReturn, 0
+			prev, prevWord = '>', ""
+			i += 2
+			continue
+		}
+		if c == ':' && typeMode == typeNone {
+			if i+1 < len(line) && line[i+1] == ':' {
+				b.WriteString("::")
+				typeMode, depth = typeAnnotation, 0
+				prev, prevWord = ':', ""
+				i += 2
+				continue
+			}
+			if i+1 < len(line) && line[i+1] != ' ' && line[i+1] != '\t' {
+				typeMode, depth = typeAnnotation, 0
+			}
+			b.WriteByte(c)
+			prev, prevWord = c, ""
+			i++
+			continue
+		}
+		if typeMode != typeNone && !identStartByte(c) {
+			switch c {
+			case '[', '(':
+				depth++
+			case ']', ')':
+				if depth > 0 {
+					depth--
+				} else if typeMode == typeAnnotation {
+					typeMode = typeNone
+				}
+			case ':':
+				if depth == 0 {
+					typeMode = typeNone
+				}
+			case ',', '=', ' ', '\t':
+				if depth == 0 && typeMode == typeAnnotation {
+					typeMode = typeNone
+				}
+			}
+		}
+		if c == '"' {
+			b.WriteByte(c)
+			i++
+			for i < len(line) {
+				b.WriteByte(line[i])
+				if line[i] == '\\' && i+1 < len(line) {
+					i++
+					b.WriteByte(line[i])
+				} else if line[i] == '"' {
+					i++
+					break
+				}
+				i++
+			}
+			prev = '"'
+			continue
+		}
+		if identStartByte(c) {
+			start := i
+			for i < len(line) && identPartByte(line[i]) {
+				i++
+			}
+			name := line[start:i]
+			binding := names[name] && typeMode == typeNone && prev != '.' && prevWord != "is" &&
+				!namesType(line, i, types[name]) && (defLine || !literalKey(line, i, prev))
+			b.WriteString(name)
+			if binding {
+				b.WriteString(localMark)
+			}
+			prev, prevWord = name[len(name)-1], name
+			continue
+		}
+		b.WriteByte(c)
+		if c != ' ' && c != '\t' {
+			prev, prevWord = c, ""
+		}
+		i++
+	}
+	return b.String()
+}
+
+// namesType reports whether the identifier ending at i is a constructor (a
+// brace follows; a generated local is never constructed) or, when it spells a
+// schema type, a conversion (a parenthesis follows directly; a generated
+// local may be a function value and called).
+func namesType(line string, i int, schemaType bool) bool {
+	if schemaType && i < len(line) && line[i] == '(' {
+		return true
+	}
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	return i < len(line) && line[i] == '{'
+}
+
+// literalKey reports whether the identifier ending at i is a data literal's
+// key: it sits at the line start or after an opening brace or comma, and a
+// colon follows.
+func literalKey(line string, i int, prev byte) bool {
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	if i >= len(line) || line[i] != ':' {
+		return false
+	}
+	return prev == 0 || prev == '{' || prev == ','
+}
+
 func (g *Gen) Assemble() []byte {
 	var h strings.Builder
 	fmt.Fprintf(&h, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", g.File.Base)
@@ -331,7 +699,7 @@ func (g *Gen) Assemble() []byte {
 		}
 		h.WriteString("\n")
 	}
-	h.WriteString(g.body.String())
+	h.WriteString(markGeneratedLocals(g.body.String(), typeNames(g.Unit)))
 	return []byte(strings.TrimRight(h.String(), "\n") + "\n")
 }
 
@@ -632,8 +1000,7 @@ func (g *Gen) Slots(f *ir.Field) []Slot {
 }
 
 func typeWord(t ir.FieldType) string {
-	switch t.Kind {
-	case ir.TString:
+	if t.Kind == ir.TString {
 		return fmt.Sprintf("string(%d)", t.Size)
 	}
 	return fmt.Sprintf("bytes(%d)", t.Size)

@@ -124,28 +124,28 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "elixir leg only",
 			files: "internal/codegen/elixirtable/wire.go",
-			want:  `no|./internal/codegen/elixirtable|["elixir"]`,
+			want:  `no|./internal/codegen/elixirtable ./internal/goldens|["elixir"]`,
 		},
 		{
 			name:  "luau leg only",
 			files: "internal/codegen/luautable/fixedlineage.go",
-			want:  `no|./internal/codegen/luautable|["luau"]`,
+			want:  `no|./internal/codegen/luautable ./internal/goldens|["luau"]`,
 		},
 		{
 			name:  "goose leg only",
 			files: "internal/codegen/goosetable/fixedform.go",
-			want:  `no|./internal/codegen/goosetable|["goose"]`,
+			want:  `no|./internal/codegen/goosetable ./internal/goldens|["goose"]`,
 		},
 		{
-			// the Squirrel row runs make targets only, so it names no package
+			// the Squirrel leg row runs make targets; its two unit packages ride the make-file rule
 			name:  "squirrel card leg only",
 			files: "make/squirrel-cards.mk",
-			want:  `no||["squirrel"]`,
+			want:  `no|./internal/codegen/squirrel ./internal/codegen/squirreltable|["squirrel"]`,
 		},
 		{
 			name:  "dart leg only",
 			files: "internal/codegen/darttable/darttable.go",
-			want:  `no|./internal/codegen/darttable|["dart"]`,
+			want:  `no|./internal/codegen/darttable ./internal/goldens|["dart"]`,
 		},
 		{
 			name:  "ci package only",
@@ -160,12 +160,29 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "broad compiler change",
 			files: "compiler/compiler.go",
-			want:  `yes|./...|["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","luau","rust","squirrel"]`,
+			want:  `yes|./compiler|["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","luau","rust","squirrel"]`,
 		},
 		{
 			name:  "lobster leg only",
 			files: "internal/codegen/lobstertable/load.go",
-			want:  `no|./internal/codegen/lobstertable ./internal/codegen/lobster|["lobster"]`,
+			want:  `no|./internal/codegen/lobstertable ./internal/codegen/lobster ./internal/goldens|["lobster"]`,
+		},
+		{
+			// a golden alone selects no leg, and still re-checks the goldens
+			name:  "golden only",
+			files: "testdata/golden/java/Types.java",
+			want:  `no|./internal/goldens|[]`,
+		},
+		{
+			// an emitter alone re-checks the goldens it writes
+			name:  "java emitter only",
+			files: "internal/codegen/java/canonical_test.go",
+			want:  `no|./internal/codegen/java ./internal/codegen/javatable ./internal/goldens|["java"]`,
+		},
+		{
+			name:  "usage page",
+			files: "docs/USAGE.md",
+			want:  `no|./internal/goldens|[]`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -178,6 +195,82 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 			}
 			got := selectorOutput(out)
 			if got != tc.want {
+				t.Fatalf("files=%q produced %q; want %q", tc.files, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestFastPlanSelectsLanguageLints runs the plan script and holds the
+// per-language lint selection (the owner, 2026-11-15: "run only the fastest unit
+// tests as verification, on a per-language basis"): the lens a touched
+// language owns, and only that one, rides the pull request as a lang-lint row,
+// and a broad diff selects all three.
+func TestFastPlanSelectsLanguageLints(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, tail, ok := strings.Cut(string(data), "          # THE BROAD RULE.")
+	if !ok {
+		t.Fatal("fast workflow broad selector not found")
+	}
+	selector, _, ok := strings.Cut(tail, "          echo \"broad=$broad\"")
+	if !ok {
+		t.Fatal("fast workflow output boundary not found")
+	}
+	_, selector, _ = strings.Cut(selector, "\n")
+	var script strings.Builder
+	for line := range strings.SplitSeq(selector, "\n") {
+		script.WriteString(strings.TrimPrefix(line, "          "))
+		script.WriteByte('\n')
+	}
+	script.WriteString(`printf '%s|%s' "$lints_json" "$packages"`)
+	for _, tc := range []struct{ name, files, want string }{
+		{"luau only", "internal/codegen/luautable/fixedlineage.go", `[]|./internal/codegen/luautable ./internal/goldens`},
+		{"dart leg", "internal/codegen/darttable/darttable.go", `["dart"]|./internal/codegen/darttable ./internal/goldens`},
+		{"go leg", "internal/codegen/gotable/wire.go", `["go"]|./internal/codegen/gotable ./internal/goldens`},
+		{"lua runtime, no .go file", "internal/codegen/luatable/runtime/wire.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens`},
+		{"lua make file", "make/lua.mk", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable`},
+		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|`},
+		{"docs only", "docs/CONTRIBUTING.md", `[]|`},
+		{"broad", "compiler/compiler.go", `["dart","go","lua"]|./compiler`},
+		// the shared packet corpora are every lens's input
+		{"packet examples", "examples/Types.schema", `["dart","go","lua"]|./internal/goldens`},
+		{"128-bit examples", "examples128/Ludicrous.schema", `["dart","go","lua"]|./internal/goldens`},
+		{"bench corpus", "bench/corpus/Bench.schema", `["dart","go","lua"]|`},
+		{"guard unit", "test/guard/second.schema", `["dart","go","lua"]|`},
+		{"guard non-schema", "test/guard/README.md", `[]|`},
+		// a runtime-only (non-Go) diff runs its language's two unit packages
+		{"c runtime", "internal/codegen/ctable/testdata/runtime.h", `[]|./internal/codegen/c ./internal/codegen/ctable ./internal/goldens`},
+		{"cs runtime", "internal/codegen/cstable/testdata/Runtime.cs", `[]|./internal/codegen/csharp ./internal/codegen/cstable ./internal/goldens`},
+		{"go runtime", "internal/codegen/gotable/testdata/runtime.go.txt", `["go"]|./internal/codegen/golang ./internal/codegen/gotable ./internal/goldens`},
+		{"rust runtime", "internal/codegen/rusttable/testdata/runtime.rs", `[]|./internal/codegen/rust ./internal/codegen/rusttable ./internal/goldens`},
+		{"js runtime", "internal/codegen/js/testdata/runtime.js", `[]|./internal/codegen/js ./internal/codegen/jstable ./internal/goldens`},
+		{"java runtime", "internal/codegen/javatable/testdata/Runtime.java", `[]|./internal/codegen/java ./internal/codegen/javatable ./internal/goldens`},
+		{"dart runtime", "internal/codegen/darttable/testdata/runtime.dart", `["dart"]|./internal/codegen/dart ./internal/codegen/darttable ./internal/goldens`},
+		{"elixir runtime", "internal/codegen/elixirtable/testdata/runtime.ex", `[]|./internal/codegen/elixir ./internal/codegen/elixirtable ./internal/goldens`},
+		{"luau runtime", "internal/codegen/luau/runtime/serialize_bytes.luau", `[]|./internal/codegen/luau ./internal/codegen/luautable ./internal/goldens`},
+		{"lobster runtime", "internal/codegen/lobster/runtime/serialize_compressed_float.lobster", `[]|./internal/codegen/lobster ./internal/codegen/lobstertable ./internal/goldens`},
+		{"goose runtime", "internal/codegen/goosetable/runtime/schema_json.goose", `[]|./internal/codegen/goose ./internal/codegen/goosetable ./internal/goldens`},
+		{"squirrel runtime", "internal/codegen/squirrel/runtime/module.nut", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable ./internal/goldens`},
+		{"squirrel table runtime", "internal/codegen/squirreltable/runtime/cook.nut", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable ./internal/goldens`},
+		{"lua type runtime", "internal/codegen/lua/runtime/serialize_int_relative.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens`},
+		{"moo runtime", "internal/codegen/moo/runtime/serialize_float.moo", `[]|./internal/codegen/moo ./internal/codegen/mootable ./internal/goldens`},
+		{"moo table runtime", "internal/codegen/mootable/runtime/json.moo", `[]|./internal/codegen/moo ./internal/codegen/mootable ./internal/goldens`},
+		{"moo make file", "make/moo.mk", `[]|./internal/codegen/moo ./internal/codegen/mootable`},
+		{"squirrel make file", "make/squirrel.mk", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
+			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
+			cmd.Dir = repoRoot(t)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("plan script: %v: %s", err, out)
+			}
+			if got := selectorOutput(out); got != tc.want {
 				t.Fatalf("files=%q produced %q; want %q", tc.files, got, tc.want)
 			}
 		})

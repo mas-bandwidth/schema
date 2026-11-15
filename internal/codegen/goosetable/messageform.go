@@ -783,7 +783,7 @@ func (e *msgEmit) getElement(ind int, el *ir.Field, en, dst string) {
 	}
 }
 
-// getValue lands a field's payload from the entry `en`: text and wstring
+// getValue lands a field's payload from the entry `en`: text and bytes
 // refuse length_over_bound past this reader's bound, an array refuses
 // count_over_bound past its bound, a keyed array's present slots, or one
 // element.
@@ -1135,25 +1135,28 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(2, "report.reason = schema_rt::MsgRefuseBatchTooLarge;")
 	e.p(2, "return -1;")
 	e.p(1, "}")
+	e.p(1, "var reasoned: bool = false;")
 	e.p(1, "var i: i64 = 0;")
 	e.p(1, "while i < count {")
 	e.p(2, "if !_%sMsgLoad(r, values[i]) {", n)
 	e.p(3, "if r.reason != 0 {")
 	e.p(4, "report.reason = r.reason;")
-	e.p(4, "return -1;")
+	e.p(4, "reasoned = true;")
+	e.p(4, "break;")
 	e.p(3, "}")
 	e.p(3, "report.damaged = true;")
 	e.p(3, "break;")
 	e.p(2, "}")
 	e.p(2, "i += 1;")
 	e.p(1, "}")
-	e.p(1, "if !report.damaged && (!schema_rt::msg_align_read(r) || r.pos != r.end) { report.damaged = true; }")
-	e.p(1, "if report.damaged {")
+	e.p(1, "if !reasoned && !report.damaged && (!schema_rt::msg_align_read(r) || r.pos != r.end) { report.damaged = true; }")
+	e.p(1, "if reasoned || report.damaged {")
 	e.p(2, "var j: i64 = 0;")
 	e.p(2, "while j < count {")
 	e.p(3, "values[j] = %s { .. };", typ)
 	e.p(3, "j += 1;")
 	e.p(2, "}")
+	e.p(2, "if reasoned { return -1; }")
 	e.p(2, "return 0;")
 	e.p(1, "}")
 	e.p(1, "report.unknown = r.unknown;")

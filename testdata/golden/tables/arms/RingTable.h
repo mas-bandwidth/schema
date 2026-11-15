@@ -805,6 +805,22 @@ struct TableIdTable
     }
 };
 
+// THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body (kind
+// 14) opens with one of 1–13, 15, 17, 18–29 or 30, and an enum-keyed body
+// (kind 16) with one of 1–11, 13, 18–29 or 30. Every other element kind is
+// damage under any count, a count of 0 included, in a declared field and in an
+// unknown one alike, so the header's kind byte is judged before any comparison
+// with the reader's own element kind.
+inline bool TableArrayElementKind( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 13 ) || kind == 15 || kind == 17 || ( kind >= 18 && kind <= 30 );
+}
+
+inline bool TableKeyedElementKind( uint8_t kind )
+{
+    return ( kind >= 1 && kind <= 11 ) || kind == 13 || ( kind >= 18 && kind <= 30 );
+}
+
 struct TableReader
 {
     const uint8_t * buffer;
@@ -926,10 +942,164 @@ struct TableReader
         return true;
     }
 
+    // THE CONTAINERS ARE OPENED FOR ONE QUESTION: is an inner array or keyed
+    // header off §3's closed element-kind list? An off-list header is damage
+    // under any count, a count of 0 included, so the walk follows a table,
+    // array, keyed body or union arm far enough to judge it. Framing damage is
+    // not this question and ends an inspection without a finding; the typed
+    // read names it where it declares the field. depth keeps the walk bounded.
+    bool badElementKindPayload( uint8_t kind, TableReader & r, int depth )
+    {
+        switch ( kind )
+        {
+            case 1:
+            case 2:
+            case 6:
+            case 20:
+            case 25: if ( r.has( 1 ) ) { r.offset += 1; } return false;
+            case 3:
+            case 7:
+            case 21:
+            case 26: if ( r.has( 2 ) ) { r.offset += 2; } return false;
+            case 4:
+            case 8:
+            case 10:
+            case 22:
+            case 27: if ( r.has( 4 ) ) { r.offset += 4; } return false;
+            case 5:
+            case 9:
+            case 11:
+            case 23:
+            case 28:
+            case 36: if ( r.has( 8 ) ) { r.offset += 8; } return false;
+            case 18:
+            case 19:
+            case 24:
+            case 29: if ( r.has( 16 ) ) { r.offset += 16; } return false;
+            case 17:
+            case 30:
+            {
+                uint64_t ignored = 0;
+                r.getleb( ignored );
+                return false;
+            }
+            case 12:
+            case 31:
+            case 32:
+            {
+                uint64_t n = 0;
+                if ( r.getleb( n ) && r.room( n ) ) { r.offset += (int64_t) n; }
+                return false;
+            }
+            case 13:
+            case 14:
+            case 16:
+            {
+                uint64_t n = 0;
+                if ( !r.getleb( n ) || !r.room( n ) ) return false;
+                const uint8_t * b = r.buffer + r.offset;
+                r.offset += (int64_t) n;
+                return badElementKindContent( kind, b, (int64_t) n, depth );
+            }
+            case 15: return badElementKindUnion( r, depth );
+        }
+        return false;
+    }
+
+    bool badElementKindContent( uint8_t kind, const uint8_t * b, int64_t n, int depth )
+    {
+        if ( depth >= 128 ) return false;
+        switch ( kind )
+        {
+            case 13: return badElementKindTable( b, n, depth + 1 );
+            case 14: return badElementKindArray( b, n, depth + 1 );
+            case 16: return badElementKindKeyed( b, n, depth + 1 );
+            case 15:
+            {
+                TableReader r( b, n, report, ids );
+                return badElementKindUnion( r, depth );
+            }
+        }
+        return false;
+    }
+
+    bool badElementKindTable( const uint8_t * b, int64_t n, int depth )
+    {
+        TableReader r( b, n, report, ids );
+        for ( ;; )
+        {
+            uint64_t ref = 0;
+            if ( !r.getleb( ref ) || ref == 0 ) return false;
+            if ( ids == NULL || ref > (uint64_t) ids->count || !r.has( 1 ) ) return false;
+            const uint8_t field_kind = r.get8();
+            const int64_t before = r.offset;
+            if ( badElementKindPayload( field_kind, r, depth ) ) return true;
+            if ( r.offset == before ) return false;
+        }
+    }
+
+    bool badElementKindArray( const uint8_t * b, int64_t n, int depth )
+    {
+        if ( n < 1 ) return false;
+        const uint8_t elem = b[0];
+        if ( !TableArrayElementKind( elem ) ) return true;
+        if ( n < 2 ) return false;
+        TableReader r( b + 1, n - 1, report, ids );
+        uint64_t count = 0;
+        if ( !r.getleb( count ) ) return false;
+        if ( count > (uint64_t) ( r.size - r.offset ) ) return false;
+        for ( uint64_t i = 0; i < count; i++ )
+        {
+            const int64_t before = r.offset;
+            if ( badElementKindPayload( elem, r, depth ) ) return true;
+            if ( r.offset == before ) return false;
+        }
+        return false;
+    }
+
+    bool badElementKindKeyed( const uint8_t * b, int64_t n, int depth )
+    {
+        if ( n < 1 ) return false;
+        const uint8_t elem = b[0];
+        if ( !TableKeyedElementKind( elem ) ) return true;
+        if ( n < 2 ) return false;
+        TableReader r( b + 1, n - 1, report, ids );
+        uint64_t count = 0;
+        if ( !r.getleb( count ) ) return false;
+        if ( count > (uint64_t) ( r.size - r.offset ) ) return false;
+        for ( uint64_t i = 0; i < count; i++ )
+        {
+            uint64_t key = 0;
+            if ( !r.getleb( key ) ) return false;
+            if ( key == 0 || ids == NULL || key > (uint64_t) ids->count ) return false;
+            uint64_t len = 0;
+            if ( !r.getleb( len ) || !r.room( len ) ) return false;
+            const uint8_t * eb = r.buffer + r.offset;
+            r.offset += (int64_t) len;
+            if ( badElementKindContent( elem, eb, (int64_t) len, depth ) ) return true;
+        }
+        return false;
+    }
+
+    bool badElementKindUnion( TableReader & r, int depth )
+    {
+        uint64_t arm = 0;
+        if ( !r.getleb( arm ) || arm == 0 ) return false;
+        if ( ids == NULL || arm > (uint64_t) ids->count || !r.has( 1 ) ) return false;
+        const uint8_t arm_kind = r.get8();
+        uint64_t n = 0;
+        if ( !r.getleb( n ) || !r.room( n ) ) return false;
+        const uint8_t * b = r.buffer + r.offset;
+        r.offset += (int64_t) n;
+        const bool structural = arm_kind == 13 || arm_kind == 14 || arm_kind == 15 || arm_kind == 16;
+        if ( !structural ) return false;
+        return badElementKindContent( arm_kind, b, (int64_t) n, depth );
+    }
+
     // skip one payload by kind; false = framing damage. FOUR RULES COVER THE
     // SET (docs/SPEC-TABLES.md §3), and a kind outside it is not skippable —
     // which is why the set is closed and why kind 31 exists.
-    bool skip( uint8_t kind )
+    bool skip( uint8_t kind, int depth = 0 )
     {
         switch ( kind )
         {
@@ -969,10 +1139,7 @@ struct TableReader
                 uint64_t ignored = 0;
                 return getleb( ignored );
             }
-            case 12:
-            case 13:
-            case 14:
-            case 16:
+            case 12: // a string body: its L is opaque here
             case 31:
             case 32: // 31 is the ESCAPE, 32 the payload-free kind
             {
@@ -980,16 +1147,30 @@ struct TableReader
                 if ( !getleb( n ) ) return false;
                 return room( n ) ? ( offset += (int64_t) n, true ) : false;
             }
+            case 13: // a TABLE body: open it for an off-list array or keyed header (§3, §4)
+            case 14: // an ARRAY body: its element kind is closed under any count (§3)
+            case 16: // an ENUM-KEYED body: its element kind has its own closed list (§3)
+            {
+                uint64_t n = 0;
+                if ( !getleb( n ) ) return false;
+                if ( !room( n ) ) return false;
+                const uint8_t * b = buffer + offset;
+                offset += (int64_t) n;
+                return !badElementKindContent( kind, b, (int64_t) n, depth );
+            }
             case 15: // union: the arm id reference, then its kind, its L and its payload (reference 0 = empty)
             {
                 uint64_t arm = 0;
                 if ( !getleb( arm ) ) return false;
                 if ( arm == 0 ) return true;
                 if ( !has( 1 ) ) return false;
-                offset += 1; // the arm's kind byte
+                const uint8_t arm_kind = get8();
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
-                return room( n ) ? ( offset += (int64_t) n, true ) : false;
+                if ( !room( n ) ) return false;
+                const uint8_t * b = buffer + offset;
+                offset += (int64_t) n;
+                return !badElementKindContent( arm_kind, b, (int64_t) n, depth );
             }
             // KIND 34 IS RESERVED FOR float16 AND IS NOT PART OF THIS MAJOR (§3):
             // no writer emits it and no reader has a rule for it, so a reader
@@ -1810,7 +1991,7 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( f.packing == 0 ) { return true; }
         if ( f.packing == 1 && kind != 10 )
         {
-            if ( !TableMessageLeb( in, size, at, v ) || (int64_t) v > TableMessageKindBits( kind ) ) { return false; }
+            if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) TableMessageKindBits( kind ) ) { return false; }
             f.value_bits = (int64_t) v;
             if ( kind == 18 || kind == 19 || TableMessageFixedKind( kind ) )
             {
@@ -2380,10 +2561,89 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
         }
         default:
         {
+            // A FLOAT AND A RANGED ELEMENT carry the condition a named read
+            // applies, so they are held by the field's own skip at the
+            // element's shape
+            if ( entry.elem_kind == 10 || entry.elem_kind == 11 || entry.elem_packing == 1 )
+            {
+                TableMessageEntry element;
+                element.kind = entry.elem_kind;
+                element.packing = entry.elem_packing;
+                element.value_bits = entry.elem_value_bits;
+                element.base_lo = entry.elem_base_lo;
+                element.base_hi = entry.elem_base_hi;
+                element.qcount = entry.elem_qcount;
+                return TableMessageSkip( r, vocabulary, index_bits, element, depth );
+            }
             const int64_t elem = entry.elem_value_bits;
             return elem >= 0 && r.skip( elem );
         }
     }
+}
+
+// TableMessageSignedKind is a kind whose domain is two's complement.
+inline bool TableMessageSignedKind( uint8_t kind )
+{
+    return ( kind >= 2 && kind <= 5 ) || kind == 18 || ( kind >= 20 && kind <= 24 );
+}
+
+// TableMessageSkipRanged steps over a RANGED value and holds base plus offset
+// to the kind's own domain, the bound a named read holds it to: the offset's
+// bits can spell a value past the sender's range (§3.3). The base and the
+// offset are added exactly as the named read adds them. The arithmetic is on
+// 64-bit words, since this runtime carries no 128-bit type of its own.
+inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t width, int64_t base_lo, int64_t base_hi )
+{
+    uint64_t lo = 0, hi = 0;
+    if ( width < 0 || !r.get( lo, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi, width - 64 ) ) ) { return false; }
+    const bool is_signed = TableMessageSignedKind( kind );
+    const int64_t domain = TableMessageKindBits( kind );
+    if ( domain == 128 )
+    {
+        // the room above the base is top minus base, exact at 128 bits
+        // because no base lies above the top of its own domain
+        const uint64_t top_hi = is_signed ? uint64_t( INT64_MAX ) : UINT64_MAX;
+        const uint64_t room_lo = UINT64_MAX - (uint64_t) base_lo;
+        const uint64_t room_hi = top_hi - (uint64_t) base_hi;
+        return hi < room_hi || ( hi == room_hi && lo <= room_lo );
+    }
+    // AT SIXTY-FOUR BITS OR FEWER the offset is one word and so is the base,
+    // sign-extended for a signed kind, and the sum is held to both ends
+    if ( !is_signed )
+    {
+        const uint64_t top = domain == 64 ? UINT64_MAX : ( uint64_t( 1 ) << domain ) - 1;
+        const uint64_t base = (uint64_t) base_lo;
+        return base <= top && lo <= top - base;
+    }
+    const int64_t top = domain == 64 ? INT64_MAX : (int64_t) ( ( uint64_t( 1 ) << ( domain - 1 ) ) - 1 );
+    const int64_t bottom = -top - 1;
+    if ( base_lo > top || lo > (uint64_t) top - (uint64_t) base_lo ) { return false; }
+    return base_lo >= bottom || lo >= (uint64_t) bottom - (uint64_t) base_lo;
+}
+
+// THE SKIP PATH'S SEEN SET is a fixed bitmap over an id's FIRST vocabulary
+// slot, so a skip allocates nothing and the depth cap bounds the walk. An ID
+// is the wire's own name (§3.2, §3.3), not the slot that happened to carry
+// it: one name may be announced at two shapes, and naming it twice is a
+// repeat whichever slot it rode. The bitmap covers every slot a 64 KiB
+// announcement can carry; a slot past it is damage, never silently untracked.
+static const int64_t kTableMessageSeenBits = 65536;
+
+// TableMessageSeenOnce records one id of a body or one key of a keyed array
+// and answers false on a repeat, whether or not this reader can name the field
+// (§3.2, §3.3).
+inline bool TableMessageSeenOnce( uint64_t * seen, const TableVocabulary & vocabulary, uint64_t ref, uint64_t id )
+{
+    uint64_t slot = ref;
+    for ( uint64_t i = 1; i < ref; i++ )
+    {
+        if ( TableVocabularyEntryAt( vocabulary, i ).id == id ) { slot = i; break; }
+    }
+    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return false; }
+    const uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
+    if ( ( seen[slot >> 6] & bit ) != 0 ) { return false; }
+    seen[slot >> 6] |= bit;
+    return true;
 }
 
 // TableMessageElementRunBits is the bits ONE element of an array or a keyed
@@ -2391,7 +2651,7 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
 // is one multiplication, and -1 where the element's width is its own
 // content's. A ZERO is a real answer, and it is why this exists: a ranged
 // element whose min equals its max rides no bits at all (§3.3).
-inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, const TableMessageEntry & entry )
+inline int64_t TableMessageElementRunBits( const TableMessageEntry & entry )
 {
     int64_t elem = 0;
     switch ( entry.elem_kind )
@@ -2408,7 +2668,13 @@ inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, c
         default: elem = entry.elem_value_bits; break;
     }
     if ( elem < 0 ) { return -1; }
-    if ( entry.kind == 16 ) { elem += vocabulary.ref_bits; } // a keyed slot's own key reference
+    // a keyed slot resolves its own key reference, a zero-bit slot as well
+    if ( entry.kind == 16 ) { return -1; }
+    if ( elem == 0 ) { return 0; }
+    // a float, a ranged value and a quantized value carry a condition a named
+    // read applies, so the element is walked rather than multiplied
+    if ( entry.elem_kind == 10 || entry.elem_kind == 11 ) { return -1; }
+    if ( entry.elem_packing == 1 || entry.elem_packing == 2 ) { return -1; }
     return elem;
 }
 
@@ -2447,6 +2713,9 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         {
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
+            if ( n > (uint64_t) ( ( r.bits - r.offset ) / 8 ) ) { return false; }
+            const uint8_t * text = r.buffer + ( r.offset >> 3 );
+            if ( !TableUtf8Valid( text, n ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
         case 31:
@@ -2456,6 +2725,25 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             uint64_t n = 0;
             if ( !r.align() || !r.get( n, 32 ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
+        }
+        case 10:
+        {
+            if ( entry.packing == 2 )
+            {
+                uint64_t index = 0;
+                if ( !r.get( index, entry.value_bits ) ) { return false; }
+                if ( index > (uint64_t) entry.qcount ) { return false; } // above the step count
+                return true;
+            }
+            uint64_t raw = 0;
+            if ( !r.get( raw, 32 ) ) { return false; }
+            return TableBitsFinite32( (uint32_t) raw );
+        }
+        case 11:
+        {
+            uint64_t raw = 0;
+            if ( !r.get( raw, 64 ) ) { return false; }
+            return TableBitsFinite64( raw );
         }
         case 14:
         case 16:
@@ -2469,33 +2757,54 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
                 if ( !r.get( raw, width ) ) { return false; }
                 n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
             }
+            if ( n > (uint64_t) entry.max ) { return false; } // a count above its announced maximum
             if ( entry.kind == 14 && entry.elem_kind == 6 && !r.align() ) { return false; }
             // A RUN OF FIXED-WIDTH ELEMENTS IS ONE MULTIPLICATION (§3.3), and
             // only an element whose width is its own content's is walked
-            const int64_t run = TableMessageElementRunBits( vocabulary, entry );
+            const int64_t run = TableMessageElementRunBits( entry );
             if ( run >= 0 ) { return TableMessageSkipRun( r, n, run ); }
+            // A STRUCTURAL ELEMENT NESTS ONE LEVEL DEEPER; a fixed-width one
+            // does not, so the depth cap counts what §4 says it counts.
+            const bool nested = entry.elem_kind == 13 || entry.elem_kind == 14 || entry.elem_kind == 15 ||
+                entry.elem_kind == 16 || entry.elem_kind == 17 || entry.elem_kind == 30;
+            uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
             for ( uint64_t i = 0; i < n; i++ )
             {
-                if ( entry.kind == 16 && !r.skip( vocabulary.ref_bits ) ) { return false; }
-                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; }
+                if ( entry.kind == 16 )
+                {
+                    uint64_t key_ref = 0;
+                    TableMessageEntry key_entry;
+                    if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
+                    if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
+                    if ( !TableMessageSeenOnce( seen, vocabulary, key_ref, key_entry.id ) ) { return false; } // one key twice
+                }
+                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, nested ? depth + 1 : depth ) ) { return false; }
             }
             return true;
         }
     }
     const int64_t width = entry.value_bits;
+    if ( entry.packing == 1 && ( TableMessageIntegerKind( entry.kind ) || TableMessageFixedKind( entry.kind ) ) )
+    {
+        return TableMessageSkipRanged( r, entry.kind, width, entry.base_lo, entry.base_hi );
+    }
     return width >= 0 && r.skip( width );
 }
 
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth )
 {
     if ( depth > 128 ) { return false; }
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
         if ( ref == 0 ) { return true; }
         if ( ref > (uint64_t) vocabulary.count ) { return false; }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, TableVocabularyEntryAt( vocabulary, ref ), depth ) ) { return false; }
+        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
+        if ( TableMessageReserved( entry.id ) ) { return false; }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
+        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
 }
 
@@ -2840,6 +3149,13 @@ struct TableFixedEntry
     // length one and two). Zero count is "the two inline lanes only".
     uint32_t guard_count = 0;
     uint32_t guard_index = 0;
+    // elem IS A COPY ENTRY'S ELEMENT WIDTH IN BYTES (1, 2, 4 or 8; a 128-bit
+    // value rides as two 8-byte lanes). The wire is little-endian on every
+    // host (§3.4), so on a big-endian host a copy must reverse each element
+    // rather than land the wire bytes in host order. Zero is a raw byte copy,
+    // which is every non-copy op and every byte-sized element. It sits last
+    // so existing positional initializers keep their meaning.
+    uint8_t elem = 0;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -2905,6 +3221,26 @@ inline uint64_t TableFixedGet64( const uint8_t * b )
     for ( int i = 0; i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
     return v;
 }
+// A LITTLE-ENDIAN LOAD OF 1..8 BYTES, zero-extended. The widen, ordinal and
+// const ops read their source through this, never through a memcpy into a
+// native word, which would read the wire in host order.
+inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
+{
+    uint64_t v = 0;
+    for ( uint32_t i = 0; i < size && i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
+    return v;
+}
+// THIS BUILD'S HOST ORDER, for the fixed form only. The wire is
+// little-endian on every host, so only a store into native storage consults
+// it. SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile
+// the big-endian path so a test can hold its byte image.
+#if defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN )
+constexpr bool TableFixedBigEndianHost = true;
+#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+constexpr bool TableFixedBigEndianHost = true;
+#else
+constexpr bool TableFixedBigEndianHost = false;
+#endif
 
 // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
 // byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
@@ -3007,6 +3343,89 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
     memcpy( d, s, n );
 }
 
+// A COPY FROM THE WIRE INTO NATIVE STORAGE. On a little-endian host the bulk
+// copy above IS the wire image and stays one copy. On a big-endian host each
+// element of elem bytes is reversed, so the value lands in this host's order
+// and not in the wire's. An elem of 0 or 1, or a size that is not a whole
+// number of elements, is a raw byte copy.
+inline void TableFixedCopyLe( uint8_t * dst, const uint8_t * src, uint32_t size, uint8_t elem )
+{
+    if ( TableFixedBigEndianHost && ( elem == 2 || elem == 4 || elem == 8 ) && size % elem == 0 )
+    {
+        for ( uint32_t i = 0; i < size; i += elem )
+        {
+            for ( uint8_t j = 0; j < elem; ++j ) { dst[i + j] = src[i + elem - 1 - j]; }
+        }
+        return;
+    }
+    TableFixedCopyRun( dst, src, size );
+}
+
+// A STORE OF ONE PLAN OP'S VALUE INTO NATIVE STORAGE. On a little-endian host
+// the destination width's own word IS the value and stays one copy; on a
+// big-endian host the value's bytes are written most-significant first, so the
+// native word holds the value and a forced build holds the same byte image the
+// copy path writes.
+inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
+{
+    if ( TableFixedBigEndianHost )
+    {
+        for ( uint32_t i = 0; i < size && i < 8; ++i ) { dst[i] = (uint8_t) ( v >> ( 8 * ( size - 1 - i ) ) ); }
+        return;
+    }
+    switch ( size )
+    {
+        case 1:
+        {
+            uint8_t t = (uint8_t) v;
+            memcpy( dst, &t, 1 );
+            break;
+        }
+        case 2:
+        {
+            uint16_t t = (uint16_t) v;
+            memcpy( dst, &t, 2 );
+            break;
+        }
+        case 4:
+        {
+            uint32_t t = (uint32_t) v;
+            memcpy( dst, &t, 4 );
+            break;
+        }
+        case 8:
+        {
+            uint64_t t = v;
+            memcpy( dst, &t, 8 );
+            break;
+        }
+        default: break;
+    }
+}
+
+// A LOAD OF ONE VALUE OUT OF NATIVE STORAGE, zero-extended: the inverse of
+// TableFixedStoreNative. The known-range pass reads a landed value through
+// it, never through a memcpy of a narrow width into a 64-bit word, which on a
+// big-endian host fills the word's high bytes.
+inline uint64_t TableFixedLoadNative( const uint8_t * src, uint32_t size )
+{
+    uint64_t v = 0;
+    if ( TableFixedBigEndianHost )
+    {
+        for ( uint32_t i = 0; i < size && i < 8; ++i ) { v = ( v << 8 ) | (uint64_t) src[i]; }
+        return v;
+    }
+    switch ( size )
+    {
+        case 1: { uint8_t t = 0; memcpy( &t, src, 1 ); v = t; break; }
+        case 2: { uint16_t t = 0; memcpy( &t, src, 2 ); v = t; break; }
+        case 4: { uint32_t t = 0; memcpy( &t, src, 4 ); v = t; break; }
+        case 8: { memcpy( &v, src, 8 ); break; }
+        default: break;
+    }
+    return v;
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -3020,7 +3439,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
     {
         case kTableFixedCopy:
         {
-            TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
+            TableFixedCopyLe( dst + p.dst, src + p.src, p.size, p.elem );
             break;
         }
         case kTableFixedBool:
@@ -3064,7 +3483,9 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
-            TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
+            // text is bytes, so an elem of 1: a raw copy on either host, through
+            // the one wire-to-storage copy the bulk op takes too
+            TableFixedCopyLe( dst + p.aux, src + p.src + 4, p.size, 1 );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
@@ -3081,7 +3502,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
@@ -3093,13 +3514,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // tests THIS reader's own top value — which a remapped 0 never
             // trips, so the two never count the one event twice.
             else if ( raw != 0 ) { oor_count++; }
-            memcpy( dst + p.dst, &v, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, v, p.dstsize );
             break;
         }
         case kTableFixedWiden:
         {
             uint64_t raw = 0;
-            memcpy( &raw, src + p.src, p.size );
+            raw = TableFixedGetLe( src + p.src, p.size );
             if ( p.sign != 0 )
             {
                 // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
@@ -3108,14 +3529,19 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            memcpy( dst + p.dst, &raw, p.dstsize );
+            TableFixedStoreNative( dst + p.dst, raw, p.dstsize );
             widened++;
             break;
         }
         case kTableFixedWidenF:
         {
+            // f32 INTO f64 (docs/FIXED-FORM-ALGORITHM.md §4's float rung): the
+            // bits are read little-endian, then the hardware cast.
             float f = 0.0f;
-            memcpy( &f, src + p.src, 4 );
+            {
+                const uint32_t bits = TableFixedGet32( src + p.src );
+                memcpy( &f, &bits, 4 );
+            }
             const double d = (double) f;
             memcpy( dst + p.dst, &d, 8 );
             widened++;
@@ -3127,13 +3553,13 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // bytes, and a memcpy of p.size out of the four-byte aux lane
             // reads the member beside it (§4.5, §5.8 row 7).
             const uint64_t lands = p.aux;
-            memcpy( dst + p.dst, &lands, p.size );
+            TableFixedStoreNative( dst + p.dst, lands, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
             // a tag past that set lands None (already written) and COUNTS.
             if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
             {
                 uint64_t raw = 0;
-                memcpy( &raw, src + p.src, p.size );
+                raw = TableFixedGetLe( src + p.src, p.size );
                 if ( raw > (uint64_t) p.dstsize ) { oor_count++; }
             }
             break;
@@ -3149,10 +3575,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // the payload copy above laid the wire's bytes down; when the flag
             // is 0 those bytes are slack and never a value, so the reader
             // overwrites them with the caller's own Reset image. Aux is the
-            // payload's storage offset and Size its storage bytes.
+            // payload's storage offset and Size its storage bytes. A plain
+            // memcpy and not the run mover: the mover's 32-byte moves let
+            // GCC's array-bounds pass form offsets past a small Reset image
+            // on a size branch no entry of this op reaches, and an absent
+            // payload is the cold path.
             const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
             dst[p.dst] = flag;
-            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }
             break;
         }
         default: break;
@@ -4360,6 +4790,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size;
                 e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
+                e.elem = (uint8_t) ( me.size == 16 ? 8 : me.size );
                 TableFixedPush( c, e );
             }
             else if ( te.size < me.size && me.size <= 8 )
@@ -4421,7 +4852,7 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
             plan[out - 1].guard == plan[i].guard && plan[out - 1].arg == plan[i].arg &&
             plan[out - 1].argw == plan[i].argw &&
             plan[out - 1].guard2 == plan[i].guard2 && plan[out - 1].arg2 == plan[i].arg2 &&
-            plan[out - 1].argw2 == plan[i].argw2 &&
+            plan[out - 1].argw2 == plan[i].argw2 && plan[out - 1].elem == plan[i].elem &&
             plan[out - 1].src + plan[out - 1].size == plan[i].src &&
             plan[out - 1].dst + plan[out - 1].size == plan[i].dst )
         {
@@ -4489,7 +4920,7 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         const TableFixedKnownRange & b = ranges[i];
         if ( b.width == 0 || b.width > 8 ) { continue; }
         uint64_t raw = 0;
-        memcpy( &raw, dst + b.dst, b.width );
+        raw = TableFixedLoadNative( dst + b.dst, b.width );
         // THE COMPARISON IS IN THE FIELD'S OWN TYPE: signed for a signed kind,
         // UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is past the
         // max and never below the min. An unsigned kind's bounds are never
@@ -4524,7 +4955,7 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         {
             continue;
         }
-        memcpy( dst + b.dst, &landed, b.width );
+        TableFixedStoreNative( dst + b.dst, landed, b.width );
     }
     if ( report != NULL )
     {
@@ -5412,6 +5843,19 @@ struct TableNodeEntry
     uint64_t type_id;
     int64_t ( *measure )( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node );
     bool ( *save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node );
+    // The same entry drives Lock's region pack: one node's own bytes, its copy
+    // and extent, and the rewrite of the slots inside it. They are per node so
+    // no pass descends a pointer; the numbering's order IS the region's order
+    // (docs/SPEC-TABLES.md §3.1, §6.3).
+    int64_t ( *pack_bytes )( const void * ctx, const void * node );
+    bool ( *pack_copy )( const void * ctx, const void * src, void * dst, uint8_t * base, int64_t capacity );
+    bool ( *pack_slots )( const void * ctx, TablePackMap & seen, const void * src, void * dst, uint8_t * base );
+    // The numbering's pending work: one node still to number, or a close marker
+    // that ends its descent. The stack is the explicit work list that replaces
+    // a call per pointer edge (docs/SPEC-TABLES.md §3.1).
+    bool ( *walk )( const void * ctx, TableNumbering & numbering, const void * node );
+    bool close;
+    int64_t hint;
 };
 
 struct TableNumbering
@@ -5420,6 +5864,10 @@ struct TableNumbering
     TableNodeEntry * entries = NULL;
     int64_t count = 0;
     int64_t capacity = 0;
+    // THE PENDING WORK, a stack of node entries in first-visit order.
+    TableNodeEntry * work = NULL;
+    int64_t work_count = 0;
+    int64_t work_capacity = 0;
     // ONE BLOB RECORD NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5, §16.7):
     // every writer refuses the graph by name, blob_shared, rather than writing
     // a copy per slot. The Go oracle is internal/codegen/gotable/regions.go
@@ -5435,6 +5883,9 @@ inline void TableNumberingInit( TableNumbering & n, TableAllocator allocator )
     n.entries = NULL;
     n.count = 0;
     n.capacity = 0;
+    n.work = NULL;
+    n.work_count = 0;
+    n.work_capacity = 0;
     n.shared = false;
 }
 
@@ -5443,9 +5894,13 @@ inline void TableNumberingShutdown( TableNumbering & n )
     TableAllocator allocator = n.seen.allocator;
     TablePackMapShutdown( n.seen );
     table_release( allocator, n.entries );
+    table_release( allocator, n.work );
     n.entries = NULL;
     n.count = 0;
     n.capacity = 0;
+    n.work = NULL;
+    n.work_count = 0;
+    n.work_capacity = 0;
 }
 
 // The index a numbered node was given, for the save that writes it into a
@@ -5481,6 +5936,29 @@ inline bool TableNumberingAppend( TableNumbering & n, const TableNodeEntry & ent
         n.capacity = capacity;
     }
     n.entries[n.count++] = entry;
+    return true;
+}
+
+// TableNumberingWorkPush appends one pending node (or close marker) to the
+// explicit work list. It grows by copy on the same allocator the numbering
+// carries, so the walk itself has no recursion and no fixed depth.
+inline bool TableNumberingWorkPush( TableNumbering & n, const TableNodeEntry & entry )
+{
+    if ( n.work_count == n.work_capacity )
+    {
+        int64_t capacity = n.work_capacity != 0 ? n.work_capacity * 4 : 256;
+        TableAllocator allocator = n.seen.allocator;
+        TableNodeEntry * grown = (TableNodeEntry *) table_allocate( allocator, capacity * (int64_t) sizeof( TableNodeEntry ) );
+        if ( grown == NULL ) { return false; }
+        if ( n.work != NULL )
+        {
+            memcpy( grown, n.work, (size_t) n.work_count * sizeof( TableNodeEntry ) );
+            table_release( allocator, n.work );
+        }
+        n.work = grown;
+        n.work_capacity = capacity;
+    }
+    n.work[n.work_count++] = entry;
     return true;
 }
 
@@ -5632,7 +6110,23 @@ struct TableNodeMap
     // it is one blob_shared event and resolves to the ONE decoded node. The Go
     // oracle is internal/codegen/gotable/regions.go (TableNodeMap.Once).
     bool once = false;
+    // DECLARED answers whether this reader declares a record's type id, so a
+    // record it placed no storage for can still be told apart: a type it does
+    // not declare reads null, and a type it declares that is not the slot's
+    // target is a wrong-type pointer target (docs/SPEC-TABLES.md §3.1).
+    bool ( *declared )( uint64_t type_id ) = NULL;
 };
+
+// TableNodeWrongTarget: a pointer naming a record of a type this reader
+// declares that is not the type its slot requires. It is damage, so every read,
+// the retaining one included, discards the whole load (docs/SPEC-TABLES.md
+// §3.1, §4); the reason stays the one the strict read has always named.
+inline void TableNodeWrongTarget( TableReport * report )
+{
+    report->damaged = true;
+    report->refused = true;
+    report->refuse_reason = kind_mismatch;
+}
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
 // is one of §4's events with the pointer left null. The declared TARGET type id
@@ -5653,7 +6147,13 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     {
         // a node whose type id this build could not name KEEPS ITS INDEX, and
         // every pointer naming it reads null. The unknown was counted once, at
-        // the node, not once per pointer.
+        // the node, not once per pointer. A node of a type this reader DOES
+        // declare that is not the slot's target is a wrong-type pointer
+        // target, below, though this root placed no storage for it.
+        if ( entry.type_id != target && map.declared != NULL && map.declared( entry.type_id ) )
+        {
+            TableNodeWrongTarget( report );
+        }
         return;
     }
     if ( entry.type_id != target )
@@ -5665,8 +6165,7 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true;
-            report->refuse_reason = kind_mismatch;
+            TableNodeWrongTarget( report );
             return;
         }
         report->refused = true;
@@ -5978,6 +6477,15 @@ inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint
         return false;
     }
     type_id = s.ids->at( ref );
+    // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
+    // MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3): the node table, the build
+    // version and the vocabulary are transports, so no record's TYPE reference
+    // may resolve to one of their ids. The two blob type ids are lawful.
+    if ( type_id == kTableNodeTableFieldId || type_id == kTableBuildVersionFieldId || type_id == kTableMessageVocabularyFieldId )
+    {
+        s.damaged = true;
+        return false;
+    }
     uint64_t declared_length = 0;
     if ( !rec.getleb( declared_length ) )
     {
@@ -6004,6 +6512,379 @@ inline bool TableNodeScanWhole( TableNodeScan & s )
     if ( s.damaged ) { return false; }
     if ( !s.present ) { return true; } // no node table at all is not a broken one
     return s.declared == (uint64_t) s.records;
+}
+
+// ---- THE GRAPH, OVER EVERY KIND-17 PAYLOAD (docs/SPEC-TABLES.md §3.1, §6.5) ----
+//
+// The graph conditions are checked over the WHOLE input, not over the fields
+// this reader can name: every record body and the root body are walked by the
+// wire's own framing, every kind-17 payload is collected, and a cycle, an
+// unreachable record, a blob record named from two slots and an ill-formed
+// string blob record are judged wherever they sit. A record under a type id
+// this build cannot name still contributes its edges, so a cycle through it is
+// still refused; when it is reached and acyclic it reads null, which is
+// evolution and stays a read (§3.1, §4).
+//
+// THE POINTER WALK IS ITERATIVE: the scratch is the caller's node directory,
+// borrowed before it is filled, and carries the work list and its links, so a
+// legal chain of any length costs no recursion and no allocation. The nested
+// framing is the wire's own 128-level bound (§4), not a pointer edge.
+static const uint64_t kTableGraphBlob = 0x8000000000000000ull;      // scratch offset: a blob record
+static const uint64_t kTableGraphBodyMask = 0x7FFFFFFFFFFFFFFFull;  // scratch offset: the body's start
+static const uint64_t kTableGraphVisited = 0x8000000000000000ull;   // scratch type: reached
+static const uint64_t kTableGraphQueued = 0x8000000000000000ull;    // scratch type: on the work list
+static const uint64_t kTableGraphLinkMask = 0x7FFFFFFFFFFFFFFFull;  // scratch type: the next link
+static const int kTableGraphMaxDepth = 128;
+
+struct TableGraphCollect
+{
+    const TableIdTable * ids;
+    void * ctx;
+    bool ( *edge )( void * ctx, uint64_t index );
+    bool damaged;
+    bool closed_kind; // an array or keyed header off §3's closed element-kind list
+};
+
+inline int32_t TableGraphWidth( uint8_t kind )
+{
+    switch ( kind )
+    {
+        case 1: case 2: case 6: case 20: case 25: return 1;
+        case 3: case 7: case 21: case 26: return 2;
+        case 4: case 8: case 10: case 22: case 27: return 4;
+        case 5: case 9: case 11: case 23: case 28: case 36: return 8;
+        case 18: case 19: case 24: case 29: return 16;
+    }
+    return 0;
+}
+
+inline bool TableGraphUnion( TableGraphCollect & c, TableReader & r, int depth );
+inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t n, uint8_t kind, int depth );
+
+inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t kind, int depth )
+{
+    const int32_t width = TableGraphWidth( kind );
+    if ( width > 0 )
+    {
+        if ( !r.has( width ) ) { c.damaged = true; return false; }
+        r.offset += width;
+        return true;
+    }
+    switch ( kind )
+    {
+        case 17:
+        {
+            uint64_t index = 0;
+            if ( !r.getleb( index ) ) { c.damaged = true; return false; }
+            if ( !c.edge( c.ctx, index ) ) { c.damaged = true; return false; }
+            return true;
+        }
+        case 30:
+        {
+            uint64_t ref = 0;
+            if ( !r.getleb( ref ) || c.ids == NULL || ref > (uint64_t) c.ids->count ) { c.damaged = true; return false; }
+            return true;
+        }
+        case 15:
+            return TableGraphUnion( c, r, depth );
+        case 12: case 31: case 32: case 13: case 14: case 16:
+        {
+            uint64_t n = 0;
+            if ( !r.getleb( n ) || !r.room( n ) ) { c.damaged = true; return false; }
+            const uint8_t * b = r.buffer + r.offset;
+            r.offset += (int64_t) n;
+            return TableGraphContent( c, b, (int64_t) n, kind, depth );
+        }
+    }
+    c.damaged = true;
+    return false;
+}
+
+inline bool TableGraphBody( TableGraphCollect & c, const uint8_t * b, int64_t n, bool root, bool exact, int depth )
+{
+    if ( depth > kTableGraphMaxDepth ) { c.damaged = true; return false; }
+    TableReport ignored;
+    TableReader r( b, n, &ignored, c.ids );
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        if ( !r.getleb( ref ) ) { c.damaged = true; return false; }
+        if ( ref == 0 ) { if ( exact && r.offset != n ) { c.damaged = true; return false; } return true; }
+        if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) ) { c.damaged = true; return false; }
+        const uint64_t id = c.ids->at( ref );
+        const uint8_t kind = r.get8();
+        if ( id == kTableNodeTableFieldId )
+        {
+            if ( !root || kind != 12 ) { c.damaged = true; return false; }
+            uint64_t len = 0;
+            if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+            r.offset += (int64_t) len;
+            continue;
+        }
+        if ( !TableGraphPayload( c, r, kind, depth ) ) { return false; }
+    }
+}
+
+inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t n, uint8_t kind, int depth )
+{
+    const int32_t width = TableGraphWidth( kind );
+    if ( width > 0 )
+    {
+        if ( n != width ) { c.damaged = true; return false; }
+        return true;
+    }
+    switch ( kind )
+    {
+        case 12:
+            if ( !TableUtf8Valid( b, (uint64_t) n ) ) { c.damaged = true; return false; }
+            return true;
+        case 31:
+            return true; // opaque: the one kind whose meaning a reader may not know (§3)
+        case 32:
+            if ( n != 0 ) { c.damaged = true; return false; }
+            return true;
+        case 13:
+            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+            return TableGraphBody( c, b, n, false, true, depth + 1 );
+        case 14:
+        {
+            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+            if ( n < 2 ) { c.damaged = true; return false; }
+            TableReport ignored;
+            TableReader r( b + 1, n - 1, &ignored, c.ids );
+            const uint8_t elem = b[0];
+            // THE ELEMENT KIND IS CLOSED, judged before any element and under
+            // a count of 0 (docs/SPEC-TABLES.md §3, §4).
+            if ( !TableArrayElementKind( elem ) ) { c.damaged = true; c.closed_kind = true; return false; }
+            uint64_t count = 0;
+            if ( !r.getleb( count ) ) { c.damaged = true; return false; }
+            if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
+            for ( uint64_t i = 0; i < count; i++ ) { if ( !TableGraphPayload( c, r, elem, depth + 1 ) ) { return false; } }
+            return true;
+        }
+        case 16:
+        {
+            if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+            if ( n < 2 ) { c.damaged = true; return false; }
+            TableReport ignored;
+            TableReader r( b + 1, n - 1, &ignored, c.ids );
+            const uint8_t elem = b[0];
+            // THE KEYED BODY'S ELEMENT KIND IS ITS OWN CLOSED LIST (§3, §4).
+            if ( !TableKeyedElementKind( elem ) ) { c.damaged = true; c.closed_kind = true; return false; }
+            uint64_t count = 0;
+            if ( !r.getleb( count ) ) { c.damaged = true; return false; }
+            if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
+            for ( uint64_t i = 0; i < count; i++ )
+            {
+                uint64_t key = 0;
+                if ( !r.getleb( key ) || key == 0 || c.ids == NULL || key > (uint64_t) c.ids->count ) { c.damaged = true; return false; }
+                uint64_t len = 0;
+                if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+                const uint8_t * eb = r.buffer + r.offset;
+                r.offset += (int64_t) len;
+                if ( !TableGraphContent( c, eb, (int64_t) len, elem, depth + 1 ) ) { return false; }
+            }
+            return true;
+        }
+        case 15:
+        {
+            TableReport ignored;
+            TableReader r( b, n, &ignored, c.ids );
+            return TableGraphUnion( c, r, depth );
+        }
+        case 17: case 30:
+        {
+            TableReport ignored;
+            TableReader r( b, n, &ignored, c.ids );
+            if ( !TableGraphPayload( c, r, kind, depth ) ) { return false; }
+            if ( r.offset != n ) { c.damaged = true; return false; }
+            return true;
+        }
+    }
+    c.damaged = true;
+    return false;
+}
+
+inline bool TableGraphUnion( TableGraphCollect & c, TableReader & r, int depth )
+{
+    uint64_t ref = 0;
+    if ( !r.getleb( ref ) ) { c.damaged = true; return false; }
+    if ( ref == 0 ) { return true; }
+    if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) ) { c.damaged = true; return false; }
+    const uint8_t kind = r.get8();
+    uint64_t len = 0;
+    if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
+    const uint8_t * b = r.buffer + r.offset;
+    r.offset += (int64_t) len;
+    const bool structural = kind == 13 || kind == 14 || kind == 15 || kind == 16;
+    if ( structural )
+    {
+        if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
+        if ( !TableGraphContent( c, b, (int64_t) len, kind, depth + 1 ) ) { return false; }
+    }
+    else if ( !TableGraphContent( c, b, (int64_t) len, kind, depth ) ) { return false; }
+    return true;
+}
+
+struct TableGraphCount
+{
+    TableNodeDirEntry * nodes;
+    int64_t count;
+    bool bad;
+};
+
+inline bool TableGraphCountEdge( void * ctx, uint64_t index )
+{
+    TableGraphCount * c = (TableGraphCount *) ctx;
+    if ( index == 0 ) { return true; }
+    if ( index - 1 >= (uint64_t) c->count ) { c->bad = true; return false; }
+    c->nodes[index - 1].type_id += 1;
+    return true;
+}
+
+struct TableGraphKahn
+{
+    TableNodeDirEntry * nodes;
+    int64_t count;
+    int64_t head;
+    uint64_t processed;
+    bool bad;
+};
+
+inline void TableGraphKahnPush( TableGraphKahn & k, int64_t p )
+{
+    k.nodes[p].type_id = kTableGraphQueued | (uint64_t) ( k.head + 1 );
+    k.head = p;
+}
+
+inline bool TableGraphKahnEdge( void * ctx, uint64_t index )
+{
+    TableGraphKahn * k = (TableGraphKahn *) ctx;
+    if ( index == 0 ) { return true; }
+    if ( index - 1 >= (uint64_t) k->count ) { k->bad = true; return false; }
+    TableNodeDirEntry & e = k->nodes[index - 1];
+    if ( ( e.type_id & kTableGraphQueued ) != 0 || e.type_id == 0 ) { k->bad = true; return false; }
+    e.type_id -= 1;
+    if ( e.type_id == 0 ) { TableGraphKahnPush( *k, (int64_t) index - 1 ); }
+    return true;
+}
+
+struct TableGraphReach
+{
+    TableNodeDirEntry * nodes;
+    int64_t count;
+    int64_t head;
+    int64_t tail;
+    bool bad;
+};
+
+inline bool TableGraphReachEdge( void * ctx, uint64_t index )
+{
+    TableGraphReach * r = (TableGraphReach *) ctx;
+    if ( index == 0 ) { return true; }
+    if ( index - 1 >= (uint64_t) r->count ) { r->bad = true; return false; }
+    const int64_t t = (int64_t) index - 1;
+    if ( ( r->nodes[t].type_id & kTableGraphVisited ) != 0 ) { return true; }
+    r->nodes[t].type_id = kTableGraphVisited;
+    if ( r->tail < 0 ) { r->head = t; }
+    else { r->nodes[r->tail].type_id = kTableGraphVisited | (uint64_t) ( t + 1 ); }
+    r->tail = t;
+    return true;
+}
+
+inline bool TableGraphParseNode( TableGraphCollect & c, const uint8_t * wire, int64_t wire_bytes, uint64_t start, bool root )
+{
+    if ( start > (uint64_t) wire_bytes ) { c.damaged = true; return false; }
+    return TableGraphBody( c, wire + start, wire_bytes - (int64_t) start, root, root, 0 );
+}
+
+inline bool TableGraphFail( TableReport * report )
+{
+    report->damaged = true;
+    report->refuse_reason = wire_damaged;
+    return false;
+}
+
+// TableGraphCheck judges the pointer graph over one form-1 file's root body.
+// The scratch holds count entries (the root plus every record) and may be the
+// caller's node directory before it is filled; a true answer leaves it
+// clobbered and a false answer is a refused load, so neither is observed.
+inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const TableIdTable * ids, TableNodeDirEntry * scratch, int64_t count, TableReport * report )
+{
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+    int64_t records = 0;
+    {
+        TableReport ignored;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, ids );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            const int64_t k = records + 1;
+            if ( k >= count ) { return true; } // a scan this check cannot frame is the typed read's to judge
+            scratch[k].offset = (uint64_t) ( body - wire );
+            if ( type_id == kTableStringTypeId || type_id == kTableBytesTypeId ) { scratch[k].offset |= kTableGraphBlob; }
+            if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, (uint64_t) length ) ) { return TableGraphFail( report ); }
+            records++;
+        }
+        if ( !TableNodeScanWhole( scan ) || records + 1 != count ) { return true; } // the typed read names the framing
+    }
+    scratch[0].offset = 0;
+    scratch[0].type_id = 0;
+    const int64_t n = count;
+
+    for ( int64_t i = 0; i < n; i++ ) { scratch[i].type_id = 0; }
+    {
+        TableGraphCount counts = { scratch, n, false };
+        TableGraphCollect collect = { ids, &counts, &TableGraphCountEdge, false, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[0].offset, true ) ) { return ( counts.bad || collect.closed_kind ) ? TableGraphFail( report ) : true; }
+        for ( int64_t i = 1; i < n; i++ )
+        {
+            if ( ( scratch[i].offset & kTableGraphBlob ) != 0 ) { continue; }
+            if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[i].offset & kTableGraphBodyMask, false ) ) { return ( counts.bad || collect.closed_kind ) ? TableGraphFail( report ) : true; }
+        }
+        for ( int64_t i = 1; i < n; i++ )
+        {
+            if ( ( scratch[i].offset & kTableGraphBlob ) != 0 && scratch[i].type_id > 1 )
+            {
+                report->refused = true;
+                report->refuse_reason = blob_shared;
+                return false;
+            }
+        }
+    }
+
+    TableGraphKahn kahn = { scratch, n, -1, 0, false };
+    for ( int64_t i = 0; i < n; i++ ) { if ( scratch[i].type_id == 0 ) { TableGraphKahnPush( kahn, i ); } }
+    while ( kahn.head >= 0 )
+    {
+        const int64_t p = kahn.head;
+        kahn.head = (int64_t) ( scratch[p].type_id & kTableGraphLinkMask ) - 1;
+        kahn.processed++;
+        if ( ( scratch[p].offset & kTableGraphBlob ) != 0 ) { continue; }
+        TableGraphCollect collect = { ids, &kahn, &TableGraphKahnEdge, false, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return ( kahn.bad || collect.closed_kind ) ? TableGraphFail( report ) : true; }
+    }
+    if ( kahn.bad || kahn.processed != (uint64_t) n ) { return TableGraphFail( report ); }
+
+    for ( int64_t i = 0; i < n; i++ ) { scratch[i].type_id = 0; }
+    TableGraphReach reach = { scratch, n, 0, 0, false };
+    scratch[0].type_id = kTableGraphVisited;
+    while ( reach.head >= 0 )
+    {
+        const int64_t p = reach.head;
+        reach.head = (int64_t) ( scratch[p].type_id & kTableGraphLinkMask ) - 1;
+        if ( reach.head < 0 ) { reach.tail = -1; }
+        if ( ( scratch[p].offset & kTableGraphBlob ) != 0 ) { continue; }
+        TableGraphCollect collect = { ids, &reach, &TableGraphReachEdge, false, false };
+        if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return ( reach.bad || collect.closed_kind ) ? TableGraphFail( report ) : true; }
+    }
+    if ( reach.bad ) { return TableGraphFail( report ); }
+    for ( int64_t i = 1; i < n; i++ )
+    {
+        if ( ( scratch[i].type_id & kTableGraphVisited ) == 0 ) { return TableGraphFail( report ); }
+    }
+    return true;
 }
 
 } // namespace armdemo
@@ -6380,10 +7261,10 @@ inline void TableRetainIdsWrite( TableWriter & w, const TableRetainIds & ids )
 //
 // A retained record's inner nesting is the WRITER's and not this build's, so
 // it is the one depth on this path a file can drive. The cap counts NESTED
-// BODIES, and a record past it is dropped on the same rule as any other shape
-// the walk cannot take. Time no longer rests on it: it is a small stated
-// constant and nothing more.
-static const int32_t kTableRetainWalkDepthMax = 64;
+// BODIES as §4 counts them, and a record past it is dropped on the same rule
+// as any other shape the walk cannot take. Time no longer rests on it: it is a
+// small stated constant and nothing more.
+static const int32_t kTableRetainWalkDepthMax = 128;
 
 // the three RESERVED ids (§3.1, §3.3). One inside a retained record's payload
 // would be re-emitted into a nested body, where it is malformed, so meeting
@@ -6401,6 +7282,7 @@ struct TableRetainIn
     const TableIdTable * ids;
     uint8_t * out;   // NULL: measuring, and nothing is written
     int64_t out_at;
+    bool too_deep;   // the walk met §4's nesting bound: the FILE is malformed
 };
 
 inline void TableRetainInRaw( TableRetainIn & s, const uint8_t * from, int64_t bytes )
@@ -6507,7 +7389,7 @@ inline int64_t TableRetainInFramed( TableRetainIn & s, uint8_t kind, int64_t len
 
 inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t length, int32_t depth )
 {
-    if ( depth > kTableRetainWalkDepthMax ) { return -1; }
+    if ( depth > kTableRetainWalkDepthMax ) { s.too_deep = true; return -1; }
     if ( length < 0 || s.at + length > s.size ) { return -1; }
     const int64_t end = s.at + length;
     const int64_t began = s.out_at;
@@ -6568,7 +7450,11 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
                 uint64_t slot_bytes = 0;
                 if ( !TableRetainInLebRead( s, slot_bytes ) ) { return -1; }
                 if ( slot_bytes > (uint64_t) ( end - s.at ) ) { return -1; }
-                if ( TableRetainInFramed( s, elem_kind, (int64_t) slot_bytes, depth + 1 ) < 0 ) { return -1; }
+                // The keyed entry's framing adds nothing by itself (§4): what
+                // it frames is its element, and only a structural element is a
+                // level.
+                const int32_t elem_depth = depth + ( elem_kind == 13 || elem_kind == 14 || elem_kind == 16 ? 1 : 0 );
+                if ( TableRetainInFramed( s, elem_kind, (int64_t) slot_bytes, elem_depth ) < 0 ) { return -1; }
             }
             break;
         }
@@ -6692,7 +7578,11 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
             if ( length > (uint64_t) ( s.size - s.at ) ) { return -1; }
-            if ( TableRetainInFramed( s, arm_kind, (int64_t) length, depth + 1 ) < 0 ) { return -1; }
+            // A UNION WHOSE ARM IS STRUCTURAL ADDS TWO LEVELS (§4): the union,
+            // then the table, array or keyed body inside it. A union arm that is
+            // another union adds one, and a scalar or None arm adds none.
+            const int32_t arm_depth = depth + ( arm_kind == 15 ? 1 : ( arm_kind == 13 || arm_kind == 14 || arm_kind == 16 ? 2 : 0 ) );
+            if ( TableRetainInFramed( s, arm_kind, (int64_t) length, arm_depth ) < 0 ) { return -1; }
             break;
         }
         case 30: // an ENUM's variant reference, zero for None
@@ -6742,7 +7632,15 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     probe.ids = r.ids;
     probe.out = NULL;
     probe.out_at = 0;
+    probe.too_deep = false;
     const int64_t payload = TableRetainInPayload( probe, kind, 0 );
+    if ( probe.too_deep )
+    {
+        // §4's ONE NESTING BOUND IS THE WALK'S VERDICT, not a retention
+        // capacity: a file past it is malformed, and the whole load refuses.
+        r.report->damaged = true;
+        return false;
+    }
     if ( payload < 0 || probe.at != wire_bytes )
     {
         r.report->retain_lost++;
@@ -6777,6 +7675,7 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     write.ids = r.ids;
     write.out = record + kTableRetainRecordHeader + 8 * (int64_t) path.depth;
     write.out_at = 0;
+    write.too_deep = false;
     if ( TableRetainInPayload( write, kind, 0 ) < 0 )
     {
         r.report->retain_lost++;
@@ -7024,7 +7923,10 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             for ( uint64_t i = 0; i < n; i++ )
             {
                 if ( !TableRetainOutRef( s ) ) { return false; }
-                if ( !TableRetainOutFramed( s, elem_kind, depth + 1 ) ) { return false; }
+                // The keyed entry's framing adds nothing by itself (§4), as on
+                // the capture side.
+                const int32_t elem_depth = depth + ( elem_kind == 13 || elem_kind == 14 || elem_kind == 16 ? 1 : 0 );
+                if ( !TableRetainOutFramed( s, elem_kind, elem_depth ) ) { return false; }
             }
             break;
         }
@@ -7130,7 +8032,10 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             if ( s.at >= s.size ) { return false; }
             const uint8_t arm_kind = s.in[s.at++];
             TableRetainOutRaw( s, &arm_kind, 1 );
-            if ( !TableRetainOutFramed( s, arm_kind, depth + 1 ) ) { return false; }
+            // A UNION WHOSE ARM IS STRUCTURAL ADDS TWO LEVELS (§4), as on the
+            // capture side.
+            const int32_t arm_depth = depth + ( arm_kind == 15 ? 1 : ( arm_kind == 13 || arm_kind == 14 || arm_kind == 16 ? 2 : 0 ) );
+            if ( !TableRetainOutFramed( s, arm_kind, arm_depth ) ) { return false; }
             break;
         }
         case 30:
@@ -8769,29 +9674,45 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
 // ---- pointer-graph walkers: number (measure/save), pack (Lock) ----
 
 template <typename Ctx>
+inline bool NodeNumberEdges( const Ctx & ctx, TableNumbering & numbering, const Node & value );
+template <typename Ctx>
 inline bool NodeNumber( const Ctx & ctx, TableNumbering & numbering, const Node & value );
 template <typename Ctx>
-inline int64_t NodePackMeasure( const Ctx & ctx, TablePackMap & seen, const Node & value );
+inline int64_t NodePackBytes( const Ctx & ctx, const Node & value );
 template <typename Ctx>
-inline bool NodePack( const Ctx & ctx, TablePackMap & seen, const Node & src, Node & dst, uint8_t * base, int64_t capacity, int64_t & used );
+inline bool NodePackCopy( const Ctx & ctx, const Node & src, void * dst, uint8_t * base, int64_t capacity );
+template <typename Ctx>
+inline bool NodePackSlots( const Ctx & ctx, TablePackMap & seen, const Node & src, Node & dst, uint8_t * base );
+template <typename Ctx>
+inline bool RingNumberEdges( const Ctx & ctx, TableNumbering & numbering, const Ring & value );
 template <typename Ctx>
 inline bool RingNumber( const Ctx & ctx, TableNumbering & numbering, const Ring & value );
 template <typename Ctx>
-inline int64_t RingPackMeasure( const Ctx & ctx, TablePackMap & seen, const Ring & value );
+inline int64_t RingPackBytes( const Ctx & ctx, const Ring & value );
 template <typename Ctx>
-inline bool RingPack( const Ctx & ctx, TablePackMap & seen, const Ring & src, Ring & dst, uint8_t * base, int64_t capacity, int64_t & used );
+inline bool RingPackCopy( const Ctx & ctx, const Ring & src, void * dst, uint8_t * base, int64_t capacity );
+template <typename Ctx>
+inline bool RingPackSlots( const Ctx & ctx, TablePackMap & seen, const Ring & src, Ring & dst, uint8_t * base );
+template <typename Ctx>
+inline bool RackNumberEdges( const Ctx & ctx, TableNumbering & numbering, const Rack & value );
 template <typename Ctx>
 inline bool RackNumber( const Ctx & ctx, TableNumbering & numbering, const Rack & value );
 template <typename Ctx>
-inline int64_t RackPackMeasure( const Ctx & ctx, TablePackMap & seen, const Rack & value );
+inline int64_t RackPackBytes( const Ctx & ctx, const Rack & value );
 template <typename Ctx>
-inline bool RackPack( const Ctx & ctx, TablePackMap & seen, const Rack & src, Rack & dst, uint8_t * base, int64_t capacity, int64_t & used );
+inline bool RackPackCopy( const Ctx & ctx, const Rack & src, void * dst, uint8_t * base, int64_t capacity );
+template <typename Ctx>
+inline bool RackPackSlots( const Ctx & ctx, TablePackMap & seen, const Rack & src, Rack & dst, uint8_t * base );
+template <typename Ctx>
+inline bool TrayNumberEdges( const Ctx & ctx, TableNumbering & numbering, const Tray & value );
 template <typename Ctx>
 inline bool TrayNumber( const Ctx & ctx, TableNumbering & numbering, const Tray & value );
 template <typename Ctx>
-inline int64_t TrayPackMeasure( const Ctx & ctx, TablePackMap & seen, const Tray & value );
+inline int64_t TrayPackBytes( const Ctx & ctx, const Tray & value );
 template <typename Ctx>
-inline bool TrayPack( const Ctx & ctx, TablePackMap & seen, const Tray & src, Tray & dst, uint8_t * base, int64_t capacity, int64_t & used );
+inline bool TrayPackCopy( const Ctx & ctx, const Tray & src, void * dst, uint8_t * base, int64_t capacity );
+template <typename Ctx>
+inline bool TrayPackSlots( const Ctx & ctx, TablePackMap & seen, const Tray & src, Tray & dst, uint8_t * base );
 
 // ---- the numbering's bridge to each member's codec (docs/SPEC-TABLES.md §3.1) ----
 
@@ -9109,6 +10030,7 @@ inline bool NodeSaveMessageBody( TableBitWriter & w, const Node & value )
 inline bool NodeLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Node & value )
 {
     NodeReset( value );
+    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -9137,6 +10059,11 @@ inline bool NodeLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
             report->damaged = true;
             return false;
         }
+        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        } // one field id twice in one body is damage (§3.3)
         switch ( entry.id )
         {
             case 0xaf63eb4c86020609ull: // v
@@ -9408,7 +10335,7 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                             {
                                 const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
-                                if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return -1; }
+                                if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return false; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
                             }
                             body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
@@ -9422,7 +10349,7 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                             body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
                             break;
                         }
-                        default: return -1; // invalid tag — the write side refuses it too
+                        default: return false; // invalid tag — the write side refuses it too
                     }
                 }
             }
@@ -9561,6 +10488,14 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's
                     // element-kind rule: the field reads EMPTY and one kind_mismatch counts
                     else if ( elem_kind != 15 )
@@ -9881,14 +10816,14 @@ inline bool RackSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return -1; } // storage invariant
+                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return false; } // storage invariant
                             arm_payload_itemsu += 1 + TableLebBytes( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) ); // the element kind byte and the count
                             for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
                             {
                                 {
                                     const Node * slot_pointee_itemsue = NodeAt( ctx, cursor_items[elem_i_items].many.value[elem_i_itemsue] );
                                     uint64_t slot_index_itemsue = 0;
-                                    if ( slot_pointee_itemsue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee_itemsue, slot_index_itemsue ) ) { return -1; }
+                                    if ( slot_pointee_itemsue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee_itemsue, slot_index_itemsue ) ) { return false; }
                                     arm_payload_itemsu += TableLebBytes( slot_index_itemsue );
                                 }
                             }
@@ -9903,7 +10838,7 @@ inline bool RackSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                             body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
                             break;
                         }
-                        default: return -1; // invalid tag — the write side refuses it too
+                        default: return false; // invalid tag — the write side refuses it too
                     }
                 }
             }
@@ -10053,6 +10988,14 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's
                     // element-kind rule: the field reads EMPTY and one kind_mismatch counts
                     else if ( elem_kind != 15 )
@@ -10143,6 +11086,13 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                                                 if ( !elem_arm_items.has( 2 ) ) { break; }
                                                 {
                                                     uint8_t arm_elem_kind_itemsa = elem_arm_items.get8();
+                                                    // THE ELEMENT KIND IS CLOSED, judged before the arm's own kind (§3, §4).
+                                                    if ( !TableArrayElementKind( arm_elem_kind_itemsa ) )
+                                                    {
+                                                        ( *slot ).type = SlotsType::None;
+                                                        r.report->damaged = true;
+                                                        break;
+                                                    }
                                                     uint64_t arm_count_itemsa = 0;
                                                     if ( !elem_arm_items.getleb( arm_count_itemsa ) )
                                                     {
@@ -10395,14 +11345,14 @@ inline bool TraySaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     {
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return -1; } // storage invariant
+                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return false; } // storage invariant
                         arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.entries[elem_i].many.value_count ) ); // the element kind byte and the count
                         for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
                         {
                             {
                                 const Node * slot_pointeeue = NodeAt( ctx, value.entries[elem_i].many.value[elem_iue] );
                                 uint64_t slot_indexue = 0;
-                                if ( slot_pointeeue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointeeue, slot_indexue ) ) { return -1; }
+                                if ( slot_pointeeue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointeeue, slot_indexue ) ) { return false; }
                                 arm_payloadu += TableLebBytes( slot_indexue );
                             }
                         }
@@ -10417,7 +11367,7 @@ inline bool TraySaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
                     }
-                    default: return -1; // invalid tag — the write side refuses it too
+                    default: return false; // invalid tag — the write side refuses it too
                 }
             }
         }
@@ -10571,6 +11521,14 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     else if ( elem_kind != 15 )
                     {
                         r.report->refused = true;
@@ -10637,6 +11595,13 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                                             if ( !elem_arm.has( 2 ) ) { break; }
                                             {
                                                 uint8_t arm_elem_kinda = elem_arm.get8();
+                                                // THE ELEMENT KIND IS CLOSED, judged before the arm's own kind (§3, §4).
+                                                if ( !TableArrayElementKind( arm_elem_kinda ) )
+                                                {
+                                                    value.entries[(int32_t) i].type = SlotsType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 uint64_t arm_counta = 0;
                                                 if ( !elem_arm.getleb( arm_counta ) )
                                                 {
@@ -10869,7 +11834,7 @@ constexpr TableFixedDst NodeFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry NodeFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // v
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // v
 };
 constexpr int32_t NodeFixedPlanCount = 1;
 constexpr int32_t NodeFixedPlanGuarded = 1;
@@ -10931,6 +11896,7 @@ inline int64_t NodeFixedSave( const Node * values, int64_t count, uint8_t * buff
 {
     const int64_t need = NodeFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    schema_assert( count > 0 ); // a fixed-form file holds at least one record (§22.6)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, NodeFixedHash );
@@ -11118,7 +12084,7 @@ inline int64_t NodeFixedLoadWalk( Node * values, int64_t capacity, const uint8_t
         report->reason = TableMessageReason::plan_too_large;
         return -1;
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
         report->damaged = true;
         report->reason = TableFixedReason::truncated;
@@ -11560,6 +12526,18 @@ inline TableListEach<Slots> RackItemsEach( const TableArena & arena, const Table
     return TableListEachOf( arena, list );
 }
 
+// NodeNumberEdges: push the pointer targets named by ONE Node, in walk order.
+// A by-value edge is descended in place; a pointer edge is never descended
+// here (docs/SPEC-TABLES.md §3.1).
+template <typename Ctx>
+inline bool NodeNumberEdges( const Ctx & ctx, TableNumbering & numbering, const Node & value )
+{
+    (void) ctx;
+    (void) numbering;
+    (void) value; // no pointers below this node
+    return true;
+}
+
 // NodeNumber: number everything Node POINTS AT, in first-visit order —
 // the fields in declaration order, a by-value edge descended in place.
 // A reference to an entry whose descent is still OPEN is a data cycle,
@@ -11567,9 +12545,49 @@ inline TableListEach<Slots> RackItemsEach( const TableArena & arena, const Table
 template <typename Ctx>
 inline bool NodeNumber( const Ctx & ctx, TableNumbering & numbering, const Node & value )
 {
-    (void) ctx;
-    (void) numbering;
-    (void) value; // no pointers below this node
+    const int64_t before = numbering.work_count;
+    if ( !NodeNumberEdges( ctx, numbering, value ) ) { return false; }
+    for ( int64_t i = before, j = numbering.work_count - 1; i < j; i++, j-- )
+    {
+        const TableNodeEntry swap = numbering.work[i];
+        numbering.work[i] = numbering.work[j];
+        numbering.work[j] = swap;
+    }
+    while ( numbering.work_count > before )
+    {
+        const TableNodeEntry work = numbering.work[--numbering.work_count];
+        if ( work.close )
+        {
+            TablePackMapClose( numbering.seen, work.node, work.hint );
+            continue;
+        }
+        bool taken = false;
+        int64_t slot = 0;
+        const TablePackEntry * entry = TablePackMapReach( numbering.seen, work.node,
+            (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, at its first visit
+        if ( entry == NULL ) { return false; } // the map could not grow
+        if ( !taken )
+        {
+            if ( entry->open != 0 ) { return false; } // a data cycle
+            if ( work.type_id == kTableBytesTypeId || work.type_id == kTableStringTypeId ) { numbering.shared = true; } // a second slot names the one blob
+            continue;
+        }
+        if ( !TableNumberingAppend( numbering, work ) ) { return false; }
+        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        TableNodeEntry close;
+        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
+        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
+        close.close = true; close.hint = slot;
+        if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
+        const int64_t first = numbering.work_count;
+        if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
+        for ( int64_t i = first, j = numbering.work_count - 1; i < j; i++, j-- )
+        {
+            const TableNodeEntry swap = numbering.work[i];
+            numbering.work[i] = numbering.work[j];
+            numbering.work[j] = swap;
+        }
+    }
     return true;
 }
 
@@ -11583,62 +12601,44 @@ inline bool NodeCycleSlots( const Ctx & ctx, TableCycle & cycle, const Node & va
     return true;
 }
 
-// NodePackMeasure: the packed region bytes of everything Node POINTS AT.
-// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
-// node two references name is measured ONCE and packed once, and a
-// reference to a node whose descent is still open is a data cycle, refused.
+// NodePackBytes: Node's OWN region bytes, its extent included.
 template <typename Ctx>
-inline int64_t NodePackMeasure( const Ctx & ctx, TablePackMap & seen, const Node & value )
+inline int64_t NodePackBytes( const Ctx & ctx, const Node & value )
 {
-    int64_t bytes = 0;
     (void) ctx;
-    (void) seen;
-    (void) value; // no pointers below this node
-    return bytes;
+    (void) value; // no list or map below this record
+    return TableAlignUp64( (int64_t) sizeof( Node ) );
 }
 
-// NodePack: copy src into dst (already placed), then lay every pointee out
-// depth-first behind it, in FIELD ORDER, by bump allocation.
-//
-// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and
-// where it landed, so a node's FIRST reference lays it out and every later
-// reference points BACK at that one body. A region delta therefore has no
-// required sign (§6.3), and sharing and a back-reference are one fact. A
-// reference to a node whose descent is still OPEN is a cycle, and this
-// refuses it rather than packing one.
+// NodePackCopy: copy one Node to its place, carving its extent.
 template <typename Ctx>
-inline bool NodePackEdges( const Ctx & ctx, TablePackMap & seen, const Node & src, Node & dst, uint8_t * base, int64_t capacity, int64_t & used );
-
-template <typename Ctx>
-inline bool NodePack( const Ctx & ctx, TablePackMap & seen, const Node & src, Node & dst, uint8_t * base, int64_t capacity, int64_t & used )
+inline bool NodePackCopy( const Ctx & ctx, const Node & src, void * dst_storage, uint8_t * base, int64_t capacity )
 {
-    memcpy( (void *) &dst, (const void *) &src, sizeof( Node ) ); // trivially copyable, by construction
-    int64_t at = 0;
-    uint8_t * extent = (uint8_t *) &dst + TableAlignUp64( (int64_t) sizeof( Node ) );
-    const int64_t room = capacity - ( (int64_t) ( extent - base ) );
-    if ( !NodeExtentPack( ctx, src, dst, extent, at, room ) ) { return false; }
-    return NodePackEdges( ctx, seen, src, dst, base, capacity, used );
+    Node * dst = new ( dst_storage ) Node;
+    memcpy( (void *) dst, (const void *) &src, sizeof( Node ) ); // trivially copyable, by construction
+    (void) ctx;
+    (void) base;
+    (void) capacity; // no list or map below this record
+    return true;
 }
 
+// NodePackSlots: point one Node's slots at the region's already-placed nodes.
 template <typename Ctx>
-inline bool NodePackEdges( const Ctx & ctx, TablePackMap & seen, const Node & src, Node & dst, uint8_t * base, int64_t capacity, int64_t & used )
+inline bool NodePackSlots( const Ctx & ctx, TablePackMap & seen, const Node & src, Node & dst, uint8_t * base )
 {
     (void) ctx;
     (void) seen;
     (void) src;
     (void) dst;
-    (void) base;
-    (void) capacity;
-    (void) used;
+    (void) base; // no pointers below this node
     return true;
 }
 
-// RingNumber: number everything Ring POINTS AT, in first-visit order —
-// the fields in declaration order, a by-value edge descended in place.
-// A reference to an entry whose descent is still OPEN is a data cycle,
-// named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
+// RingNumberEdges: push the pointer targets named by ONE Ring, in walk order.
+// A by-value edge is descended in place; a pointer edge is never descended
+// here (docs/SPEC-TABLES.md §3.1).
 template <typename Ctx>
-inline bool RingNumber( const Ctx & ctx, TableNumbering & numbering, const Ring & value )
+inline bool RingNumberEdges( const Ctx & ctx, TableNumbering & numbering, const Ring & value )
 {
     { // items: a by-value edge, elements in INDEX order (§2.9, §3.1)
         TableListCursor<Slot> cursor_items = TableListElements( ctx, value.items );
@@ -11653,14 +12653,10 @@ inline bool RingNumber( const Ctx & ctx, TableNumbering & numbering, const Ring 
                 const Node * pointee = NodeAt( ctx, cursor_items[i].vertex ); // vertex
                 if ( pointee != NULL )
                 {
-                    bool taken = false;
-                    int64_t slot = 0;
-                    const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) pointee,
-                        (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit
-                    if ( entry == NULL ) { return false; } // the map could not grow
-                    if ( !taken )
+                    const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                    if ( found != NULL )
                     {
-                        if ( entry->open != 0 ) { return false; } // a data cycle
+                        if ( found->open != 0 ) { return false; } // a data cycle
                     }
                     else
                     {
@@ -11669,9 +12665,13 @@ inline bool RingNumber( const Ctx & ctx, TableNumbering & numbering, const Ring 
                         node.type_id = 0x66bd1cc6d2f6b68dull; // fnv1a64( "Node" )
                         node.measure = &TableNodeMeasureThunk<Ctx, Node>;
                         node.save = &TableNodeSaveThunk<Ctx, Node>;
-                        if ( !TableNumberingAppend( numbering, node ) ) { return false; }
-                        if ( !NodeNumber( ctx, numbering, *pointee ) ) { return false; }
-                        TablePackMapClose( numbering.seen, (const void *) pointee, slot );
+                        node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return NodePackBytes( *(const Ctx *) pack_ctx, *(const Node *) pack_node ); };
+                        node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return NodePackCopy( *(const Ctx *) pack_ctx, *(const Node *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                        node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *( Node * ) pack_dst, pack_base ); };
+                        node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return NodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Node *) walk_node ); };
+                        node.close = false;
+                        node.hint = 0;
+                        if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
                     }
                 }
             }
@@ -11679,6 +12679,59 @@ inline bool RingNumber( const Ctx & ctx, TableNumbering & numbering, const Ring 
                 }
                 default: break;
             }
+        }
+    }
+    return true;
+}
+
+// RingNumber: number everything Ring POINTS AT, in first-visit order —
+// the fields in declaration order, a by-value edge descended in place.
+// A reference to an entry whose descent is still OPEN is a data cycle,
+// named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
+template <typename Ctx>
+inline bool RingNumber( const Ctx & ctx, TableNumbering & numbering, const Ring & value )
+{
+    const int64_t before = numbering.work_count;
+    if ( !RingNumberEdges( ctx, numbering, value ) ) { return false; }
+    for ( int64_t i = before, j = numbering.work_count - 1; i < j; i++, j-- )
+    {
+        const TableNodeEntry swap = numbering.work[i];
+        numbering.work[i] = numbering.work[j];
+        numbering.work[j] = swap;
+    }
+    while ( numbering.work_count > before )
+    {
+        const TableNodeEntry work = numbering.work[--numbering.work_count];
+        if ( work.close )
+        {
+            TablePackMapClose( numbering.seen, work.node, work.hint );
+            continue;
+        }
+        bool taken = false;
+        int64_t slot = 0;
+        const TablePackEntry * entry = TablePackMapReach( numbering.seen, work.node,
+            (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, at its first visit
+        if ( entry == NULL ) { return false; } // the map could not grow
+        if ( !taken )
+        {
+            if ( entry->open != 0 ) { return false; } // a data cycle
+            if ( work.type_id == kTableBytesTypeId || work.type_id == kTableStringTypeId ) { numbering.shared = true; } // a second slot names the one blob
+            continue;
+        }
+        if ( !TableNumberingAppend( numbering, work ) ) { return false; }
+        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        TableNodeEntry close;
+        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
+        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
+        close.close = true; close.hint = slot;
+        if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
+        const int64_t first = numbering.work_count;
+        if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
+        for ( int64_t i = first, j = numbering.work_count - 1; i < j; i++, j-- )
+        {
+            const TableNodeEntry swap = numbering.work[i];
+            numbering.work[i] = numbering.work[j];
+            numbering.work[j] = swap;
         }
     }
     return true;
@@ -11710,78 +12763,31 @@ inline bool RingCycleSlots( const Ctx & ctx, TableCycle & cycle, const Ring & va
     return true;
 }
 
-// RingPackMeasure: the packed region bytes of everything Ring POINTS AT.
-// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
-// node two references name is measured ONCE and packed once, and a
-// reference to a node whose descent is still open is a data cycle, refused.
+// RingPackBytes: Ring's OWN region bytes, its extent included.
 template <typename Ctx>
-inline int64_t RingPackMeasure( const Ctx & ctx, TablePackMap & seen, const Ring & value )
+inline int64_t RingPackBytes( const Ctx & ctx, const Ring & value )
 {
-    int64_t bytes = 0;
-    { // items: a by-value edge, elements in INDEX order (§2.9, §3.1)
-        TableListCursor<Slot> cursor_items = TableListElements( ctx, value.items );
-        if ( !cursor_items.ok ) { return -1; }
-        for ( int32_t i = 0; i < cursor_items.count; i++ )
-        {
-            switch ( cursor_items[i].type ) // items: the set arm is the edge
-            {
-                case SlotType::Vertex:
-                {
-            {
-                const Node * pointee = NodeAt( ctx, cursor_items[i].vertex ); // vertex
-                if ( pointee != NULL )
-                {
-                    bool taken = false;
-                    int64_t slot = 0;
-                    const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
-                    if ( entry == NULL ) { return -1; } // the map could not grow
-                    if ( !taken )
-                    {
-                        if ( entry->open != 0 ) { return -1; } // a data cycle
-                    }
-                    else
-                    {
-                        int64_t inner = NodePackMeasure( ctx, seen, *pointee );
-                        if ( inner < 0 ) { return -1; }
-                        TablePackMapClose( seen, (const void *) pointee, slot );
-                        bytes += TableAlignUp64( (int64_t) sizeof( Node ) ) + inner;
-                    }
-                }
-            }
-                    break;
-                }
-                default: break;
-            }
-        }
-    }
-    return bytes;
+    const int64_t extent = RingExtent( ctx, value );
+    if ( extent < 0 ) { return -1; }
+    return TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Ring ) ) + extent );
 }
 
-// RingPack: copy src into dst (already placed), then lay every pointee out
-// depth-first behind it, in FIELD ORDER, by bump allocation.
-//
-// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and
-// where it landed, so a node's FIRST reference lays it out and every later
-// reference points BACK at that one body. A region delta therefore has no
-// required sign (§6.3), and sharing and a back-reference are one fact. A
-// reference to a node whose descent is still OPEN is a cycle, and this
-// refuses it rather than packing one.
+// RingPackCopy: copy one Ring to its place, carving its extent.
 template <typename Ctx>
-inline bool RingPackEdges( const Ctx & ctx, TablePackMap & seen, const Ring & src, Ring & dst, uint8_t * base, int64_t capacity, int64_t & used );
-
-template <typename Ctx>
-inline bool RingPack( const Ctx & ctx, TablePackMap & seen, const Ring & src, Ring & dst, uint8_t * base, int64_t capacity, int64_t & used )
+inline bool RingPackCopy( const Ctx & ctx, const Ring & src, void * dst_storage, uint8_t * base, int64_t capacity )
 {
-    memcpy( (void *) &dst, (const void *) &src, sizeof( Ring ) ); // trivially copyable, by construction
+    Ring * dst = new ( dst_storage ) Ring;
+    memcpy( (void *) dst, (const void *) &src, sizeof( Ring ) ); // trivially copyable, by construction
     int64_t at = 0;
-    uint8_t * extent = (uint8_t *) &dst + TableAlignUp64( (int64_t) sizeof( Ring ) );
+    uint8_t * extent = (uint8_t *) dst + TableAlignUp64( (int64_t) sizeof( Ring ) );
     const int64_t room = capacity - ( (int64_t) ( extent - base ) );
-    if ( !RingExtentPack( ctx, src, dst, extent, at, room ) ) { return false; }
-    return RingPackEdges( ctx, seen, src, dst, base, capacity, used );
+    if ( !RingExtentPack( ctx, src, *dst, extent, at, room ) ) { return false; }
+    return true;
 }
 
+// RingPackSlots: point one Ring's slots at the region's already-placed nodes.
 template <typename Ctx>
-inline bool RingPackEdges( const Ctx & ctx, TablePackMap & seen, const Ring & src, Ring & dst, uint8_t * base, int64_t capacity, int64_t & used )
+inline bool RingPackSlots( const Ctx & ctx, TablePackMap & seen, const Ring & src, Ring & dst, uint8_t * base )
 {
     { // items: a by-value edge, elements in INDEX order (§2.9, §3.1)
         TableListCursor<Slot> cursor_items = TableListElements( ctx, src.items );
@@ -11798,26 +12804,63 @@ inline bool RingPackEdges( const Ctx & ctx, TablePackMap & seen, const Ring & sr
                 const Node * pointee = NodeAt( ctx, cursor_items[i].vertex );
                 if ( pointee != NULL )
                 {
-                    int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
-                    bool taken = false;
-                    int64_t slot = 0;
-                    const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
-                    if ( entry == NULL ) { return false; } // the map could not grow
-                    if ( !taken )
+                    const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                    if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                    placed_items[i].vertex.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &placed_items[i].vertex );
+                }
+            }
+                    break;
+                }
+                default: break;
+            }
+        }
+    }
+    return true;
+}
+
+// RackNumberEdges: push the pointer targets named by ONE Rack, in walk order.
+// A by-value edge is descended in place; a pointer edge is never descended
+// here (docs/SPEC-TABLES.md §3.1).
+template <typename Ctx>
+inline bool RackNumberEdges( const Ctx & ctx, TableNumbering & numbering, const Rack & value )
+{
+    { // items: a by-value edge, elements in INDEX order (§2.9, §3.1)
+        TableListCursor<Slots> cursor_items = TableListElements( ctx, value.items );
+        if ( !cursor_items.ok ) { return false; }
+        for ( int32_t i = 0; i < cursor_items.count; i++ )
+        {
+            switch ( cursor_items[i].type ) // items: the set arm is the edge
+            {
+                case SlotsType::Many:
+                {
+            for ( int32_t k = 0; k < cursor_items[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
+            {
+            {
+                const Node * pointee = NodeAt( ctx, cursor_items[i].many.value[k] ); // many
+                if ( pointee != NULL )
+                {
+                    const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                    if ( found != NULL )
                     {
-                        if ( entry->open != 0 ) { return false; } // a data cycle
-                        placed_items[i].vertex.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &placed_items[i].vertex ); // the one body it already has
+                        if ( found->open != 0 ) { return false; } // a data cycle
                     }
                     else
                     {
-                        if ( at + (int64_t) sizeof( Node ) > capacity ) { return false; }
-                        used = at + TableAlignUp64( (int64_t) sizeof( Node ) );
-                        Node * child = new ( base + at ) Node; // lifetime only: the Pack below memcpy's the whole node over it
-                        placed_items[i].vertex.value = (int64_t) ( ( base + at ) - (const uint8_t *) &placed_items[i].vertex );
-                        if ( !NodePack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }
-                        TablePackMapClose( seen, (const void *) pointee, slot );
+                        TableNodeEntry node;
+                        node.node = (const void *) pointee;
+                        node.type_id = 0x66bd1cc6d2f6b68dull; // fnv1a64( "Node" )
+                        node.measure = &TableNodeMeasureThunk<Ctx, Node>;
+                        node.save = &TableNodeSaveThunk<Ctx, Node>;
+                        node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return NodePackBytes( *(const Ctx *) pack_ctx, *(const Node *) pack_node ); };
+                        node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return NodePackCopy( *(const Ctx *) pack_ctx, *(const Node *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                        node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *( Node * ) pack_dst, pack_base ); };
+                        node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return NodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Node *) walk_node ); };
+                        node.close = false;
+                        node.hint = 0;
+                        if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
                     }
                 }
+            }
             }
                     break;
                 }
@@ -11835,48 +12878,47 @@ inline bool RingPackEdges( const Ctx & ctx, TablePackMap & seen, const Ring & sr
 template <typename Ctx>
 inline bool RackNumber( const Ctx & ctx, TableNumbering & numbering, const Rack & value )
 {
-    { // items: a by-value edge, elements in INDEX order (§2.9, §3.1)
-        TableListCursor<Slots> cursor_items = TableListElements( ctx, value.items );
-        if ( !cursor_items.ok ) { return false; }
-        for ( int32_t i = 0; i < cursor_items.count; i++ )
+    const int64_t before = numbering.work_count;
+    if ( !RackNumberEdges( ctx, numbering, value ) ) { return false; }
+    for ( int64_t i = before, j = numbering.work_count - 1; i < j; i++, j-- )
+    {
+        const TableNodeEntry swap = numbering.work[i];
+        numbering.work[i] = numbering.work[j];
+        numbering.work[j] = swap;
+    }
+    while ( numbering.work_count > before )
+    {
+        const TableNodeEntry work = numbering.work[--numbering.work_count];
+        if ( work.close )
         {
-            switch ( cursor_items[i].type ) // items: the set arm is the edge
-            {
-                case SlotsType::Many:
-                {
-            for ( int32_t k = 0; k < cursor_items[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
-            {
-            {
-                const Node * pointee = NodeAt( ctx, cursor_items[i].many.value[k] ); // many
-                if ( pointee != NULL )
-                {
-                    bool taken = false;
-                    int64_t slot = 0;
-                    const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) pointee,
-                        (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit
-                    if ( entry == NULL ) { return false; } // the map could not grow
-                    if ( !taken )
-                    {
-                        if ( entry->open != 0 ) { return false; } // a data cycle
-                    }
-                    else
-                    {
-                        TableNodeEntry node;
-                        node.node = (const void *) pointee;
-                        node.type_id = 0x66bd1cc6d2f6b68dull; // fnv1a64( "Node" )
-                        node.measure = &TableNodeMeasureThunk<Ctx, Node>;
-                        node.save = &TableNodeSaveThunk<Ctx, Node>;
-                        if ( !TableNumberingAppend( numbering, node ) ) { return false; }
-                        if ( !NodeNumber( ctx, numbering, *pointee ) ) { return false; }
-                        TablePackMapClose( numbering.seen, (const void *) pointee, slot );
-                    }
-                }
-            }
-            }
-                    break;
-                }
-                default: break;
-            }
+            TablePackMapClose( numbering.seen, work.node, work.hint );
+            continue;
+        }
+        bool taken = false;
+        int64_t slot = 0;
+        const TablePackEntry * entry = TablePackMapReach( numbering.seen, work.node,
+            (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, at its first visit
+        if ( entry == NULL ) { return false; } // the map could not grow
+        if ( !taken )
+        {
+            if ( entry->open != 0 ) { return false; } // a data cycle
+            if ( work.type_id == kTableBytesTypeId || work.type_id == kTableStringTypeId ) { numbering.shared = true; } // a second slot names the one blob
+            continue;
+        }
+        if ( !TableNumberingAppend( numbering, work ) ) { return false; }
+        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        TableNodeEntry close;
+        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
+        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
+        close.close = true; close.hint = slot;
+        if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
+        const int64_t first = numbering.work_count;
+        if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
+        for ( int64_t i = first, j = numbering.work_count - 1; i < j; i++, j-- )
+        {
+            const TableNodeEntry swap = numbering.work[i];
+            numbering.work[i] = numbering.work[j];
+            numbering.work[j] = swap;
         }
     }
     return true;
@@ -11911,81 +12953,31 @@ inline bool RackCycleSlots( const Ctx & ctx, TableCycle & cycle, const Rack & va
     return true;
 }
 
-// RackPackMeasure: the packed region bytes of everything Rack POINTS AT.
-// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
-// node two references name is measured ONCE and packed once, and a
-// reference to a node whose descent is still open is a data cycle, refused.
+// RackPackBytes: Rack's OWN region bytes, its extent included.
 template <typename Ctx>
-inline int64_t RackPackMeasure( const Ctx & ctx, TablePackMap & seen, const Rack & value )
+inline int64_t RackPackBytes( const Ctx & ctx, const Rack & value )
 {
-    int64_t bytes = 0;
-    { // items: a by-value edge, elements in INDEX order (§2.9, §3.1)
-        TableListCursor<Slots> cursor_items = TableListElements( ctx, value.items );
-        if ( !cursor_items.ok ) { return -1; }
-        for ( int32_t i = 0; i < cursor_items.count; i++ )
-        {
-            switch ( cursor_items[i].type ) // items: the set arm is the edge
-            {
-                case SlotsType::Many:
-                {
-            for ( int32_t k = 0; k < cursor_items[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
-            {
-            {
-                const Node * pointee = NodeAt( ctx, cursor_items[i].many.value[k] ); // many
-                if ( pointee != NULL )
-                {
-                    bool taken = false;
-                    int64_t slot = 0;
-                    const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
-                    if ( entry == NULL ) { return -1; } // the map could not grow
-                    if ( !taken )
-                    {
-                        if ( entry->open != 0 ) { return -1; } // a data cycle
-                    }
-                    else
-                    {
-                        int64_t inner = NodePackMeasure( ctx, seen, *pointee );
-                        if ( inner < 0 ) { return -1; }
-                        TablePackMapClose( seen, (const void *) pointee, slot );
-                        bytes += TableAlignUp64( (int64_t) sizeof( Node ) ) + inner;
-                    }
-                }
-            }
-            }
-                    break;
-                }
-                default: break;
-            }
-        }
-    }
-    return bytes;
+    const int64_t extent = RackExtent( ctx, value );
+    if ( extent < 0 ) { return -1; }
+    return TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Rack ) ) + extent );
 }
 
-// RackPack: copy src into dst (already placed), then lay every pointee out
-// depth-first behind it, in FIELD ORDER, by bump allocation.
-//
-// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and
-// where it landed, so a node's FIRST reference lays it out and every later
-// reference points BACK at that one body. A region delta therefore has no
-// required sign (§6.3), and sharing and a back-reference are one fact. A
-// reference to a node whose descent is still OPEN is a cycle, and this
-// refuses it rather than packing one.
+// RackPackCopy: copy one Rack to its place, carving its extent.
 template <typename Ctx>
-inline bool RackPackEdges( const Ctx & ctx, TablePackMap & seen, const Rack & src, Rack & dst, uint8_t * base, int64_t capacity, int64_t & used );
-
-template <typename Ctx>
-inline bool RackPack( const Ctx & ctx, TablePackMap & seen, const Rack & src, Rack & dst, uint8_t * base, int64_t capacity, int64_t & used )
+inline bool RackPackCopy( const Ctx & ctx, const Rack & src, void * dst_storage, uint8_t * base, int64_t capacity )
 {
-    memcpy( (void *) &dst, (const void *) &src, sizeof( Rack ) ); // trivially copyable, by construction
+    Rack * dst = new ( dst_storage ) Rack;
+    memcpy( (void *) dst, (const void *) &src, sizeof( Rack ) ); // trivially copyable, by construction
     int64_t at = 0;
-    uint8_t * extent = (uint8_t *) &dst + TableAlignUp64( (int64_t) sizeof( Rack ) );
+    uint8_t * extent = (uint8_t *) dst + TableAlignUp64( (int64_t) sizeof( Rack ) );
     const int64_t room = capacity - ( (int64_t) ( extent - base ) );
-    if ( !RackExtentPack( ctx, src, dst, extent, at, room ) ) { return false; }
-    return RackPackEdges( ctx, seen, src, dst, base, capacity, used );
+    if ( !RackExtentPack( ctx, src, *dst, extent, at, room ) ) { return false; }
+    return true;
 }
 
+// RackPackSlots: point one Rack's slots at the region's already-placed nodes.
 template <typename Ctx>
-inline bool RackPackEdges( const Ctx & ctx, TablePackMap & seen, const Rack & src, Rack & dst, uint8_t * base, int64_t capacity, int64_t & used )
+inline bool RackPackSlots( const Ctx & ctx, TablePackMap & seen, const Rack & src, Rack & dst, uint8_t * base )
 {
     { // items: a by-value edge, elements in INDEX order (§2.9, §3.1)
         TableListCursor<Slots> cursor_items = TableListElements( ctx, src.items );
@@ -12004,25 +12996,9 @@ inline bool RackPackEdges( const Ctx & ctx, TablePackMap & seen, const Rack & sr
                 const Node * pointee = NodeAt( ctx, cursor_items[i].many.value[k] );
                 if ( pointee != NULL )
                 {
-                    int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
-                    bool taken = false;
-                    int64_t slot = 0;
-                    const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
-                    if ( entry == NULL ) { return false; } // the map could not grow
-                    if ( !taken )
-                    {
-                        if ( entry->open != 0 ) { return false; } // a data cycle
-                        placed_items[i].many.value[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &placed_items[i].many.value[k] ); // the one body it already has
-                    }
-                    else
-                    {
-                        if ( at + (int64_t) sizeof( Node ) > capacity ) { return false; }
-                        used = at + TableAlignUp64( (int64_t) sizeof( Node ) );
-                        Node * child = new ( base + at ) Node; // lifetime only: the Pack below memcpy's the whole node over it
-                        placed_items[i].many.value[k].value = (int64_t) ( ( base + at ) - (const uint8_t *) &placed_items[i].many.value[k] );
-                        if ( !NodePack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }
-                        TablePackMapClose( seen, (const void *) pointee, slot );
-                    }
+                    const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                    if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                    placed_items[i].many.value[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &placed_items[i].many.value[k] );
                 }
             }
             }
@@ -12035,12 +13011,11 @@ inline bool RackPackEdges( const Ctx & ctx, TablePackMap & seen, const Rack & sr
     return true;
 }
 
-// TrayNumber: number everything Tray POINTS AT, in first-visit order —
-// the fields in declaration order, a by-value edge descended in place.
-// A reference to an entry whose descent is still OPEN is a data cycle,
-// named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
+// TrayNumberEdges: push the pointer targets named by ONE Tray, in walk order.
+// A by-value edge is descended in place; a pointer edge is never descended
+// here (docs/SPEC-TABLES.md §3.1).
 template <typename Ctx>
-inline bool TrayNumber( const Ctx & ctx, TableNumbering & numbering, const Tray & value )
+inline bool TrayNumberEdges( const Ctx & ctx, TableNumbering & numbering, const Tray & value )
 {
     for ( int32_t i = 0; i < value.entries_count && i < 2; i++ ) // entries: [..2]Slots
     {
@@ -12054,14 +13029,10 @@ inline bool TrayNumber( const Ctx & ctx, TableNumbering & numbering, const Tray 
         const Node * pointee = NodeAt( ctx, value.entries[i].many.value[k] ); // many
         if ( pointee != NULL )
         {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) pointee,
-                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( !taken )
+            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+            if ( found != NULL )
             {
-                if ( entry->open != 0 ) { return false; } // a data cycle
+                if ( found->open != 0 ) { return false; } // a data cycle
             }
             else
             {
@@ -12070,9 +13041,13 @@ inline bool TrayNumber( const Ctx & ctx, TableNumbering & numbering, const Tray 
                 node.type_id = 0x66bd1cc6d2f6b68dull; // fnv1a64( "Node" )
                 node.measure = &TableNodeMeasureThunk<Ctx, Node>;
                 node.save = &TableNodeSaveThunk<Ctx, Node>;
-                if ( !TableNumberingAppend( numbering, node ) ) { return false; }
-                if ( !NodeNumber( ctx, numbering, *pointee ) ) { return false; }
-                TablePackMapClose( numbering.seen, (const void *) pointee, slot );
+                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return NodePackBytes( *(const Ctx *) pack_ctx, *(const Node *) pack_node ); };
+                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return NodePackCopy( *(const Ctx *) pack_ctx, *(const Node *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *( Node * ) pack_dst, pack_base ); };
+                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return NodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Node *) walk_node ); };
+                node.close = false;
+                node.hint = 0;
+                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
             }
         }
     }
@@ -12081,6 +13056,59 @@ inline bool TrayNumber( const Ctx & ctx, TableNumbering & numbering, const Tray 
         }
         default: break;
     }
+    }
+    return true;
+}
+
+// TrayNumber: number everything Tray POINTS AT, in first-visit order —
+// the fields in declaration order, a by-value edge descended in place.
+// A reference to an entry whose descent is still OPEN is a data cycle,
+// named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
+template <typename Ctx>
+inline bool TrayNumber( const Ctx & ctx, TableNumbering & numbering, const Tray & value )
+{
+    const int64_t before = numbering.work_count;
+    if ( !TrayNumberEdges( ctx, numbering, value ) ) { return false; }
+    for ( int64_t i = before, j = numbering.work_count - 1; i < j; i++, j-- )
+    {
+        const TableNodeEntry swap = numbering.work[i];
+        numbering.work[i] = numbering.work[j];
+        numbering.work[j] = swap;
+    }
+    while ( numbering.work_count > before )
+    {
+        const TableNodeEntry work = numbering.work[--numbering.work_count];
+        if ( work.close )
+        {
+            TablePackMapClose( numbering.seen, work.node, work.hint );
+            continue;
+        }
+        bool taken = false;
+        int64_t slot = 0;
+        const TablePackEntry * entry = TablePackMapReach( numbering.seen, work.node,
+            (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, at its first visit
+        if ( entry == NULL ) { return false; } // the map could not grow
+        if ( !taken )
+        {
+            if ( entry->open != 0 ) { return false; } // a data cycle
+            if ( work.type_id == kTableBytesTypeId || work.type_id == kTableStringTypeId ) { numbering.shared = true; } // a second slot names the one blob
+            continue;
+        }
+        if ( !TableNumberingAppend( numbering, work ) ) { return false; }
+        if ( work.walk == NULL ) { TablePackMapClose( numbering.seen, work.node, slot ); continue; } // a blob reaches nothing
+        TableNodeEntry close;
+        close.node = work.node; close.type_id = 0; close.measure = NULL; close.save = NULL;
+        close.pack_bytes = NULL; close.pack_copy = NULL; close.pack_slots = NULL; close.walk = NULL;
+        close.close = true; close.hint = slot;
+        if ( !TableNumberingWorkPush( numbering, close ) ) { return false; }
+        const int64_t first = numbering.work_count;
+        if ( !work.walk( (const void *) &ctx, numbering, work.node ) ) { return false; }
+        for ( int64_t i = first, j = numbering.work_count - 1; i < j; i++, j-- )
+        {
+            const TableNodeEntry swap = numbering.work[i];
+            numbering.work[i] = numbering.work[j];
+            numbering.work[j] = swap;
+        }
     }
     return true;
 }
@@ -12110,77 +13138,30 @@ inline bool TrayCycleSlots( const Ctx & ctx, TableCycle & cycle, const Tray & va
     return true;
 }
 
-// TrayPackMeasure: the packed region bytes of everything Tray POINTS AT.
-// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
-// node two references name is measured ONCE and packed once, and a
-// reference to a node whose descent is still open is a data cycle, refused.
+// TrayPackBytes: Tray's OWN region bytes, its extent included.
 template <typename Ctx>
-inline int64_t TrayPackMeasure( const Ctx & ctx, TablePackMap & seen, const Tray & value )
+inline int64_t TrayPackBytes( const Ctx & ctx, const Tray & value )
 {
-    int64_t bytes = 0;
-    for ( int32_t i = 0; i < value.entries_count && i < 2; i++ ) // entries: [..2]Slots
-    {
-    switch ( value.entries[i].type ) // entries: the set arm is the edge
-    {
-        case SlotsType::Many:
-        {
-    for ( int32_t k = 0; k < value.entries[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
-    {
-    {
-        const Node * pointee = NodeAt( ctx, value.entries[i].many.value[k] ); // many
-        if ( pointee != NULL )
-        {
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
-            if ( entry == NULL ) { return -1; } // the map could not grow
-            if ( !taken )
-            {
-                if ( entry->open != 0 ) { return -1; } // a data cycle
-            }
-            else
-            {
-                int64_t inner = NodePackMeasure( ctx, seen, *pointee );
-                if ( inner < 0 ) { return -1; }
-                TablePackMapClose( seen, (const void *) pointee, slot );
-                bytes += TableAlignUp64( (int64_t) sizeof( Node ) ) + inner;
-            }
-        }
-    }
-    }
-            break;
-        }
-        default: break;
-    }
-    }
-    return bytes;
+    (void) ctx;
+    (void) value; // no list or map below this record
+    return TableAlignUp64( (int64_t) sizeof( Tray ) );
 }
 
-// TrayPack: copy src into dst (already placed), then lay every pointee out
-// depth-first behind it, in FIELD ORDER, by bump allocation.
-//
-// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and
-// where it landed, so a node's FIRST reference lays it out and every later
-// reference points BACK at that one body. A region delta therefore has no
-// required sign (§6.3), and sharing and a back-reference are one fact. A
-// reference to a node whose descent is still OPEN is a cycle, and this
-// refuses it rather than packing one.
+// TrayPackCopy: copy one Tray to its place, carving its extent.
 template <typename Ctx>
-inline bool TrayPackEdges( const Ctx & ctx, TablePackMap & seen, const Tray & src, Tray & dst, uint8_t * base, int64_t capacity, int64_t & used );
-
-template <typename Ctx>
-inline bool TrayPack( const Ctx & ctx, TablePackMap & seen, const Tray & src, Tray & dst, uint8_t * base, int64_t capacity, int64_t & used )
+inline bool TrayPackCopy( const Ctx & ctx, const Tray & src, void * dst_storage, uint8_t * base, int64_t capacity )
 {
-    memcpy( (void *) &dst, (const void *) &src, sizeof( Tray ) ); // trivially copyable, by construction
-    int64_t at = 0;
-    uint8_t * extent = (uint8_t *) &dst + TableAlignUp64( (int64_t) sizeof( Tray ) );
-    const int64_t room = capacity - ( (int64_t) ( extent - base ) );
-    if ( !TrayExtentPack( ctx, src, dst, extent, at, room ) ) { return false; }
-    return TrayPackEdges( ctx, seen, src, dst, base, capacity, used );
+    Tray * dst = new ( dst_storage ) Tray;
+    memcpy( (void *) dst, (const void *) &src, sizeof( Tray ) ); // trivially copyable, by construction
+    (void) ctx;
+    (void) base;
+    (void) capacity; // no list or map below this record
+    return true;
 }
 
+// TrayPackSlots: point one Tray's slots at the region's already-placed nodes.
 template <typename Ctx>
-inline bool TrayPackEdges( const Ctx & ctx, TablePackMap & seen, const Tray & src, Tray & dst, uint8_t * base, int64_t capacity, int64_t & used )
+inline bool TrayPackSlots( const Ctx & ctx, TablePackMap & seen, const Tray & src, Tray & dst, uint8_t * base )
 {
     for ( int32_t i = 0; i < src.entries_count && i < 2; i++ ) // entries: [..2]Slots
     {
@@ -12195,25 +13176,9 @@ inline bool TrayPackEdges( const Ctx & ctx, TablePackMap & seen, const Tray & sr
         const Node * pointee = NodeAt( ctx, src.entries[i].many.value[k] );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
-            bool taken = false;
-            int64_t slot = 0;
-            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
-            if ( entry == NULL ) { return false; } // the map could not grow
-            if ( !taken )
-            {
-                if ( entry->open != 0 ) { return false; } // a data cycle
-                dst.entries[i].many.value[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.entries[i].many.value[k] ); // the one body it already has
-            }
-            else
-            {
-                if ( at + (int64_t) sizeof( Node ) > capacity ) { return false; }
-                used = at + TableAlignUp64( (int64_t) sizeof( Node ) );
-                Node * child = new ( base + at ) Node; // lifetime only: the Pack below memcpy's the whole node over it
-                dst.entries[i].many.value[k].value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.entries[i].many.value[k] );
-                if ( !NodePack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }
-                TablePackMapClose( seen, (const void *) pointee, slot );
-            }
+            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+            dst.entries[i].many.value[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.entries[i].many.value[k] );
         }
     }
     }
@@ -12298,60 +13263,100 @@ struct RingBuilder
     bool Lock();
 };
 
+template <typename Ctx>
+inline bool RingNumberFrom( const Ctx & ctx, TableNumbering & numbering, const Ring & root );
+
 inline bool RingBuilder::Lock()
 {
     if ( arena.locked ) { return region != NULL; }
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const Ring & root = *(const Ring *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    // The ROOT takes the map's first entry: it is packed at offset 0, and its
-    // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).
-    TablePackMap seen;
-    TablePackMapInit( seen, arena.allocator );
-    bool root_taken = false;
-    int64_t root_slot = 0;
-    int64_t below = -1;
-    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )
+    // MEASURE derives the map from the graph and sizes every node, and it
+    // lays nothing: the root at offset 0 and its descendants in first-visit
+    // order. That order IS the region's order, so no pass follows a pointer
+    // and a chain is not a stack depth (docs/SPEC-TABLES.md §3.1, §6.3).
+    TableNumbering numbering;
+    TableNumberingInit( numbering, arena.allocator );
+    int64_t total = -1;
+    if ( RingNumberFrom( ctx, numbering, root ) )
     {
-        below = RingPackMeasure( ctx, seen, root );
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        int64_t measured = RingPackBytes( ctx, root );
+        bool ok = root_entry != NULL && measured >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            measured = TableAlignUp64( measured );
+            entry->offset = measured;
+            measured += bytes;
+        }
+        if ( ok ) { total = measured; }
     }
-    if ( below < 0 )
+    // PACK derives the map AGAIN from the graph: the measure's map is not
+    // carried across, so used == total is the two walks agreeing rather than
+    // a tautology (docs/SPEC-TABLES.md §3.1).
+    TablePackMapReset( numbering.seen );
+    numbering.count = 0;
+    numbering.work_count = 0;
+    int64_t used = -1;
+    bool ok = total >= 0 && RingNumberFrom( ctx, numbering, root );
+    if ( ok )
     {
-        TablePackMapShutdown( seen );
-        return false;
-    } // a data cycle, named at the reference that closes it
-    int64_t root_extent = RingExtent( ctx, root );
-    if ( root_extent < 0 )
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        used = RingPackBytes( ctx, root );
+        ok = root_entry != NULL && used >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            used = TableAlignUp64( used );
+            entry->offset = used;
+            used += bytes;
+        }
+        if ( ok && used != total ) { ok = false; } // the measure and the pack disagree
+    }
+    if ( !ok )
     {
-        TablePackMapShutdown( seen );
+        TableNumberingShutdown( numbering );
         return false;
-    } // the sort could not run
-    int64_t total = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Ring ) ) + root_extent ) + below;
+    } // a data cycle, a sort that could not run, or an allocator that refused
     // the AUTHORING path may allocate (§6.5), and it does so through the
     // builder's own pair. The region comes back ZEROED, which is the
     // allocator's contract: a packed region carries node padding.
     uint8_t * packed = (uint8_t *) table_allocate( arena.allocator, total );
     if ( packed == NULL )
     {
-        TablePackMapShutdown( seen );
+        TableNumberingShutdown( numbering );
         return false;
     }
-    int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Ring ) ) + root_extent );
-    Ring * destination = new ( packed ) Ring; // lifetime only: the Pack below memcpy's the whole node over it
-    // The pack walk RE-DERIVES the same numbering rather than carrying the
-    // measure's — nothing passes between them, which is what makes
-    // `used == total` below a real check and not a tautology (§3.1). The
-    // map keeps the capacity the measure paid for, so the second walk
-    // rehashes nothing.
-    TablePackMapReset( seen );
-    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||
-        !RingPack( ctx, seen, root, *destination, packed, total, used ) || used != total )
+    ok = RingPackCopy( ctx, root, packed, packed, total );
+    for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
-        TablePackMapShutdown( seen );
+        const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+        if ( entry == NULL ) { ok = false; break; }
+        ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
+    }
+    if ( ok ) { ok = RingPackSlots( ctx, numbering.seen, root, *( Ring * ) packed, packed ); }
+    for ( int64_t k = 0; ok && k < numbering.count; k++ )
+    {
+        const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+        if ( entry == NULL ) { ok = false; break; }
+        if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
+    }
+    TableNumberingShutdown( numbering );
+    if ( !ok )
+    {
         table_release( arena.allocator, packed );
         return false;
     }
-    TablePackMapShutdown( seen );
     region = packed;
     region_bytes = total;
     arena.locked = true; // MONOTONIC: there is no unlock
@@ -12385,6 +13390,31 @@ inline int64_t RingNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
     }
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
+}
+
+// RingNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool RingNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x670377dcbe2f82b6ull: // Chain
+        case 0xb5877a7e05bbfed2ull: // Gate
+        case 0x58ba95d8757c67c0ull: // Hand
+        case 0xa1f526c44ead452full: // Holder
+        case 0xa5c085b4bb73d1b5ull: // Leaf
+        case 0x0fe46fc6a1b583abull: // Nest
+        case 0x66bd1cc6d2f6b68dull: // Node
+        case 0x31badbc06c5f0b97ull: // Only
+        case 0x986d012bd380b0b2ull: // Rack
+        case 0xdcea4d2bfa11ceebull: // Ring
+        case 0x85a6b5fb5284964dull: // Tray
+        case 0x9f8e22fb612a2f78ull: // Twig
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
 }
 
 // RingNodePlace: start one record's node's lifetime in the storage pass one
@@ -12725,6 +13755,11 @@ inline const Ring * RingLoadWalk( uint8_t * region, int64_t region_bytes, const 
             out->damaged = true;
             return NULL;
         }
+        if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+        {
+            table_release( allocator, directory );
+            return NULL;
+        }
         directory[0].offset = (uint64_t) builder.root_ref.value;
         directory[0].type_id = 0xdcea4d2bfa11ceebull;
         TableNodeMap nodes;
@@ -12734,6 +13769,7 @@ inline const Ring * RingLoadWalk( uint8_t * region, int64_t region_bytes, const 
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = RingNodeDeclared;
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
             int64_t k = 0;
@@ -12824,7 +13860,17 @@ inline const Ring * RingLoadWalk( uint8_t * region, int64_t region_bytes, const 
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = RingNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    // THE GRAPH IS CHECKED OVER EVERY KIND-17 PAYLOAD before the typed bodies
+    // are decoded: a cycle, an unreachable record, a shared blob or an
+    // ill-formed string blob refuses the whole load, declared or only skipped
+    // (docs/SPEC-TABLES.md §3.1, §6.5).
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        memset( region, 0, (size_t) region_bytes );
+        return NULL;
+    }
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xdcea4d2bfa11ceebull;
     Ring * root = new ( region ) Ring; // lifetime only: LoadBody's first act is RingReset
@@ -13024,6 +14070,12 @@ inline bool RingLoadBuilderWalk( RingBuilder & builder, const uint8_t * wire_fil
         out->damaged = true;
         return false;
     }
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        if ( root != NULL ) { RingReset( *root ); }
+        table_release( allocator, directory );
+        return false;
+    }
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0xdcea4d2bfa11ceebull;
     TableNodeMap nodes;
@@ -13033,6 +14085,7 @@ inline bool RingLoadBuilderWalk( RingBuilder & builder, const uint8_t * wire_fil
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = RingNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
@@ -13279,60 +14332,100 @@ struct RackBuilder
     bool Lock();
 };
 
+template <typename Ctx>
+inline bool RackNumberFrom( const Ctx & ctx, TableNumbering & numbering, const Rack & root );
+
 inline bool RackBuilder::Lock()
 {
     if ( arena.locked ) { return region != NULL; }
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const Rack & root = *(const Rack *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    // The ROOT takes the map's first entry: it is packed at offset 0, and its
-    // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).
-    TablePackMap seen;
-    TablePackMapInit( seen, arena.allocator );
-    bool root_taken = false;
-    int64_t root_slot = 0;
-    int64_t below = -1;
-    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )
+    // MEASURE derives the map from the graph and sizes every node, and it
+    // lays nothing: the root at offset 0 and its descendants in first-visit
+    // order. That order IS the region's order, so no pass follows a pointer
+    // and a chain is not a stack depth (docs/SPEC-TABLES.md §3.1, §6.3).
+    TableNumbering numbering;
+    TableNumberingInit( numbering, arena.allocator );
+    int64_t total = -1;
+    if ( RackNumberFrom( ctx, numbering, root ) )
     {
-        below = RackPackMeasure( ctx, seen, root );
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        int64_t measured = RackPackBytes( ctx, root );
+        bool ok = root_entry != NULL && measured >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            measured = TableAlignUp64( measured );
+            entry->offset = measured;
+            measured += bytes;
+        }
+        if ( ok ) { total = measured; }
     }
-    if ( below < 0 )
+    // PACK derives the map AGAIN from the graph: the measure's map is not
+    // carried across, so used == total is the two walks agreeing rather than
+    // a tautology (docs/SPEC-TABLES.md §3.1).
+    TablePackMapReset( numbering.seen );
+    numbering.count = 0;
+    numbering.work_count = 0;
+    int64_t used = -1;
+    bool ok = total >= 0 && RackNumberFrom( ctx, numbering, root );
+    if ( ok )
     {
-        TablePackMapShutdown( seen );
-        return false;
-    } // a data cycle, named at the reference that closes it
-    int64_t root_extent = RackExtent( ctx, root );
-    if ( root_extent < 0 )
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        used = RackPackBytes( ctx, root );
+        ok = root_entry != NULL && used >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            used = TableAlignUp64( used );
+            entry->offset = used;
+            used += bytes;
+        }
+        if ( ok && used != total ) { ok = false; } // the measure and the pack disagree
+    }
+    if ( !ok )
     {
-        TablePackMapShutdown( seen );
+        TableNumberingShutdown( numbering );
         return false;
-    } // the sort could not run
-    int64_t total = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Rack ) ) + root_extent ) + below;
+    } // a data cycle, a sort that could not run, or an allocator that refused
     // the AUTHORING path may allocate (§6.5), and it does so through the
     // builder's own pair. The region comes back ZEROED, which is the
     // allocator's contract: a packed region carries node padding.
     uint8_t * packed = (uint8_t *) table_allocate( arena.allocator, total );
     if ( packed == NULL )
     {
-        TablePackMapShutdown( seen );
+        TableNumberingShutdown( numbering );
         return false;
     }
-    int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Rack ) ) + root_extent );
-    Rack * destination = new ( packed ) Rack; // lifetime only: the Pack below memcpy's the whole node over it
-    // The pack walk RE-DERIVES the same numbering rather than carrying the
-    // measure's — nothing passes between them, which is what makes
-    // `used == total` below a real check and not a tautology (§3.1). The
-    // map keeps the capacity the measure paid for, so the second walk
-    // rehashes nothing.
-    TablePackMapReset( seen );
-    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||
-        !RackPack( ctx, seen, root, *destination, packed, total, used ) || used != total )
+    ok = RackPackCopy( ctx, root, packed, packed, total );
+    for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
-        TablePackMapShutdown( seen );
+        const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+        if ( entry == NULL ) { ok = false; break; }
+        ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
+    }
+    if ( ok ) { ok = RackPackSlots( ctx, numbering.seen, root, *( Rack * ) packed, packed ); }
+    for ( int64_t k = 0; ok && k < numbering.count; k++ )
+    {
+        const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+        if ( entry == NULL ) { ok = false; break; }
+        if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
+    }
+    TableNumberingShutdown( numbering );
+    if ( !ok )
+    {
         table_release( arena.allocator, packed );
         return false;
     }
-    TablePackMapShutdown( seen );
     region = packed;
     region_bytes = total;
     arena.locked = true; // MONOTONIC: there is no unlock
@@ -13366,6 +14459,31 @@ inline int64_t RackNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
     }
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
+}
+
+// RackNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool RackNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x670377dcbe2f82b6ull: // Chain
+        case 0xb5877a7e05bbfed2ull: // Gate
+        case 0x58ba95d8757c67c0ull: // Hand
+        case 0xa1f526c44ead452full: // Holder
+        case 0xa5c085b4bb73d1b5ull: // Leaf
+        case 0x0fe46fc6a1b583abull: // Nest
+        case 0x66bd1cc6d2f6b68dull: // Node
+        case 0x31badbc06c5f0b97ull: // Only
+        case 0x986d012bd380b0b2ull: // Rack
+        case 0xdcea4d2bfa11ceebull: // Ring
+        case 0x85a6b5fb5284964dull: // Tray
+        case 0x9f8e22fb612a2f78ull: // Twig
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
 }
 
 // RackNodePlace: start one record's node's lifetime in the storage pass one
@@ -13706,6 +14824,11 @@ inline const Rack * RackLoadWalk( uint8_t * region, int64_t region_bytes, const 
             out->damaged = true;
             return NULL;
         }
+        if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+        {
+            table_release( allocator, directory );
+            return NULL;
+        }
         directory[0].offset = (uint64_t) builder.root_ref.value;
         directory[0].type_id = 0x986d012bd380b0b2ull;
         TableNodeMap nodes;
@@ -13715,6 +14838,7 @@ inline const Rack * RackLoadWalk( uint8_t * region, int64_t region_bytes, const 
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = RackNodeDeclared;
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
             int64_t k = 0;
@@ -13805,7 +14929,17 @@ inline const Rack * RackLoadWalk( uint8_t * region, int64_t region_bytes, const 
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = RackNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    // THE GRAPH IS CHECKED OVER EVERY KIND-17 PAYLOAD before the typed bodies
+    // are decoded: a cycle, an unreachable record, a shared blob or an
+    // ill-formed string blob refuses the whole load, declared or only skipped
+    // (docs/SPEC-TABLES.md §3.1, §6.5).
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        memset( region, 0, (size_t) region_bytes );
+        return NULL;
+    }
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x986d012bd380b0b2ull;
     Rack * root = new ( region ) Rack; // lifetime only: LoadBody's first act is RackReset
@@ -14005,6 +15139,12 @@ inline bool RackLoadBuilderWalk( RackBuilder & builder, const uint8_t * wire_fil
         out->damaged = true;
         return false;
     }
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        if ( root != NULL ) { RackReset( *root ); }
+        table_release( allocator, directory );
+        return false;
+    }
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0x986d012bd380b0b2ull;
     TableNodeMap nodes;
@@ -14014,6 +15154,7 @@ inline bool RackLoadBuilderWalk( RackBuilder & builder, const uint8_t * wire_fil
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = RackNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
@@ -14260,60 +15401,100 @@ struct TrayBuilder
     bool Lock();
 };
 
+template <typename Ctx>
+inline bool TrayNumberFrom( const Ctx & ctx, TableNumbering & numbering, const Tray & root );
+
 inline bool TrayBuilder::Lock()
 {
     if ( arena.locked ) { return region != NULL; }
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const Tray & root = *(const Tray *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    // The ROOT takes the map's first entry: it is packed at offset 0, and its
-    // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).
-    TablePackMap seen;
-    TablePackMapInit( seen, arena.allocator );
-    bool root_taken = false;
-    int64_t root_slot = 0;
-    int64_t below = -1;
-    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )
+    // MEASURE derives the map from the graph and sizes every node, and it
+    // lays nothing: the root at offset 0 and its descendants in first-visit
+    // order. That order IS the region's order, so no pass follows a pointer
+    // and a chain is not a stack depth (docs/SPEC-TABLES.md §3.1, §6.3).
+    TableNumbering numbering;
+    TableNumberingInit( numbering, arena.allocator );
+    int64_t total = -1;
+    if ( TrayNumberFrom( ctx, numbering, root ) )
     {
-        below = TrayPackMeasure( ctx, seen, root );
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        int64_t measured = TrayPackBytes( ctx, root );
+        bool ok = root_entry != NULL && measured >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            measured = TableAlignUp64( measured );
+            entry->offset = measured;
+            measured += bytes;
+        }
+        if ( ok ) { total = measured; }
     }
-    if ( below < 0 )
+    // PACK derives the map AGAIN from the graph: the measure's map is not
+    // carried across, so used == total is the two walks agreeing rather than
+    // a tautology (docs/SPEC-TABLES.md §3.1).
+    TablePackMapReset( numbering.seen );
+    numbering.count = 0;
+    numbering.work_count = 0;
+    int64_t used = -1;
+    bool ok = total >= 0 && TrayNumberFrom( ctx, numbering, root );
+    if ( ok )
     {
-        TablePackMapShutdown( seen );
-        return false;
-    } // a data cycle, named at the reference that closes it
-    int64_t root_extent = TrayExtent( ctx, root );
-    if ( root_extent < 0 )
+        TablePackEntry * root_entry = TablePackMapFind( numbering.seen, (const void *) &root );
+        if ( root_entry != NULL ) { root_entry->offset = 0; }
+        used = TrayPackBytes( ctx, root );
+        ok = root_entry != NULL && used >= 0;
+        for ( int64_t k = 0; ok && k < numbering.count; k++ )
+        {
+            const int64_t bytes = numbering.entries[k].pack_bytes( (const void *) &ctx, numbering.entries[k].node );
+            if ( bytes < 0 ) { ok = false; break; }
+            TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+            if ( entry == NULL ) { ok = false; break; }
+            used = TableAlignUp64( used );
+            entry->offset = used;
+            used += bytes;
+        }
+        if ( ok && used != total ) { ok = false; } // the measure and the pack disagree
+    }
+    if ( !ok )
     {
-        TablePackMapShutdown( seen );
+        TableNumberingShutdown( numbering );
         return false;
-    } // the sort could not run
-    int64_t total = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Tray ) ) + root_extent ) + below;
+    } // a data cycle, a sort that could not run, or an allocator that refused
     // the AUTHORING path may allocate (§6.5), and it does so through the
     // builder's own pair. The region comes back ZEROED, which is the
     // allocator's contract: a packed region carries node padding.
     uint8_t * packed = (uint8_t *) table_allocate( arena.allocator, total );
     if ( packed == NULL )
     {
-        TablePackMapShutdown( seen );
+        TableNumberingShutdown( numbering );
         return false;
     }
-    int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Tray ) ) + root_extent );
-    Tray * destination = new ( packed ) Tray; // lifetime only: the Pack below memcpy's the whole node over it
-    // The pack walk RE-DERIVES the same numbering rather than carrying the
-    // measure's — nothing passes between them, which is what makes
-    // `used == total` below a real check and not a tautology (§3.1). The
-    // map keeps the capacity the measure paid for, so the second walk
-    // rehashes nothing.
-    TablePackMapReset( seen );
-    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||
-        !TrayPack( ctx, seen, root, *destination, packed, total, used ) || used != total )
+    ok = TrayPackCopy( ctx, root, packed, packed, total );
+    for ( int64_t k = 0; ok && k < numbering.count; k++ )
     {
-        TablePackMapShutdown( seen );
+        const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+        if ( entry == NULL ) { ok = false; break; }
+        ok = numbering.entries[k].pack_copy( (const void *) &ctx, numbering.entries[k].node, packed + entry->offset, packed, total );
+    }
+    if ( ok ) { ok = TrayPackSlots( ctx, numbering.seen, root, *( Tray * ) packed, packed ); }
+    for ( int64_t k = 0; ok && k < numbering.count; k++ )
+    {
+        const TablePackEntry * entry = TablePackMapFind( numbering.seen, numbering.entries[k].node );
+        if ( entry == NULL ) { ok = false; break; }
+        if ( numbering.entries[k].pack_slots != NULL ) { ok = numbering.entries[k].pack_slots( (const void *) &ctx, numbering.seen, numbering.entries[k].node, packed + entry->offset, packed ); } // a blob has no slots
+    }
+    TableNumberingShutdown( numbering );
+    if ( !ok )
+    {
         table_release( arena.allocator, packed );
         return false;
     }
-    TablePackMapShutdown( seen );
     region = packed;
     region_bytes = total;
     arena.locked = true; // MONOTONIC: there is no unlock
@@ -14347,6 +15528,31 @@ inline int64_t TrayNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
     }
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
+}
+
+// TrayNodeDeclared: whether this reader DECLARES a record's type id (§3.1).
+inline bool TrayNodeDeclared( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x670377dcbe2f82b6ull: // Chain
+        case 0xb5877a7e05bbfed2ull: // Gate
+        case 0x58ba95d8757c67c0ull: // Hand
+        case 0xa1f526c44ead452full: // Holder
+        case 0xa5c085b4bb73d1b5ull: // Leaf
+        case 0x0fe46fc6a1b583abull: // Nest
+        case 0x66bd1cc6d2f6b68dull: // Node
+        case 0x31badbc06c5f0b97ull: // Only
+        case 0x986d012bd380b0b2ull: // Rack
+        case 0xdcea4d2bfa11ceebull: // Ring
+        case 0x85a6b5fb5284964dull: // Tray
+        case 0x9f8e22fb612a2f78ull: // Twig
+        case kTableBytesTypeId:
+        case kTableStringTypeId:
+            return true;
+        default: break;
+    }
+    return false;
 }
 
 // TrayNodePlace: start one record's node's lifetime in the storage pass one
@@ -14687,6 +15893,11 @@ inline const Tray * TrayLoadWalk( uint8_t * region, int64_t region_bytes, const 
             out->damaged = true;
             return NULL;
         }
+        if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+        {
+            table_release( allocator, directory );
+            return NULL;
+        }
         directory[0].offset = (uint64_t) builder.root_ref.value;
         directory[0].type_id = 0x85a6b5fb5284964dull;
         TableNodeMap nodes;
@@ -14696,6 +15907,7 @@ inline const Tray * TrayLoadWalk( uint8_t * region, int64_t region_bytes, const 
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = TrayNodeDeclared;
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
             int64_t k = 0;
@@ -14786,7 +15998,17 @@ inline const Tray * TrayLoadWalk( uint8_t * region, int64_t region_bytes, const 
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = TrayNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    // THE GRAPH IS CHECKED OVER EVERY KIND-17 PAYLOAD before the typed bodies
+    // are decoded: a cycle, an unreachable record, a shared blob or an
+    // ill-formed string blob refuses the whole load, declared or only skipped
+    // (docs/SPEC-TABLES.md §3.1, §6.5).
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        memset( region, 0, (size_t) region_bytes );
+        return NULL;
+    }
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x85a6b5fb5284964dull;
     Tray * root = new ( region ) Tray; // lifetime only: LoadBody's first act is TrayReset
@@ -14986,6 +16208,12 @@ inline bool TrayLoadBuilderWalk( TrayBuilder & builder, const uint8_t * wire_fil
         out->damaged = true;
         return false;
     }
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        if ( root != NULL ) { TrayReset( *root ); }
+        table_release( allocator, directory );
+        return false;
+    }
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0x85a6b5fb5284964dull;
     TableNodeMap nodes;
@@ -14995,6 +16223,7 @@ inline bool TrayLoadBuilderWalk( TrayBuilder & builder, const uint8_t * wire_fil
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    nodes.declared = TrayNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
@@ -15370,7 +16599,7 @@ inline bool RingSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                             {
                                 const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
-                                if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return -1; }
+                                if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return false; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
                             }
                             body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
@@ -15384,7 +16613,7 @@ inline bool RingSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                             body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
                             break;
                         }
-                        default: return -1; // invalid tag — the write side refuses it too
+                        default: return false; // invalid tag — the write side refuses it too
                     }
                 }
             }
@@ -15529,6 +16758,14 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's
                     // element-kind rule: the field reads EMPTY and one kind_mismatch counts
                     else if ( elem_kind != 15 )
@@ -15853,14 +17090,14 @@ inline bool RackSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return -1; } // storage invariant
+                            if ( cursor_items[elem_i_items].many.value_count < 0 || cursor_items[elem_i_items].many.value_count > 2 ) { return false; } // storage invariant
                             arm_payload_itemsu += 1 + TableLebBytes( (uint64_t) ( cursor_items[elem_i_items].many.value_count ) ); // the element kind byte and the count
                             for ( int32_t elem_i_itemsue = 0; elem_i_itemsue < cursor_items[elem_i_items].many.value_count; elem_i_itemsue++ )
                             {
                                 {
                                     const Node * slot_pointee_itemsue = NodeAt( ctx, cursor_items[elem_i_items].many.value[elem_i_itemsue] );
                                     uint64_t slot_index_itemsue = 0;
-                                    if ( slot_pointee_itemsue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee_itemsue, slot_index_itemsue ) ) { return -1; }
+                                    if ( slot_pointee_itemsue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee_itemsue, slot_index_itemsue ) ) { return false; }
                                     arm_payload_itemsu += TableLebBytes( slot_index_itemsue );
                                 }
                             }
@@ -15875,7 +17112,7 @@ inline bool RackSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                             body_items += TableLebBytes( arm_ref_itemsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_itemsu ) ) + ( arm_payload_itemsu );
                             break;
                         }
-                        default: return -1; // invalid tag — the write side refuses it too
+                        default: return false; // invalid tag — the write side refuses it too
                     }
                 }
             }
@@ -16031,6 +17268,14 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                     uint64_t count = 0;
                     const bool counted_ok = r.getleb( count );
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's
                     // element-kind rule: the field reads EMPTY and one kind_mismatch counts
                     else if ( elem_kind != 15 )
@@ -16124,6 +17369,13 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                                                 if ( !elem_arm_items.has( 2 ) ) { break; }
                                                 {
                                                     uint8_t arm_elem_kind_itemsa = elem_arm_items.get8();
+                                                    // THE ELEMENT KIND IS CLOSED, judged before the arm's own kind (§3, §4).
+                                                    if ( !TableArrayElementKind( arm_elem_kind_itemsa ) )
+                                                    {
+                                                        ( *slot ).type = SlotsType::None;
+                                                        r.report->damaged = true;
+                                                        break;
+                                                    }
                                                     uint64_t arm_count_itemsa = 0;
                                                     if ( !elem_arm_items.getleb( arm_count_itemsa ) )
                                                     {
@@ -16377,14 +17629,14 @@ inline bool TraySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     {
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 2, 0x1f6459a2cea1fc02ull );
-                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return -1; } // storage invariant
+                        if ( value.entries[elem_i].many.value_count < 0 || value.entries[elem_i].many.value_count > 2 ) { return false; } // storage invariant
                         arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.entries[elem_i].many.value_count ) ); // the element kind byte and the count
                         for ( int32_t elem_iue = 0; elem_iue < value.entries[elem_i].many.value_count; elem_iue++ )
                         {
                             {
                                 const Node * slot_pointeeue = NodeAt( ctx, value.entries[elem_i].many.value[elem_iue] );
                                 uint64_t slot_indexue = 0;
-                                if ( slot_pointeeue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointeeue, slot_indexue ) ) { return -1; }
+                                if ( slot_pointeeue != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointeeue, slot_indexue ) ) { return false; }
                                 arm_payloadu += TableLebBytes( slot_indexue );
                             }
                         }
@@ -16399,7 +17651,7 @@ inline bool TraySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
                     }
-                    default: return -1; // invalid tag — the write side refuses it too
+                    default: return false; // invalid tag — the write side refuses it too
                 }
             }
         }
@@ -16559,6 +17811,14 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // THE ELEMENT KIND IS CLOSED, judged under any count before the
+                    // reader's declaration (§3, §4).
+                    if ( !TableArrayElementKind( elem_kind ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     else if ( elem_kind != 15 )
                     {
                         r.report->refused = true;
@@ -16628,6 +17888,13 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
                                             if ( !elem_arm.has( 2 ) ) { break; }
                                             {
                                                 uint8_t arm_elem_kinda = elem_arm.get8();
+                                                // THE ELEMENT KIND IS CLOSED, judged before the arm's own kind (§3, §4).
+                                                if ( !TableArrayElementKind( arm_elem_kinda ) )
+                                                {
+                                                    value.entries[(int32_t) i].type = SlotsType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 uint64_t arm_counta = 0;
                                                 if ( !elem_arm.getleb( arm_counta ) )
                                                 {
@@ -16923,6 +18190,11 @@ inline const Ring * RingLoadRetain( uint8_t * region, int64_t region_bytes, cons
             out->damaged = true;
             return NULL;
         }
+        if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+        {
+            table_release( allocator, directory );
+            return NULL;
+        }
         directory[0].offset = (uint64_t) builder.root_ref.value;
         directory[0].type_id = 0xdcea4d2bfa11ceebull;
         TableNodeMap nodes;
@@ -16932,6 +18204,7 @@ inline const Ring * RingLoadRetain( uint8_t * region, int64_t region_bytes, cons
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = RingNodeDeclared;
         TableRetainReset( retain, nodes, NULL );
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -17028,7 +18301,17 @@ inline const Ring * RingLoadRetain( uint8_t * region, int64_t region_bytes, cons
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = RingNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    // THE GRAPH IS CHECKED OVER EVERY KIND-17 PAYLOAD before the typed bodies
+    // are decoded: a cycle, an unreachable record, a shared blob or an
+    // ill-formed string blob refuses the whole load, declared or only skipped
+    // (docs/SPEC-TABLES.md §3.1, §6.5).
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        memset( region, 0, (size_t) region_bytes );
+        return NULL;
+    }
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xdcea4d2bfa11ceebull;
     Ring * root = new ( region ) Ring; // lifetime only: LoadBody's first act is RingReset
@@ -17396,6 +18679,11 @@ inline const Rack * RackLoadRetain( uint8_t * region, int64_t region_bytes, cons
             out->damaged = true;
             return NULL;
         }
+        if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+        {
+            table_release( allocator, directory );
+            return NULL;
+        }
         directory[0].offset = (uint64_t) builder.root_ref.value;
         directory[0].type_id = 0x986d012bd380b0b2ull;
         TableNodeMap nodes;
@@ -17405,6 +18693,7 @@ inline const Rack * RackLoadRetain( uint8_t * region, int64_t region_bytes, cons
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = RackNodeDeclared;
         TableRetainReset( retain, nodes, NULL );
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -17501,7 +18790,17 @@ inline const Rack * RackLoadRetain( uint8_t * region, int64_t region_bytes, cons
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = RackNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    // THE GRAPH IS CHECKED OVER EVERY KIND-17 PAYLOAD before the typed bodies
+    // are decoded: a cycle, an unreachable record, a shared blob or an
+    // ill-formed string blob refuses the whole load, declared or only skipped
+    // (docs/SPEC-TABLES.md §3.1, §6.5).
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        memset( region, 0, (size_t) region_bytes );
+        return NULL;
+    }
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x986d012bd380b0b2ull;
     Rack * root = new ( region ) Rack; // lifetime only: LoadBody's first act is RackReset
@@ -17869,6 +19168,11 @@ inline const Tray * TrayLoadRetain( uint8_t * region, int64_t region_bytes, cons
             out->damaged = true;
             return NULL;
         }
+        if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+        {
+            table_release( allocator, directory );
+            return NULL;
+        }
         directory[0].offset = (uint64_t) builder.root_ref.value;
         directory[0].type_id = 0x85a6b5fb5284964dull;
         TableNodeMap nodes;
@@ -17878,6 +19182,7 @@ inline const Tray * TrayLoadRetain( uint8_t * region, int64_t region_bytes, cons
         nodes.entries = directory;
         nodes.count = records + 1;
         nodes.once = true;
+        nodes.declared = TrayNodeDeclared;
         TableRetainReset( retain, nodes, NULL );
         {
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -17974,7 +19279,17 @@ inline const Tray * TrayLoadRetain( uint8_t * region, int64_t region_bytes, cons
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
     nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
+    nodes.declared = TrayNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    // THE GRAPH IS CHECKED OVER EVERY KIND-17 PAYLOAD before the typed bodies
+    // are decoded: a cycle, an unreachable record, a shared blob or an
+    // ill-formed string blob refuses the whole load, declared or only skipped
+    // (docs/SPEC-TABLES.md §3.1, §6.5).
+    if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+    {
+        memset( region, 0, (size_t) region_bytes );
+        return NULL;
+    }
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x85a6b5fb5284964dull;
     Tray * root = new ( region ) Tray; // lifetime only: LoadBody's first act is TrayReset

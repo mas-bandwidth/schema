@@ -165,8 +165,7 @@ const (
 	BodyTypeSa
 	BodyTypeTa
 	BodyTypeAa
-	BodyTypeCount
-	BodyTypeMax = BodyTypeCount - 1
+	BodyTypeMax = BodyTypeAa
 )
 
 type Body struct {

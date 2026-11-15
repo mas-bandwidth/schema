@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package example — protocol id 0xeb26c970fde3fd71
+-- package example — protocol id 0xf35accd0582cdd84
 
 local _M = {}
 
@@ -75,13 +75,42 @@ _M.Weapon = {
   Laser = 1,
   Missile = 2,
   Railgun = 3,
+  Flak = 4,
+  Beam = 5,
+  Plasma = 6,
+  Torpedo = 7,
+  Mine = 8,
+  Drone = 9,
+  Swarm = 10,
+  Pulse = 11,
+  Lance = 12,
+  Comet = 13,
+  Quake = 14,
+  Arc = 15,
   Max = 15, -- the exported extent (SPEC §4.2)
 }
 
 -- EnumNameWeapon: debug/log/tooling name for any Weapon wire value;
 -- out-of-set values (wire-legal up to the declared max) name as "???"
 do
-  local names = { [0] = "None", [1] = "Laser", [2] = "Missile", [3] = "Railgun" }
+  local names = {
+    [0] = "None",
+    [1] = "Laser",
+    [2] = "Missile",
+    [3] = "Railgun",
+    [4] = "Flak",
+    [5] = "Beam",
+    [6] = "Plasma",
+    [7] = "Torpedo",
+    [8] = "Mine",
+    [9] = "Drone",
+    [10] = "Swarm",
+    [11] = "Pulse",
+    [12] = "Lance",
+    [13] = "Comet",
+    [14] = "Quake",
+    [15] = "Arc",
+  }
   function _M.EnumNameWeapon(value)
     return names[value] or "???"
   end
@@ -306,9 +335,17 @@ function _M.ZeroProbeHeader(value)
   value.ProbeId = 0
 end
 
--- ReadProbeHeader reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadProbeHeader reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadProbeHeader(stream, value)
+  if not _M.ReadProbeHeaderBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadProbeHeaderBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadProbeHeaderBody(stream, value)
   if not stream:serializeBits(BITS, 8) then return false end
   if BITS.value ~= 171 then -- const(171, 8): a read rejects any other value (SPEC §4.3)
     return false
@@ -336,9 +373,17 @@ function _M.ZeroProbeBits(value)
   value.Nonce = 0
 end
 
--- ReadProbeBits reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadProbeBits reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadProbeBits(stream, value)
+  if not _M.ReadProbeBitsBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadProbeBitsBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadProbeBitsBody(stream, value)
   if not stream:serializeBits(BITS, 9) then return false end
   value.Small = BITS.value
   if not stream:serializeBits64(BIG, 33) then return false end
@@ -368,9 +413,17 @@ function _M.ZeroProbeSample(value)
   value.SamplesCount = 0
 end
 
--- ReadProbeSample reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadProbeSample reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadProbeSample(stream, value)
+  if not _M.ReadProbeSampleBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadProbeSampleBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadProbeSampleBody(stream, value)
   if not stream:serializeBool(BOOL) then return false end
   value.Active = BOOL.value
   if not stream:serializeCompressedFloat(BYTES, -180.0, 180.0, 0.01) then return false end
@@ -418,9 +471,17 @@ function _M.ZeroProbeRing(value)
   value.Radius = 0
 end
 
--- ReadProbeRing reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadProbeRing reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadProbeRing(stream, value)
+  if not _M.ReadProbeRingBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadProbeRingBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadProbeRingBody(stream, value)
   if not stream:serializeBits(BITS, 16) then return false end
   value.Radius = BITS.value
   return true
@@ -432,9 +493,17 @@ function _M.ZeroProbeSlab(value)
   value.Height = 0
 end
 
--- ReadProbeSlab reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadProbeSlab reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadProbeSlab(stream, value)
+  if not _M.ReadProbeSlabBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadProbeSlabBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadProbeSlabBody(stream, value)
   if not stream:serializeInt(BITS, 0, 100) then return false end
   value.Width = BITS.value
   if not stream:serializeBits(BITS, 8) then return false end
@@ -447,18 +516,27 @@ function _M.ZeroProbeShape(value)
   value.Type = 0
 end
 
+-- ReadProbeShape reads one packet: the union wire (SPEC §4.8), then the end check
+-- (SPEC §5).
 function _M.ReadProbeShape(stream, value)
+  if not _M.ReadProbeShapeBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadProbeShapeBody reads the union wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadProbeShapeBody(stream, value)
   if not stream:serializeInt(BITS, 0, 2) then -- rejects a tag above the count (SPEC §4.8)
     return false
   end
   value.Type = BITS.value
   if value.Type == _M.ProbeShapeType.Ring then
     value.Ring = _M.NewProbeRing() -- fresh declared defaults on every selection
-    return _M.ReadProbeRing(stream, value.Ring)
+    return _M.ReadProbeRingBody(stream, value.Ring)
   end
   if value.Type == _M.ProbeShapeType.Slab then
     value.Slab = _M.NewProbeSlab() -- fresh declared defaults on every selection
-    return _M.ReadProbeSlab(stream, value.Slab)
+    return _M.ReadProbeSlabBody(stream, value.Slab)
   end
   return true -- None
 end
@@ -474,19 +552,27 @@ function _M.ZeroProbeCollider(value)
   value.ExtrasCount = 0
 end
 
--- ReadProbeCollider reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadProbeCollider reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadProbeCollider(stream, value)
+  if not _M.ReadProbeColliderBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadProbeColliderBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadProbeColliderBody(stream, value)
   if not stream:serializeBits(BITS, 8) then return false end
   value.Armor = BITS.value
-  if not _M.ReadProbeShape(stream, value.Shape) then return false end
-  if not _M.ReadProbeShape(stream, value.Backup) then return false end
+  if not _M.ReadProbeShapeBody(stream, value.Shape) then return false end
+  if not _M.ReadProbeShapeBody(stream, value.Backup) then return false end
   if not stream:serializeInt(BITS, 0, 2) then -- the count guards the loop (SPEC §6.3)
     return false
   end
   value.ExtrasCount = BITS.value
   for i = 1, value.ExtrasCount do
-    if not _M.ReadProbeShape(stream, value.Extras[i]) then return false end
+    if not _M.ReadProbeShapeBody(stream, value.Extras[i]) then return false end
   end
   return true
 end
@@ -497,9 +583,17 @@ function _M.ZeroProbeConfig(value)
   value.Preferred = 0
 end
 
--- ReadProbeConfig reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadProbeConfig reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadProbeConfig(stream, value)
+  if not _M.ReadProbeConfigBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadProbeConfigBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadProbeConfigBody(stream, value)
   do
     if not stream:serializeBits(BITS, 32) then return false end
     local raw = BITS.value
@@ -519,13 +613,21 @@ function _M.ZeroProbeArray(value)
   _M.ZeroProbeConfig(value.Config)
 end
 
--- ReadProbeArray reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadProbeArray reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadProbeArray(stream, value)
+  if not _M.ReadProbeArrayBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadProbeArrayBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadProbeArrayBody(stream, value)
   for i = 1, 2 do
-    if not _M.ReadProbeSample(stream, value.Samples[i]) then return false end
+    if not _M.ReadProbeSampleBody(stream, value.Samples[i]) then return false end
   end
-  if not _M.ReadProbeConfig(stream, value.Config) then return false end
+  if not _M.ReadProbeConfigBody(stream, value.Config) then return false end
   return true
 end
 
@@ -534,9 +636,17 @@ function _M.ZeroHeartbeat(_value)
   -- empty body — nothing to reset (SPEC §4.6)
 end
 
--- ReadHeartbeat reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
-function _M.ReadHeartbeat(_stream, _value)
+-- ReadHeartbeat reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
+function _M.ReadHeartbeat(stream, value)
+  if not _M.ReadHeartbeatBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadHeartbeatBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadHeartbeatBody(_stream, _value)
   -- empty body — presence is the payload (SPEC §4.6)
   return true
 end
@@ -549,9 +659,17 @@ function _M.ZeroTest(value)
   value.TestD = 0
 end
 
--- ReadTest reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadTest reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadTest(stream, value)
+  if not _M.ReadTestBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadTestBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadTestBody(stream, value)
   if not stream:serializeBits(BITS, 16) then return false end
   value.TestA = BITS.value
   if not stream:serializeInt(BITS, 0, 1000) then return false end
@@ -568,9 +686,17 @@ function _M.ZeroBlock(value)
   value.Data = ""
 end
 
--- ReadBlock reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadBlock reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadBlock(stream, value)
+  if not _M.ReadBlockBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadBlockBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadBlockBody(stream, value)
   do
     if not stream:serializeInt(BITS, 0, 2000) then -- the length guards the payload (§6.3)
       return false
@@ -587,9 +713,17 @@ function _M.ZeroChat(value)
   value.Text = ""
 end
 
--- ReadChat reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadChat reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadChat(stream, value)
+  if not _M.ReadChatBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadChatBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadChatBody(stream, value)
   do
     if not stream:serializeInt(BITS, 0, 256) then -- the length guards the payload (§6.3)
       return false
@@ -610,13 +744,21 @@ function _M.ZeroProbeReport(value)
   _M.ZeroTest(value.Echo)
 end
 
--- ReadProbeReport reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadProbeReport reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadProbeReport(stream, value)
-  if not _M.ReadProbeHeader(stream, value.Header) then return false end
+  if not _M.ReadProbeReportBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadProbeReportBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadProbeReportBody(stream, value)
+  if not _M.ReadProbeHeaderBody(stream, value.Header) then return false end
   if not stream:serializeBits(BITS, 8) then return false end
   value.Flags = BITS.value
-  if not _M.ReadTest(stream, value.Echo) then return false end
+  if not _M.ReadTestBody(stream, value.Echo) then return false end
   return true
 end
 
@@ -650,9 +792,17 @@ function _M.ZeroTestData(value)
   value.Text = ""
 end
 
--- ReadTestData reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadTestData reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadTestData(stream, value)
+  if not _M.ReadTestDataBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadTestDataBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadTestDataBody(stream, value)
   if not stream:serializeInt(BITS, -100, 100) then return false end
   value.A = BITS.value
   if not stream:serializeInt(BITS, -100, 100) then return false end
@@ -731,9 +881,17 @@ function _M.ZeroCompressedProbe(value)
   value.Offset = 0.0
 end
 
--- ReadCompressedProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
--- (a stream overflow rides stream:error()).
+-- ReadCompressedProbe reads one packet: the type wire (SPEC §4.3, §6.1), then the
+-- end check (SPEC §5). false refuses without a latch (a stream overflow
+-- rides stream:error()).
 function _M.ReadCompressedProbe(stream, value)
+  if not _M.ReadCompressedProbeBody(stream, value) then return false end
+  return stream:serializeEnd()
+end
+
+-- ReadCompressedProbeBody reads the type wire without the end check, for a nested read
+-- (SPEC §5: the end check runs once, after the top-level object).
+function _M.ReadCompressedProbeBody(stream, value)
   if not stream:serializeCompressedFloat(BYTES, 0.0, 10.0, 0.01) then return false end
   value.Boundary = BYTES.value
   if not stream:serializeCompressedFloat(BYTES, -5.0, 5.0, 0.001) then return false end
@@ -773,6 +931,15 @@ end
 -- type ProbeSample (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeSample(stream, v)
   if not stream:serializeBool({ value = v.Active }) then return false end -- SPEC §4.3
+  -- compressed-float range (SPEC §5.1 row 10)
+  if
+    type(v.Orientation) ~= "number"
+    or v.Orientation ~= v.Orientation
+    or v.Orientation < -180.0
+    or v.Orientation > 180.0
+  then
+    return false
+  end
   -- the step index (SPEC §4.3)
   if not stream:serializeCompressedFloat({ value = v.Orientation }, -180.0, 180.0, 0.01) then return false end
   if math.type(v.RawDelta) ~= "integer" then return false end
@@ -792,7 +959,7 @@ function _M.WriteProbeSample(stream, v)
     if not stream:serializeBits({ value = v.IdleTicks }, 32) then return false end -- the storage width
   end
   -- the count guards the loop (SPEC §6.3)
-  if type(v.SamplesCount) ~= "number" or v.SamplesCount < 1 or v.SamplesCount > 8 then return false end
+  if math.type(v.SamplesCount) ~= "integer" or v.SamplesCount < 1 or v.SamplesCount > 8 then return false end
   if not stream:serializeBits({ value = v.SamplesCount - 1 }, 3) then return false end -- the count
   for _i = 1, v.SamplesCount do
     if math.type(v.Samples[_i]) ~= "integer" then return false end
@@ -837,7 +1004,7 @@ function _M.WriteProbeCollider(stream, v)
   if not _M.WriteProbeShape(stream, v.Shape) then return false end
   if not _M.WriteProbeShape(stream, v.Backup) then return false end
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ExtrasCount) ~= "number" or v.ExtrasCount < 0 or v.ExtrasCount > 2 then return false end
+  if math.type(v.ExtrasCount) ~= "integer" or v.ExtrasCount < 0 or v.ExtrasCount > 2 then return false end
   if not stream:serializeBits({ value = v.ExtrasCount }, 2) then return false end -- the count
   for _i = 1, v.ExtrasCount do
     if not _M.WriteProbeShape(stream, v.Extras[_i]) then return false end
@@ -924,13 +1091,22 @@ function _M.WriteTestData(stream, v)
   if not stream:serializeBits({ value = v.F }, 8) then return false end -- the declared bit width
   if not stream:serializeBool({ value = v.G }) then return false end -- SPEC §4.3
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 16 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 16 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 5) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 255 then return false end
     if not stream:serializeBits({ value = v.Items[_i] - 0 }, 8) then return false end -- the offset from min
   end
   if not stream:serializeFloat({ value = v.FloatValue }) then return false end
+  -- compressed-float range (SPEC §5.1 row 10)
+  if
+    type(v.CompressedFloatValue) ~= "number"
+    or v.CompressedFloatValue ~= v.CompressedFloatValue
+    or v.CompressedFloatValue < 0.0
+    or v.CompressedFloatValue > 10.0
+  then
+    return false
+  end
   -- the step index (SPEC §4.3)
   if not stream:serializeCompressedFloat({ value = v.CompressedFloatValue }, 0.0, 10.0, 0.01) then return false end
   if not stream:serializeDouble({ value = v.DoubleValue }) then return false end
@@ -967,8 +1143,14 @@ end
 
 -- type CompressedProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteCompressedProbe(stream, v)
+  -- compressed-float range (SPEC §5.1 row 10)
+  if type(v.Boundary) ~= "number" or v.Boundary ~= v.Boundary or v.Boundary < 0.0 or v.Boundary > 10.0 then
+    return false
+  end
   -- the step index (SPEC §4.3)
   if not stream:serializeCompressedFloat({ value = v.Boundary }, 0.0, 10.0, 0.01) then return false end
+  -- compressed-float range (SPEC §5.1 row 10)
+  if type(v.Offset) ~= "number" or v.Offset ~= v.Offset or v.Offset < -5.0 or v.Offset > 5.0 then return false end
   -- the step index (SPEC §4.3)
   if not stream:serializeCompressedFloat({ value = v.Offset }, -5.0, 5.0, 0.001) then return false end
   return true

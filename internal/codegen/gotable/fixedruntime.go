@@ -82,7 +82,7 @@ const tableFixedMaxDepth int32 = 64
 // tag 0x0101 is not arm 1. Arg is the arm ordinal and carries NO BYTE LANE
 // (§5.8 row 5): a 256-arm union's ordinal does not fit a byte.
 type TableFixedEntry struct {
-	Src, Dst, Size, Aux, Guard uint32
+	Src, Dst, Size, Aux, Guard, Min uint32
 	// Arg IS THE GUARD'S ORDINAL AT FULL WIDTH (docs/FIXED-FORM-ALGORITHM.md
 	// §4.1: arg : u64, "no byte lane anywhere"): a union past 255 arms or an
 	// enum past 65535 variants holds its ordinal whole in this lane, and the
@@ -141,7 +141,7 @@ func (p TableFixedEntry) chainHolds(plan []TableFixedEntry, src []byte) bool {
 }
 
 type TableFixedDst struct {
-	Dst, Stride, Aux uint32
+	Dst, Stride, Aux, Min uint32
 	Counted, Arg, Meta uint8
 }
 
@@ -444,8 +444,8 @@ func tableFixedCopyRun(d, s []byte, n uint32) {
 // side to native on the destination side. On a little-endian host the two
 // orders are one and the conversion is the byte copy it always was.
 // tableFixedPutNative lands v in storage at the given width; a width past
-// eight (a 128-bit lane) takes the low word native and zeroes the rest,
-// which is what the widen that uses it always wrote past its value.
+// eight (a 128-bit lane) takes the low word native and zeroes the rest. A
+// widen whose source is negative writes the high word's sign itself.
 func tableFixedPutNative(b []byte, v uint64, size uint32) {
 	if size > 8 {
 		binary.NativeEndian.PutUint64(b, v)
@@ -597,6 +597,13 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 				}
 			}
 			tableFixedPutNative(dst[p.Dst:], raw, uint32(p.DstSize))
+			// A SIXTEEN-BYTE DESTINATION takes the source's sign through its
+			// high word: all ones for a negative signed value, zero otherwise.
+			if p.DstSize > 8 && p.Sign != 0 && int64(raw) < 0 {
+				for i := p.Dst + 8; i < p.Dst+uint32(p.DstSize); i++ {
+					dst[i] = 0xFF
+				}
+			}
 			report.Widened++
 		case tableFixedWidenF:
 			// THE FLOAT RUNG IS THE ORDINARY CONVERSION (docs/SPEC-TABLES.md §3.3,
@@ -714,7 +721,7 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		switch p.Op {
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 || v > int32(p.Size) {
+			if v < 0 || int64(v) < int64(p.Min) || v > int32(p.Size) {
 				return TableRefuseCountOverBound.Error()
 			}
 			if p.Aux != 0 && uint32(v) < p.Size {
@@ -1350,7 +1357,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// bounded at 4 must land 4 and COUNT, not be admitted because this
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
-			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Min: d.Min, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)

@@ -2,14 +2,12 @@ name: schema Go generated golangci-lint gate
 
 # THE GOLANGCI-LINT LENS on the Go port's generated output (errcheck, gosec,
 # ineffassign, go vet and a -race test run). The fast packet corpus runs on
-# every push and pull request; the table corpus is heavier and runs nightly and
+# every push (on a pull request: ci-fast.yml lang-lint, by path); the table corpus is heavier and runs nightly and
 # on demand. The lens is a ratchet: the pinned counts live in
 # make/checks/schema-go-generated-golangci-lint-gate.ratchet.tsv.
 on:
-  push:
-    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
-  pull_request:
-    branches: [ main, fixed-table-form, sprint/schema-go ]
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
   schedule:
     - cron: "23 3 * * *"
   workflow_dispatch:

@@ -117,13 +117,13 @@ const tableMapJsonSource = `
             if (c == '}') { input.Pos++; return true; }
             input.TextField = mapField;
             scoped ReadOnlySpan<byte> actual; int used;
-            if(key.Unbounded)
+            if (key.Unbounded)
             {
-                if(!DecodedStringBody(text,ref input,out actual)){return false;}
-                if(!TableWire.TextValid(actual)){return RefuseText(ref input,"text_holds_zero");}
-                used=actual.Length;
+                if (!DecodedStringBody(text, ref input, out actual)) { return false; }
+                if (!TableWire.TextValid(actual)) { return RefuseText(ref input, "text_holds_zero"); }
+                used = actual.Length;
             }
-            else {if (!ScanString(text, ref input, spelling, true, out used, stored: true)) { return false; } actual=spelling.Slice(0,used);}
+            else { if (!ScanString(text, ref input, spelling, true, out used, stored: true)) { return false; } actual = spelling.Slice(0, used); }
             if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
             input.Pos++;
             object entry = f.Table.Create();
@@ -131,7 +131,7 @@ const tableMapJsonSource = `
             if (key.Kind == 12)
             {
                 if (used > key.ArrayBound) { return RefuseText(ref input, "length_over_bound"); }
-                else { if(key.Unbounded){key.EnsureCount(entry,used);} actual.CopyTo(key.GetBuffer(entry)); key.SetCount(entry, used); }
+                else { if (key.Unbounded) { key.EnsureCount(entry, used); } actual.CopyTo(key.GetBuffer(entry)); key.SetCount(entry, used); }
             }
             else
             {
@@ -139,7 +139,12 @@ const tableMapJsonSource = `
                 ReadOnlySpan<byte> token = actual;
                 Space(token, ref probe);
                 if (probe.Pos != 0 || !ReadScalar(token, ref probe, entry, key, 0, depth) || probe.Pos != used || probe.Bad)
-                { input.Bad = true; return false; }
+                {
+                    // a key that is not the key kind's integer spelling is a
+                    // NAMED refusal (docs/SPEC-TABLES.md §16.2), not damage
+                    if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
+                    input.Bad = true; return false;
+                }
                 if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
             }
             if (drop) { if (!SkipValue(text, ref input, depth)) { return false; } }
@@ -157,7 +162,7 @@ const tableMapJsonSource = `
                     // A key names a present optional value even when the
                     // value's shape is wrong; the new entry keeps its default.
                     if (field.Optional) { field.SetPresent(entry, true); }
-                    if (shape != Shape(field))
+                    if (!TableShapeMatches(Shape(field), shape))
                     {
                         return RefuseText(ref input, "kind_mismatch");
                     }

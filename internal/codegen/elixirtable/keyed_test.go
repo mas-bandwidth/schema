@@ -22,8 +22,8 @@ import (
 // (KeyedConfig, HullConfig) and plain type structs (ScoreBoard, SlotBundle,
 // SparseHolder) — exposes a 1-based keyed accessor pair (<field>_at/2,
 // put_<field>_at/3) and a key-element iterator (<field>_entries/1) on the
-// struct's own module, refusing None (key 0), keys past E.Max (including
-// headroom enums with | max = M), negative keys, and non-integer keys with an
+// struct's own module, refusing None (key 0), keys past E.Max (including a
+// key past every named variant), negative keys, and non-integer keys with an
 // ArgumentError that names the field, the key, and the bound.
 // Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
 func TestKeyedAccessorCoversBothEndsElixir(t *testing.T) {
@@ -42,10 +42,12 @@ func TestKeyedAccessorCoversBothEndsElixir(t *testing.T) {
 enum Slot { Alpha, Beta, Gamma }
 enum Tier { Low, High }
 
-enum Spare | max = 4
+enum Spare
 {
     One
     Two
+    Three
+    Four
 }
 
 type SlotPair
@@ -76,10 +78,12 @@ fixed table KeyedConfig
 
 	pktUnit := unitFrom(t, `package keyedpkt
 
-enum Spare | max = 4
+enum Spare
 {
     One
     Two
+    Three
+    Four
 }
 
 type SparsePacket
@@ -237,7 +241,7 @@ KeyedCheck.check(
   "KeyedFixed round-trip preserves keyed slots"
 )
 
-# 2. Keyedprobe (tokens, tiers, per_slot, nested.pairs, SparseHolder.sparse | max = 4, and Keyedpkt.SparsePacket)
+# 2. Keyedprobe (tokens, tiers, per_slot, nested.pairs, SparseHolder.sparse over a four-variant enum, and Keyedpkt.SparsePacket)
 alias Keyedprobe.{Slot, Tier, Spare, SlotPair, SlotBundle, SparseHolder, ProbeFixed}
 alias Keyedprobe.KeyedConfig, as: PConfig
 alias Keyedpkt.SparsePacket
@@ -416,6 +420,7 @@ func writeKeyedModules(t *testing.T, dir string, files map[string][]byte) []stri
 // element bytes without decoding them, and a damaged slot key ref must stop the
 // keyed-array body immediately (docs/SPEC-TABLES.md §3.2, §4, §6.6).
 func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	v2Path := filepath.Join("..", "..", "..", "test", "tables", "V2.schema")
 	u := loadUnit(t, v2Path)
@@ -477,7 +482,20 @@ func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
 	files := generateElixir(t, u)
 	retainFiles := generateElixir(t, retainUnit)
 	files["RetainTable.ex"] = retainFiles["Table.ex"]
+	// The retaining unit keeps Cell a fixed root, so its Table module calls
+	// its own fixed module: load that module and what it stands on beside it,
+	// renamed apart from the V2 unit's files (they sort in load order).
+	for _, name := range []string{BuildVersionModule + ".ex", "FixedRuntime.ex", "PacketRuntime.ex", "Probe.ex", "Probe" + FixedModuleSuffix + ".ex"} {
+		data, ok := retainFiles[name]
+		if !ok {
+			t.Fatalf("the retaining unit emitted no %s", name)
+		}
+		files["Retain"+name] = data
+	}
 
+	// V2's Cfg is a fixed root, so its Table load answers a form-1 file
+	// previous_form; the keyed-slot rule is the variable form's, read through
+	// the strict variable_load.
 	probe := fmt.Sprintf(`
 mutant = Base.decode16!(%q, case: :lower)
 bad_key = Base.decode16!(%q, case: :lower)
@@ -486,7 +504,7 @@ if Tblv2.Table.load_measure("Cfg", mutant) != 320 do
   raise("expected 320 for mutant load_measure, got " <> inspect(Tblv2.Table.load_measure("Cfg", mutant)))
 end
 
-case Tblv2.Table.load("Cfg", mutant) do
+case Tblv2.Table.variable_load("Cfg", mutant) do
   {:error, _reason, r} ->
     if r.reason == "" do
       raise("unexpected plain report: " <> inspect(r))
@@ -506,7 +524,7 @@ case Tblv2retain.Table.load_retain("Cfg", mutant, store, empty) do
     raise("unexpected retain load result: " <> inspect(other))
 end
 
-case Tblv2.Table.load("Cfg", bad_key) do
+case Tblv2.Table.variable_load("Cfg", bad_key) do
   {:error, _reason, r} when r.reason != "" -> :ok
   other -> raise("expected bad_key plain refusal, got " <> inspect(other))
 end
@@ -540,7 +558,7 @@ IO.puts("UNKNOWN_KEYED_SLOT_OK")
 	}
 	badFiles := make(map[string][]byte, len(files))
 	maps.Copy(badFiles, files)
-	badFiles["Table.ex"] = []byte(strings.Replace(tableEx, target, sabotage, 1))
+	badFiles["Table.ex"] = []byte(strings.ReplaceAll(tableEx, target, sabotage))
 	if badOut, badErr := runArmProbe(t, elixirBinary(t), badFiles, probe); badErr == nil {
 		t.Fatalf("negative control passed unexpectedly:\n%s", badOut)
 	}

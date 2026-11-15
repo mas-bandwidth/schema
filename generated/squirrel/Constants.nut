@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 //
 // Load through the loader beside this file (docs/PORT-SQUIRREL.md):
 //   local Constants = dofile(dir + "/schema_module.nut", true).require("Constants");
@@ -12,7 +12,7 @@ local _require = vargv[1];
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1), the
 // 64 bits of a uint64 in Squirrel's 64-bit integer.
-_M.ProtocolId <- 0xeb26c970fde3fd71;
+_M.ProtocolId <- 0xf35accd0582cdd84;
 
 _M.PositionUnits <- 1024;
 

@@ -106,6 +106,7 @@ func fixedTable(m *Module, st *ir.Struct) {
 	emitFixedDeprecatedCheck(m, st)
 	emitFixedRead(m, st)
 	emitFixedWriteBody(m, st)
+	emitFixedCheckBody(m, st)
 	emitFixedDecodeBody(m, st)
 }
 
@@ -281,6 +282,20 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("_M.%sFixedSave <- function(out, recs) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
 	m.Printf("  _M.FixedField <- null;\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+	// an empty batch is refused in every build before any byte is written, and
+	// raises nothing (docs/rulings.json write-refusal).
+	m.Printf("  if (recs.len() == 0) { _M.FixedReason = \"invalid_value\"; return -1; }\n")
+	// CHECK THE WHOLE BATCH BEFORE SEEKING OR WRITING THE CALLER'S BUFFER
+	// (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/SPEC.md §5.1). FixedCheckBody
+	// reuses the body writer's guards against one private record buffer, so the
+	// checks and the stores cannot drift apart.
+	m.Printf("  local check = blob(_M.%sFixedRecord - 8);\n", st.Name)
+	m.Printf("  for (local k = 0; k < recs.len(); k++) {\n")
+	m.Printf("    local why = _M.%sFixedDeprecated(recs[k]);\n", st.Name)
+	m.Printf("    if (why == null) why = _M.%sFixedCheckBody(check, recs[k]);\n", st.Name)
+	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
+	m.Printf("  }\n")
 	m.Printf("  local b = out;\n")
 	m.Printf("  b.seek(0);\n")
 	m.Printf("  b.writen(%d, 'b');\n", fixedFormByte)
@@ -308,7 +323,7 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 		// emitted with the declaring function, so a keyless unit carries none.
 		emitFixedCRC32C(m)
 		m.Printf("  local n = b.tell();\n")
-		m.Printf("  _rt_fixed.puti32(b, n, crc32c(b, n));\n")
+		m.Printf("  b.writen(crc32c(b, n), 'i');\n")
 		m.Printf("  return n + 4;\n")
 	} else {
 		m.Printf("  return b.tell();\n")
@@ -362,7 +377,10 @@ func emitFixedRead(m *Module, st *ir.Struct) {
 	m.Printf("  local rb = e.record;\n")
 	m.Printf("  if (rb <= 8 || rb > 8 + %d) { _M.FixedReason = \"layout_record_too_large\"; return -1; }\n", ir.TableFixedRecordMaxBytes)
 	m.Printf("  local rest = len - 20 - L;\n")
-	m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+	// a header and a layout followed by no record is refused, never read as a
+	// batch of zero.
+	m.Printf("  if (rest == 0 || rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  local count = rest / rb;\n")
 	m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
 	m.Printf("  if (count > out.len()) { _M.FixedReason = \"batch_too_large\"; return -1; }\n")
@@ -413,9 +431,20 @@ func emitFixedWriteBody(m *Module, st *ir.Struct) {
 		cur += fixedFieldBytes(f)
 	}
 	// a written body answers null unless a value refused: a NaN or an
-	// infinity is non_finite_float, the field named on FixedField
+	// infinity is non_finite_float, a value its declaration does not admit
+	// is invalid_value (docs/SPEC.md §5.1), the field named on FixedField
 	// (docs/SPEC-TABLES.md §3.3, §3.4)
 	m.Printf("  return null;\n")
+	m.Printf("};\n\n")
+}
+
+// emitFixedCheckBody runs the same guarded body writer used by FixedSave on a
+// private buffer. FixedSave reuses this buffer across the whole batch before it
+// seeks or writes the caller's output, so a refused record cannot leave a
+// prefix, header, layout or template in that output.
+func emitFixedCheckBody(m *Module, st *ir.Struct) {
+	m.Printf("_M.%sFixedCheckBody <- function(check, v) {\n", st.Name)
+	m.Printf("  return _M.%sFixedWriteBody(check, 0, v);\n", st.Name)
 	m.Printf("};\n\n")
 }
 
@@ -436,17 +465,28 @@ func fixedEmitWritePayload(m *Module, f *ir.Field, at int64, expr, ind string) {
 		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4): there is no count and no
 		// slack, so the declared bound IS the loop.
 		count := fmt.Sprintf("%d", f.KeyEnumRef.Max)
+		fixedEmitWriteArrayGuard(m, f, expr, ind, f.KeyEnumRef.Max)
 		m.Printf("%sfor (local i = 0; i < %s; i++) {\n", ind, count)
 		fixedEmitWriteElement(m, f, at, expr+"[i]", ind+"  ", "i * "+fmt.Sprint(fixedElementBytes(f)))
 		m.Printf("%s}\n", ind)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		count := fmt.Sprintf("%d", f.ArrayBound)
+		if f.Array == ir.ArrayFixed {
+			fixedEmitWriteArrayGuard(m, f, expr, ind, f.ArrayBound)
+		} else {
+			fixedEmitWriteArrayGuard(m, f, expr, ind, -1)
+		}
 		if f.Array == ir.ArrayCounted {
 			// the COUNT is the array's own length (docs/SPEC-TABLES.md §2.9):
 			// the Squirrel table surface stores a counted array as the array
 			// alone, born at its min length, so len() is the live extent and
 			// the slack stays the template's zeros.
 			m.Printf("%sif (%s.len() < 0 || %s.len() > %d) return \"count_over_bound\";\n", ind, expr, expr, f.ArrayBound)
+			// a count under the declared minimum refuses before it is stored
+			// (docs/SPEC.md §5.1 row 3)
+			if f.ArrayMin > 0 {
+				m.Printf("%sif (%s.len() < %d) %s\n", ind, expr, f.ArrayMin, fixedWriteRefusal(m, f))
+			}
 			m.Printf("%s_rt_fixed.puti32(b, at + %d, %s.len());\n", ind, at, expr)
 			count = expr + ".len()"
 		}
@@ -474,6 +514,7 @@ func fixedIsText(f *ir.Field) bool {
 // then that many bytes, the slack left at the template's zeros
 // (docs/SPEC-TABLES.md §3.4, §7.2).
 func fixedEmitWriteText(m *Module, f *ir.Field, off, expr, ind string) {
+	m.Printf("%sif (typeof %s != \"string\" && typeof %s != \"blob\") %s\n", ind, expr, expr, fixedWriteRefusal(m, f))
 	m.Printf("%sif (%s.len() < 0 || %s.len() > %d) return \"length_over_bound\";\n", ind, expr, expr, f.Type.Size)
 	if f.Type.Kind == ir.TString {
 		m.Printf("%sif (_rt_fixed.textIllFormed(%s, 0, %s.len())) return \"text_ill_formed\";\n", ind, expr, expr)
@@ -489,6 +530,8 @@ func fixedEmitWriteText(m *Module, f *ir.Field, off, expr, ind string) {
 func fixedEmitDecodeText(m *Module, f *ir.Field, off, expr, ind string) {
 	m.Printf("%slocal n = _rt_fixed.geti32(b, at + %s);\n", ind, off)
 	m.Printf("%sif (n < 0 || n > %d) return \"length_over_bound\";\n", ind, f.Type.Size)
+	m.Printf("%sif (_rt_fixed.deadNotZero(b, at + %s + %d + n, at + %s + %d)) return \"wire_damaged\";\n",
+		ind, off, fixedCountBytes, off, fixedCountBytes+f.Type.Size)
 	switch f.Type.Kind {
 	case ir.TString:
 		m.Printf("%sif (_rt_fixed.textIllFormed(b, at + %s + %d, n)) return \"text_ill_formed\";\n", ind, off, fixedCountBytes)
@@ -516,6 +559,9 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 			// §4.1): the tag ordinal at the tag type's storage width, then the
 			// WIDEST arm, the slack behind a narrower arm zero-filled.
 			tag := fixedUnionTagBytes(r)
+			// a tag outside the arm set, or not an integer, refuses before
+			// the tag byte is stored (docs/SPEC.md §5.1 row 6)
+			m.Printf("%sif (typeof %s.Type != \"integer\" || %s.Type < 0 || %s.Type > %d) %s\n", ind, expr, expr, expr, len(r.Variants), fixedWriteRefusal(m, f))
 			m.Printf("%s_rt_fixed.put(b, at + %s, %d, %s.Type);\n", ind, off, tag, expr)
 			for i, v := range r.Variants {
 				if v.F == nil {
@@ -526,18 +572,24 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 				armInd := ind + "  "
 				switch {
 				case v.F.KeyEnum != "":
+					fixedEmitWriteArrayGuard(m, v.F, armExpr, armInd, v.F.KeyEnumRef.Max)
 					m.Printf("%sfor (local i = 0; i < %d; i++) {\n", armInd, v.F.KeyEnumRef.Max)
 					fixedEmitWriteElement(m, v.F, at+tag, armExpr+"[i]", armInd+"  ", dynAdd(dyn, "i * "+fmt.Sprint(fixedElementBytes(v.F))))
 					m.Printf("%s}\n", armInd)
 				case v.F.Array == ir.ArrayFixed || v.F.Array == ir.ArrayCounted:
 					base := at + tag
 					if v.F.Array == ir.ArrayCounted {
+						fixedEmitWriteArrayGuard(m, v.F, armExpr, armInd, -1)
 						m.Printf("%slocal c = %s.len();\n", armInd, armExpr)
 						m.Printf("%sif (c < 0 || c > %d) return \"count_over_bound\";\n", armInd, v.F.ArrayBound)
+						if v.F.ArrayMin > 0 {
+							m.Printf("%sif (c < %d) %s\n", armInd, v.F.ArrayMin, fixedWriteRefusal(m, v.F))
+						}
 						m.Printf("%s_rt_fixed.puti32(b, at + %s + %d, c);\n", armInd, off, tag)
 						base += fixedCountBytes
 						m.Printf("%sfor (local i = 0; i < c; i++) {\n", armInd)
 					} else {
+						fixedEmitWriteArrayGuard(m, v.F, armExpr, armInd, v.F.ArrayBound)
 						m.Printf("%sfor (local i = 0; i < %d; i++) {\n", armInd, v.F.ArrayBound)
 					}
 					fixedEmitWriteElement(m, v.F, base, armExpr+"[i]", armInd+"  ", dynAdd(dyn, "i * "+fmt.Sprint(fixedElementBytes(v.F))))
@@ -554,11 +606,14 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 		if e, ok := f.Type.Ref.(*ir.Enum); ok {
 			// an enum's table storage is its variant NAME; form 3 carries the
 			// variant's ordinal (docs/SPEC-TABLES.md §2.15, §5)
+			// null is None; a value no variant names refuses before its
+			// byte is stored (docs/SPEC.md §5.1 row 5)
 			m.Printf("%s{\n", ind)
-			m.Printf("%s  local ev = 0;\n", ind)
+			m.Printf("%s  local ev = (%s == null) ? 0 : -1;\n", ind, expr)
 			for i, v := range e.Variants {
 				m.Printf("%s  if (%s == %s) ev = %d;\n", ind, expr, squirrel.StringLit([]byte(v)), i+1)
 			}
+			m.Printf("%s  if (ev < 0) %s\n", ind, fixedWriteRefusal(m, f))
 			m.Printf("%s  _rt_fixed.put(b, at + %s, %d, ev);\n", ind, off, fixedStorageBytes(f.Type))
 			m.Printf("%s}\n", ind)
 			return
@@ -568,6 +623,9 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 	// (docs/SPEC-TABLES.md §3.4): the Squirrel value is the [lo, hi] pair, so
 	// the low half lands in its own eight-byte store before the high half.
 	if fixedStorageBytes(f.Type) == 16 {
+		m.Printf("%sif (typeof %s != \"array\" || %s.len() != 2 || typeof %s[0] != \"integer\" || typeof %s[1] != \"integer\") %s\n",
+			ind, expr, expr, expr, expr, fixedWriteRefusal(m, f))
+		fixedEmitRange128Guard(m, f, expr, ind, fixedWriteRefusal(m, f))
 		m.Printf("%s_rt_fixed.put(b, at + %s, 8, %s[0]);\n", ind, off, expr)
 		m.Printf("%s_rt_fixed.put(b, at + %s + 8, 8, %s[1]);\n", ind, off, expr)
 		return
@@ -577,15 +635,122 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 		if f.Type.Kind == ir.TFloat32 {
 			put = "putF32"
 		}
+		// not a number, or a ranged float off its range, refuses before its
+		// bytes are stored (docs/SPEC.md §5.1 row 10). A value that is not
+		// finite at the field's width (a NaN, an infinity, or a float32 that
+		// narrows to one) is left to the store below, which refuses it as
+		// non_finite_float (row 7).
+		m.Printf("%sif (typeof %s != \"float\" && typeof %s != \"integer\") %s\n", ind, expr, expr, fixedWriteRefusal(m, f))
+		if f.HasFloatRange {
+			lo := strconv.FormatFloat(f.FMin, 'e', -1, 64)
+			hi := strconv.FormatFloat(f.FMax, 'e', -1, 64)
+			finite := fmt.Sprintf("%s >= %s && %s <= %s", expr, "-1.7976931348623157e+308", expr, "1.7976931348623157e+308")
+			if f.Type.Kind == ir.TFloat32 {
+				// the least magnitude that rounds to a float32 infinity
+				edge := strconv.FormatFloat(math.Ldexp(1, 128)-math.Ldexp(1, 103), 'e', -1, 64)
+				finite = fmt.Sprintf("%s > -%s && %s < %s", expr, edge, expr, edge)
+			}
+			m.Printf("%sif ((%s < %s || %s > %s) && %s) %s\n", ind, expr, lo, expr, hi, finite, fixedWriteRefusal(m, f))
+		}
 		m.Printf("%sif (!_rt_fixed.%s(b, at + %s, %s)) { _M.FixedField <- %s; return \"non_finite_float\"; }\n",
 			ind, put, off, expr, squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
 		return
 	}
 	if f.Type.Kind == ir.TBool {
+		m.Printf("%sif (typeof %s != \"bool\") %s\n", ind, expr, fixedWriteRefusal(m, f))
 		m.Printf("%sb[at + %s] = (%s ? 1 : 0);\n", ind, off, expr)
 		return
 	}
+	fixedEmitWriteIntGuard(m, f, expr, ind)
 	m.Printf("%s_rt_fixed.put(b, at + %s, %d, %s);\n", ind, off, fixedStorageBytes(f.Type), expr)
+}
+
+// fixedWriteRefusal is the statement a write guard runs on a value its
+// declaration does not admit (docs/SPEC.md §5.1): the field named on
+// FixedField and invalid_value answered, before any byte of the value is
+// stored, so FixedSave returns -1 and raises nothing.
+func fixedWriteRefusal(m *Module, f *ir.Field) string {
+	return fmt.Sprintf("{ _M.FixedField <- %s; return \"invalid_value\"; }", squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
+}
+
+// fixedEmitWriteArrayGuard refuses an array field that is not a Squirrel
+// array, or, for a fixed or keyed array (n >= 0), one whose length is not its
+// declared n: the store walks exactly n slots.
+func fixedEmitWriteArrayGuard(m *Module, f *ir.Field, expr, ind string, n int64) {
+	if n < 0 {
+		m.Printf("%sif (typeof %s != \"array\") %s\n", ind, expr, fixedWriteRefusal(m, f))
+		return
+	}
+	m.Printf("%sif (typeof %s != \"array\" || %s.len() != %d) %s\n", ind, expr, expr, n, fixedWriteRefusal(m, f))
+}
+
+// fixedEmitWriteIntGuard refuses an integral leaf the record cannot carry
+// (docs/SPEC.md §5.1 rows 1 and 2): a value that is not a Squirrel integer,
+// or one outside the intersection of its declared raw range, its bits(N)
+// width and its storage width. A uint64 is a signed Squirrel integer, so it
+// compares with the sign bit flipped; a flags mask is checked for its type
+// only (row 9: a file keeps every bit).
+func fixedEmitWriteIntGuard(m *Module, f *ir.Field, expr, ind string) {
+	refuse := fixedWriteRefusal(m, f)
+	storage := fixedStorageBytes(f.Type)
+	if (f.Type.Kind != ir.TInt && f.Type.Kind != ir.TFixed && f.Type.Kind != ir.TBits) || storage < 1 || storage > 8 {
+		m.Printf("%sif (typeof %s != \"integer\") %s\n", ind, expr, refuse)
+		return
+	}
+	signed := f.Type.Kind != ir.TBits && f.Type.Signed
+	bits := uint(storage * 8)
+	one := big.NewInt(1)
+	var smin, smax *big.Int
+	if signed {
+		smin = new(big.Int).Neg(new(big.Int).Lsh(one, bits-1))
+		smax = new(big.Int).Sub(new(big.Int).Lsh(one, bits-1), one)
+	} else {
+		smin = big.NewInt(0)
+		smax = new(big.Int).Sub(new(big.Int).Lsh(one, bits), one)
+	}
+	lo, hi := new(big.Int).Set(smin), new(big.Int).Set(smax)
+	if f.Type.Kind == ir.TBits && uint(f.Type.Width) < bits {
+		hi = new(big.Int).Sub(new(big.Int).Lsh(one, uint(f.Type.Width)), one)
+	}
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		if rlo.Cmp(lo) > 0 {
+			lo = rlo
+		}
+		if rhi.Cmp(hi) < 0 {
+			hi = rhi
+		}
+	}
+	conds := []string{fmt.Sprintf("typeof %s != \"integer\"", expr)}
+	switch {
+	case storage < 8:
+		// every bound of a narrower storage is a plain Squirrel integer
+		conds = append(conds, fmt.Sprintf("%s < %s", expr, lo.String()), fmt.Sprintf("%s > %s", expr, hi.String()))
+	case !signed:
+		flip := func(v *big.Int) string { return fixedIntLit(int64(v.Uint64() ^ (uint64(1) << 63))) }
+		if lo.Cmp(smin) > 0 {
+			conds = append(conds, fmt.Sprintf("(%s ^ (1 << 63)) < %s", expr, flip(lo)))
+		}
+		if hi.Cmp(smax) < 0 {
+			conds = append(conds, fmt.Sprintf("(%s ^ (1 << 63)) > %s", expr, flip(hi)))
+		}
+	default:
+		if lo.Cmp(smin) > 0 {
+			conds = append(conds, fmt.Sprintf("%s < %s", expr, fixedIntLit(lo.Int64())))
+		}
+		if hi.Cmp(smax) < 0 {
+			conds = append(conds, fmt.Sprintf("%s > %s", expr, fixedIntLit(hi.Int64())))
+		}
+	}
+	m.Printf("%sif (%s) %s\n", ind, strings.Join(conds, " || "), refuse)
+}
+
+// fixedIntLit spells a 64-bit integer as a Squirrel literal; the most
+// negative one has no literal of its own.
+func fixedIntLit(v int64) string {
+	if v == math.MinInt64 {
+		return "(-9223372036854775807 - 1)"
+	}
+	return strconv.FormatInt(v, 10)
 }
 
 func dynAdd(dyn, term string) string {
@@ -621,7 +786,7 @@ func fixedEmitDecodeField(m *Module, f *ir.Field, at int64, expr, ind string) {
 		m.Printf("%s  %sPresent = b[at + %d] != 0;\n", ind, expr, at)
 		m.Printf("%s  if (%sPresent) {\n", ind, expr)
 		fixedEmitDecodePayload(m, f, at+1, expr, ind+"    ")
-		m.Printf("%s  }\n", ind)
+		m.Printf("%s  } else if (at + %d <= lim && _rt_fixed.deadNotZero(b, at + %d, at + %d)) return \"wire_damaged\";\n", ind, at+fixedFieldBytes(f), at+1, at+fixedFieldBytes(f))
 		m.Printf("%s}\n", ind)
 		return
 	}
@@ -648,6 +813,8 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 			// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5).
 			m.Printf("%s  local c = _rt_fixed.geti32(b, at + %d);\n", ind, at)
 			m.Printf("%s  if (c < 0 || c > %d) return \"count_over_bound\";\n", ind, f.ArrayBound)
+			m.Printf("%s  if (_rt_fixed.deadNotZero(b, at + %d + c * %d, at + %d + %d)) return \"wire_damaged\";\n",
+				ind, at+fixedCountBytes, fixedElementBytes(f), at+fixedCountBytes, f.ArrayBound*fixedElementBytes(f))
 			m.Printf("%s  if (%s.len() > c) %s.resize(c); while (%s.len() < c) %s.append(%s);\n", ind, expr, expr, expr, expr, elemZero(f))
 			base += fixedCountBytes
 			m.Printf("%s  for (local i = 0; i < c; i++) {\n", ind)
@@ -684,8 +851,17 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 			// A FORGED TAG, outside this reader's own set, refuses
 			// (docs/FIXED-FORM-ALGORITHM.md §5.4; tablewire fixed.go element)
 			m.Printf("%sif (%s.Type < 0 || %s.Type > %d) return \"out_of_range\";\n", ind, expr, expr, len(r.Variants))
+			// THE ARM OUTSIDE THE TAKEN ONE IS DEAD (docs/FIXED-FORM-ALGORITHM.md
+			// §3.1, §4.5, §5.3 step 11): tag 0 names no arm, a void arm names
+			// none, and a narrower taken arm leaves the rest of the widest arm's
+			// span dead. Every dead byte is zero.
+			span := fixedElementBytes(f)
+			m.Printf("%sif (%s.Type == 0 && _rt_fixed.deadNotZero(b, at + %s + %d, at + %s + %d)) return \"wire_damaged\";\n",
+				ind, expr, off, tag, off, span)
 			for i, v := range r.Variants {
 				if v.F == nil {
+					m.Printf("%sif (%s.Type == %d && _rt_fixed.deadNotZero(b, at + %s + %d, at + %s + %d)) return \"wire_damaged\";\n",
+						ind, expr, i+1, off, tag, off, span)
 					continue
 				}
 				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
@@ -701,6 +877,8 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 					if v.F.Array == ir.ArrayCounted {
 						m.Printf("%slocal c = _rt_fixed.geti32(b, at + %s + %d);\n", armInd, off, tag)
 						m.Printf("%sif (c < 0 || c > %d) return \"count_over_bound\";\n", armInd, v.F.ArrayBound)
+						m.Printf("%sif (_rt_fixed.deadNotZero(b, at + %s + %d + %d + c * %d, at + %s + %d + %d)) return \"wire_damaged\";\n",
+							armInd, off, tag, fixedCountBytes, fixedElementBytes(v.F), off, tag, fixedCountBytes+v.F.ArrayBound*fixedElementBytes(v.F))
 						m.Printf("%sif (%s.len() > c) %s.resize(c); while (%s.len() < c) %s.append(%s);\n", armInd, armExpr, armExpr, armExpr, armExpr, elemZero(v.F))
 						base += fixedCountBytes
 						m.Printf("%sfor (local i = 0; i < c; i++) {\n", armInd)
@@ -715,6 +893,8 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 				default:
 					fixedEmitDecodeElement(m, v.F, at+tag, armExpr, armInd, dyn, false)
 				}
+				m.Printf("%s  if (_rt_fixed.deadNotZero(b, at + %s + %d, at + %s + %d)) return \"wire_damaged\";\n",
+					ind, off, tag+fixedFieldBytes(v.F), off, span)
 				m.Printf("%s}\n", ind)
 			}
 			return
@@ -753,7 +933,7 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 	// the [lo, hi] pair the table surface uses.
 	if fixedStorageBytes(f.Type) == 16 {
 		m.Printf("%s%s = [_rt_fixed.u64le(b, at + %s), _rt_fixed.u64le(b, at + %s + 8)];\n", ind, expr, off, off)
-		fixedEmitRange128Guard(m, f, expr, ind)
+		fixedEmitRange128Guard(m, f, expr, ind, "return \"out_of_range\";")
 		return
 	}
 	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
@@ -856,7 +1036,9 @@ func fixedEmitRangeGuard(m *Module, f *ir.Field, expr, ind string, storage int64
 // comparison is in the field's own type). The high halves compare signed for a
 // signed kind and unsigned otherwise; the low halves always unsigned, by the
 // sign-bit flip. An end the 128-bit storage already holds is not spelled.
-func fixedEmitRange128Guard(m *Module, f *ir.Field, expr, ind string) {
+// refuse is the statement run on a value off the range: the reader's
+// out_of_range, or the writer's invalid_value refusal.
+func fixedEmitRange128Guard(m *Module, f *ir.Field, expr, ind, refuse string) {
 	if f.Type.Kind != ir.TInt && f.Type.Kind != ir.TFixed {
 		return
 	}
@@ -904,7 +1086,7 @@ func fixedEmitRange128Guard(m *Module, f *ir.Field, expr, ind string) {
 		conds = append(conds, fmt.Sprintf("(%s > %s || (%s == %s && %s > %s))", H, bh, H, bh, L, bl))
 	}
 	if len(conds) > 0 {
-		m.Printf("%sif (%s) return \"out_of_range\";\n", ind, strings.Join(conds, " || "))
+		m.Printf("%sif (%s) %s\n", ind, strings.Join(conds, " || "), refuse)
 	}
 }
 

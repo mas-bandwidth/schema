@@ -19,6 +19,7 @@ public final class MixedPickupEventMessage {
         if (v == null) {
             return false;
         }
+        assert checkWrite(v);
         {
             if (v.itemId != 0) {
                 w.put(49L, 7);
@@ -35,7 +36,27 @@ public final class MixedPickupEventMessage {
         return !w.overflow;
     }
 
+    // checkWrite is saveMessageBody's contract walk, called once through `assert`.
+    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts.
+    private static boolean checkWrite(MixedPickupEventFixed.Value v) {
+        assert v != null;
+        assert v.itemId >= 0 && v.itemId <= 1023L;
+        assert v.amount >= 0L;
+        assert v.amount <= 0xffL;
+        return true;
+    }
+
     public static boolean loadMessageBody(TableMessage.Reader r, MixedPickupEventFixed.Value v) {
+        int seenFieldMark = r.seenMark();
+        try {
+            return loadMessageBodyFields(r, v, seenFieldMark);
+        } finally {
+            r.seenRollback(seenFieldMark);
+        }
+    }
+
+    private static boolean loadMessageBodyFields(
+            TableMessage.Reader r, MixedPickupEventFixed.Value v, int seenFieldMark) {
         reset(v);
         while (true) {
             TableVocabulary.Entry entry = r.ref();
@@ -45,6 +66,10 @@ public final class MixedPickupEventMessage {
             }
             if (entry == null) {
                 return true;
+            }
+            if (!r.seenAdd(seenFieldMark, entry.id)) {
+                r.report.damaged = true;
+                return false;
             }
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;

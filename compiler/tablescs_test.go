@@ -400,6 +400,7 @@ fixed table Subject {
 // descriptor walks produce identical wire bytes across normal, guarded, and optional
 // array fields.
 func TestCsTypedVsDynamicWireEquivalence(t *testing.T) {
+	t.Parallel()
 	const src = `package probe
 
 type Leaf {
@@ -626,6 +627,7 @@ static class Program
 // dynamic Ref interning across misses, hits, out-of-range ordinals, and empty
 // OrdinalSlots, and that Truncate restores OrdinalSlots and Slots cleanly.
 func TestCsRefAt(t *testing.T) {
+	t.Parallel()
 	const src = `package probe
 
 type Leaf {

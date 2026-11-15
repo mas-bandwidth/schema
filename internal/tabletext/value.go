@@ -180,18 +180,18 @@ type Instance struct {
 type Model struct {
 	Unit *ir.Unit
 
-	variable map[string]bool // the derived mode of every table (§2.2), on first use
+	variable map[string]bool // the derived mode of every table (§2.2)
 }
 
-// NewModel binds a checked unit for the text and wire walks.
-func NewModel(u *ir.Unit) *Model { return &Model{Unit: u} }
+// NewModel binds a checked unit for the text and wire walks. The table mode
+// map is derived once here, so the Model is safe to share across goroutines.
+func NewModel(u *ir.Unit) *Model {
+	return &Model{Unit: u, variable: ir.VariableTables(u)}
+}
 
 // IsVariable reports whether a table derives the VARIABLE-LENGTH mode
 // (docs/SPEC-TABLES.md §2.2): a pointer somewhere in its by-value closure.
 func (m *Model) IsVariable(name string) bool {
-	if m.variable == nil {
-		m.variable = ir.VariableTables(m.Unit)
-	}
 	return m.variable[name]
 }
 
@@ -422,6 +422,21 @@ func VariantDeprecated(e *ir.Enum, value int64) bool {
 // be two wires, so this engine reads the same one the emitters do and adds only
 // the width question they answer inline.
 func KindWidth(kind int) int { return ir.TableKindWidth(kind) }
+
+// TableKindWideInteger reports whether a kind is an integer-shaped scalar — an
+// integer or a fixed-point kind, never a float or a timestamp — whose storage
+// is wider than 32 bits: int64, uint64, int128, uint128, and the 64- and
+// 128-bit fixed-point kinds. These are the kinds the JSON form writes as a
+// STRING of decimal digits rather than a JSON number (docs/SPEC-TABLES.md
+// §16.2, docs/rulings.json json-wide-integers-are-strings).
+func TableKindWideInteger(kind int) bool {
+	switch kind {
+	case ir.TableKindI64, ir.TableKindU64, ir.TableKindFixed64, ir.TableKindUFixed64,
+		ir.TableKindI128, ir.TableKindU128, ir.TableKindFixed128, ir.TableKindUFixed128:
+		return true
+	}
+	return false
+}
 
 // ImpliedRange is the range a declaration implies without declaring one:
 // `bits(N)` declares its bound by its WIDTH, `[0, 2^N - 1]`, and a value past

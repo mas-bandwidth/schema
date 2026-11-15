@@ -43,9 +43,11 @@ int main(void)
         {"zero-map-key-over-bound", "{\"names\": {\"aaaaaaaaa\\u0000\": 1}}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
         {"zero-integer-map-key", "{\"by_id\": {\"1\\u0000\": 1}}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
         {"zero-after-lone-lead", "{\"name\": \"\\ud800\\u0000\"}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
-        /* U+0000 in a skipped unknown key or its value stores nothing and is not text_holds_zero */
-        {"zero-unknown-value", "{\"nope\": \"a\\u0000b\"}", 1, 1, 0, SCHEMA_TABLE_REFUSE_OK},
-        {"zero-object-key", "{\"a\\u0000b\": 1}", 1, 1, 0, SCHEMA_TABLE_REFUSE_OK},
+        /* U+0000 in a skipped unknown key or its value stores nothing, but a
+           skipped value and every object key are held to the text rules of a
+           placed value (§16.3), so each refuses the read */
+        {"zero-unknown-value", "{\"nope\": \"a\\u0000b\"}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
+        {"zero-object-key", "{\"a\\u0000b\": 1}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
         {"one-escape-stored", "{\"name\": \"a\\u0001b\"}", 1, 0, 0, SCHEMA_TABLE_REFUSE_OK},
         /* string_not_utf8 (§16.3): ill-formed UTF-8 bytes refuse at every string site before any clamp */
         {"illformed-at-bound", "{\"name\": \"aaaaaaaa\xff\"}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},

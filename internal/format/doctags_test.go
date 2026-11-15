@@ -50,7 +50,7 @@ func TestMixedVariantListNormalizesToTheCommaForm(t *testing.T) {
 		"package t\n\nenum Big { A, B, C }\n",
 		"package t\n\nenum Big\n{\n    A,\n    B,\n    C\n}\n",
 		"package t\n\nenum Big\n{\n    A,\n    B,\n    C,\n}\n",
-		"package t\n\nenum Big | max = 8\n{\n    A,\n    B\n}\n",
+		"package t\n\nenum Big | tagged\n{\n    A,\n    B\n}\n",
 	} {
 		if got := format(t, canonical); got != canonical {
 			t.Errorf("not a fixed point:\n--- got ---\n%s--- want ---\n%s", got, canonical)

@@ -31,8 +31,15 @@ name: CI fast
 # SO THE SPLIT IS BY WHEN, NOT BY WHETHER. Nothing is checked less than before.
 #   * THIS FILE runs on every pull-request push. Five jobs, selected BY PATH,
 #     targeting two minutes wall: the cheap lints, the block zero-cost gate,
-#     `go test` of the packages the diff touches, and the fixed-form and
-#     versioning gates of the LEGS the diff touches.
+#     `go test` of the packages the diff touches, the generated-code lints of
+#     the languages it touches (lang-lint), and the fixed-form and versioning
+#     gates of the LEGS the diff touches.
+#   * THE PER-LANGUAGE HEAVY WORKFLOWS (the hostile corpora, the fuzz replays,
+#     the resource bounds, the Squirrel and Lua differentials) do not start on
+#     a pull request at all (Glenn 2026-11-15: "Let us be efficient first, then
+#     scale up if we need only"). Each still runs, unchanged, on push to main,
+#     dev and fixed-table-form, on its schedule and on `gh workflow run <file>
+#     --ref <branch>`. Their PR rows were 40 of a tiny card's ~80 checks.
 #   * ci-full.yml runs everything — the whole go-test, pins, the nine
 #     conformance legs, the 47 negative controls, windows, msvc, big-endian,
 #     vuln — on merge to main, dev or fixed-table-form, nightly, on
@@ -89,6 +96,15 @@ name: CI fast
 # durations, and `defaults.run.shell: go run ./tools/pgroup -- bash -e {0}`,
 # which runs each step as its own process group and kills the whole group when
 # the step ends. internal/ci holds both rules for every workflow file.
+#
+# TWO MINUTES, NEVER MORE (the owner, 2026-11-15: "you have 2m max per-CI to
+# test and verify code. that's it. never any more. never."). Every job here,
+# and every job of any workflow a push or a pull request starts, has
+# `timeout-minutes: 2`; a job that cannot finish in two minutes runs nightly
+# (internal/ci/nightly_test.go). Measured over the last 200 runs of this file
+# (2026-11-15, median / p90): plan 7 / 14 s, go-test-touched 16 / 52 s,
+# block-gate 22 / 69 s, lint-fast 26 / 60 s, lang-lint 20 / 108 s, the
+# fixed-form and versioning rows 34 / 106 s.
 #
 # THESE ARE REPOSITORY RUNNERS, NOT THE ORG POOL, because schema is PUBLIC and the
 # organization's Default runner group refuses public repositories. A public
@@ -156,9 +172,9 @@ jobs:
   # It is deliberately the only `needs:` in this file — every gate that can
   # start immediately does.
   plan:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -166,6 +182,7 @@ jobs:
       packages: ${{ steps.pick.outputs.packages }}
       legs: ${{ steps.pick.outputs.legs }}
       broad: ${{ steps.pick.outputs.broad }}
+      lints: ${{ steps.pick.outputs.lints }}
       rows: ${{ steps.rows.outputs.rows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -243,11 +260,12 @@ jobs:
               internal/codegen/goosetable/*|internal/codegen/goose/*|test/conformance/goose/*|test/goose/*|test/goose-ludicrous/*|test/goose-hostile/*|test/packet-*/goose/*|make/goose.mk|make/goose-*) add_leg goose ;;
               # the Squirrel row is the card leg (make/squirrel-cards.mk): the
               # facade, its driver and the runtime the generated unit carries
-              internal/codegen/squirreltable/*|tables/cards/squirrel/*|make/squirrel.mk|make/squirrel-cards.mk) add_leg squirrel ;;
+              internal/codegen/squirreltable/*|internal/codegen/squirrel/*|tables/cards/squirrel/*|make/squirrel.mk|make/squirrel-cards.mk) add_leg squirrel ;;
             esac
           done <<EOF
           $files
           EOF
+          touched_legs=$legs
           if [ "$broad" = yes ]; then
             legs="cpp go c rust js cs java dart elixir goose lobster luau squirrel"
           fi
@@ -264,9 +282,15 @@ jobs:
           # directory here fails by name — #958 and #960, go-test-touched:
           #   main module (github.com/mas-bandwidth/schema/v2) does not
           #   contain package .../generated/go
-          if [ "$broad" = yes ]; then
-            packages="./..."
-          else
+          #
+          # A BROAD DIFF TOO (the owner, 2026-11-15: "you have 2m max per-CI to
+          # test and verify code. that's it. never any more. never."). The
+          # broad rule once selected `./...`, and the rows step cut that into
+          # 42 go-test-touched jobs for a diff that touched one package (#3723:
+          # a workflow edit). The packages follow the diff alone, the legs the
+          # diff touched and not the broad rule's every leg, and the whole
+          # suite runs nightly in ci-full.yml.
+          {
             packages=""
             for f in $files; do
               case "$f" in
@@ -276,7 +300,31 @@ jobs:
                       case " $packages " in *" ./$d "*) ;; *) packages="$packages ./$d" ;; esac ;;
               esac
             done
-            for leg in $legs; do
+            # THE RUNTIME-ONLY DIFF. A language's emitted runtime (a .lua, .moo,
+            # .nut, .goose, .rs ... file under its codegen directory) is tested
+            # by that language's two Go packages, the type surface and the
+            # table surface, and the .go rule above names neither. Every
+            # language, leg row or not, gets both for a non-Go file under
+            # either of its codegen directories.
+            for f in $files; do
+              case "$f" in
+                *.go) continue ;;
+                internal/codegen/*/*) ;;
+                *) continue ;;
+              esac
+              dir=${f#internal/codegen/}; dir=${dir%%/*}
+              case "$dir" in
+                csharp|cstable) pair="csharp cstable" ;;
+                golang|gotable) pair="golang gotable" ;;
+                *table)         pair="${dir%table} $dir" ;;
+                *)              pair="$dir ${dir}table" ;;
+              esac
+              for p in $pair; do
+                ls "internal/codegen/$p"/*.go >/dev/null 2>&1 || continue
+                case " $packages " in *" ./internal/codegen/$p "*) ;; *) packages="$packages ./internal/codegen/$p" ;; esac
+              done
+            done
+            for leg in $touched_legs; do
               case "$leg" in
                 cpp)     ps=./internal/codegen/cpptable ;;
                 # the Lobster leg is two packages: the type surface and the
@@ -292,8 +340,64 @@ jobs:
                 case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
               done
             done
+            # THE LUA, MOO AND SQUIRREL UNIT TESTS for a diff to their make
+            # files or conformance tree. None is a leg row with packages (the
+            # Squirrel row runs make targets only), so with no .go file in the
+            # diff their two packages, the fast unit tests, would not run.
+            for lang in lua moo squirrel; do
+              case "$lang" in
+                squirrel) paths='^(internal/codegen/squirrel/|internal/codegen/squirreltable/|make/squirrel[.-]|tables/cards/squirrel/|test/conformance/squirrel/)' ;;
+                *)        paths="^(internal/codegen/$lang/|internal/codegen/${lang}table/|make/$lang[.-]|test/conformance/$lang/)" ;;
+              esac
+              if echo "$files" | grep -E "$paths" >/dev/null; then
+                for p in ./internal/codegen/$lang ./internal/codegen/${lang}table; do
+                  case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
+                done
+              fi
+            done
+            # THE SOURCE GOLDENS. internal/goldens holds every emitter's output
+            # to the files under testdata/golden, so a diff to an emitter, to a
+            # golden, or to the examples and usage page it renders re-checks
+            # them here. Without this a golden-only diff selected nothing and an
+            # emitter-only diff selected its own packages, and a stale golden
+            # waited for the merge's full run to say so.
+            if echo "$files" | grep -qE '^(internal/codegen/|testdata/golden/|examples/|examples128/|docs/USAGE\.md$)'; then
+              case " $packages " in *" ./internal/goldens "*) ;; *) packages="$packages ./internal/goldens" ;; esac
+            fi
             packages=$(echo "$packages" | xargs || true)
+          }
+
+          # THE LANGUAGE LINTS (the owner, 2026-11-15: "run only the fastest
+          # unit tests as verification, on a per-language basis"). The
+          # generated-code lenses that answer in seconds, Dart's strict
+          # analyze, golangci-lint over the generated Go, and luacheck and
+          # StyLua over the generated Lua, were workflows of their own started
+          # by every pull request. They run here now, one `lang-lint` row per
+          # touched language; their own workflows keep the nightly halves and
+          # run on main, nightly and dispatch. The broad rule selects all three.
+          #
+          # THE SHARED PACKET CORPORA are every lens's own input (the Lua
+          # lens's LUA_LUACHECK_DIRS and LUA_LUACHECK_FILES, the Dart and Go
+          # packet trees), so a diff to them selects all three too. They feed
+          # every language's packet output and goldens (./internal/goldens,
+          # selected above for examples/ and examples128/) and no fixed-form
+          # leg, so they are not the broad rule.
+          corpus=no
+          if echo "$files" | grep -E '^(examples/|examples128/|bench/corpus/|test/guard/.*\.schema$)' >/dev/null; then
+            corpus=yes
           fi
+          lints=""
+          if [ "$broad" = yes ] || [ "$corpus" = yes ] || case " $legs " in *" dart "*) true ;; *) false ;; esac || echo "$files" | grep 'schema-dart-generated-strict-analyze' >/dev/null; then
+            lints="$lints dart"
+          fi
+          if [ "$broad" = yes ] || [ "$corpus" = yes ] || case " $legs " in *" go "*) true ;; *) false ;; esac || echo "$files" | grep 'schema-go-generated-golangci-lint' >/dev/null; then
+            lints="$lints go"
+          fi
+          if [ "$broad" = yes ] || [ "$corpus" = yes ] || echo "$files" | grep -E '^(internal/codegen/lua/|internal/codegen/luatable/|make/lua[.-]|test/conformance/lua/)|schema-lua-generated-luacheck' >/dev/null; then
+            lints="$lints lua"
+          fi
+          lints_json=$(printf '%s' "$lints" | xargs -n1 2>/dev/null | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
+          [ -n "$lints_json" ] || lints_json='[]'
 
           # the legs as a JSON array, which is what a matrix reads
           json=$(printf '%s' "$legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
@@ -302,12 +406,14 @@ jobs:
           echo "broad=$broad"        >> "$GITHUB_OUTPUT"
           echo "packages=$packages"  >> "$GITHUB_OUTPUT"
           echo "legs=$json"          >> "$GITHUB_OUTPUT"
+          echo "lints=$lints_json"   >> "$GITHUB_OUTPUT"
           {
             echo "### what this push runs on the fast lane"
             echo
             echo "* broad selection: **$broad**"
             echo "* packages: \`${packages:-(none)}\`"
             echo "* legs: \`$json\`"
+            echo "* language lints: \`$lints_json\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       # THE GO TEST ROWS (tools/gotestrows): the packages above, cut into
@@ -345,11 +451,11 @@ jobs:
   # NOT here: each downloads and compiles a tool of its own, which is a minute
   # this lane does not have, and they run in ci-full.yml.
   lint-fast:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 60-142 s with a warm cache; hosted adds setup-go, the cache restore
     # and modernize's first compile
-    timeout-minutes: 15
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -418,6 +524,82 @@ jobs:
       - name: bench scripts parse
         run: bash -n bench/run.sh
 
+  # THE TOUCHED LANGUAGE'S GENERATED-CODE LINT, one row per language `plan`
+  # selected (its `lints` output). These are the fast halves of three lens
+  # workflows that used to start on every pull request whatever it touched:
+  # schema-dart-generated-strict-analyze-gate.yml (~10-35 s),
+  # schema-go-generated-golangci-lint-gate.yml (~7 s) and
+  # schema-lua-generated-luacheck-gate.yml (~30 s). The steps are theirs, the
+  # make targets are theirs, and those files still run the same gates, nightly
+  # halves included, on main, nightly and dispatch. Only WHEN changed (Glenn
+  # 2026-11-15: "run only the fastest unit tests as verification, on a
+  # per-language basis (the languages we are changing in our commit)").
+  lang-lint:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.lints != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: lang-lint (${{ matrix.lint }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        lint: ${{ fromJSON(needs.plan.outputs.lints) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # hosted, as above
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.lint == 'dart' && runner.environment == 'github-hosted'
+        with:
+          sdk: 3.13.2
+
+      - name: the Dart strict analyze gate (packet trees) and its negative control
+        if: matrix.lint == 'dart'
+        run: |
+          set -euo pipefail
+          make schema-dart-generated-strict-analyze-gate DART=dart
+          make schema-dart-generated-strict-analyze-gate-negative-control DART=dart
+
+      # the fleet golangci-lint, pinned; the gate links the fluent Go runtime
+      - name: the generated-Go golangci-lint gate (packet corpus, ratchet)
+        if: matrix.lint == 'go'
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/sdk/bin:$PATH"
+          command -v golangci-lint >/dev/null 2>&1 || {
+            echo "TOOL-MISSING: golangci-lint 2.12.2 (not on PATH; the fleet install is ~/sdk/bin/golangci-lint)"
+            exit 1
+          }
+          golangci-lint version 2>/dev/null | grep '2.12.2' >/dev/null || {
+            echo "TOOL-MISSING: golangci-lint 2.12.2 (found: $(golangci-lint version 2>&1 | head -1))"
+            exit 1
+          }
+          (cd .. && rm -rf serialize.go && git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go)
+          make schema-go-generated-golangci-lint-gate
+
+      # luacheck is fleet software pinned by the make file at 1.2.0; StyLua is
+      # the make file's sha256-pinned dist-stylua
+      - name: the generated Lua under luacheck and StyLua, and both negative controls
+        if: matrix.lint == 'lua'
+        run: |
+          set -euo pipefail
+          if ! command -v luacheck >/dev/null 2>&1; then
+            echo "::error::tool missing: luacheck 1.2.0 — install it fleet-wide from its official source (rowan-tools/fleet)"
+            exit 1
+          fi
+          luacheck --version
+          make tables-lua-luacheck
+          make tables-lua-luacheck-negative-control
+          make tables-lua-format
+          make tables-lua-format-negative-control
+
   # THE BLOCK ZERO-COST GATE, byte-identity half (the `generated` job's third
   # step in ci-full.yml). The committed tables goldens must equal a fresh
   # generation byte for byte, which is the one gate that can redden from a
@@ -427,10 +609,10 @@ jobs:
   # IT TAKES NO CACHE, deliberately, like the job it comes from: this is where
   # "the build did no work" must not be an available explanation for a green.
   block-gate:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 38-83 s; hosted builds bin/schema with no cache, by design
-    timeout-minutes: 10
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -442,8 +624,11 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+      # The three languages write separate trees, so they run side by side:
+      # one after another they were the sum of three rows, past the
+      # per-commit limit on a busy runner.
       - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
-        run: make tables-block-zero-cost
+        run: make -j"$(nproc)" tables-block-zero-cost
 
   # `go test` OF WHAT THE DIFF TOUCHES. The whole of `go test ./...` is 650 s
   # median and lives in ci-full.yml; this job runs the packages `plan` picked,
@@ -469,12 +654,12 @@ jobs:
   # two make targets below are rows of their own.
   go-test-touched:
     needs: plan
-    if: needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     name: go-test-touched (${{ matrix.row }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
     # runner sooner on a host that does not enforce it
-    timeout-minutes: 5
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -653,12 +838,12 @@ jobs:
   # that failed to build is a failure here, never a quiet skip.
   leg-gate:
     needs: plan
-    if: needs.plan.outputs.legs != '[]' && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.legs != '[]' && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (${{ matrix.leg }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # measured over 40 green runs: lobster 547 s and goose 387 s at worst, against a
     # 10-minute cap that left a green row at 91%
-    timeout-minutes: 15
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -727,6 +912,8 @@ jobs:
           # the version test/conformance/js/ci.json names
           node-version: '26'
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
         if: matrix.leg == 'rust' && runner.environment == 'github-hosted'
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         if: matrix.leg == 'dart' && runner.environment == 'github-hosted'
@@ -761,8 +948,8 @@ jobs:
       # runner's temp so a self-hosted runner keeps nothing between runs.
       # A host without the python3-venv package (ensurepip absent) gets the
       # same venv with the system pip installing into it.
-      - name: the pinned clang-format (C and C++ legs)
-        if: matrix.leg == 'c' || matrix.leg == 'cpp'
+      - name: the pinned clang-format (C leg)
+        if: matrix.leg == 'c'
         run: |
           set -euo pipefail
           pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
@@ -784,12 +971,16 @@ jobs:
         run: |
           set -euo pipefail
           case "${{ matrix.leg }}" in
-            cpp)    make tables-fixedform
-                    make tables-cpp-clean tables-cpp-format-negative-control tables-cpp-warnings-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 SCHEMA_REQUIRE_CLANGXX=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
+            # the plain half here; the sanitized half and the clean gates
+            # are leg-gate-cpp's parts below
+            cpp)    make -j"$(nproc)" tables-fixedform-plain ;;
             go)     make tables-go-fixed-form tables-go-versioning ;;
             c)      make tables-c-fixedform tables-c-versioning
                     make tables-c-clean tables-c-format-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
-            rust)   make tables-rust-fixedform tables-rust-versioning RUSTUP_BIN="$(dirname "$(command -v cargo)")" ;;
+            # the fixed form and the framing-text versioning rows, which drive
+            # tables-rust-fixedform again on the build it just made; the probe
+            # workspace's half is leg-gate-rust below
+            rust)   make tables-rust-fixedform tables-rust-versioning-t12 RUSTUP_BIN="$(dirname "$(command -v cargo)")" ;;
             js)     make tables-js-fixed-form tables-js-versioning NODE=node ;;
             cs)     make tables-cs-leg-debug tables-cs-versioning ;;
             java)   make tables-java-fixedform JAVA=java JAVAC=javac ;;
@@ -843,19 +1034,19 @@ jobs:
   # pull request labelled full-ci.
   leg-gate-lobster:
     needs: plan
-    if: contains(needs.plan.outputs.legs, '"lobster"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"lobster"') && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (lobster ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
     # runner sooner on a host that does not enforce it
-    timeout-minutes: 5
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
     strategy:
       fail-fast: false
       matrix:
-        part: [ conformance-a, conformance-b, wire-fuzz, packages, gates ]
+        part: [ conformance-a, conformance-b, conformance-c, wire-fuzz, packages, gates ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -893,12 +1084,14 @@ jobs:
           set -euo pipefail
           a="conformance-negative-control-lobster conformance-negative-control-lobster-walk"
           b="conformance-negative-control-lobster-framing conformance-negative-control-lobster-cycle"
+          c="conformance-negative-control-lobster-write-refusal conformance-negative-control-lobster-write-refusal-message"
           w="tables-lobster-wire-fuzz"
           p="test-lobster-packages"
           nightly="tables-lobster-fuzz tables-lobster-fuzz-negative-control"
           case "$PART" in
             conformance-a) make toolchain-lobster $a ;;
             conformance-b) make toolchain-lobster $b ;;
+            conformance-c) make toolchain-lobster $c ;;
             wire-fuzz)     make toolchain-lobster $w ;;
             packages)      make $p ;;
             gates)
@@ -908,7 +1101,7 @@ jobs:
               [ -n "$all" ] || { echo "::error::make printed no prerequisites for test-lobster"; exit 1; }
               rest=""
               for t in $all; do
-                case " $a $b $w $p $nightly " in *" $t "*) continue ;; esac
+                case " $a $b $c $w $p $nightly " in *" $t "*) continue ;; esac
                 rest="$rest $t"
               done
               echo "gates:$rest"
@@ -916,6 +1109,54 @@ jobs:
               make $rest ;;
             *) echo "::error::leg-gate-lobster has no part '$PART'"; exit 1 ;;
           esac
+
+  # THE RUST LEG'S VERSIONING PROBES, A ROW OF THEIR OWN. As one leg-gate row
+  # the Rust leg ran the C++ oracle's build (16 s), tables-rust-fixedform in
+  # debug and release (26 s) and both halves of tables-rust-versioning one
+  # after another, and the fleet killed it at two minutes with the versioning
+  # half a minute in (run 43608353108). The leg-gate rust arm keeps the fixed
+  # form and tables-rust-versioning-t12; this job is the other half,
+  # tables-rust-versioning-probes: the probe workspace's one cargo build and
+  # run, in parallel with it.
+  leg-gate-rust:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"rust"') && github.event_name == 'workflow_dispatch')
+    name: fixed form + versioning (rust probes)
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    # the fleet's per-commit cap is two minutes; this bound only frees a hung
+    # runner sooner on a host that does not enforce it
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # the C++ reference dumps build/fixedform-corpus, the probes' oracle, and
+      # the probes link the Rust runtime beside this tree
+      - name: Check out the C++ serialize reference and the Rust runtime (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+
+      # the runner's own pinned go already satisfies go.mod; hosted fallback only
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
+        if: runner.environment == 'github-hosted'
+
+      - name: the rust leg's versioning probes
+        run: |
+          set -euo pipefail
+          make tables-rust-versioning-probes RUSTUP_BIN="$(dirname "$(command -v cargo)")"
 
   # THE SQUIRREL CARD LEG, IN ROWS. The leg-gate squirrel arm keeps
   # dist-squirrel and cards-squirrel-test (row-seconds test 93). These two
@@ -926,12 +1167,12 @@ jobs:
   # row-seconds negative 104
   leg-gate-squirrel:
     needs: plan
-    if: contains(needs.plan.outputs.legs, '"squirrel"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"squirrel"') && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (squirrel ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
     # runner sooner on a host that does not enforce it
-    timeout-minutes: 5
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -971,4 +1212,74 @@ jobs:
             conformance) make cards-squirrel-conformance ;;
             negative) make cards-squirrel-conformance-negative-control cards-squirrel-conformance-upgrade-negative-control cards-squirrel-conformance-hash-negative-control ;;
             *) echo "::error::leg-gate-squirrel has no part '$PART'"; exit 1 ;;
+          esac
+
+  # THE C++ LEG, IN PARTS. As one leg-gate row the C++ reference built both
+  # halves of tables-fixedform one translation unit after another, ran them,
+  # and then ran the clean, format and warnings gates, and the fleet killed it
+  # at two minutes. The leg-gate cpp arm keeps the plain half; these parts are
+  # the rest, each its own job:
+  #   asan  — tables-fixedform-asan, the sanitized twins of the same three
+  #           binaries over the same corpus
+  #   clean — tables-cpp-clean and the format and warnings negative controls,
+  #           with the pinned clang-format
+  leg-gate-cpp:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"cpp"') && github.event_name == 'workflow_dispatch')
+    name: fixed form + versioning (cpp ${{ matrix.part }})
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    # the fleet's per-commit cap is two minutes; this bound only frees a hung
+    # runner sooner on a host that does not enforce it
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [ asan, clean ]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # the C++ reference dumps build/fixedform-corpus and compiles against
+      # the serialize headers
+      - name: Check out the C++ serialize reference (pinned release)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+
+      # the runner's own pinned go already satisfies go.mod; hosted fallback only
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # the same pinned clang-format the leg-gate C row installs
+      - name: the pinned clang-format (clean part)
+        if: matrix.part == 'clean'
+        run: |
+          set -euo pipefail
+          pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
+          if python3 -m venv "$RUNNER_TEMP/clang-format" >/dev/null 2>&1; then
+            "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          else
+            rm -rf "$RUNNER_TEMP/clang-format"
+            python3 -m venv --without-pip "$RUNNER_TEMP/clang-format"
+            python3 -m pip --python "$RUNNER_TEMP/clang-format/bin/python3" install --quiet "clang-format==$pin"
+          fi
+          echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/clang-format/bin/clang-format" --version
+
+      - name: the C++ leg, ${{ matrix.part }}
+        env:
+          PART: ${{ matrix.part }}
+        run: |
+          set -euo pipefail
+          case "$PART" in
+            asan)  make -j"$(nproc)" tables-fixedform-asan ;;
+            clean) make tables-cpp-clean tables-cpp-format-negative-control tables-cpp-warnings-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 SCHEMA_REQUIRE_CLANGXX=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
+            *) echo "::error::leg-gate-cpp has no part '$PART'"; exit 1 ;;
           esac

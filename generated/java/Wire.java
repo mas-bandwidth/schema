@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 package example;
 
@@ -93,11 +93,11 @@ public final class Wire {
         if (pad == 0) {
             return pos;
         }
-        final int next = pos + 8 - pad;
+        final long next = (long) pos + 8 - pad;
         if (next > numBits || (data[pos >>> 3] & 0xff) >>> pad != 0) {
             return -1;
         }
-        return next;
+        return (int) next;
     }
 
     public static final long PROBE_ID = 244837814094590L;
@@ -119,6 +119,18 @@ public final class Wire {
         public static final byte LASER = 1;
         public static final byte MISSILE = 2;
         public static final byte RAILGUN = 3;
+        public static final byte FLAK = 4;
+        public static final byte BEAM = 5;
+        public static final byte PLASMA = 6;
+        public static final byte TORPEDO = 7;
+        public static final byte MINE = 8;
+        public static final byte DRONE = 9;
+        public static final byte SWARM = 10;
+        public static final byte PULSE = 11;
+        public static final byte LANCE = 12;
+        public static final byte COMET = 13;
+        public static final byte QUAKE = 14;
+        public static final byte ARC = 15;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 15;
     }
@@ -137,6 +149,42 @@ public final class Wire {
         }
         if (value == Weapon.RAILGUN) {
             return "Railgun";
+        }
+        if (value == Weapon.FLAK) {
+            return "Flak";
+        }
+        if (value == Weapon.BEAM) {
+            return "Beam";
+        }
+        if (value == Weapon.PLASMA) {
+            return "Plasma";
+        }
+        if (value == Weapon.TORPEDO) {
+            return "Torpedo";
+        }
+        if (value == Weapon.MINE) {
+            return "Mine";
+        }
+        if (value == Weapon.DRONE) {
+            return "Drone";
+        }
+        if (value == Weapon.SWARM) {
+            return "Swarm";
+        }
+        if (value == Weapon.PULSE) {
+            return "Pulse";
+        }
+        if (value == Weapon.LANCE) {
+            return "Lance";
+        }
+        if (value == Weapon.COMET) {
+            return "Comet";
+        }
+        if (value == Weapon.QUAKE) {
+            return "Quake";
+        }
+        if (value == Weapon.ARC) {
+            return "Arc";
         }
         return "???";
     }
@@ -229,6 +277,8 @@ public final class Wire {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + PROBE_HEADER_MAX_BITS;
+        assert value.version >= 0;
+        assert value.version <= 7;
         return true;
     }
 
@@ -269,7 +319,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeHeaderBits(
             ProbeHeader value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -279,7 +332,7 @@ public final class Wire {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 16 > numBits) {
+        if ((long) bitsRead + 16 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
@@ -299,7 +352,7 @@ public final class Wire {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 64 > numBits) {
+        if ((long) bitsRead + 64 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -313,9 +366,21 @@ public final class Wire {
     }
 
     // readProbeHeader decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeHeader(ProbeHeader value, byte[] data, int numBits) {
-        return readProbeHeaderBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeHeaderBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeBits
@@ -361,6 +426,10 @@ public final class Wire {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + PROBE_BITS_MAX_BITS;
+        assert value.small >= 0;
+        assert value.small <= 511;
+        assert value.boundary >= 0;
+        assert value.boundary <= 8589934591L;
         assert value.sensor >= 0;
         assert value.sensor <= 4294967295L;
         return true;
@@ -406,7 +475,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeBitsBits(ProbeBits value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -416,7 +488,7 @@ public final class Wire {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 202 > numBits) {
+        if ((long) bitsRead + 202 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffL;
@@ -450,9 +522,21 @@ public final class Wire {
     }
 
     // readProbeBits decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeBits(ProbeBits value, byte[] data, int numBits) {
-        return readProbeBitsBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeBitsBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeSample
@@ -612,7 +696,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeSampleBits(
             ProbeSample value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -622,7 +709,7 @@ public final class Wire {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 113 > numBits) {
+        if ((long) bitsRead + 113 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
@@ -645,7 +732,7 @@ public final class Wire {
         lo |= v << 32;
         value.bigDelta = lo;
         if (value.active) {
-            if (bitsRead + 5 > numBits) {
+            if ((long) bitsRead + 5 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfL;
@@ -655,7 +742,7 @@ public final class Wire {
             bitsRead += 1;
             value.hasTarget = v != 0;
             if (value.hasTarget) {
-                if (bitsRead + 16 > numBits) {
+                if ((long) bitsRead + 16 > numBits) {
                     return -1;
                 }
                 v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
@@ -666,7 +753,7 @@ public final class Wire {
             }
             value.idleTicks = 0;
         } else {
-            if (bitsRead + 32 > numBits) {
+            if ((long) bitsRead + 32 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -676,13 +763,13 @@ public final class Wire {
             value.hasTarget = false;
             value.targetId = 0;
         }
-        if (bitsRead + 3 > numBits) {
+        if ((long) bitsRead + 3 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
         bitsRead += 3;
         value.samplesCount = (int) (v + 1);
-        if (bitsRead + value.samplesCount * 16L > numBits) {
+        if ((long) bitsRead + value.samplesCount * 16L > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < value.samplesCount; i0++) {
@@ -694,9 +781,21 @@ public final class Wire {
     }
 
     // readProbeSample decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeSample(ProbeSample value, byte[] data, int numBits) {
-        return readProbeSampleBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeSampleBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeRing
@@ -759,7 +858,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeRingBits(ProbeRing value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -768,7 +870,7 @@ public final class Wire {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 16 > numBits) {
+        if ((long) bitsRead + 16 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
@@ -778,9 +880,21 @@ public final class Wire {
     }
 
     // readProbeRing decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeRing(ProbeRing value, byte[] data, int numBits) {
-        return readProbeRingBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeRingBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeSlab
@@ -851,7 +965,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeSlabBits(ProbeSlab value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -860,7 +977,7 @@ public final class Wire {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 15 > numBits) {
+        if ((long) bitsRead + 15 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
@@ -876,9 +993,21 @@ public final class Wire {
     }
 
     // readProbeSlab decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeSlab(ProbeSlab value, byte[] data, int numBits) {
-        return readProbeSlabBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeSlabBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC
@@ -978,7 +1107,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeShapeBits(
             ProbeShape value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -987,7 +1119,7 @@ public final class Wire {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -1010,9 +1142,21 @@ public final class Wire {
     }
 
     // readProbeShape decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeShape(ProbeShape value, byte[] data, int numBits) {
-        return readProbeShapeBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeShapeBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeCollider
@@ -1112,7 +1256,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeColliderBits(
             ProbeCollider value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1121,7 +1268,7 @@ public final class Wire {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 8 > numBits) {
+        if ((long) bitsRead + 8 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
@@ -1135,7 +1282,7 @@ public final class Wire {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -1154,9 +1301,21 @@ public final class Wire {
     }
 
     // readProbeCollider decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeCollider(ProbeCollider value, byte[] data, int numBits) {
-        return readProbeColliderBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeColliderBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeConfig
@@ -1227,7 +1386,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeConfigBits(
             ProbeConfig value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1236,7 +1398,7 @@ public final class Wire {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 36 > numBits) {
+        if ((long) bitsRead + 36 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -1249,9 +1411,21 @@ public final class Wire {
     }
 
     // readProbeConfig decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeConfig(ProbeConfig value, byte[] data, int numBits) {
-        return readProbeConfigBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeConfigBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeArray
@@ -1327,7 +1501,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeArrayBits(
             ProbeArray value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         int bitsRead = bitOffset;
@@ -1337,7 +1514,7 @@ public final class Wire {
                 return -1;
             }
         }
-        if (bitsRead + 36 > numBits) {
+        if ((long) bitsRead + 36 > numBits) {
             return -1;
         }
         bitsRead = readProbeConfigBits(value.config, data, bitsRead, numBits);
@@ -1348,9 +1525,21 @@ public final class Wire {
     }
 
     // readProbeArray decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeArray(ProbeArray value, byte[] data, int numBits) {
-        return readProbeArrayBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeArrayBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type Heartbeat
@@ -1406,13 +1595,31 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readHeartbeatBits(Heartbeat value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
+        }
         return bitOffset;
     }
 
     // readHeartbeat decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readHeartbeat(Heartbeat value, byte[] data, int numBits) {
-        return readHeartbeatBits(value, data, 0, numBits) >= 0;
+        final int end = readHeartbeatBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type Test
@@ -1499,7 +1706,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readTestBits(Test value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1508,7 +1718,7 @@ public final class Wire {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 46 > numBits) {
+        if ((long) bitsRead + 46 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
@@ -1536,9 +1746,21 @@ public final class Wire {
     }
 
     // readTest decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readTest(Test value, byte[] data, int numBits) {
-        return readTestBits(value, data, 0, numBits) >= 0;
+        final int end = readTestBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type Block
@@ -1611,7 +1833,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readBlockBits(Block value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1620,7 +1845,7 @@ public final class Wire {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 11 > numBits) {
+        if ((long) bitsRead + 11 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffL;
@@ -1633,7 +1858,7 @@ public final class Wire {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + value.dataLength * 8L > numBits) {
+        if ((long) bitsRead + value.dataLength * 8L > numBits) {
             return -1;
         }
         System.arraycopy(data, bitsRead >>> 3, value.data, 0, value.dataLength);
@@ -1642,9 +1867,21 @@ public final class Wire {
     }
 
     // readBlock decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readBlock(Block value, byte[] data, int numBits) {
-        return readBlockBits(value, data, 0, numBits) >= 0;
+        final int end = readBlockBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type Chat
@@ -1717,7 +1954,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readChatBits(Chat value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1726,7 +1966,7 @@ public final class Wire {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 9 > numBits) {
+        if ((long) bitsRead + 9 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffL;
@@ -1739,7 +1979,7 @@ public final class Wire {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + value.textLength * 8L > numBits) {
+        if ((long) bitsRead + value.textLength * 8L > numBits) {
             return -1;
         }
         System.arraycopy(data, bitsRead >>> 3, value.text, 0, value.textLength);
@@ -1779,9 +2019,21 @@ public final class Wire {
     }
 
     // readChat decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readChat(Chat value, byte[] data, int numBits) {
-        return readChatBits(value, data, 0, numBits) >= 0;
+        final int end = readChatBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ProbeReport
@@ -1853,7 +2105,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeReportBits(
             ProbeReport value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1866,7 +2121,7 @@ public final class Wire {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 54 > numBits) {
+        if ((long) bitsRead + 54 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
@@ -1880,9 +2135,21 @@ public final class Wire {
     }
 
     // readProbeReport decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readProbeReport(ProbeReport value, byte[] data, int numBits) {
-        return readProbeReportBits(value, data, 0, numBits) >= 0;
+        final int end = readProbeReportBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type TestData
@@ -1993,6 +2260,12 @@ public final class Wire {
         assert value.b <= 100;
         assert value.c >= -100;
         assert value.c <= 150;
+        assert value.d >= 0;
+        assert value.d <= 255;
+        assert value.e >= 0;
+        assert value.e <= 255;
+        assert value.f >= 0;
+        assert value.f <= 255;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 16;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
@@ -2141,7 +2414,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readTestDataBits(TestData value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -2151,7 +2427,7 @@ public final class Wire {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 49 > numBits) {
+        if ((long) bitsRead + 49 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
@@ -2184,7 +2460,7 @@ public final class Wire {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
         value.g = v != 0;
-        if (bitsRead + 5 > numBits) {
+        if ((long) bitsRead + 5 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -2193,7 +2469,7 @@ public final class Wire {
             return -1; // the count guards the loop — reject, never clamp
         }
         value.itemsCount = (int) v;
-        if (bitsRead + value.itemsCount * 8L > numBits) {
+        if ((long) bitsRead + value.itemsCount * 8L > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
@@ -2201,7 +2477,7 @@ public final class Wire {
             bitsRead += 8;
             value.items[i0] = (int) v;
         }
-        if (bitsRead + 355 > numBits) {
+        if ((long) bitsRead + 355 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -2269,7 +2545,7 @@ public final class Wire {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 136 > numBits) {
+        if ((long) bitsRead + 136 > numBits) {
             return -1;
         }
         if ((bitsRead & 7) == 0) {
@@ -2282,7 +2558,7 @@ public final class Wire {
                 value.fixedBytes[i0] = (byte) v;
             }
         }
-        if (bitsRead + 8 > numBits) {
+        if ((long) bitsRead + 8 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
@@ -2292,7 +2568,7 @@ public final class Wire {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + value.textLength * 8L > numBits) {
+        if ((long) bitsRead + value.textLength * 8L > numBits) {
             return -1;
         }
         System.arraycopy(data, bitsRead >>> 3, value.text, 0, value.textLength);
@@ -2332,9 +2608,21 @@ public final class Wire {
     }
 
     // readTestData decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readTestData(TestData value, byte[] data, int numBits) {
-        return readTestDataBits(value, data, 0, numBits) >= 0;
+        final int end = readTestDataBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type CompressedProbe
@@ -2431,7 +2719,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readCompressedProbeBits(
             CompressedProbe value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -2440,7 +2731,7 @@ public final class Wire {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 24 > numBits) {
+        if ((long) bitsRead + 24 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffL;
@@ -2459,8 +2750,20 @@ public final class Wire {
     }
 
     // readCompressedProbe decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readCompressedProbe(CompressedProbe value, byte[] data, int numBits) {
-        return readCompressedProbeBits(value, data, 0, numBits) >= 0;
+        final int end = readCompressedProbeBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 }

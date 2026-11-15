@@ -64,7 +64,10 @@ func (g *fixedModule) emitMessageBatchRuntime() {
 		}
 	}
 	// each width's views only where the unit carries that width: the analyzer
-	// refuses an unused field
+	// refuses an unused field. A float64 field also reads an announced f32
+	// through the float32 views (THE FLOAT RUNG, emitMessageReadScalar), so a
+	// unit that carries float64 carries both widths' views.
+	usesFloat32 = usesFloat32 || usesFloat64
 	cells := ""
 	if usesFloat32 {
 		cells += strings.TrimLeft(dartMessageFloat32Runtime, "\n")
@@ -178,7 +181,7 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	g.pf("  final count = tableMessageBatchOpen(vocabulary, bytes, report, r);\n")
 	g.pf("  if (count < 0) return -1;\n")
 	g.pf("  if (count > values.length) {\n")
-	g.pf("    report.Refuse('batch_too_large');\n    return count;\n  }\n")
+	g.pf("    report.Refuse('batch_too_large');\n    return 0;\n  }\n")
 	g.pf("  for (var i = 0; i < count; i++) {\n")
 	g.pf("    if (!%sLoadMessageBody(r, values[i])) {\n", lower)
 	// A NON-FINITE FLOAT REFUSES THE WHOLE BATCH, the tolerant read included
@@ -225,23 +228,41 @@ func (g *fixedModule) emitSaveMessageBody(st *ir.Struct) {
 }
 
 // emitLoadMessageBody writes the bitpacked read of one table: the reset, then
-// each reference dispatched to its field, the zero reference ending the body.
+// each reference resolved through the ANNOUNCED vocabulary and dispatched by
+// its entry's id to this root's own field, the zero reference ending the body
+// (docs/SPEC-TABLES.md §3.3).
 func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	lower := lowerFirst(st.Name)
 	g.gen.cur = st
 	g.emitFn("bool", lower+"LoadMessageBody", []string{"TableMessageReader r", st.Name + " value"})
 	g.pf("  init%s(value);\n", capitalize(st.Name))
+	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3, §4),
+	// known or unknown: this body's own seen level starts clear.
+	g.pf("  r.seenReset();\n")
 	g.pf("  while (true) {\n")
-	g.pf("    final ref = r.bits.get(tableMessageRefBits);\n")
+	g.pf("    final ref = r.bits.get(r.vocabulary.refBits);\n")
 	g.pf("    if (r.bits.failed) { r.report.Damage(); return false; }\n")
 	g.pf("    if (ref == 0) return true;\n")
-	g.pf("    switch (ref) {\n")
+	g.pf("    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }\n")
+	g.pf("    final entry = r.vocabulary.entries[ref - 1];\n")
+	// A RESERVED ID IN A BODY IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3),
+	// and the rule outranks the unknown-slot rule: the Go reference body walk
+	// (internal/tablewire/messagedecode.go body) refuses before it counts an
+	// unknown.
+	g.pf("    if (tableMessageReservedId(entry.id)) { r.report.Damage(); return false; }\n")
+	// THE RESOLVED ID IS RECORDED ONCE PER BODY, known or unknown: an entry
+	// met twice in one body is damage.
+	g.pf("    if (r.seenHasId(entry.id)) { r.report.Damage(); return false; }\n")
+	g.pf("    r.seenAdd(ref);\n")
+	g.pf("    final shape = entry.shape;\n")
+	g.pf("    if (shape == null) { r.report.Damage(); return false; }\n")
+	g.pf("    switch (entry.id) {\n")
 	for _, f := range st.Fields {
 		entry := ir.TableFieldEntry(f)
-		slot := g.messageSlot(entry)
-		g.pf("      case %d:\n", slot)
-		g.emitMessageReadValue(f, entry, "value."+dartName(f.Name), "        ")
-		g.pf("        break;\n")
+		g.pf("      case %s: {\n", dartU64Literal(entry.Id))
+		g.emitMessageCompatibility(f, entry, "entry", "shape", "        ")
+		g.emitMessageReadValue(f, entry, "value."+dartName(f.Name), "        ", "shape", "entry.kind")
+		g.pf("        break;\n      }\n")
 	}
 	g.pf("      default:\n")
 	// AN UNKNOWN SLOT IS TOLERANT (docs/SPEC-TABLES.md §3.3): a reference
@@ -249,27 +270,41 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	// `unknown`, its payload is stepped over by the announcement's own kind and
 	// shape, and the body keeps reading, exactly as the Go reference's body
 	// walk does (internal/tablewire/messagedecode.go: `Unknown++`, `skip(entry)`,
-	// `continue`). A reference ABOVE the announced vocabulary names no entry
-	// and is damage, which is terminal for the batch.
-	g.pf("        if (ref > r.vocabulary.count) {\n")
-	g.pf("          r.report.Damage();\n          return false;\n        }\n")
-	// A RESERVED ID IN A BODY IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3),
-	// and the rule outranks the unknown-slot rule: the Go reference body walk
-	// (internal/tablewire/messagedecode.go body, the `case
-	// ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId,
-	// ir.TableNodeWireId` arm) sets `Malformed` and stops BEFORE it counts an
-	// unknown, so a reference naming the node table (or either trailer id) is
-	// damage here and counts nothing.
-	g.pf("        final named = r.vocabulary.entries[ref - 1].id;\n")
-	g.pf("        if (named == TableVocabulary.buildVersionWireId ||\n")
-	g.pf("            named == TableVocabulary.vocabularyWireId ||\n")
-	g.pf("            named == TableVocabulary.nodeWireId) {\n")
-	g.pf("          r.report.Damage();\n          return false;\n        }\n")
+	// `continue`). The reference was resolved, reserved-checked and recorded
+	// above, so an unknown entry met twice is the same damage as a known one.
 	g.pf("        r.report.unknown++;\n")
-	g.pf("        if (!TableMessageShape.skipEntry(r, r.vocabulary.entries[ref - 1])) {\n")
+	g.pf("        if (!tableMessageSkipEntry(r, entry)) {\n")
 	g.pf("          r.report.Damage();\n          return false;\n        }\n")
 	g.pf("        break;\n")
 	g.pf("    }\n  }\n}\n\n")
+}
+
+// emitMessageCompatibility refuses an announced kind that is neither the
+// declared one nor a widening (docs/SPEC-TABLES.md §3.3, §4), counting one
+// `widened` for the latter, exactly as the Go reference's
+// emitMessageCompatibility does.
+func (g *fixedModule) emitMessageCompatibility(f *ir.Field, mine ir.TableVocabularyEntry, entryExpr, shapeExpr, ind string) {
+	g.pf("%sif (%s.kind != %d || %s.elem != %d) {\n", ind, entryExpr, mine.Kind, shapeExpr, mine.Shape.Elem)
+	wireWidenable := func(kind int) bool {
+		return kind >= 3 && kind <= 5 || kind >= 7 && kind <= 9 || kind == ir.TableKindF64 || kind == ir.TableKindI128 || kind == ir.TableKindU128
+	}
+	compat := "false"
+	if f != nil && wireWidenable(int(mine.Kind)) {
+		compat = fmt.Sprintf("%s.elem == %d && tableMessageKindWidens(%s.kind, %d)", shapeExpr, mine.Shape.Elem, entryExpr, mine.Kind)
+	}
+	if f != nil && mine.Kind == ir.TableKindArray && wireWidenable(int(mine.Shape.Elem)) {
+		compat = fmt.Sprintf("%s.kind == %d && tableMessageKindWidens(%s.elem, %d)", entryExpr, ir.TableKindArray, shapeExpr, mine.Shape.Elem)
+	}
+	// A KIND WITH NO WIDENING refuses outright, with no unreachable count
+	// after it (zero analyzer warnings in the emitted Dart).
+	if compat == "false" {
+		g.pf("%s  r.report.Refuse('kind_mismatch');\n%s  return false;\n", ind, ind)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.pf("%s  if (!(%s)) { r.report.Refuse('kind_mismatch'); return false; }\n", ind, compat)
+	g.pf("%s  r.report.widened++;\n", ind)
+	g.pf("%s}\n", ind)
 }
 
 // messageRides answers the Dart condition under which one field rides the wire
@@ -531,13 +566,12 @@ func (g *fixedModule) emitMessageWriteUnion(un *ir.Union, expr, ind string) {
 }
 
 // emitMessageReadValue reads one field's payload after its reference.
-func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
-	kind, shape := entry.Kind, entry.Shape
+func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind, shapeExpr, kindExpr string) {
 	bad := "r.report.Damage(); return false"
 	switch {
 	case f.Type.Kind == ir.TString || (f.Type.Kind == ir.TBytes && !f.Type.Pointer):
 		g.pf("%s{\n", ind)
-		g.pf("%s  final n = r.bits.get(%d);\n", ind, ir.TableMessageCountBits(shape))
+		g.pf("%s  final n = r.bits.get(TableMessageShape.bitsRequired(%s.min, %s.max));\n", ind, shapeExpr, shapeExpr)
 		g.pf("%s  if (r.bits.failed || !r.bits.align()) { %s; }\n", ind, bad)
 		g.pf("%s  final start = r.bits.offset >> 3;\n", ind)
 		g.pf("%s  if (!r.bits.skip(n * 8)) { %s; }\n", ind, bad)
@@ -549,91 +583,107 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		g.pf("%s  %sLength = kept;\n", ind, expr)
 		g.pf("%s  %s.setRange(0, kept, r.bits.buffer, start);\n", ind, expr)
 		g.pf("%s}\n", ind)
+	case f.KeyEnum != "":
+		g.emitMessageReadKeyed(f, entry, expr, ind, shapeExpr)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
-		count := fmt.Sprintf("%d", f.ArrayBound)
-		aind := ind
-		if f.Array == ir.ArrayCounted {
-			// A COUNTED ARRAY'S CLAMP IS A BLOCK: its `kept` is a local, so a
-			// second counted array in the same body does not redeclare it.
-			g.pf("%s{\n", ind)
-			aind = ind + "  "
-			count = expr + "Count"
-			if ir.TableMessageCountBits(shape) > 0 {
-				// THE COUNT IS A PAYLOAD TOO: read it into a local and store it
-				// only after the read succeeded, so a body that runs out keeps
-				// the count it had landed (internal/tablewire/messagedecode.go,
-				// `array`; docs/SPEC-TABLES.md §3.3).
-				g.pf("%s{\n", aind)
-				g.pf("%s  final v = r.bits.get(%d) + %d;\n", aind, ir.TableMessageCountBits(shape), shape.Min)
-				g.pf("%s  if (r.bits.failed) { %s; }\n", aind, bad)
-				g.pf("%s  %s = v;\n", aind, count)
-				g.pf("%s}\n", aind)
-			}
-			// A COUNT ABOVE THIS READER'S OWN BOUND KEEPS THE BOUND and counts
-			// one `clamped`, exactly as the oracle's array read does
-			// (internal/tablewire/messagedecode.go, `array`; docs/SPEC-TABLES.md
-			// §3.3, §4). The elements past the bound are still read and dropped,
-			// as Go's array does.
-			g.pf("%s  final kept = %s < %d ? %s : %d;\n", aind, count, f.ArrayBound, count, f.ArrayBound)
-			g.pf("%s  if (kept != %s) { r.report.Refuse('count_over_bound'); return false; }\n", aind, count)
-		} else if ir.TableMessageCountBits(shape) > 0 {
-			g.pf("%sr.bits.get(%d);\n", aind, ir.TableMessageCountBits(shape))
-			g.pf("%sif (r.bits.failed) { %s; }\n", aind, bad)
-		}
-		if ir.TableMessageAligns(kind, shape) {
-			g.pf("%sif (!r.bits.align()) { %s; }\n", aind, bad)
-		}
+		// THE COUNT IS THE ANNOUNCED SHAPE'S (docs/SPEC-TABLES.md §3.3): its
+		// width and its minimum are the sender's, and a count above this
+		// reader's own bound refuses before any element is read.
+		g.pf("%s{\n", ind)
+		aind := ind + "  "
+		g.pf("%svar n = %s.min;\n", aind, shapeExpr)
+		g.pf("%sfinal countBits = TableMessageShape.bitsRequired(%s.min, %s.max);\n", aind, shapeExpr, shapeExpr)
+		g.pf("%sif (countBits > 0) {\n", aind)
+		g.pf("%s  final raw = r.bits.get(countBits);\n", aind)
+		g.pf("%s  if (r.bits.failed) { %s; }\n", aind, bad)
+		g.pf("%s  n = raw + %s.min;\n", aind, shapeExpr)
+		g.pf("%s}\n", aind)
+		g.pf("%sif (%s == %d && %s.elem == 6 && !r.bits.align()) { %s; }\n", aind, kindExpr, ir.TableKindArray, shapeExpr, bad)
+		g.pf("%sif (n > %d) { r.report.Refuse('count_over_bound'); return false; }\n", aind, f.ArrayBound)
+		g.pf("%sfor (var i = 0; i < n; i++) {\n", aind)
 		elem := messageElementField(f)
+		g.emitMessageReadElement(elem, entry, expr+"[i]", aind+"  ", shapeExpr+".inner!", shapeExpr+".elem")
+		g.pf("%s}\n", aind)
 		if f.Array == ir.ArrayCounted {
-			if run := messageElementRunBits(kind, shape); run >= 0 {
-				// a FIXED-WIDTH element: keep the bound and skip the surplus in
-				// one arithmetic step, as the oracle's skipRun does (§3.3)
-				g.pf("%s  for (var i = 0; i < kept; i++) {\n", aind)
-				g.emitMessageReadElement(elem, entry, expr+"[i]", aind+"  ")
-				g.pf("%s  }\n", aind)
-				g.pf("%s  if (kept != %s) {\n", aind, count)
-				g.pf("%s    if (!r.bits.skip((%s - kept) * %d)) { %s; }\n", aind, count, run, bad)
-				g.pf("%s  }\n", aind)
-			} else {
-				// a COMPLEX element has no fixed width: walk them all and read
-				// the surplus into a dropped sink, exactly as the oracle's array
-				// walk does (§3.3)
-				g.pf("%s  for (var i = 0; i < %s; i++) {\n", aind, count)
-				g.pf("%s    if (i < kept) {\n", aind)
-				g.emitMessageReadElement(elem, entry, expr+"[i]", aind+"      ")
-				g.pf("%s    } else {\n", aind)
-				g.emitMessageDropElement(elem, entry, aind+"      ")
-				g.pf("%s    }\n", aind)
-				g.pf("%s  }\n", aind)
-			}
-			// THE READER'S OWN COUNT BECOMES THE KEPT COUNT, as Go's array does
-			// (`fv.Count = int(kept)`), so a save writes the bound and the
-			// elements it holds, not the wire's larger count.
-			g.pf("%s  %s = kept;\n", aind, count)
-			g.pf("%s}\n", ind)
-		} else {
-			g.pf("%sfor (var i = 0; i < %s; i++) {\n", aind, count)
-			g.emitMessageReadElement(elem, entry, expr+"[i]", aind+"  ")
-			g.pf("%s}\n", aind)
+			g.pf("%s%sCount = n;\n", aind, expr)
 		}
+		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TNamed:
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			g.pf("%sif (!%sLoadMessageBody(r, %s)) return false;\n", ind, lowerFirst(r.Name), expr)
+			g.emitMessageReadNested(r, expr, ind)
 		case *ir.Union:
 			g.emitMessageReadUnion(r, expr, ind)
 		case *ir.Enum:
 			g.emitMessageReadEnum(r, expr, ind)
 		}
 	default:
-		g.emitMessageReadScalar(f, entry, expr, ind)
+		g.emitMessageReadScalar(f, entry, expr, ind, shapeExpr, kindExpr)
 	}
 }
 
-func (g *fixedModule) emitMessageReadElement(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
+// emitMessageReadKeyed reads an enum-keyed array (docs/SPEC-TABLES.md §3.2,
+// §3.3): the present-slot count at the ANNOUNCED shape's width and minimum,
+// then a key reference at the announced reference width and an element a
+// slot. A keyed slot twice in one keyed body is damage, so the key references
+// take their own seen level, as the Go reference's `seenKey` does
+// (internal/codegen/gotable/messageread.go).
+func (g *fixedModule) emitMessageReadKeyed(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind, shapeExpr string) {
+	bad := "r.report.Damage(); return false"
+	elem := messageElementField(f)
+	g.pf("%s{\n", ind)
+	g.pf("%s  var slots = %s.min;\n", ind, shapeExpr)
+	g.pf("%s  final countBits = TableMessageShape.bitsRequired(%s.min, %s.max);\n", ind, shapeExpr, shapeExpr)
+	g.pf("%s  if (countBits > 0) {\n", ind)
+	g.pf("%s    final raw = r.bits.get(countBits);\n", ind)
+	g.pf("%s    if (r.bits.failed) { %s; }\n", ind, bad)
+	g.pf("%s    slots = raw + %s.min;\n", ind, shapeExpr)
+	g.pf("%s  }\n", ind)
+	g.pf("%s  r.seenDepth++;\n", ind)
+	g.pf("%s  r.seenReset();\n", ind)
+	g.pf("%s  for (var i = 0; i < slots; i++) {\n", ind)
+	g.pf("%s    final keyRef = r.bits.get(r.vocabulary.refBits);\n", ind)
+	g.pf("%s    if (r.bits.failed || keyRef == 0 || keyRef > r.vocabulary.count) { %s; }\n", ind, bad)
+	g.pf("%s    final key = r.vocabulary.entries[keyRef - 1];\n", ind)
+	g.pf("%s    if (tableMessageReservedId(key.id) || key.kind != 0) { %s; }\n", ind, bad)
+	g.pf("%s    if (r.seenHas(keyRef)) { %s; }\n", ind, bad)
+	g.pf("%s    r.seenAdd(keyRef);\n", ind)
+	g.pf("%s    var at = 0;\n", ind)
+	for i := range f.KeyEnumRef.Variants {
+		kw := "if"
+		if i > 0 {
+			kw = "else if"
+		}
+		g.pf("%s    %s (key.id == %s) { at = %d; }\n", ind, kw, dartU64Literal(ir.TableWireId(f.KeyEnumRef.VariantWireName(i))), i+1)
+	}
+	g.pf("%s    if (at == 0) {\n", ind)
+	g.pf("%s      r.report.unknown++;\n", ind)
+	g.emitMessageDropElement(elem, entry, ind+"      ", shapeExpr+".inner!", shapeExpr+".elem")
+	g.pf("%s    } else {\n", ind)
+	g.emitMessageReadElement(elem, entry, expr+"[at - 1]", ind+"      ", shapeExpr+".inner!", shapeExpr+".elem")
+	g.pf("%s    }\n", ind)
+	g.pf("%s  }\n", ind)
+	g.pf("%s  r.seenDepth--;\n", ind)
+	g.pf("%s}\n", ind)
+}
+
+// emitMessageReadNested reads one nested body at its own seen level
+// (docs/SPEC-TABLES.md §3.3, §4): the host body's seen bits are untouched and
+// the nested body's own level starts clear, as the Go reference's per-call
+// `seen` buffer does (internal/codegen/gotable/messageread.go).
+func (g *fixedModule) emitMessageReadNested(st *ir.Struct, expr, ind string) {
+	g.pf("%s{\n", ind)
+	g.pf("%s  r.seenDepth++;\n", ind)
+	g.pf("%s  final ok = %sLoadMessageBody(r, %s);\n", ind, lowerFirst(st.Name), expr)
+	g.pf("%s  r.seenDepth--;\n", ind)
+	g.pf("%s  if (!ok) return false;\n", ind)
+	g.pf("%s}\n", ind)
+}
+
+func (g *fixedModule) emitMessageReadElement(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind, shapeExpr, kindExpr string) {
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
-			g.pf("%sif (!%sLoadMessageBody(r, %s)) return false;\n", ind, lowerFirst(r.Name), expr)
+			g.emitMessageReadNested(r, expr, ind)
 			return
 		}
 	}
@@ -641,10 +691,10 @@ func (g *fixedModule) emitMessageReadElement(f *ir.Field, entry ir.TableVocabula
 	if entry.Shape.Inner != nil {
 		elemEntry.Shape = *entry.Shape.Inner
 	}
-	g.emitMessageReadValue(f, elemEntry, expr, ind)
+	g.emitMessageReadValue(f, elemEntry, expr, ind, shapeExpr, kindExpr)
 }
 
-func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
+func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind, shapeExpr, kindExpr string) {
 	kind, shape := entry.Kind, entry.Shape
 	if kind == ir.TableKindBool {
 		// READ INTO A LOCAL, CHECK, THEN STORE: a body that runs out of bits
@@ -730,9 +780,17 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		return
 	}
 	if kind == ir.TableKindF64 {
+		// THE FLOAT RUNG (docs/SPEC-TABLES.md §4): an announced f32 widens
+		// exactly into this f64, and the bits say which width rides.
+		g.pf("%sif (%s == %d) {\n", ind, kindExpr, ir.TableKindF32)
+		g.pf("%s  final b = r.bits.get(32);\n", ind)
+		g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+		g.pf("%s  if ((b & 0x7f800000) == 0x7f800000) return %s;\n", ind, refuse)
+		g.pf("%s  TableBitWriter._float32Words[0] = b;\n", ind)
+		g.pf("%s  %s = TableBitWriter._float32Cell[0];\n", ind, expr)
+		g.pf("%s} else {\n", ind)
 		// READ INTO A LOCAL, CHECK, THEN STORE (internal/tablewire/messagedecode.go,
 		// `scalar`, the f64 arm; docs/SPEC-TABLES.md §3.3).
-		g.pf("%s{\n", ind)
 		g.pf("%s  final b = r.bits.get(64);\n", ind)
 		g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 		g.pf("%s  if ((b & 0x7ff0000000000000) == 0x7ff0000000000000) return %s;\n", ind, refuse)
@@ -746,34 +804,27 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		// FIRST (docs/SPEC-TABLES.md §3.3, the message form's scalar payload),
 		// at the width the vocabulary entry states, the Go oracle's
 		// tableMessageReadScalar (internal/codegen/gotable/message.go:180).
-		g.emitMessageReadScalar128(f, entry, expr, ind)
+		g.emitMessageReadScalar128(f, entry, expr, ind, shapeExpr, kindExpr)
 		return
 	}
-	bits := ir.TableMessageValueBits(kind, shape)
 	// READ INTO A LOCAL, CHECK, THEN STORE: a body that runs out of bits keeps
 	// every value it had landed, and a ranged field keeps its landed value
 	// rather than raw 0 with no base added
 	// (internal/tablewire/messagedecode.go, `scalar`; docs/SPEC-TABLES.md §3.3).
 	g.pf("%s{\n", ind)
-	g.pf("%s  final v = r.bits.get(%d);\n", ind, bits)
+	g.pf("%s  final bits = TableMessageShape.valueBits(%s, %s);\n", ind, kindExpr, shapeExpr)
+	g.pf("%s  final v = r.bits.get(bits);\n", ind)
 	g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 	g.pf("%s  %s = v;\n", ind, expr)
-	if shape.Packing == ir.TableMessageRanged {
-		base := shape.Base
-		baseLit := "0"
-		if base != nil {
-			baseLit = fixedIntLit(base, 8)
-		}
-		g.pf("%s  %s += %s;\n", ind, expr, baseLit)
-	}
-	// THE VALUE IS RECONSTRUCTED AT ITS STORAGE WIDTH (the reference's
-	// tableMessageReadScalar writes the lane into the field's own bytes): a
-	// signed int8/int16/int32 read back from its bits is that width's two's
-	// complement, so -7 crosses as 0xfffffff9 and comes back as -7, never as
-	// 4294967289 in a 64-bit Dart int.
+	g.pf("%s  if (%s.packing == 1) { %s += %s.base; }\n", ind, shapeExpr, expr, shapeExpr)
+	// THE VALUE IS RECONSTRUCTED AT THE ANNOUNCED STORAGE WIDTH (the
+	// reference's tableMessageReadScalar writes the lane into the field's own
+	// bytes): a signed int8/int16/int32 read back from its bits is that
+	// width's two's complement, so -7 crosses as 0xfffffff9 and comes back as
+	// -7, never as 4294967289 in a 64-bit Dart int.
 	switch kind {
-	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32:
-		g.pf("%s  %s = %s.toSigned(%d);\n", ind, expr, expr, 8*ir.TableKindWidth(int(kind)))
+	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32, ir.TableKindI64:
+		g.pf("%s  if (%s.packing == 0) { %s = %s.toSigned(TableMessageShape.valueBits(%s, %s)); }\n", ind, shapeExpr, expr, expr, kindExpr, shapeExpr)
 	}
 	g.pf("%s}\n", ind)
 	// THE VALUE IS THEN CLAMPED TO THIS READER'S OWN DECLARATION and counted,
@@ -806,34 +857,31 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 // Go oracle's tableMessageReadScalar (internal/codegen/gotable/message.go:180)
 // and reconstructing the storage class with the carry a ranged shape's base
 // adds to the high half, exactly the runtime's UInt128 pair.
-func (g *fixedModule) emitMessageReadScalar128(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
-	kind, shape := entry.Kind, entry.Shape
-	bits := ir.TableMessageValueBits(kind, shape)
-	lowBits := min(bits, 64)
-	highBits := bits - lowBits
+func (g *fixedModule) emitMessageReadScalar128(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind, shapeExpr, kindExpr string) {
 	bad := "r.report.Damage(); return false"
 	cls := "UInt128"
 	if fixedSigned(f.Type) {
 		cls = "Int128"
 	}
 	g.needClass(cls)
-	g.pf("%svar lo = r.bits.get(%d);\n", ind, lowBits)
-	g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
-	if highBits > 0 {
-		g.pf("%svar hi = r.bits.get(%d);\n", ind, highBits)
-		g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
-	} else {
-		g.pf("%svar hi = 0;\n", ind)
+	g.pf("%s{\n", ind)
+	g.pf("%s  final bits = TableMessageShape.valueBits(%s, %s);\n", ind, kindExpr, shapeExpr)
+	g.pf("%s  final lowBits = bits < 64 ? bits : 64;\n", ind)
+	g.pf("%s  final highBits = bits > 64 ? bits - 64 : 0;\n", ind)
+	g.pf("%s  var lo = r.bits.get(lowBits);\n", ind)
+	g.pf("%s  if (r.bits.failed) { %s; }\n", ind, bad)
+	g.pf("%s  var hi = highBits > 0 ? r.bits.get(highBits) : 0;\n", ind)
+	g.pf("%s  if (r.bits.failed) { %s; }\n", ind, bad)
+	if fixedSigned(f.Type) {
+		g.pf("%s  if (%s.packing == 0 && lowBits < 64 && lowBits > 0 && ((lo >> (lowBits - 1)) & 1) != 0) { hi = -1; }\n", ind, shapeExpr)
 	}
-	if shape.Packing == ir.TableMessageRanged {
-		loBase, hiBase := fixed128Halves(shape.Base)
-		loLit := fixedHexLit(loBase)
-		g.pf("%svar sumLo = lo + %s;\n", ind, loLit)
-		g.pf("%svar carry = (sumLo ^ 0x8000000000000000) < (lo ^ 0x8000000000000000) ? 1 : 0;\n", ind)
-		g.pf("%shi = hi + %s + carry;\n", ind, fixedHexLit(hiBase))
-		g.pf("%slo = sumLo;\n", ind)
-	}
-	g.pf("%s%s = %s(hi, lo);\n", ind, expr, cls)
+	g.pf("%s  if (%s.packing == 1) {\n", ind, shapeExpr)
+	g.pf("%s    final sumLo = lo + %s.baseLo;\n", ind, shapeExpr)
+	g.pf("%s    final carry = (sumLo ^ 0x8000000000000000) < (lo ^ 0x8000000000000000) ? 1 : 0;\n", ind)
+	g.pf("%s    hi = hi + %s.baseHi + carry;\n", ind, shapeExpr)
+	g.pf("%s    lo = sumLo;\n", ind)
+	g.pf("%s  }\n", ind)
+	g.pf("%s  %s = %s(hi, lo);\n", ind, expr, cls)
 	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
 		// A 128-BIT SCALAR CLAMPS AGAINST THIS READER'S OWN DECLARATION and
 		// counts, exactly as the oracle's wide read does
@@ -844,23 +892,18 @@ func (g *fixedModule) emitMessageReadScalar128(f *ir.Field, entry ir.TableVocabu
 		// bound as its high and low hex halves.
 		loLHS, loCmp, _ := g.gen.fixedClampTerms(f.Type, expr, f.IntMin)
 		hiLHS, hiCmp, _ := g.gen.fixedClampTerms(f.Type, expr, f.IntMax)
-		g.pf("%sif (%s < %s || %s > %s) { r.report.Refuse('out_of_range'); return false; }\n",
+		g.pf("%s  if (%s < %s || %s > %s) { r.report.Refuse('out_of_range'); return false; }\n",
 			ind, loLHS, loCmp, hiLHS, hiCmp)
 	}
+	g.pf("%s}\n", ind)
 }
 
 func (g *fixedModule) emitMessageReadEnum(e *ir.Enum, expr, ind string) {
 	g.pf("%s{\n", ind)
-	g.pf("%s  final ref = r.bits.get(tableMessageRefBits);\n", ind)
+	g.pf("%s  final ref = r.bits.get(r.vocabulary.refBits);\n", ind)
 	g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 	g.gen.need(e.Name)
 	g.pf("%s  if (ref == 0) { %s = %s.none; } else {\n", ind, expr, e.Name)
-	g.pf("%s    switch (ref) {\n", ind)
-	for i, v := range e.Variants {
-		slot := g.messageNameSlot(ir.TableWireId(e.VariantWireName(i)))
-		g.pf("%s      case %d: %s = %s.%s; break;\n", ind, slot, expr, e.Name, dartName(v))
-	}
-	g.pf("%s      default:\n", ind)
 	// A reference that names no kind-0 entry — one above the announcement's
 	// count, one naming a reserved id (the node table's entry is the one an
 	// announcement may carry), or an entry that carries a payload — is
@@ -868,51 +911,58 @@ func (g *fixedModule) emitMessageReadEnum(e *ir.Enum, expr, ind string) {
 	// (internal/tablewire/messagedecode.go, `name` and `reserved`;
 	// docs/SPEC-TABLES.md §3.1, §3.3). Only a kind-0 entry that is not one
 	// of this enum's variants counts an `unknown`.
-	g.pf("%s        if (ref > r.vocabulary.count || tableMessageReservedId(r.vocabulary.entries[ref - 1].id) || r.vocabulary.entries[ref - 1].kind != 0) {\n", ind)
-	g.pf("%s          r.report.Damage();\n", ind)
-	g.pf("%s          return false;\n", ind)
-	g.pf("%s        }\n", ind)
-	g.pf("%s        %s = %s.none; r.report.unknown++;\n", ind, expr, e.Name)
-	g.pf("%s        break;\n", ind)
+	g.pf("%s    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }\n", ind)
+	g.pf("%s    final named = r.vocabulary.entries[ref - 1];\n", ind)
+	g.pf("%s    if (tableMessageReservedId(named.id) || named.kind != 0) { r.report.Damage(); return false; }\n", ind)
+	g.pf("%s    switch (named.id) {\n", ind)
+	for i, v := range e.Variants {
+		id := ir.TableWireId(e.VariantWireName(i))
+		g.pf("%s      case %s: %s = %s.%s; break;\n", ind, dartU64Literal(id), expr, e.Name, dartName(v))
+	}
+	g.pf("%s      default: %s = %s.none; r.report.unknown++; break;\n", ind, expr, e.Name)
 	g.pf("%s    }\n%s  }\n%s}\n", ind, ind, ind)
 }
 
 func (g *fixedModule) emitMessageReadUnion(un *ir.Union, expr, ind string) {
 	g.pf("%s{\n", ind)
-	g.pf("%s  final ref = r.bits.get(tableMessageRefBits);\n", ind)
+	g.pf("%s  final ref = r.bits.get(r.vocabulary.refBits);\n", ind)
 	g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 	tagType, tagNone := g.gen.unionTagType(un)
 	g.pf("%s  if (ref == 0) { %s.type = %s; } else {\n", ind, expr, tagNone)
-	g.pf("%s    switch (ref) {\n", ind)
-	for i, v := range un.Variants {
-		slot := g.messageSlot(ir.TableArmEntry(v))
-		arm := fmt.Sprint(i + 1)
-		if tagType != "" {
-			arm = tagType + "." + dartName(ir.GoExportName(v.Name))
-		}
-		g.pf("%s      case %d:\n", ind, slot)
-		g.pf("%s        %s.type = %s;\n", ind, expr, arm)
-		if !v.Void() {
-			g.emitMessageReadValue(v.F, ir.TableArmEntry(v), expr+"."+dartName(v.Name), ind+"        ")
-		}
-		g.pf("%s        break;\n", ind)
-	}
-	g.pf("%s      default:\n", ind)
 	// A reference that names no union arm's kind — one above the
 	// announcement's count, one naming a reserved id, or a kind-0 entry that
 	// frames nothing — is damage, exactly as the reference's bitDecoder.arm
 	// resolves it (internal/tablewire/messagedecode.go, `arm` and
 	// `reserved`; docs/SPEC-TABLES.md §3.1, §3.3). Only a payload-bearing
 	// entry that is not one of this union's arms counts an `unknown`.
-	g.pf("%s        if (ref > r.vocabulary.count || tableMessageReservedId(r.vocabulary.entries[ref - 1].id) || r.vocabulary.entries[ref - 1].kind == 0) {\n", ind)
-	g.pf("%s          r.report.Damage();\n", ind)
-	g.pf("%s          return false;\n", ind)
-	g.pf("%s        }\n", ind)
+	g.pf("%s    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }\n", ind)
+	g.pf("%s    final arm = r.vocabulary.entries[ref - 1];\n", ind)
+	g.pf("%s    if (tableMessageReservedId(arm.id) || arm.kind == 0) { r.report.Damage(); return false; }\n", ind)
+	g.pf("%s    final armShape = arm.shape;\n", ind)
+	g.pf("%s    if (armShape == null) { r.report.Damage(); return false; }\n", ind)
+	g.pf("%s    switch (arm.id) {\n", ind)
+	for i, v := range un.Variants {
+		id := ir.TableArmEntry(v).Id
+		arm := fmt.Sprint(i + 1)
+		if tagType != "" {
+			arm = tagType + "." + dartName(ir.GoExportName(v.Name))
+		}
+		g.pf("%s      case %s: {\n", ind, dartU64Literal(id))
+		if !v.Void() {
+			g.emitMessageCompatibility(v.F, ir.TableArmEntry(v), "arm", "armShape", ind+"        ")
+		}
+		g.pf("%s        %s.type = %s;\n", ind, expr, arm)
+		if !v.Void() {
+			g.emitMessageReadValue(v.F, ir.TableArmEntry(v), expr+"."+dartName(v.Name), ind+"        ", "armShape", "arm.kind")
+		}
+		g.pf("%s        break;\n      }\n", ind)
+	}
+	g.pf("%s      default:\n", ind)
 	// AND ITS PAYLOAD IS STEPPED OVER by the announcement's own kind and
 	// shape, as the reference does (internal/tablewire/messagedecode.go
 	// union: `Unknown++`, `return d.skip(entry)`; docs/SPEC-TABLES.md §3.3).
 	g.pf("%s        %s.type = %s; r.report.unknown++;\n", ind, expr, tagNone)
-	g.pf("%s        if (!TableMessageShape.skipEntry(r, r.vocabulary.entries[ref - 1])) {\n", ind)
+	g.pf("%s        if (!tableMessageSkipEntry(r, arm)) {\n", ind)
 	g.pf("%s          r.report.Damage();\n", ind)
 	g.pf("%s          return false;\n", ind)
 	g.pf("%s        }\n", ind)
@@ -934,45 +984,28 @@ func messageElementField(f *ir.Field) *ir.Field {
 	return &e
 }
 
-// messageElementRunBits is the bits ONE element of a message array occupies
-// where that is a fixed number the reader can multiply, and -1 where the
-// element has to be stepped one at a time — the message-form mirror of the
-// oracle's elementRunBits (internal/tablewire/messagedecode.go).
-func messageElementRunBits(kind uint8, shape ir.TableMessageShape) int64 {
-	if int(kind) != ir.TableKindArray {
-		return -1
-	}
-	switch int(shape.Elem) {
-	case ir.TableKindTable, ir.TableKindUnion, ir.TableKindEnum, ir.TableKindPointer:
-		return -1
-	}
-	inner := ir.TableMessageShape{}
-	if shape.Inner != nil {
-		inner = *shape.Inner
-	}
-	return ir.TableMessageValueBits(shape.Elem, inner)
-}
-
-// emitMessageDropElement reads one array element past the reader's own bound
-// into a throwaway sink, consuming the same bits the oracle's element walk
-// consumes so the fields that follow stay aligned; the value is discarded
-// (internal/tablewire/messagedecode.go, `array`; docs/SPEC-TABLES.md §3.3).
-func (g *fixedModule) emitMessageDropElement(f *ir.Field, entry ir.TableVocabularyEntry, ind string) {
+// emitMessageDropElement reads one unknown keyed slot's element into a
+// throwaway sink at the announced element shape, consuming the same bits the
+// oracle's element walk consumes so the slots that follow stay aligned; the
+// value is discarded (internal/codegen/gotable/messageread.go, the keyed
+// `scratch`; docs/SPEC-TABLES.md §3.3).
+func (g *fixedModule) emitMessageDropElement(f *ir.Field, entry ir.TableVocabularyEntry, ind, shapeExpr, kindExpr string) {
 	elem := messageElementField(f)
 	switch t := elem.Type.Ref.(type) {
 	case *ir.Struct:
 		g.pf("%s    final t = %s();\n", ind, t.Name)
-		g.emitMessageReadElement(elem, entry, "t", ind+"  ")
+		g.emitMessageReadElement(elem, entry, "t", ind+"  ", shapeExpr, kindExpr)
 		return
 	case *ir.Union:
 		g.pf("%s    final t = %s();\n", ind, t.Name)
-		g.emitMessageReadElement(elem, entry, "t", ind+"  ")
+		g.emitMessageReadElement(elem, entry, "t", ind+"  ", shapeExpr, kindExpr)
 		return
 	}
-	// the scalar sink is written and never read: the bits are what is kept
+	// a TYPED sink, so a ranged scalar's base and its clamps compile exactly
+	// as they do on a declared field, and nothing is written back
 	g.pf("%s    // ignore: unused_local_variable\n", ind)
-	g.pf("%s    Object? t;\n", ind)
-	g.emitMessageReadElement(elem, entry, "t", ind+"  ")
+	g.pf("%s    %s t = %s;\n", ind, fixedScalarType(elem.Type), g.gen.fixedZeroFor(elem))
+	g.emitMessageReadElement(elem, entry, "t", ind+"  ", shapeExpr, kindExpr)
 }
 
 const dartMessageBatchRuntime = `
@@ -1061,6 +1094,48 @@ class TableMessageReader {
   TableBitReader bits = TableBitReader(Uint8List(0));
   TableVocabulary vocabulary = TableVocabulary(entries: <TableMessageEntry>[]);
   TableReport report = TableReport();
+
+  /// THE SEEN SLOTS FOR THE BODY AT 'seenDepth': a bit per announced entry
+  /// (docs/SPEC-TABLES.md §3.3, §4). The buffer is allocated once from the
+  /// announced vocabulary; a body clears its own level only, so a host body's
+  /// fields survive a nested body's read.
+  Uint8List seen = Uint8List(0);
+  int seenStride = 0;
+  int seenDepth = 0;
+
+  void seenReset() {
+    if (seenStride == 0) return;
+    final at = seenDepth * seenStride;
+    seen.fillRange(at, at + seenStride, 0);
+  }
+
+  bool seenHas(int ref) {
+    if (seenStride == 0) return false;
+    final bit = seenDepth * seenStride * 8 + ref - 1;
+    return ((seen[bit >> 3] >> (bit & 7)) & 1) != 0;
+  }
+
+  /// A body names a RESOLVED ID at most once, even where the announcement
+  /// carries that id at two shapes (docs/SPEC-TABLES.md §3.3, §4): the seen
+  /// bits at this level are scanned, so the check allocates nothing.
+  bool seenHasId(int id) {
+    if (seenStride == 0) return false;
+    final at = seenDepth * seenStride * 8;
+    for (var k = 0; k < vocabulary.count; k++) {
+      final bit = at + k;
+      if (((seen[bit >> 3] >> (bit & 7)) & 1) != 0 &&
+          vocabulary.entries[k].id == id) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void seenAdd(int ref) {
+    if (seenStride == 0) return;
+    final bit = seenDepth * seenStride * 8 + ref - 1;
+    seen[bit >> 3] |= 1 << (bit & 7);
+  }
 }
 
 /// Opens one form-2 batch: the form byte first, then the count, then the
@@ -1080,6 +1155,13 @@ int tableMessageBatchOpen(
   r.bits = TableBitReader(Uint8List.sublistView(data, 2));
   r.vocabulary = vocabulary;
   r.report = report;
+  final stride = vocabulary.count == 0 ? 1 : (vocabulary.count + 7) >> 3;
+  if (vocabulary.seen.length < stride * TableVocabulary.seenBodyLevels) {
+    vocabulary.seen = Uint8List(stride * TableVocabulary.seenBodyLevels);
+  }
+  r.seen = vocabulary.seen;
+  r.seenStride = stride;
+  r.seenDepth = 0;
   return data[1] + 1;
 }
 
@@ -1093,239 +1175,267 @@ bool tableMessageBatchClose(TableMessageReader r) {
   return true;
 }
 
-/// ONE ANNOUNCED ENTRY'S SHAPE, decoded from its signature bytes so an
-/// unknown entry can be stepped over (docs/SPEC-TABLES.md §3.3). The decode
-/// and the skip are its static members, so the runtime spells no private
-/// library-scope name (compiler/tablesdart_test.go).
-final class TableMessageShape {
-  int packing = 0;
-  int bits = 0;
-  int min = 0;
-  int max = 0;
-  int elem = 0;
-  TableMessageShape? inner;
+/// Steps over ONE announced entry's payload without decoding it. The
+/// announcement's kind and shape say where the next reference begins.
+/// [depth] is the unknown-skip walk (docs/SPEC-TABLES.md message_skip_depth):
+/// callers that omit it start at 0, and a nested body, a union arm or a
+/// walked element passes depth + 1. depth > 128 is malformed; 128 still skips.
+bool tableMessageSkipEntry(TableMessageReader r, TableMessageEntry e, [int depth = 0]) {
+  if (depth > 128) return false;
+  final shape = e.shape;
+  if (shape == null) return false;
+  return tableMessageSkip(r, e.kind, shape, depth);
+}
 
+/// The widening ladder of §4 (ir.TableKindWidens): an integer kind into a
+/// wider one of the same signedness, and f32 into f64.
+bool tableMessageKindWidens(int from, int declared) {
+  if (declared == 11) return from == 10;
+  if (declared >= 2 && declared <= 5) return from >= 2 && from < declared;
+  if (declared == 18) return from >= 2 && from <= 5;
+  if (declared >= 6 && declared <= 9) return from >= 6 && from < declared;
+  if (declared == 19) return from >= 6 && from <= 9;
+  return false;
+}
 
-  /// Decodes ONE shape at at in an announced entry's signature, mirroring
-  /// ir.DecodeShape. Answers the shape and the offset past it.
-  static (TableMessageShape, int) decode(Uint8List sig, int at, int kind) {
-    final s = TableMessageShape();
-    if ((kind >= 2 && kind <= 10) || (kind >= 18 && kind <= 29)) {
-      s.packing = sig[at];
-      at += 1;
-      if (s.packing == 1 && kind != 10) {
-        final n = tableMessageLeb(sig, at, sig.length);
-        at = n.$2;
-        s.bits = n.$1;
-        if (kind >= 18) {
-          at += 16;
-        } else {
-          final b = tableMessageLeb(sig, at, sig.length);
-          at = b.$2;
-        }
-      } else if (s.packing == 2 && kind == 10) {
-        s.bits = quantizedBits(sig, at);
-        at += 12;
-      }
-    } else if (kind == 12) {
-      final n = tableMessageLeb(sig, at, sig.length);
-      s.max = n.$1;
-      at = n.$2;
-    } else if (kind == 14 || kind == 16) {
-      if (kind == 14) {
-        final lo = tableMessageLeb(sig, at, sig.length);
-        s.min = lo.$1;
-        at = lo.$2;
-      }
-      final hi = tableMessageLeb(sig, at, sig.length);
-      s.max = hi.$1;
-      at = hi.$2;
-      s.elem = sig[at];
-      at += 1;
-      final inner = decode(sig, at, s.elem);
-      s.inner = inner.$1;
-      at = inner.$2;
-    }
-    return (s, at);
+/// One body at [depth]. Fields of the body are skipped at this same depth,
+/// held to the same two framing rules a named body applies
+/// (docs/SPEC-TABLES.md §3.1, §3.3): a reserved id is damage, and an id met
+/// twice in one body is damage whether or not this reader can name it.
+bool tableMessageSkipBody(TableMessageReader r, int depth) {
+  if (depth > 128) return false;
+  // A BODY'S OWN SEEN SET, the reference's per-body map
+  // (internal/tablewire/messagedecode.go, skipBody): a field id twice in one
+  // body is damage, known or unknown, and a nested body's ids do not shadow
+  // its host's.
+  final seen = <int>{};
+  while (true) {
+    final ref = r.bits.get(r.vocabulary.refBits);
+    if (r.bits.failed) return false;
+    if (ref == 0) return true;
+    if (ref > r.vocabulary.count) return false;
+    final entry = r.vocabulary.entries[ref - 1];
+    if (tableMessageReservedId(entry.id)) return false;
+    if (!seen.add(entry.id)) return false;
+    if (!tableMessageSkipEntry(r, entry, depth)) return false;
   }
+}
 
-  /// The width of a quantized f32 (ir.DecodeShape, ir.TableMessageQuantization):
-  /// bits.Len32 of ceil(float32((max - min) / res)), clamped to [1, 2^32 - 256].
-  static int quantizedBits(Uint8List sig, int at) {
-    if (at + 12 > sig.length) return 0;
-    final view = ByteData.sublistView(sig, at, at + 12);
-    final f = Float32List(3);
-    f[0] = view.getFloat32(0, Endian.little);
-    f[1] = view.getFloat32(4, Endian.little);
-    f[2] = view.getFloat32(8, Endian.little);
-    f[1] = f[1] - f[0];
-    f[2] = f[1] / f[2];
-    var values = f[2];
-    if (!(values >= 1)) {
-      values = 1;
-    } else if (values > 4294967040.0) {
-      values = 4294967040.0;
-    }
-    var count = values.ceil();
-    var width = 0;
-    while (count != 0) {
-      width++;
-      count >>= 1;
-    }
-    return width;
-  }
-
-  /// bits_required(min, max): the width of max - min, and zero where the two
-  /// are equal (ir.TableMessageBitsRequired). The difference is taken in the
-  /// 64-bit domain Go's int64 subtraction wraps in, and a span near 2^64 reads
-  /// back negative in a Dart int: its uint64 bit length is 64, exactly what
-  /// bits.Len64 answers after the same wrap.
-  static int bitsRequired(int min, int max) {
-    if (max <= min) {
-      return 0;
-    }
-    final value = max - min;
-    if (value < 0) {
-      return 64;
-    }
-    var width = 0;
-    var v = value;
-    while (v != 0) {
-      width++;
-      v >>= 1;
-    }
-    return width;
-  }
-
-  /// ONE value's width in bits under a shape (ir.TableMessageValueBits), or -1
-  /// where the kind has no fixed-width payload.
-  static int valueBits(int kind, TableMessageShape s) {
-    if (kind == 1) {
-      return 1;
-    }
-    if (kind == 11 || kind == 36) {
-      return 64;
-    }
-    if (kind == 10) {
-      return s.packing == 2 ? s.bits : 32;
-    }
-    if ((kind >= 2 && kind <= 9) || (kind >= 18 && kind <= 29)) {
-      if (s.packing == 1) {
-        return s.bits;
-      }
-      return tableMessageKindWidth(kind) * 8;
-    }
-    return -1;
-  }
-
-  /// Steps over ONE announced entry's payload without decoding it. The
-  /// announcement's kind and shape say where the next reference begins.
-  /// [depth] is the unknown-skip walk (docs/SPEC-TABLES.md message_skip_depth):
-  /// callers that omit it start at 0, and a nested body, a union arm or a
-  /// walked element passes depth + 1. depth > 128 is malformed; 128 still skips.
-  static bool skipEntry(TableMessageReader r, TableMessageEntry e, [int depth = 0]) {
-    if (depth > 128) return false;
-    final shape = decode(e.signature, 9, e.kind);
-    return skip(r, e.kind, shape.$1, depth);
-  }
-
-  /// One body at [depth]. Fields of the body are skipped at this same depth.
-  static bool skipBody(TableMessageReader r, int depth) {
-    if (depth > 128) return false;
-    while (true) {
+bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int depth = 0]) {
+  if (depth > 128) return false;
+  switch (kind) {
+    case 0:
+    case 32:
+      return true;
+    case 30:
       final ref = r.bits.get(r.vocabulary.refBits);
       if (r.bits.failed) return false;
       if (ref == 0) return true;
       if (ref > r.vocabulary.count) return false;
-      if (!skipEntry(r, r.vocabulary.entries[ref - 1], depth)) return false;
-    }
-  }
-
-  static bool skip(TableMessageReader r, int kind, TableMessageShape s, [int depth = 0]) {
-    if (depth > 128) return false;
-    switch (kind) {
-      case 0:
-      case 32:
-        return true;
-      case 30:
-        final ref = r.bits.get(r.vocabulary.refBits);
+      // bitDecoder.name: a reserved id or a payload-bearing entry is damage
+      final named = r.vocabulary.entries[ref - 1];
+      return !tableMessageReservedId(named.id) && named.kind == 0;
+    case 15:
+      final ref = r.bits.get(r.vocabulary.refBits);
+      if (r.bits.failed) return false;
+      if (ref == 0) return true;
+      if (ref > r.vocabulary.count) return false;
+      final arm = r.vocabulary.entries[ref - 1];
+      // bitDecoder.arm: a reserved id or a kind-0 entry is damage
+      if (tableMessageReservedId(arm.id) || arm.kind == 0) return false;
+      // A UNION WHOSE ARM IS STRUCTURAL is one level deeper; a scalar or
+      // payload-free arm adds no level (docs/SPEC-TABLES.md §4).
+      return tableMessageSkipEntry(
+          r, arm, tableMessageStructural(arm.kind) ? depth + 1 : depth);
+    case 13:
+      return tableMessageSkipBody(r, depth + 1);
+    case 17:
+      // A FIXED ROOT NUMBERS NO NODE, so there is no index width to step
+      // (internal/tablewire/messagedecode.go root: indexBits = 0).
+      return false;
+    case 12:
+      final n = r.bits.get(TableMessageShape.bitsRequired(0, s.max));
+      if (r.bits.failed || !r.bits.align()) return false;
+      final start = r.bits.offset >> 3;
+      if (!r.bits.skip(n * 8)) return false;
+      // ILL-FORMED TEXT, OR A ZERO BYTE, IS DAMAGE ON THE SKIP PATH TOO
+      // (docs/SPEC-TABLES.md §3.3, §4): reuse the named read's own check.
+      return tableTextValid(r.bits.buffer, start, n);
+    case 31:
+      if (!r.bits.align()) return false;
+      final n = r.bits.get(32);
+      if (r.bits.failed) return false;
+      return r.bits.skip(n * 8);
+    case 10:
+      // A FLOAT IS FINITE ON THE SKIP PATH TOO (docs/SPEC-TABLES.md §3.3):
+      // a raw NaN or infinity is refused on its bits, and a quantized index
+      // above its count is damage, never reconstructed.
+      if (s.packing == 2) {
+        final index = r.bits.get(s.bits);
         if (r.bits.failed) return false;
-        if (ref == 0) return true;
-        if (ref > r.vocabulary.count) return false;
-        // bitDecoder.name: a reserved id or a payload-bearing entry is damage
-        final named = r.vocabulary.entries[ref - 1];
-        return !tableMessageReservedId(named.id) && named.kind == 0;
-      case 15:
-        final ref = r.bits.get(r.vocabulary.refBits);
+        if (index > s.qCount) return false;
+        // The announced triple's own float32 arithmetic, the read path's
+        // order (ir.TableMessageDequantize): two roundings on each side.
+        final cell = Float32List(1);
+        cell[0] = index.toDouble();
+        final fi = cell[0];
+        cell[0] = s.qCount.toDouble();
+        final fc = cell[0];
+        cell[0] = fi / fc;
+        final normalized = cell[0];
+        cell[0] = normalized * s.qDelta;
+        final scaled = cell[0];
+        cell[0] = scaled + s.qMin;
+        return cell[0].isFinite;
+      }
+      final b32 = r.bits.get(32);
+      if (r.bits.failed) return false;
+      return (b32 & 0x7f800000) != 0x7f800000;
+    case 11:
+      final b64 = r.bits.get(64);
+      if (r.bits.failed) return false;
+      // The exponent field alone, so no NaN payload is ever assembled: an
+      // all-ones exponent is a NaN or an infinity (§3.3).
+      return ((b64 >> 52) & 0x7ff) != 0x7ff;
+    case 14:
+    case 16:
+      var n = s.min;
+      if (kind == 16) {
+        n = 0;
+      }
+      final width = kind == 16
+          ? TableMessageShape.bitsRequired(0, s.max)
+          : TableMessageShape.bitsRequired(s.min, s.max);
+      if (width > 0) {
+        final raw = r.bits.get(width);
         if (r.bits.failed) return false;
-        if (ref == 0) return true;
-        if (ref > r.vocabulary.count) return false;
-        final arm = r.vocabulary.entries[ref - 1];
-        // bitDecoder.arm: a reserved id or a kind-0 entry is damage
-        if (tableMessageReservedId(arm.id) || arm.kind == 0) return false;
-        return skipEntry(r, arm, depth + 1);
-      case 13:
-        return skipBody(r, depth + 1);
-      case 17:
-        // A FIXED ROOT NUMBERS NO NODE, so there is no index width to step
-        // (internal/tablewire/messagedecode.go root: indexBits = 0).
-        return false;
-      case 12:
-        final n = r.bits.get(bitsRequired(0, s.max));
-        if (r.bits.failed || !r.bits.align()) return false;
-        return r.bits.skip(n * 8);
-      case 31:
-        if (!r.bits.align()) return false;
-        final n = r.bits.get(32);
-        if (r.bits.failed) return false;
-        return r.bits.skip(n * 8);
-      case 14:
-      case 16:
-        var n = s.min;
-        if (kind == 16) {
-          n = 0;
+        n = raw;
+        if (kind == 14) {
+          n += s.min;
         }
-        final width = kind == 16
-            ? bitsRequired(0, s.max)
-            : bitsRequired(s.min, s.max);
-        if (width > 0) {
-          final raw = r.bits.get(width);
-          if (r.bits.failed) return false;
-          n = raw;
-          if (kind == 14) {
-            n += s.min;
-          }
+      }
+      // THE COUNT'S BITS CAN SPELL MORE THAN max - min, so a count above the
+      // announced maximum is damage here as it is at a named field
+      // (docs/SPEC-TABLES.md §3.3, §4).
+      if (n > s.max) return false;
+      if (kind == 14 && s.elem == 6 && !r.bits.align()) return false;
+      final inner = s.inner ?? TableMessageShape();
+      // elementRunBits + skipRun (internal/tablewire/messagedecode.go): a
+      // fixed-width element of an ARRAY is stepped arithmetically; a float,
+      // a compressed or ranged element, a keyed entry and a structural
+      // element are walked so their own conditions are held.
+      final elem = s.elem;
+      if (kind == 14 &&
+          elem != 13 &&
+          elem != 15 &&
+          elem != 17 &&
+          elem != 30 &&
+          elem != 10 &&
+          elem != 11 &&
+          inner.packing == 0) {
+        var run = (elem == 0 || elem == 32) ? 0 : TableMessageShape.valueBits(elem, inner);
+        if (run >= 0) {
+          if (run == 0) return true;
+          if (n > 0x7fffffffffffffff ~/ run) return false;
+          return r.bits.skip(n * run);
         }
-        if (kind == 14 && s.elem == 6 && !r.bits.align()) return false;
-        final inner = s.inner ?? TableMessageShape();
-        // elementRunBits + skipRun (internal/codegen/gotable/message.go): a
-        // fixed-width element of an array or keyed entry is stepped
-        // arithmetically; only a walked element recurses at depth + 1.
-        final elem = s.elem;
-        if (elem != 13 && elem != 15 && elem != 17 && elem != 30) {
-          var run = (elem == 0 || elem == 32) ? 0 : valueBits(elem, inner);
-          if (run >= 0) {
-            if (kind == 16) {
-              run += r.vocabulary.refBits;
-            }
-            if (run == 0) return true;
-            if (n > 0x7fffffffffffffff ~/ run) return false;
-            return r.bits.skip(n * run);
-          }
-        }
+      }
+      // A STRUCTURAL ELEMENT is one level deeper; a scalar element adds no
+      // level (docs/SPEC-TABLES.md §4), so an array or keyed array of
+      // scalars at the depth boundary still reads.
+      final elemDepth = tableMessageStructural(elem) ? depth + 1 : depth;
+      if (kind == 16) {
+        // AN ENUM-KEYED ARRAY'S KEY references a declared no-payload entry,
+        // none repeated (docs/SPEC-TABLES.md §3.2, §3.3): the skip path runs
+        // the same checks a named keyed read does, with the keyed body's own
+        // seen set (internal/tablewire/messagedecode.go, keyedReference).
+        final seen = <int>{};
         for (var i = 0; i < n; i++) {
-          if (kind == 16) {
-            r.bits.get(r.vocabulary.refBits);
-            if (r.bits.failed) return false;
+          // The key's own bits are progress (internal/tablewire/messagedecode.go,
+          // skip: the offset is read before keyedReference), so a payload-free
+          // element is still a walked element that advanced.
+          final before = r.bits.offset;
+          final keyRef = r.bits.get(r.vocabulary.refBits);
+          if (r.bits.failed ||
+              keyRef == 0 ||
+              keyRef > r.vocabulary.count) {
+            return false;
           }
-          if (!skip(r, s.elem, inner, depth + 1)) return false;
+          final key = r.vocabulary.entries[keyRef - 1];
+          if (tableMessageReservedId(key.id) || key.kind != 0) {
+            return false;
+          }
+          if (!seen.add(key.id)) return false;
+          if (!tableMessageSkip(r, elem, inner, elemDepth)) return false;
+          if (r.bits.offset == before) return false;
         }
         return true;
-    }
-    final width = valueBits(kind, s);
-    if (width < 0) return false;
-    return r.bits.skip(width);
+      }
+      for (var i = 0; i < n; i++) {
+        // A WALKED ELEMENT THAT CONSUMES NO BITS is damage and ends the
+        // walk (internal/tablewire/messagedecode.go, skip): otherwise the
+        // announced count alone buys the iterations.
+        final before = r.bits.offset;
+        if (!tableMessageSkip(r, elem, inner, elemDepth)) return false;
+        if (r.bits.offset == before) return false;
+      }
+      return true;
   }
+  final width = TableMessageShape.valueBits(kind, s);
+  if (width < 0) return false;
+  if (s.packing == 1) return tableMessageSkipRanged(r, kind, s, width);
+  return r.bits.skip(width);
+}
+
+/// A STRUCTURAL kind is one nesting level (docs/SPEC-TABLES.md §4): a table
+/// body, an array, a union, and an enum-keyed body. A scalar, an enum name or
+/// a payload-free entry adds no level.
+bool tableMessageStructural(int kind) =>
+    kind == 13 || kind == 14 || kind == 15 || kind == 16;
+
+/// A RANGED INTEGER ON THE SKIP PATH is read as its offset, rebuilt from the
+/// sender's base, and held to the range its own kind can carry: the offset's
+/// bits can spell a value past the sender's maximum, and no conforming writer
+/// emits one (docs/SPEC-TABLES.md §3.3; the reference's skipRanged and
+/// kindHolds, internal/tablewire/messagedecode.go). The offset rides low 64
+/// bits first, as a named 128-bit read takes it.
+bool tableMessageSkipRanged(
+    TableMessageReader r, int kind, TableMessageShape s, int width) {
+  final lowBits = width < 64 ? width : 64;
+  final lo = r.bits.get(lowBits);
+  if (r.bits.failed) return false;
+  final hi = width > 64 ? r.bits.get(width - 64) : 0;
+  if (r.bits.failed) return false;
+  final offset = (BigInt.from(hi).toUnsigned(64) << 64) |
+      BigInt.from(lo).toUnsigned(64);
+  // The base as ir.DecodeShape holds it: a 16-byte two's complement for the
+  // 128-bit and fixed-point kinds, a zigzag for a signed integer, and an
+  // unsigned 64-bit value otherwise.
+  BigInt base;
+  if (kind >= 18) {
+    base = (BigInt.from(s.baseHi) << 64) | BigInt.from(s.baseLo).toUnsigned(64);
+  } else if (kind >= 2 && kind <= 5) {
+    base = BigInt.from(s.base);
+  } else {
+    base = BigInt.from(s.base).toUnsigned(64);
+  }
+  final value = offset + base;
+  final bits = tableMessageKindWidth(kind) * 8;
+  if (bits == 0) return true;
+  final signed = (kind >= 2 && kind <= 5) || kind == 18 || (kind >= 20 && kind <= 24);
+  if (signed) {
+    final top = BigInt.one << (bits - 1);
+    if (value < -top || value >= top) {
+      r.report.Refuse('out_of_range');
+      return false;
+    }
+    return true;
+  }
+  if (value.isNegative || value >= (BigInt.one << bits)) {
+    r.report.Refuse('out_of_range');
+    return false;
+  }
+  return true;
 }
 
 /// A string(N) payload must be well-formed UTF-8 with no zero byte among its

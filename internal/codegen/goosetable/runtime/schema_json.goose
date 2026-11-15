@@ -534,10 +534,12 @@ struct JsonIn {
     bad: bool,
     zero: bool,
     rep: JsonReport,
+    kset_entries: JsonKeyEntry[>..]&,
+    kset_slots: i64[>..]&,
 }
 
-fn json_in(text: const u8[:]) -> JsonIn {
-    var jr = JsonIn { text: text, pos: 0, bad: false, zero: false, rep: json_report() };
+fn json_in(text: const u8[:], kset_entries: JsonKeyEntry[>..]&, kset_slots: i64[>..]&) -> JsonIn {
+    var jr = JsonIn { text: text, pos: 0, bad: false, zero: false, rep: json_report(), kset_entries: kset_entries, kset_slots: kset_slots };
     // a leading UTF-8 byte-order mark is skipped, there and nowhere else
     // (docs/SPEC-TABLES.md §16.2, §16.12)
     if text.len >= 3 && text[0] == 0xEF && text[1] == 0xBB && text[2] == 0xBF { jr.pos = 3; }
@@ -549,8 +551,25 @@ fn json_fail(jr: JsonIn&) -> bool {
     return false;
 }
 
+// json_comment_char advances over one code point inside a comment, refusing a
+// NUL (0x00) and an ill-formed UTF-8 sequence: the bytes inside a comment are
+// text like the rest of the input (docs/SPEC-TABLES.md §16.2).
+fn json_comment_char(jr: JsonIn&) -> bool {
+    let c = jr.text[jr.pos];
+    if c == 0 { return json_fail(jr); }
+    if c < 0x80 {
+        jr.pos += 1;
+        return true;
+    }
+    let code, w = json_utf8(jr.text, jr.pos);
+    if w < 0 || code == 0 { return json_fail(jr); }
+    jr.pos += w;
+    return true;
+}
+
 // json_space skips whitespace and comments: `//` to the end of the line or of
-// the input, `/* */` to its close; an unclosed one is malformed (§16.2).
+// the input, `/* */` to its close; an unclosed one is malformed (§16.2). A
+// comment holds only well-formed UTF-8 and no NUL, in both forms.
 fn json_space(jr: JsonIn&) {
     let t = jr.text;
     while jr.pos < t.len {
@@ -562,17 +581,24 @@ fn json_space(jr: JsonIn&) {
         if c == '/' && jr.pos + 1 < t.len {
             if t[jr.pos + 1] == '/' {
                 jr.pos += 2;
-                while jr.pos < t.len && t[jr.pos] != '\n' { jr.pos += 1; }
+                while jr.pos < t.len && t[jr.pos] != '\n' {
+                    if !json_comment_char(jr) { return; }
+                }
                 continue;
             }
             if t[jr.pos + 1] == '*' {
                 jr.pos += 2;
-                while jr.pos + 1 < t.len && !(t[jr.pos] == '*' && t[jr.pos + 1] == '/') { jr.pos += 1; }
-                if jr.pos + 1 >= t.len {
-                    jr.bad = true;
-                    return;
+                loop {
+                    if jr.pos + 1 >= t.len {
+                        jr.bad = true;
+                        return;
+                    }
+                    if t[jr.pos] == '*' && t[jr.pos + 1] == '/' {
+                        jr.pos += 2;
+                        break;
+                    }
+                    if !json_comment_char(jr) { return; }
                 }
-                jr.pos += 2;
                 continue;
             }
         }
@@ -584,6 +610,14 @@ fn json_peek(jr: JsonIn&) -> u8 {
     json_space(jr);
     if jr.pos < jr.text.len { return jr.text[jr.pos]; }
     return 0;
+}
+
+// json_shape_takes reports whether a value of the given JSON shape satisfies
+// the shape a declaration takes: a wide integer declares 'N' and takes a
+// string or a number (docs/SPEC-TABLES.md §16.2), every other shape is exact.
+fn json_shape_takes(want: u8, got: u8) -> bool {
+    if want == got { return true; }
+    return want == 'N' && (got == 's' || got == 'n');
 }
 
 // json_shape is the JSON type at the cursor, unconsumed: o a s b z (null) n.
@@ -814,6 +848,93 @@ fn json_name_is(name: const u8[:], key: const u8[:]) -> bool {
     return name == key;
 }
 
+// ---- the decoded-key set of ONE object (§16.2) ----
+//
+// A repeated key refuses in every object, compared as DECODED bytes, so a key
+// and its \u-escaped spelling are one key. The key entries and the open
+// addressing slots live in arrays the top-level read owns, so a recursive walk
+// keeps only a fixed-size cursor: this object's entry chain and the slot
+// segment it probes. A child object appends its own entries and slots after
+// its parent's and leaves them there, and each object's entries are its own
+// chain, so a parent's growth never walks a child's keys. A probe compares the
+// bytes on a hash match, so a collision is never taken for a repeat, and the
+// slots double at two-thirds load. Time and space are the object's own.
+
+struct JsonKeyEntry {
+    hash: u64,
+    len: i64,
+    next: i64,
+    key: u8[256],
+}
+
+struct JsonKeySet {
+    used: i64,
+    head: i64,
+    base: i64,
+    cap: i64,
+}
+
+fn json_keyset_start(slots: i64[>..]&) -> JsonKeySet {
+    let base = slots.len;
+    for i in 16 { slots.push(-1); }
+    return JsonKeySet { used: 0, head: -1, base: base, cap: 16 };
+}
+
+fn json_keyset_grow(entries: const JsonKeyEntry[>..]&, slots: i64[>..]&, ks: JsonKeySet&) {
+    let cap = ks.cap * 2;
+    let base = slots.len;
+    for i in cap { slots.push(-1); }
+    let mask = cap - 1;
+    var j = ks.head;
+    while j >= 0 {
+        let h = entries[j].hash;
+        var p = (h & (mask as u64)) as i64;
+        while slots[base + p] >= 0 { p = (p + 1) & mask; }
+        slots[base + p] = j;
+        j = entries[j].next;
+    }
+    ks.base = base;
+    ks.cap = cap;
+}
+
+fn json_keyset_find(entries: const JsonKeyEntry[>..]&, slots: const i64[>..]&, ks: const JsonKeySet&, key: const u8[:], h: u64) -> bool, i64 {
+    let mask = ks.cap - 1;
+    var p = (h & (mask as u64)) as i64;
+    loop {
+        let at = slots[ks.base + p];
+        if at < 0 { return false, ks.base + p; }
+        let e = entries[at];
+        if e.hash == h && e.len == key.len {
+            var same = true;
+            var i: i64 = 0;
+            while i < key.len {
+                if e.key[i] != key[i] { same = false; break; }
+                i += 1;
+            }
+            if same { return true, ks.base + p; }
+        }
+        p = (p + 1) & mask;
+    }
+}
+
+// json_keyset_seen answers whether key was already in the object's set, and
+// adds it when it was not.
+fn json_keyset_seen(entries: JsonKeyEntry[>..]&, slots: i64[>..]&, ks: JsonKeySet&, key: const u8[:]) -> bool {
+    if (ks.used + 1) * 3 > ks.cap * 2 { json_keyset_grow(entries, slots, ks); }
+    var h: u64 = 0xcbf29ce484222325;
+    for b in key { h = (h ^ (b as u64)) * 0x100000001b3; }
+    let found, at = json_keyset_find(entries, slots, ks, key, h);
+    if found { return true; }
+    var e = JsonKeyEntry { hash: h, len: key.len, next: ks.head, key: [0; 256] };
+    for b, i in key { e.key[i] = b; }
+    let idx = entries.len;
+    entries.push(e);
+    slots[at] = idx;
+    ks.head = idx;
+    ks.used += 1;
+    return false;
+}
+
 // json_walk_number scans one number to RFC 8259's own production, so `1-2`,
 // `+1`, `01`, `.5` and `3.` are malformed rather than values (§16.2).
 fn json_walk_number(jr: JsonIn&) -> bool, bool {
@@ -860,6 +981,7 @@ fn json_number(jr: JsonIn&) -> i64, i64, bool, bool {
 
 // json_skip_value consumes one value of any shape, to the depth cap.
 recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
+    var kset = json_keyset_start(jr.kset_slots);
     let c = json_peek(jr);
     if c == '{' || c == '[' {
         if depth > JsonMaxDepth { return json_fail(jr); }
@@ -873,7 +995,15 @@ recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
             }
             if d == 0 { return json_fail(jr); }
             if closing == '}' {
-                if !json_skip_string(jr) { return false; }
+                // an object key is a schema name wherever the read meets it,
+                // a skipped value included, so it takes the 255-byte cap
+                // (§16.2). The value under it may be a string of any length.
+                var key: u8[256] = [0; 256];
+                let n, ok = json_key(jr, key);
+                if !ok || n > JsonMaxKey { return false; }
+                if json_keyset_seen(jr.kset_entries, jr.kset_slots, kset, key[..n]) {
+                    return json_fail(jr);
+                }
                 if !json_expect(jr, ':') { return false; }
             }
             if !json_skip_value(jr, depth + 1) { return false; }
@@ -938,113 +1068,87 @@ fn json_token_int(tok: const u8[:]) -> bool, u64, bool {
     return neg, mag, over;
 }
 
-// json_read_int places a number in an integer field: any token whose VALUE
-// is integral (2.0 and 1e3 are integers), a fraction is kind_mismatch, and a
-// value past the field's domain, its declared range or bits(N), and its
-// storage width clamps and counts at each (docs/SPEC-TABLES.md §16.2).
-fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
-    let start, end, whole, ok = json_number(jr);
-    if !ok { return false; }
-    let tok = jr.text[start..end];
-    var sat = false;
+// json_integer_token is the integer token rule (docs/SPEC-TABLES.md §16.2):
+// digits with an optional minus, no leading zero, no fraction, no exponent,
+// no plus, and not -0. It holds a number token and the text inside a wide
+// integer's string alike.
+fn json_integer_token(tok: const u8[:]) -> bool {
+    var i: i64 = 0;
+    var neg = false;
+    if i < tok.len && tok[i] == '-' {
+        neg = true;
+        i += 1;
+    }
+    if i >= tok.len { return false; }
+    if tok[i] == '0' { return !neg && i + 1 == tok.len; }
+    if tok[i] < '1' || tok[i] > '9' { return false; }
+    while i < tok.len {
+        if tok[i] < '0' || tok[i] > '9' { return false; }
+        i += 1;
+    }
+    return true;
+}
+
+// json_scan_all decodes one JSON string into a fresh buffer: a wide integer's
+// string is digits, and its length is the token's, never a reason to refuse a
+// value on its own (§16.2).
+fn json_scan_all(jr: JsonIn&) -> u8[>..], bool {
+    var buf: u8[>..] = [];
+    let ok = json_scan(jr, false) { unit, n =>
+        for i in n { buf.push(unit[i]); }
+    };
+    return buf, ok;
+}
+
+// json_place_int places an integer field from one token (docs/SPEC-TABLES.md
+// §16.2): an integer token only — no fraction, no exponent, not -0. The value
+// never passes through a double, and its range is tested on the exact value; a
+// value outside it refuses the read.
+fn json_place_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&, tok: const u8[:]) -> bool {
+    if !json_integer_token(tok) {
+        jr.rep.mismatch += 1;
+        return true;
+    }
+    let neg, mag, over = json_token_int(tok);
     if f.signed {
         var v: i64 = 0;
-        if whole {
-            let neg, mag, over = json_token_int(tok);
-            if neg {
-                if over || mag > 0x8000000000000000 {
-                    v = -9223372036854775807 - 1;
-                    sat = true;
-                } else {
-                    v = (0 - mag) as! i64;
-                }
-            } else if over || mag > 0x7FFFFFFFFFFFFFFF {
-                v = 9223372036854775807;
-                sat = true;
-            } else {
-                v = mag as! i64;
+        if neg {
+            if over || mag > 0x8000000000000000 {
+                jr.rep.oor += 1;
+                return true;
             }
+            v = (0 - mag) as! i64;
+        } else if over || mag > 0x7FFFFFFFFFFFFFFF {
+            jr.rep.oor += 1;
+            return true;
         } else {
-            let d, fin = json_token_f64(tok);
-            if !fin {
-                jr.rep.mismatch += 1;
-                return true;
-            }
-            if d >= 9223372036854775808.0 {
-                v = 9223372036854775807;
-                sat = true;
-            } else if d < -9223372036854775808.0 {
-                v = -9223372036854775807 - 1;
-                sat = true;
-            } else if d != ((d as! i64) as f64) {
-                jr.rep.mismatch += 1;
-                return true;
-            } else {
-                v = d as! i64;
-            }
+            v = mag as! i64;
         }
-        if sat { jr.rep.oor += 1; }
         if f.ranged {
             let lo = f.lo.lo as! i64;
             let hi = f.hi.lo as! i64;
-            if v < lo {
-                v = lo;
+            if v < lo || v > hi {
                 jr.rep.oor += 1;
-            } else if v > hi {
-                v = hi;
-                jr.rep.oor += 1;
+                return true;
             }
         }
         if f.kw < 8 {
             let high: i64 = ((1 as i64) << ((f.kw * 8 - 1) as i64)) - 1;
             let low = -high - 1;
-            if v > high {
-                v = high;
+            if v > high || v < low {
                 jr.rep.oor += 1;
-            } else if v < low {
-                v = low;
-                jr.rep.oor += 1;
+                return true;
             }
         }
         slot = v as! T;
         return true;
     }
-    var u: u64 = 0;
-    if whole {
-        let neg, mag, over = json_token_int(tok);
-        if neg {
-            u = 0;
-            sat = mag != 0;
-        } else if over {
-            u = 0xFFFFFFFFFFFFFFFF;
-            sat = true;
-        } else {
-            u = mag;
-        }
-    } else {
-        let d, fin = json_token_f64(tok);
-        if !fin {
-            jr.rep.mismatch += 1;
-            return true;
-        }
-        if d < 0.0 {
-            if d != ((d as! i64) as f64) {
-                jr.rep.mismatch += 1;
-                return true;
-            }
-            u = 0;
-            sat = true;
-        } else if d >= 18446744073709551616.0 {
-            u = 0xFFFFFFFFFFFFFFFF;
-            sat = true;
-        } else if d != ((d as! u64) as f64) {
-            jr.rep.mismatch += 1;
-            return true;
-        } else {
-            u = d as! u64;
-        }
+    if neg || over {
+        // a negative into an unsigned field, or a magnitude its lane cannot hold
+        jr.rep.oor += 1;
+        return true;
     }
-    if sat { jr.rep.oor += 1; }
+    var u = mag;
     var ranged = f.ranged;
     var lo: u64 = f.lo.lo;
     var hi: u64 = f.hi.lo;
@@ -1053,24 +1157,37 @@ fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
         lo = 0;
         hi = ((1 as u64) << (f.bits as! u64)) - 1;
     }
-    if ranged {
-        if u < lo {
-            u = lo;
-            jr.rep.oor += 1;
-        } else if u > hi {
-            u = hi;
-            jr.rep.oor += 1;
-        }
+    if ranged && (u < lo || u > hi) {
+        jr.rep.oor += 1;
+        return true;
     }
     if f.kw < 8 {
         let high: u64 = ((1 as u64) << ((f.kw * 8) as! u64)) - 1;
         if u > high {
-            u = high;
             jr.rep.oor += 1;
+            return true;
         }
     }
     slot = u as! T;
     return true;
+}
+
+// json_read_int reads an integer field: a wide kind (wider than 32 bits)
+// takes the same digits inside a JSON string too (docs/SPEC-TABLES.md §16.2).
+fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
+    if f.kw > 4 && json_peek(jr) == '"' {
+        let buf, ok = json_scan_all(jr);
+        if !ok { return false; }
+        return json_place_int(jr, slot, f, buf);
+    }
+    let start, end, whole, ok = json_number(jr);
+    if !ok { return false; }
+    if !whole {
+        // a fraction or an exponent is the wrong shape for an integer field
+        jr.rep.mismatch += 1;
+        return true;
+    }
+    return json_place_int(jr, slot, f, jr.text[start..end]);
 }
 
 // json_read_float places a number in a float field: a magnitude its width
@@ -1162,13 +1279,15 @@ fn json_b64_sextet(c: u8) -> i64 {
     return -1;
 }
 
-// json_read_bytes places a bytes(N) from base64: the string's escapes are
-// undone first, the body is held to the grammar (standard alphabet, padded or
-// not), a body outside it is kind_mismatch with the field at its default, and
-// past N clamps and counts (§16.2).
+// json_read_bytes places a bytes(N) from CANONICAL base64 (§16.2, §16.8): the
+// string's escapes are undone first, and the body must be the standard
+// alphabet, padded, with zero pad bits — exactly the text the writer writes. A
+// body outside that grammar is kind_mismatch with the field at its default,
+// and past N clamps and counts.
 fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
     var symbols: i64 = 0;
     var pads: i64 = 0;
+    var last: i64 = -1;
     var bad = false;
     let start = jr.pos;
     let ok = json_scan(jr, false) { unit, n =>
@@ -1181,6 +1300,7 @@ fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
                 } else if pads > 0 || json_b64_sextet(c) < 0 {
                     bad = true;
                 } else {
+                    last = json_b64_sextet(c);
                     symbols += 1;
                 }
             }
@@ -1190,8 +1310,14 @@ fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
     if !ok { return false; }
     if !bad {
         if pads > 0 {
-            if pads > 2 || (symbols + pads) % 4 != 0 || symbols % 4 < 2 { bad = true; }
-        } else if symbols % 4 == 1 {
+            if pads > 2 || (symbols + pads) % 4 != 0 || symbols % 4 < 2 {
+                bad = true;
+            } else if pads == 1 && (last & 3) != 0 {
+                bad = true;
+            } else if pads == 2 && (last & 15) != 0 {
+                bad = true;
+            }
+        } else if symbols % 4 != 0 {
             bad = true;
         }
     }
@@ -1263,11 +1389,13 @@ fn json_read_enum<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
     return true;
 }
 
-// json_read_flags places a flags mask from its array of names: an unknown
-// name is skipped and counted, a non-string element is kind_mismatch (§16.2).
+// json_read_flags places a flags mask from its array of names: a KNOWN name
+// twice in one array is damage and refuses malformed, an unknown name is
+// skipped and counted, a non-string element is kind_mismatch (§16.2).
 fn json_read_flags<T>(jr: JsonIn&, slot: T&, names: const (const u8[:])[:], depth: i64) -> bool {
     if !json_expect(jr, '[') { return false; }
     var bits: u64 = 0;
+    var seen: u64 = 0;
     loop {
         let c = json_peek(jr);
         if c == ']' {
@@ -1286,7 +1414,12 @@ fn json_read_flags<T>(jr: JsonIn&, slot: T&, names: const (const u8[:])[:], dept
             var b: i64 = 0;
             while b < names.len {
                 if json_name_is(names[b], key[..n]) {
-                    bits |= (1 as u64) << (b as! u64);
+                    let bit = (1 as u64) << (b as! u64);
+                    // A FLAGS NAME TWICE IN ONE ARRAY IS DAMAGE (§16.2): a
+                    // repeated name is a repeated key and refuses the read.
+                    if (seen & bit) != 0 { return json_fail(jr); }
+                    seen |= bit;
+                    bits |= bit;
                     found = true;
                     break;
                 }
@@ -1321,7 +1454,7 @@ fn json_read_array<F>(jr: JsonIn&, count: i32&, bound: i64, shape: u8, depth: i6
         if placed >= bound {
             jr.rep.oor += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
-        } else if json_shape(jr) != shape {
+        } else if !json_shape_takes(shape, json_shape(jr)) {
             jr.rep.mismatch += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
             placed += 1;
@@ -1345,9 +1478,7 @@ fn json_read_array<F>(jr: JsonIn&, count: i32&, bound: i64, shape: u8, depth: i6
 fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, depth: i64) -> bool {
     if !json_expect(jr, '{') { return false; }
     var seen: u64[8] = [0; 8];
-    var seen_unk: u64[64] = [0; 64];
-    var seen_unk_n: i64 = 0;
-    var dup_unk = false;
+    var kset = json_keyset_start(jr.kset_slots);
     loop {
         let c = json_peek(jr);
         if c == '}' {
@@ -1358,6 +1489,8 @@ fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, dep
         var key: u8[256] = [0; 256];
         let n, ok = json_key(jr, key);
         if !ok { return false; }
+        let dup = json_keyset_seen(jr.kset_entries, jr.kset_slots, kset, key[..n]);
+        if dup { jr.rep.repeated += 1; }
         if !json_expect(jr, ':') { return false; }
         var slot: i64 = -1;
         var v: i64 = 0;
@@ -1370,28 +1503,13 @@ fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, dep
         }
         if slot >= 0 && slot < 512 {
             let bit = (1 as u64) << ((slot & 63) as! u64);
-            if (seen[slot >> 6] & bit) != 0 { jr.rep.repeated += 1; }
+            if (seen[slot >> 6] & bit) != 0 && !dup { jr.rep.repeated += 1; }
             seen[slot >> 6] |= bit;
         }
         if slot < 0 {
-            var kh: u64 = 0xcbf29ce484222325;
-            var ki: i64 = 0;
-            while ki < n {
-                let kb: u64 = key[ki]; kh = (kh ^ kb) * 0x100000001b3;
-                ki += 1;
-            }
-            var ui: i64 = 0;
-            while ui < seen_unk_n {
-                if seen_unk[ui] == kh { dup_unk = true; }
-                ui += 1;
-            }
-            if seen_unk_n < 64 {
-                seen_unk[seen_unk_n] = kh;
-                seen_unk_n += 1;
-            }
             jr.rep.unknown += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
-        } else if json_shape(jr) != shape {
+        } else if !json_shape_takes(shape, json_shape(jr)) {
             jr.rep.mismatch += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
         } else if !F(jr, slot, depth + 1) {
@@ -1402,7 +1520,6 @@ fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, dep
             break;
         }
     }
-    if dup_unk && jr.rep.repeated == 0 { return json_fail(jr); }
     return true;
 }
 
@@ -1433,7 +1550,7 @@ fn json_read_union<U, F>(jr: JsonIn&, u: U&, d: const UnionDesc&, shapes: const 
     if tag == 0 {
         jr.rep.unknown += 1;
         if !json_skip_value(jr, depth + 1) { return false; }
-    } else if json_shape(jr) != shapes[a] {
+    } else if !json_shape_takes(shapes[a], json_shape(jr)) {
         jr.rep.mismatch += 1;
         if !json_skip_value(jr, depth + 1) { return false; }
     } else {
@@ -1476,6 +1593,7 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
     }
     if !json_expect(jr, '{') { return false; }
     var seen: u64[8] = [0; 8];
+    var kset = json_keyset_start(jr.kset_slots);
     loop {
         let c = json_peek(jr);
         if c == '}' {
@@ -1486,6 +1604,8 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
         var key: u8[256] = [0; 256];
         let n, ok = json_key(jr, key);
         if !ok { return false; }
+        let dup = json_keyset_seen(jr.kset_entries, jr.kset_slots, kset, key[..n]);
+        if dup { jr.rep.repeated += 1; }
         if !json_expect(jr, ':') { return false; }
         var index: i64 = -1;
         var i: i64 = 0;
@@ -1506,7 +1626,7 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
         } else {
             if index < 512 {
                 let bit = (1 as u64) << ((index & 63) as! u64);
-                if (seen[index >> 6] & bit) != 0 { jr.rep.repeated += 1; }
+                if (seen[index >> 6] & bit) != 0 && !dup { jr.rep.repeated += 1; }
                 seen[index >> 6] |= bit;
             }
             let got = json_shape(jr);
@@ -1514,7 +1634,7 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
             if optional && got == 'z' {
                 if !json_literal(jr, "null") { return false; }
                 if !F(jr, rec, index, JsonOpAbsent, depth) { return false; }
-            } else if got != shapes[index] {
+            } else if !json_shape_takes(shapes[index], got) {
                 // the wrong JSON type for the kind: skipped and counted, and
                 // the KEY is still presence (§16.2), so an optional field is
                 // present at the value it already held
@@ -1580,15 +1700,16 @@ fn json_put_string(out: u8[>..]&, s: const u8[:]) {
 }
 
 // json_put_text writes a string with the seven short escapes and `\u00xx` in
-// lowercase for every other control byte, and answers false for a string that
-// is not text: a byte outside a well-formed sequence refuses the whole write
-// (invalid_value, §16.3, §16.14 W0) and nothing is replaced.
+// lowercase for every other control byte except zero, which is not text. A
+// zero or a byte outside a well-formed sequence refuses the whole write
+// (invalid_value, §16.3, §16.14 W0); nothing is replaced.
 fn json_put_text(out: u8[>..]&, s: const u8[:]) -> bool {
     let hex = "0123456789abcdef";
     out.push('"');
     var i: i64 = 0;
     while i < s.len {
         let c = s[i];
+        if c == 0 { return false; }
         if c == '"' {
             out.append("\\\"");
         } else if c == '\\' {
@@ -1678,7 +1799,13 @@ fn json_write_bool(out: u8[>..]&, v: bool) -> bool {
 }
 
 fn json_write_int<T>(out: u8[>..]&, v: T, f: const FieldDesc&) -> bool {
+    // a kind wider than 32 bits is written as a STRING of decimal digits
+    // (docs/SPEC-TABLES.md §16.2, §16.14 W10); a kind of 32 bits and under is
+    // a bare number.
+    let wide = f.kw > 4;
+    if wide { out.push('"'); }
     if f.signed { json_put_int(out, v as! i64); } else { json_put_uint(out, v as! u64); }
+    if wide { out.push('"'); }
     return true;
 }
 
@@ -1836,7 +1963,9 @@ fn json_write_table<T, F>(out: u8[>..]&, rec: const T&, d: const TableDesc&, dep
 // §16.1): false (and report.damaged) when the text is not JSON or a value
 // is refused by name; the caller then puts the record back at its defaults.
 fn json_from<T, F>(rec: T&, d: const TableDesc&, shapes: const u8[:], text: const u8[:], report: JsonReport&) -> bool {
-    var jr = json_in(text);
+    var kset_entries: JsonKeyEntry[>..] = [];
+    var kset_slots: i64[>..] = [];
+    var jr = json_in(text, kset_entries, kset_slots);
     let ok = json_read_table(jr, rec, d, shapes, 0, F);
     return json_finish(jr, ok, report);
 }

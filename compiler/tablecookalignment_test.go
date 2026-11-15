@@ -12,6 +12,7 @@ import (
 // A root's extent can require more alignment than the record itself. The
 // minimum is type-based for its own extent, but excludes absent pointer nodes.
 func TestCppCookOpenNodeAlignment(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, source, text string
 		align              int
@@ -62,11 +63,12 @@ func TestCppCookExtentCanonicalAlignment(t *testing.T) {
 	for _, tc := range []struct{ name, source, text string }{
 		{"root", "table Root { tiny []uint8\nwides []uint128 }", "{\"tiny\":[1],\"wides\":[1267650600228229401496703205383]}"},
 		{"nested", "table Bucket { tiny []uint8\nwides []uint128 }\ntable Root { buckets []Bucket }", "{\"buckets\":[{\"tiny\":[1],\"wides\":[7]}]}"},
-		{"schema-type-named-Cook", "table Cook { tiny []uint8\nwides []uint128 }\ntable Root { buckets []Cook }", "{\"buckets\":[{\"tiny\":[1],\"wides\":[7]}]}"},
+		{"schema-type-named-Dish", "table Dish { tiny []uint8\nwides []uint128 }\ntable Root { buckets []Dish }", "{\"buckets\":[{\"tiny\":[1],\"wides\":[7]}]}"},
 		{"pointer-node", "table Bucket { tiny []uint8\nwides []uint128 }\ntable Root { next *Bucket }", "{\"next\":{\"tiny\":[1],\"wides\":[7]}}"},
 		{"map-entry", "table Bucket { tiny []uint8\nwides []uint128 }\ntable Root { buckets map[uint8]Bucket }", "{\"buckets\":{\"2\":{\"tiny\":[1],\"wides\":[7]}}}"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			files, arrays := cppCookAlignmentFixture(t, tc.source, tc.text)
 			source := cppCookAlignmentPrelude + arrays + `
 int main() {
@@ -101,6 +103,7 @@ int main() {
 `
 			for _, portable := range []bool{false, true} {
 				t.Run(fmt.Sprintf("portable128=%v", portable), func(t *testing.T) {
+					t.Parallel()
 					var flags []string
 					if portable {
 						flags = append(flags, "-U__SIZEOF_INT128__")

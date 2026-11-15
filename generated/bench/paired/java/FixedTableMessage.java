@@ -18,6 +18,7 @@ public final class FixedTableMessage {
         if (v == null) {
             return false;
         }
+        assert checkWrite(v);
         {
             TableMessage.Writer probe1 = new TableMessage.Writer(null, 0, true);
             if (!BenchMixedMessage.saveMessageBody(probe1, v.value)) {
@@ -34,7 +35,24 @@ public final class FixedTableMessage {
         return !w.overflow;
     }
 
+    // checkWrite is saveMessageBody's contract walk, called once through `assert`.
+    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts.
+    private static boolean checkWrite(FixedTableFixed.Value v) {
+        assert v != null;
+        return true;
+    }
+
     public static boolean loadMessageBody(TableMessage.Reader r, FixedTableFixed.Value v) {
+        int seenFieldMark = r.seenMark();
+        try {
+            return loadMessageBodyFields(r, v, seenFieldMark);
+        } finally {
+            r.seenRollback(seenFieldMark);
+        }
+    }
+
+    private static boolean loadMessageBodyFields(
+            TableMessage.Reader r, FixedTableFixed.Value v, int seenFieldMark) {
         reset(v);
         while (true) {
             TableVocabulary.Entry entry = r.ref();
@@ -44,6 +62,10 @@ public final class FixedTableMessage {
             }
             if (entry == null) {
                 return true;
+            }
+            if (!r.seenAdd(seenFieldMark, entry.id)) {
+                r.report.damaged = true;
+                return false;
             }
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
@@ -95,9 +117,10 @@ public final class FixedTableMessage {
             }
             return -1;
         }
-        if (values == null || count > values.length) {
+        if (values == null) {
             return -1;
         }
+        assert count <= values.length;
         TableMessage.Writer w = new TableMessage.Writer(null, 2, true);
         for (int i = 0; i < count; i++) {
             if (values[i] == null || !saveMessageBody(w, values[i])) {
@@ -131,9 +154,10 @@ public final class FixedTableMessage {
             }
             return -1;
         }
-        if (values == null || count > values.length || buffer == null || buffer.length < 2) {
+        if (values == null || buffer == null || buffer.length < 2) {
             return -1;
         }
+        assert count <= values.length;
         TableMessage.Writer mw = new TableMessage.Writer(null, 2, true);
         for (int i = 0; i < count; i++) {
             if (values[i] == null || !saveMessageBody(mw, values[i])) {

@@ -781,12 +781,14 @@ func (g *gen) emitFixedScatterValue(f *ir.Field, base int64) {
 }
 
 // emitFixedScatterCount is §3.4's `count` op inline: read it, clamp it to THIS
-// reader's own bound, and count one held if it fired.
+// reader's own bound, and count one held if it fired on live data. A slot past
+// its parent's count is slack, whose bytes are unspecified on read and never a
+// refusal (§3.4).
 func (g *gen) emitFixedScatterCount(member string, at, bound int64) {
 	g.pf("    {\n")
 	g.pf("        let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", at, at+4)
 	g.pf("        let held = raw.clamp(0, %d);\n", bound)
-	g.pf("        if held != raw {\n            report.held += 1;\n        }\n")
+	g.pf("        if held != raw && report.slack == 0 {\n            report.held += 1;\n        }\n")
 	g.pf("        value.%s = held;\n", member)
 	g.pf("    }\n")
 }
@@ -881,7 +883,7 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 			// the ordinal verbatim out of a stranger's record, so the scatter is
 			// where the range is closed — the same place a count's bound is.
 			g.pf("%s    if raw > %d {\n", ind, extent)
-			g.pf("%s        report.held += 1;\n", ind)
+			g.pf("%s        if report.slack == 0 { report.held += 1; }\n", ind)
 			g.pf("%s", set(ind+"        ", "0"))
 			g.pf("%s    } else {\n", ind)
 			g.pf("%s", set(ind+"        ", held))
@@ -974,9 +976,10 @@ func (g *gen) emitFixedWriteUnion(un *ir.Union) {
 		g.pf("        %d => {\n", i+1)
 		g.pf("            // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,\n")
 		g.pf("            // and the same one the C reference's storage struct carries. The\n")
-		g.pf("            // tag was just matched against `%s`, every arm is plain data\n", v.Name)
-		g.pf("            // with no niche in it, and the overlay's zero form is a value of\n")
-		g.pf("            // every arm — so a Row whose tag was set without its arm reads a\n")
+		g.pf("            // tag was just matched against `%s`, and the overlay's zero form\n", v.Name)
+		g.pf("            // is a value of every arm — zero is valid for every scalar and\n")
+		g.pf("            // every bool, and a zero self-relative delta is the null\n")
+		g.pf("            // reference — so a Row whose tag was set without its arm reads a\n")
 		g.pf("            // zero payload rather than an invalid one.\n")
 		g.pf("            let arm = unsafe { value.arms.%s };\n", v.Name)
 		g.emitFixedWriteArm(v.F, tagw, "arm", 12)
@@ -1056,7 +1059,7 @@ func (g *gen) emitFixedScatterUnion(un *ir.Union) {
 		g.pf("    // A TAG PAST THE ARM COUNT IS OUT OF RANGE, as a count past its bound is:\n")
 		g.pf("    // it lands as None and counts one held rather than selecting nothing\n")
 		g.pf("    // silently.\n")
-		g.pf("    if tag_raw > %d {\n        report.held += 1;\n    } else {\n        value.tag = tag_raw;\n    }\n", len(un.Variants))
+		g.pf("    if tag_raw > %d {\n        if report.slack == 0 { report.held += 1; }\n    } else {\n        value.tag = tag_raw;\n    }\n", len(un.Variants))
 	} else {
 		// EVERY VALUE OF THE TAG'S WIDTH NAMES AN ARM, so there is no
 		// out-of-range tag to clamp and a comparison here would be one the
@@ -1104,7 +1107,7 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
 		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
 		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.ArrayBound)
-		g.pf("%s    if held != raw {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    if held != raw && report.slack == 0 {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s    arm.value_count = held;\n%s}\n", ind, ind)
 		if f.ArrayBound > 0 {
 			// the slots past the live count are slack (§3.4)
@@ -1118,7 +1121,7 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
 		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
 		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.Type.Size)
-		g.pf("%s    if held != raw {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    if held != raw && report.slack == 0 {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
 		g.pf("%sarm.value = [0u8; %d];\n", ind, f.Type.Size+1)
 		g.pf("%sarm.value[..%d].copy_from_slice(&b[%d..%d]);\n", ind, f.Type.Size, base+4, base+4+f.Type.Size)
@@ -1127,7 +1130,7 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
 		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
 		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.Type.Size)
-		g.pf("%s    if held != raw {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    if held != raw && report.slack == 0 {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
 		g.pf("%sarm.value.copy_from_slice(&b[%d..%d]);\n", ind, base+4, base+4+f.Type.Size)
 	default:
@@ -1269,7 +1272,11 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	}
 
 	if len(lineage) > 1 {
-		planCap := max(int(body)+2*len(entries)+256, 512)
+		// THE PLAN'S STORAGE IS SIZED BY THE PLAN: the exact maximum entry count
+		// the runtime's own walk pushes for any layout in the lineage, not a
+		// guess from the record's byte size. A union under an array makes the
+		// two diverge (fixedplancap.go).
+		planCap := fixedLineagePlanCap(block, entries, lineage, ownIndex)
 		remapCap := 1024 + 32*len(entries)
 		// THE GUARD CHAIN'S POOL CAPACITY: each union arm lays its chain down
 		// as one contiguous run of (guard, arg, argw) links, and the chain's
@@ -1378,6 +1385,12 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf(".\n")
 	g.pf("pub fn %s_fixed_save(values: &[%sRow], buffer: &mut [u8]) -> Option<usize> {\n", name, st.Name)
+	g.pf("    // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§22.6). The write\n")
+	g.pf("    // contract is a debug assert, as this leg's other write checks are.\n")
+	g.pf("    debug_assert!(\n")
+	g.pf("        !values.is_empty(),\n")
+	g.pf("        \"a fixed-form file holds at least one record (docs/SPEC-TABLES.md §22.6)\"\n")
+	g.pf("    );\n")
 	g.pf("    let need = %s_fixed_measure(values.len());\n", name)
 	g.pf("    if buffer.len() < need {\n        return None;\n    }\n")
 	if finite {
@@ -1552,7 +1565,10 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // The REMAP lane is the build's too, laid beside the plan it belongs to;\n")
 	g.pf("    // the caller's slice stays in the signature as the capacity it always was.\n")
 	g.pf("    let _ = remap;\n")
-	g.pf("    if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {\n")
+	g.pf("    // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6):\n")
+	g.pf("    // a header and a layout followed by no record is truncation, at any\n")
+	g.pf("    // capacity. A record size of 8 or less, or a ragged tail, is the same.\n")
+	g.pf("    if rest.is_empty() || record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {\n")
 	g.pf("        report.damaged = true;\n        return None;\n    }\n")
 	g.pf("    let n = rest.len() / record_bytes;\n")
 	g.pf("    if n > values.len() {\n        return report.refuse(TableFixedReason::BatchTooLarge);\n    }\n")

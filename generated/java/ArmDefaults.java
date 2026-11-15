@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 package example;
 
@@ -93,11 +93,11 @@ public final class ArmDefaults {
         if (pad == 0) {
             return pos;
         }
-        final int next = pos + 8 - pad;
+        final long next = (long) pos + 8 - pad;
         if (next > numBits || (data[pos >>> 3] & 0xff) >>> pad != 0) {
             return -1;
         }
-        return next;
+        return (int) next;
     }
 
     // type DefaultArm
@@ -189,7 +189,10 @@ public final class ArmDefaults {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readDefaultArmBits(
             DefaultArm value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -198,7 +201,7 @@ public final class ArmDefaults {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -207,7 +210,7 @@ public final class ArmDefaults {
             return -1; // the count guards the loop — reject, never clamp
         }
         value.entriesCount = (int) v;
-        if (bitsRead + value.entriesCount * 36L > numBits) {
+        if ((long) bitsRead + value.entriesCount * 36L > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < value.entriesCount; i0++) {
@@ -216,7 +219,7 @@ public final class ArmDefaults {
                 return -1;
             }
         }
-        if (bitsRead + 3 > numBits) {
+        if ((long) bitsRead + 3 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -226,9 +229,21 @@ public final class ArmDefaults {
     }
 
     // readDefaultArm decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readDefaultArm(DefaultArm value, byte[] data, int numBits) {
-        return readDefaultArmBits(value, data, 0, numBits) >= 0;
+        final int end = readDefaultArmBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order
@@ -329,7 +344,10 @@ public final class ArmDefaults {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readDefaultChoiceBits(
             DefaultChoice value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -338,7 +356,7 @@ public final class ArmDefaults {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -361,9 +379,21 @@ public final class ArmDefaults {
     }
 
     // readDefaultChoice decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readDefaultChoice(DefaultChoice value, byte[] data, int numBits) {
-        return readDefaultChoiceBits(value, data, 0, numBits) >= 0;
+        final int end = readDefaultChoiceBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type DefaultChoicePacket
@@ -425,6 +455,12 @@ public final class ArmDefaults {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readDefaultChoicePacketBits(
             DefaultChoicePacket value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
+        }
         int bitsRead = bitOffset;
         bitsRead = readDefaultChoiceBits(value.choice, data, bitsRead, numBits);
         if (bitsRead < 0) {
@@ -434,10 +470,22 @@ public final class ArmDefaults {
     }
 
     // readDefaultChoicePacket decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readDefaultChoicePacket(
             DefaultChoicePacket value, byte[] data, int numBits) {
-        return readDefaultChoicePacketBits(value, data, 0, numBits) >= 0;
+        final int end = readDefaultChoicePacketBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type DefaultBulkArm
@@ -516,7 +564,10 @@ public final class ArmDefaults {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readDefaultBulkArmBits(
             DefaultBulkArm value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -529,7 +580,7 @@ public final class ArmDefaults {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -542,7 +593,7 @@ public final class ArmDefaults {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + value.dataLength * 8L > numBits) {
+        if ((long) bitsRead + value.dataLength * 8L > numBits) {
             return -1;
         }
         System.arraycopy(data, bitsRead >>> 3, value.data, 0, value.dataLength);
@@ -551,9 +602,21 @@ public final class ArmDefaults {
     }
 
     // readDefaultBulkArm decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readDefaultBulkArm(DefaultBulkArm value, byte[] data, int numBits) {
-        return readDefaultBulkArmBits(value, data, 0, numBits) >= 0;
+        final int end = readDefaultBulkArmBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in
@@ -657,7 +720,10 @@ public final class ArmDefaults {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readDefaultBulkChoiceBits(
             DefaultBulkChoice value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -666,7 +732,7 @@ public final class ArmDefaults {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -689,8 +755,20 @@ public final class ArmDefaults {
     }
 
     // readDefaultBulkChoice decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readDefaultBulkChoice(DefaultBulkChoice value, byte[] data, int numBits) {
-        return readDefaultBulkChoiceBits(value, data, 0, numBits) >= 0;
+        final int end = readDefaultBulkChoiceBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 }

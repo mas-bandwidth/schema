@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -54,9 +54,16 @@ pub fn write_default_arm(stream: &mut WriteStream<'_>, value: &DefaultArm) -> Re
 
 #[inline]
 pub fn read_default_arm(stream: &mut ReadStream<'_>, value: &mut DefaultArm) -> Result {
+    read_default_arm_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_default_arm_body(stream: &mut ReadStream<'_>, value: &mut DefaultArm) -> Result {
     stream.serialize_int(&mut value.entries_count, 0, 2)?; // the count guards the loop (§6.3)
     for i in 0..value.entries_count as usize {
-        read_probe_config(stream, &mut value.entries[i])?;
+        read_probe_config_body(stream, &mut value.entries[i])?;
     }
     {
         let mut range_value: i32 = 0;
@@ -135,18 +142,26 @@ pub fn write_default_choice(stream: &mut WriteStream<'_>, value: &DefaultChoice)
     }
 }
 
+#[inline]
 pub fn read_default_choice(stream: &mut ReadStream<'_>, value: &mut DefaultChoice) -> Result {
+    read_default_choice_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_default_choice_body(stream: &mut ReadStream<'_>, value: &mut DefaultChoice) -> Result {
     let mut tag_value: i32 = 0;
     stream.serialize_int(&mut tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
     match tag_value {
         1 => {
             let mut arm = DefaultArm::new();
-            read_default_arm(stream, &mut arm)?;
+            read_default_arm_body(stream, &mut arm)?;
             *value = DefaultChoice::First(arm);
         }
         2 => {
             let mut arm = DefaultArm::new();
-            read_default_arm(stream, &mut arm)?;
+            read_default_arm_body(stream, &mut arm)?;
             *value = DefaultChoice::Second(arm);
         }
         _ => *value = DefaultChoice::None,
@@ -175,7 +190,14 @@ pub fn write_default_choice_packet(stream: &mut WriteStream<'_>, value: &Default
 
 #[inline]
 pub fn read_default_choice_packet(stream: &mut ReadStream<'_>, value: &mut DefaultChoicePacket) -> Result {
-    read_default_choice(stream, &mut value.choice)?;
+    read_default_choice_packet_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_default_choice_packet_body(stream: &mut ReadStream<'_>, value: &mut DefaultChoicePacket) -> Result {
+    read_default_choice_body(stream, &mut value.choice)?;
     Ok(())
 }
 
@@ -220,7 +242,14 @@ pub fn write_default_bulk_arm(stream: &mut WriteStream<'_>, value: &DefaultBulkA
 
 #[inline]
 pub fn read_default_bulk_arm(stream: &mut ReadStream<'_>, value: &mut DefaultBulkArm) -> Result {
-    read_default_arm(stream, &mut value.payload)?;
+    read_default_bulk_arm_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_default_bulk_arm_body(stream: &mut ReadStream<'_>, value: &mut DefaultBulkArm) -> Result {
+    read_default_arm_body(stream, &mut value.payload)?;
     stream.serialize_int(&mut value.data_length, 0, 2)?; // the length guards the slice (§6.3)
     stream.serialize_bytes(&mut value.data[..value.data_length as usize])?;
     Ok(())
@@ -295,18 +324,26 @@ pub fn write_default_bulk_choice(stream: &mut WriteStream<'_>, value: &DefaultBu
     }
 }
 
+#[inline]
 pub fn read_default_bulk_choice(stream: &mut ReadStream<'_>, value: &mut DefaultBulkChoice) -> Result {
+    read_default_bulk_choice_body(stream, value)?;
+    stream.serialize_end()?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn read_default_bulk_choice_body(stream: &mut ReadStream<'_>, value: &mut DefaultBulkChoice) -> Result {
     let mut tag_value: i32 = 0;
     stream.serialize_int(&mut tag_value, 0, 2)?; // rejects a tag above the count (SPEC §4.8)
     match tag_value {
         1 => {
             let mut arm = DefaultBulkArm::new();
-            read_default_bulk_arm(stream, &mut arm)?;
+            read_default_bulk_arm_body(stream, &mut arm)?;
             *value = DefaultBulkChoice::First(arm);
         }
         2 => {
             let mut arm = DefaultBulkArm::new();
-            read_default_bulk_arm(stream, &mut arm)?;
+            read_default_bulk_arm_body(stream, &mut arm)?;
             *value = DefaultBulkChoice::Second(arm);
         }
         _ => *value = DefaultBulkChoice::None,

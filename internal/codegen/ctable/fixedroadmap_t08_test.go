@@ -494,8 +494,20 @@ int main(void)
         {
             memcpy(file, wire, (size_t) need);
             if (path == 1) { T08_REHASH(file); }
-            if (poison == 1) { T08_BODY(file)[OUTER_AT] = 2; }
-            if (poison == 2) { T08_BODY(file)[NEXT_AT] = 2; }
+            /* A FORGED TAG MAKES THE OLD ARM INACTIVE, so the bytes behind it
+               are dead and must be zero: the forge clears them and keeps the
+               tag, which leaves a lawful record whose chain must not run
+               (docs/rulings.json fixed-dead-bytes-are-zero). */
+            if (poison == 1)
+            {
+                T08_BODY(file)[OUTER_AT] = 2;
+                memset(T08_BODY(file) + OUTER_AT + 1, 0, (size_t)(need - (T08_BODY(file) - file) - (OUTER_AT + 1)));
+            }
+            if (poison == 2)
+            {
+                T08_BODY(file)[NEXT_AT] = 2;
+                memset(T08_BODY(file) + NEXT_AT + 1, 0, (size_t)(need - (T08_BODY(file) - file) - (NEXT_AT + 1)));
+            }
             memset(&back, 0xAA, sizeof(back));
             memset(&r, 0, sizeof(r));
             if (path == 1)
@@ -584,6 +596,8 @@ func cT08GuardChain(t *testing.T) {
 	// The C++ reference now carries the same identity-plan guard chain rather
 	// than consuming the two-lane plan. Assert the emitted entry and pool both
 	// name the OUTERMOST link, or the deepest leaf could run under a false tag.
+	// The run's argument after the pool is the absent-optional defaults image
+	// (320a2b6d3), which this row does not judge.
 	cpp, err := cpptable.Generate(unitFrom(t, cT08TripleUnionSchema))
 	if err != nil {
 		t.Fatal(err)
@@ -591,8 +605,8 @@ func cT08GuardChain(t *testing.T) {
 	cppHeader := string(cpp["ProbeTable.h"])
 	if !strings.Contains(cppHeader, "constexpr TableFixedGuardLink RootFixedGuards[] = {") ||
 		!strings.Contains(cppHeader, fmt.Sprintf("    { %du, %du, %d },\n", links[0].Guard, links[0].Arg, links[0].ArgW)) ||
-		!strings.Contains(cppHeader, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ) },", leaf.GuardIndex)) ||
-		!strings.Contains(cppHeader, "report, RootFixedGuards );") {
+		!strings.Contains(cppHeader, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ),", leaf.GuardIndex)) ||
+		!strings.Contains(cppHeader, "(uint8_t *) &values[k], report, RootFixedGuards, ") {
 		t.Fatal("the C++ reference does not pass the three-link identity plan through its guard pool")
 	}
 	cT08Probe(t, cT08TripleUnionSchema, "Root", cT08ChainProbe(`    value.oo.type = 1;
@@ -1194,7 +1208,7 @@ int main(void)
     /* (1) THE WRONG PLAN IS WRONG: Fxold's identity plan over Fxnew's body. */
     body = w2 + need - fxnew_fixed_body_bytes;
     memset(&wrong, 0x5A, sizeof(wrong));
-    table_fixed_run(fxold_fixed_plan, fxold_fixed_plan_count, fxold_fixed_plan_guarded, body, (uint8_t *) &wrong, &r, fxold_fixed_guards);
+    table_fixed_run(fxold_fixed_plan, fxold_fixed_plan_count, fxold_fixed_plan_guarded, body, (uint8_t *) &wrong, &r, fxold_fixed_guards, NULL);
     if (wrong.renamed == 808)
         { fprintf(stderr, "NEGATIVE CONTROL FAILED: Fxold's identity plan reproduced an Fxnew record (renamed=%d)\n", (int)wrong.renamed); return 1; }
 

@@ -454,13 +454,20 @@ write-refusal-storage-release-cpp-negative-control: bin/schema $(STORAGE_RELEASE
 # THE WRITE CONTRACT'S NEGATIVE CONTROLS (docs/SPEC.md §5.1): one check is
 # removed from a copy of the generated C++ tree, the leg's driver is rebuilt
 # against the copy, and the surface that writer serves must go red while the
-# surface beside it stays green. Nothing tracked is written to.
+# surface beside it stays green. Nothing tracked is written to. The
+# write-refusal surface drives a FIXED root, so its control removes that
+# root's value write check (rows 1, 2, 5, 6, 8) from the fixed save; a check
+# in the variable save would be one the surface never reaches. The check is
+# matched by its prefix (a bracket would be a sed class), held in variables
+# because its parentheses do not balance inside a $(call) argument.
+CPP_WREF_VALUE_CHECK := schema_assert( RootConfigFixedWriteAdmits(
+CPP_WREF_VALUE_SABOTAGE := (void) ( /* SABOTAGED: no value write check */ 1 || RootConfigFixedWriteAdmits(
 define conformance-negative-control-cpp-wref
 	@rm -rf build/conformance-negative-cpp-$(1) && mkdir -p build/conformance-negative-cpp-$(1)
 	@cp -R build/tables-generated build/conformance-negative-cpp-$(1)/generated
 	@files=$$(grep -rlF '$(2)' build/conformance-negative-cpp-$(1)/generated); \
 		[ -n "$$files" ] || { echo "NEGATIVE CONTROL FAILED: the $(1) check matches no generated line"; exit 1; }; \
-		sed -i 's@$(2)@$(3)@g' $$files
+		sed -i.bak 's@$(2)@$(3)@g' $$files && for f in $$files; do rm -f "$$f.bak"; done
 	@grep -rqF '$(4)' build/conformance-negative-cpp-$(1)/generated || \
 		{ echo "NEGATIVE CONTROL FAILED: the $(1) check did not change"; exit 1; }
 	@$(MAKE) $(SERIALIZE_RUNTIME)/serialize.h
@@ -477,7 +484,7 @@ define conformance-negative-control-cpp-wref
 		echo "NEGATIVE CONTROL FAILED: the C++ $(5) writer without its $(1) check left the harness green"; \
 		cat build/conformance-negative-cpp-$(1)/log; exit 1; \
 	fi
-	@grep -Eq '^$(5) +FAIL ' build/conformance-negative-cpp-$(1)/log || \
+	@grep -q '^  cpp / $(5): ' build/conformance-negative-cpp-$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on $(5)"; \
 		  cat build/conformance-negative-cpp-$(1)/log; exit 1; }
 	@grep -Eq '^$(6) +pass ' build/conformance-negative-cpp-$(1)/log || \
@@ -489,7 +496,7 @@ endef
 
 .PHONY: conformance-negative-control-cpp-write-refusal
 conformance-negative-control-cpp-write-refusal: build/conformance-harness build/tables-generated/.stamp
-	$(call conformance-negative-control-cpp-wref,write-refusal,if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; },if ( false ) { return false; },SABOTAGED: no variable length check,write-refusal,wire)
+	$(call conformance-negative-control-cpp-wref,write-refusal,$(CPP_WREF_VALUE_CHECK),$(CPP_WREF_VALUE_SABOTAGE),SABOTAGED: no value write check,write-refusal,wire)
 
 .PHONY: conformance-negative-control-cpp-write-refusal-fixed
 conformance-negative-control-cpp-write-refusal-fixed: build/conformance-harness build/tables-generated/.stamp
@@ -497,4 +504,46 @@ conformance-negative-control-cpp-write-refusal-fixed: build/conformance-harness 
 
 .PHONY: conformance-negative-control-cpp-write-refusal-message
 conformance-negative-control-cpp-write-refusal-message: build/conformance-harness build/tables-generated/.stamp
-	$(call conformance-negative-control-cpp-wref,write-refusal-message,if ( value.sku_length < 0 || value.sku_length > 32 ) { return false; },if ( false ) { return false; },SABOTAGED: no message length check,write-refusal-message,message)
+	$(call conformance-negative-control-cpp-wref,write-refusal-message,if ( value.sku_length < 0 || value.sku_length > 32 ) { return false; },if ( false ) { return false; } /* SABOTAGED: no message length check */,SABOTAGED: no message length check,write-refusal-message,message)
+
+# SPEC §5.1 row 10 on the packet Write: a compressed float is checked finite and
+# inside [min, max] before quantizing, by this leg's debug assert. The shared
+# cases in test/packet-write-cfloat name each refused value and each lawful
+# twin; every case runs in a child because the refusal aborts.
+PACKET_WRITE_CFLOAT_CPP_DIR := build/packet-write-cfloat/cpp
+
+$(PACKET_WRITE_CFLOAT_CPP_DIR)/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/cpp.mk
+	@mkdir -p $(PACKET_WRITE_CFLOAT_CPP_DIR)
+	./bin/schema generate --lang cpp --out $(PACKET_WRITE_CFLOAT_CPP_DIR) test/packet-write-cfloat/CFloat.schema
+	@touch $@
+
+build/schema_test_packet_write_cfloat_cpp: $(PACKET_WRITE_CFLOAT_CPP_DIR)/.stamp test/packet-write-cfloat/cpp/main.cpp $(SERIALIZE)/serialize.h make/cpp.mk
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -I$(PACKET_WRITE_CFLOAT_CPP_DIR) test/packet-write-cfloat/cpp/main.cpp -o $@
+
+.PHONY: packet-write-cfloat-cpp
+packet-write-cfloat-cpp: build/schema_test_packet_write_cfloat_cpp
+	./build/schema_test_packet_write_cfloat_cpp test/packet-write-cfloat/cases.txt
+
+PACKET_WRITE_CFLOAT_CPP_NEGATIVE := build/packet-write-cfloat/cpp-negative
+
+.PHONY: packet-write-cfloat-cpp-negative-control
+packet-write-cfloat-cpp-negative-control: packet-write-cfloat-cpp
+	@rm -rf $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE) && mkdir -p $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/generated
+	go run ./tools/sabotage -name packet-write-cfloat-cpp-range-assert \
+		-out $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/functions.gotext internal/codegen/cpp/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/functions.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/overlay.json
+	go build -overlay $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/overlay.json -o $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/schema ./cmd/schema
+	$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/schema generate --lang cpp --out $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/generated test/packet-write-cfloat/CFloat.schema
+	$(CXX) $(CXXFLAGS) -I$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/generated test/packet-write-cfloat/cpp/main.cpp -o $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/driver
+	@if ./$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/driver test/packet-write-cfloat/cases.txt > $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the compressed-float write passed without its range assert"; \
+		cat $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log; exit 1; fi
+	@grep -q '^FAILED: above-max: write was not refused (debug assert)$$' $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the C++ writer went red, but not on the range assert"; \
+		  cat $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log; exit 1; }
+	@grep -m1 '^FAILED:' $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log
+	@echo "negative control: removing the compressed-float range assert turns the C++ packet write RED"
+
+test: packet-write-cfloat-cpp

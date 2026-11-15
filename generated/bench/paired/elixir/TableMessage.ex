@@ -181,8 +181,10 @@ defmodule Bench.TableMessage do
     size = byte_size(data)
     count = :binary.decode_unsigned(binary_part(data, size - 8, 8), :little)
 
+    # §3, THE DISTINCTNESS CHECK: an entry count above 4096 is malformed
+    # whatever the buffer would hold
     cond do
-      count > div(size - 9, 8) ->
+      count > 4096 or count > div(size - 9, 8) ->
         {:error, :malformed}
 
       true ->
@@ -551,7 +553,17 @@ defmodule Bench.TableMessage do
                   if kind >= 18 do
                     case rest2 do
                       <<lo::little-unsigned-64, hi::little-unsigned-64, rest3::binary>> ->
-                        {:ok, %{kind: kind, packing: 1, bits: n, base: hi <<< 64 ||| lo}, rest3}
+                        # A signed kind's sixteen-byte base is two's complement
+                        # (docs/SPEC-TABLES.md §3.3): int128 and the signed
+                        # fixed-point widths announce a base below zero.
+                        base = hi <<< 64 ||| lo
+
+                        base =
+                          if kind in [18, 20, 21, 22, 23, 24],
+                            do: sign_extend(base, 128),
+                            else: base
+
+                        {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest3}
 
                       _ ->
                         :error
@@ -748,6 +760,7 @@ defmodule Bench.TableMessage do
   catch
     # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
     :non_finite_float -> {:error, :non_finite_float}
+    :invalid_value -> {:error, :invalid_value}
   end
 
   def measure_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -768,6 +781,7 @@ defmodule Bench.TableMessage do
     end
   catch
     :non_finite_float -> {:error, :non_finite_float}
+    :invalid_value -> {:error, :invalid_value}
   end
 
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -855,6 +869,7 @@ defmodule Bench.TableMessage do
   defp encode_fields(vocab, [{ref, value} | rest], acc) do
     case entry_at(vocab, ref) do
       {:ok, entry} ->
+        check_field(vocab, entry, value)
         acc2 = put_bits(acc, ref, vocab.ref_bits)
 
         case encode_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), value, acc2) do
@@ -870,11 +885,12 @@ defmodule Bench.TableMessage do
   defp encode_value(_vocab, 0, _shape, _elem, _value, acc), do: {:ok, acc}
   defp encode_value(_vocab, 32, _shape, _elem, _value, acc), do: {:ok, acc}
 
-  defp encode_value(_vocab, 1, _shape, _elem, value, acc), do: {:ok, put_bits(acc, value, 1)}
+  defp encode_value(_vocab, 1, _shape, _elem, value, acc) when value in [0, 1],
+    do: {:ok, put_bits(acc, value, 1)}
 
   defp encode_value(_vocab, kind, shape, _elem, value, acc)
        when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 36],
-       do: {:ok, encode_scalar(kind, shape, value, acc)}
+       do: encode_scalar(kind, shape, value, acc)
 
   defp encode_value(_vocab, 10, shape, _elem, value, acc), do: encode_float(shape, value, acc)
 
@@ -890,36 +906,78 @@ defmodule Bench.TableMessage do
 
   defp encode_value(vocab, 15, _shape, _elem, value, acc), do: encode_union(vocab, value, acc)
 
-  defp encode_value(vocab, 30, _shape, _elem, value, acc),
-    do: {:ok, put_bits(acc, value, vocab.ref_bits)}
+  defp encode_value(vocab, 16, shape, elem, value, acc),
+    do: encode_keyed(vocab, shape, elem, value, acc)
+
+  defp encode_value(vocab, 30, _shape, _elem, value, acc) do
+    if enum_ref?(vocab, value), do: {:ok, put_bits(acc, value, vocab.ref_bits)}, else: :error
+  end
 
   defp encode_value(_vocab, _kind, _shape, _elem, _value, _acc), do: :error
 
-  defp encode_scalar(kind, shape, value, acc) do
+  # A SCALAR THE SHAPE CANNOT CARRY IS REFUSED, NEVER MASKED (docs/SPEC.md §5.1,
+  # docs/SPEC-TABLES.md §3.3): a ranged value rides as value - base in its
+  # bits, so it must lie in [base, base + 2^bits - 1]; an unranged integer rides
+  # at its storage width, so it must lie in that width's signed or unsigned
+  # range, the same domain read_scalar returns.
+  defp encode_scalar(kind, shape, value, acc) when is_integer(value) do
     bits = scalar_bits(kind, shape)
 
     raw =
       case shape do
         %{packing: 1, base: base} -> value - base
-        _ -> mask_bits(value, bits)
+        _ -> if kind in [2, 3, 4, 5, 18, 36], do: value + (1 <<< (bits - 1)), else: value
       end
 
-    put_bits(acc, raw, bits)
+    if raw >= 0 and raw <= bit_mask(bits) do
+      {:ok, put_bits(acc, scalar_raw(shape, value, raw, bits), bits)}
+    else
+      :error
+    end
   end
+
+  defp encode_scalar(_kind, _shape, _value, _acc), do: :error
+
+  defp scalar_raw(%{packing: 1}, _value, raw, _bits), do: raw
+  defp scalar_raw(_shape, value, _raw, bits), do: mask_bits(value, bits)
+
+  # An enum value is the zero reference or a reference to a name entry: the
+  # references read_enum accepts and no other.
+  defp enum_ref?(_vocab, 0), do: true
+
+  defp enum_ref?(vocab, ref) when is_integer(ref) do
+    case entry_at(vocab, ref) do
+      {:ok, entry} -> entry.kind == 0 and entry.id < 0xFFFFFFFFFFFFFFFD
+      :error -> false
+    end
+  end
+
+  defp enum_ref?(_vocab, _ref), do: false
 
   defp encode_float(%{packing: 0}, value, acc),
     do: {:ok, put_bits(acc, f32_to_bits(value), 32)}
 
   defp encode_float(_shape, _value, _acc), do: :error
 
+  # A text writes only what its entry announces, in every build (docs/SPEC.md
+  # §5.1 rows 4 and 8): well-formed UTF-8, no zero byte, and at most the
+  # entry's max bytes, so its length fits the count and frames what follows.
+  # Anything else refuses the batch and nothing is written.
   defp encode_string(shape, value, acc) do
-    n = byte_size(value)
-    acc2 = put_bits(acc, n, bit_length(shape.max))
-    {:ok, put_bytes(align_write(acc2), value)}
+    if is_binary(value) and byte_size(value) <= shape.max and String.valid?(value) and
+         :binary.match(value, <<0>>) == :nomatch do
+      acc2 = put_bits(acc, byte_size(value), bit_length(shape.max))
+      {:ok, put_bytes(align_write(acc2), value)}
+    else
+      :error
+    end
   end
 
   defp encode_array(vocab, shape, elem, value, acc) do
+    # a count off the announced shape's min..max refuses and is never masked
+    # into the count's width (docs/SPEC.md §5.1, row 3)
     count = length(value)
+    check(count >= shape.min and count <= shape.max)
     acc2 = put_bits(acc, count - shape.min, bit_length(shape.max - shape.min))
     acc3 = if elem.kind == 6, do: align_write(acc2), else: acc2
     encode_elements(vocab, elem, value, acc3)
@@ -934,6 +992,40 @@ defmodule Bench.TableMessage do
     end
   end
 
+  # An enum-keyed array (docs/SPEC-TABLES.md §3.2, §3.3): the present-slot
+  # count at bits_required(0, slots), then per slot a KEY REFERENCE and the
+  # element. A count past the announced slots, a key that names no kind-0 entry
+  # (a variant name), and a key that names one twice each refuse the batch in
+  # every build (docs/SPEC-TABLES.md §3.2, §3.3, §5.1). No align: a keyed body
+  # never aligns, whatever its element kind.
+  defp encode_keyed(vocab, shape, elem, value, acc) do
+    count = length(value)
+    check(count <= shape.max)
+    acc2 = put_bits(acc, count, bit_length(shape.max))
+    encode_keyed_slots(vocab, elem, value, acc2, MapSet.new())
+  end
+
+  defp encode_keyed_slots(_vocab, _elem, [], acc, _seen), do: {:ok, acc}
+
+  defp encode_keyed_slots(vocab, elem, [{key_ref, value} | rest], acc, seen) do
+    case entry_at(vocab, key_ref) do
+      {:ok, entry} ->
+        check(
+          entry.kind == 0 and entry.id < 0xFFFFFFFFFFFFFFFD and not MapSet.member?(seen, entry.id)
+        )
+
+        acc2 = put_bits(acc, key_ref, vocab.ref_bits)
+
+        case encode_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), value, acc2) do
+          {:ok, acc3} -> encode_keyed_slots(vocab, elem, rest, acc3, MapSet.put(seen, entry.id))
+          :error -> :error
+        end
+
+      :error ->
+        :error
+    end
+  end
+
   defp encode_union(vocab, :none, acc), do: {:ok, put_bits(acc, 0, vocab.ref_bits)}
 
   defp encode_union(vocab, {ref, value}, acc) do
@@ -941,12 +1033,94 @@ defmodule Bench.TableMessage do
 
     case entry_at(vocab, ref) do
       {:ok, entry} ->
+        check_field(vocab, entry, value)
         encode_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), value, acc2)
 
       :error ->
         :error
     end
   end
+
+  # THE WRITE CONTRACT (docs/SPEC.md §5.1). Elixir has no compile-out assert,
+  # so save_messages and measure_messages refuse, in every build, a value its
+  # own declaration does not admit: an integer off its declared range or past
+  # its storage (an integer array's elements too), a count off its shape, a
+  # text past its bound, ill-formed or holding a zero byte, an enum reference
+  # that names no member and a union reference that names no arm. Nothing is
+  # masked into the width. The rules are this unit's own declarations, emitted
+  # by the compiler as write_rule_rows/0 and keyed by the {id, kind} a
+  # vocabulary entry carries; a field no declaration of this unit names
+  # carries no rule.
+  defp check_field(vocab, entry, value) do
+    case Map.get(write_rules(), {entry.id, entry.kind}) do
+      %{min: lo, max: hi} ->
+        check(is_integer(value) and value >= lo and value <= hi)
+
+      %{each_min: lo, each_max: hi} ->
+        check(is_list(value) and Enum.all?(value, &(is_integer(&1) and &1 >= lo and &1 <= hi)))
+
+      %{keyed_each_min: lo, keyed_each_max: hi} ->
+        check(
+          is_list(value) and
+            Enum.all?(
+              value,
+              &(is_tuple(&1) and is_integer(elem(&1, 1)) and elem(&1, 1) >= lo and
+                  elem(&1, 1) <= hi)
+            )
+        )
+
+      %{text: max} ->
+        check(is_binary(value) and byte_size(value) <= max and text_ok?(value))
+
+      %{member: members} ->
+        check(named?(vocab, members, value))
+
+      %{arm: arms} ->
+        check(value == :none or (is_tuple(value) and named?(vocab, arms, elem(value, 0))))
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp check(true), do: :ok
+  defp check(false), do: throw(:invalid_value)
+
+  defp text_ok?(text), do: String.valid?(text) and :binary.match(text, <<0>>) == :nomatch
+
+  # an enum rides as the reference of its member's name, zero being None; a
+  # union as the reference of its arm
+  defp named?(_vocab, _ids, 0), do: true
+
+  defp named?(vocab, ids, ref) when is_integer(ref) do
+    case entry_at(vocab, ref) do
+      {:ok, entry} -> MapSet.member?(ids, entry.id)
+      :error -> false
+    end
+  end
+
+  defp named?(_vocab, _ids, _ref), do: false
+
+  defp write_rules do
+    case :persistent_term.get({__MODULE__, :write_rules}, nil) do
+      nil ->
+        rules =
+          Enum.reduce(write_rule_rows(), %{}, fn {id, kind, what, v}, acc ->
+            Map.update(acc, {id, kind}, add_rule(%{}, what, v), &add_rule(&1, what, v))
+          end)
+
+        :persistent_term.put({__MODULE__, :write_rules}, rules)
+        rules
+
+      rules ->
+        rules
+    end
+  end
+
+  defp add_rule(rule, what, v) when what in [:member, :arm],
+    do: Map.update(rule, what, MapSet.new([v]), &MapSet.put(&1, v))
+
+  defp add_rule(rule, what, v), do: Map.put(rule, what, v)
 
   # A byte run appended whole: the writer must be at a byte boundary, which the
   # align that precedes a string or a bytes array guarantees.
@@ -966,27 +1140,42 @@ defmodule Bench.TableMessage do
   defp read_bodies(_vocab, r, 0, acc), do: {:ok, Enum.reverse(acc), r}
 
   defp read_bodies(vocab, r, n, acc) do
-    case read_body(vocab, r, [], 0) do
+    case read_body(vocab, r, [], MapSet.new(), 0) do
       {:ok, body, rest} -> read_bodies(vocab, rest, n - 1, [body | acc])
       :malformed -> {:malformed, length(acc), Enum.reverse(acc)}
     end
   end
 
-  defp read_body(_vocab, _r, _acc, depth) when depth > 128, do: :malformed
+  defp read_body(_vocab, _r, _acc, _seen, depth) when depth > 128, do: :malformed
 
-  defp read_body(vocab, r, acc, depth) do
+  defp read_body(vocab, r, acc, seen, depth) do
     case get_bits(r, vocab.ref_bits) do
       {:ok, 0, rest} ->
         {:ok, Enum.reverse(acc), rest}
 
       {:ok, ref, rest} ->
+        # A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or not: the
+        # ENTRY's id, not the position that named it, is the field's identity
         case entry_at(vocab, ref) do
           {:ok, entry} when entry.id < 0xFFFFFFFFFFFFFFFD ->
             elem = Map.get(entry, :element)
 
-            case read_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
-              {:ok, value, rest2} -> read_body(vocab, rest2, [{ref, value} | acc], depth)
-              :malformed -> :malformed
+            if MapSet.member?(seen, entry.id) do
+              :malformed
+            else
+              case read_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
+                {:ok, value, rest2} ->
+                  read_body(
+                    vocab,
+                    rest2,
+                    [{ref, value} | acc],
+                    MapSet.put(seen, entry.id),
+                    depth
+                  )
+
+                :malformed ->
+                  :malformed
+              end
             end
 
           _ ->
@@ -1000,12 +1189,16 @@ defmodule Bench.TableMessage do
 
   defp read_value(_vocab, _kind, _shape, _elem, _r, depth) when depth > 128, do: :malformed
 
-  defp read_value(vocab, 13, _shape, _elem, r, depth), do: read_body(vocab, r, [], depth + 1)
+  defp read_value(vocab, 13, _shape, _elem, r, depth),
+    do: read_body(vocab, r, [], MapSet.new(), depth + 1)
 
   defp read_value(vocab, 14, shape, elem, r, depth),
     do: read_array(vocab, shape, elem, r, depth)
 
   defp read_value(vocab, 15, _shape, _elem, r, depth), do: read_union(vocab, r, depth)
+
+  defp read_value(vocab, 16, shape, elem, r, depth),
+    do: read_keyed(vocab, shape, elem, r, depth)
 
   defp read_value(vocab, kind, shape, elem, r, _depth),
     do: read_value(vocab, kind, shape, elem, r)
@@ -1038,8 +1231,14 @@ defmodule Bench.TableMessage do
     n = scalar_bits(kind, shape)
 
     case get_bits(r, n) do
-      {:ok, raw, rest} -> {:ok, scalar_value(kind, shape, raw), rest}
-      :error -> :malformed
+      {:ok, raw, rest} ->
+        case scalar_value(kind, shape, raw) do
+          :malformed -> :malformed
+          value -> {:ok, value, rest}
+        end
+
+      :error ->
+        :malformed
     end
   end
 
@@ -1050,23 +1249,109 @@ defmodule Bench.TableMessage do
     end
   end
 
+  # A QUANTIZED INDEX ABOVE ITS COUNT IS DAMAGE (§3.3, SPEC.md §4.3), a
+  # skipped field's too: the width spells such an index whenever the count is
+  # not one less than a power of two, and the value it names is held to the
+  # finite rule a raw payload is held to.
+  defp read_float(%{packing: 2} = shape, r) do
+    {delta, count} = quant_facts(shape)
+
+    case get_bits(r, bit_length(count)) do
+      {:ok, index, rest} when index <= count ->
+        bits = dequantize_bits(index, shape.qmin, delta, count)
+
+        if (bits >>> 23 &&& 0xFF) == 0xFF do
+          :malformed
+        else
+          <<v::little-float-32>> = <<bits::little-32>>
+          {:ok, v, rest}
+        end
+
+      _ ->
+        :malformed
+    end
+  end
+
   defp read_float(_shape, _r), do: :malformed
 
+  # The step count and delta derive from the announced triple exactly as
+  # ir.TableMessageQuantization derives them, in float32.
+  defp quant_facts(%{qmin: lo, qmax: hi, qres: res}) do
+    delta = round_f32(hi - lo)
+    values = round_f32(delta / res)
+
+    values =
+      cond do
+        values == :nonfinite -> 1.0
+        not (values >= 1) -> 1.0
+        values > 4_294_967_040.0 -> 4_294_967_040.0
+        true -> values
+      end
+
+    {delta, trunc(Float.ceil(values))}
+  end
+
+  # ILL-FORMED TEXT IS DAMAGE, a skipped field's too (§3.3, §4): the bytes
+  # number at most the declared max and are well-formed UTF-8 with no NUL, or
+  # the batch refuses
   defp read_string(shape, r) do
     with {:ok, n, rest} <- get_bits(r, bit_length(shape.max)),
          {:ok, rest2} <- align(rest),
-         {:ok, bytes, rest3} <- take_bytes(rest2, n) do
+         {:ok, bytes, rest3} <- take_bytes(rest2, n),
+         true <- n <= shape.max,
+         true <- text_ok?(bytes) do
       {:ok, bytes, rest3}
     else
       _ -> :malformed
     end
   end
 
+  # THE COUNT'S BITS CAN SPELL MORE THAN max - min (§3.3), so a count above
+  # the announced maximum is damage, a skipped field's too.
   defp read_array(vocab, shape, elem, r, depth) do
     with {:ok, offset, rest} <- get_bits(r, bit_length(shape.max - shape.min)),
+         n = shape.min + offset,
+         true <- n <= shape.max,
          {:ok, rest2} <- maybe_align(elem, rest) do
       next_depth = elem_depth(elem, depth)
-      read_elements(vocab, shape, elem, shape.min + offset, rest2, [], next_depth)
+      read_elements(vocab, shape, elem, n, rest2, [], next_depth)
+    else
+      _ -> :malformed
+    end
+  end
+
+  # AN ENUM-KEYED ARRAY (§3.2): the number of present slots, then one
+  # (key reference, element) pair per slot. A key that names no declared
+  # no-payload entry, and one that names the same entry twice, is damage
+  # (§3.3), a skipped field's too.
+  defp read_keyed(vocab, shape, elem, r, depth) do
+    case get_bits(r, bit_length(shape.max)) do
+      {:ok, n, rest} when n <= shape.max ->
+        read_keyed_pairs(vocab, elem, n, rest, [], MapSet.new(), elem_depth(elem, depth))
+
+      _ ->
+        :malformed
+    end
+  end
+
+  defp read_keyed_pairs(_vocab, _elem, 0, r, acc, _seen, _depth),
+    do: {:ok, Enum.reverse(acc), r}
+
+  defp read_keyed_pairs(vocab, elem, n, r, acc, seen, depth) do
+    with {:ok, ref, rest} <- get_bits(r, vocab.ref_bits),
+         {:ok, entry} <- entry_at(vocab, ref),
+         true <- entry.kind == 0,
+         true <- entry.id < 0xFFFFFFFFFFFFFFFD,
+         false <- MapSet.member?(seen, entry.id) do
+      seen = MapSet.put(seen, entry.id)
+
+      case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), rest, depth) do
+        {:ok, value, rest2} ->
+          read_keyed_pairs(vocab, elem, n - 1, rest2, [{ref, value} | acc], seen, depth)
+
+        :malformed ->
+          :malformed
+      end
     else
       _ -> :malformed
     end
@@ -1083,15 +1368,19 @@ defmodule Bench.TableMessage do
   # A zero-width element leaves the cursor where it stood: kind 0, kind 32, a
   # ranged scalar whose bit width is 0, or a nested run of those. Looping on
   # the count would allocate a list in proportion to the announcement and
-  # consume no input. This reader returns the list, so zero_width_run holds an
-  # unbounded list (shape.max == 0xFFFFFFFF, ir.TableMessageListMax) to the
-  # bits the batch still holds (internal/tablewire/messagedecode.go) before any
-  # cell is allocated. A fixed or bounded array's count is a declared capacity,
-  # not a wire claim, so it is materialized without that limit.
+  # consume no input. This reader returns the list, so zero_width_run holds
+  # every fixed-width zero run to the bits the batch still holds
+  # (internal/tablewire/messagedecode.go) before any cell is allocated. A
+  # WALKED element that consumes no bits is damage, even where the remaining
+  # count could fit in the batch's padding.
   defp read_elements(vocab, shape, elem, n, r, acc, depth) when is_map(elem) and n > 0 do
     case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), r, depth) do
       {:ok, v, ^r} ->
-        zero_width_run(vocab, shape, n, r, acc, v)
+        if element_run_bits(elem) < 0 do
+          :malformed
+        else
+          zero_width_run(vocab, shape, n, r, acc, v)
+        end
 
       {:ok, v, rest} ->
         read_elements(vocab, shape, elem, n - 1, rest, [v | acc], depth)
@@ -1103,26 +1392,95 @@ defmodule Bench.TableMessage do
 
   defp read_elements(_vocab, _shape, _elem, n, _r, _acc, _depth) when n > 0, do: :malformed
 
-  defp zero_width_run(_vocab, shape, n, r, acc, v) do
-    # A fixed or bounded array (shape.max < 0xFFFFFFFF) declares its count in
-    # the schema, so its elements are legitimate required capacity regardless
-    # of the vocabulary's byte budget (vocab.max_bytes bounds the announcement,
-    # not an element count) or the bits the batch still holds; a valid
-    # last-field arrangement must not depend on following payload or padding.
-    # An unbounded array (shape.max == 0xFFFFFFFF, ir.TableMessageListMax) has
-    # no declared bound and is held to the bits left in the batch
-    # (internal/tablewire/messagedecode.go): an element costs at least one bit
-    # (floor 1), so a count the batch cannot back is refused before any cell is
-    # allocated. The uint32 ceiling on the announced shape is untouched.
-    if shape.max == 0xFFFFFFFF and n > bits_left(r) do
+  defp zero_width_run(_vocab, _shape, n, r, acc, v) do
+    # The shape is the writer's announcement, whatever its minimum and maximum:
+    # a run the batch's bits cannot back is damage
+    # (internal/tablewire/messagedecode.go). A run the bits back is
+    # materialized, and the uint32 ceiling on the announced shape is untouched.
+    if n > bits_left(r) do
       :malformed
     else
       {:ok, Enum.reverse(acc, List.duplicate(v, n)), r}
     end
   end
 
+  # THE ELEMENT'S FIXED WIDTH WHERE IT IS ONE THIS READER CAN MULTIPLY, and -1
+  # where it must be walked (§3.3): a table, union, enum, pointer or nested
+  # array resolves something, a string finds a length, and a float or a
+  # ranged/quantized scalar carries a value condition the wire decides. A fixed
+  # width is stepped by its width, including zero, and is not walked; a walked
+  # element must move the cursor on every step.
+  defp element_run_bits(%{kind: kind, shape: shape}) do
+    cond do
+      kind in [0, 32] ->
+        0
+
+      kind in [10, 11, 12, 13, 14, 15, 16, 17, 30] ->
+        -1
+
+      kind in [1, 2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 36] ->
+        width = scalar_bits(kind, shape)
+        if width > 0 and shape.packing in [1, 2], do: -1, else: width
+
+      true ->
+        -1
+    end
+  end
+
   defp bits_left({_int, off, total}) when total > off, do: total - off
   defp bits_left({_int, _off, _total}), do: 0
+
+  # An enum-keyed array (docs/SPEC-TABLES.md §3.2, §3.3): the present-slot
+  # count at bits_required(0, slots), then per slot a KEY REFERENCE and the
+  # element, read in wire order. A key reference of zero, one that names no
+  # kind-0 entry, one past the announced slots, and one that appears twice are
+  # each damage (docs/SPEC-TABLES.md §3.2, §3.3): the batch is discarded. No
+  # align: a keyed body never aligns, whatever its element kind.
+  defp read_keyed(vocab, shape, elem, r, depth) do
+    with {:ok, n, rest} <- get_bits(r, bit_length(shape.max)),
+         true <- n <= shape.max do
+      next_depth = elem_depth(elem, depth)
+      read_keyed_slots(vocab, elem, n, rest, [], next_depth, MapSet.new())
+    else
+      _ -> :malformed
+    end
+  end
+
+  defp read_keyed_slots(_vocab, _elem, 0, r, acc, _depth, _seen), do: {:ok, Enum.reverse(acc), r}
+
+  defp read_keyed_slots(vocab, elem, n, r, acc, depth, seen) do
+    case get_bits(r, vocab.ref_bits) do
+      {:ok, key_ref, rest} ->
+        case entry_at(vocab, key_ref) do
+          {:ok, entry} when entry.kind == 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
+            if MapSet.member?(seen, entry.id) do
+              :malformed
+            else
+              case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), rest, depth) do
+                {:ok, value, rest2} ->
+                  read_keyed_slots(
+                    vocab,
+                    elem,
+                    n - 1,
+                    rest2,
+                    [{key_ref, value} | acc],
+                    depth,
+                    MapSet.put(seen, entry.id)
+                  )
+
+                :malformed ->
+                  :malformed
+              end
+            end
+
+          _ ->
+            :malformed
+        end
+
+      :error ->
+        :malformed
+    end
+  end
 
   defp read_union(vocab, r, depth) do
     case get_bits(r, vocab.ref_bits) do
@@ -1175,12 +1533,27 @@ defmodule Bench.TableMessage do
 
   defp scalar_bits(kind, _shape), do: kind_bits(kind)
 
-  defp scalar_value(_kind, %{packing: 1, base: base}, raw), do: base + raw
+  # A RANGED VALUE'S OFFSET CAN SPELL A VALUE PAST ITS KIND (§3.3), a skipped
+  # field's too: base + offset must land in the domain the kind declares.
+  defp scalar_value(kind, %{packing: 1, base: base}, raw) do
+    value = base + raw
+    if kind_holds?(kind, value), do: value, else: :malformed
+  end
 
   defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18, 36],
     do: sign_extend(raw, kind_bits(kind))
 
   defp scalar_value(_kind, _shape, raw), do: raw
+
+  defp kind_holds?(kind, value) when kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24, 36] do
+    bits = kind_bits(kind)
+    value >= -(1 <<< (bits - 1)) and value <= (1 <<< (bits - 1)) - 1
+  end
+
+  defp kind_holds?(kind, value) do
+    bits = kind_bits(kind)
+    bits > 0 and value >= 0 and value <= (1 <<< bits) - 1
+  end
 
   defp sign_extend(raw, bits) do
     if (raw >>> (bits - 1) &&& 1) == 1 do
@@ -1289,5 +1662,96 @@ defmodule Bench.TableMessage do
   defp f32_to_bits(f) do
     <<v::little-32>> = <<f::little-float-32>>
     if (v &&& 0x7F800000) == 0x7F800000, do: throw(:non_finite_float), else: v
+  end
+
+  # this unit's own write rules, one {id, kind, rule, value} row each
+  defp write_rule_rows do
+    [
+      {0x01FBC365B059B925, 4, :min, 0},
+      {0x01FBC365B059B925, 4, :max, 7},
+      {0x0DBE005C56697C3E, 4, :min, 0},
+      {0x0DBE005C56697C3E, 4, :max, 65_535},
+      {0x13A62F542CF8E86E, 12, :text, 15},
+      {0x23FCFD6678E36712, 7, :min, 0},
+      {0x23FCFD6678E36712, 7, :max, 4095},
+      {0x2E35DC5321AA5790, 15, :arm, 0x33732819300680AA},
+      {0x2E35DC5321AA5790, 15, :arm, 0x9FA3A41C86ECB765},
+      {0x2E35DC5321AA5790, 15, :arm, 0xF2A38D910B5B348B},
+      {0x3EEE6B51BE54FC85, 5, :min, -1_000_000_000_000},
+      {0x3EEE6B51BE54FC85, 5, :max, 1_000_000_000_000},
+      {0x52076675EC13A0C1, 4, :min, -512},
+      {0x52076675EC13A0C1, 4, :max, 511},
+      {0x53A9F665A90CC1B1, 7, :min, 0},
+      {0x53A9F665A90CC1B1, 7, :max, 511},
+      {0x560D6527CCD8515F, 8, :min, 0},
+      {0x560D6527CCD8515F, 8, :max, 16_777_215},
+      {0x5759CE7586BBB5A3, 14, :each_min, 0},
+      {0x5759CE7586BBB5A3, 14, :each_max, 255},
+      {0x6CEDE5B6EB60ECB4, 4, :min, -2048},
+      {0x6CEDE5B6EB60ECB4, 4, :max, 2047},
+      {0x6CEDE6B6EB60EE67, 4, :min, -2048},
+      {0x6CEDE6B6EB60EE67, 4, :max, 2047},
+      {0x6CEDE8B6EB60F1CD, 4, :min, -2048},
+      {0x6CEDE8B6EB60F1CD, 4, :max, 2047},
+      {0x6D7B98E2D095967E, 8, :min, 0},
+      {0x6D7B98E2D095967E, 8, :max, 4_294_967_295},
+      {0x73A94C71D60DC0D8, 9, :min, 0},
+      {0x73A94C71D60DC0D8, 9, :max, 18_446_744_073_709_551_615},
+      {0x78101AC0AA8CBCFE, 4, :min, 0},
+      {0x78101AC0AA8CBCFE, 4, :max, 15},
+      {0x7BBC035F7B6D0112, 9, :min, 0},
+      {0x7BBC035F7B6D0112, 9, :max, 281_474_976_710_655},
+      {0x7F6308BE8AB37FC0, 4, :min, 0},
+      {0x7F6308BE8AB37FC0, 4, :max, 4095},
+      {0x7F69D4B5288BA9CF, 4, :min, 0},
+      {0x7F69D4B5288BA9CF, 4, :max, 1000},
+      {0x80AB75F0866DBF65, 6, :min, 0},
+      {0x80AB75F0866DBF65, 6, :max, 255},
+      {0x8113FE7EA2B16969, 4, :min, 0},
+      {0x8113FE7EA2B16969, 4, :max, 255},
+      {0x9BAE0DA8B829EE03, 8, :min, 0},
+      {0x9BAE0DA8B829EE03, 8, :max, 4_294_967_295},
+      {0x9E7FD06D864FBD56, 7, :min, 0},
+      {0x9E7FD06D864FBD56, 7, :max, 1023},
+      {0xA0B610205F2C6E01, 30, :member, 0x011C7B49A7228F9D},
+      {0xA0B610205F2C6E01, 30, :member, 0x04DC16AEA8FF5276},
+      {0xA0B610205F2C6E01, 30, :member, 0x0CA8B41B00D755F6},
+      {0xA0B610205F2C6E01, 30, :member, 0x188BBB1783928A95},
+      {0xA0B610205F2C6E01, 30, :member, 0x20BADA21BC8CB334},
+      {0xA0B610205F2C6E01, 30, :member, 0x229D0447C3086A55},
+      {0xA0B610205F2C6E01, 30, :member, 0x2C3667B9C2F272F1},
+      {0xA0B610205F2C6E01, 30, :member, 0x2CC8282FB0DE8831},
+      {0xA0B610205F2C6E01, 30, :member, 0x35E53BC341129217},
+      {0xA0B610205F2C6E01, 30, :member, 0x89F7566E1123E15F},
+      {0xA0B610205F2C6E01, 30, :member, 0x8D7F25318B3B4469},
+      {0xA0B610205F2C6E01, 30, :member, 0x985FC819FAB21A4E},
+      {0xA0B610205F2C6E01, 30, :member, 0x9FBFEFA835DA8476},
+      {0xA0B610205F2C6E01, 30, :member, 0xA790EEE12766CF0C},
+      {0xA0B610205F2C6E01, 30, :member, 0xD9CD0DCC285B7816},
+      {0xA3348580461FAF16, 19, :min, 0},
+      {0xA3348580461FAF16, 19, :max, 340_282_366_920_938_463_463_374_607_431_768_211_455},
+      {0xA5013E9AD5CAEDA4, 4, :min, 0},
+      {0xA5013E9AD5CAEDA4, 4, :max, 3},
+      {0xAA38ACA481F528A8, 7, :min, 0},
+      {0xAA38ACA481F528A8, 7, :max, 65_535},
+      {0xB54D8E19798E16E8, 7, :min, 0},
+      {0xB54D8E19798E16E8, 7, :max, 511},
+      {0xB7BC9AC015A25050, 7, :min, 0},
+      {0xB7BC9AC015A25050, 7, :max, 4095},
+      {0xB7D7B5650A590B05, 9, :min, 0},
+      {0xB7D7B5650A590B05, 9, :max, 18_446_744_073_709_551_615},
+      {0xCB4B353576672DA8, 4, :min, -16_383},
+      {0xCB4B353576672DA8, 4, :max, 16_383},
+      {0xCB4B37357667310E, 4, :min, -16_383},
+      {0xCB4B37357667310E, 4, :max, 16_383},
+      {0xCB4B3835766732C1, 4, :min, -16_383},
+      {0xCB4B3835766732C1, 4, :max, 16_383},
+      {0xD61BDD7908AF2642, 18, :min, -1_267_650_600_228_229_401_496_703_205_376},
+      {0xD61BDD7908AF2642, 18, :max, 1_267_650_600_228_229_401_496_703_205_376},
+      {0xFBF1AC4D96EBD022, 7, :min, 0},
+      {0xFBF1AC4D96EBD022, 7, :max, 4095},
+      {0xFD29EE12A979CB69, 4, :min, 0},
+      {0xFD29EE12A979CB69, 4, :max, 255}
+    ]
   end
 end

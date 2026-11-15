@@ -194,7 +194,23 @@ func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind stri
 	}
 	if f.Type.Optional {
 		g.pf("%stable_cook_put(%s+%d,%s_present ? 1 : 0,1,order);\n", ind, at, pieces[len(pieces)-1].Offset-offset, src)
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
+			return
+		} // the slot is the extent writer's, and an absent one is already zero
+		// AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (docs/SPEC-TABLES.md §7.2;
+		// docs/rulings.json fixed-dead-bytes-are-zero): zero on write whatever
+		// the element's declared default is, so the payload is written only
+		// when the field is present.
+		g.pf("%sif(%s_present) {\n", ind, src)
+		g.cookFieldPayload(f, src, at, offset, ind+"    ", step)
+		g.pf("%s}\n", ind)
+		return
 	}
+	g.cookFieldPayload(f, src, at, offset, ind, step)
+}
+
+func (g *tableGen) cookFieldPayload(f *ir.Field, src, at string, offset int64, ind string, step *int) {
+	pieces := ir.FieldPieces(g.unit, f, offset)
 	if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 		return
 	} // zero until the extent writer places the array
@@ -202,7 +218,15 @@ func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind stri
 		*step++
 		i := fmt.Sprintf("cook_i%d", *step)
 		elem := sequenceElement(f)
-		g.pf("%s{ int32_t %s; for(%s=0;%s<%d;%s++) {\n", ind, i, i, i, f.ArrayBound, i)
+		// a counted array writes its live elements; a slot past the count is
+		// DEAD BYTES and stays the zeroed extent's zero, and a pointer stored
+		// there is never followed (docs/SPEC-TABLES.md §7.2;
+		// docs/rulings.json fixed-dead-bytes-are-zero)
+		count := fmt.Sprint(f.ArrayBound)
+		if f.Array == ir.ArrayCounted {
+			count = fmt.Sprintf("%s_count && %s<%d", src, i, f.ArrayBound)
+		}
+		g.pf("%s{ int32_t %s; for(%s=0;%s<%s;%s++) {\n", ind, i, i, i, count, i)
 		g.cookField(elem, src+"["+i+"]", fmt.Sprintf("%s+%s*%d", at, i, pieces[0].Size/f.ArrayBound), 0, ind+"    ", step)
 		g.pf("%s} }\n", ind)
 		if f.Array == ir.ArrayCounted {
@@ -315,13 +339,6 @@ func (g *tableGen) cookExtentField(f *ir.Field, guard, src, dst, ind string, ste
 		g.pf("%s{ int32_t %s; for(%s=0;%s<%s && %s<%d;%s++) {\n", ind, label, label, label, count, label, f.ArrayBound, label)
 		g.cookExtentField(elem, "", src+"["+label+"]", fmt.Sprintf("(%s!=NULL ? %s+%s*%d : NULL)", dst, dst, label, stride), ind+"    ", step)
 		g.pf("%s}\n", ind)
-		if f.Array == ir.ArrayCounted {
-			// A hidden container has no place in the region. Measure that
-			// slot independently and refuse even when its shape is invalid.
-			g.pf("%sfor(;%s<%d;%s++) { int64_t %s_hidden=0; int64_t * %s_saved_at=at; at=&%s_hidden;\n", ind, label, f.ArrayBound, label, label, label, label)
-			g.cookExtentField(elem, "", src+"["+label+"]", "((uint8_t *)NULL)", ind+"    ", step)
-			g.pf("%s    at=%s_saved_at; if(%s_hidden!=0) { return 0; }\n%s}\n", ind, label, label, ind)
-		}
 		g.pf("%s}\n", ind)
 	default:
 		switch ref := f.Type.Ref.(type) {

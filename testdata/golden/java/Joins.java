@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 package example;
 
@@ -93,11 +93,11 @@ public final class Joins {
         if (pad == 0) {
             return pos;
         }
-        final int next = pos + 8 - pad;
+        final long next = (long) pos + 8 - pad;
         if (next > numBits || (data[pos >>> 3] & 0xff) >>> pad != 0) {
             return -1;
         }
-        return next;
+        return (int) next;
     }
 
     // type ArmsAgree
@@ -148,6 +148,17 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARMS_AGREE_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
+        if (value.flag) {
+            assert value.a >= 0;
+            assert value.a <= 2047;
+        } else {
+            assert value.b >= 0;
+            assert value.b <= 2047;
+        }
+        assert value.tail >= 0;
+        assert value.tail <= 127;
         return true;
     }
 
@@ -188,7 +199,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmsAgreeBits(ArmsAgree value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -197,7 +211,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 24 > numBits) {
+        if ((long) bitsRead + 24 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -224,9 +238,21 @@ public final class Joins {
     }
 
     // readArmsAgree decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readArmsAgree(ArmsAgree value, byte[] data, int numBits) {
-        return readArmsAgreeBits(value, data, 0, numBits) >= 0;
+        final int end = readArmsAgreeBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ArmsDisagree
@@ -277,6 +303,17 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARMS_DISAGREE_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
+        if (value.flag) {
+            assert value.a >= 0;
+            assert value.a <= 2047;
+        } else {
+            assert value.b >= 0;
+            assert value.b <= 7;
+        }
+        assert value.tail >= 0;
+        assert value.tail <= 127;
         return true;
     }
 
@@ -318,7 +355,10 @@ public final class Joins {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmsDisagreeBits(
             ArmsDisagree value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -327,7 +367,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 6 > numBits) {
+        if ((long) bitsRead + 6 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -337,7 +377,7 @@ public final class Joins {
         bitsRead += 1;
         value.flag = v != 0;
         if (value.flag) {
-            if (bitsRead + 11 > numBits) {
+            if ((long) bitsRead + 11 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffL;
@@ -345,7 +385,7 @@ public final class Joins {
             value.a = v;
             value.b = 0;
         } else {
-            if (bitsRead + 3 > numBits) {
+            if ((long) bitsRead + 3 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -353,7 +393,7 @@ public final class Joins {
             value.b = v;
             value.a = 0;
         }
-        if (bitsRead + 7 > numBits) {
+        if ((long) bitsRead + 7 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
@@ -363,9 +403,21 @@ public final class Joins {
     }
 
     // readArmsDisagree decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readArmsDisagree(ArmsDisagree value, byte[] data, int numBits) {
-        return readArmsDisagreeBits(value, data, 0, numBits) >= 0;
+        final int end = readArmsDisagreeBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ArmEmpty
@@ -410,6 +462,14 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARM_EMPTY_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
+        if (value.flag) {
+            assert value.a >= 0;
+            assert value.a <= 524287;
+        }
+        assert value.tail >= 0;
+        assert value.tail <= 127;
         return true;
     }
 
@@ -447,7 +507,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmEmptyBits(ArmEmpty value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -456,7 +519,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 6 > numBits) {
+        if ((long) bitsRead + 6 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -466,7 +529,7 @@ public final class Joins {
         bitsRead += 1;
         value.flag = v != 0;
         if (value.flag) {
-            if (bitsRead + 19 > numBits) {
+            if ((long) bitsRead + 19 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffffL;
@@ -475,7 +538,7 @@ public final class Joins {
         } else {
             value.a = 0;
         }
-        if (bitsRead + 7 > numBits) {
+        if ((long) bitsRead + 7 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
@@ -485,9 +548,21 @@ public final class Joins {
     }
 
     // readArmEmpty decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readArmEmpty(ArmEmpty value, byte[] data, int numBits) {
-        return readArmEmptyBits(value, data, 0, numBits) >= 0;
+        final int end = readArmEmptyBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ArmsNested
@@ -550,6 +625,22 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARMS_NESTED_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 7;
+        if (value.outer) {
+            if (value.inner) {
+                assert value.x >= 0;
+                assert value.x <= 536870911;
+            } else {
+                assert value.y >= 0;
+                assert value.y <= 31;
+            }
+        } else {
+            assert value.z >= 0;
+            assert value.z <= 8191;
+        }
+        assert value.tail >= 0;
+        assert value.tail <= 63;
         return true;
     }
 
@@ -598,7 +689,10 @@ public final class Joins {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmsNestedBits(
             ArmsNested value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -607,7 +701,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 4 > numBits) {
+        if ((long) bitsRead + 4 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -617,14 +711,14 @@ public final class Joins {
         bitsRead += 1;
         value.outer = v != 0;
         if (value.outer) {
-            if (bitsRead + 1 > numBits) {
+            if ((long) bitsRead + 1 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
             bitsRead += 1;
             value.inner = v != 0;
             if (value.inner) {
-                if (bitsRead + 29 > numBits) {
+                if ((long) bitsRead + 29 > numBits) {
                     return -1;
                 }
                 v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffffffL;
@@ -632,7 +726,7 @@ public final class Joins {
                 value.x = v;
                 value.y = 0;
             } else {
-                if (bitsRead + 5 > numBits) {
+                if ((long) bitsRead + 5 > numBits) {
                     return -1;
                 }
                 v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -642,7 +736,7 @@ public final class Joins {
             }
             value.z = 0;
         } else {
-            if (bitsRead + 13 > numBits) {
+            if ((long) bitsRead + 13 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffL;
@@ -652,7 +746,7 @@ public final class Joins {
             value.x = 0;
             value.y = 0;
         }
-        if (bitsRead + 6 > numBits) {
+        if ((long) bitsRead + 6 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3fL;
@@ -662,9 +756,21 @@ public final class Joins {
     }
 
     // readArmsNested decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readArmsNested(ArmsNested value, byte[] data, int numBits) {
-        return readArmsNestedBits(value, data, 0, numBits) >= 0;
+        final int end = readArmsNestedBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ArmAlign
@@ -719,10 +825,17 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARM_ALIGN_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
         if (value.flag) {
             assert value.sLength >= 0;
             assert value.sLength <= 4;
+        } else {
+            assert value.b >= 0;
+            assert value.b <= 1023;
         }
+        assert value.tail >= 0;
+        assert value.tail <= 127;
         return true;
     }
 
@@ -771,7 +884,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmAlignBits(ArmAlign value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -780,7 +896,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 6 > numBits) {
+        if ((long) bitsRead + 6 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -790,7 +906,7 @@ public final class Joins {
         bitsRead += 1;
         value.flag = v != 0;
         if (value.flag) {
-            if (bitsRead + 3 > numBits) {
+            if ((long) bitsRead + 3 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -803,7 +919,7 @@ public final class Joins {
             if (bitsRead < 0) {
                 return -1;
             }
-            if (bitsRead + value.sLength * 8L > numBits) {
+            if ((long) bitsRead + value.sLength * 8L > numBits) {
                 return -1;
             }
             System.arraycopy(data, bitsRead >>> 3, value.s, 0, value.sLength);
@@ -841,7 +957,7 @@ public final class Joins {
             }
             value.b = 0;
         } else {
-            if (bitsRead + 10 > numBits) {
+            if ((long) bitsRead + 10 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffL;
@@ -850,7 +966,7 @@ public final class Joins {
             Arrays.fill(value.s, (byte) 0);
             value.sLength = 0;
         }
-        if (bitsRead + 7 > numBits) {
+        if ((long) bitsRead + 7 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
@@ -860,9 +976,21 @@ public final class Joins {
     }
 
     // readArmAlign decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readArmAlign(ArmAlign value, byte[] data, int numBits) {
-        return readArmAlignBits(value, data, 0, numBits) >= 0;
+        final int end = readArmAlignBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ArmArray
@@ -917,6 +1045,8 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARM_ARRAY_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
         if (value.flag) {
             assert value.itemsCount >= 0;
             assert value.itemsCount <= 3;
@@ -924,7 +1054,12 @@ public final class Joins {
                 assert value.items[i0] >= 0;
                 assert value.items[i0] <= 8191;
             }
+        } else {
+            assert value.b >= 0;
+            assert value.b <= 511;
         }
+        assert value.tail >= 0;
+        assert value.tail <= 127;
         return true;
     }
 
@@ -969,7 +1104,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmArrayBits(ArmArray value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -978,7 +1116,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 6 > numBits) {
+        if ((long) bitsRead + 6 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -988,13 +1126,13 @@ public final class Joins {
         bitsRead += 1;
         value.flag = v != 0;
         if (value.flag) {
-            if (bitsRead + 2 > numBits) {
+            if ((long) bitsRead + 2 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
             bitsRead += 2;
             value.itemsCount = (int) v;
-            if (bitsRead + value.itemsCount * 13L > numBits) {
+            if ((long) bitsRead + value.itemsCount * 13L > numBits) {
                 return -1;
             }
             for (int i0 = 0; i0 < value.itemsCount; i0++) {
@@ -1004,7 +1142,7 @@ public final class Joins {
             }
             value.b = 0;
         } else {
-            if (bitsRead + 9 > numBits) {
+            if ((long) bitsRead + 9 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffL;
@@ -1013,7 +1151,7 @@ public final class Joins {
             Arrays.fill(value.items, 0);
             value.itemsCount = 0;
         }
-        if (bitsRead + 7 > numBits) {
+        if ((long) bitsRead + 7 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
@@ -1023,9 +1161,21 @@ public final class Joins {
     }
 
     // readArmArray decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readArmArray(ArmArray value, byte[] data, int numBits) {
-        return readArmArrayBits(value, data, 0, numBits) >= 0;
+        final int end = readArmArrayBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type Narrow
@@ -1057,6 +1207,8 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + NARROW_MAX_BITS;
+        assert value.n >= 0;
+        assert value.n <= 7;
         return true;
     }
 
@@ -1086,7 +1238,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readNarrowBits(Narrow value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1095,7 +1250,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 3 > numBits) {
+        if ((long) bitsRead + 3 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -1105,9 +1260,21 @@ public final class Joins {
     }
 
     // readNarrow decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readNarrow(Narrow value, byte[] data, int numBits) {
-        return readNarrowBits(value, data, 0, numBits) >= 0;
+        final int end = readNarrowBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type Wide
@@ -1139,6 +1306,8 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + WIDE_MAX_BITS;
+        assert value.w >= 0;
+        assert value.w <= 137438953471L;
         return true;
     }
 
@@ -1170,7 +1339,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readWideBits(Wide value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1180,7 +1352,7 @@ public final class Joins {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 37 > numBits) {
+        if ((long) bitsRead + 37 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -1194,9 +1366,21 @@ public final class Joins {
     }
 
     // readWide decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readWide(Wide value, byte[] data, int numBits) {
-        return readWideBits(value, data, 0, numBits) >= 0;
+        final int end = readWideBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // UnevenType: union Uneven's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -1294,7 +1478,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readUnevenBits(Uneven value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1303,7 +1490,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -1326,9 +1513,21 @@ public final class Joins {
     }
 
     // readUneven decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readUneven(Uneven value, byte[] data, int numBits) {
-        return readUnevenBits(value, data, 0, numBits) >= 0;
+        final int end = readUnevenBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type HoldsUneven
@@ -1366,6 +1565,10 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + HOLDS_UNEVEN_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
+        assert value.tail >= 0;
+        assert value.tail <= 2047;
         return true;
     }
 
@@ -1401,7 +1604,10 @@ public final class Joins {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readHoldsUnevenBits(
             HoldsUneven value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1410,7 +1616,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 5 > numBits) {
+        if ((long) bitsRead + 5 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -1420,7 +1626,7 @@ public final class Joins {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 11 > numBits) {
+        if ((long) bitsRead + 11 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffL;
@@ -1430,9 +1636,21 @@ public final class Joins {
     }
 
     // readHoldsUneven decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readHoldsUneven(HoldsUneven value, byte[] data, int numBits) {
-        return readHoldsUnevenBits(value, data, 0, numBits) >= 0;
+        final int end = readHoldsUnevenBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type ArrUneven
@@ -1485,8 +1703,12 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + ARR_UNEVEN_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 3;
+        assert value.tail >= 0;
+        assert value.tail <= 7;
         return true;
     }
 
@@ -1525,7 +1747,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArrUnevenBits(ArrUneven value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1534,13 +1759,13 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 5 > numBits) {
+        if ((long) bitsRead + 5 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
         bitsRead += 5;
         value.lead = v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -1552,7 +1777,7 @@ public final class Joins {
                 return -1;
             }
         }
-        if (bitsRead + 3 > numBits) {
+        if ((long) bitsRead + 3 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -1562,9 +1787,21 @@ public final class Joins {
     }
 
     // readArrUneven decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readArrUneven(ArrUneven value, byte[] data, int numBits) {
-        return readArrUnevenBits(value, data, 0, numBits) >= 0;
+        final int end = readArrUnevenBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 
     // type RegainAfterAlign
@@ -1623,6 +1860,8 @@ public final class Joins {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + REGAIN_AFTER_ALIGN_MAX_BITS;
+        assert value.lead >= 0;
+        assert value.lead <= 31;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 3;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
@@ -1631,6 +1870,14 @@ public final class Joins {
         }
         assert value.sLength >= 0;
         assert value.sLength <= 4;
+        assert value.p >= 0;
+        assert value.p <= 4294967295L;
+        assert value.q >= 0;
+        assert value.q <= 536870911;
+        assert value.r >= 0;
+        assert value.r <= 524287;
+        assert value.tail >= 0;
+        assert value.tail <= 15;
         return true;
     }
 
@@ -1686,7 +1933,10 @@ public final class Joins {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readRegainAfterAlignBits(
             RegainAfterAlign value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1695,19 +1945,19 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 5 > numBits) {
+        if ((long) bitsRead + 5 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
         bitsRead += 5;
         value.lead = v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
         bitsRead += 2;
         value.itemsCount = (int) v;
-        if (bitsRead + value.itemsCount * 13L > numBits) {
+        if ((long) bitsRead + value.itemsCount * 13L > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
@@ -1715,7 +1965,7 @@ public final class Joins {
             bitsRead += 13;
             value.items[i0] = (int) v;
         }
-        if (bitsRead + 3 > numBits) {
+        if ((long) bitsRead + 3 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -1728,7 +1978,7 @@ public final class Joins {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + value.sLength * 8L > numBits) {
+        if ((long) bitsRead + value.sLength * 8L > numBits) {
             return -1;
         }
         System.arraycopy(data, bitsRead >>> 3, value.s, 0, value.sLength);
@@ -1764,7 +2014,7 @@ public final class Joins {
                 return -1; // an interior null is content the read refuses (SPEC §4.7)
             }
         }
-        if (bitsRead + 84 > numBits) {
+        if ((long) bitsRead + 84 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -1783,8 +2033,20 @@ public final class Joins {
     }
 
     // readRegainAfterAlign decodes value from the first numBits of data — the family read
-    // verdict: false refuses the wire.
+    // verdict: false refuses the wire. After the top-level object the packet's
+    // end is checked once: a whole byte left over, or nonzero unused bits in
+    // the final byte, refuses (SPEC §5, docs/PACKET-WIRE-ALGORITHM.md §3).
     public static boolean readRegainAfterAlign(RegainAfterAlign value, byte[] data, int numBits) {
-        return readRegainAfterAlignBits(value, data, 0, numBits) >= 0;
+        final int end = readRegainAfterAlignBits(value, data, 0, numBits);
+        if (end < 0) {
+            return false;
+        }
+        if ((((long) end + 7) >>> 3) != (((long) numBits + 7) >>> 3)) {
+            return false;
+        }
+        if ((end & 7) != 0 && (((data[end >>> 3] & 0xff) >>> (end & 7)) != 0)) {
+            return false;
+        }
+        return true;
     }
 }

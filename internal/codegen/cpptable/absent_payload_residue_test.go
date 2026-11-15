@@ -2,23 +2,25 @@ package cpptable
 
 // TestCppAbsentPayloadResidueNotCopied pins docs/SPEC-TABLES.md §3.4 on the
 // C++ fixed form: an optional's payload rides WHOLE whether or not it is
-// present, is ZERO on write when the flag is 0, and is IGNORED on read — an
-// absent optional reads as its DECLARED DEFAULT, never as the residue a peer
-// left under the flag.
+// present, is ZERO on write when the flag is 0, and every dead byte under the
+// flag is ZERO on read. A clean absent payload reads as its DECLARED DEFAULT; a
+// non-zero residue under the flag REFUSES the whole load and lands nothing.
 //
-// The probe saves an absent optional (so the writer lays the template's zeros
-// under the flag), stains the payload bytes on the wire with values a clean
-// record never carries, and reads the file through the generated strict
-// reader. The absent value must be Leaf.value's declared default (30) and its
-// text length must be 0. The same payload PRESENT must still land from the
-// wire, so the check discriminates on the flag and not on the writer never
-// having written a payload at all.
+// The probe saves a clean absent optional (so the writer lays the template's
+// zeros under the flag) and reads it: the absent value must be Leaf.value's
+// declared default (30) and its text length 0. It then stains the payload bytes
+// on the wire with values a clean record never carries, and the generated
+// strict reader must refuse the load with the caller's destination untouched.
+// The same payload PRESENT must still land from the wire, so the check
+// discriminates on the flag and not on the writer never having written a
+// payload at all.
 //
 // The probe also carries a UNION-BEARING payload (Outer.opt ?Holder, Holder's
 // u U): the union's arm entries are guarded and ride in the plan's second half,
 // so an unguarded defaults copy that ran in the first half would be overwritten
-// by the arm's wire bytes. The absent read must still answer the declared
-// defaults, and the same payload present must land from the wire.
+// by the arm's wire bytes. The clean absent read must still answer the declared
+// defaults, a stained one refuses, and the same payload present must land from
+// the wire.
 //
 // The negative control plants the fault in the real artifact: it removes the
 // generated runtime's copy of the declared defaults under an absent present
@@ -153,8 +155,8 @@ int main( void )
         }
     }
 
-    // THE RESIDUE: stain the payload under the absent flag. The reader must
-    // still answer the declared default, not the bytes a peer left there.
+    // THE RESIDUE: stain the payload under the absent flag. A dead byte that is
+    // not zero refuses the whole load, and no destination byte lands.
     body[kValueAt + 0] = 100;
     body[kValueAt + 1] = 0;
     body[kValueAt + 2] = 0;
@@ -167,23 +169,22 @@ int main( void )
     {
         Chain back;
         ChainReset( back );
+        back.link.value = 1234;
+        back.link.tag_length = 3;
+        std::strcpy( back.link.tag, "old" );
+        Chain before;
+        std::memcpy( (void *) &before, (const void *) &back, sizeof( back ) );
         TableReport r;
         static TableFixedEntry plan[256];
         const int64_t n = ChainFixedLoad( &back, 1, file, need, plan, 256, NULL, &r );
-        if ( n != 1 || back.link_present )
+        if ( n != -1 )
         {
-            std::printf( "residue: n=%lld present=%d\n", (long long) n, (int) back.link_present );
+            std::printf( "residue: read %lld records, want the whole load refused\n", (long long) n );
             return 1;
         }
-        if ( back.link.value != 30 || back.link.tag_length != 0 )
+        if ( std::memcmp( (const void *) &back, (const void *) &before, sizeof( back ) ) != 0 )
         {
-            std::printf( "ABSENT PAYLOAD RESIDUE: value=%d tag_length=%d, want the declared defaults 30/0\n",
-                         (int) back.link.value, (int) back.link.tag_length );
-            return 1;
-        }
-        if ( r.damaged || r.refused )
-        {
-            std::printf( "residue: a forged payload under an absent flag is not damage\n" );
+            std::printf( "residue: a refused load wrote the caller's destination\n" );
             return 1;
         }
     }
@@ -288,9 +289,8 @@ int main( void )
         }
     }
 
-    // THE UNION RESIDUE: stain the arm's bytes under the absent flag. Selecting
-    // arm a must not let its guarded entries overwrite the defaults that the
-    // present-defaults entry lays after them.
+    // THE UNION RESIDUE: stain the arm's bytes under the absent flag. The dead
+    // bytes refuse the whole load, and no destination byte lands.
     obody[kOuterTagAt] = 2;
     obody[kOuterValueAt + 0] = 100;
     obody[kOuterValueAt + 1] = 0;
@@ -304,23 +304,23 @@ int main( void )
     {
         Outer back;
         OuterReset( back );
+        back.opt.u.SelectA();
+        back.opt.u.a.value = 1234;
+        back.opt.u.a.tag_length = 3;
+        std::strcpy( back.opt.u.a.tag, "old" );
+        Outer before;
+        std::memcpy( (void *) &before, (const void *) &back, sizeof( back ) );
         TableReport r;
         static TableFixedEntry plan[256];
         const int64_t n = OuterFixedLoad( &back, 1, ofile, oneed, plan, 256, NULL, &r );
-        if ( n != 1 || back.opt_present )
+        if ( n != -1 )
         {
-            std::printf( "outer residue: n=%lld present=%d\n", (long long) n, (int) back.opt_present );
+            std::printf( "outer residue: read %lld records, want the whole load refused\n", (long long) n );
             return 1;
         }
-        if ( back.opt.u.type != UType::None || back.opt.u.a.value != 7 || back.opt.u.a.tag_length != 0 )
+        if ( std::memcmp( (const void *) &back, (const void *) &before, sizeof( back ) ) != 0 )
         {
-            std::printf( "ABSENT UNION PAYLOAD RESIDUE: type=%d value=%d tag_length=%d, want the declared defaults None/7/0\n",
-                         (int) back.opt.u.type, (int) back.opt.u.a.value, (int) back.opt.u.a.tag_length );
-            return 1;
-        }
-        if ( r.damaged || r.refused )
-        {
-            std::printf( "outer residue: a forged union payload under an absent flag is not damage\n" );
+            std::printf( "outer residue: a refused load wrote the caller's destination\n" );
             return 1;
         }
     }
@@ -430,7 +430,7 @@ func TestCppAbsentPayloadResidueNotCopied(t *testing.T) {
 func TestCppAbsentPayloadResidueNotCopiedNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
-	const guard = "if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }"
+	const guard = "if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }"
 	undermine := func(files map[string][]byte) {
 		found := false
 		for name, data := range files {

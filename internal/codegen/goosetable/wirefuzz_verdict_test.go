@@ -19,7 +19,6 @@ package goosetable_test
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -60,7 +59,7 @@ func gooseWireFuzzHarness(t *testing.T) string {
 			return
 		}
 		gooseWireFuzzHarnessBin = filepath.Join(gooseWireFuzzHarnessDir, "conformance-harness")
-		cmd := exec.Command("go", "build", "-o", gooseWireFuzzHarnessBin, "./test/conformance/harness")
+		cmd := gooserun.Command(t, "go", "build", "-o", gooseWireFuzzHarnessBin, "./test/conformance/harness")
 		cmd.Dir = root
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -125,7 +124,7 @@ func runGooseWireFuzzVerdictPipe(t *testing.T, harness, leg, unit string, retain
 		"--n", fmt.Sprintf("%d", n),
 		"--failed", failed,
 	)
-	cmd := exec.Command(harness, args...)
+	cmd := gooserun.Command(t, harness, args...)
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	return string(out), err

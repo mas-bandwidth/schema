@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 //
 // Load through the loader beside this file (docs/PORT-SQUIRREL.md):
 //   local Degenerate = dofile(dir + "/schema_module.nut", true).require("Degenerate");
@@ -28,13 +28,19 @@ _M.Vec2 <- class {
 _M.Vec2MaxBits <- 128;
 _M.Vec2MaxBytes <- 16;
 
-// ReadVec2 reads into value's storage in place; false on a refused read.
-_M.ReadVec2 <- function(stream, value) {
+// ReadVec2Body reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadVec2Body <- function(stream, value) {
   if (!stream.serializeDouble(_h)) return false;
   value.X = _h.value;
   if (!stream.serializeDouble(_h)) return false;
   value.Y = _h.value;
   return true;
+};
+
+// ReadVec2 reads one packet into value's storage in place; false on a refused read.
+_M.ReadVec2 <- function(stream, value) {
+  if (!_M.ReadVec2Body(stream, value)) return false;
+  return stream.serializeEnd();
 };
 
 // WriteVec2 writes value in declared order; false on a refused value.
@@ -59,13 +65,19 @@ _M.SpanF64 <- class {
 _M.SpanF64MaxBits <- 128;
 _M.SpanF64MaxBytes <- 16;
 
-// ReadSpanF64 reads into value's storage in place; false on a refused read.
-_M.ReadSpanF64 <- function(stream, value) {
+// ReadSpanF64Body reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadSpanF64Body <- function(stream, value) {
   for (local i = 0; i < 2; i++) {
     if (!stream.serializeDouble(_h)) return false;
     value.Values[i] = _h.value;
   }
   return true;
+};
+
+// ReadSpanF64 reads one packet into value's storage in place; false on a refused read.
+_M.ReadSpanF64 <- function(stream, value) {
+  if (!_M.ReadSpanF64Body(stream, value)) return false;
+  return stream.serializeEnd();
 };
 
 // WriteSpanF64 writes value in declared order; false on a refused value.
@@ -90,13 +102,19 @@ _M.SpanU64 <- class {
 _M.SpanU64MaxBits <- 128;
 _M.SpanU64MaxBytes <- 16;
 
-// ReadSpanU64 reads into value's storage in place; false on a refused read.
-_M.ReadSpanU64 <- function(stream, value) {
+// ReadSpanU64Body reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadSpanU64Body <- function(stream, value) {
   for (local i = 0; i < 2; i++) {
     if (!stream.serializeBits64(_h, 64)) return false;
     value.Values[i] = _h.value;
   }
   return true;
+};
+
+// ReadSpanU64 reads one packet into value's storage in place; false on a refused read.
+_M.ReadSpanU64 <- function(stream, value) {
+  if (!_M.ReadSpanU64Body(stream, value)) return false;
+  return stream.serializeEnd();
 };
 
 // WriteSpanU64 writes value in declared order; false on a refused value.
@@ -122,13 +140,19 @@ _M.SpanI64 <- class {
 _M.SpanI64MaxBits <- 128;
 _M.SpanI64MaxBytes <- 16;
 
-// ReadSpanI64 reads into value's storage in place; false on a refused read.
-_M.ReadSpanI64 <- function(stream, value) {
+// ReadSpanI64Body reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadSpanI64Body <- function(stream, value) {
   for (local i = 0; i < 2; i++) {
     if (!stream.serializeBits64(_h, 64)) return false;
     value.Values[i] = _h.value;
   }
   return true;
+};
+
+// ReadSpanI64 reads one packet into value's storage in place; false on a refused read.
+_M.ReadSpanI64 <- function(stream, value) {
+  if (!_M.ReadSpanI64Body(stream, value)) return false;
+  return stream.serializeEnd();
 };
 
 // WriteSpanI64 writes value in declared order; false on a refused value.
@@ -154,13 +178,19 @@ _M.SpanOne <- class {
 _M.SpanOneMaxBits <- 64;
 _M.SpanOneMaxBytes <- 8;
 
-// ReadSpanOne reads into value's storage in place; false on a refused read.
-_M.ReadSpanOne <- function(stream, value) {
+// ReadSpanOneBody reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadSpanOneBody <- function(stream, value) {
   for (local i = 0; i < 1; i++) {
     if (!stream.serializeBits64(_h, 64)) return false;
     value.Values[i] = _h.value;
   }
   return true;
+};
+
+// ReadSpanOne reads one packet into value's storage in place; false on a refused read.
+_M.ReadSpanOne <- function(stream, value) {
+  if (!_M.ReadSpanOneBody(stream, value)) return false;
+  return stream.serializeEnd();
 };
 
 // WriteSpanOne writes value in declared order; false on a refused value.
@@ -186,13 +216,19 @@ _M.SpanChunk <- class {
 _M.SpanChunkMaxBits <- 64;
 _M.SpanChunkMaxBytes <- 8;
 
-// ReadSpanChunk reads into value's storage in place; false on a refused read.
-_M.ReadSpanChunk <- function(stream, value) {
+// ReadSpanChunkBody reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadSpanChunkBody <- function(stream, value) {
   for (local i = 0; i < 4; i++) {
     if (!stream.serializeBits(_h, 16)) return false;
     value.Values[i] = _h.value;
   }
   return true;
+};
+
+// ReadSpanChunk reads one packet into value's storage in place; false on a refused read.
+_M.ReadSpanChunk <- function(stream, value) {
+  if (!_M.ReadSpanChunkBody(stream, value)) return false;
+  return stream.serializeEnd();
 };
 
 // WriteSpanChunk writes value in declared order; false on a refused value.
@@ -220,8 +256,8 @@ _M.SpanTail <- class {
 _M.SpanTailMaxBits <- 160;
 _M.SpanTailMaxBytes <- 24;
 
-// ReadSpanTail reads into value's storage in place; false on a refused read.
-_M.ReadSpanTail <- function(stream, value) {
+// ReadSpanTailBody reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadSpanTailBody <- function(stream, value) {
   for (local i = 0; i < 2; i++) {
     if (!stream.serializeDouble(_h)) return false;
     value.Values[i] = _h.value;
@@ -229,6 +265,12 @@ _M.ReadSpanTail <- function(stream, value) {
   if (!stream.serializeBits(_h, 32)) return false;
   value.Tail = _h.value;
   return true;
+};
+
+// ReadSpanTail reads one packet into value's storage in place; false on a refused read.
+_M.ReadSpanTail <- function(stream, value) {
+  if (!_M.ReadSpanTailBody(stream, value)) return false;
+  return stream.serializeEnd();
 };
 
 // WriteSpanTail writes value in declared order; false on a refused value.
@@ -258,8 +300,8 @@ _M.SpanTwice <- class {
 _M.SpanTwiceMaxBits <- 256;
 _M.SpanTwiceMaxBytes <- 32;
 
-// ReadSpanTwice reads into value's storage in place; false on a refused read.
-_M.ReadSpanTwice <- function(stream, value) {
+// ReadSpanTwiceBody reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadSpanTwiceBody <- function(stream, value) {
   for (local i = 0; i < 2; i++) {
     if (!stream.serializeDouble(_h)) return false;
     value.A[i] = _h.value;
@@ -269,6 +311,12 @@ _M.ReadSpanTwice <- function(stream, value) {
     value.B[i] = _h.value;
   }
   return true;
+};
+
+// ReadSpanTwice reads one packet into value's storage in place; false on a refused read.
+_M.ReadSpanTwice <- function(stream, value) {
+  if (!_M.ReadSpanTwiceBody(stream, value)) return false;
+  return stream.serializeEnd();
 };
 
 // WriteSpanTwice writes value in declared order; false on a refused value.
@@ -301,8 +349,8 @@ _M.Trio <- class {
 _M.TrioMaxBits <- 64;
 _M.TrioMaxBytes <- 8;
 
-// ReadTrio reads into value's storage in place; false on a refused read.
-_M.ReadTrio <- function(stream, value) {
+// ReadTrioBody reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadTrioBody <- function(stream, value) {
   if (!stream.serializeBits(_h, 20)) return false;
   value.A = _h.value;
   if (!stream.serializeBits(_h, 20)) return false;
@@ -310,6 +358,12 @@ _M.ReadTrio <- function(stream, value) {
   if (!stream.serializeBits(_h, 24)) return false;
   value.C = _h.value;
   return true;
+};
+
+// ReadTrio reads one packet into value's storage in place; false on a refused read.
+_M.ReadTrio <- function(stream, value) {
+  if (!_M.ReadTrioBody(stream, value)) return false;
+  return stream.serializeEnd();
 };
 
 // WriteTrio writes value in declared order; false on a refused value.
@@ -339,10 +393,16 @@ _M.TrioSole <- class {
 _M.TrioSoleMaxBits <- 64;
 _M.TrioSoleMaxBytes <- 8;
 
-// ReadTrioSole reads into value's storage in place; false on a refused read.
-_M.ReadTrioSole <- function(stream, value) {
-  if (!_M.ReadTrio(stream, value.Inner)) return false;
+// ReadTrioSoleBody reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadTrioSoleBody <- function(stream, value) {
+  if (!_M.ReadTrioBody(stream, value.Inner)) return false;
   return true;
+};
+
+// ReadTrioSole reads one packet into value's storage in place; false on a refused read.
+_M.ReadTrioSole <- function(stream, value) {
+  if (!_M.ReadTrioSoleBody(stream, value)) return false;
+  return stream.serializeEnd();
 };
 
 // WriteTrioSole writes value in declared order; false on a refused value.
@@ -364,10 +424,16 @@ _M.Vec3Sole <- class {
 _M.Vec3SoleMaxBits <- 192;
 _M.Vec3SoleMaxBytes <- 24;
 
-// ReadVec3Sole reads into value's storage in place; false on a refused read.
-_M.ReadVec3Sole <- function(stream, value) {
-  if (!_Types_.ReadVec3(stream, value.V)) return false;
+// ReadVec3SoleBody reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadVec3SoleBody <- function(stream, value) {
+  if (!_Types_.ReadVec3Body(stream, value.V)) return false;
   return true;
+};
+
+// ReadVec3Sole reads one packet into value's storage in place; false on a refused read.
+_M.ReadVec3Sole <- function(stream, value) {
+  if (!_M.ReadVec3SoleBody(stream, value)) return false;
+  return stream.serializeEnd();
 };
 
 // WriteVec3Sole writes value in declared order; false on a refused value.
@@ -391,12 +457,18 @@ _M.TrioFirst <- class {
 _M.TrioFirstMaxBits <- 80;
 _M.TrioFirstMaxBytes <- 16;
 
-// ReadTrioFirst reads into value's storage in place; false on a refused read.
-_M.ReadTrioFirst <- function(stream, value) {
-  if (!_M.ReadTrio(stream, value.Inner)) return false;
+// ReadTrioFirstBody reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadTrioFirstBody <- function(stream, value) {
+  if (!_M.ReadTrioBody(stream, value.Inner)) return false;
   if (!stream.serializeBits(_h, 16)) return false;
   value.Trailer = _h.value;
   return true;
+};
+
+// ReadTrioFirst reads one packet into value's storage in place; false on a refused read.
+_M.ReadTrioFirst <- function(stream, value) {
+  if (!_M.ReadTrioFirstBody(stream, value)) return false;
+  return stream.serializeEnd();
 };
 
 // WriteTrioFirst writes value in declared order; false on a refused value.
@@ -433,8 +505,8 @@ _M.TrioStraddle <- class {
 _M.TrioStraddleMaxBits <- 408;
 _M.TrioStraddleMaxBytes <- 56;
 
-// ReadTrioStraddle reads into value's storage in place; false on a refused read.
-_M.ReadTrioStraddle <- function(stream, value) {
+// ReadTrioStraddleBody reads into value's storage in place without the packet end check; false on a refused read.
+_M.ReadTrioStraddleBody <- function(stream, value) {
   if (!stream.serializeBits64(_h, 64)) return false;
   value.Pad0 = _h.value;
   if (!stream.serializeBits64(_h, 64)) return false;
@@ -447,8 +519,14 @@ _M.ReadTrioStraddle <- function(stream, value) {
   value.Pad4 = _h.value;
   if (!stream.serializeBits(_h, 24)) return false;
   value.Pad5 = _h.value;
-  if (!_M.ReadTrio(stream, value.Inner)) return false;
+  if (!_M.ReadTrioBody(stream, value.Inner)) return false;
   return true;
+};
+
+// ReadTrioStraddle reads one packet into value's storage in place; false on a refused read.
+_M.ReadTrioStraddle <- function(stream, value) {
+  if (!_M.ReadTrioStraddleBody(stream, value)) return false;
+  return stream.serializeEnd();
 };
 
 // WriteTrioStraddle writes value in declared order; false on a refused value.

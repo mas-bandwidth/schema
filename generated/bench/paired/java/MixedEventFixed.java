@@ -8,8 +8,8 @@ package bench;
 
 // union MixedEvent under the FIXED FORM (docs/SPEC-TABLES.md §3.4): the TAG at its
 // own storage width, then the WIDEST ARM. Tag 0 is None, as an enum's
-// ordinal 0 is; the slack behind a narrower arm is zero on write and
-// IGNORED on read, never a refusal.
+// ordinal 0 is. The arm bytes under tag 0, and the bytes past a narrower
+// taken arm, are dead: zero on write, and a non-zero byte refuses the load.
 public final class MixedEventFixed {
     private MixedEventFixed() {}
 
@@ -41,6 +41,14 @@ public final class MixedEventFixed {
 
         /** MixedPickupEvent */
         public final MixedPickupEventFixed.Value pickup = new MixedPickupEventFixed.Value();
+
+        /** restore defaults after a dead optional payload. */
+        void reset() {
+            this.type = none;
+            hit.reset();
+            chat.reset();
+            pickup.reset();
+        }
     }
 
     /**
@@ -49,6 +57,7 @@ public final class MixedEventFixed {
      * the whole of it.
      */
     public static void writeBody(byte[] b, int at, Value v) {
+        assert checkWrite(v);
         TableFixed.put8(b, at + 0, v.type);
         switch (v.type) {
             case 1:
@@ -76,35 +85,81 @@ public final class MixedEventFixed {
         }
     }
 
+    // checkWrite is writeBody's contract walk, called once through `assert`:
+    // the tag names None or an arm, and the SELECTED arm holds its own rows.
+    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts.
+    private static boolean checkWrite(Value v) {
+        assert v.type >= 0 && v.type <= 3;
+        return true;
+    }
+
     /** the tag, then the selected arm; an unselected arm keeps what it held. */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
+        scatter(b, at, v, r, true, false);
+    }
+
+    /**
+     * the same landing. Tag 0 and the bytes past a narrower arm are dead: zero, or the load
+     * refuses, and those bytes are not read as a value.
+     */
+    static void scatter(
+            byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.type = (b[at + 0] & 0xFF);
+        final int taken = v.type;
         // A TAG PAST THE LAST ARM LANDS None AND COUNTS ONE CLAMPED: it
         // is a value this reader's own storage does not admit, and
         // landing it raw would hand a caller a `type` that names no arm
-        // and that its own switch cannot answer.
+        // and that its own switch cannot answer. `taken` is the wire tag,
+        // before that clamp, so a forged tag is not the tag-0 dead span.
         if (v.type > 3) {
             v.type = none;
-            r.refuse(TableFixed.Reason.outOfRange);
+            if (live) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
         }
-        switch (v.type) {
-            case 1:
-                {
-                    MixedHitEventFixed.scatter(b, at + 1 + 0, v.hit, r);
-                    break;
+        if (live && checkDead && taken == 0) {
+            for (int deadZ = 0; deadZ < 13; deadZ++) {
+                if (b[(at + 1) + (0) + deadZ] != 0) {
+                    r.refuse(TableFixed.Reason.wireDamaged);
+                    return;
                 }
-            case 2:
-                {
-                    MixedChatEventFixed.scatter(b, at + 1 + 0, v.chat, r);
+            }
+        } else {
+            switch (v.type) {
+                case 1:
+                    {
+                        MixedHitEventFixed.scatter(b, at + 1 + 0, v.hit, r, live, checkDead);
+                        break;
+                    }
+                case 2:
+                    {
+                        if (live && checkDead) {
+                            for (int deadZ = 0; deadZ < 5; deadZ++) {
+                                if (b[(at + 1) + (8) + deadZ] != 0) {
+                                    r.refuse(TableFixed.Reason.wireDamaged);
+                                    return;
+                                }
+                            }
+                        }
+                        MixedChatEventFixed.scatter(b, at + 1 + 0, v.chat, r, live, checkDead);
+                        break;
+                    }
+                case 3:
+                    {
+                        if (live && checkDead) {
+                            for (int deadZ = 0; deadZ < 5; deadZ++) {
+                                if (b[(at + 1) + (8) + deadZ] != 0) {
+                                    r.refuse(TableFixed.Reason.wireDamaged);
+                                    return;
+                                }
+                            }
+                        }
+                        MixedPickupEventFixed.scatter(b, at + 1 + 0, v.pickup, r, live, checkDead);
+                        break;
+                    }
+                default:
                     break;
-                }
-            case 3:
-                {
-                    MixedPickupEventFixed.scatter(b, at + 1 + 0, v.pickup, r);
-                    break;
-                }
-            default:
-                break;
+            }
         }
     }
 }

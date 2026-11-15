@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0xeb26c970fde3fd71 */
+   package example — protocol id 0xf35accd0582cdd84 */
 
 #ifndef SCHEMA_EXAMPLE_ARM_DEFAULTSWIRE_H
 #define SCHEMA_EXAMPLE_ARM_DEFAULTSWIRE_H
@@ -50,7 +50,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_default_arm( serial
 }
 
 /* Reads DefaultArm. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_arm( serialize_read_stream_t * stream, example_default_arm_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_default_arm_body_( serialize_read_stream_t * stream, example_default_arm_t * value )
 {
     if ( !serialize_read_int( stream, &value->entries_count, 0, 2 ) )
     {
@@ -60,7 +60,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_arm( serializ
         int32_t i;
         for ( i = 0; i < value->entries_count; i++ )
         {
-            if ( !example_read_probe_config( stream, &value->entries[i] ) )
+            if ( !schema_example_read_probe_config_body_( stream, &value->entries[i] ) )
             {
                 return 0;
             }
@@ -77,6 +77,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_arm( serializ
         value->marker = (uint8_t) offset_value;
     }
     return 1;
+}
+
+/* Reads DefaultArm as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_arm( serialize_read_stream_t * stream, example_default_arm_t * value )
+{
+    if ( !schema_example_read_default_arm_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes DefaultChoice. */
@@ -99,7 +109,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_default_choice( ser
 }
 
 /* Reads DefaultChoice. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_choice( serialize_read_stream_t * stream, example_default_choice_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_default_choice_body_( serialize_read_stream_t * stream, example_default_choice_t * value )
 {
     {
         serialize_uint32_t tag_value = 0;
@@ -117,13 +127,23 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_choice( seria
     {
         case 1:
             value->as.first = example_new_default_arm();
-            return example_read_default_arm( stream, &value->as.first );
+            return schema_example_read_default_arm_body_( stream, &value->as.first );
         case 2:
             value->as.second = example_new_default_arm();
-            return example_read_default_arm( stream, &value->as.second );
+            return schema_example_read_default_arm_body_( stream, &value->as.second );
         default:
             return 1; /* None */
     }
+}
+
+/* Reads DefaultChoice as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_choice( serialize_read_stream_t * stream, example_default_choice_t * value )
+{
+    if ( !schema_example_read_default_choice_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes DefaultChoicePacket. */
@@ -137,13 +157,23 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_default_choice_pack
 }
 
 /* Reads DefaultChoicePacket. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_choice_packet( serialize_read_stream_t * stream, example_default_choice_packet_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_default_choice_packet_body_( serialize_read_stream_t * stream, example_default_choice_packet_t * value )
 {
-    if ( !example_read_default_choice( stream, &value->choice ) )
+    if ( !schema_example_read_default_choice_body_( stream, &value->choice ) )
     {
         return 0;
     }
     return 1;
+}
+
+/* Reads DefaultChoicePacket as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_choice_packet( serialize_read_stream_t * stream, example_default_choice_packet_t * value )
+{
+    if ( !schema_example_read_default_choice_packet_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes DefaultBulkArm. */
@@ -165,9 +195,9 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_default_bulk_arm( s
 }
 
 /* Reads DefaultBulkArm. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_bulk_arm( serialize_read_stream_t * stream, example_default_bulk_arm_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_default_bulk_arm_body_( serialize_read_stream_t * stream, example_default_bulk_arm_t * value )
 {
-    if ( !example_read_default_arm( stream, &value->payload ) )
+    if ( !schema_example_read_default_arm_body_( stream, &value->payload ) )
     {
         return 0;
     }
@@ -180,6 +210,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_bulk_arm( ser
         return 0;
     }
     return 1;
+}
+
+/* Reads DefaultBulkArm as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_bulk_arm( serialize_read_stream_t * stream, example_default_bulk_arm_t * value )
+{
+    if ( !schema_example_read_default_bulk_arm_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes DefaultBulkChoice. */
@@ -202,7 +242,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_default_bulk_choice
 }
 
 /* Reads DefaultBulkChoice. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_bulk_choice( serialize_read_stream_t * stream, example_default_bulk_choice_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_default_bulk_choice_body_( serialize_read_stream_t * stream, example_default_bulk_choice_t * value )
 {
     {
         serialize_uint32_t tag_value = 0;
@@ -220,13 +260,23 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_bulk_choice( 
     {
         case 1:
             value->as.first = example_new_default_bulk_arm();
-            return example_read_default_bulk_arm( stream, &value->as.first );
+            return schema_example_read_default_bulk_arm_body_( stream, &value->as.first );
         case 2:
             value->as.second = example_new_default_bulk_arm();
-            return example_read_default_bulk_arm( stream, &value->as.second );
+            return schema_example_read_default_bulk_arm_body_( stream, &value->as.second );
         default:
             return 1; /* None */
     }
+}
+
+/* Reads DefaultBulkChoice as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_bulk_choice( serialize_read_stream_t * stream, example_default_bulk_choice_t * value )
+{
+    if ( !schema_example_read_default_bulk_choice_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 #ifdef __cplusplus

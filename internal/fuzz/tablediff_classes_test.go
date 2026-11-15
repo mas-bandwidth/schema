@@ -86,17 +86,25 @@ func TestCiFullKeepsFuzzAndOnlyMakeOptsIn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := false
+	// the package rides the complement row, or rows of its own that name it
+	// (tools/slowgatescan holds those rows to every test exactly once)
+	found, dropped, own := false, "", false
 	for line := range strings.SplitSeq(string(ci), "\n") {
 		if strings.Contains(line, "run: go test $(go list ./...") && strings.Contains(line, "grep -v '/internal/codegen/'") {
 			found = true
 			if strings.Contains(line, "/internal/fuzz") {
-				t.Errorf("ci-full's unit-rest go test drops ./internal/fuzz: %s", strings.TrimSpace(line))
+				dropped = strings.TrimSpace(line)
 			}
+		}
+		if strings.Contains(line, "run: go test ./internal/fuzz ") {
+			own = true
 		}
 	}
 	if !found {
 		t.Errorf("ci-full.yml has no unit-rest go test over the non-emitter packages")
+	}
+	if dropped != "" && !own {
+		t.Errorf("ci-full's unit-rest go test drops ./internal/fuzz and no row runs it: %s", dropped)
 	}
 	files := []string{"../../.github/workflows/ci-full.yml", "../../.github/workflows/ci-fast.yml", "../../.github/workflows/certify.yml", "../../Makefile"}
 	mk, err := os.ReadDir("../../make")

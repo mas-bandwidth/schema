@@ -73,7 +73,8 @@ public final class BenchPacketRetain {
             return null;
         }
         TableVariable.Measure measure = new TableVariable.Measure();
-        if (BenchPacketVariable.loadMeasure(data, measure) < 0) {
+        // open proved the id table distinct over these bytes: measure once (§3)
+        if (BenchPacketVariable.loadMeasure(data, measure, false) < 0) {
             report.refused = true;
             if (measure.report.reason != null) {
                 report.reason = measure.report.reason;
@@ -562,6 +563,8 @@ public final class BenchPacketRetain {
                             int ek = ar.get8();
                             long n = ar.count(r.limit);
                             if (ar.fail) {
+                            } else if (!TableVariable.arrayElemKindClosed(ek)) {
+                                report.damaged = true;
                             } else if (!(ek == 6)) {
                                 report.refuse("kind_mismatch");
                             } else {

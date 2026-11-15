@@ -17,7 +17,11 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 	for _, v := range un.Variants {
 		g.tf("%sType%s\n", un.Name, ir.GoExportName(v.Name))
 	}
-	g.tf("%sTypeCount\n%sTypeMax = %sTypeCount - 1\n)\n", un.Name, un.Name, un.Name)
+	max := un.Name + "TypeNone"
+	if n := len(un.Variants); n > 0 {
+		max = un.Name + "Type" + ir.GoExportName(un.Variants[n-1].Name)
+	}
+	g.tf("%sTypeMax = %s\n)\n", un.Name, max)
 	if g.regional {
 		g.tf("type %s = %sRow\n", un.Name, un.Name)
 	} else {

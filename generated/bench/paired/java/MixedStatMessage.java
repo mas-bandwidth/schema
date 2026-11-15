@@ -19,6 +19,7 @@ public final class MixedStatMessage {
         if (v == null) {
             return false;
         }
+        assert checkWrite(v);
         {
             if (v.statId != 0) {
                 w.put(51L, 7);
@@ -35,7 +36,27 @@ public final class MixedStatMessage {
         return !w.overflow;
     }
 
+    // checkWrite is saveMessageBody's contract walk, called once through `assert`.
+    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts.
+    private static boolean checkWrite(MixedStatFixed.Value v) {
+        assert v != null;
+        assert v.statId >= 0 && v.statId <= 255L;
+        assert v.delta >= 0xfffffffffffffe00L;
+        assert v.delta <= 0x1ffL;
+        return true;
+    }
+
     public static boolean loadMessageBody(TableMessage.Reader r, MixedStatFixed.Value v) {
+        int seenFieldMark = r.seenMark();
+        try {
+            return loadMessageBodyFields(r, v, seenFieldMark);
+        } finally {
+            r.seenRollback(seenFieldMark);
+        }
+    }
+
+    private static boolean loadMessageBodyFields(
+            TableMessage.Reader r, MixedStatFixed.Value v, int seenFieldMark) {
         reset(v);
         while (true) {
             TableVocabulary.Entry entry = r.ref();
@@ -45,6 +66,10 @@ public final class MixedStatMessage {
             }
             if (entry == null) {
                 return true;
+            }
+            if (!r.seenAdd(seenFieldMark, entry.id)) {
+                r.report.damaged = true;
+                return false;
             }
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;

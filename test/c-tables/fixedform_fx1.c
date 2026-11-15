@@ -5,6 +5,14 @@
 #include <stdio.h>
 #include <string.h>
 
+/* THE WRITER HERE IS BUILT THE WAY A RELEASE BUILD IS. The fixed writer's
+   value checks (docs/SPEC.md §5.1: range, bits width, enum, union tag,
+   ill-formed text) are debug asserts, the programmer's job, and in a release
+   build a caller CAN put a value past them on the wire. This unit writes such
+   values on purpose so the READER can be made to answer for them, so it
+   compiles the write assert out, exactly as a release build does. */
+#define schema_assert( x ) ( (void) 0 )
+
 #include "FX1Table.h"
 #include "fixedform.h"
 
@@ -222,9 +230,9 @@ void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )
    resets the caller's storage.
 
    THE POISON IS WRITTEN THROUGH THE WRITER and not poked into the bytes: the
-   write side's own bounds are debug-only by rule and a range is not one of
-   them, so a caller CAN put an out-of-range value on the wire and the reader is
-   what has to answer for it. */
+   write side's range check is debug-only by rule (docs/SPEC.md §5.1), this unit
+   is built the way a release build is, so a caller CAN put an out-of-range
+   value on the wire and the reader is what has to answer for it. */
 int64_t fixed_fx1_write_out_of_range( uint8_t * buffer, int64_t capacity )
 {
     tblfx1_fx_root_t v;
@@ -264,7 +272,7 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
     memset( &r, 0, sizeof( r ) );
     body = data + TBLFX1_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tblfx1_fx_root_fixed_layout ) + 8;
     tblfx1_table_fixed_run( tblfx1_fx_root_fixed_plan, tblfx1_fx_root_fixed_plan_count, tblfx1_fx_root_fixed_plan_guarded,
-                     body, (uint8_t *) &loose, &r, tblfx1_fx_root_fixed_guards );
+                     body, (uint8_t *) &loose, &r, tblfx1_fx_root_fixed_guards, NULL );
     fixed_check( loose.renamed == 5000 && loose.gone == -7,
                  "C NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
     fixed_check( !r.refused, "C NEGATIVE CONTROL: and refuses nothing" );
@@ -295,13 +303,13 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
         fixed_check( made > 0, "C bounds, compiled-own: the plan compiles" );
         for ( i = 0; i < made; ++i )
         {
-            if ( compiled[i].op > (uint8_t) TBLFX1_K_TABLE_FIXED_BOOL ) { past_the_set++; }
+            if ( compiled[i].op > (uint8_t) TBLFX1_K_TABLE_FIXED_PRESENT_DEFAULTS ) { past_the_set++; }
         }
         fixed_check( past_the_set == 0, "C bounds, compiled-own: the ops are the whole set and none of them holds a range" );
 
         tblfx1_fx_root_reset( &held );
         memset( &r, 0, sizeof( r ) );
-        tblfx1_table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &r, tblfx1_fx_root_fixed_guards );
+        tblfx1_table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &r, tblfx1_fx_root_fixed_guards, NULL );
         fixed_check( held.renamed == 5000 && held.gone == -7,
                      "C COMPILED, NEGATIVE CONTROL: the loop alone leaves an out-of-range value standing here too" );
         fixed_check( !r.refused, "C COMPILED, NEGATIVE CONTROL: and refuses nothing" );
@@ -323,8 +331,8 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
    nothing past the refusal is decoded.
 
    The poison is written THROUGH THE WRITER, because it can be: the write side's
-   bounds are the used length and the live count, both debug-only, and neither
-   is a content rule. */
+   content check is debug-only by rule (docs/SPEC.md §5.1), and this unit is
+   built the way a release build is. */
 void fixed_fx1_text_content( void )
 {
     static const struct { const char * what; const char * bytes; int32_t length; } cases[] = {
@@ -372,7 +380,7 @@ void fixed_fx1_text_content( void )
             memset( &r2, 0, sizeof( r2 ) );
             body = file + TBLFX1_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tblfx1_fx_root_fixed_layout ) + 8;
             tblfx1_table_fixed_run( tblfx1_fx_root_fixed_plan, tblfx1_fx_root_fixed_plan_count, tblfx1_fx_root_fixed_plan_guarded,
-                             body, (uint8_t *) &loose, &r2, tblfx1_fx_root_fixed_guards );
+                             body, (uint8_t *) &loose, &r2, tblfx1_fx_root_fixed_guards, NULL );
             fixed_check( loose.label_length == 1 && (uint8_t) loose.label[0] == 0xFFu,
                          "C NEGATIVE CONTROL: the loop alone really does leave a byte that is not text standing" );
             fixed_check( !r2.refused, "C NEGATIVE CONTROL: and says nothing about it" );
@@ -423,19 +431,19 @@ void fixed_guard_width( void )
 
     memset( dst, 0, sizeof( dst ) );
     memset( &r, 0, sizeof( r ) );
-    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
+    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL, NULL );
     fixed_check( dst[2] == 0, "C GUARD WIDTH: tag 0x0101 at width 2 does not take arm 1" );
 
     src[1] = 0x00;
     memset( dst, 0, sizeof( dst ) );
     memset( &r, 0, sizeof( r ) );
-    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
+    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL, NULL );
     fixed_check( dst[2] == 0xAA, "C GUARD WIDTH: tag 0x0001 at width 2 takes arm 1" );
 
     src[1] = 0x01;
     plan[1].argw = 1;
     memset( dst, 0, sizeof( dst ) );
     memset( &r, 0, sizeof( r ) );
-    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
+    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL, NULL );
     fixed_check( dst[2] == 0xAA, "C NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
 }

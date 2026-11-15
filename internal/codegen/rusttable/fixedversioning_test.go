@@ -817,9 +817,8 @@ func versionProbeSource(tests string) string {
 // internal/codegen/rusttable/fixedversioning_test.go; nothing here is tracked.
 use crate::*;
 
-/// A Row is plain data with no niche in it (SPEC §7.2) and the emitter derives
-/// neither PartialEq nor Debug on one, so a BYTE VIEW is how a probe compares a
-/// destination with a fresh value and how it poisons one.
+/// The emitter derives neither PartialEq nor Debug on a Row, so a BYTE VIEW is
+/// how a probe compares a destination with a fresh value and how it poisons one.
 #[allow(dead_code)]
 fn as_bytes<T: Copy>(v: &T) -> &[u8] {
     unsafe { core::slice::from_raw_parts((v as *const T) as *const u8, core::mem::size_of::<T>()) }
@@ -1216,7 +1215,13 @@ debug = 0
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command("cargo", "test", "--workspace", "--no-fail-fast")
+	// `--lib`: every probe is a unit test in its crate's src/lib.rs and no
+	// probe carries a doc test, so the doc-test pass ran rustdoc once per
+	// member, one after another, to run nothing — 58 passes of `running 0
+	// tests`, measured at 13 s of a 17 s run on a 32-core host (2026-11-14),
+	// and the most of what pushed the Rust leg gate past the fleet's
+	// two-minute cap. The test binaries are the same; nothing they run is cut.
+	cmd := exec.Command("cargo", "test", "--workspace", "--no-fail-fast", "--lib")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	out, err := cmd.CombinedOutput()

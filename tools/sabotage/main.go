@@ -44,7 +44,7 @@ var sabotages = map[string][]edit{
 	"reference-map-widen-count":    {{old: "if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {", new: "if true { // SABOTAGED: count each widened key twice"}},
 	"reference-list-widen-extent":  {{old: "        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }\n        // Load accepts the widening ladder.", new: "        if ( wire_kind != elem_kind ) { return true; } // SABOTAGED\n        // Load accepts the widening ladder."}},
 	"go-builder-union-refusal":     {{old: "g.pf(\"%sif !%sLoadBody(&%s,&%s) { return false }\\n\", ind, v.Type, rdr, expr)\n\t\tg.emitCarveReturn(\"r\", rdr, ind)", new: "{ s := strings.ReplaceAll(g.body.String(), \"reason!=TableRefuseOk {report.Refuse(reason,\\\"\\\");return false}\", \"reason!=TableRefuseOk {_ = reason;return false}\"); g.body.Reset(); g.body.WriteString(s) } // SABOTAGED: inspect payload length before propagating refusal\n\t\tg.pf(\"%sif !%sLoadBody(&%s,&%s) { return false }\\n\", ind, v.Type, rdr, expr)\n\t\tg.emitCarveReturn(\"r\", rdr, ind)"}},
-	"map-builder-count-oracle":     {{old: "err := decodeWalk(m, inst, data, report, rt, readOrder{})", new: "err := decodeWalk(m, inst, data, report, rt, readOrder{wireLast: true}) // SABOTAGED"}, {old: "\tif count > uint64(math.MaxInt32) {\n\t\treturn r.refuse(&CountRefusal{})\n\t}\n\tfv.Entries = nil", new: "\tif false && count > uint64(math.MaxInt32) { // SABOTAGED\n\t\treturn r.refuse(&CountRefusal{})\n\t}\n\tfv.Entries = nil"}},
+	"map-builder-count-oracle":     {{old: "return decodeWithOrder(m, inst, data, report, rt, readOrder{})", new: "return decodeWithOrder(m, inst, data, report, rt, readOrder{wireLast: true}) // SABOTAGED"}, {old: "\tif count > uint64(math.MaxInt32) {\n\t\treturn r.refuse(&CountRefusal{})\n\t}\n\tfv.Entries = nil", new: "\tif false && count > uint64(math.MaxInt32) { // SABOTAGED\n\t\treturn r.refuse(&CountRefusal{})\n\t}\n\tfv.Entries = nil"}},
 	// Go ownership, managed activation frames, and bounded retention.
 	"go-allocator-original-slice": {
 		{old: ";return b}", new: ";return b[:n] /* SABOTAGED */}"},
@@ -93,6 +93,16 @@ var sabotages = map[string][]edit{
 			continue
 		}
 		g.needsNew = true`,
+	}},
+	// SPEC §5.1 row 10 on the packet Write: a compressed float is checked
+	// finite and inside [min, max] before quantizing. Remove the generated
+	// debug assert and an off-range finite value is written instead.
+	"packet-write-cfloat-cpp-range-assert": {{
+		old: `			g.pf("%s    serialize_assert( compressed_value >= %s && compressed_value <= %s ); // SPEC §5.1 row 10\n",
+				ind, formatFloat(float64(min32), true), formatFloat(float64(max32), true))
+`,
+		new: `			g.pf("%s    (void) compressed_value; // SABOTAGED: no compressed-float value check\n", ind)
+`,
 	}},
 	"packet-void-write-c": {{
 		old: `				g.pf("        case %d:\n            return 1; /* payload-free arm — the tag is the whole wire (SPEC §4.8) */\n", i+1)`,

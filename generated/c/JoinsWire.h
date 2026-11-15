@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0xeb26c970fde3fd71 */
+   package example — protocol id 0xf35accd0582cdd84 */
 
 #ifndef SCHEMA_EXAMPLE_JOINSWIRE_H
 #define SCHEMA_EXAMPLE_JOINSWIRE_H
@@ -56,7 +56,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arms_agree( seriali
 }
 
 /* Reads ArmsAgree. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arms_agree( serialize_read_stream_t * stream, example_arms_agree_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_arms_agree_body_( serialize_read_stream_t * stream, example_arms_agree_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -109,6 +109,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arms_agree( serialize
     return 1;
 }
 
+/* Reads ArmsAgree as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arms_agree( serialize_read_stream_t * stream, example_arms_agree_t * value )
+{
+    if ( !schema_example_read_arms_agree_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes ArmsDisagree. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arms_disagree( serialize_write_stream_t * stream, const example_arms_disagree_t * value )
 {
@@ -142,7 +152,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arms_disagree( seri
 }
 
 /* Reads ArmsDisagree. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arms_disagree( serialize_read_stream_t * stream, example_arms_disagree_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_arms_disagree_body_( serialize_read_stream_t * stream, example_arms_disagree_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -195,6 +205,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arms_disagree( serial
     return 1;
 }
 
+/* Reads ArmsDisagree as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arms_disagree( serialize_read_stream_t * stream, example_arms_disagree_t * value )
+{
+    if ( !schema_example_read_arms_disagree_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes ArmEmpty. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arm_empty( serialize_write_stream_t * stream, const example_arm_empty_t * value )
 {
@@ -221,7 +241,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arm_empty( serializ
 }
 
 /* Reads ArmEmpty. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arm_empty( serialize_read_stream_t * stream, example_arm_empty_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_arm_empty_body_( serialize_read_stream_t * stream, example_arm_empty_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -263,6 +283,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arm_empty( serialize_
         value->tail = (uint32_t) raw;
     }
     return 1;
+}
+
+/* Reads ArmEmpty as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arm_empty( serialize_read_stream_t * stream, example_arm_empty_t * value )
+{
+    if ( !schema_example_read_arm_empty_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes ArmsNested. */
@@ -312,7 +342,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arms_nested( serial
 }
 
 /* Reads ArmsNested. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arms_nested( serialize_read_stream_t * stream, example_arms_nested_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_arms_nested_body_( serialize_read_stream_t * stream, example_arms_nested_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -391,6 +421,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arms_nested( serializ
     return 1;
 }
 
+/* Reads ArmsNested as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arms_nested( serialize_read_stream_t * stream, example_arms_nested_t * value )
+{
+    if ( !schema_example_read_arms_nested_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes ArmAlign. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arm_align( serialize_write_stream_t * stream, const example_arm_align_t * value )
 {
@@ -435,7 +475,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arm_align( serializ
 }
 
 /* Reads ArmAlign. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arm_align( serialize_read_stream_t * stream, example_arm_align_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_arm_align_body_( serialize_read_stream_t * stream, example_arm_align_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -498,6 +538,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arm_align( serialize_
     return 1;
 }
 
+/* Reads ArmAlign as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arm_align( serialize_read_stream_t * stream, example_arm_align_t * value )
+{
+    if ( !schema_example_read_arm_align_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes ArmArray. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arm_array( serialize_write_stream_t * stream, const example_arm_array_t * value )
 {
@@ -543,7 +593,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arm_array( serializ
 }
 
 /* Reads ArmArray. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arm_array( serialize_read_stream_t * stream, example_arm_array_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_arm_array_body_( serialize_read_stream_t * stream, example_arm_array_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -609,6 +659,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arm_array( serialize_
     return 1;
 }
 
+/* Reads ArmArray as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arm_array( serialize_read_stream_t * stream, example_arm_array_t * value )
+{
+    if ( !schema_example_read_arm_array_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes Narrow. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_narrow( serialize_write_stream_t * stream, const example_narrow_t * value )
 {
@@ -620,7 +680,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_narrow( serialize_w
 }
 
 /* Reads Narrow. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_narrow( serialize_read_stream_t * stream, example_narrow_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_narrow_body_( serialize_read_stream_t * stream, example_narrow_t * value )
 {
     /* fixed 3-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 3 )
@@ -637,6 +697,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_narrow( serialize_rea
         value->n = (uint32_t) raw;
     }
     return 1;
+}
+
+/* Reads Narrow as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_narrow( serialize_read_stream_t * stream, example_narrow_t * value )
+{
+    if ( !schema_example_read_narrow_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes Wide. */
@@ -657,7 +727,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_wide( serialize_wri
 }
 
 /* Reads Wide. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_wide( serialize_read_stream_t * stream, example_wide_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_wide_body_( serialize_read_stream_t * stream, example_wide_t * value )
 {
     /* fixed 37-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 37 )
@@ -681,6 +751,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_wide( serialize_read_
     return 1;
 }
 
+/* Reads Wide as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_wide( serialize_read_stream_t * stream, example_wide_t * value )
+{
+    if ( !schema_example_read_wide_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
+}
+
 /* Writes Uneven. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_uneven( serialize_write_stream_t * stream, const example_uneven_t * value )
 {
@@ -701,7 +781,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_uneven( serialize_w
 }
 
 /* Reads Uneven. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_uneven( serialize_read_stream_t * stream, example_uneven_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_uneven_body_( serialize_read_stream_t * stream, example_uneven_t * value )
 {
     {
         serialize_uint32_t tag_value = 0;
@@ -719,13 +799,23 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_uneven( serialize_rea
     {
         case 1:
             memset( &value->as.narrow, 0, sizeof( value->as.narrow ) );
-            return example_read_narrow( stream, &value->as.narrow );
+            return schema_example_read_narrow_body_( stream, &value->as.narrow );
         case 2:
             memset( &value->as.wide, 0, sizeof( value->as.wide ) );
-            return example_read_wide( stream, &value->as.wide );
+            return schema_example_read_wide_body_( stream, &value->as.wide );
         default:
             return 1; /* None */
     }
+}
+
+/* Reads Uneven as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_uneven( serialize_read_stream_t * stream, example_uneven_t * value )
+{
+    if ( !schema_example_read_uneven_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes HoldsUneven. */
@@ -747,7 +837,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_holds_uneven( seria
 }
 
 /* Reads HoldsUneven. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_holds_uneven( serialize_read_stream_t * stream, example_holds_uneven_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_holds_uneven_body_( serialize_read_stream_t * stream, example_holds_uneven_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -757,7 +847,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_holds_uneven( seriali
         }
         value->lead = (uint32_t) raw;
     }
-    if ( !example_read_uneven( stream, &value->u ) )
+    if ( !schema_example_read_uneven_body_( stream, &value->u ) )
     {
         return 0;
     }
@@ -770,6 +860,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_holds_uneven( seriali
         value->tail = (uint32_t) raw;
     }
     return 1;
+}
+
+/* Reads HoldsUneven as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_holds_uneven( serialize_read_stream_t * stream, example_holds_uneven_t * value )
+{
+    if ( !schema_example_read_holds_uneven_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes ArrUneven. */
@@ -802,7 +902,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arr_uneven( seriali
 }
 
 /* Reads ArrUneven. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_uneven( serialize_read_stream_t * stream, example_arr_uneven_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_arr_uneven_body_( serialize_read_stream_t * stream, example_arr_uneven_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -820,7 +920,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_uneven( serialize
         int32_t i;
         for ( i = 0; i < value->items_count; i++ )
         {
-            if ( !example_read_uneven( stream, &value->items[i] ) )
+            if ( !schema_example_read_uneven_body_( stream, &value->items[i] ) )
             {
                 return 0;
             }
@@ -835,6 +935,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_uneven( serialize
         value->tail = (uint32_t) raw;
     }
     return 1;
+}
+
+/* Reads ArrUneven as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_uneven( serialize_read_stream_t * stream, example_arr_uneven_t * value )
+{
+    if ( !schema_example_read_arr_uneven_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 /* Writes RegainAfterAlign. */
@@ -895,7 +1005,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_regain_after_align(
 }
 
 /* Reads RegainAfterAlign. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_regain_after_align( serialize_read_stream_t * stream, example_regain_after_align_t * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_example_read_regain_after_align_body_( serialize_read_stream_t * stream, example_regain_after_align_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -975,6 +1085,16 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_regain_after_align( s
         value->tail = (uint32_t) raw;
     }
     return 1;
+}
+
+/* Reads RegainAfterAlign as one packet. */
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_regain_after_align( serialize_read_stream_t * stream, example_regain_after_align_t * value )
+{
+    if ( !schema_example_read_regain_after_align_body_( stream, value ) )
+    {
+        return 0;
+    }
+    return serialize_read_end( stream ); /* one packet read: trailing data or non-zero final padding is refused (SPEC §5) */
 }
 
 #ifdef __cplusplus

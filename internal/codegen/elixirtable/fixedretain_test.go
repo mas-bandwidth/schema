@@ -16,6 +16,7 @@ import (
 )
 
 func TestFixedRootRetainRefusalElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir fixed-root retention refusals and variable-root controls")
 	for _, mixed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("mixed_%t", mixed), func(t *testing.T) {
@@ -128,6 +129,7 @@ func loadVariableRetainFixture(t *testing.T, paths ...string) *ir.Unit {
 }
 
 func TestFixedMessageRootRetainRefusalElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir published fixed ToolMessage keeps plain wire behavior and refuses retention")
 	u := loadUnit(t, "../../../tables/messages/Messages.schema")
 	wire, err := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/union_array_element_kind.bin")
@@ -149,7 +151,8 @@ func TestFixedMessageRootRetainRefusalElixir(t *testing.T) {
 wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
-{:error,:malformed,report}=T.load("ToolMessage",wire)
+{:error,:previous_form,_}=T.load("ToolMessage",wire)
+{:error,:malformed,report}=T.variable_load("ToolMessage",wire)
 unless report.reason=="wire_damaged", do: raise("hostile kind must refuse: " <> inspect(report))
 {:error,:fixed_root,^zero,^store}=T.load_retain("ToolMessage",wire,store,zero)
 {:error,:fixed_root}=T.measure_retain("ToolMessage",%%{},store)

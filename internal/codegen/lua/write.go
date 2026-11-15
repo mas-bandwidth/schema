@@ -98,7 +98,7 @@ func emitWriteField(m *Module, b *strings.Builder, val string, f *ir.Field, inde
 	if f.Array == ir.ArrayCounted {
 		count := val + "Count"
 		min := IntLiteral(big.NewInt(f.ArrayMin))
-		fmt.Fprintf(b, "%sif type(%s) ~= \"number\" or %s < %s or %s > %s then return false end -- the count guards the loop (SPEC §6.3)\n",
+		fmt.Fprintf(b, "%sif math.type(%s) ~= \"integer\" or %s < %s or %s > %s then return false end -- the count guards the loop (SPEC §6.3)\n",
 			indent, count, count, min, count, bound)
 		countExpr := count
 		if f.ArrayMin != 0 {
@@ -168,6 +168,8 @@ func emitWriteScalar(m *Module, b *strings.Builder, val string, f *ir.Field, ind
 			t.IntBits, t.FracBits, IntLiteral(f.IntMin), IntLiteral(f.IntMax)), " -- the Q format's raw offset (SPEC §4.3)")
 	case ir.TFloat32:
 		if f.HasFloatRange {
+			fmt.Fprintf(b, "%sif type(%s) ~= \"number\" or %s ~= %s or %s < %s or %s > %s then return false end -- compressed-float range (SPEC §5.1 row 10)\n",
+				indent, val, val, val, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))
 			call(fmt.Sprintf("stream:serializeCompressedFloat({ value = %s }, %s, %s, %s)", val,
 				FloatLiteral(f.FMin), FloatLiteral(f.FMax), FloatLiteral(f.Resolution)), " -- the step index (SPEC §4.3)")
 		} else {

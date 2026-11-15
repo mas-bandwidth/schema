@@ -637,7 +637,7 @@ defmodule SchemaTestElixir do
 
     expect_raise(
       fn -> Example.Types.write_ship_create!(%{make_ship_create() | ship_type: 99}) end,
-      "enum headroom above the wire range must trip the writer contract"
+      "an enum value above the wire range must trip the writer contract"
     )
 
     # ---- flag_name / flag_names: per-bit names and the set renderer ----
@@ -663,7 +663,7 @@ defmodule SchemaTestElixir do
       "enum_name names a variant"
     )
 
-    check(Example.Wire.enum_name_weapon(15) == "???", "enum_name is headroom-safe")
+    check(Example.Wire.enum_name_weapon(16) == "???", "enum_name is out-of-range safe")
 
     # ============== THE BENCH CORPUS (BENCH-STANDARD.md §1.5) ==============
     # The same pinned instances test/bench/main.cpp authored into
@@ -1217,12 +1217,13 @@ defmodule SchemaTestElixir do
               "read_probe_header_bits: the count is the written bits"
             )
 
+            n = div(bits_read + 7, 8)
+
             check(
-              Example.Wire.read_probe_header(acc, byte_size(acc) * 8) == {:ok, got},
+              Example.Wire.read_probe_header(binary_part(acc, 0, n), n * 8) == {:ok, got},
               "read_probe_header/2 is the same read with the count dropped"
             )
 
-            n = div(bits_read + 7, 8)
             binary_part(acc, n, byte_size(acc) - n)
 
           :error ->

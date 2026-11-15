@@ -29,6 +29,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("// not this field's is a kind mismatch and skipped the same way.\n")
 	g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    %sReset( value );\n", st.Name)
+	g.pf("    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};\n")
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t ref = 0;\n")
 	g.pf("        if ( !r.get( ref, vocabulary.ref_bits ) )\n        {\n            report->damaged = true;\n            return false;\n        }\n")
@@ -40,6 +41,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("        // field and is read before this walk begins, so meeting one here is\n")
 	g.pf("        // a second numbering wherever it sits\n")
 	g.pf("        if ( TableMessageReserved( entry.id ) )\n        {\n            report->damaged = true;\n            return false;\n        }\n")
+	g.pf("        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )\n        {\n            report->damaged = true;\n            return false;\n        } // one field id twice in one body is damage (§3.3)\n")
 	g.pf("        switch ( entry.id )\n        {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
@@ -132,9 +134,9 @@ func (g *tableGen) emitMessageReadPayload(f *ir.Field, expr, ind string) {
 }
 
 // emitMessageReadTextFrom reads a `string(N)` or a `bytes(N)`: the length at
-// the SENDER's own width, the ALIGN, then the bytes; or a `wstring(N)`: the
-// length, no align, sixteen bits a unit. A payload longer than this reader's
-// bound keeps what fits and counts `out_of_range`, which is not damage.
+// the SENDER's own width, the ALIGN, then the bytes. A payload longer than
+// this reader's bound keeps what fits and counts `out_of_range`, which is
+// not damage.
 //
 // A kind 12 payload takes §3's ONE CONTENT RULE through the runtime's own
 // TableUtf8Valid and TableUtf8Clamp, which is what the VARIABLE form reads one
@@ -661,6 +663,9 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("    for ( int64_t i = 0; i < count; i++ )\n    {\n")
 	g.pf("        const int64_t body = %sMeasureMessageBody( bits, values[i] );\n", n)
 	g.pf("        if ( body < 0 ) { return -1; }\n")
+	// THE WRITE CONTRACT (docs/SPEC.md §5.1) on a value the body ACCEPTED:
+	// what it refuses in every build still answers -1 first
+	g.emitWriteAssert(st, "values[i]", "        ")
 	g.pf("        bits += body;\n    }\n")
 	if st.Integrity != "" {
 		g.pf("    return 1 + ( bits + 7 ) / 8 + 4; // the form byte, then the stream padded to a byte, plus the integrity trailer (§2.14)\n}\n\n")
@@ -679,6 +684,7 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	}
 	g.pf("    for ( int64_t i = 0; i < count; i++ )\n    {\n")
 	g.pf("        if ( !%sSaveMessageBody( batch.w, values[i] ) ) { return -1; }\n", n)
+	g.emitWriteAssert(st, "values[i]", "        ")
 	g.pf("        batch.written++;\n    }\n")
 	if st.Integrity != "" {
 		g.pf("    const int64_t end = TableMessageBatchEnd( batch );\n")

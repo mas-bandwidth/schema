@@ -23,6 +23,12 @@ public final class MixedPickupEventFixed {
 
         /** int32 */
         public int amount;
+
+        /** restore defaults after a dead optional payload. */
+        void reset() {
+            itemId = 0;
+            amount = 0;
+        }
     }
 
     /**
@@ -46,7 +52,8 @@ public final class MixedPickupEventFixed {
     // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,
     // which is what makes a save one template and a straight line of stores.
     private static boolean checkWrite(Value v) {
-        assert v != null;
+        assert (v.itemId & 0xfffffffffffffc00L) == 0;
+        assert v.amount >= 0L && v.amount <= 255L;
         return true;
     }
 
@@ -55,19 +62,35 @@ public final class MixedPickupEventFixed {
      * offset here is a constant.
      */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
+        scatter(b, at, v, r, true, false);
+    }
+
+    /**
+     * the same landing. `live` is false when the caller is not keeping this body. An absent
+     * optional does not call it: that payload is dead, every byte of it is zero or the load
+     * refuses, and none of it is read as a value (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3).
+     */
+    static void scatter(
+            byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.itemId = TableFixed.get32(b, at + 0);
-        if (v.itemId > 1023L) {
+        if (Integer.compareUnsigned(v.itemId, 1023) > 0) {
             v.itemId = (int) (1023L);
-            r.refuse(TableFixed.Reason.outOfRange);
+            if (live) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
         } // bits(10) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < 0L) {
                 q = 0L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             } else if (q > 255L) {
                 q = 255L;
-                r.refuse(TableFixed.Reason.outOfRange);
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
             }
             v.amount = (int) (q);
         }

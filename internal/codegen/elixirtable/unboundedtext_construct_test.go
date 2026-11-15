@@ -13,6 +13,7 @@ import (
 )
 
 func TestUnboundedTextConstructElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir unbounded text wire JSON retaining inline blobs and text map keys")
 	source := strings.ReplaceAll(elixirTextListSource, "string(5)", "string") + `
  table Keys { names map[string]int32 }
@@ -105,14 +106,14 @@ P.ok(Probe.ProbeCook.keys_node_names_find(region,0,%q)==:error,"absent prefix ke
  for bad<-["x"<><<0>><>"y",<<255>>] do
   value=%{field=>[%{"value"=>bad}]}
   P.ok(T.save("Lists",value)=={:error,:invalid_value},"bad unbounded wire")
-  P.ok(T.to_json("Lists",value)=={:error,:invalid_value},"bad unbounded JSON")
+  P.ok(T.to_json("Lists",value)=={:error,:invalid_value},"bad unbounded JSON (a zero byte refuses, SPEC-TABLES §16.3)")
   P.ok(T.cook_measure("Lists",value)==-1,"bad unbounded cook")
  end
 end
 for bad<-["x"<><<0>><>"y",<<255>>] do
  value=%{"names"=>%{bad=>1}}
  P.ok(T.save("Keys",value)=={:error,:invalid_value},"bad unbounded key wire")
- P.ok(T.to_json("Keys",value)=={:error,:invalid_value},"bad unbounded key JSON")
+ P.ok(T.to_json("Keys",value)=={:error,:invalid_value},"bad unbounded key JSON (a zero byte refuses, SPEC-TABLES §16.3)")
  P.ok(T.cook_measure("Keys",value)==-1,"bad unbounded key cook")
 end
 case T.from_json("ArrayRoot","[\"\\ud800\"]") do
@@ -135,6 +136,7 @@ IO.puts("UNBOUNDED_TEXT_OK")
 }
 
 func TestRetainedTextListPathsElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir retained text-list indices and over-total refusal")
 	u := unitFrom(t, `package probe
  table Elem { value string(16)
@@ -171,6 +173,7 @@ IO.puts("RETAINED_TEXT_PATHS_OK")
 }
 
 func TestUnboundedTextSmallUnitsElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir unbounded text minimal generated units compile without warnings")
 	for _, field := range []string{"a []string", "a [..2]?string", "a map[string]int32"} {
 		t.Run(field, func(t *testing.T) {

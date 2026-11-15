@@ -8,8 +8,11 @@ import (
 )
 
 // Compilation emits the bound-many widening entries; execution counts only
-// the live elements. Hostile slack is neither content nor a counter event.
+// the live elements. A counted array's slots past its count are dead bytes, so
+// hostile slack refuses the whole load (docs/FIXED-FORM-ALGORITHM.md §5.3 step
+// 11, docs/SPEC-TABLES.md §3.4) and never moves a counter.
 func TestFixedCountedArrayLiveExtent(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir (native counted-array slack and widening)")
 	bin := elixirBinary(t)
 	for _, tc := range []struct {
@@ -25,7 +28,7 @@ func TestFixedCountedArrayLiveExtent(t *testing.T) {
 			dir := t.TempDir()
 			write := fmt.Sprintf(`
     dir = %q
-    header = Slack.ProbeFixed.root_fixed_save([])
+    header = binary_part(Slack.ProbeFixed.root_fixed_save([%%Slack.Root{vals: []}]), 0, Slack.ProbeFixed.root_fixed_measure(0))
     for n <- [0, 1, 4] do
       value = %%Slack.Root{vals: Enum.take(%s, n)}
       wire = Slack.ProbeFixed.root_fixed_save([value])
@@ -34,15 +37,17 @@ func TestFixedCountedArrayLiveExtent(t *testing.T) {
       check(count == n, "writer count")
       slack_bytes = (4 - n) * %d
       check(binary_part(payload, n * %d, slack_bytes) == :binary.copy(<<0>>, slack_bytes), "canonical writer left nonzero slack")
-      live = binary_part(payload, 0, n * %d)
-      hostile = header <> <<Slack.ProbeFixed.root_fixed_hash()::little-unsigned-64, n::little-unsigned-32>> <> live <> :binary.copy(<<255>>, slack_bytes)
       File.write!(Path.join(dir, "clean#{n}.bin"), wire)
-      File.write!(Path.join(dir, "hostile#{n}.bin"), hostile)
+      if slack_bytes > 0 do
+        live = binary_part(payload, 0, n * %d)
+        hostile = header <> <<Slack.ProbeFixed.root_fixed_hash()::little-unsigned-64, n::little-unsigned-32>> <> live <> :binary.copy(<<255>>, slack_bytes)
+        File.write!(Path.join(dir, "hostile#{n}.bin"), hostile)
+      end
     end
 `, dir, tc.values, tc.width, tc.width, tc.width, tc.width)
 			if tc.name == "float" {
 				write += fmt.Sprintf(`
-    bad = header <> <<Slack.ProbeFixed.root_fixed_hash()::little-unsigned-64, 1::little-unsigned-32>> <> :binary.copy(<<255>>, 16)
+    bad = header <> <<Slack.ProbeFixed.root_fixed_hash()::little-unsigned-64, 1::little-unsigned-32, 0xFFFFFFFF::little-unsigned-32>> <> :binary.copy(<<0>>, 12)
     File.write!(Path.join(%q, "active-nan.bin"), bad)
 `, dir)
 			}
@@ -57,22 +62,26 @@ func TestFixedCountedArrayLiveExtent(t *testing.T) {
 			} {
 				t.Run(read.name, func(t *testing.T) {
 					body := fmt.Sprintf(`
-      for n <- [0, 1, 4], kind <- ["clean", "hostile"] do
-        data = File.read!(Path.join(%q, "#{kind}#{n}.bin"))
-        {:ok, [value], report} = Slack.ProbeFixed.root_fixed_load(data)
+      for n <- [0, 1, 4] do
+        clean = File.read!(Path.join(%q, "clean#{n}.bin"))
+        {:ok, [value], report} = Slack.ProbeFixed.root_fixed_load(clean)
         check(value.vals == Enum.take(%s, n), "live values changed")
         expected = if %t, do: n, else: 0
         check(report.widened == expected, "widened counted slack: #{inspect(report)}")
-        check(true and report.unknown == 0 and true and true, "slack changed counters")
+        check(report.unknown == 0, "a clean read moved unknown: #{inspect(report)}")
         saved = Slack.ProbeFixed.root_fixed_save([value])
-        empty = Slack.ProbeFixed.root_fixed_save([])
-        body = binary_part(saved, byte_size(empty) + 8, byte_size(saved) - byte_size(empty) - 8)
+        empty = Slack.ProbeFixed.root_fixed_measure(0)
+        body = binary_part(saved, empty + 8, byte_size(saved) - empty - 8)
         <<count::little-unsigned-32, payload::binary>> = body
         check(count == n, "reader writer count")
         width = div(byte_size(payload), 4)
         check(binary_part(payload, n * width, (4 - n) * width) == :binary.copy(<<0>>, (4 - n) * width), "resaved slack is not zero")
+        if n < 4 do
+          hostile = File.read!(Path.join(%q, "hostile#{n}.bin"))
+          check(match?({:error, _, _}, Slack.ProbeFixed.root_fixed_load(hostile)), "a non-zero slack slot was read")
+        end
       end
-`, dir, tc.values, read.widen)
+`, dir, tc.values, read.widen, dir)
 					if tc.name == "float" {
 						body += fmt.Sprintf(`
       active = File.read!(Path.join(%q, "active-nan.bin"))
