@@ -1193,6 +1193,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_mixed( serializ
             }
         }
     }
+    if ( !serialize_write_int( stream, value->player_name_length, 0, 15 ) )
+    {
+        return 0;
+    }
     {
         int32_t i;
         for ( i = 0; i < value->player_name_length; i++ )
@@ -1200,10 +1204,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_mixed( serializ
             serialize_assert( value->player_name[i] != 0 ); /* interior null on write (SPEC §4.7) */
         }
     }
-    if ( !serialize_write_int( stream, value->player_name_length, 0, 15 ) )
-    {
-        return 0;
-    }
+    serialize_assert( schema_utf8_valid_( (const uint8_t *) value->player_name, value->player_name_length ) ); /* ill-formed text on write (SPEC §5.1) */
     if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->player_name, (int) value->player_name_length ) )
     {
         return 0;
@@ -1216,14 +1217,17 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_mixed( serializ
     {
         return 0;
     }
+    serialize_assert( value->aim_x >= -1.0f && value->aim_x <= 1.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->aim_x, 200u, 8, 2.0f, -1.0f ) )
     {
         return 0;
     }
+    serialize_assert( value->aim_y >= -1.0f && value->aim_y <= 1.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->aim_y, 200u, 8, 2.0f, -1.0f ) )
     {
         return 0;
     }
+    serialize_assert( value->aim_z >= -1.0f && value->aim_z <= 1.0f );
     if ( !serialize_write_compressed_float_precomputed( stream, value->aim_z, 200u, 8, 2.0f, -1.0f ) )
     {
         return 0;
