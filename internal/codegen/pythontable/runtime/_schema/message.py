@@ -1,0 +1,687 @@
+"""Bit stream primitives for the table message form (SPEC-TABLES §3.3)."""
+
+from __future__ import annotations
+
+from . import LoadReport, Refused
+from .load import Reader
+
+
+class BitReader:
+    """Read low-bit-first fields from a bounded batch without overreading."""
+
+    __slots__ = ("data", "position")
+
+    def __init__(self, data: bytes, position: int = 0) -> None:
+        self.data = data
+        self.position = position
+
+    def get(self, width: int) -> int:
+        if width < 0 or self.position + width > len(self.data) * 8:
+            raise Refused("wire_damaged", "message bit stream is truncated")
+        start = self.position // 8
+        shift = self.position % 8
+        end = (self.position + width + 7) // 8
+        value = int.from_bytes(self.data[start:end], "little")
+        self.position += width
+        return (value >> shift) & ((1 << width) - 1)
+
+    def align(self) -> None:
+        padding = (-self.position) & 7
+        if self.get(padding):
+            raise Refused("wire_damaged", "message padding is nonzero")
+
+    def finish(self) -> None:
+        self.align()
+        if self.position != len(self.data) * 8:
+            raise Refused("wire_damaged", "bytes follow the message batch")
+
+
+class BitWriter:
+    """Write low-bit-first fields, sharing one cursor across the batch."""
+
+    __slots__ = ("data", "position")
+
+    def __init__(self) -> None:
+        self.data = bytearray()
+        self.position = 0
+
+    def put(self, value: int, width: int) -> None:
+        if width < 0 or value < 0 or value.bit_length() > width:
+            raise ValueError("value does not fit the message width")
+        start = self.position // 8
+        shift = self.position % 8
+        end = (self.position + width + 7) // 8
+        if end > len(self.data):
+            self.data.extend(bytes(end - len(self.data)))
+        if end > start:
+            current = int.from_bytes(self.data[start:end], "little")
+            self.data[start:end] = (current | (value << shift)).to_bytes(end - start, "little")
+        self.position += width
+
+    def align(self) -> None:
+        self.put(0, (-self.position) & 7)
+
+    def finish(self) -> bytes:
+        self.align()
+        return bytes(self.data)
+
+
+# The announced shape is peer-owned. It is never replaced by the local
+# declaration when measuring or skipping a payload from a different build.
+class Shape:
+    __slots__ = ("kind", "packing", "bits", "base", "minimum", "maximum", "element", "inner", "quant")
+
+    def __init__(self, kind: int) -> None:
+        self.kind = kind
+        self.packing = 0
+        self.bits = 0
+        self.base = 0
+        self.minimum = 0
+        self.maximum = 0
+        self.element = 0
+        self.inner: Shape | None = None
+        self.quant: tuple[float, float, float] | None = None
+
+
+def _kind_bits(kind: int) -> int:
+    if 2 <= kind <= 9:
+        return 8 << ((kind - 2) % 4)
+    if kind in (18, 19):
+        return 128
+    if 20 <= kind <= 29:
+        return 8 << ((kind - 20) % 5)
+    raise Refused("wire_damaged", "unknown numeric kind")
+
+
+def _shape(reader: "Reader", kind: int) -> Shape:
+    import math
+    import struct
+
+    shape = Shape(kind)
+    if 2 <= kind <= 10 or 18 <= kind <= 29:
+        shape.packing = reader.byte()
+        if shape.packing == 0:
+            return shape
+        if kind == 10 and shape.packing == 2:
+            minimum, maximum, resolution = struct.unpack("<fff", reader.take(12))
+            if not all(math.isfinite(x) for x in (minimum, maximum, resolution)) or minimum >= maximum or resolution <= 0:
+                raise Refused("wire_damaged", "invalid compressed float shape")
+            try:
+                delta = struct.unpack("<f", struct.pack("<f", maximum - minimum))[0]
+                steps = struct.unpack("<f", struct.pack("<f", delta / resolution))[0]
+            except OverflowError:
+                raise Refused("wire_damaged", "invalid compressed float width") from None
+            if not math.isfinite(delta) or not math.isfinite(steps):
+                raise Refused("wire_damaged", "invalid compressed float width")
+            count = math.ceil(min(max(steps, 1.0), 4294967040.0))
+            shape.bits = count.bit_length()
+            shape.quant = (minimum, maximum, resolution)
+            return shape
+        if shape.packing != 1 or kind == 10:
+            raise Refused("wire_damaged", "invalid numeric packing")
+        width = reader.varint()
+        domain = _kind_bits(kind)
+        if width > domain:
+            raise Refused("wire_damaged", "message width exceeds its kind")
+        shape.bits = width
+        signed = 2 <= kind <= 5 or kind == 18 or 20 <= kind <= 24
+        if kind in (18, 19) or 20 <= kind <= 29:
+            shape.base = int.from_bytes(reader.take(16), "little", signed=signed)
+        else:
+            raw = reader.varint()
+            shape.base = (raw >> 1) ^ -(raw & 1) if signed else raw
+        low = -(1 << (domain - 1)) if signed else 0
+        high = (1 << (domain - int(signed))) - 1
+        if not low <= shape.base <= high:
+            raise Refused("wire_damaged", "message base exceeds its kind")
+        return shape
+    if kind == 12:
+        shape.maximum = reader.varint()
+        if shape.maximum > 0x7FFFFFFF:
+            raise Refused("wire_damaged", "message text bound exceeds storage")
+    elif kind in (14, 16):
+        if kind == 14:
+            shape.minimum = reader.varint()
+        shape.maximum = reader.varint()
+        if shape.minimum > shape.maximum or shape.maximum > 0xFFFFFFFF:
+            raise Refused("wire_damaged", "invalid message array bound")
+        shape.element = reader.byte()
+        if not _known_kind(shape.element) or shape.element in (14, 16):
+            raise Refused("wire_damaged", "invalid message element kind")
+        shape.inner = _shape(reader, shape.element)
+    return shape
+
+
+def _known_kind(kind: int) -> bool:
+    return 0 <= kind <= 32 or kind == 36
+
+
+class Entry:
+    __slots__ = ("field_id", "kind", "shape", "key")
+
+    def __init__(self, field_id: int, kind: int, shape: Shape, key: bytes) -> None:
+        self.field_id = field_id
+        self.kind = kind
+        self.shape = shape
+        self.key = key
+
+
+class MessageVocabulary:
+    """One connection's terminal announcement state and peer vocabulary."""
+
+    __slots__ = ("strict", "own_version", "build_version", "announced", "refused", "entries", "unknown")
+
+    def __init__(self, own_version: int = 0, strict: bool = False) -> None:
+        self.strict = strict
+        self.own_version = own_version
+        self.build_version = 0
+        self.announced = False
+        self.refused = False
+        self.entries: list[Entry] = []
+        self.unknown = 0
+
+    @property
+    def ref_bits(self) -> int:
+        return max(1, len(self.entries).bit_length())
+
+
+def announce_read(vocab: MessageVocabulary, data: bytes, *, max_bytes: int = 65536, max_entries: int = 4096) -> None:
+    """Resolve the first announcement once; any refusal is terminal."""
+    from .load import Ctx, _body_end, _id_table, _skip, buffer_view
+
+    if vocab.announced or vocab.refused:
+        raise Refused("second_announcement")
+    vocab.refused = True
+    view = buffer_view(data)
+    ids = _id_table(view)
+    reader = Reader(view, 1, _body_end(view), ids)
+    ctx = Ctx(ids)
+    seen: set[int] = set()
+    raw_vocab: memoryview | None = None
+    version_seen = False
+    unknown = 0
+    while True:
+        ref = reader.varint()
+        if not ref:
+            break
+        field_id = reader.id_at(ref)
+        kind = reader.byte()
+        if field_id in seen:
+            raise Refused("wire_damaged", "announcement field repeated")
+        seen.add(field_id)
+        if field_id == 0xFFFFFFFFFFFFFFFE:
+            if kind != 9:
+                raise Refused("wire_damaged", "announcement build version has wrong kind")
+            vocab.build_version = int.from_bytes(reader.take(8), "little")
+            version_seen = True
+        elif field_id == 0xFFFFFFFFFFFFFFFD:
+            if kind != 14:
+                raise Refused("wire_damaged", "announcement vocabulary has wrong kind")
+            field = reader.take(reader.varint())
+            content = Reader(field, 0, len(field), ids)
+            if content.byte() != 6:
+                raise Refused("wire_damaged", "announcement vocabulary is not bytes")
+            length = content.varint()
+            if length != content.end - content.pos:
+                raise Refused("wire_damaged", "announcement vocabulary has invalid length")
+            if length > max_bytes:
+                raise Refused("vocabulary_too_large")
+            raw_vocab = content.take(length)
+        else:
+            if field_id == 0xFFFFFFFFFFFFFFFF:
+                raise Refused("wire_damaged", "announcement contains a node table")
+            _skip(reader, kind, ctx)
+            unknown += 1
+    if reader.pos != reader.end or not version_seen or raw_vocab is None:
+        raise Refused("wire_damaged", "incomplete announcement")
+    if vocab.strict and vocab.build_version != vocab.own_version:
+        raise Refused("build_version_mismatch")
+    source = Reader(raw_vocab, 0, len(raw_vocab), [])
+    entries: list[Entry] = []
+    triples: set[bytes] = set()
+    node_seen = False
+    while source.pos < source.end:
+        start = source.pos
+        field_id = int.from_bytes(source.take(8), "little")
+        kind = source.byte()
+        if field_id in (0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFD) or not _known_kind(kind):
+            raise Refused("wire_damaged", "invalid message vocabulary entry")
+        if field_id == 0xFFFFFFFFFFFFFFFF:
+            if node_seen:
+                raise Refused("wire_damaged", "node vocabulary entry repeated")
+            node_seen = True
+        shape = _shape(source, kind)
+        key = bytes(raw_vocab[start:source.pos])
+        if key in triples:
+            raise Refused("wire_damaged", "message vocabulary entry repeated")
+        triples.add(key)
+        if len(entries) >= max_entries:
+            raise Refused("vocabulary_too_large")
+        entries.append(Entry(field_id, kind, shape, key))
+    vocab.entries = entries
+    vocab.unknown = unknown
+    vocab.announced = True
+    vocab.refused = False
+
+
+def _reference(reader: BitReader, vocab: MessageVocabulary) -> Entry | None:
+    reference = reader.get(vocab.ref_bits)
+    if reference == 0:
+        return None
+    if reference > len(vocab.entries):
+        raise Refused("wire_damaged", "message reference exceeds vocabulary")
+    entry = vocab.entries[reference - 1]
+    if entry.field_id >= 0xFFFFFFFFFFFFFFFD:
+        raise Refused("wire_damaged", "reserved message reference")
+    return entry
+
+
+def _numeric_width(shape: Shape) -> int:
+    if shape.kind == 1:
+        return 1
+    if shape.kind == 36:
+        return 64
+    return shape.bits if shape.packing == 1 else _kind_bits(shape.kind)
+
+
+def _write_scalar(writer: BitWriter, shape: Shape, value: object) -> None:
+    from . import InvalidValue
+    if shape.kind == 1:
+        if type(value) is not bool:
+            raise InvalidValue("", "message bool is not bool")
+        writer.put(int(value), 1)
+        return
+    if shape.kind in (10, 11):
+        import math
+        import struct
+        if type(value) is not float or not math.isfinite(value):
+            raise InvalidValue("", "message float is not finite")
+        if shape.packing == 2:
+            assert shape.quant is not None
+            minimum, maximum, resolution = shape.quant
+            v = _f32(value)
+            if not minimum <= v <= maximum:
+                raise InvalidValue("", "compressed float exceeds its declared range")
+            delta = _f32(maximum - minimum)
+            count = math.ceil(min(max(_f32(delta / resolution), 1.0), 4294967040.0))
+            normalized = min(max(_f32(_f32(v - minimum) / delta), 0.0), 1.0)
+            index = min(math.floor(_f32(_f32(normalized * _f32(float(count))) + 0.5)), count)
+            writer.put(index, shape.bits)
+        else:
+            packed = struct.pack("<f" if shape.kind == 10 else "<d", value)
+            writer.put(int.from_bytes(packed, "little"), len(packed) * 8)
+        return
+    if not (2 <= shape.kind <= 9 or 18 <= shape.kind <= 29 or shape.kind == 36):
+        raise InvalidValue("", "message kind is not implemented")
+    if type(value) is not int:
+        raise InvalidValue("", "message integer is not int")
+    width = _numeric_width(shape)
+    raw = value - shape.base if shape.packing == 1 else value & ((1 << width) - 1)
+    if raw < 0 or raw.bit_length() > width:
+        raise InvalidValue("", "message value is outside its announced width")
+    writer.put(raw, width)
+
+
+def _read_scalar(reader: BitReader, shape: Shape) -> object:
+    if shape.kind == 1:
+        return bool(reader.get(1))
+    if shape.kind in (10, 11):
+        import math
+        import struct
+        if shape.packing == 2:
+            assert shape.quant is not None
+            minimum, maximum, resolution = shape.quant
+            delta = _f32(maximum - minimum)
+            count = math.ceil(min(max(_f32(delta / resolution), 1.0), 4294967040.0))
+            index = reader.get(shape.bits)
+            if index > count:
+                raise Refused("wire_damaged", "compressed float index exceeds count")
+            fraction = _f32(_f32(float(index)) / _f32(float(count)))
+            value = _f32(_f32(fraction * delta) + minimum)
+        else:
+            width = 32 if shape.kind == 10 else 64
+            raw = reader.get(width).to_bytes(width // 8, "little")
+            value = struct.unpack("<f" if width == 32 else "<d", raw)[0]
+        if not math.isfinite(value):
+            raise Refused("non_finite_float")
+        return value
+    if not (2 <= shape.kind <= 9 or 18 <= shape.kind <= 29 or shape.kind == 36):
+        raise Refused("kind_mismatch", "message kind is not implemented")
+    width = _numeric_width(shape)
+    value = reader.get(width)
+    if shape.packing == 1:
+        return value + shape.base
+    signed = 2 <= shape.kind <= 5 or shape.kind == 18 or 20 <= shape.kind <= 24 or shape.kind == 36
+    return value - (1 << width) if signed and width and value & (1 << (width - 1)) else value
+
+
+def _write_body(writer: BitWriter, value: object, vocab: MessageVocabulary, keys: dict[tuple[str, str], bytes]) -> None:
+    from typing import Any
+    obj: Any = value
+    slots = {entry.key: i + 1 for i, entry in enumerate(vocab.entries)}
+    for field in obj.descriptor.fields:
+        current = getattr(obj, field.name)
+        if field.is_default(current):
+            continue
+        key = keys.get((obj.descriptor.name, field.name))
+        slot = slots.get(key) if key is not None else None
+        if slot is None:
+            raise ValueError("message field is absent from its own vocabulary")
+        writer.put(slot, vocab.ref_bits)
+        _write_value(writer, field, current, vocab.entries[slot - 1].shape, vocab, keys)
+    writer.put(0, vocab.ref_bits)
+
+
+def _read_body(reader: BitReader, cls: type[object], vocab: MessageVocabulary, own_version: int, keys: dict[tuple[str, str], bytes], stats: list[int], depth: int = 0) -> object:
+    from typing import Any
+    if depth > 128:
+        raise Refused("wire_damaged", "message nesting exceeds 128")
+    obj: Any = cls()
+    fields = obj.descriptor.by_id
+    seen: set[int] = set()
+    last_ordinal = -1
+    while True:
+        entry = _reference(reader, vocab)
+        if entry is None:
+            return obj
+        if entry.field_id in seen:
+            raise Refused("wire_damaged", "message field repeated")
+        seen.add(entry.field_id)
+        field = fields.get(entry.field_id)
+        if field is None:
+            if vocab.build_version == own_version:
+                raise Refused("wire_damaged", "same-build message names an undeclared field")
+            _skip_value(reader, entry.shape, vocab, depth)
+            stats[0] += 1
+            continue
+        own_key = keys.get((obj.descriptor.name, field.name))
+        if entry.kind != field.kind and not _widens(entry.kind, field.kind):
+            raise Refused("kind_mismatch", "message field kind changed")
+        if vocab.build_version == own_version:
+            if own_key != entry.key or field.ordinal <= last_ordinal:
+                raise Refused("wire_damaged", "message field order or shape changed")
+            last_ordinal = field.ordinal
+        value = _read_value(reader, field, entry.shape, vocab, own_version, keys, stats, depth)
+        if type(value) is int and (value < field.lo or value > field.hi):
+            raise Refused("out_of_range", field.name)
+        if type(value) is float and getattr(field, "float_range", False):
+            if value < field.fmin or value > field.fmax:
+                raise Refused("out_of_range", field.name)
+        if vocab.build_version == own_version and field.is_default(value):
+            raise Refused("wire_damaged", "message field is explicitly at its default")
+        setattr(obj, field.name, value)
+
+
+def save_messages(root: type[object], values: list[object], vocab: MessageVocabulary, keys: dict[tuple[str, str], bytes], roots: frozenset[str]) -> bytes:
+    from . import InvalidValue
+    from .save import _validate
+    if not 1 <= len(values) <= 256:
+        raise InvalidValue("", "batch_too_large")
+    if not vocab.announced or getattr(root, "descriptor").name not in roots:
+        raise InvalidValue("", "message root or vocabulary is invalid")
+    for value in values:
+        if type(value) is not root:
+            raise InvalidValue("", "batch contains another root")
+        _validate(value, getattr(value, "descriptor"), "", set())
+    writer = BitWriter()
+    writer.put(2, 8)
+    writer.put(len(values) - 1, 8)
+    for value in values:
+        _write_body(writer, value, vocab, keys)
+    return writer.finish()
+
+
+def load_messages(root: type[object], vocab: MessageVocabulary, data: bytes, own_version: int, keys: dict[tuple[str, str], bytes], roots: frozenset[str], capacity: int = 256, report: "LoadReport | None" = None) -> list[object]:
+    if getattr(root, "descriptor").name not in roots:
+        raise Refused("invalid_root")
+    if not data:
+        raise Refused("wire_damaged", "empty batch")
+    if data[0] != 2:
+        raise Refused("newer_form")
+    if not vocab.announced:
+        raise Refused("no_vocabulary")
+    if len(data) < 2:
+        raise Refused("wire_damaged", "missing batch count")
+    count = data[1] + 1
+    if count > capacity:
+        raise Refused("batch_too_large")
+    reader = BitReader(data, 16)
+    stats = [0]
+    values = [_read_body(reader, root, vocab, own_version, keys, stats) for _ in range(count)]
+    reader.finish()
+    if report is not None:
+        report.unknown = stats[0]
+        report.widened = 0
+        report.retained = 0
+        report.retain_lost = 0
+    return values
+
+
+def _name_slot(vocab: MessageVocabulary, field_id: int) -> int:
+    for i, entry in enumerate(vocab.entries):
+        if entry.field_id == field_id and entry.kind == 0:
+            return i + 1
+    raise ValueError("message vocabulary is missing a name")
+
+
+def _write_value(writer: BitWriter, field: object, value: object, shape: Shape, vocab: MessageVocabulary, keys: dict[tuple[str, str], bytes]) -> None:
+    from typing import Any
+    from . import InvalidValue
+    fd: Any = field
+    v: Any = value
+    if shape.kind == 13:
+        _write_body(writer, v, vocab, keys)
+    elif shape.kind == 12:
+        raw = v.encode("utf-8")
+        if len(raw) > shape.maximum or b"\0" in raw:
+            raise InvalidValue(fd.name, "message text is invalid")
+        writer.put(len(raw), shape.maximum.bit_length())
+        writer.align()
+        for byte in raw:
+            writer.put(byte, 8)
+    elif shape.kind == 14:
+        if not shape.minimum <= len(v) <= shape.maximum or shape.inner is None:
+            raise InvalidValue(fd.name, "message array count exceeds its bound")
+        writer.put(len(v) - shape.minimum, (shape.maximum - shape.minimum).bit_length())
+        if shape.element == 6:
+            writer.align()
+        element = fd.elem if fd.elem is not None else fd
+        for item in v:
+            _write_value(writer, element, item, shape.inner, vocab, keys)
+    elif shape.kind == 30:
+        slot = 0 if v == 0 else _name_slot(vocab, fd.variant_ids[v - 1])
+        writer.put(slot, vocab.ref_bits)
+    else:
+        _write_scalar(writer, shape, v)
+
+
+def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVocabulary, own_version: int, keys: dict[tuple[str, str], bytes], stats: list[int], depth: int) -> object:
+    from typing import Any, cast
+    from . import descriptor
+    fd: Any = field
+    if shape.kind == 13:
+        cls = descriptor.by_name(fd.target)
+        if cls is None:
+            raise Refused("kind_mismatch", "message table target is not registered")
+        return _read_body(reader, cls, vocab, own_version, keys, stats, depth + 1)
+    if shape.kind == 12:
+        length = reader.get(shape.maximum.bit_length())
+        if length > shape.maximum:
+            raise Refused("wire_damaged", "message text exceeds announced bound")
+        if length > fd.size:
+            raise Refused("length_over_bound", fd.name)
+        reader.align()
+        raw = bytes(reader.get(8) for _ in range(length))
+        if b"\0" in raw:
+            raise Refused("wire_damaged", "message text contains NUL")
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise Refused("wire_damaged", "message text is not UTF-8") from None
+    if shape.kind == 14:
+        count = shape.minimum + reader.get((shape.maximum - shape.minimum).bit_length())
+        if count > shape.maximum:
+            raise Refused("wire_damaged", "message count exceeds announced bound")
+        bound = fd.size if fd.codec == "bytes" else fd.bound
+        if count > bound:
+            raise Refused("length_over_bound" if fd.codec == "bytes" else "count_over_bound", fd.name)
+        if shape.element == 6:
+            reader.align()
+        if shape.inner is None:
+            raise Refused("wire_damaged", "message element shape is absent")
+        element = fd.elem if fd.elem is not None else fd
+        values = [_read_value(reader, element, shape.inner, vocab, own_version, keys, stats, depth + 1) for _ in range(count)]
+        return bytes(cast(list[int], values)) if fd.codec == "bytes" else values
+    if shape.kind == 30:
+        entry = _reference(reader, vocab)
+        if entry is None:
+            return 0
+        if entry.kind != 0:
+            raise Refused("wire_damaged", "message enum name has a payload")
+        for i, variant in enumerate(fd.variant_ids, 1):
+            if variant == entry.field_id:
+                return fd.default if i in fd.deprecated else i
+        stats[0] += 1
+        return 0
+    return _read_scalar(reader, shape)
+
+
+def _widens(source: int, target: int) -> bool:
+    if target in (3, 4, 5):
+        return 2 <= source < target
+    if target == 18:
+        return 2 <= source <= 5
+    if target in (7, 8, 9):
+        return 6 <= source < target
+    if target == 19:
+        return 6 <= source <= 9
+    return source == 10 and target == 11
+
+
+def resolve_vocabulary(vocab: MessageVocabulary, local: MessageVocabulary) -> None:
+    """Refuse known incompatible kinds before the first body is decoded."""
+    by_id: dict[int, list[Entry]] = {}
+    for entry in local.entries:
+        by_id.setdefault(entry.field_id, []).append(entry)
+    for entry in vocab.entries:
+        known = by_id.get(entry.field_id)
+        if known is None:
+            continue
+        def compatible(candidate: Entry) -> bool:
+            if entry.kind != candidate.kind:
+                return _widens(entry.kind, candidate.kind)
+            if entry.kind == 14 and entry.shape.element != candidate.shape.element:
+                return _widens(entry.shape.element, candidate.shape.element)
+            return True
+        if not any(compatible(candidate) for candidate in known):
+            vocab.entries = []
+            vocab.announced = False
+            vocab.refused = True
+            raise Refused("kind_mismatch", "announcement field has an incompatible kind")
+
+
+def _skip_value(reader: BitReader, shape: Shape, vocab: MessageVocabulary, depth: int) -> None:
+    import math
+    import struct
+
+    if depth > 128:
+        raise Refused("wire_damaged", "message nesting exceeds 128")
+    kind = shape.kind
+    if kind in (0, 32):
+        return
+    if kind == 1 or 2 <= kind <= 9 or 18 <= kind <= 29 or kind == 36:
+        value = _read_scalar(reader, shape)
+        if type(value) is int:
+            width = 64 if kind == 36 else _kind_bits(kind)
+            signed = 2 <= kind <= 5 or kind == 18 or 20 <= kind <= 24 or kind == 36
+            low = -(1 << (width - 1)) if signed else 0
+            high = (1 << (width - int(signed))) - 1
+            if not low <= value <= high:
+                raise Refused("out_of_range", "message integer exceeds its storage domain")
+        return
+    if kind in (10, 11):
+        if shape.packing == 2:
+            assert shape.quant is not None
+            qmin, qmax, qres = shape.quant
+            delta = struct.unpack("<f", struct.pack("<f", qmax - qmin))[0]
+            ratio = struct.unpack("<f", struct.pack("<f", delta / qres))[0]
+            count = math.ceil(min(max(ratio, 1.0), 4294967040.0))
+            if reader.get(shape.bits) > count:
+                raise Refused("wire_damaged", "compressed float index exceeds count")
+        else:
+            width = 32 if kind == 10 else 64
+            raw = reader.get(width).to_bytes(width // 8, "little")
+            value = struct.unpack("<f" if kind == 10 else "<d", raw)[0]
+            if not math.isfinite(value):
+                raise Refused("non_finite_float")
+        return
+    if kind == 12:
+        length = reader.get(shape.maximum.bit_length())
+        if length > shape.maximum:
+            raise Refused("wire_damaged", "text length exceeds announcement")
+        reader.align()
+        raw = bytes(reader.get(8) for _ in range(length))
+        try:
+            if b"\0" in raw:
+                raise UnicodeError("NUL")
+            raw.decode("utf-8")
+        except UnicodeError:
+            raise Refused("wire_damaged", "invalid message text") from None
+        return
+    if kind == 13:
+        seen: set[int] = set()
+        while True:
+            entry = _reference(reader, vocab)
+            if entry is None:
+                return
+            if entry.field_id in seen:
+                raise Refused("wire_damaged", "nested message repeats a field")
+            seen.add(entry.field_id)
+            _skip_value(reader, entry.shape, vocab, depth + 1)
+    if kind in (15, 30):
+        entry = _reference(reader, vocab)
+        if entry is None:
+            return
+        if (kind == 30 and entry.kind != 0) or (kind == 15 and entry.kind == 0):
+            raise Refused("wire_damaged", "message name has the wrong framing")
+        if kind == 15:
+            _skip_value(reader, entry.shape, vocab, depth + 1)
+        return
+    if kind in (14, 16):
+        minimum = shape.minimum if kind == 14 else 0
+        count = minimum + reader.get((shape.maximum - minimum).bit_length())
+        if count > shape.maximum or shape.inner is None:
+            raise Refused("wire_damaged", "invalid message array count")
+        if kind == 14 and shape.element == 6:
+            reader.align()
+        inner = shape.inner
+        if kind == 14 and inner.kind in (0, 32):
+            return
+        if kind == 14 and inner.packing == 1 and inner.bits == 0:
+            _skip_value(reader, inner, vocab, depth + 1)
+            return
+        seen_keys: set[int] = set()
+        for _ in range(count):
+            start = reader.position
+            if kind == 16:
+                key = _reference(reader, vocab)
+                if key is None or key.kind != 0 or key.field_id in seen_keys:
+                    raise Refused("wire_damaged", "invalid or repeated message key")
+                seen_keys.add(key.field_id)
+            _skip_value(reader, inner, vocab, depth + 1)
+            if reader.position == start:
+                raise Refused("wire_damaged", "message element consumes no bits")
+        return
+    if kind == 31:
+        reader.align()
+        length = reader.get(32)
+        if length > (len(reader.data) * 8 - reader.position) // 8:
+            raise Refused("wire_damaged", "escape exceeds message batch")
+        reader.position += length * 8
+        return
+    raise Refused("wire_damaged", "invalid message body kind")
+
+
+def _f32(value: float) -> float:
+    import struct
+    return float(struct.unpack("<f", struct.pack("<f", value))[0])

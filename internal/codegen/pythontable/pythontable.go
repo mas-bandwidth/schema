@@ -63,6 +63,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		out[path.Join(u.Package, plan.base+".py")] = []byte(emitModule(u, plan, blocks))
 	}
 	out[path.Join(u.Package, "__init__.py")] = []byte(packageInit(u, plans))
+	if message := messageModule(u); message != "" {
+		out[path.Join(u.Package, "_message.py")] = []byte(message)
+	}
 	out[path.Join(u.Package, "py.typed")] = []byte{}
 	runtime, err := Runtime()
 	if err != nil {
@@ -1118,6 +1121,10 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 			sort.Strings(unions)
 			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(unions, ", "))
 		}
+	}
+	if messageModule(u) != "" {
+		b.WriteString("from ._message import ANNOUNCEMENT, MessageVocabulary, announce_read, load_messages, measure_messages, save_messages\n")
+		names = append(names, "ANNOUNCEMENT", "MessageVocabulary", "announce_read", "load_messages", "measure_messages", "save_messages")
 	}
 	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n", u.ProtocolId)
 	fmt.Fprintf(&b, "BUILD_VERSION: Final = 0x%016x\n\n", ir.BuildVersion(u))
