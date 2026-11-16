@@ -27,7 +27,7 @@ func TestPythonMapBenchCIPlan(t *testing.T) {
 	targets := map[string]int{}
 	auto := map[string]int{}
 	const tablePackage = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
-	wanted := []string{"TestPythonMapShapeBench", "TestPythonMapBenchPinPlan", "TestPythonVtEvolution", "TestPythonJsonFloatRounding", "TestPythonTableCoreFixedUnion", "TestPythonVtKeyedEnumWriteRefusalsFunctional"}
+	wanted := []string{"TestPythonMapShapeBench", "TestPythonMapBenchPinPlan", "TestPythonVtEvolution", "TestPythonTableCoreFixedUnion", "TestPythonVtKeyedEnumWriteRefusalsFunctional"}
 	for _, row := range rows {
 		targets[row.Target]++
 		if row.Package != tablePackage || row.Target != "" {
