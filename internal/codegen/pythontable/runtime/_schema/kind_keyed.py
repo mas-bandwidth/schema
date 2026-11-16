@@ -198,12 +198,15 @@ def _write_retain(w: Any, fd: FieldDesc, elem: FieldDesc, values: list[Any], ctx
     present = 0
     for slot in range(len(fd.keys)):
         current = values[slot]
-        if elem.codec != "table" and elem.is_default(current):
-            continue
+        default = elem.is_default(current)
+        if default:
+            if elem.codec != "table" or ctx.preview:
+                continue
+            child = ctx.steps + ((fd.ordinal, slot),)
+            if not ctx.retain.has_body(ctx.node, child) or not ctx.can_id(fd.keys[slot]):
+                continue
         start_slot = w.count
         ids_slot = len(ctx.ids)
-        if not ctx.can_id(fd.keys[slot]):
-            continue
         w.varint(ctx.idref(fd.keys[slot]))
         element_frame = w.begin_frame()
         if elem.codec == "table":
