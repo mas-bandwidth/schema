@@ -323,3 +323,49 @@ func TestMessageReadRefusesDeclaredTextDefaults(t *testing.T) {
 		}
 	}
 }
+
+// A substituted unknown or deprecated variant is evolution, rather than a
+// field the writer stored at its default. The deprecated case also holds at
+// the reader's build version so the substitution exclusion is exercised.
+func TestMessageReadAllowsSubstitutedDefaults(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, variants, value string
+		sameBuild             bool
+	}{
+		{"new variant", "Idle, Run", "Fly", false},
+		{"deprecated variant", "Idle, Run | deprecated, Fly", "Run", true},
+	} {
+		writer := covModel(t, "package evolution\nenum Mode {Idle, Run, Fly}\nfixed table Root {tick uint8\nf Mode}\n")
+		reader := covModel(t, "package evolution\nenum Mode {"+tc.variants+"}\nfixed table Root {tick uint8\nf Mode}\n")
+		wire, err := EncodeMessage(writer, covPlace(t, writer, "Root", `{"tick":1,"f":"`+tc.value+`"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var vocabulary Vocabulary
+		if err := vocabulary.AnnounceRead(Announce(writer.Unit), &tabletext.Report{}); err != nil {
+			t.Fatal(err)
+		}
+		if tc.sameBuild {
+			vocabulary.buildVersion = ir.BuildVersion(reader.Unit)
+		}
+		for _, batch := range []bool{false, true} {
+			v := vocabulary
+			value := reader.New(reader.Lookup("Root"))
+			var report tabletext.Report
+			var ok bool
+			if batch {
+				_, ok, err = DecodeMessages(reader, []*tabletext.Instance{value}, wire, &v, &report)
+			} else {
+				ok, err = DecodeMessage(reader, value, wire, &v, &report)
+			}
+			if !ok || err != nil {
+				t.Errorf("%s batch=%v refused: %v", tc.name, batch, err)
+			}
+			field, _ := value.FieldByKey("f")
+			if field.Cell.U != 0 || report.Refused {
+				t.Errorf("%s batch=%v did not land its substituted default", tc.name, batch)
+			}
+		}
+	}
+}
