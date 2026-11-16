@@ -16328,8 +16328,9 @@ inline bool UnitCookBody( uint8_t * at, const Unit & value, TableByteOrder order
 
 inline bool BoundedCookBody( uint8_t * at, const Bounded & value, TableByteOrder order )
 {
-    // all 8 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 8; i++ )
+    // 8 slots of storage, value.items_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.items_count >= 0 && value.items_count <= 8 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.items_count; i++ )
     {
         if ( !UnitCookBody( at + 0 + i * 4, value.items[i], order ) ) { return false; }
     }

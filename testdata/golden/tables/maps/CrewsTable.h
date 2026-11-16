@@ -14924,7 +14924,8 @@ template <typename Ctx>
 inline bool CrewsMembersEntryCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const CrewsMembersEntry & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.key, 4, order );
-    for ( int32_t i = 0; i < 2; i++ ) // value: an array of pointers, every slot
+    schema_assert( value.value_count >= 0 && value.value_count <= 2 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.value_count; i++ ) // value: an array of pointers, the live slots, the rest zero
     {
         if ( !table_cook_ref( region, at + 8 + i * 8, (const void *) ItemAt( ctx, value.value[i] ), order ) ) { return false; }
     }

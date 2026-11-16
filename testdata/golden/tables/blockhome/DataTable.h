@@ -9715,14 +9715,16 @@ inline bool FiringGroupCookBody( uint8_t * at, const FiringGroup & value, TableB
 
 inline bool GunnerSettingsCookBody( uint8_t * at, const GunnerSettings & value, TableByteOrder order )
 {
-    // all 32 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 32; i++ )
+    // 32 slots of storage, value.firing_groups_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.firing_groups_count >= 0 && value.firing_groups_count <= 32 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.firing_groups_count; i++ )
     {
         if ( !FiringGroupCookBody( at + 0 + i * 8, value.firing_groups[i], order ) ) { return false; }
     }
     table_cook_put( at + 256, (uint64_t) (uint32_t) value.firing_groups_count, 4, order );
-    // all 4 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 4; i++ )
+    // 4 slots of storage, value.missile_groups_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.missile_groups_count >= 0 && value.missile_groups_count <= 4 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.missile_groups_count; i++ )
     {
         if ( !FiringGroupCookBody( at + 260 + i * 8, value.missile_groups[i], order ) ) { return false; }
     }
