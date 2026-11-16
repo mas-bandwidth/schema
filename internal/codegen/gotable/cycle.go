@@ -28,12 +28,7 @@ package gotable
 const tableCycleSource = `
 const tableNodeWireNamed uint64 = 1 << 63
 const tableNodeBlobSeen uint64 = 1 << 62
-<<<<<<< HEAD
 const tableNodeBlobAway uint64 = 1<<48-1
-=======
-const tableNodeNoStorage uint64 = 1 << 61
-const tableNodeSeed uint64 = 1 << 63
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 
 func tableCycleCheck(base unsafe.Pointer,root *TableTypeInfo,a *TableArena,dir []TableNodeDirEntry,nodeType func(uint64)*TableTypeInfo,r TableReader)bool{
  return tableCycleCheckReason(base,root,a,dir,nodeType,r)==TableRefuseOk
@@ -43,25 +38,14 @@ func tableCycleCheckReason(base unsafe.Pointer,root *TableTypeInfo,a *TableArena
  const mask=uint64(1)<<48-1
  const wire=uint64(1)<<63
  if uint64(len(dir))>math.MaxUint32{return TableRefuseWireDamaged}
-<<<<<<< HEAD
  // a blob record no pointer names is unreachable; a named one clears its mark
  walked:=false
  for i:=range dir {
   e:=&dir[i];walked=walked||e.Offset&wire!=0;if e.Offset==^uint64(0){continue}
-=======
- // a blob record no pointer names is unreachable; a named one clears its mark.
- // Every blob record carries these marks, whether or not this unit gives its
- // type storage, so the verdict does not depend on the reader's mask.
- for i:=range dir {
-  e:=&dir[i]
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
   if e.TypeID==tableBytesTypeID||e.TypeID==tableStringTypeID {
    if e.Offset&tableNodeWireNamed!=0{return TableRefuseBlobShared};if e.Offset&tableNodeBlobSeen==0{return TableRefuseWireDamaged}
    e.Offset&^=tableNodeBlobSeen
   }
-  // The cycle ordinal occupies the high bits, including the no-storage bit.
-  // Convert unplaced entries to the reserved ordinal before encoding types.
-  if e.Offset&tableNodeNoStorage!=0 {e.Offset=^uint64(0)}
  }
  records:=tableNodeScanBegin(r).payload;rec:=records;vertices:=0
  for i:=range dir {
@@ -87,14 +71,8 @@ func tableCycleCheckReason(base unsafe.Pointer,root *TableTypeInfo,a *TableArena
   id,_:=body(i);return nodeType(id)
  }
  each:=func(i int,visit func(*TableRef,*TableFieldInfo)bool)bool{
-<<<<<<< HEAD
   t:=typ(i);if t==nil{return true}
   var p unsafe.Pointer;if a!=nil{p=a.At(int64(dir[i].Offset&mask))}else{p=unsafe.Add(base,dir[i].Offset&mask)}
-=======
-  e:=&dir[i];if e.Offset==^uint64(0){return true};ordinal:=e.Offset>>48;if ordinal==0||ordinal==65535{return true}
-  t:=root.CycleType(ordinal);if t==nil{return false}
-  var p unsafe.Pointer;if a!=nil{p=a.At(int64(e.Offset&mask))}else{p=unsafe.Add(base,e.Offset&mask)}
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
   return tableCycleEdges(p,t,visit)
  }
  // the edges of a record walked from the wire: each pointer its body
@@ -136,15 +114,11 @@ func tableCycleCheckReason(base unsafe.Pointer,root *TableTypeInfo,a *TableArena
   return true
  }
  for i:=range dir{if !each(i,resolve){return TableRefuseWireDamaged}}
-<<<<<<< HEAD
  for i:=range dir{
   e:=&dir[i];if e.Offset>>48==0{continue}
   off:=e.Offset&mask;if off==mask{e.TypeID,_=body(i);e.Offset=^uint64(0);continue}
   e.TypeID=typ(i).ID;e.Offset=off
  }
-=======
- for i:=range dir{e:=&dir[i];if e.Offset==^uint64(0){continue};ordinal:=e.Offset>>48;if ordinal!=0&&ordinal!=65535{e.TypeID=root.CycleType(ordinal).ID;e.Offset&=mask}}
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
  return TableRefuseOk
 }
 `

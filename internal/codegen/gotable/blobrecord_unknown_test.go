@@ -52,28 +52,16 @@ func framed(w *TableWriter, id uint64, kind uint8, payload []byte) { w.ID(id); w
 func ptr(w *TableWriter, id uint64, index uint64) { w.ID(id); w.Put8(17); w.PutLeb(index) }
 
 func file(ids *TableIds, root func(w *TableWriter), records ...record) []byte {
-<<<<<<< HEAD
-=======
-	*ids = TableIds{}
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 	w := TableWriter{Buffer: make([]byte, 8192), Ids: ids}
 	w.Put8(1)
 	root(&w)
 	if len(records) > 0 {
-<<<<<<< HEAD
 		w.ID(0xffffffffffffffff); w.Put8(12)
-=======
-		ids.Ref(0xffffffffffffffff)
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 		payload := body(ids, func(p *TableWriter) {
 			p.PutLeb(uint64(len(records)))
 			for _, r := range records { p.ID(r.typ); p.PutLeb(uint64(len(r.body))); p.Raw(r.body) }
 		})
-<<<<<<< HEAD
 		w.PutLeb(uint64(len(payload))); w.Raw(payload)
-=======
-		framed(&w, 0xffffffffffffffff, 12, payload)
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 	}
 	w.Put8(0)
 	w.Trailer()
@@ -84,21 +72,12 @@ func file(ids *TableIds, root func(w *TableWriter), records ...record) []byte {
 // rawFile writes the node table's payload from its own builder, so a record's
 // declared length can be made to run past its framing.
 func rawFile(ids *TableIds, root func(w *TableWriter), payload func(p *TableWriter)) []byte {
-<<<<<<< HEAD
 	w := TableWriter{Buffer: make([]byte, 8192), Ids: ids}
 	w.Put8(1)
 	root(&w)
 	w.ID(0xffffffffffffffff); w.Put8(12)
 	b := body(ids, payload)
 	w.PutLeb(uint64(len(b))); w.Raw(b)
-=======
-	*ids = TableIds{}
-	w := TableWriter{Buffer: make([]byte, 8192), Ids: ids}
-	w.Put8(1)
-	root(&w)
-	ids.Ref(0xffffffffffffffff)
-	framed(&w, 0xffffffffffffffff, 12, body(ids, payload))
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 	w.Put8(0)
 	w.Trailer()
 	if w.Overflow || ids.Overflow { panic("overflow") }
@@ -111,19 +90,16 @@ func field(i int) uint64 { return NodeTableFields[i].ID }
 
 const (fN, fNext = 0, 1)
 
-<<<<<<< HEAD
-=======
 func TestCycleOrdinalDoesNotCollideWithUnstoredBlob(t *testing.T) {
  var info = NodeTableInfo
  info.CycleIndex = 8192
  info.CycleType = func(i uint64) *TableTypeInfo { if i == info.CycleIndex { return &info }; return nil }
  var row Node
  dir := []TableNodeDirEntry{{0, info.ID}}
- if reason := tableCycleCheckReason(unsafe.Pointer(&row), &info, nil, dir, func(uint64) *TableTypeInfo { return nil }); reason != TableRefuseOk { t.Fatalf("high ordinal refused: %v", reason) }
+ if reason := tableCycleCheckReason(unsafe.Pointer(&row), &info, nil, dir, func(uint64) *TableTypeInfo { return nil }, TableReader{}); reason != TableRefuseOk { t.Fatalf("high ordinal refused: %v", reason) }
  if dir[0].Offset != 0 || dir[0].TypeID != info.ID { t.Fatalf("high ordinal was not restored: %+v", dir[0]) }
 }
 
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 func TestUnknownBlobSizeCapIsIndependentOfMask(t *testing.T) {
 	t.Parallel()
 	for _, id := range []uint64{tableBytesTypeID, tableStringTypeID} {
@@ -177,18 +153,11 @@ func TestBlobRecordUnderUnknownField(t *testing.T) {
 }
 
 func TestBlobRecordNamedTwiceUnderUnknownFields(t *testing.T) {
-<<<<<<< HEAD
-=======
-	var ids TableIds
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 	for _, tc := range []struct { name string; rec record }{
 		{"bytes", record{blobBytesID, []byte("abc")}},
 		{"string", record{blobStringID, []byte("hello")}},
 	} {
-<<<<<<< HEAD
 		var ids TableIds
-=======
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 		shared := file(&ids, func(w *TableWriter) { ptr(w, dataField, 2); ptr(w, noteField, 2) }, tc.rec)
 		var r TableReport
 		if NodeLoad(region(1<<16), shared, &r) != nil { t.Fatalf("%s: Load accepted a blob record named from two unknown fields: %+v", tc.name, r) }
@@ -199,18 +168,11 @@ func TestBlobRecordNamedTwiceUnderUnknownFields(t *testing.T) {
 }
 
 func TestBlobRecordNoPointerReachesRefused(t *testing.T) {
-<<<<<<< HEAD
-=======
-	var ids TableIds
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 	for _, tc := range []struct { name string; rec record }{
 		{"bytes", record{blobBytesID, []byte("abc")}},
 		{"string", record{blobStringID, []byte("hello")}},
 	} {
-<<<<<<< HEAD
 		var ids TableIds
-=======
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 		orphan := file(&ids, func(w *TableWriter) {}, tc.rec)
 		var r TableReport
 		if NodeLoad(region(1<<16), orphan, &r) != nil { t.Fatalf("%s: Load accepted a blob record no pointer reaches: %+v", tc.name, r) }
@@ -266,12 +228,8 @@ func TestStringRecordUnderUnknownField(t *testing.T) {
 	if err != nil || v == nil { t.Fatalf("ReadStrict refused the same file: %v", err) }
 	// the blob this unit does declare, under a field it does not know, is a
 	// blob it can place; the field is the one unknown event
-<<<<<<< HEAD
 	var knownIDs TableIds
 	known := file(&knownIDs, func(w *TableWriter) {
-=======
-	known := file(&ids, func(w *TableWriter) {
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 		w.ID(fieldB(bN)); w.Put8(4); w.Put32(1)
 		ptr(w, noteField, 2)
 	}, record{blobBytesID, []byte("abc")})
@@ -299,19 +257,12 @@ func TestDeclaredAndUnknownNameOneStringRecord(t *testing.T) {
 // whether this unit stores its type: the stored bytes record is refused the
 // same way as the unstored string record
 func TestStoredBlobRecordSharedOrUnreachableRefused(t *testing.T) {
-<<<<<<< HEAD
-=======
-	var ids TableIds
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 	for _, tc := range []struct { name string; root func(w *TableWriter) }{
 		{"declared and unknown", func(w *TableWriter) { w.ID(fieldB(bN)); w.Put8(4); w.Put32(1); ptr(w, fieldB(2), 2); ptr(w, noteField, 2) }},
 		{"two unknown", func(w *TableWriter) { w.ID(fieldB(bN)); w.Put8(4); w.Put32(1); ptr(w, noteField, 2); ptr(w, otherField, 2) }},
 		{"no pointer", func(w *TableWriter) { w.ID(fieldB(bN)); w.Put8(4); w.Put32(1) }},
 	} {
-<<<<<<< HEAD
 		var ids TableIds
-=======
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 		wire := file(&ids, tc.root, record{blobBytesID, []byte("abc")})
 		var r TableReport
 		if BlobNodeLoad(region(1<<16), wire, &r) != nil { t.Fatalf("%s: Load accepted a stored bytes record: %+v", tc.name, r) }
