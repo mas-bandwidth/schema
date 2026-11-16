@@ -1,6 +1,13 @@
 {
   "groups": [
     {
+      "name": "java-transport-id",
+      "when": "pull-request",
+      "why": "The Java variable-file first-use gate and its planted bypass cover the plain and retaining readers against the Go oracle. Two focused generated-unit compilations, measured about 11 seconds together on the shared Linux bench.",
+      "targets": [],
+      "java": "21"
+    },
+    {
       "name": "base-1",
       "when": "pull-request",
       "why": "the C runtime-home control and its per-header stand-alone builds (62 s on its own), with the enum-bound, view, slot, C++ finite-float read and generated-tree controls beside it: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. One third of what was the single `base` group, cut on 2026-10-27 because that group ran 4m51s to 5m03s against the job's five-minute timeout (run 40596125566: 258 s of control time over 41 controls). Measured about 85 s of control time on that run.",
@@ -1780,11 +1787,13 @@
       "name": "js-discard",
       "when": "pull-request",
       "node": "26",
-      "why": "the JavaScript leg's DAMAGE DISCARDS THE WHOLE LOAD controls (docs/SPEC-TABLES.md §4): the variable form's discard and the message batch's discard, each removed from a tools/sabotage copy of one internal/codegen/jstable source reached by a Go overlay, each requiring its gate (TestDamageDiscardsTheWholeLoadJavaScript, TestMessageFormBatchJavaScript) red on its own line; and the cycle check blinded to an OPEN vertex (§3.1), requiring TestCyclicWireIsDamageJavaScript red on a cyclic wire. A group of its own so the js and js-proof jobs keep their measured time; two go test runs of the jstable package under node.",
+      "why": "the JavaScript leg's DAMAGE DISCARDS THE WHOLE LOAD controls (docs/SPEC-TABLES.md §4): the variable form's discard and the message batch's discard, each removed from a tools/sabotage copy of one internal/codegen/jstable source reached by a Go overlay, each requiring its gate (TestDamageDiscardsTheWholeLoadJavaScript, TestMessageFormBatchJavaScript) red on its own line; and the cycle check blinded to an OPEN vertex (§3.1), requiring TestCyclicWireIsDamageJavaScript red on a cyclic wire. The retained-depth control runs the native boundary witness and lowers the copied retaining walk limit to 127; the retained-hash-zero control mistakes hash zero for None in a copied emitter and requires the enum round trip to fail. A group of its own so the js and js-proof jobs keep their measured time.",
       "targets": [
         "tables-js-discard-negative-control",
         "tables-js-batch-discard-negative-control",
-        "tables-js-cycle-negative-control"
+        "tables-js-cycle-negative-control",
+        "tables-js-retain-depth-negative-control",
+        "tables-js-retain-hashzero-negative-control"
       ]
     },
     {
@@ -2391,6 +2400,7 @@
         "tables-goose-fixedform-negative-control",
         "tables-goose-tablewire-negative-control",
         "tables-goose-message-form-negative-control",
+        "tables-goose-announcement-first-use-negative-control",
         "tables-goose-message-peer-negative-control",
         "tables-goose-versioning-negative-control",
         "tables-goose-damage-negative-control",
