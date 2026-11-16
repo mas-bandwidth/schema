@@ -203,6 +203,7 @@ func TestGraphChainPastCapPinned(t *testing.T) {
 // numbering their ID tables by first use. The unknown IDs still name the
 // same fields/enum or union arm as in the original fuzz discoveries.
 func TestRetainingFuzzCanonicalPins(t *testing.T) {
+	t.Parallel()
 	root := conformanceRoot(t)
 	cases := []struct{ name, seed string }{
 		{"retain_declared_default", "graph_tree"},
