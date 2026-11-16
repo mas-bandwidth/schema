@@ -1543,8 +1543,8 @@
     },
     {
       "name": "rust-cook-write-test",
-      "when": "nightly",
-      "why": "RELAXED 2026-11-14 (maintainer: get main green): taken out of rust-conformance-walk because the suite it plants into, TestCookWriteRust, is red on main without the plant: it reads every cook-write row from the instance wire, so the recipe rows (input=<json> share=<from>:<to>, blob_shared) fail, and a form-1 load the Rust leg refuses panics the cook probe; re-enable: relax/rust-cookwrite-test-red.",
+      "when": "pull-request",
+      "why": "The native cook test covers all 71 manifest rows in both byte orders, including shared-blob recipes and fixed values; the finite-value sabotage is detected. Measured 13.70s on Intel Linux at 2c149d006.",
       "targets": [
         "tables-rust-cook-write-negative-control"
       ],
