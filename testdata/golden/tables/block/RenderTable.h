@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package blockdemo — protocol id 0x802d031e1b4cdb0c (packets only: tables version by field id, not by protocol id)
+// package blockdemo — protocol id 0xafe89c387292473c (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2427,14 +2427,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0xa7,
-    0xdd,
-    0xa3,
-    0x09,
-    0xa2,
-    0x89,
-    0x6e,
-    0xc0,
+    0xbc,
+    0x25,
+    0x30,
+    0x1c,
+    0x18,
+    0x28,
+    0x71,
+    0xbf,
     0x02,
     0x0e,
     0xd8,
@@ -6410,7 +6410,7 @@ namespace blockdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xc06e89a209a3dda7ull;
+static const uint64_t BuildVersion = 0xbf7128181c3025bcull;
 
 } // namespace blockdemo
 
@@ -7698,7 +7698,6 @@ inline int64_t RenderCameraSave( const RenderCamera & value, uint8_t * buffer, i
 BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera & value )
 {
     RenderCameraReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -7738,12 +7737,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
         {
             case 0x4cbf3a26fca1d74aull: // position
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7759,11 +7752,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
                 }
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
                 {
                     r.report->damaged = true;
                     return false;
@@ -7782,12 +7770,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
             }
             case 0xb51afb05cd34709full: // rotation
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7807,11 +7789,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     RenderQuaternionLoadBody( sub, value.rotation );
@@ -7826,12 +7803,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
             }
             case 0x9f61700f084ab92eull: // camera_id
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -7845,11 +7816,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.camera_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -7871,22 +7837,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.camera_id = decoded_v;
                 break;
             }
             case 0x336d3dc7fffd0c9bull: // camera_type
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -7900,11 +7855,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.camera_type = decoded_v;
                         r.report->widened++;
                         break;
@@ -7926,22 +7876,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.camera_type = decoded_v;
                 break;
             }
             case 0x6a0c6a156952b9c2ull: // target_object_id
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -7955,11 +7894,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.target_object_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -7981,22 +7915,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.target_object_id = decoded_v;
                 break;
             }
             case 0xdcb27c18fed9e15cull: // fov
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 10 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -8020,13 +7943,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera 
                     if ( !TableBitsFinite32( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
                     else
                     {
-                        float decoded_f = table_bits_to_float( decoded_bits );
-                        if ( table_float_to_bits( decoded_f ) == table_float_to_bits( 0.0f ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.fov = decoded_f;
+                        value.fov = table_bits_to_float( decoded_bits );
                     }
                 }
                 break;
@@ -8656,6 +8573,7 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -8912,7 +8830,6 @@ inline int64_t RenderShipSave( const RenderShip & value, uint8_t * buffer, int64
 BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & value )
 {
     RenderShipReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -8952,12 +8869,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
         {
             case 0x4cbf3a26fca1d74aull: // position
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -8973,11 +8884,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                 }
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
                 {
                     r.report->damaged = true;
                     return false;
@@ -8996,12 +8902,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
             }
             case 0xb51afb05cd34709full: // rotation
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9021,11 +8921,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     RenderQuaternionLoadBody( sub, value.rotation );
@@ -9040,12 +8935,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
             }
             case 0x17a3a1a985f75aecull: // flags
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -9059,11 +8948,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.flags = decoded_v;
                         r.report->widened++;
                         break;
@@ -9085,22 +8969,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.flags = decoded_v;
                 break;
             }
             case 0x0bdab42c07f19812ull: // object_id
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -9114,11 +8987,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.object_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -9140,22 +9008,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.object_id = decoded_v;
                 break;
             }
             case 0x6a0c6a156952b9c2ull: // target_object_id
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -9169,11 +9026,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.target_object_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -9195,22 +9047,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.target_object_id = decoded_v;
                 break;
             }
             case 0xcfd587cb3100cd73ull: // thrust
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 10 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9234,25 +9075,13 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     if ( !TableBitsFinite32( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
                     else
                     {
-                        float decoded_f = table_bits_to_float( decoded_bits );
-                        if ( table_float_to_bits( decoded_f ) == table_float_to_bits( 0.0f ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.thrust = decoded_f;
+                        value.thrust = table_bits_to_float( decoded_bits );
                     }
                 }
                 break;
             }
             case 0x5de0015285763c46ull: // object_sequence
             {
-                if ( 7 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 7;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9272,22 +9101,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.object_sequence = decoded_v;
                 break;
             }
             case 0x1f7d2e86a2e77268ull: // ship_type
             {
-                if ( 8 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 8;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9304,9 +9122,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.ship_type = ShipType::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.ship_type ) )
                 {
@@ -9317,12 +9134,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
             }
             case 0xfa23d9ef19afc32cull: // team
             {
-                if ( 9 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 9;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9339,9 +9150,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
@@ -9352,12 +9162,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
             }
             case 0x1554fa45a1220171ull: // has_target_lock
             {
-                if ( 10 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 10;
                 if ( kind != 1 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9379,18 +9183,12 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                 { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
                     r.report->damaged = true;
-                    } else if ( bool_byte == 0 ) { r.report->damaged = true; return false; } value.has_target_lock = bool_byte != 0;
+                    } value.has_target_lock = bool_byte != 0;
                 }
                 break;
             }
             case 0x4d5be97ba1b9cb81ull: // predicted_explode
             {
-                if ( 11 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 11;
                 if ( kind != 1 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9412,7 +9210,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                 { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
                     r.report->damaged = true;
-                    } else if ( bool_byte == 0 ) { r.report->damaged = true; return false; } value.predicted_explode = bool_byte != 0;
+                    } value.predicted_explode = bool_byte != 0;
                 }
                 break;
             }
@@ -10315,6 +10113,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -10534,7 +10333,6 @@ inline int64_t RenderTurretSave( const RenderTurret & value, uint8_t * buffer, i
 BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret & value )
 {
     RenderTurretReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10574,12 +10372,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
         {
             case 0xb51afb05cd34709full: // rotation
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10599,11 +10391,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     RenderQuaternionLoadBody( sub, value.rotation );
@@ -10618,12 +10405,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
             }
             case 0x17a3a1a985f75aecull: // flags
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -10637,11 +10418,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.flags = decoded_v;
                         r.report->widened++;
                         break;
@@ -10663,22 +10439,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.flags = decoded_v;
                 break;
             }
             case 0x0bdab42c07f19812ull: // object_id
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -10692,11 +10457,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.object_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -10718,22 +10478,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.object_id = decoded_v;
                 break;
             }
             case 0x0bee7b3cb4046c93ull: // parent_object_id
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -10747,11 +10496,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.parent_object_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -10773,22 +10517,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.parent_object_id = decoded_v;
                 break;
             }
             case 0x88a11a6aed541f54ull: // turret_index
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -10802,11 +10535,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.turret_index = decoded_v;
                         r.report->widened++;
                         break;
@@ -10828,22 +10556,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.turret_index = decoded_v;
                 break;
             }
             case 0x6a0c6a156952b9c2ull: // target_object_id
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -10857,11 +10574,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.target_object_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -10883,22 +10595,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.target_object_id = decoded_v;
                 break;
             }
             case 0x5de0015285763c46ull: // object_sequence
             {
-                if ( 7 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 7;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10918,22 +10619,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.object_sequence = decoded_v;
                 break;
             }
             case 0xfa23d9ef19afc32cull: // team
             {
-                if ( 8 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 8;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10950,9 +10640,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
@@ -10963,12 +10652,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
             }
             case 0x1554fa45a1220171ull: // has_target_lock
             {
-                if ( 9 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 9;
                 if ( kind != 1 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10990,7 +10673,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                 { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
                     r.report->damaged = true;
-                    } else if ( bool_byte == 0 ) { r.report->damaged = true; return false; } value.has_target_lock = bool_byte != 0;
+                    } value.has_target_lock = bool_byte != 0;
                 }
                 break;
             }
@@ -11818,6 +11501,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -12050,7 +11734,6 @@ inline int64_t RenderMissileSave( const RenderMissile & value, uint8_t * buffer,
 BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissile & value )
 {
     RenderMissileReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12090,12 +11773,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
         {
             case 0x4cbf3a26fca1d74aull: // position
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12111,11 +11788,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                 }
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
                 {
                     r.report->damaged = true;
                     return false;
@@ -12134,12 +11806,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
             }
             case 0xb51afb05cd34709full: // rotation
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12159,11 +11825,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     RenderQuaternionLoadBody( sub, value.rotation );
@@ -12178,12 +11839,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
             }
             case 0x17a3a1a985f75aecull: // flags
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -12197,11 +11852,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.flags = decoded_v;
                         r.report->widened++;
                         break;
@@ -12223,22 +11873,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.flags = decoded_v;
                 break;
             }
             case 0x0bdab42c07f19812ull: // object_id
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -12252,11 +11891,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.object_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -12278,22 +11912,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.object_id = decoded_v;
                 break;
             }
             case 0x5de0015285763c46ull: // object_sequence
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12313,22 +11936,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.object_sequence = decoded_v;
                 break;
             }
             case 0x151b2a0e2c07b4bcull: // missile_type
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12345,9 +11957,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.missile_type = MissileType::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.missile_type ) )
                 {
@@ -12358,12 +11969,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
             }
             case 0xfa23d9ef19afc32cull: // team
             {
-                if ( 7 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 7;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12380,9 +11985,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
@@ -13048,6 +12652,7 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -13280,7 +12885,6 @@ inline int64_t RenderDynamicPropSave( const RenderDynamicProp & value, uint8_t *
 BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDynamicProp & value )
 {
     RenderDynamicPropReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13320,12 +12924,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
         {
             case 0x4cbf3a26fca1d74aull: // position
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -13341,11 +12939,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                 }
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
                 {
                     r.report->damaged = true;
                     return false;
@@ -13364,12 +12957,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
             }
             case 0xb51afb05cd34709full: // rotation
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -13389,11 +12976,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     RenderQuaternionLoadBody( sub, value.rotation );
@@ -13408,12 +12990,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
             }
             case 0x17a3a1a985f75aecull: // flags
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -13427,11 +13003,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.flags = decoded_v;
                         r.report->widened++;
                         break;
@@ -13453,22 +13024,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.flags = decoded_v;
                 break;
             }
             case 0x0bdab42c07f19812ull: // object_id
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -13482,11 +13042,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.object_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -13508,22 +13063,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.object_id = decoded_v;
                 break;
             }
             case 0x5de0015285763c46ull: // object_sequence
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -13543,22 +13087,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.object_sequence = decoded_v;
                 break;
             }
             case 0xe5626f155e4c5dadull: // prop_type
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -13575,9 +13108,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.prop_type ) )
                 {
@@ -13588,12 +13120,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
             }
             case 0xfa23d9ef19afc32cull: // team
             {
-                if ( 7 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 7;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -13610,9 +13136,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
@@ -14278,6 +13803,7 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -14512,7 +14038,6 @@ inline int64_t RenderStaticPropSave( const RenderStaticProp & value, uint8_t * b
 BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderStaticProp & value )
 {
     RenderStaticPropReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14552,12 +14077,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
         {
             case 0x4cbf3a26fca1d74aull: // position
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14573,11 +14092,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                 }
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
                 {
                     r.report->damaged = true;
                     return false;
@@ -14596,12 +14110,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
             }
             case 0xb51afb05cd34709full: // rotation
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14621,11 +14129,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     RenderQuaternionLoadBody( sub, value.rotation );
@@ -14640,12 +14143,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
             }
             case 0x6aacb9fbb71a1d91ull: // scale
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 11 )
                 {
                     if ( TableKindWidens( kind, 11 ) )
@@ -14660,16 +14157,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else
-                            {
-                                const double decoded_d = (double) table_bits_to_float( widened_bits );
-                                if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                                {
-                                    r.report->damaged = true;
-                                    return false;
-                                }
-                                value.scale = decoded_d;
-                            }
+                            else { value.scale = (double) table_bits_to_float( widened_bits ); }
                         }
                         r.report->widened++;
                         break;
@@ -14693,27 +14181,12 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else
-                    {
-                        const double decoded_d = table_bits_to_double( decoded_bits );
-                        if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.scale = decoded_d;
-                    }
+                    else { value.scale = table_bits_to_double( decoded_bits ); }
                 }
                 break;
             }
             case 0x17a3a1a985f75aecull: // flags
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -14727,11 +14200,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.flags = decoded_v;
                         r.report->widened++;
                         break;
@@ -14753,22 +14221,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.flags = decoded_v;
                 break;
             }
             case 0xd23da7ab574b95c3ull: // static_prop_id
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -14782,11 +14239,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.static_prop_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -14808,22 +14260,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.static_prop_id = decoded_v;
                 break;
             }
             case 0xe5626f155e4c5dadull: // prop_type
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14840,9 +14281,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.prop_type ) )
                 {
@@ -14853,12 +14293,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
             }
             case 0xfa23d9ef19afc32cull: // team
             {
-                if ( 7 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 7;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14875,9 +14309,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
@@ -15563,6 +14996,7 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -15803,7 +15237,6 @@ inline int64_t RenderCosmeticPropSave( const RenderCosmeticProp & value, uint8_t
 BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderCosmeticProp & value )
 {
     RenderCosmeticPropReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -15843,12 +15276,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
         {
             case 0x4cbf3a26fca1d74aull: // position
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -15864,11 +15291,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                 }
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
                 {
                     r.report->damaged = true;
                     return false;
@@ -15887,12 +15309,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
             }
             case 0xb51afb05cd34709full: // rotation
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -15912,11 +15328,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     RenderQuaternionLoadBody( sub, value.rotation );
@@ -15931,12 +15342,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
             }
             case 0x6aacb9fbb71a1d91ull: // scale
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 11 )
                 {
                     if ( TableKindWidens( kind, 11 ) )
@@ -15951,16 +15356,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else
-                            {
-                                const double decoded_d = (double) table_bits_to_float( widened_bits );
-                                if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                                {
-                                    r.report->damaged = true;
-                                    return false;
-                                }
-                                value.scale = decoded_d;
-                            }
+                            else { value.scale = (double) table_bits_to_float( widened_bits ); }
                         }
                         r.report->widened++;
                         break;
@@ -15984,27 +15380,12 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else
-                    {
-                        const double decoded_d = table_bits_to_double( decoded_bits );
-                        if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.scale = decoded_d;
-                    }
+                    else { value.scale = table_bits_to_double( decoded_bits ); }
                 }
                 break;
             }
             case 0x17a3a1a985f75aecull: // flags
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -16018,11 +15399,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.flags = decoded_v;
                         r.report->widened++;
                         break;
@@ -16044,22 +15420,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.flags = decoded_v;
                 break;
             }
             case 0xb66e4449e56b2e26ull: // cosmetic_prop_id
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -16073,11 +15438,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.cosmetic_prop_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -16099,22 +15459,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.cosmetic_prop_id = decoded_v;
                 break;
             }
             case 0x4d7bf73bcbddc228ull: // prop_sequence
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -16134,22 +15483,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.prop_sequence = decoded_v;
                 break;
             }
             case 0xe5626f155e4c5dadull: // prop_type
             {
-                if ( 7 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 7;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -16166,9 +15504,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.prop_type ) )
                 {
@@ -16179,12 +15516,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
             }
             case 0xfa23d9ef19afc32cull: // team
             {
-                if ( 8 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 8;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -16201,9 +15532,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
@@ -16949,6 +16279,7 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -17177,7 +16508,6 @@ inline int64_t RenderLaserSave( const RenderLaser & value, uint8_t * buffer, int
 BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & value )
 {
     RenderLaserReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -17217,12 +16547,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
         {
             case 0xee5d97ad45ad251full: // start
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -17238,11 +16562,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                 }
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
                 {
                     r.report->damaged = true;
                     return false;
@@ -17261,12 +16580,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
             }
             case 0x6917a5bab91540f2ull: // finish
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -17286,11 +16599,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     RenderVector3LoadBody( sub, value.finish );
@@ -17305,12 +16613,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
             }
             case 0xaf63e94c860202a3ull: // t
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 11 )
                 {
                     if ( TableKindWidens( kind, 11 ) )
@@ -17325,16 +16627,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else
-                            {
-                                const double decoded_d = (double) table_bits_to_float( widened_bits );
-                                if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                                {
-                                    r.report->damaged = true;
-                                    return false;
-                                }
-                                value.t = decoded_d;
-                            }
+                            else { value.t = (double) table_bits_to_float( widened_bits ); }
                         }
                         r.report->widened++;
                         break;
@@ -17358,27 +16651,12 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else
-                    {
-                        const double decoded_d = table_bits_to_double( decoded_bits );
-                        if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.t = decoded_d;
-                    }
+                    else { value.t = table_bits_to_double( decoded_bits ); }
                 }
                 break;
             }
             case 0xcd29c05f390294ecull: // laser_id
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -17392,11 +16670,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.laser_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -17418,22 +16691,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.laser_id = decoded_v;
                 break;
             }
             case 0x96b593c242133841ull: // laser_type
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -17450,9 +16712,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.laser_type = LaserType::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.laser_type ) )
                 {
@@ -17463,12 +16724,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
             }
             case 0xfa23d9ef19afc32cull: // team
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -17485,9 +16740,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
@@ -18101,6 +17355,7 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -18335,7 +17590,6 @@ inline int64_t RenderExplosionSave( const RenderExplosion & value, uint8_t * buf
 BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExplosion & value )
 {
     RenderExplosionReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -18375,12 +17629,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
         {
             case 0x4cbf3a26fca1d74aull: // position
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -18396,11 +17644,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                 }
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
                 {
                     r.report->damaged = true;
                     return false;
@@ -18419,12 +17662,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
             }
             case 0xb51afb05cd34709full: // rotation
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -18444,11 +17681,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     RenderQuaternionLoadBody( sub, value.rotation );
@@ -18463,12 +17695,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
             }
             case 0xaf63e94c860202a3ull: // t
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 11 )
                 {
                     if ( TableKindWidens( kind, 11 ) )
@@ -18483,16 +17709,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else
-                            {
-                                const double decoded_d = (double) table_bits_to_float( widened_bits );
-                                if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                                {
-                                    r.report->damaged = true;
-                                    return false;
-                                }
-                                value.t = decoded_d;
-                            }
+                            else { value.t = (double) table_bits_to_float( widened_bits ); }
                         }
                         r.report->widened++;
                         break;
@@ -18516,27 +17733,12 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else
-                    {
-                        const double decoded_d = table_bits_to_double( decoded_bits );
-                        if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.t = decoded_d;
-                    }
+                    else { value.t = table_bits_to_double( decoded_bits ); }
                 }
                 break;
             }
             case 0xfd7f3fa0b16ed778ull: // explosion_id
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -18550,11 +17752,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.explosion_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -18576,22 +17773,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.explosion_id = decoded_v;
                 break;
             }
             case 0x0bee7b3cb4046c93ull: // parent_object_id
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -18605,11 +17791,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.parent_object_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -18631,22 +17812,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.parent_object_id = decoded_v;
                 break;
             }
             case 0xdc89eb9cd3393be5ull: // explosion_type
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -18663,9 +17833,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.explosion_type = ExplosionType::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.explosion_type ) )
                 {
@@ -18676,12 +17845,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
             }
             case 0xfa23d9ef19afc32cull: // team
             {
-                if ( 7 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 7;
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -18698,9 +17861,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                 uint64_t variant_ref = 0;
                 if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
-                if ( variant_ref == 0 ) { r.report->damaged = true;
-                    return false; }
-                if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
+                if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
@@ -19398,6 +18560,7 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -19947,7 +19110,6 @@ inline int64_t RenderFrameSave( const RenderFrame & value, uint8_t * buffer, int
 BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & value )
 {
     RenderFrameReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -19987,12 +19149,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
         {
             case 0xbb62c62c9808ea37ull: // version
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -20006,11 +19162,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.version = decoded_v;
                         r.report->widened++;
                         break;
@@ -20032,22 +19183,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.version = decoded_v;
                 break;
             }
             case 0x0f9222d2ba7aa2a7ull: // cameras
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -20098,11 +19238,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 1 )
                         {
@@ -20148,12 +19283,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
             }
             case 0x294a5c4913e1ad44ull: // ships
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -20204,11 +19333,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 4096 )
                         {
@@ -20254,12 +19378,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
             }
             case 0x84f8260bc283608cull: // turrets
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -20310,11 +19428,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 1024 )
                         {
@@ -20360,12 +19473,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
             }
             case 0x1c3027194b1ba4d0ull: // missiles
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -20416,11 +19523,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 4096 )
                         {
@@ -20466,12 +19568,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
             }
             case 0x43125398a9903d27ull: // dynamic_props
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -20522,11 +19618,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 4096 )
                         {
@@ -20572,12 +19663,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
             }
             case 0xc1f8d7edff7fcfd2ull: // static_props
             {
-                if ( 7 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 7;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -20628,11 +19713,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 20000 )
                         {
@@ -20678,12 +19758,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
             }
             case 0x33408e39f5f480ffull: // cosmetic_props
             {
-                if ( 8 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 8;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -20734,11 +19808,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 8192 )
                         {
@@ -20784,12 +19853,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
             }
             case 0xd982b77b3e92d16dull: // lasers
             {
-                if ( 9 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 9;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -20840,11 +19903,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 32000 )
                         {
@@ -20890,12 +19948,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
             }
             case 0x876a8c1a85806a69ull: // explosions
             {
-                if ( 10 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 10;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -20946,11 +19998,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 32000 )
                         {
@@ -22011,6 +21058,7 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -22171,7 +21219,6 @@ inline int64_t RenderVector3Save( const RenderVector3 & value, uint8_t * buffer,
 BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector3 & value )
 {
     RenderVector3Reset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -22211,12 +21258,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
         {
             case 0xaf63f54c86021707ull: // x
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 11 )
                 {
                     if ( TableKindWidens( kind, 11 ) )
@@ -22231,16 +21272,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else
-                            {
-                                const double decoded_d = (double) table_bits_to_float( widened_bits );
-                                if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                                {
-                                    r.report->damaged = true;
-                                    return false;
-                                }
-                                value.x = decoded_d;
-                            }
+                            else { value.x = (double) table_bits_to_float( widened_bits ); }
                         }
                         r.report->widened++;
                         break;
@@ -22264,27 +21296,12 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else
-                    {
-                        const double decoded_d = table_bits_to_double( decoded_bits );
-                        if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.x = decoded_d;
-                    }
+                    else { value.x = table_bits_to_double( decoded_bits ); }
                 }
                 break;
             }
             case 0xaf63f44c86021554ull: // y
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 11 )
                 {
                     if ( TableKindWidens( kind, 11 ) )
@@ -22299,16 +21316,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else
-                            {
-                                const double decoded_d = (double) table_bits_to_float( widened_bits );
-                                if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                                {
-                                    r.report->damaged = true;
-                                    return false;
-                                }
-                                value.y = decoded_d;
-                            }
+                            else { value.y = (double) table_bits_to_float( widened_bits ); }
                         }
                         r.report->widened++;
                         break;
@@ -22332,27 +21340,12 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else
-                    {
-                        const double decoded_d = table_bits_to_double( decoded_bits );
-                        if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.y = decoded_d;
-                    }
+                    else { value.y = table_bits_to_double( decoded_bits ); }
                 }
                 break;
             }
             case 0xaf63f74c86021a6dull: // z
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 11 )
                 {
                     if ( TableKindWidens( kind, 11 ) )
@@ -22367,16 +21360,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else
-                            {
-                                const double decoded_d = (double) table_bits_to_float( widened_bits );
-                                if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                                {
-                                    r.report->damaged = true;
-                                    return false;
-                                }
-                                value.z = decoded_d;
-                            }
+                            else { value.z = (double) table_bits_to_float( widened_bits ); }
                         }
                         r.report->widened++;
                         break;
@@ -22400,16 +21384,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else
-                    {
-                        const double decoded_d = table_bits_to_double( decoded_bits );
-                        if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.z = decoded_d;
-                    }
+                    else { value.z = table_bits_to_double( decoded_bits ); }
                 }
                 break;
             }
@@ -22842,6 +21817,7 @@ inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabul
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -23010,7 +21986,6 @@ inline int64_t RenderQuaternionSave( const RenderQuaternion & value, uint8_t * b
 BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQuaternion & value )
 {
     RenderQuaternionReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -23050,12 +22025,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
         {
             case 0xaf63f54c86021707ull: // x
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 11 )
                 {
                     if ( TableKindWidens( kind, 11 ) )
@@ -23070,16 +22039,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else
-                            {
-                                const double decoded_d = (double) table_bits_to_float( widened_bits );
-                                if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                                {
-                                    r.report->damaged = true;
-                                    return false;
-                                }
-                                value.x = decoded_d;
-                            }
+                            else { value.x = (double) table_bits_to_float( widened_bits ); }
                         }
                         r.report->widened++;
                         break;
@@ -23103,27 +22063,12 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else
-                    {
-                        const double decoded_d = table_bits_to_double( decoded_bits );
-                        if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.x = decoded_d;
-                    }
+                    else { value.x = table_bits_to_double( decoded_bits ); }
                 }
                 break;
             }
             case 0xaf63f44c86021554ull: // y
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 11 )
                 {
                     if ( TableKindWidens( kind, 11 ) )
@@ -23138,16 +22083,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else
-                            {
-                                const double decoded_d = (double) table_bits_to_float( widened_bits );
-                                if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                                {
-                                    r.report->damaged = true;
-                                    return false;
-                                }
-                                value.y = decoded_d;
-                            }
+                            else { value.y = (double) table_bits_to_float( widened_bits ); }
                         }
                         r.report->widened++;
                         break;
@@ -23171,27 +22107,12 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else
-                    {
-                        const double decoded_d = table_bits_to_double( decoded_bits );
-                        if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.y = decoded_d;
-                    }
+                    else { value.y = table_bits_to_double( decoded_bits ); }
                 }
                 break;
             }
             case 0xaf63f74c86021a6dull: // z
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 11 )
                 {
                     if ( TableKindWidens( kind, 11 ) )
@@ -23206,16 +22127,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else
-                            {
-                                const double decoded_d = (double) table_bits_to_float( widened_bits );
-                                if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                                {
-                                    r.report->damaged = true;
-                                    return false;
-                                }
-                                value.z = decoded_d;
-                            }
+                            else { value.z = (double) table_bits_to_float( widened_bits ); }
                         }
                         r.report->widened++;
                         break;
@@ -23239,27 +22151,12 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else
-                    {
-                        const double decoded_d = table_bits_to_double( decoded_bits );
-                        if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.z = decoded_d;
-                    }
+                    else { value.z = table_bits_to_double( decoded_bits ); }
                 }
                 break;
             }
             case 0xaf63ea4c86020456ull: // w
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 11 )
                 {
                     if ( TableKindWidens( kind, 11 ) )
@@ -23274,16 +22171,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else
-                            {
-                                const double decoded_d = (double) table_bits_to_float( widened_bits );
-                                if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 1.0 ) )
-                                {
-                                    r.report->damaged = true;
-                                    return false;
-                                }
-                                value.w = decoded_d;
-                            }
+                            else { value.w = (double) table_bits_to_float( widened_bits ); }
                         }
                         r.report->widened++;
                         break;
@@ -23307,16 +22195,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else
-                    {
-                        const double decoded_d = table_bits_to_double( decoded_bits );
-                        if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 1.0 ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.w = decoded_d;
-                    }
+                    else { value.w = table_bits_to_double( decoded_bits ); }
                 }
                 break;
             }
@@ -23829,6 +22708,7 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -24562,7 +23442,7 @@ TABLE_FIXED_INLINE bool RenderExplosionFixedFiniteBody( const RenderExplosion & 
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderCameraFixedBodyBytes = 72;
 constexpr int64_t RenderCameraFixedRecordBytes = 8 + RenderCameraFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderCameraFixedHash = 0x74ade5c3866f68d1ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t RenderCameraFixedHash = 0xb491cd9363b09ffaull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 14 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -24682,9 +23562,10 @@ constexpr int32_t RenderCameraFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t RenderCameraFixedLineage[] = {
-    0x74ade5c3866f68d1ull, // identity
+    0x74ade5c3866f68d1ull, // lock
+    0xb491cd9363b09ffaull, // identity
 };
-constexpr int32_t RenderCameraFixedLineageCount = 1;
+constexpr int32_t RenderCameraFixedLineageCount = 2;
 constexpr int32_t RenderCameraFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t RenderCameraFixedFloorLive = RenderCameraFixedFloor;
@@ -24709,14 +23590,34 @@ constexpr uint8_t RenderCameraFixedKnown0Layout[] = {
     0x00, 0x5c, 0xe1, 0xd9, 0xfe, 0x18, 0x7c, 0xb2, 0xdc, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00,
 };
+constexpr uint8_t RenderCameraFixedKnown1Layout[] = {
+    0x0e, 0x00, 0x00, 0x00, 0x06, 0x03, 0xf3, 0x15, 0x9d, 0xb2, 0xc6, 0x11, 0x0d, 0x48, 0x00, 0x00,
+    0x00, 0x06, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+    0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+    0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+    0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+    0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+    0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+    0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+    0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2e, 0xb9,
+    0x4a, 0x08, 0x0f, 0x70, 0x61, 0x9f, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9b,
+    0x0c, 0xfd, 0xff, 0xc7, 0x3d, 0x6d, 0x33, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xc2, 0xb9, 0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x5c, 0xe1, 0xd9, 0xfe, 0x18, 0x7c, 0xb2, 0xdc, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00,
+};
 constexpr TableFixedKnownLayout RenderCameraFixedKnown[] = {
-    { 0x74ade5c3866f68d1ull, RenderCameraFixedKnown0Layout, 242, 80 }, // identity
+    { 0x74ade5c3866f68d1ull, RenderCameraFixedKnown0Layout, 242, 80 }, // lock
+    { 0xb491cd9363b09ffaull, RenderCameraFixedKnown1Layout, 242, 80 }, // identity
 };
 
 constexpr const TableFixedKnownRange * RenderCameraFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t RenderCameraFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t RenderCameraFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -25081,7 +23982,7 @@ inline bool RenderShipFixedClamp( RenderShip & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderShipFixedBodyBytes = 81;
 constexpr int64_t RenderShipFixedRecordBytes = 8 + RenderShipFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderShipFixedHash = 0x863125cfa2630ceeull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t RenderShipFixedHash = 0x66c2646b21ac5b5full; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 26 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -25253,9 +24154,10 @@ constexpr int32_t RenderShipFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t RenderShipFixedLineage[] = {
-    0x863125cfa2630ceeull, // identity
+    0x863125cfa2630ceeull, // lock
+    0x66c2646b21ac5b5full, // identity
 };
-constexpr int32_t RenderShipFixedLineageCount = 1;
+constexpr int32_t RenderShipFixedLineageCount = 2;
 constexpr int32_t RenderShipFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t RenderShipFixedFloorLive = RenderShipFixedFloor;
@@ -25292,14 +24194,46 @@ constexpr uint8_t RenderShipFixedKnown0Layout[] = {
     0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x81, 0xcb, 0xb9,
     0xa1, 0x7b, 0xe9, 0x5b, 0x4d, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t RenderShipFixedKnown1Layout[] = {
+    0x1a, 0x00, 0x00, 0x00, 0x07, 0x60, 0xad, 0x3f, 0xd9, 0xed, 0x00, 0x5b, 0x0d, 0x51, 0x00, 0x00,
+    0x00, 0x0b, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+    0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+    0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+    0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+    0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+    0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+    0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+    0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x5a,
+    0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12,
+    0x98, 0xf1, 0x07, 0x2c, 0xb4, 0xda, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xc2, 0xb9, 0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x73, 0xcd, 0x00, 0x31, 0xcb, 0x87, 0xd5, 0xcf, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x46, 0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x68, 0x72, 0xe7, 0xa2, 0x86, 0x2e, 0x7d, 0x1f, 0x1e, 0x01, 0x00, 0x00, 0x00,
+    0x03, 0x00, 0x00, 0x00, 0xc2, 0x85, 0x52, 0xc1, 0xc3, 0xf7, 0x11, 0xd0, 0x20, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x8a, 0xcb, 0x54, 0xc5, 0xa1, 0x6a, 0x21, 0xa8, 0x20, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xdb, 0x23, 0x0e, 0xd0, 0xa3, 0x21, 0x23, 0x6c, 0x20, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e,
+    0x01, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f,
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3,
+    0xec, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7,
+    0x00, 0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e,
+    0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1,
+    0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x81, 0xcb, 0xb9,
+    0xa1, 0x7b, 0xe9, 0x5b, 0x4d, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout RenderShipFixedKnown[] = {
-    { 0x863125cfa2630ceeull, RenderShipFixedKnown0Layout, 446, 89 }, // identity
+    { 0x863125cfa2630ceeull, RenderShipFixedKnown0Layout, 446, 89 }, // lock
+    { 0x66c2646b21ac5b5full, RenderShipFixedKnown1Layout, 446, 89 }, // identity
 };
 
 constexpr const TableFixedKnownRange * RenderShipFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t RenderShipFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t RenderShipFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -25677,7 +24611,7 @@ inline bool RenderTurretFixedClamp( RenderTurret & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderTurretFixedBodyBytes = 59;
 constexpr int64_t RenderTurretFixedRecordBytes = 8 + RenderTurretFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderTurretFixedHash = 0x9e443be2f7294b72ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t RenderTurretFixedHash = 0xe04b36c5f1842bedull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 18 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -25814,9 +24748,10 @@ constexpr int32_t RenderTurretFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t RenderTurretFixedLineage[] = {
-    0x9e443be2f7294b72ull, // identity
+    0x9e443be2f7294b72ull, // lock
+    0xe04b36c5f1842bedull, // identity
 };
-constexpr int32_t RenderTurretFixedLineageCount = 1;
+constexpr int32_t RenderTurretFixedLineageCount = 2;
 constexpr int32_t RenderTurretFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t RenderTurretFixedFloorLive = RenderTurretFixedFloor;
@@ -25845,14 +24780,38 @@ constexpr uint8_t RenderTurretFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1, 0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t RenderTurretFixedKnown1Layout[] = {
+    0x12, 0x00, 0x00, 0x00, 0x9f, 0xc2, 0x08, 0xa4, 0x1f, 0x18, 0x34, 0x40, 0x0d, 0x3b, 0x00, 0x00,
+    0x00, 0x09, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a, 0xb5, 0x0d, 0x20, 0x00,
+    0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+    0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02, 0x86, 0x4c, 0xea, 0x63,
+    0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x5a, 0xf7, 0x85, 0xa9, 0xa1,
+    0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x98, 0xf1, 0x07, 0x2c,
+    0xb4, 0xda, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x93, 0x6c, 0x04, 0xb4,
+    0x3c, 0x7b, 0xee, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x1f, 0x54,
+    0xed, 0x6a, 0x1a, 0xa1, 0x88, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc2, 0xb9,
+    0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46,
+    0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00,
+    0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1, 0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout RenderTurretFixedKnown[] = {
-    { 0x9e443be2f7294b72ull, RenderTurretFixedKnown0Layout, 310, 67 }, // identity
+    { 0x9e443be2f7294b72ull, RenderTurretFixedKnown0Layout, 310, 67 }, // lock
+    { 0xe04b36c5f1842bedull, RenderTurretFixedKnown1Layout, 310, 67 }, // identity
 };
 
 constexpr const TableFixedKnownRange * RenderTurretFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t RenderTurretFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t RenderTurretFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -26230,7 +25189,7 @@ inline bool RenderMissileFixedClamp( RenderMissile & value, TableReport * report
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderMissileFixedBodyBytes = 71;
 constexpr int64_t RenderMissileFixedRecordBytes = 8 + RenderMissileFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderMissileFixedHash = 0xf7ec4593b531c59aull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t RenderMissileFixedHash = 0x24d3188fbb5f76d5ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 21 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -26379,9 +25338,10 @@ constexpr int32_t RenderMissileFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t RenderMissileFixedLineage[] = {
-    0xf7ec4593b531c59aull, // identity
+    0xf7ec4593b531c59aull, // lock
+    0x24d3188fbb5f76d5ull, // identity
 };
-constexpr int32_t RenderMissileFixedLineageCount = 1;
+constexpr int32_t RenderMissileFixedLineageCount = 2;
 constexpr int32_t RenderMissileFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t RenderMissileFixedFloorLive = RenderMissileFixedFloor;
@@ -26413,14 +25373,41 @@ constexpr uint8_t RenderMissileFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t RenderMissileFixedKnown1Layout[] = {
+    0x15, 0x00, 0x00, 0x00, 0x5b, 0x13, 0xda, 0x14, 0x11, 0xb3, 0xda, 0x93, 0x0d, 0x47, 0x00, 0x00,
+    0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+    0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+    0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+    0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+    0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+    0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+    0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+    0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x5a,
+    0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12,
+    0x98, 0xf1, 0x07, 0x2c, 0xb4, 0xda, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x46, 0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xbc, 0xb4, 0x07, 0x2c, 0x0e, 0x2a, 0x1b, 0x15, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00,
+    0x00, 0x00, 0xca, 0xaf, 0x76, 0x5a, 0xd2, 0xa4, 0xd0, 0xf5, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x5d, 0x07, 0xd9, 0xf6, 0x72, 0x79, 0x8d, 0x47, 0x20, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00, 0x00,
+    0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout RenderMissileFixedKnown[] = {
-    { 0xf7ec4593b531c59aull, RenderMissileFixedKnown0Layout, 361, 79 }, // identity
+    { 0xf7ec4593b531c59aull, RenderMissileFixedKnown0Layout, 361, 79 }, // lock
+    { 0x24d3188fbb5f76d5ull, RenderMissileFixedKnown1Layout, 361, 79 }, // identity
 };
 
 constexpr const TableFixedKnownRange * RenderMissileFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t RenderMissileFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t RenderMissileFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -26798,7 +25785,7 @@ inline bool RenderDynamicPropFixedClamp( RenderDynamicProp & value, TableReport 
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderDynamicPropFixedBodyBytes = 71;
 constexpr int64_t RenderDynamicPropFixedRecordBytes = 8 + RenderDynamicPropFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderDynamicPropFixedHash = 0x79301f61e3f56e22ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t RenderDynamicPropFixedHash = 0x5fdcef41a5116bddull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 22 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -26951,9 +25938,10 @@ constexpr int32_t RenderDynamicPropFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t RenderDynamicPropFixedLineage[] = {
-    0x79301f61e3f56e22ull, // identity
+    0x79301f61e3f56e22ull, // lock
+    0x5fdcef41a5116bddull, // identity
 };
-constexpr int32_t RenderDynamicPropFixedLineageCount = 1;
+constexpr int32_t RenderDynamicPropFixedLineageCount = 2;
 constexpr int32_t RenderDynamicPropFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t RenderDynamicPropFixedFloorLive = RenderDynamicPropFixedFloor;
@@ -26986,14 +25974,42 @@ constexpr uint8_t RenderDynamicPropFixedKnown0Layout[] = {
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
     0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t RenderDynamicPropFixedKnown1Layout[] = {
+    0x16, 0x00, 0x00, 0x00, 0x47, 0x01, 0xb4, 0x1b, 0x0e, 0xd0, 0xa6, 0xcc, 0x0d, 0x47, 0x00, 0x00,
+    0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+    0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+    0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+    0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+    0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+    0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+    0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+    0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x5a,
+    0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12,
+    0x98, 0xf1, 0x07, 0x2c, 0xb4, 0xda, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x46, 0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xad, 0x5d, 0x4c, 0x5e, 0x15, 0x6f, 0x62, 0xe5, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00,
+    0x00, 0x00, 0x34, 0xe2, 0x74, 0xef, 0x2b, 0x17, 0xa6, 0xca, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x53, 0xd6, 0x52, 0x28, 0xac, 0xac, 0x98, 0x4f, 0x20, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x19, 0x30, 0xea, 0x44, 0x47, 0x7e, 0x3a, 0x7f, 0x20, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00,
+    0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf,
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
+    0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout RenderDynamicPropFixedKnown[] = {
-    { 0x79301f61e3f56e22ull, RenderDynamicPropFixedKnown0Layout, 378, 79 }, // identity
+    { 0x79301f61e3f56e22ull, RenderDynamicPropFixedKnown0Layout, 378, 79 }, // lock
+    { 0x5fdcef41a5116bddull, RenderDynamicPropFixedKnown1Layout, 378, 79 }, // identity
 };
 
 constexpr const TableFixedKnownRange * RenderDynamicPropFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t RenderDynamicPropFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t RenderDynamicPropFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -27371,7 +26387,7 @@ inline bool RenderStaticPropFixedClamp( RenderStaticProp & value, TableReport * 
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderStaticPropFixedBodyBytes = 78;
 constexpr int64_t RenderStaticPropFixedRecordBytes = 8 + RenderStaticPropFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderStaticPropFixedHash = 0xa63b40147f0f5066ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t RenderStaticPropFixedHash = 0x708877297c4bf111ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 22 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -27524,9 +26540,10 @@ constexpr int32_t RenderStaticPropFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t RenderStaticPropFixedLineage[] = {
-    0xa63b40147f0f5066ull, // identity
+    0xa63b40147f0f5066ull, // lock
+    0x708877297c4bf111ull, // identity
 };
-constexpr int32_t RenderStaticPropFixedLineageCount = 1;
+constexpr int32_t RenderStaticPropFixedLineageCount = 2;
 constexpr int32_t RenderStaticPropFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t RenderStaticPropFixedFloorLive = RenderStaticPropFixedFloor;
@@ -27559,14 +26576,42 @@ constexpr uint8_t RenderStaticPropFixedKnown0Layout[] = {
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
     0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t RenderStaticPropFixedKnown1Layout[] = {
+    0x16, 0x00, 0x00, 0x00, 0xfe, 0x76, 0x52, 0x86, 0x2b, 0xd6, 0x9a, 0xc1, 0x0d, 0x4e, 0x00, 0x00,
+    0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+    0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+    0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+    0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+    0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+    0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+    0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+    0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x91, 0x1d,
+    0x1a, 0xb7, 0xfb, 0xb9, 0xac, 0x6a, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec,
+    0x5a, 0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xc3, 0x95, 0x4b, 0x57, 0xab, 0xa7, 0x3d, 0xd2, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xad, 0x5d, 0x4c, 0x5e, 0x15, 0x6f, 0x62, 0xe5, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00,
+    0x00, 0x00, 0x34, 0xe2, 0x74, 0xef, 0x2b, 0x17, 0xa6, 0xca, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x53, 0xd6, 0x52, 0x28, 0xac, 0xac, 0x98, 0x4f, 0x20, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x19, 0x30, 0xea, 0x44, 0x47, 0x7e, 0x3a, 0x7f, 0x20, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00,
+    0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf,
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
+    0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout RenderStaticPropFixedKnown[] = {
-    { 0xa63b40147f0f5066ull, RenderStaticPropFixedKnown0Layout, 378, 86 }, // identity
+    { 0xa63b40147f0f5066ull, RenderStaticPropFixedKnown0Layout, 378, 86 }, // lock
+    { 0x708877297c4bf111ull, RenderStaticPropFixedKnown1Layout, 378, 86 }, // identity
 };
 
 constexpr const TableFixedKnownRange * RenderStaticPropFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t RenderStaticPropFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t RenderStaticPropFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -27944,7 +26989,7 @@ inline bool RenderCosmeticPropFixedClamp( RenderCosmeticProp & value, TableRepor
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderCosmeticPropFixedBodyBytes = 79;
 constexpr int64_t RenderCosmeticPropFixedRecordBytes = 8 + RenderCosmeticPropFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderCosmeticPropFixedHash = 0x72a2fa1985def98eull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t RenderCosmeticPropFixedHash = 0x47440473d29f9c79ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 23 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -28102,9 +27147,10 @@ constexpr int32_t RenderCosmeticPropFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t RenderCosmeticPropFixedLineage[] = {
-    0x72a2fa1985def98eull, // identity
+    0x72a2fa1985def98eull, // lock
+    0x47440473d29f9c79ull, // identity
 };
-constexpr int32_t RenderCosmeticPropFixedLineageCount = 1;
+constexpr int32_t RenderCosmeticPropFixedLineageCount = 2;
 constexpr int32_t RenderCosmeticPropFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t RenderCosmeticPropFixedFloorLive = RenderCosmeticPropFixedFloor;
@@ -28138,14 +27184,43 @@ constexpr uint8_t RenderCosmeticPropFixedKnown0Layout[] = {
     0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9,
     0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t RenderCosmeticPropFixedKnown1Layout[] = {
+    0x17, 0x00, 0x00, 0x00, 0x6f, 0x63, 0x76, 0xe7, 0xba, 0xbd, 0xf5, 0x5f, 0x0d, 0x4f, 0x00, 0x00,
+    0x00, 0x08, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+    0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+    0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+    0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+    0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+    0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+    0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+    0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x91, 0x1d,
+    0x1a, 0xb7, 0xfb, 0xb9, 0xac, 0x6a, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec,
+    0x5a, 0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x26, 0x2e, 0x6b, 0xe5, 0x49, 0x44, 0x6e, 0xb6, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x28, 0xc2, 0xdd, 0xcb, 0x3b, 0xf7, 0x7b, 0x4d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0xad, 0x5d, 0x4c, 0x5e, 0x15, 0x6f, 0x62, 0xe5, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03,
+    0x00, 0x00, 0x00, 0x34, 0xe2, 0x74, 0xef, 0x2b, 0x17, 0xa6, 0xca, 0x20, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x53, 0xd6, 0x52, 0x28, 0xac, 0xac, 0x98, 0x4f, 0x20, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x19, 0x30, 0xea, 0x44, 0x47, 0x7e, 0x3a, 0x7f, 0x20, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01,
+    0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec,
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00,
+    0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9,
+    0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout RenderCosmeticPropFixedKnown[] = {
-    { 0x72a2fa1985def98eull, RenderCosmeticPropFixedKnown0Layout, 395, 87 }, // identity
+    { 0x72a2fa1985def98eull, RenderCosmeticPropFixedKnown0Layout, 395, 87 }, // lock
+    { 0x47440473d29f9c79ull, RenderCosmeticPropFixedKnown1Layout, 395, 87 }, // identity
 };
 
 constexpr const TableFixedKnownRange * RenderCosmeticPropFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t RenderCosmeticPropFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t RenderCosmeticPropFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -28523,7 +27598,7 @@ inline bool RenderLaserFixedClamp( RenderLaser & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderLaserFixedBodyBytes = 62;
 constexpr int64_t RenderLaserFixedRecordBytes = 8 + RenderLaserFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderLaserFixedHash = 0x99df0a3db4b1eebdull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t RenderLaserFixedHash = 0xbd47f27872c00ba6ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 19 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -28662,9 +27737,10 @@ constexpr int32_t RenderLaserFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t RenderLaserFixedLineage[] = {
-    0x99df0a3db4b1eebdull, // identity
+    0x99df0a3db4b1eebdull, // lock
+    0xbd47f27872c00ba6ull, // identity
 };
-constexpr int32_t RenderLaserFixedLineageCount = 1;
+constexpr int32_t RenderLaserFixedLineageCount = 2;
 constexpr int32_t RenderLaserFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t RenderLaserFixedFloorLive = RenderLaserFixedFloor;
@@ -28694,14 +27770,39 @@ constexpr uint8_t RenderLaserFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t RenderLaserFixedKnown1Layout[] = {
+    0x13, 0x00, 0x00, 0x00, 0x94, 0xd9, 0x23, 0x6c, 0xbe, 0x7d, 0x94, 0xb0, 0x0d, 0x3e, 0x00, 0x00,
+    0x00, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x25, 0xad, 0x45, 0xad, 0x97, 0x5d, 0xee, 0x0d, 0x18, 0x00,
+    0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+    0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf2, 0x40, 0x15, 0xb9, 0xba, 0xa5, 0x17,
+    0x69, 0x0d, 0x18, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+    0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+    0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+    0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa3, 0x02, 0x02,
+    0x86, 0x4c, 0xe9, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x94,
+    0x02, 0x39, 0x5f, 0xc0, 0x29, 0xcd, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41,
+    0x38, 0x13, 0x42, 0xc2, 0x93, 0xb5, 0x96, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+    0x5e, 0x80, 0xf4, 0xd8, 0x72, 0xa1, 0xe8, 0x94, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xfa, 0xef, 0x7e, 0x96, 0xa7, 0x5a, 0x74, 0xa0, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x04,
+    0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout RenderLaserFixedKnown[] = {
-    { 0x99df0a3db4b1eebdull, RenderLaserFixedKnown0Layout, 327, 70 }, // identity
+    { 0x99df0a3db4b1eebdull, RenderLaserFixedKnown0Layout, 327, 70 }, // lock
+    { 0xbd47f27872c00ba6ull, RenderLaserFixedKnown1Layout, 327, 70 }, // identity
 };
 
 constexpr const TableFixedKnownRange * RenderLaserFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t RenderLaserFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t RenderLaserFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -29079,7 +28180,7 @@ inline bool RenderExplosionFixedClamp( RenderExplosion & value, TableReport * re
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderExplosionFixedBodyBytes = 74;
 constexpr int64_t RenderExplosionFixedRecordBytes = 8 + RenderExplosionFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderExplosionFixedHash = 0xf71917b507eff722ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t RenderExplosionFixedHash = 0xf1aaafacd510bcddull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 21 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -29228,9 +28329,10 @@ constexpr int32_t RenderExplosionFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t RenderExplosionFixedLineage[] = {
-    0xf71917b507eff722ull, // identity
+    0xf71917b507eff722ull, // lock
+    0xf1aaafacd510bcddull, // identity
 };
-constexpr int32_t RenderExplosionFixedLineageCount = 1;
+constexpr int32_t RenderExplosionFixedLineageCount = 2;
 constexpr int32_t RenderExplosionFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t RenderExplosionFixedFloorLive = RenderExplosionFixedFloor;
@@ -29262,14 +28364,41 @@ constexpr uint8_t RenderExplosionFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t RenderExplosionFixedKnown1Layout[] = {
+    0x15, 0x00, 0x00, 0x00, 0xf8, 0xe5, 0xc9, 0x85, 0xb5, 0x38, 0xc7, 0x0c, 0x0d, 0x4a, 0x00, 0x00,
+    0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+    0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+    0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+    0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+    0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+    0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+    0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+    0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa3, 0x02,
+    0x02, 0x86, 0x4c, 0xe9, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x78,
+    0xd7, 0x6e, 0xb1, 0xa0, 0x3f, 0x7f, 0xfd, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x93, 0x6c, 0x04, 0xb4, 0x3c, 0x7b, 0xee, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xe5, 0x3b, 0x39, 0xd3, 0x9c, 0xeb, 0x89, 0xdc, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00,
+    0x00, 0x00, 0xec, 0xeb, 0xad, 0x52, 0xd9, 0xc8, 0x2c, 0x3d, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x34, 0xe6, 0x80, 0x93, 0xf7, 0x6e, 0x73, 0xc8, 0x20, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00, 0x00,
+    0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout RenderExplosionFixedKnown[] = {
-    { 0xf71917b507eff722ull, RenderExplosionFixedKnown0Layout, 361, 82 }, // identity
+    { 0xf71917b507eff722ull, RenderExplosionFixedKnown0Layout, 361, 82 }, // lock
+    { 0xf1aaafacd510bcddull, RenderExplosionFixedKnown1Layout, 361, 82 }, // identity
 };
 
 constexpr const TableFixedKnownRange * RenderExplosionFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t RenderExplosionFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t RenderExplosionFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —

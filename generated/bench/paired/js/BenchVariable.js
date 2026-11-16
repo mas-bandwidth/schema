@@ -1744,11 +1744,10 @@ function TableVariableCyclic(count, from, to) {
   return false;
 }
 
-// ONE BODY (§3, §4): fields in the writer's declaration order, a field stored
-// at the default the writer elides refused, a field this table cannot name
-// skipped by its kind and counted unknown (and retained when the caller opted
-// in, §6.6), a kind that widens decoded at its own width and counted widened,
-// any other kind a kind mismatch skipped whole. Damage stops the body.
+// ONE BODY (§3, §4): fields arrive in the writer's order, which the reader
+// cannot infer. Unknown fields are skipped by kind and counted; a kind that
+// widens is decoded at its own width, and any other mismatch is skipped.
+// Damage stops the body.
 
 // AN UNPLACED RECORD STILL NAMES ITS EDGES (internal/tablewire/wirecheck.go
 // graph): the value is not built, and the unknown was counted once, but every
@@ -1993,7 +1992,6 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
   // wirecheck.go body). The id table holds each id once, so the reference
   // stands for the id. A body is a handful of fields, so a scan beats a Set.
   let rode = null;
-  let lastOrd = -1;
   let sawNode = false;
   for (;;) {
     if (TableVariableCountRefused(report) || report.missingRequired !== missingBefore || report.missingRequired !== st.missingBefore) { return false; }
@@ -2052,13 +2050,10 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
       }
       continue;
     }
-    if (fd.o < lastOrd) { report.damaged = true; return false; }
-    lastOrd = fd.o;
     if (kind !== fd.k) {
       if (TableVariableWidens(kind, fd.k)) {
         const x = TableVariableScalar(r, fd, kind, report);
         if (x === undefined) { return false; }
-        if (TableVariableStoredDefault(fd, x)) { report.damaged = true; return false; }
         v[fd.n] = x;
         if (fd.req) { seen.add(fd); }
         // a map entry's KEY widening is the map's one count (mapField)
@@ -2181,14 +2176,12 @@ function TableVariableEnumRead(e, r, table, report, retain, st) {
 }
 
 function TableVariableReadField(fd, r, table, v, report, st, retain, path, atField) {
-  // A field the writer elides is refused only at the field. An array element
-  // and an arm payload ride even at the default, because position is identity.
+  // A variable wire cannot reveal whether the writer elided this field.
   if (atField === undefined) { atField = true; }
   switch (fd.s) {
     case "bool": case "int": case "flags": case "float": {
       const x = TableVariableScalar(r, fd, fd.k, report);
       if (x === undefined) { return false; }
-      if (atField && TableVariableStoredDefault(fd, x)) { report.damaged = true; return false; }
       v[fd.n] = x;
       return true;
     }
@@ -2200,7 +2193,6 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path, atFie
       const dec = TableVariableUtf8Decode(bytes);
       // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its default
       if (!dec.ok) { report.damaged = true; v[fd.n] = fd.def; return true; }
-      if (atField && (fd.bound < 0 || bytes.length <= fd.bound) && TableVariableStoredDefault(fd, dec.s)) { report.damaged = true; return false; }
       if (fd.bound >= 0 && bytes.length > fd.bound) {
         // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3)
         report.oor++;
@@ -2213,29 +2205,21 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path, atFie
       return true;
     }
     case "enum": {
-      const unknownBefore = report.unknown;
       const x = TableVariableEnumRead(fd, r, table, report, retain, st);
       if (x === undefined) { return false; }
-      if (atField && TableVariableStoredDefault(fd, x) && !(x === null && report.unknown !== unknownBefore)) { report.damaged = true; return false; }
       v[fd.n] = x;
       return true;
     }
     case "ptr": case "sblob": case "bblob": {
-      // a pointer's payload is a NUMBER: bounds-checked at resolution, never
-      // followed (§3.1). Index 0 is null. A non-required field holding null
-      // elides, so an explicit null there is a spelling no writer emits; a
-      // required field writes null, and an array element and an arm payload
-      // keep it because position is identity.
+      // A pointer payload is an index, bounds-checked at resolution; 0 is null.
       const index = r.leb();
       if (r.bad) { report.damaged = true; return false; }
-      if (atField && index === 0 && !fd.req) { report.damaged = true; return false; }
       st.pending.push([v, fd.n, index, fd]);
       return true;
     }
     case "tab": {
       const L = r.leb();
       if (r.bad || r.at + L > r.end) { report.damaged = true; return false; }
-      if (atField && !fd.opt && !fd.req && L <= 1) { report.damaged = true; return false; }
       const sub = new TableVariableReader(r.b, r.at, r.at + L);
       const inst = fd.c.make();
       v[fd.n] = inst;
@@ -2259,9 +2243,7 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path, atFie
     case "keyed":
       return TableVariableReadKeyed(fd, r, table, v, report, st, retain, path);
     case "union": {
-      if (st !== null) { st.unionAtField = !fd.opt && !fd.req; }
       const x = TableVariableUnionRead(fd.u, r, table, report, st, retain, path, fd.o);
-      if (st !== null) { st.unionAtField = false; }
       if (x === undefined) { return false; }
       v[fd.n] = x;
       return true;
@@ -2302,8 +2284,7 @@ function TableVariableReadArray(fd, r, table, v, report, st, retain, path) {
 // body cannot cover keeps the decoded prefix. Bytes left inside L after the
 // elements are damage.
 function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, path, atField) {
-  // An arm's array payload is written even when the count is 0 (§2.6). A
-  // field's empty counted array is not: the writer elides it.
+  // The writer may have made an empty array required or optional (§2.3).
   if (atField === undefined) { atField = true; }
   const L = end - r.at;
   if (L >= 2) {
@@ -2325,7 +2306,6 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; return false; }
       report.widened++;
     }
-    if (atField && !fd.opt && !fd.req && !fd.fixed && fd.s === "arr" && count === 0) { report.damaged = true; return false; }
     let keep = count;
     if (fd.list) {
       if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; return false; }
@@ -2348,33 +2328,14 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
         out.push(sub.u8());
       }
       const packed = new Uint8Array(out);
-      if (atField && TableVariableStoredDefault(fd, packed)) { report.damaged = true; return false; }
       v[fd.n] = packed;
     } else if (fd.fixed) {
       if (!Array.isArray(v[fd.n]) || v[fd.n].length !== fd.bound) {
         v[fd.n] = Array.from({ length: fd.bound }, () => TableVariableElemDefault(fd.e));
       }
       const out = v[fd.n];
-      const pendingBefore = fd.e.s === "ptr" ? st.pending.length : 0;
       for (let i = 0; i < keep; i++) {
         if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { filled = false; break; }
-      }
-      // A fixed array of tables keeps its elements by position, but any other
-      // fixed array stored at all-default elides as a field (§3): refuse it.
-      // A pointer element is still null here until resolution, so its index is
-      // the default test; every other element already holds its value.
-      if (filled && atField && !fd.opt && !fd.req && fd.e.s !== "tab") {
-        let allDef = true;
-        if (fd.e.s === "ptr") {
-          for (let i = pendingBefore; i < st.pending.length; i++) {
-            if (st.pending[i][2] !== 0) { allDef = false; break; }
-          }
-        } else {
-          for (let i = 0; i < fd.bound; i++) {
-            if (!TableVariableElemIsDefault(fd.e, out[i])) { allDef = false; break; }
-          }
-        }
-        if (allDef) { report.damaged = true; return false; }
       }
     } else {
       const out = [];
@@ -3144,7 +3105,6 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     // the array list first, under any count (docs/SPEC-TABLES.md §3, §4).
     if (!TableVariableArrayElementKindAllowed(ek)) { report.damaged = true; r.at = end; return false; }
     if (ek !== 13) { report.mismatch++; r.at = end; return undefined; }
-    if (!fd.opt && !fd.req && count === 0) { report.damaged = true; r.at = end; return false; }
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     const m = new Map();
     v[fd.n] = m;
@@ -3213,10 +3173,8 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
     if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; r.at = end; return undefined; }
     report.widened++;
   }
-  if (!fd.opt && !fd.req && count === 0) { report.damaged = true; r.at = end; return false; }
   const arr = v[fd.n];
   let rode = null;
-  let lastSlot = -1;
   for (let i = 0; i < count; i++) {
     const key = sub.leb();
     if (sub.bad || key === 0 || key > table.length) { report.damaged = true; break; }
@@ -3234,17 +3192,13 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
       sub.at += elen;
       continue;
     }
-    // Slots ride in ascending variant ordinal (§3.2): a slot that does not
-    // increase is a spelling no conforming writer produces.
-    if (slot <= lastSlot) { report.damaged = true; break; }
-    lastSlot = slot;
     const er = new TableVariableReader(r.b, sub.at, sub.at + elen);
     switch (fd.e.s) {
       case "enum": {
         const unknownBefore = report.unknown;
         const x = TableVariableEnumRead(fd.e, er, table, report, retain, st);
         if (x !== undefined) {
-          if (!fd.opt && !fd.req && TableVariableElemIsDefault(fd.e, x) && !(x === null && report.unknown !== unknownBefore)) { report.damaged = true; break; }
+          if (TableVariableElemIsDefault(fd.e, x) && !(x === null && report.unknown !== unknownBefore)) { report.damaged = true; break; }
           arr[slot] = x;
         }
         break;
@@ -3258,14 +3212,14 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
         if (er.at !== er.end) { report.damaged = true; inst = fd.e.c.make(); }
         // A slot whose table body is its terminator alone is the default the
         // writer elides (§3.2).
-        if (!fd.opt && !fd.req && elen <= 1) { report.damaged = true; break; }
+        if (elen <= 1) { report.damaged = true; break; }
         arr[slot] = inst;
         break;
       }
       default: {
         const x = TableVariableScalar(er, fd.e, ek, report);
         if (x !== undefined) {
-          if (!fd.opt && !fd.req && TableVariableElemIsDefault(fd.e, x)) { report.damaged = true; break; }
+          if (TableVariableElemIsDefault(fd.e, x)) { report.damaged = true; break; }
           arr[slot] = x;
         }
       }
@@ -3291,12 +3245,8 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
   const ref = r.leb();
   if (r.bad) { report.damaged = true; return undefined; }
   if (ref === 0) {
-    const atField = st !== null && st.unionAtField;
-    if (st !== null) { st.unionAtField = false; }
-    if (atField) { report.damaged = true; return undefined; }
     return null;
   }
-  if (st !== null) { st.unionAtField = false; }
   if (ref > table.length || r.at >= r.end) { report.damaged = true; return undefined; }
   TableVariableIntroduce(st, ref);
   const armId = table[ref - 1];
@@ -5144,7 +5094,7 @@ TableVariableFreeze(TableVariableUnions);
 
 // Cook write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
 export const TableCookWrite = (() => {
-  const build = 0x41d3559378bfa852n;
+  const build = 0xba2dad78ebdbfff0n;
   const layouts = {
     "MixedEntity": {
       size: 64, align: 8, data: 64, measure: 144, alignCook: 8, typeId: 0x9367b84cab99cdc3n, make: () => new MixedEntity(),

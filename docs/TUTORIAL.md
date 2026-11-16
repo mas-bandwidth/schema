@@ -4180,13 +4180,13 @@ file to diff when you want to know **why** the version moved:
 
 ```
 $ schema build-version --facts .
-schema-build-version 5
+schema-build-version 6
 protocol c08f66a810e84fcd
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record GameConfig sizeof=384 alignof=8
     field 79cee25d9004059f kind=1 offset=0 size=1
-    field 41cbd901b87fabb6 kind=13 offset=4 size=68 type=WeaponConfig elem=8 array=bounded bound=8
+    field 41cbd901b87fabb6 kind=13 offset=4 size=68 type=WeaponConfig elem=8 array=bounded bound=8 countmin=0
     field 294a5c4913e1ad44 kind=13 offset=72 size=240 type=ShipConfig elem=80 array=keyed bound=3 key=ShipType
     field 38b921b4ce4e20c5 kind=12 offset=312 size=72 bound=64
 block GameConfig sizeof=360 alignof=8

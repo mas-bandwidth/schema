@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package graphdemo — protocol id 0x36ff4b4cd88bf37a (packets only: tables version by field id, not by protocol id)
+// package graphdemo — protocol id 0xef0260949bdd7a2b (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2400,14 +2400,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x5c,
-    0x1d,
-    0xd8,
-    0x26,
-    0x47,
-    0xbe,
-    0xaa,
-    0xfd,
+    0xae,
+    0xf1,
+    0xbf,
+    0xc2,
+    0xd1,
+    0xc8,
+    0x0d,
+    0x2e,
     0x02,
     0x0e,
     0x46,
@@ -8852,7 +8852,7 @@ namespace graphdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xfdaabe4726d81d5cull;
+static const uint64_t BuildVersion = 0x2e0dc8d1c2bff1aeull;
 
 } // namespace graphdemo
 
@@ -9373,7 +9373,6 @@ inline int64_t TallySave( const Tally & value, uint8_t * buffer, int64_t capacit
 GRAPHDEMO_TABLE_INLINE bool TallyLoadBody( TableReader & r, Tally & value )
 {
     TallyReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9413,12 +9412,6 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBody( TableReader & r, Tally & value )
         {
             case 0x732dfbcc9b0cf0bbull: // hits
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -9432,11 +9425,6 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBody( TableReader & r, Tally & value )
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 0 )
                         {
                             decoded_v = 0;
@@ -9470,11 +9458,6 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBody( TableReader & r, Tally & value )
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 0 )
                 {
                     decoded_v = 0;
@@ -9785,6 +9768,7 @@ inline bool TallyLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -9951,7 +9935,6 @@ inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker 
 {
     (void) nodes;
     MarkerReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9991,12 +9974,6 @@ inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker 
         {
             case 0x39f7fcec8fcb623dull: // label
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10026,11 +10003,6 @@ inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker 
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 8 )
                 {
@@ -10046,12 +10018,6 @@ inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker 
             }
             case 0x3bf8fbbad1587cddull: // note
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10071,11 +10037,6 @@ inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker 
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
-                    {
-                        r.report->damaged = true;
-                        return false;
-                    }
-                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -10195,7 +10156,7 @@ inline bool TallyFixedClamp( Tally & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t TallyFixedBodyBytes = 4;
 constexpr int64_t TallyFixedRecordBytes = 8 + TallyFixedBodyBytes; // the hash and the body
-constexpr uint64_t TallyFixedHash = 0xe155ccfe28f460d7ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t TallyFixedHash = 0x2f1aee497da7bbbcull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 2 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -10256,9 +10217,10 @@ constexpr int32_t TallyFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t TallyFixedLineage[] = {
-    0xe155ccfe28f460d7ull, // identity
+    0xe155ccfe28f460d7ull, // lock
+    0x2f1aee497da7bbbcull, // identity
 };
-constexpr int32_t TallyFixedLineageCount = 1;
+constexpr int32_t TallyFixedLineageCount = 2;
 constexpr int32_t TallyFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t TallyFixedFloorLive = TallyFixedFloor;
@@ -10270,14 +10232,21 @@ constexpr uint8_t TallyFixedKnown0Layout[] = {
     0x00, 0x01, 0x00, 0x00, 0x00, 0xbb, 0xf0, 0x0c, 0x9b, 0xcc, 0xfb, 0x2d, 0x73, 0x04, 0x04, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t TallyFixedKnown1Layout[] = {
+    0x02, 0x00, 0x00, 0x00, 0x3d, 0xa7, 0x42, 0x42, 0x90, 0x34, 0xff, 0x69, 0x0d, 0x04, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0xbb, 0xf0, 0x0c, 0x9b, 0xcc, 0xfb, 0x2d, 0x73, 0x04, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout TallyFixedKnown[] = {
-    { 0xe155ccfe28f460d7ull, TallyFixedKnown0Layout, 38, 12 }, // identity
+    { 0xe155ccfe28f460d7ull, TallyFixedKnown0Layout, 38, 12 }, // lock
+    { 0x2f1aee497da7bbbcull, TallyFixedKnown1Layout, 38, 12 }, // identity
 };
 
 constexpr const TableFixedKnownRange * TallyFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t TallyFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t TallyFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -11809,7 +11778,6 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBodyRetain( TableReader & r, Tally & value,
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11849,12 +11817,6 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBodyRetain( TableReader & r, Tally & value,
         {
             case 0x732dfbcc9b0cf0bbull: // hits
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -11868,11 +11830,6 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBodyRetain( TableReader & r, Tally & value,
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 0 )
                         {
                             decoded_v = 0;
@@ -11906,11 +11863,6 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBodyRetain( TableReader & r, Tally & value,
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 0 )
                 {
                     decoded_v = 0;
@@ -12009,7 +11961,6 @@ inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, M
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12049,12 +12000,6 @@ inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, M
         {
             case 0x39f7fcec8fcb623dull: // label
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12084,11 +12029,6 @@ inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, M
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 8 )
                 {
@@ -12104,12 +12044,6 @@ inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, M
             }
             case 0x3bf8fbbad1587cddull: // note
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12129,11 +12063,6 @@ inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, M
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
-                    {
-                        r.report->damaged = true;
-                        return false;
-                    }
-                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;

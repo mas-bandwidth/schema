@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package benchtable — protocol id 0x0926221bcb6f475f — the Luau table surface (docs/PORT-LUAU.md)
+-- package benchtable — protocol id 0x4c9383ebe3cde248 — the Luau table surface (docs/PORT-LUAU.md)
 
 local _Rt = require("./schema_runtime")
 local _BenchTable = require("./BenchTable")
@@ -283,7 +283,7 @@ _T.TableEventDescriptor = _schema_tables.union({
 })
 
 -- TableEntity: fixed form, form byte 3 (docs/SPEC-TABLES.md §3.4)
-_T.TableEntityFixedHash = 5032295074439343135i
+_T.TableEntityFixedHash = 6821906941564587437i
 _T.TableEntityFixedRecordBytes = 51
 _T.TableEntityFixedLayout = _schema_fixed.fixed_layout({
 	{ id = 3558250755087846312i, kind = 13, size = 51, children = 14 }, -- TableEntity
@@ -321,12 +321,12 @@ _T.TableEntityFixedLayout = _schema_fixed.fixed_layout({
 -- TableEntity: the fixed lineage, OLDEST FIRST, this build's own LAST, and the
 -- floor below which a known layout is layout_unsupported (docs/FIXED-FORM-ALGORITHM.md §5.2)
 _T.TableEntityFixedLineage = table.freeze({
-	table.freeze({ hash = 0x45d64db53ce7ac1fi, layout = _T.TableEntityFixedLayout, layoutBytes = 514, recordBytes = 59 }),
+	table.freeze({ hash = 0x5eac483826ba8dadi, layout = _T.TableEntityFixedLayout, layoutBytes = 514, recordBytes = 59 }),
 })
 _T.TableEntityFixedFloor = 0
 
 -- TableStat: fixed form, form byte 3 (docs/SPEC-TABLES.md §3.4)
-_T.TableStatFixedHash = 2079583748321448994i
+_T.TableStatFixedHash = 602130354338787353i
 _T.TableStatFixedRecordBytes = 8
 _T.TableStatFixedLayout = _schema_fixed.fixed_layout({
 	{ id = 2984383410656091285i, kind = 13, size = 8, children = 2 }, -- TableStat
@@ -337,12 +337,12 @@ _T.TableStatFixedLayout = _schema_fixed.fixed_layout({
 -- TableStat: the fixed lineage, OLDEST FIRST, this build's own LAST, and the
 -- floor below which a known layout is layout_unsupported (docs/FIXED-FORM-ALGORITHM.md §5.2)
 _T.TableStatFixedLineage = table.freeze({
-	table.freeze({ hash = 0x1cdc2a66a7601422i, layout = _T.TableStatFixedLayout, layoutBytes = 55, recordBytes = 16 }),
+	table.freeze({ hash = 0x085b325df6d7f019i, layout = _T.TableStatFixedLayout, layoutBytes = 55, recordBytes = 16 }),
 })
 _T.TableStatFixedFloor = 0
 
 -- TableMixed: fixed form, form byte 3 (docs/SPEC-TABLES.md §3.4)
-_T.TableMixedFixedHash = 3466458645177565954i
+_T.TableMixedFixedHash = 0xd9aba5d49eb0840ci
 _T.TableMixedFixedRecordBytes = 1224
 _T.TableMixedFixedLayout = _schema_fixed.fixed_layout({
 	{ id = 4871457021464447630i, kind = 13, size = 1224, children = 28 }, -- TableMixed
@@ -425,7 +425,7 @@ _T.TableMixedFixedLayout = _schema_fixed.fixed_layout({
 -- TableMixed: the fixed lineage, OLDEST FIRST, this build's own LAST, and the
 -- floor below which a known layout is layout_unsupported (docs/FIXED-FORM-ALGORITHM.md §5.2)
 _T.TableMixedFixedLineage = table.freeze({
-	table.freeze({ hash = 0x301b55c58e640302i, layout = _T.TableMixedFixedLayout, layoutBytes = 1279, recordBytes = 1232 }),
+	table.freeze({ hash = 0xd9aba5d49eb0840ci, layout = _T.TableMixedFixedLayout, layoutBytes = 1279, recordBytes = 1232 }),
 })
 _T.TableMixedFixedFloor = 0
 
@@ -434,7 +434,7 @@ _T.TableMixedFixedFloor = 0
 _T.TableMessageAnnouncement = (function()
 	local b = buffer.create(871)
 	local v = {
-		1,1,9,105,117,90,41,223,242,92,209,2,14,191,6,6,188,6,164,237,202,213,154,62,
+		1,1,9,214,25,103,117,101,43,61,62,2,14,191,6,6,188,6,164,237,202,213,154,62,
 		1,165,4,1,2,0,34,208,235,150,77,172,241,251,7,1,12,0,18,103,227,120,102,253,
 		252,35,7,1,12,0,14,49,103,118,53,55,75,203,4,1,15,253,255,1,193,50,103,118,
 		53,56,75,203,4,1,15,253,255,1,168,45,103,118,53,53,75,203,4,1,15,253,255,1,
@@ -478,7 +478,7 @@ end)()
 _T.TableMessageAnnouncementLength = 871
 _T.TableMessageRefBits = 7
 _T.TableMessageEntriesHere = 70
-_T.TableMessageBuildVersion = 0xd15cf2df295a7569i
+_T.TableMessageBuildVersion = 4484788518692264406i
 
 -- the unit's wire ids, the ids this build names (docs/SPEC-TABLES.md §6.6)
 _schema_tables.wireIds({

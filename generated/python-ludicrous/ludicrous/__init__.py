@@ -15,7 +15,7 @@ from .Ludicrous import DegenerateProbe
 from .Ludicrous import FixedVec
 from .Ludicrous import FixedQuat
 
-PROTOCOL_ID: Final = 0xf4a226f4166d919b
+PROTOCOL_ID: Final = 0xd2ded2cc8a482aa1
 
 __all__ = [
     "DegenerateProbe",

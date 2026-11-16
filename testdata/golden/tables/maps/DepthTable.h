@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package mapdemo — protocol id 0x1ac124decde5b2aa (packets only: tables version by field id, not by protocol id)
+// package mapdemo — protocol id 0x45d9d3ccd4c2f4b9 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2467,14 +2467,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0xa1,
-    0x8a,
-    0x4b,
-    0x32,
-    0x79,
-    0xc3,
-    0x52,
-    0xe6,
+    0xe3,
+    0x9d,
+    0x54,
+    0x9e,
+    0x37,
+    0x1a,
+    0xd6,
+    0x22,
     0x02,
     0x0e,
     0xd3,
@@ -10851,7 +10851,7 @@ namespace mapdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xe652c379324b8aa1ull;
+static const uint64_t BuildVersion = 0x22d61a379e549de3ull;
 
 } // namespace mapdemo
 
@@ -11596,7 +11596,6 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntrySaveBody( TableWriter & w, TableIds & 
 MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBody( TableReader & r, SquadRosterEntry & value )
 {
     SquadRosterEntryReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11636,12 +11635,6 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBody( TableReader & r, SquadRoster
         {
             case 0x3dc94a19365b10ecull: // key
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11661,22 +11654,11 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBody( TableReader & r, SquadRoster
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.key = decoded_v;
                 break;
             }
             case 0x7ce4fd9430e80ceaull: // value
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11692,11 +11674,6 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBody( TableReader & r, SquadRoster
                 }
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
                 {
                     r.report->damaged = true;
                     return false;
@@ -11818,7 +11795,6 @@ inline bool SquadLoadBody( TableReader & r, const TableNodeMap & nodes, Squad & 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     SquadReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11858,12 +11834,6 @@ inline bool SquadLoadBody( TableReader & r, const TableNodeMap & nodes, Squad & 
         {
             case 0x1c84390d304f4f42ull: // roster
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11910,11 +11880,6 @@ inline bool SquadLoadBody( TableReader & r, const TableNodeMap & nodes, Squad & 
                         r.report->refuse_reason = kind_mismatch;
                         r.offset = body_end;
                         break;
-                    }
-                    if ( count == 0 )
-                    {
-                        r.report->damaged = true;
-                        return false;
                     }
                     TableMapFill<SquadRosterEntry> fill = TableMapFillBegin( nodes, value.roster, count );
                     if ( fill.refused )
@@ -12280,7 +12245,6 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     DepthReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12320,12 +12284,6 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
         {
             case 0x1a08aa1921ca5cafull: // one
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12345,11 +12303,6 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     SquadLoadBody( sub, nodes, value.one );
@@ -12365,12 +12318,6 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
             }
             case 0x1f6459a2cea1fc02ull: // many
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12421,11 +12368,6 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 3 )
                         {
@@ -12472,12 +12414,6 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
             }
             case 0x70551ff29550f15dull: // keyed
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 16 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12523,13 +12459,7 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                         r.offset = body_end;
                         break;
                     }
-                    if ( count == 0 )
-                    {
-                        r.report->damaged = true;
-                        return false;
-                    }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    int32_t last_key_slot = 0;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t key_ref = 0;
@@ -12566,12 +12496,6 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
-                        if ( int32_t( slot ) <= last_key_slot )
-                        {
-                            r.report->damaged = true;
-                            break;
-                        }
-                        last_key_slot = int32_t( slot );
                         if ( elem_len == 1 && sub.buffer[sub.offset] == 0 )
                         {
                             r.report->damaged = true;
@@ -12595,12 +12519,6 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
             }
             case 0xe756c0190570ccb5ull: // arm
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12620,11 +12538,9 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                     r.report->damaged = true;
                     return false;
                 }
-                if ( arm_ref == 0 )
+                if ( arm_ref == 0 ) { value.arm.type = ForceType::None; } // empty: the reference is the whole payload
+                else
                 {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( arm_ref > (uint64_t) r.ids->count )
                 {
                     r.report->damaged = true;
@@ -12723,16 +12639,11 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                     }
                 }
                 r.offset += (int64_t) body_len;
+                }
                 break;
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -12746,11 +12657,6 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -12772,11 +12678,6 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }
@@ -15647,7 +15548,6 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBodyRetain( TableReader & r, Squad
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -15687,12 +15587,6 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBodyRetain( TableReader & r, Squad
         {
             case 0x3dc94a19365b10ecull: // key
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -15712,22 +15606,11 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBodyRetain( TableReader & r, Squad
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.key = decoded_v;
                 break;
             }
             case 0x7ce4fd9430e80ceaull: // value
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -15744,11 +15627,6 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBodyRetain( TableReader & r, Squad
                 TableRetainDiscardField( retain, path, 1 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
                 {
                     r.report->damaged = true;
                     return false;
@@ -15877,7 +15755,6 @@ inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sq
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -15917,12 +15794,6 @@ inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sq
         {
             case 0x1c84390d304f4f42ull: // roster
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -15969,11 +15840,6 @@ inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sq
                         r.report->refuse_reason = kind_mismatch;
                         r.offset = body_end;
                         break;
-                    }
-                    if ( count == 0 )
-                    {
-                        r.report->damaged = true;
-                        return false;
                     }
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
@@ -16344,7 +16210,6 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -16384,12 +16249,6 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
         {
             case 0x1a08aa1921ca5cafull: // one
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -16410,11 +16269,6 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     SquadLoadBodyRetain( sub, nodes, value.one, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
@@ -16430,12 +16284,6 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
             }
             case 0x1f6459a2cea1fc02ull: // many
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -16486,11 +16334,6 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                         // records under this field go with the value it is about to lose.
                         TableRetainDiscardField( retain, path, 1 );
@@ -16540,12 +16383,6 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
             }
             case 0x70551ff29550f15dull: // keyed
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 16 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -16591,13 +16428,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                         r.offset = body_end;
                         break;
                     }
-                    if ( count == 0 )
-                    {
-                        r.report->damaged = true;
-                        return false;
-                    }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    int32_t last_key_slot = 0;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t key_ref = 0;
@@ -16634,12 +16465,6 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
-                        if ( int32_t( slot ) <= last_key_slot )
-                        {
-                            r.report->damaged = true;
-                            break;
-                        }
-                        last_key_slot = int32_t( slot );
                         if ( elem_len == 1 && sub.buffer[sub.offset] == 0 )
                         {
                             r.report->damaged = true;
@@ -16663,12 +16488,6 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
             }
             case 0xe756c0190570ccb5ull: // arm
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -16689,11 +16508,9 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                     r.report->damaged = true;
                     return false;
                 }
-                if ( arm_ref == 0 )
+                if ( arm_ref == 0 ) { value.arm.type = ForceType::None; } // empty: the reference is the whole payload
+                else
                 {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( arm_ref > (uint64_t) r.ids->count )
                 {
                     r.report->damaged = true;
@@ -16792,16 +16609,11 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                     }
                 }
                 r.offset += (int64_t) body_len;
+                }
                 break;
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -16815,11 +16627,6 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -16841,11 +16648,6 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }

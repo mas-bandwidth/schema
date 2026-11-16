@@ -126,7 +126,7 @@ const ludicrous_unit_view_info_t * schema_ludicrous_unit_view_(void)
     static const ludicrous_view_constant_t constants[] = {
         { "MaxWorldUnits", "Ludicrous.schema", "int64", 0, INT64_C(30000), 0.0, LUDICROUS_TABLE_DOC_NONE, 0, NULL },
     };
-    static const ludicrous_unit_view_info_t info = { "ludicrous", 0xf4a226f4166d919bull,
+    static const ludicrous_unit_view_info_t info = { "ludicrous", 0xd2ded2cc8a482aa1ull,
         7, types,
         0, NULL,
         1, enums,

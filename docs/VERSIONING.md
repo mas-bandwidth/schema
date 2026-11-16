@@ -548,13 +548,17 @@ commit, and refuses a patch release whose form differs, by name
 (`TestReleaseFormGate`, with `release-form-gate-negative-control` beside it).
 The minor's condition, with the wire and announced, is the release's review.
 
-**3.0.0 moves the form to 5, as a major may.** For the release notes: "the
+**Earlier form-5 amendment, superseded by the pending form-6 amendment below.**
+The earlier planned-major note read: "3.0.0 moves the form to 5, as a major may."
+Its historical release-note wording was: "the
 build version's form is 5: it now covers an array's element kind; cooked files
 from earlier builds are refused, as any build-version change is". Form 5 puts
 an unbounded array's element kind on its line in the cook projection
 (SPEC-TABLES.md §20.2), because without it `[]int32` and `[]float32` shared
 a build version, and a cooked list of one read as the other with no refusal.
-Every unit's build version moves with the form.
+Every unit's build version moves with the form. This paragraph records the
+form-5 rationale; it does not assign a release tag or override the prospective
+form-6 policy below.
 
 ## The same-build forms: cook and block
 
@@ -886,7 +890,12 @@ the compatibility rules do.
   derived build version moves, including packet-only consumers: coordinated
   peer redeployment and cook-cache invalidation are the deliberate cost. Packet
   payload encoding itself is unchanged by this amendment. `ProjectionVersion`
-  remains 3, `BuildVersionForm` remains 5, and fixed file form remains 3.
+  remains 3. `BuildVersionForm` moves from 5 to 6: counted arrays now project
+  `countmin=` separately from scalar element bounds. The old form 5 omission let
+  distinct announced count minima share a build id; the new projection binds
+  that shape fact for fields, nested records and general union arms. Frozen
+  form 5 projection bytes/build ids remain historical evidence. Fixed file form
+  remains 3.
   This must ship in an announced minor (or an already planned major), never a
   patch. This amendment does not assign or publish a release tag. The release
   operator must

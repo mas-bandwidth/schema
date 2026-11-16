@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package scalardemo — protocol id 0x6fcb9e6f374ae3ca (packets only: tables version by field id, not by protocol id)
+// package scalardemo — protocol id 0xe103b2573e6b167c (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): includable from
 // any TU — the one thing taken from serialize.h is the 128-bit storage type.
 
@@ -2428,14 +2428,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x9d,
-    0x8e,
-    0x8a,
-    0x8a,
-    0x85,
-    0xa8,
-    0x58,
-    0x08,
+    0x40,
+    0xb8,
+    0x98,
+    0x29,
+    0xdf,
+    0xe5,
+    0x14,
+    0x0f,
     0x02,
     0x0e,
     0xd0,
@@ -6289,7 +6289,7 @@ namespace scalardemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x0858a8858a8a8e9dull;
+static const uint64_t BuildVersion = 0x0f14e5df2998b840ull;
 
 } // namespace scalardemo
 
@@ -7028,7 +7028,6 @@ inline int64_t SimStateSave( const SimState & value, uint8_t * buffer, int64_t c
 SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value )
 {
     SimStateReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -7068,12 +7067,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
         {
             case 0x1e5088ef2e9bafc6ull: // tilt
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 20 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7093,11 +7086,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 int8_t decoded_v = int8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 112 )
                 {
                     decoded_v = 112;
@@ -7109,12 +7097,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0x401ab8cd06158638ull: // angle
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 22 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7134,11 +7116,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -11796480 )
                 {
                     decoded_v = -11796480;
@@ -7156,12 +7133,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0x4cbf3a26fca1d74aull: // position
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 23 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7181,11 +7152,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -1966080000ll )
                 {
                     decoded_v = -1966080000ll;
@@ -7203,12 +7169,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0x891da1f305deb858ull: // reach
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 24 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7230,11 +7190,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 uint64_t lo_v = 0, hi_v = 0;
                 r.get128( lo_v, hi_v );
                 serialize::int128_t decoded_v = serialize::int128_t( ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v ) );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) )
                 {
                     decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) );
@@ -7252,12 +7207,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0x7fd9266c6a3e25b5ull: // ticks
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 22 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7277,11 +7226,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 0 )
                 {
                     decoded_v = 0;
@@ -7299,12 +7243,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0xfbc924118177ade4ull: // ratio
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 25 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7324,11 +7262,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 240 )
                 {
                     decoded_v = 240;
@@ -7340,12 +7273,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0x2281498aa0200e40ull: // speed
             {
-                if ( 7 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 7;
                 if ( kind != 27 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7365,11 +7292,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 65536000 )
                 {
                     decoded_v = 65536000;
@@ -7381,12 +7303,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0x8b7dc019093cd0e1ull: // span
             {
-                if ( 8 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 8;
                 if ( kind != 28 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7406,11 +7322,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 18446744073709486080ull )
                 {
                     decoded_v = 18446744073709486080ull;
@@ -7422,12 +7333,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0x1f3757a2ce7b0ab1ull: // mass
             {
-                if ( 9 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 9;
                 if ( kind != 29 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7449,11 +7354,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 uint64_t lo_v = 0, hi_v = 0;
                 r.get128( lo_v, hi_v );
                 serialize::uint128_t decoded_v = serialize::uint128_t( ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v ) );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) )
                 {
                     decoded_v = ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) );
@@ -7465,12 +7365,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0x23e5906728b4e66full: // frames
             {
-                if ( 10 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 10;
                 if ( kind != 27 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7490,22 +7384,11 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.frames = decoded_v;
                 break;
             }
             case 0xd61bdd7908af2642ull: // flux
             {
-                if ( 11 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 11;
                 if ( kind != 18 )
                 {
                     if ( TableKindWidens( kind, 18 ) )
@@ -7519,11 +7402,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                             return false;
                         }
                         serialize::int128_t decoded_v = serialize::int128_t( ( serialize::uint128_t( widened_v < 0 ? ~0ull : 0ull ) << 64 ) | serialize::uint128_t( (uint64_t) widened_v ) );
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) )
                         {
                             decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) );
@@ -7559,11 +7437,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 uint64_t lo_v = 0, hi_v = 0;
                 r.get128( lo_v, hi_v );
                 serialize::int128_t decoded_v = serialize::int128_t( ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v ) );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) )
                 {
                     decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) );
@@ -7581,12 +7454,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0xf2fd4f9140ef2f15ull: // energy
             {
-                if ( 12 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 12;
                 if ( kind != 18 )
                 {
                     if ( TableKindWidens( kind, 18 ) )
@@ -7600,11 +7467,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                             return false;
                         }
                         serialize::int128_t decoded_v = serialize::int128_t( ( serialize::uint128_t( widened_v < 0 ? ~0ull : 0ull ) << 64 ) | serialize::uint128_t( (uint64_t) widened_v ) );
-                        if ( decoded_v == serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551366ull ) ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) )
                         {
                             decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) );
@@ -7640,11 +7502,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 uint64_t lo_v = 0, hi_v = 0;
                 r.get128( lo_v, hi_v );
                 serialize::int128_t decoded_v = serialize::int128_t( ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v ) );
-                if ( decoded_v == serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551366ull ) ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) )
                 {
                     decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) );
@@ -7662,12 +7519,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0x23fcfd6678e36712ull: // entity_id
             {
-                if ( 13 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 13;
                 if ( kind != 19 )
                 {
                     if ( TableKindWidens( kind, 19 ) )
@@ -7681,11 +7532,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                             return false;
                         }
                         serialize::uint128_t decoded_v = serialize::uint128_t( widened_v );
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.entity_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -7709,22 +7555,11 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 uint64_t lo_v = 0, hi_v = 0;
                 r.get128( lo_v, hi_v );
                 serialize::uint128_t decoded_v = serialize::uint128_t( ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v ) );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.entity_id = decoded_v;
                 break;
             }
             case 0x6aacb9fbb71a1d91ull: // scale
             {
-                if ( 14 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 14;
                 if ( kind != 22 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7744,11 +7579,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 65536 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -524288 )
                 {
                     decoded_v = -524288;
@@ -7766,12 +7596,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0xe3b1ca6a3b48dddcull: // samples
             {
-                if ( 15 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 15;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7833,7 +7657,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                         // the following fields' bytes are never fabricated into
                         // elements
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                        bool any_non_default = false;
                         for ( uint64_t i = 0; i < keep; i++ )
                         {
                             if ( !sub.has( 4 ) )
@@ -7855,12 +7678,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                                 r.report->refuse_reason = out_of_range;
                             }
                             value.samples[(int32_t) i] = decoded_v;
-                            if ( value.samples[(int32_t) i] != 0 ) { any_non_default = true; }
-                        }
-                        if ( counted_ok && count == 3 && !r.report->damaged && !r.report->refused && !any_non_default )
-                        {
-                            r.report->damaged = true;
-                            return false;
                         }
                     }
                 }
@@ -7869,12 +7686,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0xb1494b6ef08a411eull: // weights
             {
-                if ( 16 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 16;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7925,11 +7736,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 4 )
                         {
@@ -7972,12 +7778,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0x32969e840d9c67b8ull: // axes
             {
-                if ( 17 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 17;
                 if ( kind != 16 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -8023,13 +7823,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                         r.offset = body_end;
                         break;
                     }
-                    if ( count == 0 )
-                    {
-                        r.report->damaged = true;
-                        return false;
-                    }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    int32_t last_key_slot = 0;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t key_ref = 0;
@@ -8066,12 +7860,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
-                        if ( int32_t( slot ) <= last_key_slot )
-                        {
-                            r.report->damaged = true;
-                            break;
-                        }
-                        last_key_slot = int32_t( slot );
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             if ( !elem.has( 8 ) )
@@ -8109,12 +7897,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0x5af1ac301b4ae16dull: // seeds
             {
-                if ( 18 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 18;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -8165,11 +7947,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                             r.offset = body_end;
                             break;
                         }
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t widened_keep = count;
                         if ( widened_keep > 2 )
                         {
@@ -8200,11 +7977,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 2 )
                         {
@@ -8243,12 +8015,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0x8c2fd80da8957064ull: // pose
             {
-                if ( 19 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 19;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -8268,11 +8034,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     PoseLoadBody( sub, value.pose );
@@ -8287,12 +8048,6 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
             }
             case 0x4328f78ab20e1f98ull: // spawn
             {
-                if ( 20 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 20;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10139,6 +9894,7 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -10295,7 +10051,6 @@ inline int64_t PoseSave( const Pose & value, uint8_t * buffer, int64_t capacity 
 SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
 {
     PoseReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10335,12 +10090,6 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
         {
             case 0xaf63f54c86021707ull: // x
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 23 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10360,11 +10109,6 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v == 32768ll )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -1966080000ll )
                 {
                     decoded_v = -1966080000ll;
@@ -10382,12 +10126,6 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
             }
             case 0xaf63f44c86021554ull: // y
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 23 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10407,11 +10145,6 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -1966080000ll )
                 {
                     decoded_v = -1966080000ll;
@@ -10429,12 +10162,6 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
             }
             case 0xb128829190ca0f75ull: // heading
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 27 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10454,11 +10181,6 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 23592960 )
                 {
                     decoded_v = 23592960;
@@ -10859,6 +10581,7 @@ inline bool PoseLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -11261,7 +10984,7 @@ inline bool SimStateFixedClamp( SimState & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t SimStateFixedBodyBytes = 243;
 constexpr int64_t SimStateFixedRecordBytes = 8 + SimStateFixedBodyBytes; // the hash and the body
-constexpr uint64_t SimStateFixedHash = 0xe3e0242d97626d75ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t SimStateFixedHash = 0xea29e39895d60099ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 36 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -11504,9 +11227,10 @@ constexpr int32_t SimStateFixedCoverCount = 11;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t SimStateFixedLineage[] = {
-    0xe3e0242d97626d75ull, // identity
+    0xe3e0242d97626d75ull, // lock
+    0xea29e39895d60099ull, // identity
 };
-constexpr int32_t SimStateFixedLineageCount = 1;
+constexpr int32_t SimStateFixedLineageCount = 2;
 constexpr int32_t SimStateFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t SimStateFixedFloorLive = SimStateFixedFloor;
@@ -11554,14 +11278,57 @@ constexpr uint8_t SimStateFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82, 0x28, 0xb1, 0x1b,
     0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t SimStateFixedKnown1Layout[] = {
+    0x24, 0x00, 0x00, 0x00, 0xc9, 0xf0, 0xa4, 0x99, 0x2d, 0x6b, 0x52, 0xde, 0x0d, 0xf3, 0x00, 0x00,
+    0x00, 0x14, 0x00, 0x00, 0x00, 0xc6, 0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50, 0x1e, 0x14, 0x01, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0x86, 0x15, 0x06, 0xcd, 0xb8, 0x1a, 0x40, 0x16, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x17,
+    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x58, 0xb8, 0xde, 0x05, 0xf3, 0xa1, 0x1d, 0x89,
+    0x18, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb5, 0x25, 0x3e, 0x6a, 0x6c, 0x26, 0xd9,
+    0x7f, 0x16, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe4, 0xad, 0x77, 0x81, 0x11, 0x24,
+    0xc9, 0xfb, 0x19, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x0e, 0x20, 0xa0, 0x8a,
+    0x49, 0x81, 0x22, 0x1b, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe1, 0xd0, 0x3c, 0x09,
+    0x19, 0xc0, 0x7d, 0x8b, 0x1c, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0x0a, 0x7b,
+    0xce, 0xa2, 0x57, 0x37, 0x1f, 0x1d, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6f, 0xe6,
+    0xb4, 0x28, 0x67, 0x90, 0xe5, 0x23, 0x1b, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42,
+    0x26, 0xaf, 0x08, 0x79, 0xdd, 0x1b, 0xd6, 0x12, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x15, 0x2f, 0xef, 0x40, 0x91, 0x4f, 0xfd, 0xf2, 0x12, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x13, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x91, 0x1d, 0x1a, 0xb7, 0xfb, 0xb9, 0xac, 0x6a, 0x16, 0x04, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xdc, 0xdd, 0x48, 0x3b, 0x6a, 0xca, 0xb1, 0xe3, 0x0e, 0x0c, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x04, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x41, 0x8a, 0xf0, 0x6e, 0x4b, 0x49, 0xb1, 0x0e, 0x0c, 0x00,
+    0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1a, 0x02,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb8, 0x67, 0x9c, 0x0d, 0x84, 0x9e, 0x96, 0x32, 0x10,
+    0x18, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd4, 0xd7, 0x1e, 0x24, 0x8b, 0xa7, 0x35, 0xb0,
+    0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x67, 0x4d, 0x02, 0x86, 0x4c, 0x15, 0x64,
+    0xaf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb4, 0x4b, 0x02, 0x86, 0x4c, 0x14,
+    0x64, 0xaf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcd, 0x50, 0x02, 0x86, 0x4c,
+    0x17, 0x64, 0xaf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x17, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0xe1, 0x4a,
+    0x1b, 0x30, 0xac, 0xf1, 0x5a, 0x0e, 0x24, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x13, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x64,
+    0x70, 0x95, 0xa8, 0x0d, 0xd8, 0x2f, 0x8c, 0x0d, 0x14, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+    0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x17, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x17, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82, 0x28, 0xb1, 0x1b, 0x04, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x98, 0x1f, 0x0e, 0xb2, 0x8a, 0xf7, 0x28, 0x43, 0x23, 0x15, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x00, 0x00, 0x98, 0x1f, 0x0e, 0xb2, 0x8a, 0xf7, 0x28, 0x43, 0x0d, 0x14, 0x00, 0x00,
+    0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x17, 0x08, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x17, 0x08,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82, 0x28, 0xb1, 0x1b,
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout SimStateFixedKnown[] = {
-    { 0xe3e0242d97626d75ull, SimStateFixedKnown0Layout, 616, 251 }, // identity
+    { 0xe3e0242d97626d75ull, SimStateFixedKnown0Layout, 616, 251 }, // lock
+    { 0xea29e39895d60099ull, SimStateFixedKnown1Layout, 616, 251 }, // identity
 };
 
 constexpr const TableFixedKnownRange * SimStateFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t SimStateFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t SimStateFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —

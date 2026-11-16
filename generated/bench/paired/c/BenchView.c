@@ -106,7 +106,7 @@ const bench_unit_view_info_t * schema_bench_unit_view_(void)
     static const bench_view_type_t tables[] = {
         { "FixedTable", "FixedTable.schema", 1, &schema_bench_fixed_table_info_, BENCH_TABLE_DOC_NONE, 0, NULL },
     };
-    static const bench_unit_view_info_t info = { "bench", 0xc93127c82f083edfull,
+    static const bench_unit_view_info_t info = { "bench", 0xc52a41defad6ebb0ull,
         9, types,
         1, tables,
         1, enums,

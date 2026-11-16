@@ -87,7 +87,7 @@ namespace Benchtable
         private static readonly UnitViewInfo tableUnitView = new UnitViewInfo
         {
             Package = "benchtable",
-            ProtocolId = 0x0926221bcb6f475ful,
+            ProtocolId = 0x4c9383ebe3cde248ul,
             Types = new ViewType[] { new ViewType { Name = "TableChatEvent", File = "BenchTable.schema", Table = false, TypeRef = TableChatEventTableType, Doc = "", Tags = new string[] { } },
         new ViewType { Name = "TableHitEvent", File = "BenchTable.schema", Table = false, TypeRef = TableHitEventTableType, Doc = "", Tags = new string[] { } },
         new ViewType { Name = "TablePickupEvent", File = "BenchTable.schema", Table = false, TypeRef = TablePickupEventTableType, Doc = "", Tags = new string[] { } } },

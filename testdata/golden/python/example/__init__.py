@@ -128,7 +128,7 @@ from .Wire import ProbeReport
 from .Wire import TestData
 from .Wire import CompressedProbe
 
-PROTOCOL_ID: Final = 0xf35accd0582cdd84
+PROTOCOL_ID: Final = 0x2bf51af687ac0abd
 
 __all__ = [
     "ArmAlign",

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package graphdemo — protocol id 0x36ff4b4cd88bf37a (packets only: tables version by field id, not by protocol id)
+// package graphdemo — protocol id 0xef0260949bdd7a2b (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2400,14 +2400,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x5c,
-    0x1d,
-    0xd8,
-    0x26,
-    0x47,
-    0xbe,
-    0xaa,
-    0xfd,
+    0xae,
+    0xf1,
+    0xbf,
+    0xc2,
+    0xd1,
+    0xc8,
+    0x0d,
+    0x2e,
     0x02,
     0x0e,
     0x46,
@@ -8852,7 +8852,7 @@ namespace graphdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xfdaabe4726d81d5cull;
+static const uint64_t BuildVersion = 0x2e0dc8d1c2bff1aeull;
 
 } // namespace graphdemo
 
@@ -9269,7 +9269,6 @@ inline int64_t StampSave( const Stamp & value, uint8_t * buffer, int64_t capacit
 GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
 {
     StampReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9309,12 +9308,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
         {
             case 0x56d7ab194448a4f3ull: // tag
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9344,11 +9337,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 8 )
                 {
@@ -9364,12 +9352,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
             }
             case 0x823b8a195ce2133cull: // seq
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -9383,11 +9365,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 0 )
                         {
                             decoded_v = 0;
@@ -9421,11 +9398,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 0 )
                 {
                     decoded_v = 0;
@@ -9806,6 +9778,7 @@ inline bool StampLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -9962,7 +9935,6 @@ inline int64_t ColourSave( const Colour & value, uint8_t * buffer, int64_t capac
 GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
 {
     ColourReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10002,12 +9974,6 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
         {
             case 0xaf63ef4c86020cd5ull: // r
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10027,22 +9993,11 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.r = decoded_v;
                 break;
             }
             case 0xaf63da4c8601e926ull: // g
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10062,22 +10017,11 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.g = decoded_v;
                 break;
             }
             case 0xaf63df4c8601f1a5ull: // b
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10097,11 +10041,6 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.b = decoded_v;
                 break;
             }
@@ -10327,7 +10266,7 @@ inline bool StampFixedClamp( Stamp & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t StampFixedBodyBytes = 16;
 constexpr int64_t StampFixedRecordBytes = 8 + StampFixedBodyBytes; // the hash and the body
-constexpr uint64_t StampFixedHash = 0x2b467a2ee937ea73ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t StampFixedHash = 0x3d7dedc0769c4360ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 3 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -10394,9 +10333,10 @@ constexpr int32_t StampFixedCoverCount = 2;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t StampFixedLineage[] = {
-    0x2b467a2ee937ea73ull, // identity
+    0x2b467a2ee937ea73ull, // lock
+    0x3d7dedc0769c4360ull, // identity
 };
-constexpr int32_t StampFixedLineageCount = 1;
+constexpr int32_t StampFixedLineageCount = 2;
 constexpr int32_t StampFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t StampFixedFloorLive = StampFixedFloor;
@@ -10409,14 +10349,22 @@ constexpr uint8_t StampFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x13, 0xe2, 0x5c, 0x19, 0x8a, 0x3b, 0x82, 0x04, 0x04,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t StampFixedKnown1Layout[] = {
+    0x03, 0x00, 0x00, 0x00, 0xa4, 0x93, 0xdb, 0xb7, 0x13, 0x91, 0x3b, 0xae, 0x0d, 0x10, 0x00, 0x00,
+    0x00, 0x02, 0x00, 0x00, 0x00, 0xf3, 0xa4, 0x48, 0x44, 0x19, 0xab, 0xd7, 0x56, 0x0c, 0x0c, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x13, 0xe2, 0x5c, 0x19, 0x8a, 0x3b, 0x82, 0x04, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout StampFixedKnown[] = {
-    { 0x2b467a2ee937ea73ull, StampFixedKnown0Layout, 55, 24 }, // identity
+    { 0x2b467a2ee937ea73ull, StampFixedKnown0Layout, 55, 24 }, // lock
+    { 0x3d7dedc0769c4360ull, StampFixedKnown1Layout, 55, 24 }, // identity
 };
 
 constexpr const TableFixedKnownRange * StampFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t StampFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t StampFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -10789,7 +10737,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value,
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10829,12 +10776,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value,
         {
             case 0x56d7ab194448a4f3ull: // tag
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10864,11 +10805,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value,
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 8 )
                 {
@@ -10884,12 +10820,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value,
             }
             case 0x823b8a195ce2133cull: // seq
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -10903,11 +10833,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value,
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 0 )
                         {
                             decoded_v = 0;
@@ -10941,11 +10866,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value,
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 0 )
                 {
                     decoded_v = 0;
@@ -11015,7 +10935,6 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & valu
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11055,12 +10974,6 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & valu
         {
             case 0xaf63ef4c86020cd5ull: // r
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11080,22 +10993,11 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & valu
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.r = decoded_v;
                 break;
             }
             case 0xaf63da4c8601e926ull: // g
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11115,22 +11017,11 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & valu
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.g = decoded_v;
                 break;
             }
             case 0xaf63df4c8601f1a5ull: // b
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11150,11 +11041,6 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & valu
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.b = decoded_v;
                 break;
             }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package tabledemo — protocol id 0xba7b344f28584d33 (packets only: tables version by field id, not by protocol id)
+// package tabledemo — protocol id 0x5c9bc5717146f630 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2424,14 +2424,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0xd4,
-    0xb4,
-    0x1c,
-    0x11,
-    0xe3,
-    0x58,
-    0xff,
-    0x93,
+    0xc9,
+    0x45,
+    0x7a,
+    0xf2,
+    0x6a,
+    0x61,
+    0x84,
+    0x36,
     0x02,
     0x0e,
     0x8c,
@@ -10335,7 +10335,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x93ff58e3111cb4d4ull;
+static const uint64_t BuildVersion = 0x3684616af27a45c9ull;
 
 } // namespace tabledemo
 
@@ -10963,7 +10963,6 @@ inline int64_t RangedSignedSave( const RangedSigned & value, uint8_t * buffer, i
 TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned & value )
 {
     RangedSignedReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11003,12 +11002,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
         {
             case 0x48121511bf702eb5ull: // i8_span
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 2 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11028,22 +11021,11 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int8_t decoded_v = int8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.i8_span = decoded_v;
                 break;
             }
             case 0x942bfe3168090f7dull: // i8_low
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 2 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11063,11 +11045,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int8_t decoded_v = int8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 126 )
                 {
                     decoded_v = 126;
@@ -11079,12 +11056,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
             }
             case 0xd182acd105b55dd1ull: // i8_high
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 2 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11104,11 +11075,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int8_t decoded_v = int8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -127 )
                 {
                     decoded_v = -127;
@@ -11120,12 +11086,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
             }
             case 0xef9ded23c8912a81ull: // i8_inside
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 2 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11145,11 +11105,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int8_t decoded_v = int8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -127 )
                 {
                     decoded_v = -127;
@@ -11167,12 +11122,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
             }
             case 0xb655574ea23760b4ull: // i16_span
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 3 )
                 {
                     if ( TableKindWidens( kind, 3 ) )
@@ -11186,11 +11135,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             return false;
                         }
                         int16_t decoded_v = (int16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.i16_span = decoded_v;
                         r.report->widened++;
                         break;
@@ -11212,22 +11156,11 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int16_t decoded_v = int16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.i16_span = decoded_v;
                 break;
             }
             case 0xd217b3af8d7a2bdeull: // i16_low
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 3 )
                 {
                     if ( TableKindWidens( kind, 3 ) )
@@ -11241,11 +11174,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             return false;
                         }
                         int16_t decoded_v = (int16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 32766 )
                         {
                             decoded_v = 32766;
@@ -11273,11 +11201,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int16_t decoded_v = int16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 32766 )
                 {
                     decoded_v = 32766;
@@ -11289,12 +11212,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
             }
             case 0x90652f70c9127900ull: // i16_high
             {
-                if ( 7 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 7;
                 if ( kind != 3 )
                 {
                     if ( TableKindWidens( kind, 3 ) )
@@ -11308,11 +11225,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             return false;
                         }
                         int16_t decoded_v = (int16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < -32767 )
                         {
                             decoded_v = -32767;
@@ -11340,11 +11252,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int16_t decoded_v = int16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -32767 )
                 {
                     decoded_v = -32767;
@@ -11356,12 +11263,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
             }
             case 0x6a659d7c354db158ull: // i16_inside
             {
-                if ( 8 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 8;
                 if ( kind != 3 )
                 {
                     if ( TableKindWidens( kind, 3 ) )
@@ -11375,11 +11276,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             return false;
                         }
                         int16_t decoded_v = (int16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < -32767 )
                         {
                             decoded_v = -32767;
@@ -11413,11 +11309,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int16_t decoded_v = int16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -32767 )
                 {
                     decoded_v = -32767;
@@ -11435,12 +11326,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
             }
             case 0xe693bd88532c91d6ull: // i32_span
             {
-                if ( 9 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 9;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -11454,11 +11339,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.i32_span = decoded_v;
                         r.report->widened++;
                         break;
@@ -11480,22 +11360,11 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.i32_span = decoded_v;
                 break;
             }
             case 0x065ee827cf99fbb4ull: // i32_low
             {
-                if ( 10 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 10;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -11509,11 +11378,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 2147483646 )
                         {
                             decoded_v = 2147483646;
@@ -11541,11 +11405,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 2147483646 )
                 {
                     decoded_v = 2147483646;
@@ -11557,12 +11416,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
             }
             case 0xc9b121c4c2a186eeull: // i32_high
             {
-                if ( 11 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 11;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -11576,11 +11429,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < -2147483647 )
                         {
                             decoded_v = -2147483647;
@@ -11608,11 +11456,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -2147483647 )
                 {
                     decoded_v = -2147483647;
@@ -11624,12 +11467,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
             }
             case 0xd363dfa465acf27aull: // i32_inside
             {
-                if ( 12 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 12;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -11643,11 +11480,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < -2147483647 )
                         {
                             decoded_v = -2147483647;
@@ -11681,11 +11513,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -2147483647 )
                 {
                     decoded_v = -2147483647;
@@ -11703,12 +11530,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
             }
             case 0x7549c70700c49d6full: // i64_span
             {
-                if ( 13 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 13;
                 if ( kind != 5 )
                 {
                     if ( TableKindWidens( kind, 5 ) )
@@ -11722,11 +11543,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             return false;
                         }
                         int64_t decoded_v = (int64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.i64_span = decoded_v;
                         r.report->widened++;
                         break;
@@ -11748,22 +11564,11 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.i64_span = decoded_v;
                 break;
             }
             case 0x1cce6617419771dbull: // i64_low
             {
-                if ( 14 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 14;
                 if ( kind != 5 )
                 {
                     if ( TableKindWidens( kind, 5 ) )
@@ -11777,11 +11582,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             return false;
                         }
                         int64_t decoded_v = (int64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 9223372036854775806ll )
                         {
                             decoded_v = 9223372036854775806ll;
@@ -11809,11 +11609,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 9223372036854775806ll )
                 {
                     decoded_v = 9223372036854775806ll;
@@ -11825,12 +11620,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
             }
             case 0x3b54fa60620b5597ull: // i64_high
             {
-                if ( 15 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 15;
                 if ( kind != 5 )
                 {
                     if ( TableKindWidens( kind, 5 ) )
@@ -11844,11 +11633,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             return false;
                         }
                         int64_t decoded_v = (int64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < -9223372036854775807ll )
                         {
                             decoded_v = -9223372036854775807ll;
@@ -11876,11 +11660,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -9223372036854775807ll )
                 {
                     decoded_v = -9223372036854775807ll;
@@ -11892,12 +11671,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
             }
             case 0xd308fcb98ece5d23ull: // i64_inside
             {
-                if ( 16 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 16;
                 if ( kind != 5 )
                 {
                     if ( TableKindWidens( kind, 5 ) )
@@ -11911,11 +11684,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             return false;
                         }
                         int64_t decoded_v = (int64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < -9223372036854775807ll )
                         {
                             decoded_v = -9223372036854775807ll;
@@ -11949,11 +11717,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -9223372036854775807ll )
                 {
                     decoded_v = -9223372036854775807ll;
@@ -11971,12 +11734,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
             }
             case 0xc70cde6b85b6197dull: // edges
             {
-                if ( 17 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 17;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12027,11 +11784,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                             r.offset = body_end;
                             break;
                         }
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t widened_keep = count;
                         if ( widened_keep > 4 )
                         {
@@ -12062,11 +11814,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBody( TableReader & r, RangedSigned 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 4 )
                         {
@@ -13986,6 +13733,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -14247,7 +13995,6 @@ inline int64_t RangedUnsignedSave( const RangedUnsigned & value, uint8_t * buffe
 TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsigned & value )
 {
     RangedUnsignedReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14287,12 +14034,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
         {
             case 0x0f8897557f37c021ull: // u8_span
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14312,22 +14053,11 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.u8_span = decoded_v;
                 break;
             }
             case 0x2e17553f8200a2a1ull: // u8_low
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14347,11 +14077,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 254 )
                 {
                     decoded_v = 254;
@@ -14363,12 +14088,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
             }
             case 0xa0e5c60df9301b7dull: // u8_high
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14388,11 +14107,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 1 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1 )
                 {
                     decoded_v = 1;
@@ -14404,12 +14118,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
             }
             case 0x1cb2c073a6f5844dull: // u8_inside
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14429,11 +14137,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 1 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1 )
                 {
                     decoded_v = 1;
@@ -14451,12 +14154,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
             }
             case 0x4ca0c150b1790960ull: // u16_span
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 7 )
                 {
                     if ( TableKindWidens( kind, 7 ) )
@@ -14470,11 +14167,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.u16_span = decoded_v;
                         r.report->widened++;
                         break;
@@ -14496,22 +14188,11 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.u16_span = decoded_v;
                 break;
             }
             case 0xf252136836b04cb2ull: // u16_low
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 7 )
                 {
                     if ( TableKindWidens( kind, 7 ) )
@@ -14525,11 +14206,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 65534 )
                         {
                             decoded_v = 65534;
@@ -14557,11 +14233,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 65534 )
                 {
                     decoded_v = 65534;
@@ -14573,12 +14244,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
             }
             case 0x4f37e1f216e7610cull: // u16_high
             {
-                if ( 7 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 7;
                 if ( kind != 7 )
                 {
                     if ( TableKindWidens( kind, 7 ) )
@@ -14592,11 +14257,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v == 1 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 1 )
                         {
                             decoded_v = 1;
@@ -14624,11 +14284,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v == 1 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1 )
                 {
                     decoded_v = 1;
@@ -14640,12 +14295,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
             }
             case 0xd176b605978f3304ull: // u16_inside
             {
-                if ( 8 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 8;
                 if ( kind != 7 )
                 {
                     if ( TableKindWidens( kind, 7 ) )
@@ -14659,11 +14308,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v == 1 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 1 )
                         {
                             decoded_v = 1;
@@ -14697,11 +14341,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v == 1 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1 )
                 {
                     decoded_v = 1;
@@ -14719,12 +14358,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
             }
             case 0x200b924de7479cdaull: // u32_span
             {
-                if ( 9 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 9;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -14738,11 +14371,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.u32_span = decoded_v;
                         r.report->widened++;
                         break;
@@ -14764,22 +14392,11 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.u32_span = decoded_v;
                 break;
             }
             case 0xa53d2f2a31b5acb0ull: // u32_low
             {
-                if ( 10 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 10;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -14793,11 +14410,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 4294967294 )
                         {
                             decoded_v = 4294967294;
@@ -14825,11 +14437,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 4294967294 )
                 {
                     decoded_v = 4294967294;
@@ -14841,12 +14448,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
             }
             case 0x9759be8ea1a4e3d2ull: // u32_high
             {
-                if ( 11 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 11;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -14860,11 +14461,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 1 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 1 )
                         {
                             decoded_v = 1;
@@ -14892,11 +14488,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 1 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1 )
                 {
                     decoded_v = 1;
@@ -14908,12 +14499,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
             }
             case 0x8dc515fc082e3c0eull: // u32_inside
             {
-                if ( 12 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 12;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -14927,11 +14512,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 1 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 1 )
                         {
                             decoded_v = 1;
@@ -14965,11 +14545,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 1 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1 )
                 {
                     decoded_v = 1;
@@ -14987,12 +14562,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
             }
             case 0xbeecef11dbdf8973ull: // u64_span
             {
-                if ( 13 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 13;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -15006,11 +14575,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.u64_span = decoded_v;
                         r.report->widened++;
                         break;
@@ -15032,22 +14596,11 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.u64_span = decoded_v;
                 break;
             }
             case 0x0117ad66e0fff227ull: // u64_low
             {
-                if ( 14 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 14;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -15061,11 +14614,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 18446744073709551614ull )
                         {
                             decoded_v = 18446744073709551614ull;
@@ -15093,11 +14641,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 18446744073709551614ull )
                 {
                     decoded_v = 18446744073709551614ull;
@@ -15109,12 +14652,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
             }
             case 0xf2b45af3b50689dbull: // u64_high
             {
-                if ( 15 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 15;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -15128,11 +14665,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 1ull )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 1ull )
                         {
                             decoded_v = 1ull;
@@ -15160,11 +14692,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 1ull )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1ull )
                 {
                     decoded_v = 1ull;
@@ -15176,12 +14703,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
             }
             case 0x713e12017eebcaf7ull: // u64_inside
             {
-                if ( 16 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 16;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -15195,11 +14716,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 1ull )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 1ull )
                         {
                             decoded_v = 1ull;
@@ -15233,11 +14749,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 1ull )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1ull )
                 {
                     decoded_v = 1ull;
@@ -15255,12 +14766,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
             }
             case 0xc341febe5aae51e5ull: // counts
             {
-                if ( 17 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 17;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -15311,11 +14816,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                             r.offset = body_end;
                             break;
                         }
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t widened_keep = count;
                         if ( widened_keep > 4 )
                         {
@@ -15346,11 +14846,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBody( TableReader & r, RangedUnsig
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 4 )
                         {
@@ -17036,6 +16531,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -17212,7 +16708,6 @@ inline int64_t RangedWidthsSave( const RangedWidths & value, uint8_t * buffer, i
 TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths & value )
 {
     RangedWidthsReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -17252,12 +16747,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths 
         {
             case 0x08a60c07b54d8dc7ull: // b8
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -17277,22 +16766,11 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths 
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.b8 = decoded_v;
                 break;
             }
             case 0xff95701912ad97beull: // b16
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 7 )
                 {
                     if ( TableKindWidens( kind, 7 ) )
@@ -17306,11 +16784,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths 
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.b16 = decoded_v;
                         r.report->widened++;
                         break;
@@ -17332,22 +16805,11 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths 
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.b16 = decoded_v;
                 break;
             }
             case 0xff9c5c1912b39470ull: // b32
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -17361,11 +16823,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths 
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.b32 = decoded_v;
                         r.report->widened++;
                         break;
@@ -17387,22 +16844,11 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths 
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.b32 = decoded_v;
                 break;
             }
             case 0xff92701912ab61e7ull: // b64
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -17416,11 +16862,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths 
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.b64 = decoded_v;
                         r.report->widened++;
                         break;
@@ -17442,22 +16883,11 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths 
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.b64 = decoded_v;
                 break;
             }
             case 0xff95741912ad9e8aull: // b12
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 7 )
                 {
                     if ( TableKindWidens( kind, 7 ) )
@@ -17471,11 +16901,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths 
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 4095ull )
                         {
                             decoded_v = 4095ull;
@@ -17503,11 +16928,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths 
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 4095ull )
                 {
                     decoded_v = 4095ull;
@@ -17519,12 +16939,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths 
             }
             case 0xff8b681912a535a1ull: // b48
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -17538,11 +16952,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths 
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 281474976710655ull )
                         {
                             decoded_v = 281474976710655ull;
@@ -17570,11 +16979,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths 
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 281474976710655ull )
                 {
                     decoded_v = 281474976710655ull;
@@ -18253,6 +17657,7 @@ inline bool RangedWidthsLoadMessageBody( TableBitReader & r, const TableVocabula
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -18743,7 +18148,7 @@ inline bool RangedSignedFixedClamp( RangedSigned & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RangedSignedFixedBodyBytes = 72;
 constexpr int64_t RangedSignedFixedRecordBytes = 8 + RangedSignedFixedBodyBytes; // the hash and the body
-constexpr uint64_t RangedSignedFixedHash = 0xcbf32b9992cc8183ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t RangedSignedFixedHash = 0xc8326482ca449565ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 19 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -18894,9 +18299,10 @@ constexpr int32_t RangedSignedFixedCoverCount = 2;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t RangedSignedFixedLineage[] = {
-    0xcbf32b9992cc8183ull, // identity
+    0xcbf32b9992cc8183ull, // lock
+    0xc8326482ca449565ull, // identity
 };
-constexpr int32_t RangedSignedFixedLineageCount = 1;
+constexpr int32_t RangedSignedFixedLineageCount = 2;
 constexpr int32_t RangedSignedFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t RangedSignedFixedFloorLive = RangedSignedFixedFloor;
@@ -18926,14 +18332,39 @@ constexpr uint8_t RangedSignedFixedKnown0Layout[] = {
     0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x02,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t RangedSignedFixedKnown1Layout[] = {
+    0x13, 0x00, 0x00, 0x00, 0x2e, 0xbe, 0x28, 0xda, 0x1d, 0x75, 0x79, 0xec, 0x0d, 0x48, 0x00, 0x00,
+    0x00, 0x11, 0x00, 0x00, 0x00, 0xb5, 0x2e, 0x70, 0xbf, 0x11, 0x15, 0x12, 0x48, 0x02, 0x01, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7d, 0x0f, 0x09, 0x68, 0x31, 0xfe, 0x2b, 0x94, 0x02, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd1, 0x5d, 0xb5, 0x05, 0xd1, 0xac, 0x82, 0xd1, 0x02,
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x81, 0x2a, 0x91, 0xc8, 0x23, 0xed, 0x9d, 0xef,
+    0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb4, 0x60, 0x37, 0xa2, 0x4e, 0x57, 0x55,
+    0xb6, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xde, 0x2b, 0x7a, 0x8d, 0xaf, 0xb3,
+    0x17, 0xd2, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79, 0x12, 0xc9, 0x70,
+    0x2f, 0x65, 0x90, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x58, 0xb1, 0x4d, 0x35,
+    0x7c, 0x9d, 0x65, 0x6a, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd6, 0x91, 0x2c,
+    0x53, 0x88, 0xbd, 0x93, 0xe6, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb4, 0xfb,
+    0x99, 0xcf, 0x27, 0xe8, 0x5e, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xee,
+    0x86, 0xa1, 0xc2, 0xc4, 0x21, 0xb1, 0xc9, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x7a, 0xf2, 0xac, 0x65, 0xa4, 0xdf, 0x63, 0xd3, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x6f, 0x9d, 0xc4, 0x00, 0x07, 0xc7, 0x49, 0x75, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0xdb, 0x71, 0x97, 0x41, 0x17, 0x66, 0xce, 0x1c, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x97, 0x55, 0x0b, 0x62, 0x60, 0xfa, 0x54, 0x3b, 0x05, 0x08, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x23, 0x5d, 0xce, 0x8e, 0xb9, 0xfc, 0x08, 0xd3, 0x05, 0x08, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x7d, 0x19, 0xb6, 0x85, 0x6b, 0xde, 0x0c, 0xc7, 0x0e, 0x0c, 0x00,
+    0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x02,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout RangedSignedFixedKnown[] = {
-    { 0xcbf32b9992cc8183ull, RangedSignedFixedKnown0Layout, 327, 80 }, // identity
+    { 0xcbf32b9992cc8183ull, RangedSignedFixedKnown0Layout, 327, 80 }, // lock
+    { 0xc8326482ca449565ull, RangedSignedFixedKnown1Layout, 327, 80 }, // identity
 };
 
 constexpr const TableFixedKnownRange * RangedSignedFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t RangedSignedFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t RangedSignedFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -19303,7 +18734,7 @@ inline bool RangedUnsignedFixedClamp( RangedUnsigned & value, TableReport * repo
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RangedUnsignedFixedBodyBytes = 96;
 constexpr int64_t RangedUnsignedFixedRecordBytes = 8 + RangedUnsignedFixedBodyBytes; // the hash and the body
-constexpr uint64_t RangedUnsignedFixedHash = 0x8b7880ef6aaed3c0ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t RangedUnsignedFixedHash = 0xc5feb1700db1e921ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 19 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -19454,9 +18885,10 @@ constexpr int32_t RangedUnsignedFixedCoverCount = 2;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t RangedUnsignedFixedLineage[] = {
-    0x8b7880ef6aaed3c0ull, // identity
+    0x8b7880ef6aaed3c0ull, // lock
+    0xc5feb1700db1e921ull, // identity
 };
-constexpr int32_t RangedUnsignedFixedLineageCount = 1;
+constexpr int32_t RangedUnsignedFixedLineageCount = 2;
 constexpr int32_t RangedUnsignedFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t RangedUnsignedFixedFloorLive = RangedUnsignedFixedFloor;
@@ -19486,14 +18918,39 @@ constexpr uint8_t RangedUnsignedFixedKnown0Layout[] = {
     0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09, 0x08,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t RangedUnsignedFixedKnown1Layout[] = {
+    0x13, 0x00, 0x00, 0x00, 0xf1, 0x8b, 0xd2, 0xb7, 0xc4, 0xc0, 0x1e, 0x03, 0x0d, 0x60, 0x00, 0x00,
+    0x00, 0x11, 0x00, 0x00, 0x00, 0x21, 0xc0, 0x37, 0x7f, 0x55, 0x97, 0x88, 0x0f, 0x06, 0x01, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa1, 0xa2, 0x00, 0x82, 0x3f, 0x55, 0x17, 0x2e, 0x06, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7d, 0x1b, 0x30, 0xf9, 0x0d, 0xc6, 0xe5, 0xa0, 0x06,
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4d, 0x84, 0xf5, 0xa6, 0x73, 0xc0, 0xb2, 0x1c,
+    0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60, 0x09, 0x79, 0xb1, 0x50, 0xc1, 0xa0,
+    0x4c, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb2, 0x4c, 0xb0, 0x36, 0x68, 0x13,
+    0x52, 0xf2, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0c, 0x61, 0xe7, 0x16, 0xf2,
+    0xe1, 0x37, 0x4f, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x33, 0x8f, 0x97,
+    0x05, 0xb6, 0x76, 0xd1, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xda, 0x9c, 0x47,
+    0xe7, 0x4d, 0x92, 0x0b, 0x20, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb0, 0xac,
+    0xb5, 0x31, 0x2a, 0x2f, 0x3d, 0xa5, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2,
+    0xe3, 0xa4, 0xa1, 0x8e, 0xbe, 0x59, 0x97, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0e, 0x3c, 0x2e, 0x08, 0xfc, 0x15, 0xc5, 0x8d, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x73, 0x89, 0xdf, 0xdb, 0x11, 0xef, 0xec, 0xbe, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x27, 0xf2, 0xff, 0xe0, 0x66, 0xad, 0x17, 0x01, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xdb, 0x89, 0x06, 0xb5, 0xf3, 0x5a, 0xb4, 0xf2, 0x09, 0x08, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xf7, 0xca, 0xeb, 0x7e, 0x01, 0x12, 0x3e, 0x71, 0x09, 0x08, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0xe5, 0x51, 0xae, 0x5a, 0xbe, 0xfe, 0x41, 0xc3, 0x0e, 0x24, 0x00,
+    0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09, 0x08,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout RangedUnsignedFixedKnown[] = {
-    { 0x8b7880ef6aaed3c0ull, RangedUnsignedFixedKnown0Layout, 327, 104 }, // identity
+    { 0x8b7880ef6aaed3c0ull, RangedUnsignedFixedKnown0Layout, 327, 104 }, // lock
+    { 0xc5feb1700db1e921ull, RangedUnsignedFixedKnown1Layout, 327, 104 }, // identity
 };
 
 constexpr const TableFixedKnownRange * RangedUnsignedFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t RangedUnsignedFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t RangedUnsignedFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -19863,7 +19320,7 @@ inline bool RangedWidthsFixedClamp( RangedWidths & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RangedWidthsFixedBodyBytes = 32;
 constexpr int64_t RangedWidthsFixedRecordBytes = 8 + RangedWidthsFixedBodyBytes; // the hash and the body
-constexpr uint64_t RangedWidthsFixedHash = 0xe45869be02e1f158ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t RangedWidthsFixedHash = 0x829cea699ec90a73ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 7 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -19951,9 +19408,10 @@ constexpr int32_t RangedWidthsFixedCoverCount = 3;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t RangedWidthsFixedLineage[] = {
-    0xe45869be02e1f158ull, // identity
+    0xe45869be02e1f158ull, // lock
+    0x829cea699ec90a73ull, // identity
 };
-constexpr int32_t RangedWidthsFixedLineageCount = 1;
+constexpr int32_t RangedWidthsFixedLineageCount = 2;
 constexpr int32_t RangedWidthsFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t RangedWidthsFixedFloorLive = RangedWidthsFixedFloor;
@@ -19970,14 +19428,26 @@ constexpr uint8_t RangedWidthsFixedKnown0Layout[] = {
     0xff, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa1, 0x35, 0xa5, 0x12, 0x19, 0x68,
     0x8b, 0xff, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t RangedWidthsFixedKnown1Layout[] = {
+    0x07, 0x00, 0x00, 0x00, 0xd7, 0x5e, 0x4f, 0x9e, 0x4e, 0x69, 0x59, 0xbf, 0x0d, 0x20, 0x00, 0x00,
+    0x00, 0x06, 0x00, 0x00, 0x00, 0xc7, 0x8d, 0x4d, 0xb5, 0x07, 0x0c, 0xa6, 0x08, 0x06, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xbe, 0x97, 0xad, 0x12, 0x19, 0x70, 0x95, 0xff, 0x07, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70, 0x94, 0xb3, 0x12, 0x19, 0x5c, 0x9c, 0xff, 0x08,
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe7, 0x61, 0xab, 0x12, 0x19, 0x70, 0x92, 0xff,
+    0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8a, 0x9e, 0xad, 0x12, 0x19, 0x74, 0x95,
+    0xff, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa1, 0x35, 0xa5, 0x12, 0x19, 0x68,
+    0x8b, 0xff, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout RangedWidthsFixedKnown[] = {
-    { 0xe45869be02e1f158ull, RangedWidthsFixedKnown0Layout, 123, 40 }, // identity
+    { 0xe45869be02e1f158ull, RangedWidthsFixedKnown0Layout, 123, 40 }, // lock
+    { 0x829cea699ec90a73ull, RangedWidthsFixedKnown1Layout, 123, 40 }, // identity
 };
 
 constexpr const TableFixedKnownRange * RangedWidthsFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t RangedWidthsFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t RangedWidthsFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -20456,7 +19926,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -20496,12 +19965,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
         {
             case 0x48121511bf702eb5ull: // i8_span
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 2 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -20521,22 +19984,11 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int8_t decoded_v = int8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.i8_span = decoded_v;
                 break;
             }
             case 0x942bfe3168090f7dull: // i8_low
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 2 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -20556,11 +20008,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int8_t decoded_v = int8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 126 )
                 {
                     decoded_v = 126;
@@ -20572,12 +20019,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
             }
             case 0xd182acd105b55dd1ull: // i8_high
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 2 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -20597,11 +20038,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int8_t decoded_v = int8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -127 )
                 {
                     decoded_v = -127;
@@ -20613,12 +20049,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
             }
             case 0xef9ded23c8912a81ull: // i8_inside
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 2 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -20638,11 +20068,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int8_t decoded_v = int8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -127 )
                 {
                     decoded_v = -127;
@@ -20660,12 +20085,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
             }
             case 0xb655574ea23760b4ull: // i16_span
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 3 )
                 {
                     if ( TableKindWidens( kind, 3 ) )
@@ -20679,11 +20098,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                             return false;
                         }
                         int16_t decoded_v = (int16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.i16_span = decoded_v;
                         r.report->widened++;
                         break;
@@ -20705,22 +20119,11 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int16_t decoded_v = int16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.i16_span = decoded_v;
                 break;
             }
             case 0xd217b3af8d7a2bdeull: // i16_low
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 3 )
                 {
                     if ( TableKindWidens( kind, 3 ) )
@@ -20734,11 +20137,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                             return false;
                         }
                         int16_t decoded_v = (int16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 32766 )
                         {
                             decoded_v = 32766;
@@ -20766,11 +20164,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int16_t decoded_v = int16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 32766 )
                 {
                     decoded_v = 32766;
@@ -20782,12 +20175,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
             }
             case 0x90652f70c9127900ull: // i16_high
             {
-                if ( 7 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 7;
                 if ( kind != 3 )
                 {
                     if ( TableKindWidens( kind, 3 ) )
@@ -20801,11 +20188,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                             return false;
                         }
                         int16_t decoded_v = (int16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < -32767 )
                         {
                             decoded_v = -32767;
@@ -20833,11 +20215,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int16_t decoded_v = int16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -32767 )
                 {
                     decoded_v = -32767;
@@ -20849,12 +20226,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
             }
             case 0x6a659d7c354db158ull: // i16_inside
             {
-                if ( 8 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 8;
                 if ( kind != 3 )
                 {
                     if ( TableKindWidens( kind, 3 ) )
@@ -20868,11 +20239,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                             return false;
                         }
                         int16_t decoded_v = (int16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < -32767 )
                         {
                             decoded_v = -32767;
@@ -20906,11 +20272,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int16_t decoded_v = int16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -32767 )
                 {
                     decoded_v = -32767;
@@ -20928,12 +20289,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
             }
             case 0xe693bd88532c91d6ull: // i32_span
             {
-                if ( 9 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 9;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -20947,11 +20302,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.i32_span = decoded_v;
                         r.report->widened++;
                         break;
@@ -20973,22 +20323,11 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.i32_span = decoded_v;
                 break;
             }
             case 0x065ee827cf99fbb4ull: // i32_low
             {
-                if ( 10 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 10;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -21002,11 +20341,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 2147483646 )
                         {
                             decoded_v = 2147483646;
@@ -21034,11 +20368,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 2147483646 )
                 {
                     decoded_v = 2147483646;
@@ -21050,12 +20379,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
             }
             case 0xc9b121c4c2a186eeull: // i32_high
             {
-                if ( 11 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 11;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -21069,11 +20392,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < -2147483647 )
                         {
                             decoded_v = -2147483647;
@@ -21101,11 +20419,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -2147483647 )
                 {
                     decoded_v = -2147483647;
@@ -21117,12 +20430,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
             }
             case 0xd363dfa465acf27aull: // i32_inside
             {
-                if ( 12 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 12;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -21136,11 +20443,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < -2147483647 )
                         {
                             decoded_v = -2147483647;
@@ -21174,11 +20476,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -2147483647 )
                 {
                     decoded_v = -2147483647;
@@ -21196,12 +20493,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
             }
             case 0x7549c70700c49d6full: // i64_span
             {
-                if ( 13 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 13;
                 if ( kind != 5 )
                 {
                     if ( TableKindWidens( kind, 5 ) )
@@ -21215,11 +20506,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                             return false;
                         }
                         int64_t decoded_v = (int64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.i64_span = decoded_v;
                         r.report->widened++;
                         break;
@@ -21241,22 +20527,11 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.i64_span = decoded_v;
                 break;
             }
             case 0x1cce6617419771dbull: // i64_low
             {
-                if ( 14 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 14;
                 if ( kind != 5 )
                 {
                     if ( TableKindWidens( kind, 5 ) )
@@ -21270,11 +20545,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                             return false;
                         }
                         int64_t decoded_v = (int64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 9223372036854775806ll )
                         {
                             decoded_v = 9223372036854775806ll;
@@ -21302,11 +20572,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 9223372036854775806ll )
                 {
                     decoded_v = 9223372036854775806ll;
@@ -21318,12 +20583,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
             }
             case 0x3b54fa60620b5597ull: // i64_high
             {
-                if ( 15 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 15;
                 if ( kind != 5 )
                 {
                     if ( TableKindWidens( kind, 5 ) )
@@ -21337,11 +20596,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                             return false;
                         }
                         int64_t decoded_v = (int64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < -9223372036854775807ll )
                         {
                             decoded_v = -9223372036854775807ll;
@@ -21369,11 +20623,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -9223372036854775807ll )
                 {
                     decoded_v = -9223372036854775807ll;
@@ -21385,12 +20634,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
             }
             case 0xd308fcb98ece5d23ull: // i64_inside
             {
-                if ( 16 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 16;
                 if ( kind != 5 )
                 {
                     if ( TableKindWidens( kind, 5 ) )
@@ -21404,11 +20647,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                             return false;
                         }
                         int64_t decoded_v = (int64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < -9223372036854775807ll )
                         {
                             decoded_v = -9223372036854775807ll;
@@ -21442,11 +20680,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < -9223372036854775807ll )
                 {
                     decoded_v = -9223372036854775807ll;
@@ -21464,12 +20697,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
             }
             case 0xc70cde6b85b6197dull: // edges
             {
-                if ( 17 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 17;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -21520,11 +20747,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                             r.offset = body_end;
                             break;
                         }
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t widened_keep = count;
                         if ( widened_keep > 4 )
                         {
@@ -21555,11 +20777,6 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 4 )
                         {
@@ -21751,7 +20968,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -21791,12 +21007,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
         {
             case 0x0f8897557f37c021ull: // u8_span
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -21816,22 +21026,11 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.u8_span = decoded_v;
                 break;
             }
             case 0x2e17553f8200a2a1ull: // u8_low
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -21851,11 +21050,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 254 )
                 {
                     decoded_v = 254;
@@ -21867,12 +21061,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
             }
             case 0xa0e5c60df9301b7dull: // u8_high
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -21892,11 +21080,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 1 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1 )
                 {
                     decoded_v = 1;
@@ -21908,12 +21091,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
             }
             case 0x1cb2c073a6f5844dull: // u8_inside
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -21933,11 +21110,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 1 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1 )
                 {
                     decoded_v = 1;
@@ -21955,12 +21127,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
             }
             case 0x4ca0c150b1790960ull: // u16_span
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 7 )
                 {
                     if ( TableKindWidens( kind, 7 ) )
@@ -21974,11 +21140,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.u16_span = decoded_v;
                         r.report->widened++;
                         break;
@@ -22000,22 +21161,11 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.u16_span = decoded_v;
                 break;
             }
             case 0xf252136836b04cb2ull: // u16_low
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 7 )
                 {
                     if ( TableKindWidens( kind, 7 ) )
@@ -22029,11 +21179,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 65534 )
                         {
                             decoded_v = 65534;
@@ -22061,11 +21206,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 65534 )
                 {
                     decoded_v = 65534;
@@ -22077,12 +21217,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
             }
             case 0x4f37e1f216e7610cull: // u16_high
             {
-                if ( 7 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 7;
                 if ( kind != 7 )
                 {
                     if ( TableKindWidens( kind, 7 ) )
@@ -22096,11 +21230,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v == 1 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 1 )
                         {
                             decoded_v = 1;
@@ -22128,11 +21257,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v == 1 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1 )
                 {
                     decoded_v = 1;
@@ -22144,12 +21268,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
             }
             case 0xd176b605978f3304ull: // u16_inside
             {
-                if ( 8 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 8;
                 if ( kind != 7 )
                 {
                     if ( TableKindWidens( kind, 7 ) )
@@ -22163,11 +21281,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v == 1 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 1 )
                         {
                             decoded_v = 1;
@@ -22201,11 +21314,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v == 1 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1 )
                 {
                     decoded_v = 1;
@@ -22223,12 +21331,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
             }
             case 0x200b924de7479cdaull: // u32_span
             {
-                if ( 9 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 9;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -22242,11 +21344,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.u32_span = decoded_v;
                         r.report->widened++;
                         break;
@@ -22268,22 +21365,11 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.u32_span = decoded_v;
                 break;
             }
             case 0xa53d2f2a31b5acb0ull: // u32_low
             {
-                if ( 10 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 10;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -22297,11 +21383,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 4294967294 )
                         {
                             decoded_v = 4294967294;
@@ -22329,11 +21410,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 4294967294 )
                 {
                     decoded_v = 4294967294;
@@ -22345,12 +21421,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
             }
             case 0x9759be8ea1a4e3d2ull: // u32_high
             {
-                if ( 11 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 11;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -22364,11 +21434,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 1 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 1 )
                         {
                             decoded_v = 1;
@@ -22396,11 +21461,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 1 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1 )
                 {
                     decoded_v = 1;
@@ -22412,12 +21472,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
             }
             case 0x8dc515fc082e3c0eull: // u32_inside
             {
-                if ( 12 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 12;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -22431,11 +21485,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 1 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 1 )
                         {
                             decoded_v = 1;
@@ -22469,11 +21518,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 1 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1 )
                 {
                     decoded_v = 1;
@@ -22491,12 +21535,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
             }
             case 0xbeecef11dbdf8973ull: // u64_span
             {
-                if ( 13 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 13;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -22510,11 +21548,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.u64_span = decoded_v;
                         r.report->widened++;
                         break;
@@ -22536,22 +21569,11 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.u64_span = decoded_v;
                 break;
             }
             case 0x0117ad66e0fff227ull: // u64_low
             {
-                if ( 14 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 14;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -22565,11 +21587,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 18446744073709551614ull )
                         {
                             decoded_v = 18446744073709551614ull;
@@ -22597,11 +21614,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 18446744073709551614ull )
                 {
                     decoded_v = 18446744073709551614ull;
@@ -22613,12 +21625,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
             }
             case 0xf2b45af3b50689dbull: // u64_high
             {
-                if ( 15 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 15;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -22632,11 +21638,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 1ull )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 1ull )
                         {
                             decoded_v = 1ull;
@@ -22664,11 +21665,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 1ull )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1ull )
                 {
                     decoded_v = 1ull;
@@ -22680,12 +21676,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
             }
             case 0x713e12017eebcaf7ull: // u64_inside
             {
-                if ( 16 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 16;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -22699,11 +21689,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 1ull )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 1ull )
                         {
                             decoded_v = 1ull;
@@ -22737,11 +21722,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 1ull )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 1ull )
                 {
                     decoded_v = 1ull;
@@ -22759,12 +21739,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
             }
             case 0xc341febe5aae51e5ull: // counts
             {
-                if ( 17 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 17;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -22815,11 +21789,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                             r.offset = body_end;
                             break;
                         }
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t widened_keep = count;
                         if ( widened_keep > 4 )
                         {
@@ -22850,11 +21819,6 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 4 )
                         {
@@ -22961,7 +21925,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -23001,12 +21964,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
         {
             case 0x08a60c07b54d8dc7ull: // b8
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -23026,22 +21983,11 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.b8 = decoded_v;
                 break;
             }
             case 0xff95701912ad97beull: // b16
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 7 )
                 {
                     if ( TableKindWidens( kind, 7 ) )
@@ -23055,11 +22001,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.b16 = decoded_v;
                         r.report->widened++;
                         break;
@@ -23081,22 +22022,11 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.b16 = decoded_v;
                 break;
             }
             case 0xff9c5c1912b39470ull: // b32
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -23110,11 +22040,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.b32 = decoded_v;
                         r.report->widened++;
                         break;
@@ -23136,22 +22061,11 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.b32 = decoded_v;
                 break;
             }
             case 0xff92701912ab61e7ull: // b64
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -23165,11 +22079,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.b64 = decoded_v;
                         r.report->widened++;
                         break;
@@ -23191,22 +22100,11 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.b64 = decoded_v;
                 break;
             }
             case 0xff95741912ad9e8aull: // b12
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 7 )
                 {
                     if ( TableKindWidens( kind, 7 ) )
@@ -23220,11 +22118,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 4095ull )
                         {
                             decoded_v = 4095ull;
@@ -23252,11 +22145,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 4095ull )
                 {
                     decoded_v = 4095ull;
@@ -23268,12 +22156,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
             }
             case 0xff8b681912a535a1ull: // b48
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -23287,11 +22169,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v > 281474976710655ull )
                         {
                             decoded_v = 281474976710655ull;
@@ -23319,11 +22196,6 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v > 281474976710655ull )
                 {
                     decoded_v = 281474976710655ull;

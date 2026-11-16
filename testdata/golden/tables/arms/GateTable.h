@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package armdemo — protocol id 0x727cea182a6959a7 (packets only: tables version by field id, not by protocol id)
+// package armdemo — protocol id 0x2e08b132138189b9 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2442,14 +2442,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0xa2,
-    0x6e,
-    0xa0,
-    0x9d,
-    0x34,
-    0x84,
-    0x21,
-    0x6a,
+    0x3f,
+    0x6f,
+    0x8b,
+    0x1c,
+    0x00,
+    0xdc,
+    0x02,
+    0x7b,
     0x02,
     0x0e,
     0x16,
@@ -9677,7 +9677,7 @@ namespace armdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x6a2184349da06ea2ull;
+static const uint64_t BuildVersion = 0x7b02dc001c8b6f3full;
 
 } // namespace armdemo
 
@@ -10211,7 +10211,6 @@ inline int64_t OnlySave( const Only & value, uint8_t * buffer, int64_t capacity 
 ARMDEMO_TABLE_INLINE bool OnlyLoadBody( TableReader & r, Only & value )
 {
     OnlyReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10251,12 +10250,6 @@ ARMDEMO_TABLE_INLINE bool OnlyLoadBody( TableReader & r, Only & value )
         {
             case 0xaf63ea4c86020456ull: // w
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -10270,11 +10263,6 @@ ARMDEMO_TABLE_INLINE bool OnlyLoadBody( TableReader & r, Only & value )
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.w = decoded_v;
                         r.report->widened++;
                         break;
@@ -10296,11 +10284,6 @@ ARMDEMO_TABLE_INLINE bool OnlyLoadBody( TableReader & r, Only & value )
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.w = decoded_v;
                 break;
             }
@@ -10599,6 +10582,7 @@ inline bool OnlyLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -10838,7 +10822,6 @@ inline bool GateLoadBody( TableReader & r, const TableNodeMap & nodes, Gate & va
     (void) nodes;
     if ( nodes.refused ) { return false; }
     GateReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10878,12 +10861,6 @@ inline bool GateLoadBody( TableReader & r, const TableNodeMap & nodes, Gate & va
         {
             case 0x891da1f305deb858ull: // reach
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10903,11 +10880,9 @@ inline bool GateLoadBody( TableReader & r, const TableNodeMap & nodes, Gate & va
                     r.report->damaged = true;
                     return false;
                 }
-                if ( arm_ref == 0 )
+                if ( arm_ref == 0 ) { value.reach.type = ReachType::None; } // empty: the reference is the whole payload
+                else
                 {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( arm_ref > (uint64_t) r.ids->count )
                 {
                     r.report->damaged = true;
@@ -11049,16 +11024,11 @@ inline bool GateLoadBody( TableReader & r, const TableNodeMap & nodes, Gate & va
                     }
                 }
                 r.offset += (int64_t) body_len;
+                }
                 break;
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -11072,11 +11042,6 @@ inline bool GateLoadBody( TableReader & r, const TableNodeMap & nodes, Gate & va
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -11098,11 +11063,6 @@ inline bool GateLoadBody( TableReader & r, const TableNodeMap & nodes, Gate & va
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }
@@ -11159,7 +11119,7 @@ inline void OnlyFixedWriteBody( uint8_t * b, const Only & value )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t OnlyFixedBodyBytes = 4;
 constexpr int64_t OnlyFixedRecordBytes = 8 + OnlyFixedBodyBytes; // the hash and the body
-constexpr uint64_t OnlyFixedHash = 0x2078b2b4cf504f6eull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t OnlyFixedHash = 0xa99ec4722e5927d9ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 2 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -11220,9 +11180,10 @@ constexpr int32_t OnlyFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t OnlyFixedLineage[] = {
-    0x2078b2b4cf504f6eull, // identity
+    0x2078b2b4cf504f6eull, // lock
+    0xa99ec4722e5927d9ull, // identity
 };
-constexpr int32_t OnlyFixedLineageCount = 1;
+constexpr int32_t OnlyFixedLineageCount = 2;
 constexpr int32_t OnlyFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t OnlyFixedFloorLive = OnlyFixedFloor;
@@ -11234,14 +11195,21 @@ constexpr uint8_t OnlyFixedKnown0Layout[] = {
     0x00, 0x01, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02, 0x86, 0x4c, 0xea, 0x63, 0xaf, 0x04, 0x04, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t OnlyFixedKnown1Layout[] = {
+    0x02, 0x00, 0x00, 0x00, 0x97, 0x0b, 0x5f, 0x6c, 0xc0, 0xdb, 0xba, 0x31, 0x0d, 0x04, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02, 0x86, 0x4c, 0xea, 0x63, 0xaf, 0x04, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout OnlyFixedKnown[] = {
-    { 0x2078b2b4cf504f6eull, OnlyFixedKnown0Layout, 38, 12 }, // identity
+    { 0x2078b2b4cf504f6eull, OnlyFixedKnown0Layout, 38, 12 }, // lock
+    { 0xa99ec4722e5927d9ull, OnlyFixedKnown1Layout, 38, 12 }, // identity
 };
 
 constexpr const TableFixedKnownRange * OnlyFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t OnlyFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t OnlyFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -13118,7 +13086,6 @@ ARMDEMO_TABLE_INLINE bool OnlyLoadBodyRetain( TableReader & r, Only & value, Tab
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13158,12 +13125,6 @@ ARMDEMO_TABLE_INLINE bool OnlyLoadBodyRetain( TableReader & r, Only & value, Tab
         {
             case 0xaf63ea4c86020456ull: // w
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -13177,11 +13138,6 @@ ARMDEMO_TABLE_INLINE bool OnlyLoadBodyRetain( TableReader & r, Only & value, Tab
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.w = decoded_v;
                         r.report->widened++;
                         break;
@@ -13203,11 +13159,6 @@ ARMDEMO_TABLE_INLINE bool OnlyLoadBodyRetain( TableReader & r, Only & value, Tab
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.w = decoded_v;
                 break;
             }
@@ -13369,7 +13320,6 @@ inline bool GateLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Gat
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13409,12 +13359,6 @@ inline bool GateLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Gat
         {
             case 0x891da1f305deb858ull: // reach
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -13435,11 +13379,9 @@ inline bool GateLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Gat
                     r.report->damaged = true;
                     return false;
                 }
-                if ( arm_ref == 0 )
+                if ( arm_ref == 0 ) { value.reach.type = ReachType::None; } // empty: the reference is the whole payload
+                else
                 {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( arm_ref > (uint64_t) r.ids->count )
                 {
                     r.report->damaged = true;
@@ -13581,16 +13523,11 @@ inline bool GateLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Gat
                     }
                 }
                 r.offset += (int64_t) body_len;
+                }
                 break;
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -13604,11 +13541,6 @@ inline bool GateLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Gat
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -13630,11 +13562,6 @@ inline bool GateLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Gat
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package tabledemo — protocol id 0xba7b344f28584d33 (packets only: tables version by field id, not by protocol id)
+// package tabledemo — protocol id 0x5c9bc5717146f630 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2424,14 +2424,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0xd4,
-    0xb4,
-    0x1c,
-    0x11,
-    0xe3,
-    0x58,
-    0xff,
-    0x93,
+    0xc9,
+    0x45,
+    0x7a,
+    0xf2,
+    0x6a,
+    0x61,
+    0x84,
+    0x36,
     0x02,
     0x0e,
     0x8c,
@@ -10335,7 +10335,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x93ff58e3111cb4d4ull;
+static const uint64_t BuildVersion = 0x3684616af27a45c9ull;
 
 } // namespace tabledemo
 
@@ -10838,7 +10838,6 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
 {
     (void) nodes;
     PatrolReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10878,12 +10877,6 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
         {
             case 0x6580790b036f0c6full: // active
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 1 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10905,18 +10898,12 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                 { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
                     r.report->damaged = true;
-                    } else if ( bool_byte == 0 ) { r.report->damaged = true; return false; } value.active = bool_byte != 0;
+                    } value.active = bool_byte != 0;
                 }
                 break;
             }
             case 0x2281498aa0200e40ull: // speed
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 10 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10940,25 +10927,13 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     if ( !TableBitsFinite32( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
                     else
                     {
-                        float decoded_f = table_bits_to_float( decoded_bits );
-                        if ( table_float_to_bits( decoded_f ) == table_float_to_bits( 1.0f ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.speed = decoded_f;
+                        value.speed = table_bits_to_float( decoded_bits );
                     }
                 }
                 break;
             }
             case 0x247f0e7f55aacfbdull: // has_target
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 1 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10980,18 +10955,12 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                 { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
                     r.report->damaged = true;
-                    } else if ( bool_byte == 0 ) { r.report->damaged = true; return false; } value.has_target = bool_byte != 0;
+                    } value.has_target = bool_byte != 0;
                 }
                 break;
             }
             case 0xb7bc9ac015a25050ull: // target_id
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -11005,11 +10974,6 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 0 )
                         {
                             decoded_v = 0;
@@ -11043,11 +11007,6 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 0 )
                 {
                     decoded_v = 0;
@@ -11065,12 +11024,6 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
             }
             case 0xb8c758d8bd1845d4ull: // wander
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 10 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11094,25 +11047,13 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     if ( !TableBitsFinite32( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
                     else
                     {
-                        float decoded_f = table_bits_to_float( decoded_bits );
-                        if ( table_float_to_bits( decoded_f ) == table_float_to_bits( 0.5f ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.wander = decoded_f;
+                        value.wander = table_bits_to_float( decoded_bits );
                     }
                 }
                 break;
             }
             case 0x3bf8fbbad1587cddull: // note
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11141,11 +11082,6 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     value.note_length = 0;
                     r.offset += (int64_t) len;
                     break;
-                }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
                 }
                 uint64_t keep = len;
                 if ( keep > 8 )
@@ -12310,7 +12246,6 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12350,12 +12285,6 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
         {
             case 0x6580790b036f0c6full: // active
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 1 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12377,18 +12306,12 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                 { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
                     r.report->damaged = true;
-                    } else if ( bool_byte == 0 ) { r.report->damaged = true; return false; } value.active = bool_byte != 0;
+                    } value.active = bool_byte != 0;
                 }
                 break;
             }
             case 0x2281498aa0200e40ull: // speed
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 10 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12412,25 +12335,13 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     if ( !TableBitsFinite32( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
                     else
                     {
-                        float decoded_f = table_bits_to_float( decoded_bits );
-                        if ( table_float_to_bits( decoded_f ) == table_float_to_bits( 1.0f ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.speed = decoded_f;
+                        value.speed = table_bits_to_float( decoded_bits );
                     }
                 }
                 break;
             }
             case 0x247f0e7f55aacfbdull: // has_target
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 1 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12452,18 +12363,12 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                 { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
                     r.report->damaged = true;
-                    } else if ( bool_byte == 0 ) { r.report->damaged = true; return false; } value.has_target = bool_byte != 0;
+                    } value.has_target = bool_byte != 0;
                 }
                 break;
             }
             case 0xb7bc9ac015a25050ull: // target_id
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -12477,11 +12382,6 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 0 )
                         {
                             decoded_v = 0;
@@ -12515,11 +12415,6 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 0 )
                 {
                     decoded_v = 0;
@@ -12537,12 +12432,6 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
             }
             case 0xb8c758d8bd1845d4ull: // wander
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 10 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12566,25 +12455,13 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     if ( !TableBitsFinite32( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
                     else
                     {
-                        float decoded_f = table_bits_to_float( decoded_bits );
-                        if ( table_float_to_bits( decoded_f ) == table_float_to_bits( 0.5f ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.wander = decoded_f;
+                        value.wander = table_bits_to_float( decoded_bits );
                     }
                 }
                 break;
             }
             case 0x3bf8fbbad1587cddull: // note
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12613,11 +12490,6 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     value.note_length = 0;
                     r.offset += (int64_t) len;
                     break;
-                }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
                 }
                 uint64_t keep = len;
                 if ( keep > 8 )

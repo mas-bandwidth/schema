@@ -161,7 +161,7 @@ final class UnitViewInfo {
 }
 
 // The registry is name-ordered; generated map-entry tables are not declarations (§2.8).
-const UnitViewInfo _unitView = UnitViewInfo("benchtable", 659251898228885343,
+const UnitViewInfo _unitView = UnitViewInfo("benchtable", 5517899017621463624,
   <ViewType>[
     // type TableChatEvent
     ViewType("TableChatEvent","BenchTable.schema","",<String>[],<ViewField>[

@@ -327,7 +327,7 @@ static VIEW_CONSTANTS: [TableViewConstant; 0] = [
 
 static UNIT_VIEW: TableUnitView = TableUnitView {
     package: "bench",
-    protocol_id: 0xc93127c82f083edf,
+    protocol_id: 0xc52a41defad6ebb0,
     num_types: 9,
     num_tables: 1,
     num_enums: 1,
