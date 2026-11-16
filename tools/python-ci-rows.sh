@@ -1,6 +1,6 @@
 #!/bin/sh
-# Plan every prerequisite of test-python and each top-level Go test exactly
-# once. New package tests are automatically added instead of falling through a
+# Plan every prerequisite of test-python and every top-level Go test exactly once across eight bounded shards
+# per package. New package tests are automatically added instead of falling through a
 # stale hand-maintained list. The unsplit make target stays the local/nightly
 # contract; each support target is one named portion of its prerequisites.
 set -eu
@@ -18,8 +18,13 @@ while IFS= read -r package; do
   if [ -z "$names" ]; then
     jq -cn --arg name "$package (compile)" --arg package "$package" '{name:$name,target:"",package:$package,test:""}' >> "$rows"
   else
-    printf '%s\n' "$names" | while IFS= read -r test; do
-      jq -cn --arg name "$test" --arg package "$package" --arg test "$test" '{name:$name,target:"",package:$package,test:$test}' >> "$rows"
+    shard=0
+    while [ "$shard" -lt 8 ]; do
+      selected=$(printf '%s\n' "$names" | awk -v shard="$shard" '(NR-1)%8 == shard' | paste -sd '|' -)
+      if [ -n "$selected" ]; then
+        jq -cn --arg name "$package shard $((shard+1))/8" --arg package "$package" --arg test "($selected)" '{name:$name,target:"",package:$package,test:$test}' >> "$rows"
+      fi
+      shard=$((shard+1))
     done
   fi
 done < "$packages"
