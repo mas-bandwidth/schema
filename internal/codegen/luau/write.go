@@ -306,6 +306,7 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 		}
 	case ir.TFloat32:
 		if f.HasFloatRange {
+			g.Pf("%sif %s ~= %s or %s < %s or %s > %s then return false end\n", indent, val, val, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))
 			call(fmt.Sprintf("stream:serializeCompressedFloat({ value = %s }, %s, %s, %s)", val,
 				FloatLiteral(f.FMin), FloatLiteral(f.FMax), FloatLiteral(f.Resolution)), " -- the step index (SPEC §4.3)")
 		} else {
@@ -320,6 +321,12 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 		}
 		guardNum(g, indent, length, big.NewInt(0), big.NewInt(size), "the length guards the copy (SPEC §6.3)")
 		g.Pf("%sif type(%s) ~= \"buffer\" or buffer.len(%s) < %s then return false end\n", indent, val, val, length)
+		if t.Kind == ir.TString {
+			// the reader's own checks, so a write never produces text its
+			// reader refuses (SPEC §5.1 contract row 8)
+			g.Pf("%sif not utf8valid(%s, %s) then return false end -- malformed UTF-8 (SPEC §4.7)\n", indent, val, length)
+			g.Pf("%sfor k = 0, %s - 1 do if buffer.readu8(%s, k) == 0 then return false end end -- interior null (SPEC §4.7)\n", indent, length, val)
+		}
 		emitBitsOrSkip(g, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), "the length")
 		call(fmt.Sprintf("stream:serializeBytes(buffer.fromstring(buffer.readstring(%s, 0, %s)))", val, length),
 			" -- align, then the used bytes (SPEC §4.7)")
