@@ -456,7 +456,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		if f.Array != ir.ArrayNone {
 			g.pf("clear(value.%s[:])\n", name)
 			if f.Array == ir.ArrayCounted {
-				g.pf("value.%sCount=0\n", name)
+				g.pf("value.%sCount=%d\n", name, f.BornCount())
 			}
 		} else {
 			g.pf("value.%s=0\n", name)
@@ -474,20 +474,20 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		base := arrayBase("value.", f)
 		g.pf("\tfor i := range %s {\n\t\t%sReset(&%s[i])\n\t}\n", base, f.Type.Name, base)
 		if f.Array == ir.ArrayCounted {
-			g.pf("\tvalue.%sCount = 0\n", name)
+			g.pf("\tvalue.%sCount = %d\n", name, f.BornCount())
 		}
 	case f.Array != ir.ArrayNone && isUnionRef(f.Type):
 		base := arrayBase("value.", f)
 		g.pf("\tfor i := range %s {\n\t\t%s[i].Type = %sTypeNone\n\t}\n", base, base, f.Type.Name)
 		if f.Array == ir.ArrayCounted {
-			g.pf("\tvalue.%sCount = 0\n", name)
+			g.pf("\tvalue.%sCount = %d\n", name, f.BornCount())
 		}
 	case f.Array != ir.ArrayNone:
 		// a scalar element's array zeroes whatever the field's own default
 		// says — the same rule the C++ ` = {}` and the C# Array.Clear state
 		g.pf("\tclear(%s[:])\n", arrayBase("value.", f))
 		if f.Array == ir.ArrayCounted {
-			g.pf("\tvalue.%sCount = 0\n", name)
+			g.pf("\tvalue.%sCount = %d\n", name, f.BornCount())
 		}
 	default:
 		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && f.Type.Kind == ir.TNamed {

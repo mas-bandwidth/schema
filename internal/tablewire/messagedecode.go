@@ -185,7 +185,8 @@ type bitDecoder struct {
 	buildKnown bool
 	// empty is set by the field read just made when the field is a nested
 	// table whose body is its terminator alone, or an enum-keyed array with no
-	// slot: what the writer's elision rule needs from the bits (messageElides).
+	// slot, or a counted array whose birth slots all had default spellings:
+	// what the writer's elision rule needs from the bits (messageElides).
 	empty bool
 }
 
@@ -610,7 +611,15 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	if run >= 0 && walk > kept {
 		walk = kept
 	}
+	allBirth := f.BornCount() > 0 && n == uint64(f.BornCount()) && !f.HasFloatRange && entry.Key() == ir.TableFieldEntry(f).Key()
 	for i := uint64(0); i < walk; i++ {
+		start := d.r.off
+		defaultRef := false
+		if allBirth && (int(shape.Elem) == ir.TableKindEnum || int(shape.Elem) == ir.TableKindUnion) {
+			peek := *d.r
+			ref, ok := peek.get(d.refBits)
+			defaultRef = ok && ref == 0
+		}
 		// an element past this build's bound is read into a sink and dropped
 		var sink tabletext.Cell
 		cell := &sink
@@ -620,7 +629,18 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		if !d.element(fv, int(i), cell, shape) {
 			return false
 		}
+		if allBirth {
+			switch int(shape.Elem) {
+			case ir.TableKindTable:
+				allBirth = d.r.off-start == d.refBits
+			case ir.TableKindEnum, ir.TableKindUnion:
+				allBirth = defaultRef
+			default:
+				allBirth = cellIsDefaultIn(d.m, f, cell)
+			}
+		}
 	}
+	d.empty = allBirth // nested body reads may have changed it
 	if walk < n && !skipRun(d.r, n-walk, run) {
 		d.damage()
 		return false
