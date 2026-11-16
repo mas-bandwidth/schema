@@ -1109,7 +1109,8 @@ table Root {
  z int32
 }
 `
-	files, err := Generate(loadUnit(t, schema))
+	u := loadUnit(t, schema)
+	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1141,6 +1142,7 @@ saved=value.save_retain(keep,report)
 assert report.retain_lost==1, report.retain_lost
 assert Root.load(saved).z==1
 assert int.from_bytes(saved[-8:],'little')==4096
+with open('saved','wb') as f: f.write(saved)
 print('known-last')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
@@ -1149,6 +1151,13 @@ print('known-last')
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
 		if err != nil || strings.TrimSpace(out) != "known-last" {
 			t.Fatalf("known-last ID limit: %v\n%s\n%s", err, out, stderr)
+		}
+		saved, err := os.ReadFile(filepath.Join(dir, "saved"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if verdict := unionEngineVerdict(t, u, saved); !strings.HasPrefix(verdict, "read ") {
+			t.Fatalf("Go engine rejected bounded retained file: %s", verdict)
 		}
 	}
 }
