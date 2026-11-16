@@ -20525,8 +20525,10 @@ index but is not the default still rides. Every align pad bit and the final
 flush's pad bits are zero. A value outside its domain refuses the whole batch
 `invalid_value` (§22.2), and the bit stream never keeps a value's low bits: a
 `flags` mask is the one payload written at a width narrower than its storage
-on purpose, its bits past the writer's own variant count dropped by width, the
-row §3.3 moves for this form. **THE INTEGRITY TRAILER IS PER BATCH** when the
+on purpose, but a held bit past the writer's own variant count is outside the
+message domain: the write refuses it rather than drop it (§3.3). The check
+follows the language's write contract (SPEC.md §5.1); the narrower width does
+not authorize masking a caller's value. **THE INTEGRITY TRAILER IS PER BATCH** when the
 root declares `integrity` (§2.14): the little-endian CRC-32C of every byte of
 the batch, form byte through the final pad, appended after it. **THE ANNOUNCEMENT IS A
 COMPILE-TIME CONSTANT** (§3.3): a form-`1` file whose body is the build version
