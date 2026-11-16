@@ -40,7 +40,7 @@ func blobWireDriverFiles(t *testing.T) map[string][]byte {
 		}
 		files[name+".bin"] = body
 	}
-	files["manifest"] = []byte("instance blob_shared blobdemo Catalog blob_shared.bin no-text wire-refused\ninstance blob_shared_string mapdemo Docs blob_shared_string.bin no-text wire-refused\ninstance blob_equal_bytes blobdemo Catalog blob_equal_bytes.bin no-text\n")
+	files["manifest"] = []byte("instance blob_shared blobdemo Catalog blob_shared.bin no-text\ninstance blob_shared_string mapdemo Docs blob_shared_string.bin no-text\ninstance blob_equal_bytes blobdemo Catalog blob_equal_bytes.bin no-text\n")
 	return files
 }
 
@@ -53,6 +53,7 @@ from _common import root_class, unit_package
 Path('out').mkdir()
 wire.run('manifest', 'out')
 for case in ('blob_shared', 'blob_shared_string'):
+    assert Path('out', case + '.absent').exists(), 'missing observed blob_shared refusal'
     assert Path('out', case + '.absent').read_bytes() == b'blob_shared'
     assert not Path('out', case).exists()
 assert Path('out/blob_equal_bytes').read_bytes() == Path('blob_equal_bytes.bin').read_bytes()
@@ -92,14 +93,14 @@ original = Catalog.load
 for exception in (blobs.Refused('wire_damaged'), ValueError('blob_shared')):
     def wrong_load(data, error=exception): raise error
     Catalog.load = staticmethod(wrong_load)
-    Path('wrong-manifest').write_text('instance wrong blobdemo Catalog blob_shared.bin wire-refused\n')
+    Path('wrong-manifest').write_text('instance wrong blobdemo Catalog blob_shared.bin\n')
     Path('wrong-out').mkdir(exist_ok=True)
     try: wire.run('wrong-manifest', 'wrong-out')
     except (AssertionError, ValueError): pass
     else: raise AssertionError('driver accepted wrong public refusal')
     assert not Path('wrong-out/wrong.absent').exists()
 Catalog.load = original
-Path('missing-manifest').write_text('instance missing missing Root blob_shared.bin wire-refused\n')
+Path('missing-manifest').write_text('instance missing missing Root blob_shared.bin\n')
 try: wire.run('missing-manifest', 'out')
 except AssertionError: pass
 else: raise AssertionError('driver treated missing root as expected refusal')
@@ -125,7 +126,7 @@ func TestPythonWireBlobDriverNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "both pinned Python interpreters and planted read/write/driver faults")
 	original := blobWireDriverFiles(t)
 	for _, tc := range []struct{ name, path, before, after, diagnostic string }{
-		{"reader", "generated/blobdemo/blobdemo/_schema/load.py", "if blob and names[k + 1] > 1:", "if False:", "expected blob_shared refusal, read accepted"},
+		{"reader", "generated/blobdemo/blobdemo/_schema/load.py", "if blob and names[k + 1] > 1:", "if False:", "missing observed blob_shared refusal"},
 		{"writer", "generated/blobdemo/blobdemo/_schema/save.py", "if identity in ctx.blob_refs:", "if False:", "shared bytes writer accepted"},
 		{"driver", "surfaces/wire.py", `if err.reason != "blob_shared":`, "if False:", "driver accepted wrong public refusal"},
 	} {
