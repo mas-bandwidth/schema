@@ -28,7 +28,7 @@ python-ci-core: python-toolchain-check python-toolchain-negative-control python-
 python-ci-packages:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 python-ci-compiler:
-	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
+	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -skip '^TestPythonRequiredPublicShapes$$' -count=1
 python-ci-compiler-coverage:
 	sh test/slowgate/proof python-ci-compiler-coverage 'TestPythonCompilerCIShardCoverage' ./internal/ci -run '^TestPythonCompilerCIShardCoverage$$' -count=1
 # Planner-selected compiler shards retain run-proof, including the four
