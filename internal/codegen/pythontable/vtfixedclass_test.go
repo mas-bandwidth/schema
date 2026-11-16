@@ -280,7 +280,7 @@ func TestPythonVtFixedClassBuildVersion(t *testing.T) {
 		files, err := Generate(u)
 		if err != nil {
 			refused++
-			t.Logf("unit %s refused: %v", unit.key, err)
+			t.Errorf("unit %s refused: %v", unit.key, err)
 			continue
 		}
 		init := string(files[filepath.ToSlash(filepath.Join(u.Package, "__init__.py"))])
