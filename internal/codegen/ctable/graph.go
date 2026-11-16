@@ -1160,6 +1160,8 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	}
 	// A RECORD'S TERMINATOR IS THE END OF ITS PAYLOAD (docs/SPEC-TABLES.md §3,
 	// §3.1): a body that ends before its record's L is damage, as an element's is.
+	// A storage-cap refusal intentionally stops that body early (§2.9); its
+	// named refusal must survive the record end check.
 	recordWhole := "if(!nodes->refused && body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }"
 	for _, t := range ir.PointerReachable(st) {
 		if g.retain {
