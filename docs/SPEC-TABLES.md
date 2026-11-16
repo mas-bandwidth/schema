@@ -6486,16 +6486,18 @@ the float already lies on the announced grid, because the file carries the raw
 float and the message carries its nearest grid point, and an off-grid value and a
 rounding tie each come back as the grid point the rule chose (the round-trip paragraph, below).
 
-**A RANGED OFFSET ABOVE THE SENDER'S OWN `max` IS A VALUE OUTSIDE THE WRITER'S
-RANGE, AND IT REFUSES `out_of_range`.** A ranged value's `bits` can spell
-offsets past the sender's own range whenever `max - min` is not one less than a
-power of two, exactly as a reference's width can spell values past `E`. No
-writer emits one, and the announcement says what the writer's range was, so the
-reader refuses the batch `out_of_range` (§6.5), and never clamps
-(the maintainer, 2026-11-03: a value outside the writer's range refuses). A value inside
-the sender's range and outside this reader's own refuses by the same name
-(§4). The quantized float's index above `count` refuses as the packet wire
-refuses it (the quantization paragraph, above).
+**A RANGED OFFSET IS HELD TO THE DOMAIN THE READER CAN KNOW.** A ranged
+value's `bits` can spell offsets above the writer's declared maximum whenever
+`max - min` is not one less than a power of two. The announcement carries the
+base and width, not that maximum: for example `[0,5]` and `[0,7]` announce the
+same base and three-bit width. A writer refuses a value outside its own declared
+range. A reader holds the reconstructed value to the announced kind's storage
+domain and its own declared range, refusing `out_of_range` without clamping.
+When the announced build version and shape match its own declaration, the
+reader also knows the writer's exact maximum and holds the value to it. Under a
+different build it cannot infer that maximum from the shape alone. A quantized
+float's index above `count` refuses as the packet wire refuses it (the
+quantization paragraph, above).
 
 **THE ESCAPE KIND `31` IS THE ONLY PATH A LATER-MAJOR WRITER HAS ON THIS FORM**,
 because an announcement carrying a kind outside the closed set is malformed and
@@ -6652,7 +6654,7 @@ announcement decide — an enum-keyed array's key names a declared no-payload
 entry and no key repeats, a string's bytes are well-formed UTF-8 with no zero
 byte, a float is finite and a quantized float's index is at most its `count`, an
 array's or keyed array's count is within `[min, max]` and a ranged integer's
-offset is within the sender's `max`, and a nested body names no field id twice
+reconstructed value is within its announced kind's storage domain, and a nested body names no field id twice
 and no reserved id — and a failure refuses the batch. **The skip walk is bounded
 at depth 128**, §4's binary bound (`tableMessageSkip`, `tableMessageSkipBody`): a nested body, array, keyed or map body, or a union whose arm is structural, past 128 levels refuses (recommended name `wire_damaged`); a scalar arm adds no level, as on the file form. <!-- limit name=message_skip_depth value=128 -->
 

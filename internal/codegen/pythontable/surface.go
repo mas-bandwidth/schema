@@ -55,6 +55,15 @@ func unitHasCook(u *ir.Unit, s Surfaces) bool {
 	return false
 }
 
+func unitHasJSON(u *ir.Unit, s Surfaces) bool {
+	for _, st := range u.Tables {
+		if st != nil && !st.IsMapEntry() && !st.IsTextListElem() && surfaceCarries(s, st, "json") {
+			return true
+		}
+	}
+	return false
+}
+
 // ValidateSurfaces applies the shared explicit-list rule. The default
 // set, including an explicit full set, is exempt. Synthetic entries never name
 // the refusal, even though their owner declaration also governs them.
@@ -93,8 +102,7 @@ func ValidateAvailableSurfaces(s Surfaces) error {
 		name    string
 		enabled bool
 	}{
-		{"json", s.JSON},
-		{"message", s.Message}, {"retain", s.Retain}, {"textform", s.TextForm},
+		{"message", s.Message}, {"textform", s.TextForm},
 	} {
 		if item.enabled {
 			return fmt.Errorf("python does not yet carry the explicitly requested %s surface (docs/SPEC-TABLES.md §8.8)", item.name)

@@ -44,7 +44,6 @@ class FieldDesc:
         "elem_align",
         "name",
         "json_key",
-        "required",
         "frac_bits",
         "json_variants",
         "json_keys",
