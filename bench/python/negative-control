@@ -13,3 +13,15 @@ if ! grep -q 'variant 0 differs from the C++ pin' "$dir/err"; then
 fi
 if [ -s "$dir/out" ]; then echo 'bench-python-negative-control: emitted rows on failure' >&2; exit 1; fi
 echo 'bench-python-negative-control: corrupt variant refused before timing'
+cat > "$dir/wrong-python" <<'SCRIPT'
+#!/bin/sh
+printf '%s\n' 'CPython 0.0.0'
+SCRIPT
+chmod +x "$dir/wrong-python"
+if PYTHON="$dir/wrong-python" bench/python/run --gate > "$dir/pin-out" 2> "$dir/pin-err"; then
+    echo 'bench-python-negative-control: wrong interpreter accepted' >&2; exit 1
+fi
+if ! grep -q 'bench-python refuses CPython 0.0.0' "$dir/pin-err" || [ -s "$dir/pin-out" ]; then
+    cat "$dir/pin-err" >&2; echo 'bench-python-negative-control: wrong interpreter failed for the wrong reason' >&2; exit 1
+fi
+echo 'bench-python-negative-control: wrong interpreter refused before timing'

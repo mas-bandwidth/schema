@@ -556,8 +556,8 @@ the core stands against the P4 row; the rules of this page are unchanged.
   attribute; a union arm may not be named `type`, `read`, `write`, `load`,
   `save` or `descriptor`, the members the generated class defines, or export
   `None_`, `Max` or `NAMES` on `<Union>Type`.
-- **The golden harness covers every packet pin.** `TestPythonPacketClose`
-  reads and writes back the single-root and default pins and the multi-root
+- **The golden harness covers the packet corpus pins.** `TestPythonPacketClose`
+  inventories and reads and writes back the single-root and default pins and the multi-root
   `clauses`, `joins`, and `degenerate` pins under both pinned interpreters.
   The framed concatenations are checked slice by slice, and `degenerate` is
   checked through one shared bit stream. The table-wire pin belongs to the

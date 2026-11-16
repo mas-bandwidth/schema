@@ -5,9 +5,7 @@
 #
 # Scaffolded by `schema new-leg python`. The pinned interpreters and analyzer
 # are make/python-toolchain.mk's; serialize.py, the bit layer, is
-# make/python-serialize.mk's. The target is behind the schema_leg_python build
-# tag until the packet layer (compiler/target_python.go), so its tests build
-# the compiler with the tag.
+# make/python-serialize.mk's. Python is a built-in compiler target.
 
 # test-python: the leg's make test half. The toolchain and serialize.py
 # (python-toolchain-check, its control, python-serialize-test) are
@@ -55,9 +53,8 @@ packet-finite-python: build/schema-python python-toolchain-check
 packet-finite-python-negative-control: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonPacketFloats/negative-control' ./internal/codegen/python/
 
-# build/schema-python is the tagged compiler the conformance tree is generated
-# with; the ordinary bin/schema does not carry the target until the packet
-# layer drops the tag.
+# build/schema-python is the compiler the conformance tree is generated with.
+# The tag remains accepted by existing leg gates; the target is built in.
 build/schema-python: $(shell find compiler internal cmd ir -name '*.go' 2>/dev/null)
 	go build -tags schema_leg_python -o $@ ./cmd/schema
 

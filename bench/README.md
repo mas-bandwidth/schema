@@ -23,13 +23,14 @@ backends' GENERATED codecs over the same shape under the same contract
 (see "The codegen-only legs" below), `bench/goose` measures the Goose
 port's generated codec over its vendored serialize.goose the same way, and
 `bench/luau` measures the Luau backend's generated codec on its vendored
-serialize.luau (see "The Luau leg" below).
+serialize.luau (see "The Luau leg" below). `bench/python` measures the Python
+packet codec with the generated package's vendored serialize.py runtime.
 
 ## Running
 
     bench/run.sh                 # Release, results in bench/results/<date>-<arch>-<host>.csv
     bench/run.sh --debug         # also the Debug pair (matched-pair methodology)
-    bench/run.sh --only c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau   # one language leg
+    bench/run.sh --only c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|python   # one language leg
     bench/run.sh --quick         # the iteration instrument: bench_mixed only,
                                  # 3 measured runs per leg, golden gate intact,
                                  # and the blended table (per-message time
@@ -78,6 +79,18 @@ load window), the same control leg again, automatic load capture into the
 preamble, and the window verdict — `# window: INVALID` when the control legs
 disagree by more than 5%, and the tools refuse ratios from an invalid pass.
 The driver, not the runner, computes max/median/min/spread across rounds.
+
+## Python packet runner
+
+Run `make dist-python generated/bench/python/.stamp`, then
+`bench/run.sh --only python`. The default interpreter is the current pinned
+CPython; `PYTHON` may name either pinned interpreter. The runner checks variant
+zero against the C++ golden and reads and writes all 64 committed variants
+before starting a clock. `make bench-python-gate` checks both pins without
+timing; `make bench-python-negative-control` proves corrupt corpus data and an
+unapproved interpreter are refused before a CSV row is emitted. The runner
+uses 12,800 iterations (1,280 in quick mode), and records the count in each
+CSV row.
 
 ## Methodology (why the numbers can be trusted)
 
