@@ -690,3 +690,20 @@ Each kind a card adds to the packet or the table leg has its own page under
 (`packet-<kind>.md`, `table-<kind>.md`): what the kind carries, its code
 shape and its measured bench numbers. The first is
 [packet-floats.md](port-python/packet-floats.md).
+
+The form-3 codec's current oracle-gated `FixedLoad` and `FixedSave` timings,
+method and reproducible target are recorded in
+[Python fixed-form files](port-python/table-fixed-form.md).
+
+
+### Selecting table surfaces
+
+`schema generate --lang python --surface wire` emits table descriptors and
+variable-table wire methods while omitting fixed batch methods, fixed layout
+metadata and block descriptors. A declared fixed root's plain `load`, `save`
+and `measure` refuse `fixed_surface_not_selected`; they never fall back to
+form 1. Select `fixed` to include its batch API and form-3 file methods, or
+`block` to include block descriptors; both imply `wire`. The absent option and
+explicit full default set preserve existing output. Other explicit Python
+surface requests are refused until their emitters connect selection; this does
+not register support for per-table `forms` declarations (SPEC-TABLES §8.8).
