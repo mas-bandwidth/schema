@@ -263,7 +263,7 @@ numbers [Key]uint64
 `
 	older := unitFromSource(t, olderSource)
 	newer := unitFromSource(t, newerSource)
-	cases := keyedCases(t, older, "Root", newer, `{"leaves":{"A":{"value":1},"C":{"value":7}},"numbers":{"A":5,"C":1311768467463790320}}`, "leaves", "numbers")
+	cases := keyedCases(t, older, "Root", newer, `{"leaves":{"A":{"value":1},"C":{"value":7}},"numbers":{"A":"5","C":"1311768467463790320"}}`, "leaves", "numbers")
 	var source strings.Builder
 	source.WriteString(`#include "ProbeTable.h"
 #include <stdio.h>
@@ -317,7 +317,7 @@ numbers [Key]uint64
 `
 	older := unitFromSource(t, olderSource)
 	newer := unitFromSource(t, newerSource)
-	cases := keyedCases(t, older, "Root", newer, `{"numbers":{"A":5,"C":1311768467463790320}}`, "", "numbers")
+	cases := keyedCases(t, older, "Root", newer, `{"numbers":{"A":"5","C":"1311768467463790320"}}`, "", "numbers")
 	var source strings.Builder
 	source.WriteString(`#include "ProbeTable.h"
 #include <stdio.h>
