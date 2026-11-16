@@ -1278,3 +1278,45 @@ print('pointer-array-retain')
 		}
 	}
 }
+
+func TestPythonRetainDepth128(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `from probe._schema.retain import _resolve_payload, _measure_payload, _emit_payload
+from probe import Refused
+def leb(n):
+    b=bytearray()
+    while n>=128: b.append((n&127)|128); n >>= 7
+    b.append(n); return bytes(b)
+def frame(n):
+    payload=bytes([1,0])
+    for _ in range(n-1):
+        body=bytes([1,13])+payload+bytes([0])
+        payload=leb(len(body))+body
+    return payload
+for depth in (1,8,64,128):
+    wire=frame(depth); store=bytearray(65536)
+    end=_resolve_payload(13,memoryview(wire),[123],memoryview(store))
+    resolved=memoryview(store)[:end]
+    size=_measure_payload(13,resolved,lambda _id: 1)
+    output=bytearray(size)
+    assert _emit_payload(13,resolved,lambda _id: 1,memoryview(output))==size
+    assert output==wire, depth
+try: _resolve_payload(13,memoryview(frame(129)),[123],memoryview(bytearray(65536)))
+except Refused: pass
+else: raise AssertionError('depth 129 accepted')
+print('depth-128')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err != nil || strings.TrimSpace(out) != "depth-128" {
+			t.Fatalf("depth 128: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
