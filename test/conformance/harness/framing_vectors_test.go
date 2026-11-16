@@ -414,7 +414,7 @@ var framingVectors = []framingVector{
 
 	// ---------------------------------------------------------------- B. nested bodies
 	// L3: buff's terminator a byte early; the field defaults, grade lands after.
-	{name: "nested_terminator_early", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 8), buffBody, b(0xFF), gradeSilver, b(0))},
+	{name: "nested_terminator_early", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 8), buffBody, b(0xFF), b(0))},
 	// L1: L exactly the body, the last field of the root.
 	{name: "nested_L_exact", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, buffHalf, b(0))},
 	// L3, L2: L one past, swallowing the root's terminator: the body ends
@@ -424,23 +424,23 @@ var framingVectors = []framingVector{
 	// L4: L past the root body; the root stops with grade standing.
 	{name: "nested_L_past_body", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 9), buffBody, b(0))},
 	// R2 inside a nested body: the unknown counts, the body reads on.
-	{name: "nested_unknown_id_inside", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 13, 16, 4), i32(42), buffBody, gradeSilver, b(0))},
+	{name: "nested_unknown_id_inside", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 13, 16, 4), i32(42), buffBody, b(0))},
 	// F9 inside a nested body: the body stops before decoding anything, and
 	// the root reads on past L.
-	{name: "nested_ref_above_count_inside", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 3, 99, 4, 0xFF), gradeSilver, b(0))},
+	{name: "nested_ref_above_count_inside", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 3, 99, 4, 0xFF), b(0))},
 	// HELD (finding N1, reported to the parent): the whole multiplier field and
 	// no terminator, the damage landing exactly at L. The engine and the C++
 	// reference both keep multiplier 1.5.
-	{name: "nested_terminator_missing", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 6, 7, 10), f32(1.5), gradeSilver, b(0))},
+	{name: "nested_terminator_missing", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 6, 7, 10), f32(1.5), b(0))},
 	// HELD (finding N1, reported to the parent): the whole multiplier field,
 	// then a field under kind 37, the damage landing before L. The engine and
 	// the C++ reference both refill the body to its defaults, multiplier 1.
-	{name: "nested_damage_midway", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 9, 7, 10), f32(1.5), b(7, 37, 0), gradeSilver, b(0))},
+	{name: "nested_damage_midway", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 9, 7, 10), f32(1.5), b(7, 37, 0), b(0))},
 
 	// ---------------------------------------------------------------- C. arrays
 	// H2: L = 0 and L = 1 are inert.
-	{name: "array_L0_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 0), gradeSilver, b(0))},
-	{name: "array_L1_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 1, 30), gradeSilver, b(0))},
+	{name: "array_L0_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 0), b(0))},
+	{name: "array_L1_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 1, 30), b(0))},
 	// H1: L = 2 is the empty array.
 	{name: "array_L2_empty", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 2, 30, 0, 0)},
 	// H6: the count at the bound, and one past it.
@@ -463,7 +463,7 @@ var framingVectors = []framingVector{
 	// H4: the element kind inside L.
 	{name: "array_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 3, 4, 1, 2, 0)},
 	// F10 at a count: `80 00`.
-	{name: "array_count_non_canonical", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 3, 30, 0x80, 0, 0)},
+	{name: "array_count_non_canonical", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 4, 30, 0x81, 0, 2, 0)},
 	// H3 at the end of the buffer: a count that cannot complete even in the
 	// parent, with the root's own terminator gone with it.
 	{name: "array_header_incomplete_at_end", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 2, 30, 0x80))},
@@ -522,25 +522,25 @@ var framingVectors = []framingVector{
 	// H4 at kind 16, inside L.
 	{name: "keyed_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 8, 30, 1, 2, 4), i32(7), b(0))},
 	// H2 at kind 16.
-	{name: "keyed_L1_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 1, 4), gradeSilver, b(0))},
+	{name: "keyed_L1_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(10, 16, 1, 4), b(0))},
 
 	// ---------------------------------------------------------------- U. union arms
 	// H9: a fixed-width arm whose L is not its width.
-	{name: "union_arm_L_not_width", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(3, 15, 13, 4, 3, 0, 0, 0), gradeSilver, b(0))},
+	{name: "union_arm_L_not_width", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(3, 15, 13, 4, 3, 0, 0, 0), b(0))},
 	// H9: L the width, the arm lands.
 	{name: "union_arm_width_exact", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(3, 15, 13, 4, 4), i32(42), b(0))},
 	// L4 at an arm: L past the root body.
 	{name: "union_arm_L_past_body", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(3, 15, 13, 4, 9), i32(42), b(0))},
 	// L3 at a body arm: the terminator early, the union None.
-	{name: "union_body_arm_terminator_early", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(3, 15, 4, 13, 8, 5, 10), f32(2.5), b(0, 0xFF), gradeSilver, b(0))},
+	{name: "union_body_arm_terminator_early", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(3, 15, 4, 13, 8, 5, 10), f32(2.5), b(0, 0xFF), b(0))},
 	// H9: a payload-free arm with L = 1.
-	{name: "union_void_arm_L_nonzero", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(3, 15, 12, 32, 1, 0xFF), gradeSilver, b(0))},
+	{name: "union_void_arm_L_nonzero", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(3, 15, 12, 32, 1, 0xFF), b(0))},
 	// H9: the payload-free arm as written.
 	{name: "union_void_arm", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(3, 15, 12, 32, 0, 0)},
 	// R2 at an arm: an arm this reader cannot name.
-	{name: "union_unknown_arm", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(3, 15, 16, 4, 4), i32(42), gradeSilver, b(0))},
+	{name: "union_unknown_arm", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(3, 15, 16, 4, 4), i32(42), b(0))},
 	// H9: an arm id of 0 in a field is the empty union and carries nothing.
-	{name: "union_arm_zero_in_field", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(3, 15, 0), gradeSilver, b(0))},
+	{name: "union_arm_zero_in_field", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(3, 15, 0), b(0))},
 
 	// ---------------------------------------------------------------- T. the node table
 	// T1: one record, the pointer resolving to it.
@@ -560,7 +560,7 @@ var framingVectors = []framingVector{
 	{name: "node_type_ref_zero", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, cat(b(0, 7, 1, 4), i32(2), b(0))), b(0))},
 	// T7: an index above node_count + 1; that pointer null, the field after it
 	// landing.
-	{name: "node_index_above_count", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(3, 17, 3), b(2, 12, 1, 'a'), nodeTable(1, listNodeRecord(2)), b(0))},
+	{name: "node_index_above_count", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(2, 12, 1, 'a'), b(3, 17, 3), nodeTable(1, listNodeRecord(2)), b(0))},
 	// §3.1: index 0 is null.
 	{name: "node_index_null", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(3, 17, 0), nodeTable(1, listNodeRecord(2)), b(0))},
 	// R6, T5: the reserved id inside a record body stops that body.
@@ -629,7 +629,7 @@ var framingVectors = []framingVector{
 		body: sceneUnknownArray(b(17, 0))},
 	{name: "array_elem_kind_17_count_1", unit: "graphdemo", root: "Scene", ids: sceneElemKindNodeIds, held: true,
 		body: cat(b(6, 14), leb(uint64(len(b(17, 1, 2)))), b(17, 1, 2),
-			nodeTable(1, listNodeRecordNext(7, 0)), b(0))},
+			nodeTable(1, listNodeRecord(7)), b(0))},
 
 	// ---------------------------------------------------------------- X. the nesting bound
 	// §4, ONE NESTING BOUND (binary_max_depth): the root body is depth 0 and
@@ -701,7 +701,7 @@ var framingVectors = []framingVector{
 	{name: "graph_reach_unknown_union_arm", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
 		body: cat(b(11, 15, 17, 17, 1, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
 	{name: "graph_reach_unknown_keyed_slot", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
-		body: cat(b(11, 16, 5, 17, 1, 18, 1, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
+		body: cat(b(11, 16, 8, 13, 1, 18, 4, 12, 17, 2, 0), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
 }
 
 // counting is n distinct raw entries, 1..n: ids no Cfg declares, so each is an

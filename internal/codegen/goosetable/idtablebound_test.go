@@ -8,7 +8,7 @@ package goosetable_test
 //	    (testdata/wire/tables/fuzz-vectors/INDEX.txt), on a variable root and
 //	    a value-only root, through load_table (the wire fuzz's plain and
 //	    builder arms) and, on the variable root, load_table_retain (its
-//	    builder+retain arm; a value-only root carries no retention): 4096 entries resolve with nothing counted, 4097 are malformed
+//	    builder+retain arm; a value-only root carries no retention): 4096 entries resolve with 4096 unknown fields, 4097 are malformed
 //	    and the strict read names wire_damaged, as Go's tableOpen answers
 //	    TableOpenDamaged; a repeat at the bound is refused the same way
 //	TestGooseIdTableBoundNegativeControl  the bound one wider: the 4097 rows
@@ -73,7 +73,11 @@ func idBoundRepeat(t *testing.T, at []byte) []byte {
 	t.Helper()
 	b := slices.Clone(at)
 	n := len(b) - 8
-	copy(b[n-8:n], b[2:10])
+	start := n - 4096*8
+	if start < 1 {
+		t.Fatal("short id table")
+	}
+	copy(b[n-8:n], b[start:start+8])
 	return b
 }
 
@@ -116,12 +120,12 @@ func idBoundAnswers(t *testing.T, override map[string][]byte) map[string]string 
 }
 
 // idBoundWant is the reference's answer per vector: the 4096-entry table
-// resolves and counts nothing (no body names an entry); 4097 entries and a
+// resolves and counts its 4096 unknown fields; 4097 entries and a
 // repeat are the whole wire malformed, which the strict read names
 // wire_damaged (gotable's fixed_dup_ids pin is the same verdict).
 func idBoundWant(name string) string {
 	if strings.HasPrefix(name, "id_table_4096") {
-		return "1 0 0 "
+		return "1 0 4096 "
 	}
 	return "0 1 0 wire_damaged"
 }

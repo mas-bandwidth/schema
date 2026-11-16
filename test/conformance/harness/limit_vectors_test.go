@@ -314,3 +314,47 @@ func TestLimitFileIdTableVectors(t *testing.T) {
 		}
 	}
 }
+
+// limitIDTableWire spells each distinct ID as an unknown uint8 field, in
+// first-use order. The payloads do not affect either root's declared value.
+func limitIDTableWire(n int) []byte {
+	out := []byte{1}
+	for slot := 1; slot <= n; slot++ {
+		out = appendLeb(out, uint64(slot))
+		out = append(out, 6, 1)
+	}
+	out = append(out, 0)
+	rng := &splitmix64{}
+	for range n {
+		out = binary.LittleEndian.AppendUint64(out, rng.next())
+	}
+	return binary.LittleEndian.AppendUint64(out, uint64(n))
+}
+
+func TestLimitIDTablePins(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	for _, tc := range []struct {
+		name string
+		n    int
+	}{
+		{"id_table_4096", 4096}, {"id_table_4096_value", 4096},
+		{"id_table_4097", 4097}, {"id_table_4097_value", 4097},
+	} {
+		path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors", tc.name+".bin")
+		want := limitIDTableWire(tc.n)
+		if os.Getenv("FRAMING_WRITE") == "1" {
+			if err := os.WriteFile(path, want, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf("%s: id-table bound vector differs from its canonical body generator", tc.name)
+		}
+	}
+}

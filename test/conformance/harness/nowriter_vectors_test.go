@@ -22,9 +22,9 @@ import (
 var noWriterVectors = []framingVector{
 	{name: "frame_repeat_id", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(1, 30, 9), b(0))},
 	{name: "frame_repeat_unknown_id", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(16, 4), i32(1), b(16, 4), i32(2), gradeSilver, b(0))},
-	{name: "nested_repeat_id", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 13, 7, 10), f32(1.5), b(7, 10), f32(2.5), b(0), gradeSilver, b(0))},
-	{name: "array_L0_short", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 0), gradeSilver, b(0))},
-	{name: "array_L1_short", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 1, 30), gradeSilver, b(0))},
+	{name: "nested_repeat_id", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 13, 7, 10), f32(1.5), b(7, 10), f32(2.5), b(0), b(0))},
+	{name: "array_L0_short", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 0), b(0))},
+	{name: "array_L1_short", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 1, 30), b(0))},
 	{name: "array_header_crosses_L_foreign_kind", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 2, 4, 0x82), gradeSilver, b(0))},
 	{name: "map_header_crosses_L_foreign_kind", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 2, 14, 0x83), name50, b(0))},
 	{name: "map_repeat_key", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 32, 13, 2), squadEntry(2, 20), squadEntry(2, 30), name50, b(0))},
@@ -33,7 +33,7 @@ var noWriterVectors = []framingVector{
 	{name: "keyed_header_crosses_L_foreign_kind", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 2, 30, 0x82), gradeSilver, b(0))},
 	{name: "keyed_repeat_slot", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 14, 4, 2, 2, 4), i32(7), b(2, 4), i32(3), b(0))},
 	{name: "keyed_repeat_unknown_slot", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 14, 4, 2, 16, 4), i32(7), b(16, 4), i32(3), b(0))},
-	{name: "keyed_L1_short", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 1, 4), gradeSilver, b(0))},
+	{name: "keyed_L1_short", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(10, 16, 1, 4), b(0))},
 	{name: "node_table_twice", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecord(2)), nodeTable(1, listNodeRecord(3)), b(0))},
 }
 
@@ -45,6 +45,12 @@ func TestNoWriterFramingVectorsRefused(t *testing.T) {
 			t.Fatalf("%s: %v", v.name, err)
 		}
 		path := filepath.Join(framingDir, v.name+".bin")
+		if os.Getenv("FRAMING_WRITE") == "1" {
+			if err := os.WriteFile(path, want, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
 		got, err := os.ReadFile(path)
 		if err != nil {
 			t.Errorf("%s: %v", v.name, err)
