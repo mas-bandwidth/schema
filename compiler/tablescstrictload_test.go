@@ -171,9 +171,9 @@ int main(void) {
  PLAIN(root==NULL);
  /* The VERDICT (refused, no root) is the contract; the reason is this leg's
     own answer, pinned here and never compared across ports
-    (docs/rulings.json refusal-verdict-only). The C leg's wire-alone checks
-    meet this vector before its kind check does. */
- CHECK(report.refuse_reason==SCHEMA_TABLE_REFUSE_WIRE_DAMAGED && report.refused && report.unknown==0);
+    (docs/rulings.json refusal-verdict-only). The purpose-isolated fixture
+    has valid framing and reaches the declared-field kind check. */
+ CHECK(report.refuse_reason==SCHEMA_TABLE_REFUSE_KIND_MISMATCH && report.refused && report.unknown==0);
  PLAIN(depth_load(region,need,kind,sizeof(kind),NULL)==NULL);
  free(region);
 
@@ -188,7 +188,7 @@ int main(void) {
  /* THE BUILDER READ, the same refusal, and the same leg's own reason. */
  CHECK(depth_builder_init(&builder)); memset(&report,0,sizeof(report));
  PLAIN(!depth_load_builder(&builder,kind,sizeof(kind),&report));
- CHECK(report.refuse_reason==SCHEMA_TABLE_REFUSE_WIRE_DAMAGED && report.refused);
+ CHECK(report.refuse_reason==SCHEMA_TABLE_REFUSE_KIND_MISMATCH && report.refused);
  depth_builder_shutdown(&builder);
  CHECK(depth_builder_init(&builder)); memset(&report,0,sizeof(report));
  CHECK(depth_load_builder(&builder,clean,sizeof(clean),&report) && report.refuse_reason==SCHEMA_TABLE_REFUSE_OK);
