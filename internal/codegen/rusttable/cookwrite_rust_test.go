@@ -57,6 +57,9 @@ var cookWriteOwed = map[string]string{}
 type cookWriteCase struct {
 	name, unit, root string
 	wire             []byte
+	input            []byte // a recipe's source value, before applying share
+	share            string
+	text             []byte // the value rendered for the Rust writer probe
 	little, big      []byte // the Go engine's cook, which the goldens hold too
 }
 
@@ -113,6 +116,7 @@ func TestCookWriteRust(t *testing.T) {
 	// and the instance names the unit, the root and the wire.
 	instances := map[string][3]string{}
 	var rows []string
+	recipes := map[string]map[string]string{}
 	f, err := os.Open(filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
 	if err != nil {
 		t.Fatal(err)
@@ -125,6 +129,12 @@ func TestCookWriteRust(t *testing.T) {
 			instances[fields[1]] = [3]string{fields[2], fields[3], fields[4]}
 		case len(fields) >= 2 && fields[0] == "cook-write":
 			rows = append(rows, fields[1])
+			recipes[fields[1]] = map[string]string{}
+			for _, part := range fields[2:] {
+				if key, value, ok := strings.Cut(part, "="); ok {
+					recipes[fields[1]][key] = value
+				}
+			}
 		}
 	}
 	f.Close()
@@ -183,8 +193,21 @@ func TestCookWriteRust(t *testing.T) {
 		}
 		c := &cookWriteCase{name: row, unit: inst[0], root: inst[1], wire: wire}
 		m := models[inst[0]]
-		c.little = engineCook(t, m, c.root, wire, nil, false)
-		c.big = engineCook(t, m, c.root, wire, nil, true)
+		if path := recipes[row]["input"]; path != "" {
+			c.input, err = os.ReadFile(filepath.Join(repo, path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			c.share = recipes[row]["share"]
+			c.text = c.input
+		} else if len(wire) > 0 && wire[0] == 3 {
+			c.text, err = m.Write(cookCaseValue(t, m, c))
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		c.little = engineCook(t, m, c, nil, false)
+		c.big = engineCook(t, m, c, nil, true)
 		// THE PREMISE: the engine's bytes are the committed goldens
 		for big, got := range map[bool][]byte{false: c.little, true: c.big} {
 			name := row
@@ -254,32 +277,28 @@ func TestCookWriteRust(t *testing.T) {
 		}
 		mods.WriteString("}\n")
 	}
-	main.WriteString(`
-macro_rules! cook_case {
-    ($name:expr, $wire:expr, $m:path, $load:ident, $cook:ident) => {{
-        use $m as table;
-        let wire = std::fs::read($wire).unwrap();
-        let mut report = Default::default();
-        let value = table::$load(&wire, &mut report).expect("the form-1 load refused the wire");
-        for (order, suffix) in [(1u64, ""), (2u64, "-be")] {
-            let cooked = table::$cook(&value, order).expect("the cook refused");
-            std::fs::write(format!("{}{}.cook", $name, suffix), cooked).unwrap();
-        }
-        // a byte order that is neither refuses, and produces nothing
-        assert!(table::$cook(&value, 3).is_err());
-    }};
-}
-
-fn main() {
-`)
+	main.WriteString("fn main() {\n")
 	for _, c := range cases {
-		wirePath := filepath.Join(work, c.name+".wire")
-		if err := os.WriteFile(wirePath, c.wire, 0o600); err != nil {
+		path := filepath.Join(work, c.name+".wire")
+		input, construct := c.wire, "load"
+		if c.text != nil {
+			path = filepath.Join(work, c.name+".json")
+			input, construct = c.text, "from_json_bytes"
+		}
+		if err := os.WriteFile(path, input, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		snake := ir.RustSnake(c.root)
-		fmt.Fprintf(&main, "    cook_case!(%q, %q, crate::%s::%s, %s_load, %s_cook_write);\n",
-			filepath.Join(work, c.name), wirePath, c.unit, tableModule[c.unit+"."+c.root], snake, snake)
+		fmt.Fprintf(&main, "    {\n        use crate::%s::%s as table;\n", c.unit, tableModule[c.unit+"."+c.root])
+		fmt.Fprintf(&main, "        let input = std::fs::read(%q).unwrap();\n        let mut report = Default::default();\n        let mut value = table::%s_%s(&input, &mut report).expect(\"cook value construction refused\");\n", path, snake, construct)
+		if c.share != "" {
+			from, to, ok := strings.Cut(c.share, ":")
+			if !ok || c.unit != "blobdemo" || c.root != "Catalog" || from != "thumb" || to != "alias" {
+				t.Fatalf("unsupported recipe %s", c.share)
+			}
+			fmt.Fprint(&main, "        value.alias = value.thumb.clone();\n")
+		}
+		fmt.Fprintf(&main, "        for (order, suffix) in [(1u64, \"\"), (2u64, \"-be\")] {\n            let cooked = table::%s_cook_write(&value, order).expect(\"the cook refused\");\n            std::fs::write(format!(\"{}{}.cook\", %q, suffix), cooked).unwrap();\n        }\n        assert!(table::%s_cook_write(&value, 3).is_err());\n    }\n", snake, filepath.Join(work, c.name), snake)
 	}
 	// A FLOAT IS FINITE in the cook too (docs/SPEC-TABLES.md §3, §3.3): the
 	// same loaded value that cooked above, one float set to a NaN or an
@@ -296,8 +315,8 @@ fn main() {
 		}
 		snake := ir.RustSnake(fc.root)
 		fmt.Fprintf(&main, "    {\n        use crate::tabledemo::%s as table;\n", mod)
-		fmt.Fprintf(&main, "        let wire = std::fs::read(%q).unwrap();\n", filepath.Join(work, fc.row+".wire"))
-		fmt.Fprintf(&main, "        let mut report = Default::default();\n        let mut value = table::%s_load(&wire, &mut report).expect(\"the form-1 load refused the wire\");\n", snake)
+		fmt.Fprintf(&main, "        let text = std::fs::read(%q).unwrap();\n", filepath.Join(work, fc.row+".json"))
+		fmt.Fprintf(&main, "        let mut report = Default::default();\n        let mut value = table::%s_from_json_bytes(&text, &mut report).expect(\"finite probe JSON refused\");\n", snake)
 		fmt.Fprintf(&main, "        for bad in [%[1]s::NAN, %[1]s::INFINITY, %[1]s::NEG_INFINITY] {\n            value.%[2]s = bad;\n", fc.ty, fc.field)
 		fmt.Fprintf(&main, "            for order in [1u64, 2u64] {\n                if table::%s_cook_write(&value, order).is_ok() {\n", snake)
 		fmt.Fprintf(&main, "                    println!(\"FINITE: %s cooked a non-finite %s ({bad}) in order {order}\");\n                    std::process::exit(3);\n                }\n            }\n        }\n    }\n", fc.row, fc.field)
@@ -361,14 +380,14 @@ fn main() {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if bytes.Equal(engineCook(t, models[instances[row][0]], instances[row][1], wire, plant, false),
-				engineCook(t, models[instances[row][0]], instances[row][1], wire, nil, false)) {
+			if bytes.Equal(engineCook(t, models[instances[row][0]], &cookWriteCase{root: instances[row][1], wire: wire}, plant, false),
+				engineCook(t, models[instances[row][0]], &cookWriteCase{root: instances[row][1], wire: wire}, nil, false)) {
 				t.Errorf("witness %q: the plant does not move the engine's cook of %s, so it proves nothing", rule, row)
 			}
 			t.Logf("witness %q: %s is owed to the load side (%s); the plant moves the engine's bytes and binds this leg once the row is carried", rule, row, cookWriteOwed[key])
 			return
 		}
-		planted := engineCook(t, models[c.unit], c.root, c.wire, plant, false)
+		planted := engineCook(t, models[c.unit], c, plant, false)
 		if bytes.Equal(planted, got[c.name]) {
 			t.Errorf("witness %q: the planted answer cooks to the bytes this leg wrote for %s, so the row does not hold the rule", rule, row)
 		}
@@ -397,34 +416,54 @@ fn main() {
 		}
 		return false
 	})
-	// a slot past a counted array's live count holds the element type's own
-	// declared defaults, not zero (internal/tabletext/value.go's elementZero)
-	witness("a slot past the count holds the element's defaults", "root_full", func(m *tabletext.Model, inst *tabletext.Instance) bool {
-		for i := range inst.Fields {
-			fv := &inst.Fields[i]
-			if fv.Def.Name == "weapons" && fv.Count < len(fv.Elems) {
-				for k := fv.Count; k < len(fv.Elems); k++ {
-					fv.Elems[k] = tabletext.Cell{Tab: zeroInstance(m, fv.Elems[k].Tab)}
-				}
-				return true
+	// DEAD STORAGE IS ZERO (§7.6): the engine now ignores a dead logical
+	// value, so planting logical defaults no longer changes its image. Probe
+	// the physical span independently and plant a wrong byte in that image.
+	deadWitness := func(rule, row string, locate func(*ir.Unit, *tabletext.Instance) (int64, int64, bool)) {
+		t.Helper()
+		var c *cookWriteCase
+		for _, candidate := range cases {
+			if candidate.name == row {
+				c = candidate
+				break
 			}
 		}
-		return false
-	})
-	// an ABSENT optional holds its declared default (§2.3)
-	witness("an absent optional holds its default", "keyed_config", func(m *tabletext.Model, inst *tabletext.Instance) bool {
-		planted := false
-		walkInstances(inst, func(sub *tabletext.Instance) {
-			for i := range sub.Fields {
-				fv := &sub.Fields[i]
-				if fv.Def.Type.Optional && !fv.Present && fv.Cell.Tab != nil {
-					fv.Cell.Tab = zeroInstance(m, fv.Cell.Tab)
-					planted = true
+		if c == nil {
+			t.Fatalf("%s: no case %s", rule, row)
+		}
+		at, size, ok := locate(units[c.unit], cookCaseValue(t, models[c.unit], c))
+		if !ok || size <= 0 {
+			t.Fatalf("%s: no dead storage witness", rule)
+		}
+		for _, suffix := range []string{"", "-be"} {
+			image := got[row+suffix]
+			start, end := int64(64)+at, int64(64)+at+size
+			if start < 64 || end > int64(len(image)) {
+				t.Fatalf("%s: span outside image", rule)
+			}
+			for _, b := range image[start:end] {
+				if b != 0 {
+					t.Fatalf("%s: dead storage is nonzero", rule)
 				}
 			}
-		})
-		return planted
+			wrong := bytes.Clone(image)
+			wrong[start] = 1
+			if bytes.Equal(image, wrong) {
+				t.Fatalf("%s: wrong dead byte did not move the image", rule)
+			}
+		}
+	}
+	deadWitness("counted tail is zero", "root_full", func(u *ir.Unit, inst *tabletext.Instance) (int64, int64, bool) {
+		fv, ok := inst.FieldByKey("weapons")
+		if !ok || fv.Count >= len(fv.Elems) {
+			return 0, 0, false
+		}
+		fl := ir.RecordLayout(u, inst.Def).FieldByName("weapons")
+		pieces := ir.FieldPieces(u, fl.Field, fl.Offset)
+		stride := pieces[0].Size / fl.Field.ArrayBound
+		return pieces[0].Offset + int64(fv.Count)*stride, (fl.Field.ArrayBound - int64(fv.Count)) * stride, true
 	})
+	deadWitness("absent optional payload is zero", "keyed_config", absentCookPayload)
 	// a FIXED-POINT slot holds its RAW integer, units × 2^F, never the whole
 	// units (§4.3, §7.2): plant the truncated units into the oracle
 	witness("a fixed-point slot holds the raw integer", "scalars_full", func(m *tabletext.Model, inst *tabletext.Instance) bool {
@@ -459,25 +498,84 @@ fn main() {
 			t.Errorf("%s: the two byte orders cooked to one file", c.name)
 		}
 	}
+	t.Logf("cook rows held %d, both-endian images %d; recipe/zero-dead/finite witnesses active", len(cases), 2*len(cases))
 }
 
-// engineCook decodes a wire with the oracle, plants an optional change into
-// the instance, and cooks it with the engine `schema cook` runs.
-func engineCook(t *testing.T, m *tabletext.Model, root string, wire []byte, plant func(*tabletext.Model, *tabletext.Instance) bool, big bool) []byte {
+// cookCaseValue reads ordinary wire inputs, or constructs a recipe's source
+// value and identity independently of the wire which must refuse shared blobs.
+func cookCaseValue(t *testing.T, m *tabletext.Model, c *cookWriteCase) *tabletext.Instance {
 	t.Helper()
-	inst := m.New(m.Lookup(root))
+	inst := m.New(m.Lookup(c.root))
 	var rep tabletext.Report
-	if ok, err := tablewire.Decode(m, inst, wire, &rep); !ok || err != nil {
-		t.Fatalf("%s: the oracle did not decode the wire: %v", root, err)
+	if c.input != nil {
+		if !m.Read(inst, c.input, &rep) || !rep.Silent() {
+			t.Fatalf("%s: recipe JSON refused: %+v", c.root, rep)
+		}
+		from, to, ok := strings.Cut(c.share, ":")
+		if !ok {
+			t.Fatalf("%s: recipe has no share pair", c.name)
+		}
+		source, a := inst.FieldByKey(from)
+		target, b := inst.FieldByKey(to)
+		if !a || !b || source.Cell.Blob == nil || !target.Def.Type.Blob() {
+			t.Fatalf("%s: recipe sharing site is not a blob", c.name)
+		}
+		target.Cell.Blob = source.Cell.Blob
+	} else if ok, err := tablewire.Decode(m, inst, c.wire, &rep); !ok || err != nil {
+		t.Fatalf("%s: the oracle did not decode the wire: %v", c.root, err)
 	}
+	return inst
+}
+
+func engineCook(t *testing.T, m *tabletext.Model, c *cookWriteCase, plant func(*tabletext.Model, *tabletext.Instance) bool, big bool) []byte {
+	t.Helper()
+	inst := cookCaseValue(t, m, c)
 	if plant != nil && !plant(m, inst) {
-		t.Fatalf("%s: the witness found nothing to plant, so it proves nothing", root)
+		t.Fatalf("%s: the witness found nothing to plant, so it proves nothing", c.root)
 	}
 	out, err := tablecook.Cook(m, inst, tablecook.Options{Big: big})
 	if err != nil {
-		t.Fatalf("%s: the engine did not cook: %v", root, err)
+		t.Fatalf("%s: the engine did not cook: %v", c.root, err)
 	}
 	return out
+}
+
+// absentCookPayload finds one absent by-value optional's physical payload,
+// following the IR's C-ABI layout rather than the generated Rust writer.
+func absentCookPayload(u *ir.Unit, inst *tabletext.Instance) (int64, int64, bool) {
+	for _, fl := range ir.RecordLayout(u, inst.Def).Fields {
+		fv, ok := inst.FieldByKey(fl.Field.Name)
+		if !ok {
+			continue
+		}
+		if fl.Field.Type.Optional && !fv.Present {
+			pieces := ir.FieldPieces(u, fl.Field, fl.Offset)
+			return fl.Offset, pieces[len(pieces)-1].Offset - fl.Offset, true
+		}
+		if fl.Field.Type.Pointer {
+			continue
+		}
+		if fl.Field.Array != ir.ArrayNone {
+			ref, ok := fl.Field.Type.Ref.(*ir.Struct)
+			if !ok {
+				continue
+			}
+			stride := ir.RecordLayout(u, ref).Size
+			for i, cell := range fv.Elems {
+				if cell.Tab == nil {
+					continue
+				}
+				if at, size, found := absentCookPayload(u, cell.Tab); found {
+					return fl.Offset + int64(i)*stride + at, size, true
+				}
+			}
+		} else if fv.Cell.Tab != nil {
+			if at, size, found := absentCookPayload(u, fv.Cell.Tab); found {
+				return fl.Offset + at, size, true
+			}
+		}
+	}
+	return 0, 0, false
 }
 
 // cloneInstance is a SECOND node holding the same values: equal content, its
@@ -486,33 +584,4 @@ func cloneInstance(inst *tabletext.Instance) *tabletext.Instance {
 	c := *inst
 	c.Fields = append([]tabletext.Field(nil), inst.Fields...)
 	return &c
-}
-
-// zeroInstance is a record of the same type with every field zero, which is
-// what a writer that ignored declared defaults would lay down.
-func zeroInstance(m *tabletext.Model, like *tabletext.Instance) *tabletext.Instance {
-	z := m.New(like.Def)
-	for i := range z.Fields {
-		z.Fields[i].Cell = tabletext.Cell{}
-		z.Fields[i].Count = 0
-		for k := range z.Fields[i].Elems {
-			z.Fields[i].Elems[k] = tabletext.Cell{}
-		}
-	}
-	return z
-}
-
-// walkInstances visits an instance and every record it holds by value.
-func walkInstances(inst *tabletext.Instance, visit func(*tabletext.Instance)) {
-	if inst == nil {
-		return
-	}
-	visit(inst)
-	for i := range inst.Fields {
-		fv := &inst.Fields[i]
-		walkInstances(fv.Cell.Tab, visit)
-		for k := range fv.Elems {
-			walkInstances(fv.Elems[k].Tab, visit)
-		}
-	}
 }

@@ -105,7 +105,9 @@ func TestHostileAnnouncementBounded(t *testing.T) {
 	vocabField := append([]byte{2, 14}, lebs(uint64(len(vocabSub)))...)
 	vocabField = append(vocabField, vocabSub...)
 
-	versionField := binary.LittleEndian.AppendUint64([]byte{1, 9}, BuildVersion)
+	// Synthetic foreign metadata lets this probe reach unknown-field skip.
+	// Matching-build membership refusal is guarded separately.
+	versionField := binary.LittleEndian.AppendUint64([]byte{1, 9}, BuildVersion ^ 1)
 
 	announcement := append([]byte{1}, versionField...)
 	announcement = append(announcement, vocabField...)
