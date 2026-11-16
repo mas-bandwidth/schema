@@ -10,7 +10,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// The twelve real support rows replace only the expensive omnibus; focused
+// The 24 real support rows replace only the expensive omnibus; focused
 // pipe and planted control tests must remain in the discovered package shards.
 func TestPythonCIWireFuzzPartitionCoverage(t *testing.T) {
 	slowtest.Gate(t, "Python wire-fuzz CI plan")

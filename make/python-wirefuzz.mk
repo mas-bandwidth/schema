@@ -53,7 +53,7 @@ python-wirefuzz-retain-loss-negative-control:
 
 python-array-widen-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonArrayWideningNegativeControl$$' ./internal/codegen/pythontable/
-test-python: $(PYTHON_WIRE_FUZZ_ROWS) tables-python-wire-fuzz-negative-control tables-python-wire-fuzz-retain-negative-control python-wirefuzz-retain-loss-negative-control python-wirefuzz-partition-negative-control python-array-widen-negative-control
+test-python: $(PYTHON_WIRE_FUZZ_CI_ROWS) tables-python-wire-fuzz-negative-control tables-python-wire-fuzz-retain-negative-control python-wirefuzz-retain-loss-negative-control python-wirefuzz-partition-negative-control python-array-widen-negative-control
 PYTHON_CI_SUPPORT_GROUPS += python-array-widen-negative-control $(PYTHON_WIRE_FUZZ_CI_ROWS) tables-python-wire-fuzz-negative-control tables-python-wire-fuzz-retain-negative-control python-wirefuzz-retain-loss-negative-control python-wirefuzz-partition-negative-control
 
 # The release gate must fail before invoking the harness if any generated unit
