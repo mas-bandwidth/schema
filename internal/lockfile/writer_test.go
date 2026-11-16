@@ -12,24 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// legacyWriterLock writes the earlier rendering without changing any wire
-// fact. Historical snapshots are deliberately absent rather than guessed.
-func legacyWriterLock(t *testing.T, dir string) *lockfile.Unit {
-	t.Helper()
-	path := filepath.Join(dir, lockfile.FileName)
-	lk := readLock(t, path)
-	lk.Version = 7
-	for i := range lk.Tables {
-		for j := range lk.Tables[i].Lineage {
-			lk.Tables[i].Lineage[j].Writer = nil
-		}
-	}
-	if err := os.WriteFile(path, []byte(lk.Text()), 0600); err != nil {
-		t.Fatal(err)
-	}
-	return readLock(t, path)
-}
-
 func TestLockWriterSnapshotRoundTrip(t *testing.T) {
 	t.Parallel()
 	const src = `package lockdemo
@@ -92,13 +74,27 @@ func TestLockWriterSnapshotRoundTrip(t *testing.T) {
 
 func TestLockWriterLegacySalvageAndTrustedImport(t *testing.T) {
 	t.Parallel()
-	old := rowTable("a int32 | min = 0, max = 10\nb int32")
-	next := rowTable("a int32\nb int32")
+	old := strings.Replace(rowTable("a int32 | min = 0, max = 10\nb int32"), "package lockrows", "package lockdemo", 1)
+	next := strings.Replace(rowTable("a int32\nb int32"), "package lockrows", "package lockdemo", 1)
 	dir, paths := fixture(t, old)
 	writer := load(t, paths)
-	if _, _, err := lockfile.Update(writer, paths); err != nil {
+	// This is an actual rendering8 lock captured before the identity correction,
+	// not a lock recomputed by the new compiler with a relabelled header.
+	data, err := os.ReadFile("testdata/writer-v1/attribution/schema.lock")
+	if err != nil {
 		t.Fatal(err)
 	}
+	legacy, err := lockfile.Parse("historical", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy.Version = 7
+	legacy.Table("Row").Lineage[0].Writer = nil
+	path := filepath.Join(dir, lockfile.FileName)
+	if err := os.WriteFile(path, []byte(legacy.Text()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	prior := legacy.Table("Row").Lineage[0]
 	if err := os.WriteFile(paths[0], []byte(next), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -106,43 +102,36 @@ func TestLockWriterLegacySalvageAndTrustedImport(t *testing.T) {
 	if _, _, err := lockfile.Update(current, paths); err != nil {
 		t.Fatal(err)
 	}
-	before := legacyWriterLock(t, dir)
-	entries := before.Table("Row").Lineage
+	migrated := readLock(t, path)
+	entries := migrated.Table("Row").Lineage
+	if len(entries) != 2 || entries[0].Writer != nil || entries[1].Writer == nil || entries[0].Wire != prior.Wire || entries[0].Record != prior.Record || !bytes.Equal(entries[0].Layout, prior.Layout) || !bytes.Equal(entries[0].Digest, prior.Digest) {
+		t.Fatal("salvage guessed historical constraints, rewrote an old identity or lost the new writer")
+	}
 	if errs := lockfile.Check(current, paths); len(errs) != 0 {
 		t.Fatal(errs)
 	}
-	if _, _, err := lockfile.Update(current, paths); err != nil {
-		t.Fatal(err)
-	}
-	migrated := readLock(t, filepath.Join(dir, lockfile.FileName))
-	for i, e := range migrated.Table("Row").Lineage {
-		prior := entries[i]
-		if e.Writer != nil || e.Wire != prior.Wire || e.Record != prior.Record || !bytes.Equal(e.Layout, prior.Layout) || !bytes.Equal(e.Digest, prior.Digest) {
-			t.Fatal("salvage guessed or changed historical wire facts")
-		}
-	}
-	target := fmt.Sprintf("Row@0x%016x", entries[0].Wire)
+	target := fmt.Sprintf("Row@0x%016x", prior.Wire)
 	if _, rewrote, err := lockfile.ImportWriter(current, paths, target, writer); err != nil || !rewrote {
-		t.Fatalf("import: %v %v", rewrote, err)
+		t.Fatalf("legacy scheme import: %v %v", rewrote, err)
 	}
-	after := readLock(t, filepath.Join(dir, lockfile.FileName))
+	after := readLock(t, path)
 	known := after.Table("Row").Lineage
-	if known[0].Writer == nil || known[1].Writer != nil || known[0].Wire != entries[0].Wire || lockfile.Floor(after, "Row") != lockfile.Floor(before, "Row") {
-		t.Fatal("import changed entry identity or another entry")
+	if known[0].Writer == nil || known[0].Wire != prior.Wire || lockfile.Floor(after, "Row") != lockfile.Floor(legacy, "Row") {
+		t.Fatal("import changed entry identity or floor")
 	}
 	if _, rewrote, err := lockfile.ImportWriter(current, paths, target, writer); err != nil || rewrote {
 		t.Fatalf("import not idempotent: %v %v", rewrote, err)
 	}
-	// Both declarations have identical legacy layout/digest/hash. A saved source
-	// is explicit provenance, and a second different attribution cannot replace it.
-	_, otherPaths := fixture(t, rowTable("a int32\nb int32 | min = 0, max = 10"))
+	// Legacy anonymous R rows cannot authenticate which field owned the bound.
+	// Explicit source provenance is required, and conflicting captured facts refuse.
+	_, otherPaths := fixture(t, strings.Replace(rowTable("a int32\nb int32 | min = 0, max = 10"), "package lockrows", "package lockdemo", 1))
 	other := load(t, otherPaths)
-	data, _ := os.ReadFile(filepath.Join(dir, lockfile.FileName))
+	before, _ := os.ReadFile(path)
 	if _, _, err := lockfile.ImportWriter(current, paths, target, other); err == nil || !strings.Contains(err.Error(), "distinct captured writer constraints") {
 		t.Fatalf("ambiguous import: %v", err)
 	}
-	now, _ := os.ReadFile(filepath.Join(dir, lockfile.FileName))
-	if !bytes.Equal(data, now) {
+	now, _ := os.ReadFile(path)
+	if !bytes.Equal(before, now) {
 		t.Fatal("refused import changed lock")
 	}
 	if _, _, err := lockfile.ImportWriter(current, paths, "Row@0x0000000000000001", writer); err == nil {
@@ -153,10 +142,9 @@ func TestLockWriterLegacySalvageAndTrustedImport(t *testing.T) {
 	}
 }
 
-func TestLockWriterCollisionAndMinimumAreExplicit(t *testing.T) {
+func TestLockWriterMinimumRemainsInvariant(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, old, next, want string }{
-		{"wide-constraints", "a int128 | min = 0, max = 1208925819614629174706176", "a int128 | min = 0, max = 2417851639229258349412352", "distinct captured writer constraints"},
 		{"count-minimum", "a [1..3]int16", "a [0..3]int16", "default changed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -131,6 +131,65 @@ func pythonSupportMissing(db map[string][]string, roots []string) []string {
 	return missing
 }
 
+// TestPythonCIWireFuzzPartitionCoverage checks the actual planner: all twelve
+// complete support rows replace the omnibus, while the focused pipe checks stay.
+func TestPythonCIWireFuzzPartitionCoverage(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "Go package listing (Python wire-fuzz CI matrix)")
+	cmd := exec.Command("sh", "tools/python-ci-rows.sh")
+	cmd.Dir = repoRoot(t)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("plan Python rows: %v\n%s", err, out)
+	}
+	var rows []struct {
+		Target, Package, Test string
+		Corpus                bool
+	}
+	if err := json.Unmarshal(out, &rows); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{}
+	for _, pin := range []string{"current", "floor"} {
+		for _, mode := range []string{"normal", "dev"} {
+			for _, arm := range []string{"plain", "mixed", "retain"} {
+				want["python-wirefuzz-"+pin+"-"+mode+"-"+arm] = 0
+			}
+		}
+	}
+	focused := false
+	for _, row := range rows {
+		if _, ok := want[row.Target]; ok {
+			want[row.Target]++
+			if !row.Corpus {
+				t.Errorf("wire-fuzz row lacks corpus: %+v", row)
+			}
+		}
+		if strings.HasSuffix(row.Package, "/internal/codegen/pythontable") && row.Test != "" {
+			for _, name := range []string{"TestPythonWireFuzzVerdictPipe", "TestPythonWireFuzzFileDispatch"} {
+				matched, err := regexp.MatchString("^"+row.Test+"$", name)
+				if err != nil {
+					t.Fatalf("invalid planner expression: %v", err)
+				}
+				if name == "TestPythonWireFuzzVerdictPipe" && matched {
+					t.Error("wire-fuzz omnibus remains in a package shard")
+				}
+				if name == "TestPythonWireFuzzFileDispatch" && matched {
+					focused = true
+				}
+			}
+		}
+	}
+	for name, count := range want {
+		if count != 1 {
+			t.Errorf("wire-fuzz row %s appears %d times", name, count)
+		}
+	}
+	if !focused {
+		t.Error("focused wire-fuzz pipe test missing from package shards")
+	}
+}
+
 func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "Go package listing (Python CI matrix)")

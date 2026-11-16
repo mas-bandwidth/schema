@@ -1,6 +1,7 @@
 package pythontable
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -17,14 +18,15 @@ import (
 // FixedLineageEntry is a locked layout. Record includes the eight hash bytes;
 // the compiler converts the lock's body size exactly once before handing it on.
 type FixedLineageEntry struct {
-	Wire    uint64
-	Layout  []byte
-	Record  int64
-	Retired bool
-	Reason  string
-	Ranges  []ir.TableFixedWriterRange
-	Digest  []byte
-	Writer  *ir.Struct
+	Wire             uint64
+	Layout           []byte
+	Record           int64
+	Retired          bool
+	Reason           string
+	Ranges           []ir.TableFixedWriterRange
+	Digest           []byte
+	Writer           *ir.Struct
+	LegacyLayoutOnly bool
 }
 
 type fixedLiteral string
@@ -280,7 +282,8 @@ func emitPythonFixedData(u *ir.Unit, lineage map[string][]FixedLineageEntry) (st
 		}
 		layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
 		hash := ir.TableFixedLayoutHash(layout, st)
-		own := FixedLineageEntry{Wire: hash, Layout: layout, Record: 8 + ir.TableFixedTypeBytes(st)}
+		digest := ir.TableFixedDefinitionsDigest(st)
+		own := FixedLineageEntry{Wire: hash, Layout: layout, Digest: digest, Record: 8 + ir.TableFixedTypeBytes(st)}
 		entries := append([]FixedLineageEntry(nil), lineage[st.Name]...)
 		if len(entries) == 0 || entries[len(entries)-1].Wire != hash {
 			entries = append(entries, own)
@@ -313,7 +316,8 @@ func emitPythonFixedData(u *ir.Unit, lineage map[string][]FixedLineageEntry) (st
 				continue
 			}
 			fills := []any{}
-			plan, reason := compilePythonFixedPlan(node, spec, e.Wire == hash, &fills)
+			ownFacts := e.Wire == hash && bytes.Equal(e.Layout, layout) && bytes.Equal(e.Digest, digest)
+			plan, reason := compilePythonFixedPlan(node, spec, ownFacts, &fills)
 			entry["fills"] = fills
 			entry["refusal"], entry["source"], entry["plan"] = reason, fixedNodeData(node), plan
 			if reason != "" {
@@ -322,24 +326,30 @@ func emitPythonFixedData(u *ir.Unit, lineage map[string][]FixedLineageEntry) (st
 			}
 			if e.Writer != nil {
 				writerLayout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(e.Writer))
-				if string(writerLayout) != string(e.Layout) || ir.TableFixedLayoutHash(writerLayout, e.Writer) != e.Wire {
+				valid := bytes.Equal(writerLayout, e.Layout) && e.Record == 8+ir.TableFixedTypeBytes(e.Writer)
+				if e.LegacyLayoutOnly {
+					// Only an explicit trusted-source import may enrich a
+					// historical layout-only key with definition facts.
+					valid = valid && len(e.Digest) == 0
+				} else {
+					recorded, err := ir.TableFixedDefinitionsDigestForRecorded(e.Writer, e.Digest)
+					valid = valid && err == nil && bytes.Equal(recorded, e.Digest)
+				}
+				valid = valid && ir.TableFixedLayoutHashRecorded(writerLayout, e.Digest) == e.Wire
+				if !valid {
 					entry["refusal"] = "layout_malformed"
 					known = append(known, entry)
 					continue
 				}
 				entry["check_spec"] = fixedSemanticRoot(e.Writer)
-			} else if e.Wire != hash && e.Wire != ir.TableFixedLayoutHash(e.Layout, nil) {
-				// Historical definition facts are not reconstructible from
-				// anonymous digest records. Never validate them against this
-				// reader's wider declaration as if that were the writer's.
-				return "", fmt.Errorf("python: fixed table %s: historical layout 0x%016x needs its writer declaration snapshot; the lock lineage does not retain enough historical definition facts", st.Name, e.Wire)
+			} else if e.LegacyLayoutOnly || !ownFacts {
+				// Empty legacy digests do not prove an unconstrained writer:
+				// older renderings could omit definition facts altogether.
+				return "", fmt.Errorf("python: fixed table %s: historical layout 0x%016x needs its checked writer declaration snapshot; import its trusted historical source", st.Name, e.Wire)
+			} else {
+				entry["check_spec"] = spec
 			}
 			planMax = max(planMax, len(plan)+len(fills))
-			ranges := map[string]any{}
-			for _, r := range e.Ranges {
-				ranges[r.Name] = []any{r.Lo, r.Hi}
-			}
-			entry["ranges"] = ranges
 			known = append(known, entry)
 		}
 		data[st.Name] = map[string]any{"hash": hash, "layout": hex.EncodeToString(layout), "body": own.Record - 8, "spec": spec, "floor": floor, "known": known, "plan_max": planMax, "integrity": st.Integrity == "crc32c"}

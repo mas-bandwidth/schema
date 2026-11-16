@@ -46,7 +46,7 @@ func TestPythonFixedProofEvolutionNumeric(t *testing.T) {
 	if !ok {
 		t.Fatal("missing writer layout")
 	}
-	lineage := map[string][]pythontable.FixedLineageEntry{"T": {{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Writer: old.Tables["T"]}}}
+	lineage := map[string][]pythontable.FixedLineageEntry{"T": {{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Digest: entry.Digest, Writer: old.Tables["T"]}}}
 	files, err := pythontable.GenerateLineage(newer, lineage)
 	if err != nil {
 		t.Fatal(err)
@@ -579,7 +579,7 @@ func TestPythonFixedProofEvolutionWideningCorpus(t *testing.T) {
 			if !ok {
 				t.Fatal("missing writer layout")
 			}
-			files, err := pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{root: {{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Writer: old.Tables[root]}}})
+			files, err := pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{root: {{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Digest: entry.Digest, Writer: old.Tables[root]}}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -690,7 +690,7 @@ func TestPythonFixedProofEvolutionWriterBounds(t *testing.T) {
 			if !ok {
 				t.Fatal("missing writer layout")
 			}
-			files, err := pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{root: {{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Writer: old.Tables[root]}}})
+			files, err := pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{root: {{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Digest: entry.Digest, Writer: old.Tables[root]}}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -761,7 +761,7 @@ func TestPythonFixedProofEvolutionRetirementControl(t *testing.T) {
 	if !ok {
 		t.Fatal("missing writer layout")
 	}
-	e := pythontable.FixedLineageEntry{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Writer: old.Tables["T"], Retired: true}
+	e := pythontable.FixedLineageEntry{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Digest: entry.Digest, Writer: old.Tables["T"], Retired: true}
 	retired, err := pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{"T": {e}})
 	if err != nil {
 		t.Fatal(err)

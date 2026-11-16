@@ -18,6 +18,7 @@ package jstable
 // reports ten done verdicts over tests that never executed.
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -100,9 +101,23 @@ fixed table T
 }
 `)
 	st := t02Root(t, u)
+	// Keep the frozen v1 byte assertion explicitly in its recorded scheme.
+	legacy := ir.TableFixedDefinitionsDigestLegacy(st)
+	if len(legacy) != 26 || legacy[0] != 'R' || legacy[17] != 'Q' {
+		t.Errorf("R30: legacy compressed-float digest lacks its R/Q rows: % x", legacy)
+	}
+	// Current rows are framed and path-addressed. A resolution-only refinement
+	// of the same checked writer must still move its v2 digest.
 	d := ir.TableFixedDefinitionsDigest(st)
-	if len(d) < 18 || d[0] != 'R' || d[17] != 'Q' {
-		t.Errorf("R30: the digest does not carry the resolution under 'Q': % x", d)
+	version, err := ir.TableFixedDefinitionsDigestVersion(d)
+	if err != nil || version != 2 {
+		t.Fatalf("R30: current digest scheme = %d, %v", version, err)
+	}
+	refined := unitFrom(t, `package probe
+fixed table T { q float32 = 0.0 | min = 0.0, max = 1.0, resolution = 0.005 }
+`)
+	if bytes.Equal(d, ir.TableFixedDefinitionsDigest(refined.Tables["T"])) {
+		t.Error("R30: resolution-only refinement did not move the current digest")
 	}
 	body := t06Decode(t, `package probe
 

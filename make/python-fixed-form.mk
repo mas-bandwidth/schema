@@ -1,3 +1,4 @@
+PYTHON_CI_SUPPORT_GROUPS += python-fixed-identity-negative-control
 # Python form 3, its live C++ byte oracle and both artifact controls.
 PYTHON_CI_SUPPORT_GROUPS += python-fixed-form python-fixed-form-negative-control python-fixed-form-proof \
     python-fixed-form-conformance python-fixed-form-conformance-negative-control \
@@ -50,3 +51,8 @@ python-fixed-refused-hash-negative-control:
 test-python: python-fixed-deprecated-enum-negative-control
 python-fixed-deprecated-enum-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedFormDeprecatedEnum$$' ./internal/codegen/pythontable/
+
+.PHONY: python-fixed-identity-negative-control
+test-python: python-fixed-identity-negative-control
+python-fixed-identity-negative-control:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedIdentity' ./internal/codegen/pythontable/

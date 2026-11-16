@@ -35,7 +35,7 @@ public final class TableUnitView {
         private static TableUnitView build() {
             TableUnitView v = new TableUnitView();
             v.packageName = "bench";
-            v.protocolId = 0xc93127c82f083edfL;
+            v.protocolId = 0xc52a41defad6ebb0L;
             TableViewEntry[] types = new TableViewEntry[9];
             types[0] =
                     TableViewEntry.of(

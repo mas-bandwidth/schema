@@ -1047,7 +1047,7 @@ func BenchIntsTableType() *TableTypeInfo   { return &tableViewPacketTypes[1] }
 func BenchPacketReset(value *BenchPacket)  { *value = BenchPacket{} }
 func BenchPacketTableType() *TableTypeInfo { return &tableViewPacketTypes[3] }
 
-var tableUnitView = UnitViewInfo{Package: "bench", ProtocolID: 0xc93127c82f083edf,
+var tableUnitView = UnitViewInfo{Package: "bench", ProtocolID: 0xc52a41defad6ebb0,
 	NumTypes: 9, Types: []ViewType{
 		{Name: "BenchBits", File: "Bench.schema", Table: false, Type: &tableViewPacketTypes[0], Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "BenchInts", File: "Bench.schema", Table: false, Type: &tableViewPacketTypes[1], Doc: TableDocNone, NumTags: 0, Tags: nil},

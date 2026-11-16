@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package example — protocol id 0xf35accd0582cdd84
+-- package example — protocol id 0x2bf51af687ac0abd
 --
 -- Lua 5.4 values (docs/PORT-LUA.md): integers of 64 bits or fewer are Lua
 -- integers (a uint64 is the same bits read unsigned); 128-bit values are
@@ -12,7 +12,7 @@ local _M = {}
 
 -- The unit's protocol id — the hash of its wire shape (SPEC §3.1), as the
 -- 64 bits of a Lua integer (a hex literal wraps; read it unsigned).
-_M.ProtocolId = 0xf35accd0582cdd84
+_M.ProtocolId = 0x2bf51af687ac0abd
 
 _M.PositionUnits = 1024
 

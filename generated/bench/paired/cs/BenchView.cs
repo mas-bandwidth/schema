@@ -273,7 +273,7 @@ namespace Bench
         private static readonly UnitViewInfo tableUnitView = new UnitViewInfo
         {
             Package = "bench",
-            ProtocolId = 0xc93127c82f083edful,
+            ProtocolId = 0xc52a41defad6ebb0ul,
             Types = new ViewType[] { new ViewType { Name = "BenchBits", File = "Bench.schema", Table = false, TypeRef = BenchBitsTableType, Doc = "", Tags = new string[] { } },
         new ViewType { Name = "BenchInts", File = "Bench.schema", Table = false, TypeRef = BenchIntsTableType, Doc = "", Tags = new string[] { } },
         new ViewType { Name = "BenchMixed", File = "Bench.schema", Table = false, TypeRef = BenchMixedTableType, Doc = "", Tags = new string[] { } },
