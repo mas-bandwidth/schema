@@ -956,7 +956,7 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 		if ev.PlanRows != "" {
 			return ev.PlanRows, nil
 		}
-		for _, pkg := range strings.Fields(ev.PlanPkgs) {
+		for pkg := range strings.FieldsSeq(ev.PlanPkgs) {
 			if pkg == "./internal/codegen/gotable" || pkg == "./..." {
 				return `[{"make":"tables-go-fixedform"}]`, nil
 			}

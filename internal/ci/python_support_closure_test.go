@@ -43,7 +43,7 @@ func TestPythonSupportPrerequisiteClosure(t *testing.T) {
 			walk(dep)
 		}
 	}
-	for _, root := range strings.Fields(run("-s", "python-ci-support-list")) {
+	for root := range strings.FieldsSeq(run("-s", "python-ci-support-list")) {
 		walk(root)
 	}
 	for _, dep := range db["test-python"] {
