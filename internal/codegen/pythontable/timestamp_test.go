@@ -373,6 +373,16 @@ func TestPythonVtTimestampNegativeControl(t *testing.T) {
 				t.Fatalf("the negative control's anchor %q stands %d times in %s, want %d", control.anchor, got, path, control.sites)
 			}
 			sabotaged[path] = []byte(strings.ReplaceAll(text, control.anchor, control.planted))
+			if control.name == "payload_cut" {
+				// Isolate Reader.take's refusal: the scalar loader's independent
+				// whole-file diagnostic otherwise catches the same malformed wire.
+				const check = "        if err.reason != \"wire_damaged\":\n"
+				generated := string(sabotaged[module])
+				if got := strings.Count(generated, check); got != 2 {
+					t.Fatalf("the scalar diagnostic anchor stands %d times, want 2", got)
+				}
+				sabotaged[module] = []byte(strings.ReplaceAll(generated, check, "        if False:\n"))
+			}
 			dir := t.TempDir()
 			writeTree(t, dir, sabotaged)
 
