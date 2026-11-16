@@ -52,12 +52,33 @@ func messageModule(u *ir.Unit) string {
 			fmt.Fprintf(&b, "    (%q, %q): bytes.fromhex(%q),\n", st.Name, f.Name, fmt.Sprintf("%x", entry.Encode(nil)))
 		}
 	}
+	unions := closureUnions(u)
+	unionNames := make([]string, 0, len(unions))
+	for name := range unions {
+		unionNames = append(unionNames, name)
+	}
+	sort.Strings(unionNames)
+	for _, name := range unionNames {
+		un := u.TableUnions[name]
+		if un == nil {
+			un = u.Unions[name]
+		}
+		if un == nil {
+			continue
+		}
+		for _, variant := range un.Variants {
+			entry := ir.TableArmEntry(variant)
+			fmt.Fprintf(&b, "    (%q, %q): bytes.fromhex(%q),\n", un.Name, variant.Name, fmt.Sprintf("%x", entry.Encode(nil)))
+		}
+	}
 	b.WriteString("}\n")
 	b.WriteString(`
-from typing import TypeVar, cast
-from ._schema import LoadReport
-from ._schema.message import MessageVocabulary as _Vocabulary, announce_read as _announce, resolve_vocabulary as _resolve
-from ._schema.message import load_messages as _load, save_messages as _save
+from typing import Any, Callable, TypeVar, cast
+from . import LoadReport
+from .message import MessageVocabulary as _Vocabulary, announce_read as _announce, resolve_vocabulary as _resolve
+from .message import BitWriter, _write_value
+from .descriptor import by_name as _by_name
+from .message import load_messages as _load, measure_messages as _measure, save_messages as _save
 
 _T = TypeVar("_T")
 
@@ -73,13 +94,40 @@ def announce_read(vocab: MessageVocabulary, data: bytes, *, max_bytes: int = 655
     _resolve(vocab, _local)
 
 def save_messages(root: type[_T], values: list[_T]) -> bytes:
-    return _save(root, list(values), _local, FIELD_KEYS, ROOTS)
+    return _save(root, list(values), _local, FIELD_KEYS, ROOTS, _WRITERS.get(getattr(root, "descriptor").name))
 
 def measure_messages(root: type[_T], values: list[_T]) -> int:
-    return len(save_messages(root, values))
+    return _measure(root, list(values), _local, FIELD_KEYS, ROOTS, _WRITERS.get(getattr(root, "descriptor").name))
 
 def load_messages(root: type[_T], vocab: MessageVocabulary, data: bytes, capacity: int = 256, report: LoadReport | None = None) -> list[_T]:
     return cast(list[_T], _load(root, vocab, data, BUILD_VERSION, FIELD_KEYS, ROOTS, capacity, report))
 `)
+	entries := tablewire.MessageVocabulary(u)
+	slots := make(map[string]int, len(entries))
+	for i, entry := range entries {
+		slots[entry.Key()] = i + 1
+	}
+	b.WriteString("\n_WRITERS: dict[str, Callable[[BitWriter, Any], None]] = {}\n")
+	for index, name := range roots {
+		st := u.Tables[name]
+		valid := true
+		for _, field := range st.Fields {
+			if slots[ir.TableFieldEntry(field).Key()] == 0 {
+				valid = false
+				break
+			}
+		}
+		if !valid {
+			continue
+		}
+		fmt.Fprintf(&b, "_class_%d = _by_name(%q)\nassert _class_%d is not None\n_fields_%d = _class_%d.descriptor.fields\n", index, name, index, index, index)
+		fmt.Fprintf(&b, "def _writer_%d(writer: BitWriter, value: Any) -> None:\n", index)
+		for i, field := range st.Fields {
+			slot := slots[ir.TableFieldEntry(field).Key()]
+			fmt.Fprintf(&b, "    field = _fields_%d[%d]\n    current = getattr(value, %q)\n", index, i, field.Name)
+			fmt.Fprintf(&b, "    if not field.is_default(current) or getattr(field, 'required', False):\n        writer.put(%d, _local.ref_bits)\n        _write_value(writer, field, current, _local.entries[%d].shape, _local, FIELD_KEYS)\n", slot, slot-1)
+		}
+		fmt.Fprintf(&b, "    writer.put(0, _local.ref_bits)\n_WRITERS[%q] = _writer_%d\n", name, index)
+	}
 	return b.String()
 }

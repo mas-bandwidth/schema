@@ -64,7 +64,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	out[path.Join(u.Package, "__init__.py")] = []byte(packageInit(u, plans))
 	if message := messageModule(u); message != "" {
-		out[path.Join(u.Package, "_message.py")] = []byte(message)
+		out[path.Join(u.Package, RuntimeDir, "_message_unit.py")] = []byte(message)
 	}
 	out[path.Join(u.Package, "py.typed")] = []byte{}
 	runtime, err := Runtime()
@@ -1147,8 +1147,20 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 		}
 	}
 	if messageModule(u) != "" {
-		b.WriteString("from ._message import ANNOUNCEMENT, MessageVocabulary, announce_read, load_messages, measure_messages, save_messages\n")
-		names = append(names, "ANNOUNCEMENT", "MessageVocabulary", "announce_read", "load_messages", "measure_messages", "save_messages")
+		alias := "_unit_message"
+		for slices.Contains(names, alias) {
+			alias += "_"
+		}
+		fmt.Fprintf(&b, "from ._schema import _message_unit as %s\n", alias)
+		for _, name := range []string{"ANNOUNCEMENT", "MessageVocabulary", "announce_read", "load_messages", "measure_messages", "save_messages"} {
+			// A schema export keeps its existing public binding. The complete
+			// message API remains available through _schema._message_unit.
+			if slices.Contains(names, name) {
+				continue
+			}
+			fmt.Fprintf(&b, "from ._schema._message_unit import %s as %s\n", name, name)
+			names = append(names, name)
+		}
 	}
 	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n", u.ProtocolId)
 	fmt.Fprintf(&b, "BUILD_VERSION: Final = 0x%016x\n\n", ir.BuildVersion(u))

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from . import LoadReport, Refused
 from .load import Reader
+from typing import Any, Callable
 
 
 class BitReader:
@@ -39,11 +40,12 @@ class BitReader:
 class BitWriter:
     """Write low-bit-first fields, sharing one cursor across the batch."""
 
-    __slots__ = ("data", "position")
+    __slots__ = ("data", "position", "measure")
 
-    def __init__(self) -> None:
+    def __init__(self, measure: bool = False) -> None:
         self.data = bytearray()
         self.position = 0
+        self.measure = measure
 
     def put(self, value: int, width: int) -> None:
         if width < 0 or value < 0 or value.bit_length() > width:
@@ -51,11 +53,12 @@ class BitWriter:
         start = self.position // 8
         shift = self.position % 8
         end = (self.position + width + 7) // 8
-        if end > len(self.data):
-            self.data.extend(bytes(end - len(self.data)))
-        if end > start:
-            current = int.from_bytes(self.data[start:end], "little")
-            self.data[start:end] = (current | (value << shift)).to_bytes(end - start, "little")
+        if not self.measure:
+            if end > len(self.data):
+                self.data.extend(bytes(end - len(self.data)))
+            if end > start:
+                current = int.from_bytes(self.data[start:end], "little")
+                self.data[start:end] = (current | (value << shift)).to_bytes(end - start, "little")
         self.position += width
 
     def align(self) -> None:
@@ -361,7 +364,7 @@ def _write_body(writer: BitWriter, value: object, vocab: MessageVocabulary, keys
     slots = {entry.key: i + 1 for i, entry in enumerate(vocab.entries)}
     for field in obj.descriptor.fields:
         current = getattr(obj, field.name)
-        if field.is_default(current):
+        if field.is_default(current) and not getattr(field, "required", False):
             continue
         key = keys.get((obj.descriptor.name, field.name))
         slot = slots.get(key) if key is not None else None
@@ -383,6 +386,9 @@ def _read_body(reader: BitReader, cls: type[object], vocab: MessageVocabulary, o
     while True:
         entry = _reference(reader, vocab)
         if entry is None:
+            for field in obj.descriptor.fields:
+                if getattr(field, "required", False) and field.field_id not in seen:
+                    raise Refused("missing_required", field.name)
             return obj
         if entry.field_id in seen:
             raise Refused("wire_damaged", "message field repeated")
@@ -395,24 +401,27 @@ def _read_body(reader: BitReader, cls: type[object], vocab: MessageVocabulary, o
             stats[0] += 1
             continue
         own_key = keys.get((obj.descriptor.name, field.name))
-        if entry.kind != field.kind and not _widens(entry.kind, field.kind):
-            raise Refused("kind_mismatch", "message field kind changed")
-        if vocab.build_version == own_version:
-            if own_key != entry.key or field.ordinal <= last_ordinal:
-                raise Refused("wire_damaged", "message field order or shape changed")
+        if entry.kind != field.kind:
+            if not _widens(entry.kind, field.kind):
+                raise Refused("kind_mismatch", "message field kind changed")
+            stats[1] += 1
+        same_shape = vocab.build_version == own_version and own_key == entry.key
+        if same_shape:
+            if field.ordinal <= last_ordinal:
+                raise Refused("wire_damaged", "message fields are out of order")
             last_ordinal = field.ordinal
-        value = _read_value(reader, field, entry.shape, vocab, own_version, keys, stats, depth)
+        value = _read_value(reader, field, entry.shape, vocab, own_version, keys, stats, depth, True, getattr(obj, field.name), same_shape)
         if type(value) is int and (value < field.lo or value > field.hi):
             raise Refused("out_of_range", field.name)
         if type(value) is float and getattr(field, "float_range", False):
             if value < field.fmin or value > field.fmax:
                 raise Refused("out_of_range", field.name)
-        if vocab.build_version == own_version and field.is_default(value):
+        if same_shape and field.is_default(value) and not getattr(field, "required", False):
             raise Refused("wire_damaged", "message field is explicitly at its default")
         setattr(obj, field.name, value)
 
 
-def save_messages(root: type[object], values: list[object], vocab: MessageVocabulary, keys: dict[tuple[str, str], bytes], roots: frozenset[str]) -> bytes:
+def _encode_messages(root: type[object], values: list[object], vocab: MessageVocabulary, keys: dict[tuple[str, str], bytes], roots: frozenset[str], measure: bool, fast: Callable[[BitWriter, Any], None] | None = None) -> BitWriter:
     from . import InvalidValue
     from .save import _validate
     if not 1 <= len(values) <= 256:
@@ -423,12 +432,24 @@ def save_messages(root: type[object], values: list[object], vocab: MessageVocabu
         if type(value) is not root:
             raise InvalidValue("", "batch contains another root")
         _validate(value, getattr(value, "descriptor"), "", set())
-    writer = BitWriter()
+    writer = BitWriter(measure)
     writer.put(2, 8)
     writer.put(len(values) - 1, 8)
     for value in values:
-        _write_body(writer, value, vocab, keys)
-    return writer.finish()
+        if fast is None:
+            _write_body(writer, value, vocab, keys)
+        else:
+            fast(writer, value)
+    writer.align()
+    return writer
+
+
+def save_messages(root: type[object], values: list[object], vocab: MessageVocabulary, keys: dict[tuple[str, str], bytes], roots: frozenset[str], fast: Callable[[BitWriter, Any], None] | None = None) -> bytes:
+    return bytes(_encode_messages(root, values, vocab, keys, roots, False, fast).data)
+
+
+def measure_messages(root: type[object], values: list[object], vocab: MessageVocabulary, keys: dict[tuple[str, str], bytes], roots: frozenset[str], fast: Callable[[BitWriter, Any], None] | None = None) -> int:
+    return _encode_messages(root, values, vocab, keys, roots, True, fast).position // 8
 
 
 def load_messages(root: type[object], vocab: MessageVocabulary, data: bytes, own_version: int, keys: dict[tuple[str, str], bytes], roots: frozenset[str], capacity: int = 256, report: "LoadReport | None" = None) -> list[object]:
@@ -445,13 +466,20 @@ def load_messages(root: type[object], vocab: MessageVocabulary, data: bytes, own
     count = data[1] + 1
     if count > capacity:
         raise Refused("batch_too_large")
+    scan = BitReader(data, 16)
+    pending: list[str] = []
+    for _ in range(count):
+        _scan_body(scan, vocab, 0, pending)
+    scan.finish()
+    if pending:
+        raise Refused(pending[0])
     reader = BitReader(data, 16)
-    stats = [0]
+    stats = [0, 0]
     values = [_read_body(reader, root, vocab, own_version, keys, stats) for _ in range(count)]
     reader.finish()
     if report is not None:
         report.unknown = stats[0]
-        report.widened = 0
+        report.widened = stats[1]
         report.retained = 0
         report.retain_lost = 0
     return values
@@ -485,17 +513,41 @@ def _write_value(writer: BitWriter, field: object, value: object, shape: Shape, 
         writer.put(len(v) - shape.minimum, (shape.maximum - shape.minimum).bit_length())
         if shape.element == 6:
             writer.align()
-        element = fd.elem if fd.elem is not None else fd
+        element = fd.elem if fd.elem is not None else fd.element if fd.element is not None else fd
         for item in v:
             _write_value(writer, element, item, shape.inner, vocab, keys)
     elif shape.kind == 30:
         slot = 0 if v == 0 else _name_slot(vocab, fd.variant_ids[v - 1])
         writer.put(slot, vocab.ref_bits)
+    elif shape.kind == 15:
+        if v.type == 0:
+            writer.put(0, vocab.ref_bits)
+            return
+        arm = v.descriptor.arms[v.type - 1]
+        key = keys.get((v.descriptor.name, arm.name))
+        slots = {entry.key: i + 1 for i, entry in enumerate(vocab.entries)}
+        arm_slot = slots.get(key) if key is not None else None
+        if arm_slot is None:
+            raise ValueError("message union arm is absent from its vocabulary")
+        writer.put(arm_slot, vocab.ref_bits)
+        if arm.field is not None:
+            _write_value(writer, arm.field, getattr(v, arm.name), vocab.entries[arm_slot - 1].shape, vocab, keys)
+    elif shape.kind == 16:
+        if fd.elem is None or shape.inner is None:
+            raise InvalidValue(fd.name, "message keyed element is missing")
+        values = v if fd.keyed_list else v._values
+        present = [(key, value) for key, value in zip(fd.keys, values) if not fd.elem.is_default(value)]
+        if len(present) > shape.maximum:
+            raise InvalidValue(fd.name, "message keyed count exceeds its bound")
+        writer.put(len(present), shape.maximum.bit_length())
+        for key, item in present:
+            writer.put(_name_slot(vocab, key), vocab.ref_bits)
+            _write_value(writer, fd.elem, item, shape.inner, vocab, keys)
     else:
         _write_scalar(writer, shape, v)
 
 
-def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVocabulary, own_version: int, keys: dict[tuple[str, str], bytes], stats: list[int], depth: int) -> object:
+def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVocabulary, own_version: int, keys: dict[tuple[str, str], bytes], stats: list[int], depth: int, in_field: bool = False, existing: object = None, same_shape: bool = False) -> object:
     from typing import Any, cast
     from . import descriptor
     fd: Any = field
@@ -529,8 +581,17 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
             reader.align()
         if shape.inner is None:
             raise Refused("wire_damaged", "message element shape is absent")
-        element = fd.elem if fd.elem is not None else fd
+        element = fd.elem if fd.elem is not None else fd.element if fd.element is not None else fd
+        if element is not fd and shape.element != element.kind:
+            if not _widens(shape.element, element.kind):
+                raise Refused("kind_mismatch", "message array element kind changed")
+            stats[1] += 1
+        if fd.array_kind == 2 and count < fd.array_min:
+            raise Refused("count_over_bound", fd.name)
         values = [_read_value(reader, element, shape.inner, vocab, own_version, keys, stats, depth + 1) for _ in range(count)]
+        if fd.array_kind == 1 and count < fd.bound:
+            for _ in range(fd.bound - count):
+                values.append(descriptor.new_by_name(element.target) if element.codec == "table" else element.default)
         return bytes(cast(list[int], values)) if fd.codec == "bytes" else values
     if shape.kind == 30:
         entry = _reference(reader, vocab)
@@ -543,7 +604,64 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
                 return fd.default if i in fd.deprecated else i
         stats[0] += 1
         return 0
-    return _read_scalar(reader, shape)
+    if shape.kind == 15:
+        cls = descriptor._union_by_name(fd.target)
+        if cls is None:
+            raise Refused("kind_mismatch", "message union target is not registered")
+        result: Any = cls()
+        entry = _reference(reader, vocab)
+        if entry is None:
+            if in_field:
+                raise Refused("wire_damaged", "a union field explicitly carries None")
+            return result
+        if entry.kind == 0:
+            raise Refused("wire_damaged", "message union arm has no framing")
+        arm = result.descriptor.by_id.get(entry.field_id)
+        if arm is None:
+            _skip_value(reader, entry.shape, vocab, depth + 1)
+            stats[0] += 1
+            return result
+        if entry.kind != arm.kind and not _widens(entry.kind, arm.kind):
+            raise Refused("kind_mismatch", "message union arm kind changed")
+        result.type = arm.tag
+        if arm.field is not None:
+            setattr(result, arm.name, _read_value(reader, arm.field, entry.shape, vocab, own_version, keys, stats, depth + 1))
+        return result
+    if shape.kind == 16:
+        if shape.inner is None or fd.elem is None or existing is None:
+            raise Refused("wire_damaged", "message keyed element is missing")
+        count = reader.get(shape.maximum.bit_length())
+        if count > shape.maximum:
+            raise Refused("wire_damaged", "message keyed count exceeds its bound")
+        output: Any = existing
+        slots = output if fd.keyed_list else output._values
+        seen: set[int] = set()
+        last_index = -1
+        for _ in range(count):
+            key = _reference(reader, vocab)
+            if key is None or key.kind != 0 or key.field_id in seen:
+                raise Refused("wire_damaged", "invalid or repeated message key")
+            seen.add(key.field_id)
+            if key.field_id not in fd.keys:
+                _skip_value(reader, shape.inner, vocab, depth + 1)
+                stats[0] += 1
+                continue
+            index = fd.keys.index(key.field_id)
+            if same_shape and index <= last_index:
+                raise Refused("wire_damaged", "message keyed slots are out of order")
+            last_index = index
+            item = _read_value(reader, fd.elem, shape.inner, vocab, own_version, keys, stats, depth + 1)
+            if same_shape and fd.elem.is_default(item):
+                raise Refused("wire_damaged", "message keyed slot is explicitly at its default")
+            slots[index] = item
+        return output
+    value = _read_scalar(reader, shape)
+    if type(value) is int and fd.codec != "bytes" and (value < fd.lo or value > fd.hi):
+        raise Refused("out_of_range", fd.name)
+    if type(value) is float and getattr(fd, "float_range", False):
+        if value < fd.fmin or value > fd.fmax:
+            raise Refused("out_of_range", fd.name)
+    return value
 
 
 def _widens(source: int, target: int) -> bool:
@@ -580,7 +698,7 @@ def resolve_vocabulary(vocab: MessageVocabulary, local: MessageVocabulary) -> No
             raise Refused("kind_mismatch", "announcement field has an incompatible kind")
 
 
-def _skip_value(reader: BitReader, shape: Shape, vocab: MessageVocabulary, depth: int) -> None:
+def _skip_value(reader: BitReader, shape: Shape, vocab: MessageVocabulary, depth: int, in_field: bool = False, pending: list[str] | None = None) -> None:
     import math
     import struct
 
@@ -597,7 +715,9 @@ def _skip_value(reader: BitReader, shape: Shape, vocab: MessageVocabulary, depth
             low = -(1 << (width - 1)) if signed else 0
             high = (1 << (width - int(signed))) - 1
             if not low <= value <= high:
-                raise Refused("out_of_range", "message integer exceeds its storage domain")
+                if pending is None:
+                    raise Refused("out_of_range", "message integer exceeds its storage domain")
+                pending.append("out_of_range")
         return
     if kind in (10, 11):
         if shape.packing == 2:
@@ -613,7 +733,9 @@ def _skip_value(reader: BitReader, shape: Shape, vocab: MessageVocabulary, depth
             raw = reader.get(width).to_bytes(width // 8, "little")
             value = struct.unpack("<f" if kind == 10 else "<d", raw)[0]
             if not math.isfinite(value):
-                raise Refused("non_finite_float")
+                if pending is None:
+                    raise Refused("non_finite_float")
+                pending.append("non_finite_float")
         return
     if kind == 12:
         length = reader.get(shape.maximum.bit_length())
@@ -637,15 +759,17 @@ def _skip_value(reader: BitReader, shape: Shape, vocab: MessageVocabulary, depth
             if entry.field_id in seen:
                 raise Refused("wire_damaged", "nested message repeats a field")
             seen.add(entry.field_id)
-            _skip_value(reader, entry.shape, vocab, depth + 1)
+            _skip_value(reader, entry.shape, vocab, depth + 1, True, pending)
     if kind in (15, 30):
         entry = _reference(reader, vocab)
         if entry is None:
+            if kind == 15 and in_field:
+                raise Refused("wire_damaged", "a union field explicitly carries None")
             return
         if (kind == 30 and entry.kind != 0) or (kind == 15 and entry.kind == 0):
             raise Refused("wire_damaged", "message name has the wrong framing")
         if kind == 15:
-            _skip_value(reader, entry.shape, vocab, depth + 1)
+            _skip_value(reader, entry.shape, vocab, depth + 1, False, pending)
         return
     if kind in (14, 16):
         minimum = shape.minimum if kind == 14 else 0
@@ -658,7 +782,7 @@ def _skip_value(reader: BitReader, shape: Shape, vocab: MessageVocabulary, depth
         if kind == 14 and inner.kind in (0, 32):
             return
         if kind == 14 and inner.packing == 1 and inner.bits == 0:
-            _skip_value(reader, inner, vocab, depth + 1)
+            _skip_value(reader, inner, vocab, depth + 1, False, pending)
             return
         seen_keys: set[int] = set()
         for _ in range(count):
@@ -668,7 +792,7 @@ def _skip_value(reader: BitReader, shape: Shape, vocab: MessageVocabulary, depth
                 if key is None or key.kind != 0 or key.field_id in seen_keys:
                     raise Refused("wire_damaged", "invalid or repeated message key")
                 seen_keys.add(key.field_id)
-            _skip_value(reader, inner, vocab, depth + 1)
+            _skip_value(reader, inner, vocab, depth + 1, False, pending)
             if reader.position == start:
                 raise Refused("wire_damaged", "message element consumes no bits")
         return
@@ -685,3 +809,17 @@ def _skip_value(reader: BitReader, shape: Shape, vocab: MessageVocabulary, depth
 def _f32(value: float) -> float:
     import struct
     return float(struct.unpack("<f", struct.pack("<f", value))[0])
+
+
+def _scan_body(reader: BitReader, vocab: MessageVocabulary, depth: int, pending: list[str]) -> None:
+    if depth > 128:
+        raise Refused("wire_damaged", "message nesting exceeds 128")
+    seen: set[int] = set()
+    while True:
+        entry = _reference(reader, vocab)
+        if entry is None:
+            return
+        if entry.field_id in seen:
+            raise Refused("wire_damaged", "message field repeated")
+        seen.add(entry.field_id)
+        _skip_value(reader, entry.shape, vocab, depth, True, pending)
