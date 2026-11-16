@@ -195,7 +195,7 @@ func(p tableRetainPath)step(ordinal,index uint32)tableRetainPath{if p.depth<len(
 func(t *TableRetain)reset(base unsafe.Pointer,directory []TableNodeDirEntry){if t!=nil{t.Used=0;t.Count=0;t.idUsed=0;t.base=base;t.directory=directory}}
 func tableRetainRecordSize(b []byte)int{return int(binary.LittleEndian.Uint32(b))}
 func(t *TableRetain)matches(b []byte,p tableRetainPath,under bool,field bool,ordinal uint32)bool{
- node:=binary.LittleEndian.Uint32(b[4:]);depth:=int(binary.LittleEndian.Uint32(b[8:]));if node==0||int(node)>len(t.directory)||t.directory[node-1].Offset==^uint64(0)||unsafe.Add(t.base,t.directory[node-1].Offset&^(tableNodeWireNamed|tableNodeBlobSeen))!=p.at{return false}
+ node:=binary.LittleEndian.Uint32(b[4:]);depth:=int(binary.LittleEndian.Uint32(b[8:]));if node==0||int(node)>len(t.directory)||t.directory[node-1].Offset&tableNodeNoStorage!=0||unsafe.Add(t.base,t.directory[node-1].Offset&^(tableNodeWireNamed|tableNodeBlobSeen))!=p.at{return false}
  if depth<p.depth||!under&&depth!=p.depth||field&&depth==p.depth||p.depth>len(p.steps){return false}
  for i := range p.depth {if binary.LittleEndian.Uint32(b[26+i*8:])!=p.steps[i].ordinal||binary.LittleEndian.Uint32(b[30+i*8:])!=p.steps[i].index{return false}}
  return !field||binary.LittleEndian.Uint32(b[26+p.depth*8:])==ordinal
