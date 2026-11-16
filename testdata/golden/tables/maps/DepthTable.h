@@ -17923,8 +17923,9 @@ template <typename Ctx>
 inline bool DepthCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Depth & value, TableByteOrder order )
 {
     if ( !SquadCookBody( ctx, region, at + 0, value.one, order ) ) { return false; }
-    // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 3; i++ )
+    // 3 slots of storage, value.many_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.many_count; i++ )
     {
         if ( !SquadCookBody( ctx, region, at + 16 + i * 16, value.many[i], order ) ) { return false; }
     }

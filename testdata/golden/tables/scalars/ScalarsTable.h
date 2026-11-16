@@ -12059,8 +12059,9 @@ inline bool SimStateCookBody( uint8_t * at, const SimState & value, TableByteOrd
     {
         table_cook_put( at + 148 + i * 4, (uint64_t) value.samples[i], 4, order );
     }
-    // all 4 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 4; i++ )
+    // 4 slots of storage, value.weights_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.weights_count >= 0 && value.weights_count <= 4 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.weights_count; i++ )
     {
         table_cook_put( at + 160 + i * 2, (uint64_t) value.weights[i], 2, order );
     }
@@ -12070,8 +12071,9 @@ inline bool SimStateCookBody( uint8_t * at, const SimState & value, TableByteOrd
     {
         table_cook_put( at + 176 + i * 8, (uint64_t) value.axes.slots[i], 8, order );
     }
-    // all 2 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 2; i++ )
+    // 2 slots of storage, value.seeds_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.seeds_count; i++ )
     {
         {
             serialize::uint128_t raw_v = serialize::uint128_t( value.seeds[i] );

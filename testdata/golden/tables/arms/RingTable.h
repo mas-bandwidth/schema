@@ -20582,8 +20582,9 @@ inline bool RackCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
 template <typename Ctx>
 inline bool TrayCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Tray & value, TableByteOrder order )
 {
-    // all 2 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 2; i++ )
+    // 2 slots of storage, value.entries_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.entries_count; i++ )
     {
         {
             table_cook_put( at + 0 + i * 32, (uint64_t) value.entries[i].type, 1, order ); // the tag; None is the tag alone
@@ -20591,7 +20592,8 @@ inline bool TrayCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
             {
                 case SlotsType::Many:
                 {
-                    for ( int32_t ia = 0; ia < 2; ia++ ) // many: an array of pointers, every slot
+                    schema_assert( value.entries[i].many.value_count >= 0 && value.entries[i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
+                    for ( int32_t ia = 0; ia < value.entries[i].many.value_count; ia++ ) // many: an array of pointers, the live slots, the rest zero
                     {
                         if ( !table_cook_ref( region, at + 0 + i * 32 + 8 + ia * 8, (const void *) NodeAt( ctx, value.entries[i].many.value[ia] ), order ) ) { return false; }
                     }
@@ -20701,7 +20703,8 @@ inline bool RackCookExtent( const Ctx & ctx, const TableCookRegion & region, uin
                 {
                     case SlotsType::Many:
                     {
-                        for ( int32_t i_itemsa = 0; i_itemsa < 2; i_itemsa++ ) // many: an array of pointers, every slot
+                        schema_assert( cursor[i].many.value_count >= 0 && cursor[i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
+                        for ( int32_t i_itemsa = 0; i_itemsa < cursor[i].many.value_count; i_itemsa++ ) // many: an array of pointers, the live slots, the rest zero
                         {
                             if ( !table_cook_ref( region, array + i * 32 + 8 + i_itemsa * 8, (const void *) NodeAt( ctx, cursor[i].many.value[i_itemsa] ), order ) ) { return false; }
                         }

@@ -21190,8 +21190,9 @@ inline bool HolderCookBody( const Ctx & ctx, const TableCookRegion & region, uin
 template <typename Ctx>
 inline bool HandCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Hand & value, TableByteOrder order )
 {
-    // all 2 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 2; i++ )
+    // 2 slots of storage, value.entries_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.entries_count; i++ )
     {
         {
             table_cook_put( at + 0 + i * 24, (uint64_t) value.entries[i].type, 1, order ); // the tag; None is the tag alone

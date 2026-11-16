@@ -338,13 +338,25 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 		// the self-relative delta of §6.3, or a refusal for a node the numbering
 		// did not reach; the pointee is resolved through the same context the
 		// numbering walked, so the two agree on which node a slot names. An
-		// ARRAY of pointers is that slot per element (§2.1), all N written, a
-		// slot past a counted array's live count riding as it lies (§7.2).
+		// ARRAY of pointers is that slot per element (§2.1); a COUNTED array
+		// writes its live slots and leaves a slot past the count the extent's
+		// zero (§7.2).
 		t := f.Type.Name
 		if f.Array == ir.ArrayNone {
 			g.pf("    if ( !table_cook_ref( region, %s + %d, (const void *) %sAt( ctx, %s ), order ) ) { return false; } // %s\n", base, value.Offset, t, name, f.Name)
 		} else {
-			g.pf("    for ( int32_t i%s = 0; i%s < %d; i%s++ ) // %s: an array of pointers, every slot\n    {\n", sfx, sfx, f.ArrayBound, sfx, f.Name)
+			bound := fmt.Sprintf("%d", f.ArrayBound)
+			slots := "every slot"
+			if f.Array == ir.ArrayCounted {
+				// THE DEAD SLOTS ARE ZERO (docs/SPEC-TABLES.md §7.2;
+				// docs/rulings.json fixed-dead-bytes-are-zero): the extent was
+				// zeroed, so only the live slots are written and a slot past
+				// the count keeps that zero.
+				g.pf("    schema_assert( %s_count >= 0 && %s_count <= %d ); // storage invariant, debug only (§5.1)\n", name, name, f.ArrayBound)
+				bound = name + "_count"
+				slots = "the live slots, the rest zero"
+			}
+			g.pf("    for ( int32_t i%s = 0; i%s < %s; i%s++ ) // %s: an array of pointers, %s\n    {\n", sfx, sfx, bound, sfx, f.Name, slots)
 			g.pf("        if ( !table_cook_ref( region, %[1]s + %[2]d + i%[3]s * 8, (const void *) %[4]sAt( ctx, %[5]s[i%[6]s] ), order ) ) { return false; }\n", base, value.Offset, sfx, t, name, sfx)
 			g.pf("    }\n")
 			if f.Array == ir.ArrayCounted {
@@ -370,12 +382,17 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 			g.pf("    // [%s]: E.Max slots at the SHIFTED positions the storage has (§2.4, §7.2)\n", f.KeyEnum)
 		}
 		if f.Array == ir.ArrayCounted {
-			// ALL N SLOTS ARE WRITTEN (§7.2): the storage is allocate-max, so a
-			// slot past the live count carries what the storage carries — for a
-			// value a wire load or Reset produced, the value-initialized element
-			g.pf("    // all %d slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)\n", f.ArrayBound)
+			// A SLOT PAST THE LIVE COUNT IS DEAD STORAGE (docs/SPEC-TABLES.md
+			// §7.2; docs/rulings.json fixed-dead-bytes-are-zero): the extent
+			// was zeroed before any field was written, so only the live slots
+			// are written and a slot past the count keeps that zero.
+			g.pf("    // %d slots of storage, %s_count live: a slot past the count keeps the extent's zero (§7.2)\n", f.ArrayBound, name)
+			g.pf("    schema_assert( %s_count >= 0 && %s_count <= %d ); // storage invariant, debug only (§5.1)\n", name, name, f.ArrayBound)
+			bound := name + "_count"
+			g.pf("    for ( int32_t i%s = 0; i%s < %s; i%s++ )\n    {\n", sfx, sfx, bound, sfx)
+		} else {
+			g.pf("    for ( int32_t i%s = 0; i%s < %d; i%s++ )\n    {\n", sfx, sfx, f.ArrayBound, sfx)
 		}
-		g.pf("    for ( int32_t i%s = 0; i%s < %d; i%s++ )\n    {\n", sfx, sfx, f.ArrayBound, sfx)
 		g.emitCookWriteElement(f, fmt.Sprintf("%s + %d + i%s * %d", base, value.Offset, sfx, stride), element, "        ", sfx)
 		g.pf("    }\n")
 		if f.Array == ir.ArrayCounted {
