@@ -739,7 +739,7 @@ jobs:
 
   go-test-touched:
     needs: [plan, go-fixed-corpus]
-    if: always() && needs.plan.result == 'success' && (needs.go-fixed-corpus.result == 'success' || (needs.go-fixed-corpus.result == 'skipped' && !contains(needs.plan.outputs.rows, '"make":"tables-go-fixedform"'))) && startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && needs.plan.result == 'success' && (needs.go-fixed-corpus.result == 'success' || (needs.go-fixed-corpus.result == 'skipped' && !contains(needs.plan.outputs.rows, '"make":"tables-go-fixedform"'))) && (needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)))
     name: go-test-touched (${{ matrix.row }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
