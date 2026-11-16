@@ -244,7 +244,7 @@ func backendFieldOnceVectors(t *testing.T, u *ir.Unit) (string, []fieldOnceVecto
 	v := fieldOnceVocab(t, u)
 	seven := fieldOnceEncode(t, u, root, `{"client_build":7}`)
 	nine := fieldOnceEncode(t, u, root, `{"client_build":9}`)
-	unknown := fieldOnceEncode(t, u, "MatchResult", `{"match_id":1}`)
+	unknown := fieldOnceEncode(t, u, "MatchResult", `{"match_id":"1"}`)
 	return root, []fieldOnceVector{
 		{
 			name:      "a field id twice in one body",
@@ -334,7 +334,7 @@ func twoShapesFieldOnceVectors(t *testing.T, u *ir.Unit) (string, []fieldOnceVec
 	m := tabletext.NewModel(u)
 	v := fieldOnceVocab(t, u)
 	a := fieldOnceEncode(t, u, "A", `{"x":7}`)
-	b := fieldOnceEncode(t, u, "B", `{"x":9}`)
+	b := fieldOnceEncode(t, u, "B", `{"x":"9"}`)
 	sa := fieldOnceSpots(t, m, "A", a, v)
 	sb := fieldOnceSpots(t, m, "B", b, v)
 	rb := sa[0].Width

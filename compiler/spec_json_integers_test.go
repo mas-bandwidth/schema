@@ -107,16 +107,18 @@ func TestSpecJsonIntegers(t *testing.T) {
 			{"small-fraction", "Integers", "refused"},
 			{"small-exponent", "Integers", "refused"},
 			{"small-neg-zero", "Integers", "refused"},
-			{"wide-fraction", "Integers", "refused"},
-			{"wide-exponent", "Integers", "refused"},
-			{"wide-neg-zero", "Integers", "refused"},
+			// a fraction, an exponent and negative zero in an int64 field
+			// are the string spellings here; their bare-number vectors are
+			// NUMBER-TOKEN.tsv's (numberTokenRows)
 			{"wide-string-fraction", "Integers", "refused"},
 			{"wide-string-exponent", "Integers", "refused"},
 			{"wide-string-neg-zero", "Integers", "refused"},
-			{"ranged-one-past", "Integers", "refused"},
-			{"ranged-below-min", "Integers", "refused"},
-			{"uwide-one-past", "Integers", "refused"},
-			{"wide128-one-past", "Integers", "refused"},
+			// past each bound, as a string of digits; the bare-number
+			// spellings are NUMBER-TOKEN.tsv's
+			{"ranged-one-past-string", "Integers", "refused"},
+			{"ranged-below-min-string", "Integers", "refused"},
+			{"uwide-one-past-string", "Integers", "refused"},
+			{"wide128-one-past-string", "Integers", "refused"},
 			{"map-key-fraction", "Integers", "refused"},
 			{"map-key-exponent", "Integers", "refused"},
 			{"map-key-neg-zero", "Integers", "refused"},
@@ -192,7 +194,14 @@ func TestSpecJsonIntegers(t *testing.T) {
 			numberToken[r.name+".refused.json"] = true
 		}
 		for _, e := range entries {
-			if e.IsDir() || e.Name() == "MANIFEST.tsv" || e.Name() == "NUMBER-TOKEN.tsv" {
+			// the two manifests, the unit both bind (Integers.schema), and
+			// the bare-number exemption list
+			// TestJsonFixturesHoldNoBareWideInteger reads
+			switch e.Name() {
+			case "MANIFEST.tsv", "NUMBER-TOKEN.tsv", "Integers.schema", "BARE-NUMBER-PURPOSE.txt":
+				continue
+			}
+			if e.IsDir() {
 				continue
 			}
 			if !files[e.Name()] && !numberToken[e.Name()] {

@@ -260,11 +260,11 @@ func (g *tgGen) value(j *tgJSON, f *ir.Field, whole bool) error {
 			return nil
 		}
 		lo, hi := testgenIntRange(f)
-		j.raw(g.pick(lo, hi).String())
+		j.raw(testgenWideQuote(t.Width, g.pick(lo, hi).String()))
 	case ir.TFixed:
 		lo, hi := testgenIntRange(f)
 		raw := g.pick(lo, hi)
-		j.raw(testgenFixedDecimal(raw, t.FracBits))
+		j.raw(testgenWideQuote(t.Width, testgenFixedDecimal(raw, t.FracBits)))
 	case ir.TFloat32, ir.TFloat64:
 		j.raw(g.float(f))
 	case ir.TString:
@@ -575,6 +575,16 @@ func testgenIntRange(f *ir.Field) (lo, hi *big.Int) {
 		return lo, hi
 	}
 	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(width)), big.NewInt(1))
+}
+
+// testgenWideQuote writes a value whose storage is wider than 32 bits as a
+// JSON string, the only form such a field reads from (§16.2); a narrower
+// value stays a bare number.
+func testgenWideQuote(width int, text string) string {
+	if width > 32 {
+		return `"` + text + `"`
+	}
+	return text
 }
 
 // testgenFixedDecimal spells a fixed-point raw value in whole units, exactly

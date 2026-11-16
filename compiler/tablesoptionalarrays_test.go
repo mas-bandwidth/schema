@@ -184,6 +184,22 @@ func TestOptionalArraysCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "python" {
+			// the optional kind carries the form (compiler/
+			// carries_python_optional.go): an element kind the Python
+			// runtime carries rides the array framing, and one a later card
+			// owns (float32, an enum) keeps a descriptor that refuses by name
+			// at the runtime (internal/codegen/pythontable)
+			files, err := c.Generate(u, target, Options{})
+			if err != nil {
+				t.Fatalf("--lang python refused the supported shape: %v", err)
+			}
+			module := string(files["probe/Probe.py"])
+			if !strings.Contains(module, `inner="array",`) || !strings.Contains(module, `inner="unsupported",`) {
+				t.Fatalf("--lang python: the optional arrays' descriptors do not name their inner codecs:\n%s", module)
+			}
+			continue
+		}
 		if target == "elixir" {
 			// the variable form carries the construct (docs/SPEC-TABLES.md
 			// §2.3, §2.6): one Table.ex codec per unit

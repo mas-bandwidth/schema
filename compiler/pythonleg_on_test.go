@@ -24,8 +24,9 @@ func writeSchemas(t *testing.T, files map[string]string) []string {
 	return paths
 }
 
-// TestPythonTargetIsRegistered: the compiler carries the python target,
-// registered from its own init, with the timestamp construct this layer adds.
+// TestPythonTargetIsRegistered: the compiler carries the Python target,
+// with each layer's registered constructs held to its own test file.
+// Timestamp is one of those constructs (docs/SPEC-TABLES.md §2.11).
 func TestPythonTargetIsRegistered(t *testing.T) {
 	t.Parallel()
 	if !slices.Contains(New().Targets(), "python") {
@@ -37,6 +38,14 @@ func TestPythonTargetIsRegistered(t *testing.T) {
 	}
 	if !slices.Contains(got, carryTimestamp) {
 		t.Fatalf("the python target carries %v; want the timestamp construct", got)
+	}
+	for _, construct := range got {
+		if !slices.Contains(nonGoCarriers["python"], construct) {
+			t.Errorf("the python target carries %q, and no layer's test registers it", construct)
+		}
+	}
+	if len(got) != len(nonGoCarriers["python"]) {
+		t.Fatalf("the python target carries %v; its layers register %v", got, nonGoCarriers["python"])
 	}
 }
 

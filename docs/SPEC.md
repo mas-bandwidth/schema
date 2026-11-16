@@ -2399,7 +2399,7 @@ build of an assert leg is required to refuse it, and no gate may require one.
 reader refuses one as `text_ill_formed`: in the build where its check is
 active, a writer never produces bytes its own reader refuses.
 
-Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
+Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11):
 
 <!-- One line per leg and writer, a blank line between every two: a change to one leg's line never touches the line next to another's. Edit your own line only; never reflow this list into a table. -->
 
@@ -2409,7 +2409,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–2 and 8 debug; 3–7 every build
 
-  - packet `Write`: 1–8 and 10 debug
+  - packet `Write`: 1–8 and 10 debug; 11 not yet held
 
 - **C**
 
@@ -2417,7 +2417,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–4 and 8 debug; 5–7 every build
 
-  - packet `Write`: 1–8 and 10 debug
+  - packet `Write`: 1–8 and 10 debug; 11 not yet held
 
 - **C#**
 
@@ -2425,7 +2425,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–8 debug
 
-  - packet `Write`: 1, 3–8 and 10 debug; 2 unchecked
+  - packet `Write`: 1, 3–8 and 10 debug; 2 unchecked; 11 not yet held
 
 - **Rust**
 
@@ -2433,7 +2433,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–3 and 8 debug; 4–7 every build
 
-  - packet `Write`: 1–5, 7, 8 and 10 debug; 6 unrepresentable
+  - packet `Write`: 1–5, 7, 8 and 10 debug; 6 unrepresentable; 11 unrepresentable (the storage is `iN`/`uN`)
 
 - **Java**
 
@@ -2441,7 +2441,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–2 and 8 debug; 3–7 every build
 
-  - packet `Write`: 1–8 and 10 debug
+  - packet `Write`: 1–8 and 10 debug; 11 not yet held
 
 - **Dart**
 
@@ -2457,7 +2457,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–8 every build, on the flat and the per-field path alike; 10 not yet held
+  - packet `Write`: 1–8 every build, on the flat and the per-field path alike; 10 not yet held; 11 not yet held
 
 - **JavaScript**
 
@@ -2513,7 +2513,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–8 and 10 every build
+  - packet `Write`: 1–8 and 10 every build; 11 unrepresentable (the storage is `iN`/`uN`)
 
 - **Lobster**
 

@@ -91,11 +91,31 @@ func TestPythonTableCarrySetCarriesTimestamp(t *testing.T) {
 	}
 }
 
+// TestPythonTableCarrySetIsRegisteredByItsLayers: the table frame itself adds
+// no construct from the §2 carry vocabulary (docs/SPEC-TABLES.md); every
+// construct the python set holds is one a field-kind layer registers in its
+// own compiler/carries_python_<kind>.go and appends to nonGoCarriers["python"]
+// from its own test file (the optional kind: optional-variable-closure).
+func TestPythonTableCarrySetIsRegisteredByItsLayers(t *testing.T) {
+	t.Parallel()
+	got, ok := Carried("python")
+	if !ok {
+		t.Fatal("the python target registered no carries set")
+	}
+	for _, construct := range got {
+		if !slices.Contains(nonGoCarriers["python"], construct) {
+			t.Errorf("the table frame registered %q, which no field-kind layer claims", construct)
+		}
+	}
+}
+
 // The compiler keeps the common carry checks before the table frame. Direct
-// descriptor generation remains available for later field-codec layers.
+// descriptor generation remains available for later field-codec layers. The
+// optional array `?[3]int16` left this list when the optional kind began
+// carrying it (compiler/carries_python_optional.go).
 func TestPythonTablesHonorCarriedConstructs(t *testing.T) {
 	t.Parallel()
-	for _, field := range []string{"[]int32", "?[3]int16"} {
+	for _, field := range []string{"[]int32"} {
 		u := unitFromSource(t, "package probe\ntable Root {\n values "+field+"\n}\n")
 		_, err := New().Generate(u, "python", Options{})
 		if err == nil {

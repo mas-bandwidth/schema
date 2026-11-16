@@ -23,7 +23,7 @@ narrow [Axis]int32
 }
 `
 	u := unitFromSource(t, source)
-	cases := keyedCases(t, u, "Root", u, `{"wide":{"X":5,"Y":-7},"narrow":{"X":3,"Y":9}}`, "", "")
+	cases := keyedCases(t, u, "Root", u, `{"wide":{"X":"5","Y":"-7"},"narrow":{"X":3,"Y":9}}`, "", "")
 	if len(cases) != 1 || !cases[0].accept {
 		t.Fatalf("control: the engine refuses the clean slots")
 	}
