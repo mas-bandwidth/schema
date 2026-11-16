@@ -847,8 +847,8 @@ assert value.values == [1, -2]
 assert to_json(value) == '[\n  1,\n  -2\n]\n'
 try:
     from_json(Root, '{"values":[1]}')
-except Refused:
-    pass
+except Refused as error:
+    assert error.reason == "json_root_not_array"
 else:
     raise AssertionError('accepted object root')
 print('ok')

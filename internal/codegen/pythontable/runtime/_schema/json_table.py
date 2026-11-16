@@ -445,6 +445,8 @@ def from_json(cls: type[_T], text: str, report: LoadReport | None = None, fill: 
     graph: dict[int, tuple[Any, bool]] | None = {} if descriptor.variable else None
     unknown = [0]
     if descriptor.json_array:
+        if type(data) is not list:
+            raise Refused("json_root_not_array", descriptor.name)
         field = descriptor.fields[0]
         setattr(value, field.name, _read_field(field, data, graph, unknown))
     else:
