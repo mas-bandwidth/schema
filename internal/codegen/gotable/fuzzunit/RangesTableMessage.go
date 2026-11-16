@@ -224,7 +224,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedSignedReset(value)
-	exact := r.Vocabulary.BuildVersion == BuildVersion
+	ownBuild := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -247,11 +247,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 		switch entry.ID {
 		case 0x48121511bf702eb5:
 			{
-				if exact && order >= 0 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 45
+				if exact {
+					if order >= 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 0
 				}
-				order = 0
 				widened := false
 				if entry.Shape.Kind != 2 || entry.Element.Kind != 0 {
 					if false {
@@ -303,11 +306,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0x942bfe3168090f7d:
 			{
-				if exact && order >= 1 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 46
+				if exact {
+					if order >= 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 1
 				}
-				order = 1
 				widened := false
 				if entry.Shape.Kind != 2 || entry.Element.Kind != 0 {
 					if false {
@@ -359,11 +365,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xd182acd105b55dd1:
 			{
-				if exact && order >= 2 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 47
+				if exact {
+					if order >= 2 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 2
 				}
-				order = 2
 				widened := false
 				if entry.Shape.Kind != 2 || entry.Element.Kind != 0 {
 					if false {
@@ -415,11 +424,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xef9ded23c8912a81:
 			{
-				if exact && order >= 3 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 48
+				if exact {
+					if order >= 3 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 3
 				}
-				order = 3
 				widened := false
 				if entry.Shape.Kind != 2 || entry.Element.Kind != 0 {
 					if false {
@@ -471,11 +483,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xb655574ea23760b4:
 			{
-				if exact && order >= 4 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 49
+				if exact {
+					if order >= 4 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 4
 				}
-				order = 4
 				widened := false
 				if entry.Shape.Kind != 3 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 3) {
@@ -527,11 +542,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xd217b3af8d7a2bde:
 			{
-				if exact && order >= 5 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 50
+				if exact {
+					if order >= 5 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 5
 				}
-				order = 5
 				widened := false
 				if entry.Shape.Kind != 3 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 3) {
@@ -583,11 +601,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0x90652f70c9127900:
 			{
-				if exact && order >= 6 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 51
+				if exact {
+					if order >= 6 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 6
 				}
-				order = 6
 				widened := false
 				if entry.Shape.Kind != 3 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 3) {
@@ -639,11 +660,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0x6a659d7c354db158:
 			{
-				if exact && order >= 7 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 52
+				if exact {
+					if order >= 7 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 7
 				}
-				order = 7
 				widened := false
 				if entry.Shape.Kind != 3 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 3) {
@@ -695,11 +719,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xe693bd88532c91d6:
 			{
-				if exact && order >= 8 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 53
+				if exact {
+					if order >= 8 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 8
 				}
-				order = 8
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -751,11 +778,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0x065ee827cf99fbb4:
 			{
-				if exact && order >= 9 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 54
+				if exact {
+					if order >= 9 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 9
 				}
-				order = 9
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -807,11 +837,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xc9b121c4c2a186ee:
 			{
-				if exact && order >= 10 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 55
+				if exact {
+					if order >= 10 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 10
 				}
-				order = 10
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -863,11 +896,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xd363dfa465acf27a:
 			{
-				if exact && order >= 11 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 56
+				if exact {
+					if order >= 11 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 11
 				}
-				order = 11
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -919,11 +955,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0x7549c70700c49d6f:
 			{
-				if exact && order >= 12 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 57
+				if exact {
+					if order >= 12 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 12
 				}
-				order = 12
 				widened := false
 				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
@@ -975,11 +1014,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0x1cce6617419771db:
 			{
-				if exact && order >= 13 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 58
+				if exact {
+					if order >= 13 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 13
 				}
-				order = 13
 				widened := false
 				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
@@ -1031,11 +1073,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0x3b54fa60620b5597:
 			{
-				if exact && order >= 14 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 59
+				if exact {
+					if order >= 14 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 14
 				}
-				order = 14
 				widened := false
 				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
@@ -1087,11 +1132,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xd308fcb98ece5d23:
 			{
-				if exact && order >= 15 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 60
+				if exact {
+					if order >= 15 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 15
 				}
-				order = 15
 				widened := false
 				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
@@ -1143,11 +1191,14 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 			}
 		case 0xc70cde6b85b6197d:
 			{
-				if exact && order >= 16 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 61
+				if exact {
+					if order >= 16 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 16
 				}
-				order = 16
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 3 {
 					if entry.Shape.Kind == 14 && tableKindWidens(entry.Element.Kind, 3) {
@@ -1220,7 +1271,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 			}
 		default:
-			if exact {
+			if ownBuild {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -1481,7 +1532,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedUnsignedReset(value)
-	exact := r.Vocabulary.BuildVersion == BuildVersion
+	ownBuild := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1504,11 +1555,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 		switch entry.ID {
 		case 0x0f8897557f37c021:
 			{
-				if exact && order >= 0 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 62
+				if exact {
+					if order >= 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 0
 				}
-				order = 0
 				widened := false
 				if entry.Shape.Kind != 6 || entry.Element.Kind != 0 {
 					if false {
@@ -1560,11 +1614,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x2e17553f8200a2a1:
 			{
-				if exact && order >= 1 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 63
+				if exact {
+					if order >= 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 1
 				}
-				order = 1
 				widened := false
 				if entry.Shape.Kind != 6 || entry.Element.Kind != 0 {
 					if false {
@@ -1616,11 +1673,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0xa0e5c60df9301b7d:
 			{
-				if exact && order >= 2 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 64
+				if exact {
+					if order >= 2 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 2
 				}
-				order = 2
 				widened := false
 				if entry.Shape.Kind != 6 || entry.Element.Kind != 0 {
 					if false {
@@ -1672,11 +1732,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x1cb2c073a6f5844d:
 			{
-				if exact && order >= 3 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 65
+				if exact {
+					if order >= 3 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 3
 				}
-				order = 3
 				widened := false
 				if entry.Shape.Kind != 6 || entry.Element.Kind != 0 {
 					if false {
@@ -1728,11 +1791,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x4ca0c150b1790960:
 			{
-				if exact && order >= 4 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 66
+				if exact {
+					if order >= 4 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 4
 				}
-				order = 4
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1784,11 +1850,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0xf252136836b04cb2:
 			{
-				if exact && order >= 5 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 67
+				if exact {
+					if order >= 5 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 5
 				}
-				order = 5
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1840,11 +1909,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x4f37e1f216e7610c:
 			{
-				if exact && order >= 6 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 68
+				if exact {
+					if order >= 6 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 6
 				}
-				order = 6
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1896,11 +1968,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0xd176b605978f3304:
 			{
-				if exact && order >= 7 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 69
+				if exact {
+					if order >= 7 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 7
 				}
-				order = 7
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1952,11 +2027,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x200b924de7479cda:
 			{
-				if exact && order >= 8 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 70
+				if exact {
+					if order >= 8 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 8
 				}
-				order = 8
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -2008,11 +2086,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0xa53d2f2a31b5acb0:
 			{
-				if exact && order >= 9 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 71
+				if exact {
+					if order >= 9 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 9
 				}
-				order = 9
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -2064,11 +2145,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x9759be8ea1a4e3d2:
 			{
-				if exact && order >= 10 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 72
+				if exact {
+					if order >= 10 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 10
 				}
-				order = 10
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -2120,11 +2204,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x8dc515fc082e3c0e:
 			{
-				if exact && order >= 11 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 73
+				if exact {
+					if order >= 11 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 11
 				}
-				order = 11
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -2176,11 +2263,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0xbeecef11dbdf8973:
 			{
-				if exact && order >= 12 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 74
+				if exact {
+					if order >= 12 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 12
 				}
-				order = 12
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -2232,11 +2322,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x0117ad66e0fff227:
 			{
-				if exact && order >= 13 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 75
+				if exact {
+					if order >= 13 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 13
 				}
-				order = 13
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -2288,11 +2381,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0xf2b45af3b50689db:
 			{
-				if exact && order >= 14 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 76
+				if exact {
+					if order >= 14 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 14
 				}
-				order = 14
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -2344,11 +2440,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0x713e12017eebcaf7:
 			{
-				if exact && order >= 15 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 77
+				if exact {
+					if order >= 15 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 15
 				}
-				order = 15
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -2400,11 +2499,14 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			}
 		case 0xc341febe5aae51e5:
 			{
-				if exact && order >= 16 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 78
+				if exact {
+					if order >= 16 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 16
 				}
-				order = 16
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 9 {
 					if entry.Shape.Kind == 14 && tableKindWidens(entry.Element.Kind, 9) {
@@ -2477,7 +2579,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 			}
 		default:
-			if exact {
+			if ownBuild {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -2639,7 +2741,7 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedWidthsReset(value)
-	exact := r.Vocabulary.BuildVersion == BuildVersion
+	ownBuild := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -2662,11 +2764,14 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 		switch entry.ID {
 		case 0x08a60c07b54d8dc7:
 			{
-				if exact && order >= 0 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 79
+				if exact {
+					if order >= 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 0
 				}
-				order = 0
 				widened := false
 				if entry.Shape.Kind != 6 || entry.Element.Kind != 0 {
 					if false {
@@ -2718,11 +2823,14 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 			}
 		case 0xff95701912ad97be:
 			{
-				if exact && order >= 1 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 80
+				if exact {
+					if order >= 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 1
 				}
-				order = 1
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -2774,11 +2882,14 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 			}
 		case 0xff9c5c1912b39470:
 			{
-				if exact && order >= 2 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 81
+				if exact {
+					if order >= 2 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 2
 				}
-				order = 2
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -2830,11 +2941,14 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 			}
 		case 0xff92701912ab61e7:
 			{
-				if exact && order >= 3 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 82
+				if exact {
+					if order >= 3 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 3
 				}
-				order = 3
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -2881,11 +2995,14 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 			}
 		case 0xff95741912ad9e8a:
 			{
-				if exact && order >= 4 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 83
+				if exact {
+					if order >= 4 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 4
 				}
-				order = 4
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -2937,11 +3054,14 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 			}
 		case 0xff8b681912a535a1:
 			{
-				if exact && order >= 5 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 84
+				if exact {
+					if order >= 5 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 5
 				}
-				order = 5
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -2992,7 +3112,7 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 				}
 			}
 		default:
-			if exact {
+			if ownBuild {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
