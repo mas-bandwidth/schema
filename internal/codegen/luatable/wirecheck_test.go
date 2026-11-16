@@ -6,11 +6,9 @@ package luatable
 // to the wire's own rules, the bytes its walk skips or reads last-wins
 // included. The framing surface's vectors (docs/LAYERS/1-framing.md) are the
 // rows: each verdict in the manifest was derived from the law, never from a
-// leg, and the strict load must answer it. Nine of them (a repeated field id,
-// an array, keyed or map body with L 0 or 1, unknown field bodies, an
-// node table with a reserved type id, a node table twice) are refused by the check alone:
-// with the check switched off the walk reads them, which is the negative
-// control.
+// leg, and the strict load must answer it. Ten rows read when this check is
+// switched off: repeated or unused IDs, damaged field and collection bodies,
+// and damaged node-table framing. The negative control pins that partition.
 
 import (
 	"bufio"

@@ -3,28 +3,11 @@ package luatable
 // THE FIVE CELLS THE STRICT-100 AUDIT CUT, ON THE STRICT READ
 // (docs/roadmap-evidence/lua.sexp; internal/codegen/luatable/wirecheck_test.go):
 // port/lua/vt/id-table-wire, unbounded-arrays, enum-keyed-arrays, maps and
-// variable-class left the overlay because the plain Load read ten conformance
-// framing vectors the one read refuses (frame_repeat_last_wins,
-// frame_unknown_id_length, frame_unknown_id_reference, array_L0_inert,
-// array_L1_inert, keyed_L1_inert, map_L1_inert,
-// node_table_twice, node_unknown_to_fixed_reader, node_record_bytes_after_terminator), and no test named that
-// refusal for the row it belongs to. The wire-alone check (wire_check in
-// load.lua) refuses them now; this file names, per cell, the vectors that
-// cell's feature owns and holds the strict read to their refusal:
-//
-//	id-table-wire     a repeated field id, and unknown field bodies whose
-//	                  own bytes are damaged or point past the node table
-//	unbounded-arrays  array bodies with L 0 or 1, which carry no count
-//	enum-keyed-arrays an enum-keyed body with L 1, which carries no count
-//	maps              a map body with L 1, which carries no count
-//	variable-class    a node table twice, and a node table an unknown field carries
-//	                  whose record's type ref is 0
-//
-// The ten vectors are exactly luaWireCheckOnly: the walk reads them and
-// only the wire-alone check refuses them, so the negative control below
-// switches that check off in the generated load.lua (the real artifact)
-// and requires every vector of every cell to read again, and no other
-// framing row to move.
+// variable-class share the framing wire-check negative control. The ten
+// rows in luaWireCheckOnly are partitioned by feature below: disabling the
+// check must make each read, while every other manifest verdict stays fixed.
+// The malformed unknown node record remains refused independently of the
+// wire-check and is asserted separately. The legal null pointer reads.
 
 import (
 	"slices"
