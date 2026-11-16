@@ -13,7 +13,7 @@ element in place, a `None` element as the single zero reference.
 from typing import Any
 
 from . import InvalidValue, Refused
-from . import descriptor, kinds
+from . import descriptor, kind_blob, kinds
 # load and save import this module for its registration; binding them as
 # modules (not their names) resolves at call time, so the hot paths pay
 # no per-call import.
@@ -132,6 +132,12 @@ def _write_arm_header(w: Any, arm: ArmDesc, value: Any, ctx: Any) -> None:
         frame = w.begin_frame()
         _write_union_element(w, _union_class(f.target), value, ctx)
         w.finish_frame(frame)
+        return
+    if f.kind == 17 and value is None:
+        w.varint(ctx.idref(arm.arm_id))
+        w.byte(arm.kind)
+        w.varint(1)
+        w.byte(0)
         return
     if f.kind in _LENGTH_KINDS:
         # The arm's field line IS the arm header: the field id is the arm id,
@@ -259,6 +265,13 @@ def _collect_arm_value(value: Any, f: FieldDesc, ctx: Any, blobs: list[int]) -> 
     """Number the nodes an arm's value reaches, as save._collect numbers a
     field's: a pointer's target in pre-order with its own blob slots, a table
     by value in place."""
+    if f.codec in ("string_blob", "bytes_blob"):
+        if value is None:
+            return
+        body = kind_blob._encode(f, value, f.name)
+        blobs.append(len(ctx.order) + 2)
+        ctx.order.append(kind_blob._BlobNode(f.codec == "string_blob", body))
+        return
     if f.codec == "pointer":
         if value is None:
             return
