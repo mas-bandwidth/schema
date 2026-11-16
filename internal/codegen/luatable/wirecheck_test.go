@@ -44,7 +44,7 @@ func withoutWireCheck(t *testing.T, files map[string][]byte) {
 var luaWireCheckOnly = []string{
 	"array_L0_inert", "array_L1_inert", "frame_repeat_last_wins",
 	"frame_unknown_id_length", "frame_unknown_id_reference", "keyed_L1_inert",
-	"map_L1_inert", "node_table_twice", "node_unknown_to_fixed_reader",
+	"map_L1_inert", "node_table_twice", "frame_unreferenced_entry",
 	"node_record_bytes_after_terminator",
 }
 

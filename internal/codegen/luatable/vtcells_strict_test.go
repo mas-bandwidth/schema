@@ -39,10 +39,10 @@ var luaVTFramingCells = []struct {
 	vectors []string
 }{
 	{"enum-keyed-arrays", []string{"keyed_L1_inert"}},
-	{"id-table-wire", []string{"frame_repeat_last_wins", "frame_unknown_id_length", "frame_unknown_id_reference"}},
+	{"id-table-wire", []string{"frame_repeat_last_wins", "frame_unknown_id_length", "frame_unknown_id_reference", "frame_unreferenced_entry"}},
 	{"maps", []string{"map_L1_inert"}},
 	{"unbounded-arrays", []string{"array_L0_inert", "array_L1_inert"}},
-	{"variable-class", []string{"node_table_twice", "node_unknown_to_fixed_reader", "node_record_bytes_after_terminator"}},
+	{"variable-class", []string{"node_table_twice", "node_record_bytes_after_terminator"}},
 }
 
 // luaVTFramingPins answers the manifest verdict of every vector the five
@@ -90,6 +90,9 @@ func TestLuaVariableCellsRefuseTheFramingVectors(t *testing.T) {
 	got := luaFramingVerdicts(t, rows, units, nil)
 	// The isolated null-pointer field is lawful after Required removal; its
 	// old orphan-table damage is covered by the separate orphan-cycle gate.
+	if got["node_unknown_to_fixed_reader"] != "refused" {
+		t.Errorf("node_unknown_to_fixed_reader: got %q, want refused", got["node_unknown_to_fixed_reader"])
+	}
 	if got["node_index_null"] != "read" {
 		t.Errorf("node_index_null: lawful explicit null answered %q", got["node_index_null"])
 	}
