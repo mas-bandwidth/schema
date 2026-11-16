@@ -93,6 +93,11 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		}
 		return nil, fmt.Errorf("target %q is not implemented — %s are the live targets", target, englishList(c.Targets()))
 	}
+	if validator, ok := g.(interface{ ValidateOptions(*ir.Unit, Options) error }); ok {
+		if err := validator.ValidateOptions(u, opts); err != nil {
+			return nil, err
+		}
+	}
 	carrier := g.Names()[0]
 	// GO CARRIES THE `timestamp` KIND FIRST (SPEC.md §4.13): every other
 	// target refuses a unit that uses it, here, once, by name — the
