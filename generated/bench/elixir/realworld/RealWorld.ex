@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package realworld — protocol id 0x1922430092518648
+# package realworld — protocol id 0xcc9644116a3dac22
 #
 # The Elixir wire path: byte-granular 32-bit-group packing and 40/56-bit
 # read windows (every intermediate a BEAM small integer), single
@@ -363,7 +363,7 @@ defmodule Realworld.RealWorld do
   sides at the same id speak identical bits; there is no other versioning.
   """
   @spec protocol_id() :: non_neg_integer()
-  def protocol_id, do: 0x1922430092518648
+  def protocol_id, do: 0xCC9644116A3DAC22
 
   @doc """
   The debug/log/tooling name of a PacketMode value, by atom or by wire

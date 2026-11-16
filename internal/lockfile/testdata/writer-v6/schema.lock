@@ -1,0 +1,8 @@
+schema-lock 6
+package lockdemo
+
+fixed table Row layout=0x452916a2d815bc59
+    field a id=0xaf63dc4c8601ec8c kind=13 width=4 default=zero held=Child@0x59ab541e7697f868
+
+type Child layout=0x59ab541e7697f868
+    field n id=0xaf63e34c8601f871 kind=4 width=4 default=0 min=0 max=10

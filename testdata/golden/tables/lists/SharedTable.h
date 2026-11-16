@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package listdemo — protocol id 0x6f357df726f08bc5 (packets only: tables version by field id, not by protocol id)
+// package listdemo — protocol id 0x63cf59843d9eb62f (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2466,14 +2466,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x95,
-    0x50,
-    0x7c,
-    0xe7,
-    0xf8,
-    0x5d,
-    0xec,
-    0x86,
+    0x7f,
+    0x27,
+    0x9f,
+    0xf1,
+    0xe4,
+    0xea,
+    0x8e,
+    0xcb,
     0x02,
     0x0e,
     0x90,
@@ -10646,7 +10646,7 @@ namespace listdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x86ec5df8e77c5095ull;
+static const uint64_t BuildVersion = 0xcb8eeae4f19f277full;
 
 } // namespace listdemo
 
@@ -12115,7 +12115,7 @@ inline void PhotoFixedWriteBody( uint8_t * b, const Photo & value )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t PhotoFixedBodyBytes = 8;
 constexpr int64_t PhotoFixedRecordBytes = 8 + PhotoFixedBodyBytes; // the hash and the body
-constexpr uint64_t PhotoFixedHash = 0x80b2a2152ea36570ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t PhotoFixedHash = 0xab3a62db5282aaefull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 3 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -12181,9 +12181,10 @@ constexpr int32_t PhotoFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t PhotoFixedLineage[] = {
-    0x80b2a2152ea36570ull, // identity
+    0x80b2a2152ea36570ull, // lock
+    0xab3a62db5282aaefull, // identity
 };
-constexpr int32_t PhotoFixedLineageCount = 1;
+constexpr int32_t PhotoFixedLineageCount = 2;
 constexpr int32_t PhotoFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t PhotoFixedFloorLive = PhotoFixedFloor;
@@ -12196,14 +12197,22 @@ constexpr uint8_t PhotoFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x22, 0x72, 0x34, 0x7d, 0xf6, 0x0b, 0x72, 0x17, 0x08, 0x04,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t PhotoFixedKnown1Layout[] = {
+    0x03, 0x00, 0x00, 0x00, 0xc3, 0x64, 0x89, 0x50, 0xd2, 0x8d, 0xa7, 0xf1, 0x0d, 0x08, 0x00, 0x00,
+    0x00, 0x02, 0x00, 0x00, 0x00, 0xbf, 0xe9, 0xd1, 0x2f, 0x93, 0xcd, 0xda, 0xdb, 0x08, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x22, 0x72, 0x34, 0x7d, 0xf6, 0x0b, 0x72, 0x17, 0x08, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout PhotoFixedKnown[] = {
-    { 0x80b2a2152ea36570ull, PhotoFixedKnown0Layout, 55, 16 }, // identity
+    { 0x80b2a2152ea36570ull, PhotoFixedKnown0Layout, 55, 16 }, // lock
+    { 0xab3a62db5282aaefull, PhotoFixedKnown1Layout, 55, 16 }, // identity
 };
 
 constexpr const TableFixedKnownRange * PhotoFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t PhotoFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t PhotoFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —

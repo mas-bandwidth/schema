@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package benchtable — protocol id 0x0926221bcb6f475f — the Luau block form (docs/PORT-LUAU.md)
+-- package benchtable — protocol id 0x4c9383ebe3cde248 — the Luau block form (docs/PORT-LUAU.md)
 
 local _Rt = require("./schema_runtime")
 
@@ -13,7 +13,7 @@ local _B = {}
 -- the projection, prologue included, and each out-of-line array's row.
 _B.TableEntityBlock = table.freeze({
 	name = "TableEntity",
-	buildVersion = 0xd15cf2df295a7569i,
+	buildVersion = 0x9859b8059782ac26i,
 	size = 88,
 	align = 8,
 	fields = {
@@ -38,7 +38,7 @@ _B.TableEntityBlock = table.freeze({
 -- the projection, prologue included, and each out-of-line array's row.
 _B.TableStatBlock = table.freeze({
 	name = "TableStat",
-	buildVersion = 0xd15cf2df295a7569i,
+	buildVersion = 0x9859b8059782ac26i,
 	size = 32,
 	align = 8,
 	fields = {

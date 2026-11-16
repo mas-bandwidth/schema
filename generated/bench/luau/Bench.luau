@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package bench — protocol id 0xc93127c82f083edf — the Luau type surface (docs/PORT-LUAU.md)
+-- package bench — protocol id 0xc52a41defad6ebb0 — the Luau type surface (docs/PORT-LUAU.md)
 
 local _Rt = require("./schema_runtime")
 
@@ -11,7 +11,7 @@ local _M = {}
 
 -- The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 -- sides at the same id speak identical bits; there is no other versioning.
-_M.ProtocolId = 0xc93127c82f083edfi
+_M.ProtocolId = 0xc52a41defad6ebb0i
 
 -- type BenchPacket
 export type BenchPacket = {

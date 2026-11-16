@@ -1750,20 +1750,20 @@ Now the promise from Part 1 comes due. Look at the id, then add one arm to
 
 ```
 $ schema id .
-0xc08f66a810e84fcd
+0xf582c91be9c0c274
 $ # add:  railgun LaserFire  to union WeaponFire, then schema fmt .
 $ schema id .
-0x92191b984bf56ee5
+0xe99358962c201f10
 ```
 
-Take the arm back out and the id returns to `0xc08f66a810e84fcd`, because the
+Take the arm back out and the id returns to `0xf582c91be9c0c274`, because the
 id is a pure function of the unit's text. `schema projection` prints the exact
 text that gets hashed:
 
 ```
 $ schema projection .
 schema-wire-projection 3
-schema-wire-law 2
+schema-wire-law 3
 package starlight
 enum ShipType max=3 storage=8 variants=3
   variant 1 name=Fighter
@@ -1896,13 +1896,13 @@ Part 12, so ignore it until then. The table header is includable from any
 translation unit and depends on nothing but the C standard headers:
 
 ```cpp
-// package starlight — protocol id 0xc08f66a810e84fcd (packets only: tables version by field id, not by protocol id)
+// package starlight — protocol id 0xf582c91be9c0c274 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 ```
 
 Note that banner. Adding a whole table to the unit did **not** move the
-protocol id: it is still `0xc08f66a810e84fcd`, the number Part 5 printed. The
+protocol id: it is still `0xf582c91be9c0c274`, the number Part 5 printed. The
 id covers what the packet wire reaches, and a table is not on it.
 
 The storage struct lives in the table header, and it looks exactly like a
@@ -4112,7 +4112,7 @@ $ schema check .
 $ echo $?
 0
 $ schema id .
-0xc08f66a810e84fcd
+0xf582c91be9c0c274
 $ schema build-version .
 0x779449d8f015c68c
 $ ./cook Game.cook
@@ -4848,7 +4848,7 @@ func main() {
 ```
 $ go build -o docsgen . && ./docsgen
 [c cpp cs dart docs elixir go java js rust]
-package starlight, protocol id 0xc08f66a810e84fcd
+package starlight, protocol id 0xf582c91be9c0c274
 ## ChatLine — 990 bits max
 ## Contact — 34 bits max
 ## FireCommand — 41 bits max

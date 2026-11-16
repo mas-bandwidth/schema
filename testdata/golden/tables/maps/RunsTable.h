@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package mapdemo — protocol id 0x1ac124decde5b2aa (packets only: tables version by field id, not by protocol id)
+// package mapdemo — protocol id 0x45d9d3ccd4c2f4b9 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2467,14 +2467,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
+    0xb2,
+    0x8b,
+    0xdb,
     0xa1,
-    0x8a,
-    0x4b,
-    0x32,
-    0x79,
-    0xc3,
-    0x52,
-    0xe6,
+    0x38,
+    0x9c,
+    0xf9,
+    0xaa,
     0x02,
     0x0e,
     0xd3,
@@ -10851,7 +10851,7 @@ namespace mapdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xe652c379324b8aa1ull;
+static const uint64_t BuildVersion = 0xaaf99c38a1db8bb2ull;
 
 } // namespace mapdemo
 
