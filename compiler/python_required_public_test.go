@@ -13,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
+func init() { nonGoCarriers["python"] = append(nonGoCarriers["python"], carryRequired) }
+
 // Each case crosses the public driver, Go's writer/reader, both pinned Python
 // runtimes and strict mypy. An old plain writer supplies a genuinely absent
 // field; the new required writer supplies its declared default.
