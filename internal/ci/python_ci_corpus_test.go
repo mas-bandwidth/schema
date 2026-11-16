@@ -95,7 +95,14 @@ func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixed, packages := 0, 0
+	retain := map[string]bool{"python-retain": false, "python-retain-negative-control": false}
 	for _, row := range rows {
+		if _, ok := retain[row.Target]; ok {
+			if !row.Corpus {
+				t.Errorf("retention row has no reference corpus: %+v", row)
+			}
+			retain[row.Target] = true
+		}
 		if strings.HasPrefix(row.Target, "python-fixed-") || strings.Contains(row.Package, "/pythontable") {
 			if !row.Corpus {
 				t.Errorf("fixed row has no reference corpus: %+v", row)
@@ -105,6 +112,11 @@ func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 			} else {
 				packages++
 			}
+		}
+	}
+	for target, found := range retain {
+		if !found {
+			t.Errorf("missing retention support row %s", target)
 		}
 	}
 	if fixed < 19 || packages == 0 {
