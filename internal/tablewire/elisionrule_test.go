@@ -337,7 +337,7 @@ func TestMessageReadAllowsSubstitutedDefaults(t *testing.T) {
 		{"deprecated variant", "Idle, Run | deprecated, Fly", "Run", true},
 	} {
 		writer := covModel(t, "package evolution\nenum Mode {Idle, Run, Fly}\nfixed table Root {tick uint8\nf Mode}\n")
-		reader := covModel(t, "package evolution\nenum Mode {"+tc.variants+"}\nfixed table Root {tick uint8\nf Mode}\n")
+		reader := covModel(t, "package evolution\nenum Mode {\n"+strings.ReplaceAll(tc.variants, ", ", "\n")+"\n}\nfixed table Root {tick uint8\nf Mode}\n")
 		wire, err := EncodeMessage(writer, covPlace(t, writer, "Root", `{"tick":1,"f":"`+tc.value+`"}`))
 		if err != nil {
 			t.Fatal(err)
