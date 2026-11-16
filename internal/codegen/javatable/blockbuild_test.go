@@ -423,9 +423,9 @@ func cookGoldenUnit(t *testing.T, m cookManifest, u cookWriteUnit) {
 	}
 }
 
-// cookRefusal pins §7.6's refusal by NAME: a value the cook cannot hold
-// measures -1, cookMeasureReason answers "invalid_value", and cookFrom refuses
-// in both orders without writing a byte. The value is graph_tree's Scene with
+// cookRefusal pins Java's §5.1 debug writer contract: an invalid count
+// asserts under -ea in measure, measureReason and cookFrom in both orders,
+// leaving caller output untouched. The value is graph_tree's Scene with
 // one Layer past the declared bound of `layers [..MaxLayers]Layer`.
 func cookRefusal(t *testing.T, m cookManifest, planted bool) {
 	slowtest.Gate(t, "an external toolchain")
