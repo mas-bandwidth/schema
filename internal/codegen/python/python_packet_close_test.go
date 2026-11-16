@@ -2,6 +2,7 @@ package python
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -297,9 +298,7 @@ func packetDefaultsProbe(t *testing.T, fault bool) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for name, data := range additional {
-			files[name] = data
-		}
+		maps.Copy(files, additional)
 	}
 	if fault {
 		name := u.Package + "/Defaults.py"

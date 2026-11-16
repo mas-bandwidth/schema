@@ -162,7 +162,7 @@ func TestPythonTableRuntimeNamesAreClaimed(t *testing.T) {
 		if !strings.HasSuffix(rel, ".py") {
 			continue
 		}
-		for _, line := range strings.Split(string(data), "\n") {
+		for line := range strings.SplitSeq(string(data), "\n") {
 			if line == "" || line[0] == ' ' || line[0] == '\t' || line[0] == '#' {
 				continue
 			}
