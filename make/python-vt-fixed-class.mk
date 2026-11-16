@@ -12,4 +12,8 @@ test-python: python-vt-fixed-class-negative-control
 
 .PHONY: python-vt-fixed-class-negative-control
 python-vt-fixed-class-negative-control: python-toolchain-check deps-go
+<<<<<<< HEAD
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonVtFixedClass(Elision)?NegativeControl' ./internal/codegen/pythontable/
+=======
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtFixedClass((Elision|BuildVersionImports)?NegativeControl|ValueModuleCollision)$$' ./internal/codegen/pythontable/
+>>>>>>> b211ab8d446b0928cf37acb3ad30dfb74b85ddf7

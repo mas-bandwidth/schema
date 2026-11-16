@@ -131,7 +131,11 @@ func TestPythonTableCarrySetIsRegisteredByItsLayers(t *testing.T) {
 // compiler/carries_python_unbounded.go); the optional map is still refused.
 func TestPythonTablesHonorCarriedConstructs(t *testing.T) {
 	t.Parallel()
+<<<<<<< HEAD
 	for _, field := range []string{"?map[uint32]int32"} {
+=======
+	for _, field := range []string{"[]float32"} {
+>>>>>>> b211ab8d446b0928cf37acb3ad30dfb74b85ddf7
 		u := unitFromSource(t, "package probe\ntable Root {\n values "+field+"\n}\n")
 		_, err := New().Generate(u, "python", Options{})
 		if err == nil {

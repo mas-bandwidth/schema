@@ -12,6 +12,10 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+<<<<<<< HEAD
+=======
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+>>>>>>> b211ab8d446b0928cf37acb3ad30dfb74b85ddf7
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -280,6 +284,10 @@ func TestPythonVtFixedClassBuildVersion(t *testing.T) {
 		files, err := Generate(u)
 		if err != nil {
 			refused++
+<<<<<<< HEAD
+=======
+			t.Errorf("unit %s refused: %v", unit.key, err)
+>>>>>>> b211ab8d446b0928cf37acb3ad30dfb74b85ddf7
 			continue
 		}
 		init := string(files[filepath.ToSlash(filepath.Join(u.Package, "__init__.py"))])
@@ -362,3 +370,74 @@ func loadManifestUnit(repo string, paths []string) (*ir.Unit, error) {
 	}
 	return u, nil
 }
+<<<<<<< HEAD
+=======
+
+// TestPythonVtFixedClassBuildVersionImports checks the exported version after
+// importing every generated table corpus package under both interpreter pins.
+func TestPythonVtFixedClassBuildVersionImports(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Python interpreters and strict analyzer")
+	repo, err := pyrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	units, err := readManifestUnits(filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
+	if err != nil || len(units) == 0 {
+		t.Fatalf("table corpus manifest: %v (%d units)", err, len(units))
+	}
+	for _, unit := range units {
+		t.Run(unit.key, func(t *testing.T) {
+			t.Parallel()
+			u, err := loadManifestUnit(repo, unit.paths)
+			if err != nil {
+				t.Fatal(err)
+			}
+			files, err := Generate(u)
+			if err != nil {
+				t.Fatalf("corpus unit refused: %v", err)
+			}
+			dir := t.TempDir()
+			writeTree(t, dir, files)
+			if out, err := pyrun.Analyze(t, dir, u.Package); err != nil {
+				t.Errorf("strict analyzer: %v\n%s", err, out)
+			}
+			probe := vtFixedClassBuildVersionProbe(u.Package, ir.BuildVersion(u))
+			for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+				out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + probe)})
+				if err != nil || strings.TrimSpace(string(out)) != "build-version" {
+					t.Fatalf("imported build version: %v\n%s\n%s", err, out, stderr)
+				}
+			}
+		})
+	}
+}
+
+func vtFixedClassBuildVersionProbe(pkg string, expected uint64) string {
+	return fmt.Sprintf("import importlib\nm = importlib.import_module(%q)\nif m.BUILD_VERSION != %d:\n    raise AssertionError('build_version_control')\nprint('build-version')\n", pkg, expected)
+}
+
+// TestPythonVtFixedClassBuildVersionImportsNegativeControl moves the emitted
+// package version in a copy and requires the import check to detect it.
+func TestPythonVtFixedClassBuildVersionImportsNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Python interpreters")
+	u, files := vtFixedClassFiles(t)
+	name := filepath.ToSlash(filepath.Join(u.Package, "__init__.py"))
+	before := string(files[name])
+	anchor := fmt.Sprintf("BUILD_VERSION: Final = 0x%016x", ir.BuildVersion(u))
+	if strings.Count(before, anchor) != 1 {
+		t.Fatal("build-version control anchor changed")
+	}
+	files[name] = []byte(strings.Replace(before, anchor, anchor+" ^ 1", 1))
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		probe := vtFixedClassBuildVersionProbe(u.Package, ir.BuildVersion(u))
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + probe)})
+		if err == nil || !strings.Contains(stderr, "build_version_control") {
+			t.Fatalf("build-version control did not go red by name: %v\n%s", err, stderr)
+		}
+	}
+}
+>>>>>>> b211ab8d446b0928cf37acb3ad30dfb74b85ddf7
