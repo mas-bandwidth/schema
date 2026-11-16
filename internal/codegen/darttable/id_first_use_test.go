@@ -136,6 +136,7 @@ func TestDartWireIdFirstUseCountLimit(t *testing.T) {
 	u := unitFrom(t, `package probe
 table Root { values []int32 }`)
 	wire := formOneWire([]byte{1, 14, 6, 4, 0x80, 0x80, 0x80, 0x80, 8, 0}, []uint64{ir.TableWireId("values")})
+	voidWire := formOneWire([]byte{1, 14, 6, 32, 0xff, 0xff, 0xff, 0xff, 7, 0}, []uint64{ir.TableWireId("values")})
 	m := tabletext.NewModel(u)
 	var report tabletext.Report
 	_, err := tablewire.DecodeVariable(m, m.New(u.Tables["Root"]), wire, &report)
@@ -150,7 +151,7 @@ table Root { values []int32 }`)
 	maps.Copy(files, packetFiles(t, u))
 	dir := t.TempDir()
 	writeFiles(t, dir, files)
-	script := fmt.Sprintf(dartClosurePrelude+`final b=bytes(%q);final scan=w.TableWireReader(b,b.length);check(!scan.wireIdOrderBad(),'census must defer count');final r=w.TableWireReport();w.rootWireLoad(b,r);check(r.refused && r.reason=='count_over_extent_cap','count refusal: ${r.reason}');final rr=w.TableWireReport();final store=w.TableRetain(4096,List<int>.filled(512,0));w.rootWireLoadRetain(b,store,rr);check(rr.refused && rr.reason=='count_over_extent_cap','retain count refusal: ${rr.reason}');}`+"\n", hex.EncodeToString(wire))
+	script := fmt.Sprintf(dartClosurePrelude+`final b=bytes(%q);final scan=w.TableWireReader(b,b.length);check(!scan.wireIdOrderBad(),'census must defer count');final z=bytes(%q);check(!w.TableWireReader(z,z.length).wireIdOrderBad(),'census must defer invalid zero-width kind');final r=w.TableWireReport();w.rootWireLoad(b,r);check(r.refused && r.reason=='count_over_extent_cap','count refusal: ${r.reason}');final rr=w.TableWireReport();final store=w.TableRetain(4096,List<int>.filled(512,0));w.rootWireLoadRetain(b,store,rr);check(rr.refused && rr.reason=='count_over_extent_cap','retain count refusal: ${rr.reason}');}`+"\n", hex.EncodeToString(wire), hex.EncodeToString(voidWire))
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(script), 0600); err != nil {
 		t.Fatal(err)
 	}
