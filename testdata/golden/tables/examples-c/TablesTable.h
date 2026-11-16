@@ -4775,6 +4775,7 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip_body(tabledemo_table_messa
  int64_t ref;
   if(!tabledemo_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
+  if(entry->id>=UINT64_C(0xfffffffffffffffd))return 0;
   /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
      reference is bounded where the file form bounds it, so the bitset fits. */
   ref=entry-r->vocabulary->entries+1;
@@ -4811,7 +4812,7 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip(tabledemo_table_message_re
  /* a node reference: no fixed body holds one */
  case 15:
   if(!tabledemo_table_message_ref(r,&entry,0))return 0;
-  return entry==NULL || (entry->kind!=0 && tabledemo_table_message_skip_deeper(r,entry));
+  return entry==NULL || (entry->id<UINT64_C(0xfffffffffffffffd) && entry->kind!=0 && tabledemo_table_message_skip_deeper(r,entry));
  case 12:
   /* A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its length
      is inside the announced bound and its bytes are well-formed UTF-8 with no
@@ -6002,7 +6003,10 @@ static SCHEMA_UNUSED int schema_tabledemo_effect_wire_load_( tabledemo_table_rea
             value->type = TABLEDEMO_EFFECT_TYPE_DEBUFF;
             break;
         }
-        default: r->report->unknown++; break;
+        default:
+            r->report->unknown++;
+            if ( !tabledemo_table_skip_framed( arm, kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), kind == 13 || kind == 14 || kind == 15 || kind == 16 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            break;
     }
     return 1;
 }
@@ -6367,11 +6371,18 @@ static SCHEMA_UNUSED int64_t tabledemo_weapon_config_save_messages(const tablede
 }
 static SCHEMA_UNUSED int tabledemo_weapon_config_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_weapon_config_t * value)
 {
+ uint8_t seen[512];
  tabledemo_weapon_config_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x7f6308be8ab37fc0): {
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,10)){r->report->widened++;
@@ -7294,11 +7305,18 @@ static SCHEMA_UNUSED int64_t tabledemo_loadout_config_save_messages(const tabled
 }
 static SCHEMA_UNUSED int tabledemo_loadout_config_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_loadout_config_t * value)
 {
+ uint8_t seen[512];
  tabledemo_loadout_config_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x32a89b2977c48ad4): {
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
@@ -8355,11 +8373,18 @@ static SCHEMA_UNUSED int64_t tabledemo_profile_config_save_messages(const tabled
 }
 static SCHEMA_UNUSED int tabledemo_profile_config_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_profile_config_t * value)
 {
+ uint8_t seen[512];
  tabledemo_profile_config_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xc4bcadba8e631b86): {
  if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,12)){r->report->widened++;
@@ -9068,11 +9093,18 @@ static SCHEMA_UNUSED int64_t tabledemo_root_config_save_messages(const tabledemo
 }
 static SCHEMA_UNUSED int tabledemo_root_config_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_root_config_t * value)
 {
+ uint8_t seen[512];
  tabledemo_root_config_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x8a67c9728746d394): {
  if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,12)){r->report->widened++;
@@ -9415,11 +9447,18 @@ static SCHEMA_UNUSED int64_t tabledemo_attachment_save_messages(const tabledemo_
 }
 static SCHEMA_UNUSED int tabledemo_attachment_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_attachment_t * value)
 {
+ uint8_t seen[512];
  tabledemo_attachment_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x6a771618f6fe31d1): {
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,4)){r->report->widened++;
@@ -9666,11 +9705,18 @@ static SCHEMA_UNUSED int64_t tabledemo_buff_save_messages(const tabledemo_buff_t
 }
 static SCHEMA_UNUSED int tabledemo_buff_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_buff_t * value)
 {
+ uint8_t seen[512];
  tabledemo_buff_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x9adc623a805c87c6): {
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,10)){r->report->widened++;
@@ -9932,11 +9978,18 @@ static SCHEMA_UNUSED int64_t tabledemo_debuff_save_messages(const tabledemo_debu
 }
 static SCHEMA_UNUSED int tabledemo_debuff_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_debuff_t * value)
 {
+ uint8_t seen[512];
  tabledemo_debuff_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x8113fe7ea2b16969): {
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,4)){r->report->widened++;
@@ -13050,9 +13103,13 @@ static SCHEMA_UNUSED int schema_tabledemo_effect_wire_load__retain( tabledemo_ta
             value->type = TABLEDEMO_EFFECT_TYPE_DEBUFF;
             break;
         }
-        default: r->report->unknown++;
-        r->report->retain_lost += retention.retain != NULL;
-        break;
+        default:
+            r->report->unknown++;
+            r->report->retain_lost += retention.retain != NULL;
+            if ( !tabledemo_table_skip_framed( arm, kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), kind == 13 || kind == 14 || kind == 15 || kind == 16 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return 0;
+            }
+            break;
     }
     return 1;
 }
