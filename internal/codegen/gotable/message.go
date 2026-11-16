@@ -65,7 +65,7 @@ type TableBitReader struct { Buffer []byte; Offset int64 }
 type TableMessageShape struct { Kind, Packing uint8; Bits int64; Base [2]uint64; Min,Max int64; QMin,QDelta float32; QCount uint32 }
 // An entry also keeps, in the caller's storage, the first slot announcing its
 // id and when and at which nesting levels a body read last named it.
-type TableMessageEntry struct { Id uint64; Shape,Element TableMessageShape; bodyFirst,bodySeenAt,bodySeenBelow uint64 }
+type TableMessageEntry struct { Id uint64; Shape,Element TableMessageShape; bodyFirst,bodySeenAt uint64; bodySeenBelow [2]uint64 }
 // Storage belongs to the caller and is resolved once for one connection direction.
 type TableVocabulary struct { Entries []TableMessageEntry; Count,RefBits int64; BuildVersion uint64; Announced,Refused bool; MaxBytes int64; Strict bool; bodyClock uint64 }
 type TableMessageReader struct { Bits TableBitReader; Vocabulary *TableVocabulary; Report TableReport; IndexBits int64 }
@@ -188,13 +188,17 @@ func (v *TableVocabulary) Init(storage []TableMessageEntry){*v=TableVocabulary{E
 // clock and keeps it in starts[depth], an array the generated read declares
 // at the unit's deepest nesting. An entry keeps the tick of its last naming
 // (above seven bits holding that body's level) and a bit for each shallower
-// level whose body had named it: a level's mark still stands when that level's
-// open body began at or before the last naming, and the levels whose bodies
-// were opened since are dropped as the entry is named again. Two slots
-// announcing one id are one entry, the first.
+// level whose body had named it, in two words so every level up to the binary
+// bound has one: a level's mark still stands when that level's open body began
+// at or before the last naming, and the levels whose bodies were opened since
+// are dropped as the entry is named again. Two slots announcing one id are one
+// entry, the first.
 func tableMessageSeenOpen(v *TableVocabulary,starts []uint64,depth int){v.bodyClock++;starts[depth]=v.bodyClock}
 func tableMessageSeenFirst(v *TableVocabulary){for i := range v.Count {for j := range i {if v.Entries[j].ID==v.Entries[i].ID{v.Entries[i].bodyFirst=uint64(j+1);break}}}}
-func tableMessageSeenRepeat(v *TableVocabulary,starts []uint64,depth int,ref uint64)bool{e:=&v.Entries[ref-1];if e.bodyFirst!=0{e=&v.Entries[e.bodyFirst-1]};at,last,below:=e.bodySeenAt>>7,int(e.bodySeenAt&127),e.bodySeenBelow;if starts[depth]<=at {if last==depth||below>>uint(depth)&1!=0{return true};below&=1<<uint(depth)-1}else{kept,hi:=0,depth;for kept<hi {mid:=(kept+hi)/2;if starts[mid]<=at{kept=mid+1}else{hi=mid}};if last<kept{below|=1<<uint(last)};below&=1<<uint(kept)-1};e.bodySeenBelow=below;e.bodySeenAt=v.bodyClock<<7|uint64(depth);return false}
+func tableMessageSeenBelowAt(b [2]uint64,i int)bool{return b[i>>6]>>uint(i&63)&1!=0}
+func tableMessageSeenBelowSet(b *[2]uint64,i int){b[i>>6]|=1<<uint(i&63)}
+func tableMessageSeenBelowDrop(b *[2]uint64,i int){if i<64 {b[0]&=1<<uint(i)-1;b[1]=0}else if i<128 {b[1]&=1<<uint(i-64)-1}}
+func tableMessageSeenRepeat(v *TableVocabulary,starts []uint64,depth int,ref uint64)bool{e:=&v.Entries[ref-1];if e.bodyFirst!=0{e=&v.Entries[e.bodyFirst-1]};at,last:=e.bodySeenAt>>7,int(e.bodySeenAt&127);if starts[depth]<=at {if last==depth||tableMessageSeenBelowAt(e.bodySeenBelow,depth){return true};tableMessageSeenBelowDrop(&e.bodySeenBelow,depth)}else{kept,hi:=0,depth;for kept<hi {mid:=(kept+hi)/2;if starts[mid]<=at{kept=mid+1}else{hi=mid}};if last<kept{tableMessageSeenBelowSet(&e.bodySeenBelow,last)};tableMessageSeenBelowDrop(&e.bodySeenBelow,kept)};e.bodySeenAt=v.bodyClock<<7|uint64(depth);return false}
 func (v *TableVocabulary) Entry(ref uint64)(TableMessageEntry,bool){if ref==0||ref>uint64(v.Count){return TableMessageEntry{},false};return v.Entries[ref-1],true}
 func (v *TableVocabulary) Name(ref uint64)(uint64,bool){e,ok:=v.Entry(ref);return e.ID,ok&&e.Shape.Kind==0&&e.ID<0xfffffffffffffffd}
 func tableMessageNameSlot(id uint64)uint64 {for i:=range tableMessageEntries {e:=&tableMessageEntries[i];if e.ID==id&&e.Shape.Kind==0{return uint64(i+1)}};return 0}

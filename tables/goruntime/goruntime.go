@@ -659,9 +659,10 @@ type TableMessageShape struct {
 // An entry also keeps, in the caller's storage, the first slot announcing its
 // id and when and at which nesting levels a body read last named it.
 type TableMessageEntry struct {
-	ID                                   uint64
-	Shape, Element                       TableMessageShape
-	bodyFirst, bodySeenAt, bodySeenBelow uint64
+	ID                    uint64
+	Shape, Element        TableMessageShape
+	bodyFirst, bodySeenAt uint64
+	bodySeenBelow         [2]uint64
 }
 
 // Storage belongs to the caller and is resolved once for one connection direction.
@@ -1891,10 +1892,11 @@ func (v *TableVocabulary) Init(storage []TableMessageEntry) {
 // clock and keeps it in starts[depth], an array the generated read declares
 // at the unit's deepest nesting. An entry keeps the tick of its last naming
 // (above seven bits holding that body's level) and a bit for each shallower
-// level whose body had named it: a level's mark still stands when that level's
-// open body began at or before the last naming, and the levels whose bodies
-// were opened since are dropped as the entry is named again. Two slots
-// announcing one id are one entry, the first.
+// level whose body had named it, in two words so every level up to the binary
+// bound has one: a level's mark still stands when that level's open body began
+// at or before the last naming, and the levels whose bodies were opened since
+// are dropped as the entry is named again. Two slots announcing one id are one
+// entry, the first.
 func TableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
 	v.bodyClock++
 	starts[depth] = v.bodyClock
@@ -1911,17 +1913,30 @@ func TableMessageSeenFirst(v *TableVocabulary) {
 	}
 }
 
+func TableMessageSeenBelowAt(b [2]uint64, i int) bool { return b[i>>6]>>uint(i&63)&1 != 0 }
+
+func TableMessageSeenBelowSet(b *[2]uint64, i int) { b[i>>6] |= 1 << uint(i&63) }
+
+func TableMessageSeenBelowDrop(b *[2]uint64, i int) {
+	if i < 64 {
+		b[0] &= 1<<uint(i) - 1
+		b[1] = 0
+	} else if i < 128 {
+		b[1] &= 1<<uint(i-64) - 1
+	}
+}
+
 func TableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
 	e := &v.Entries[ref-1]
 	if e.bodyFirst != 0 {
 		e = &v.Entries[e.bodyFirst-1]
 	}
-	at, last, below := e.bodySeenAt>>7, int(e.bodySeenAt&127), e.bodySeenBelow
+	at, last := e.bodySeenAt>>7, int(e.bodySeenAt&127)
 	if starts[depth] <= at {
-		if last == depth || below>>uint(depth)&1 != 0 {
+		if last == depth || TableMessageSeenBelowAt(e.bodySeenBelow, depth) {
 			return true
 		}
-		below &= 1<<uint(depth) - 1
+		TableMessageSeenBelowDrop(&e.bodySeenBelow, depth)
 	} else {
 		kept, hi := 0, depth
 		for kept < hi {
@@ -1933,11 +1948,10 @@ func TableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref 
 			}
 		}
 		if last < kept {
-			below |= 1 << uint(last)
+			TableMessageSeenBelowSet(&e.bodySeenBelow, last)
 		}
-		below &= 1<<uint(kept) - 1
+		TableMessageSeenBelowDrop(&e.bodySeenBelow, kept)
 	}
-	e.bodySeenBelow = below
 	e.bodySeenAt = v.bodyClock<<7 | uint64(depth)
 	return false
 }
@@ -2304,4 +2318,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x827e12cf06b6321d
+const Version uint64 = 0xa134a7ea2681a3aa

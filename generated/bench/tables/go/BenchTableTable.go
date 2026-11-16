@@ -1901,9 +1901,10 @@ type TableMessageShape struct {
 // An entry also keeps, in the caller's storage, the first slot announcing its
 // id and when and at which nesting levels a body read last named it.
 type TableMessageEntry struct {
-	ID                                   uint64
-	Shape, Element                       TableMessageShape
-	bodyFirst, bodySeenAt, bodySeenBelow uint64
+	ID                    uint64
+	Shape, Element        TableMessageShape
+	bodyFirst, bodySeenAt uint64
+	bodySeenBelow         [2]uint64
 }
 
 // Storage belongs to the caller and is resolved once for one connection direction.
