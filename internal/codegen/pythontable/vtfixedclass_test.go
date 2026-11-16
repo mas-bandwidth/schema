@@ -12,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -362,4 +363,44 @@ func loadManifestUnit(repo string, paths []string) (*ir.Unit, error) {
 		return nil, cerrs[0]
 	}
 	return u, nil
+}
+
+// TestPythonVtFixedClassBuildVersionImports checks the exported version after
+// importing every generated table corpus package under both interpreter pins.
+func TestPythonVtFixedClassBuildVersionImports(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Python interpreters and strict analyzer")
+	repo, err := pyrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	units, err := readManifestUnits(filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
+	if err != nil || len(units) == 0 {
+		t.Fatalf("table corpus manifest: %v (%d units)", err, len(units))
+	}
+	for _, unit := range units {
+		t.Run(unit.key, func(t *testing.T) {
+			t.Parallel()
+			u, err := loadManifestUnit(repo, unit.paths)
+			if err != nil {
+				t.Fatal(err)
+			}
+			files, err := Generate(u)
+			if err != nil {
+				t.Fatalf("corpus unit refused: %v", err)
+			}
+			dir := t.TempDir()
+			writeTree(t, dir, files)
+			if out, err := pyrun.Analyze(t, dir, u.Package); err != nil {
+				t.Errorf("strict analyzer: %v\n%s", err, out)
+			}
+			probe := fmt.Sprintf("import importlib\nm = importlib.import_module(%q)\nassert m.BUILD_VERSION == %d\nprint('build-version')\n", u.Package, ir.BuildVersion(u))
+			for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+				out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + probe)})
+				if err != nil || strings.TrimSpace(string(out)) != "build-version" {
+					t.Fatalf("imported build version: %v\n%s\n%s", err, out, stderr)
+				}
+			}
+		})
+	}
 }
