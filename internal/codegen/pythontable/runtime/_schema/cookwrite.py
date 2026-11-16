@@ -22,7 +22,7 @@ from typing import Any, Final, Iterator, Literal
 
 from . import BlobRef, InvalidValue
 from . import descriptor, kind_blob, kind_map
-from .save import _validate
+from .save import _validate, _validate_fields
 
 MAGIC: Final = 0x4B4F4F434D484353
 HEADER_BYTES: Final = 64
@@ -302,12 +302,20 @@ def _has_extent(desc: Any, seen: set[str]) -> bool:
 def _plan_lists(desc: Any, value: Any, at: int, cursor: list[int], placements: dict[int, int], ignore_guard: bool = False) -> None:
     for fd in desc.fields:
         current = getattr(value, fd.name)
+        if hasattr(fd, "guard_holds"):
+            # A cook writes inline storage even behind a false guard. Validate
+            # that slot without traversing its pointer edges; numbering still
+            # follows only active fields.
+            field = _copy(fd)
+            field.guards = ()
+            one_field: Any = SimpleNamespace(fields=(field,))
+            for _ in _validate_fields(value, one_field, ""):
+                pass
         if not ignore_guard and hasattr(fd, "guard_holds") and not fd.guard_holds(value):
-            if _field_has_extent(fd, set()):
-                trial = [0, cursor[1]]
-                _plan_lists(SimpleNamespace(fields=(fd,)), value, at, trial, {}, True)
-                if trial[0]:
-                    raise InvalidValue(fd.name, "an inactive field holds an extent")
+            trial = [0, cursor[1]]
+            _plan_lists(SimpleNamespace(fields=(fd,)), value, at, trial, {}, True)
+            if trial[0]:
+                raise InvalidValue(fd.name, "an inactive field holds an extent")
             continue
         slot = at + fd.at
         if fd.codec == "string" and len(fd.pieces) == 1:
@@ -408,6 +416,7 @@ def _layout(value: Any) -> tuple[list[_Entry], dict[int, _Entry], int, int]:
             _plan_lists(entry.desc, entry.value, offset, cursor, entry.placements)
             offset = cursor[0]
         else:
+            _plan_lists(entry.desc, entry.value, offset, [0, entry.desc.region_align], {})
             offset += entry.desc.size
     return entries, index, _align_up(offset, align), align
 
