@@ -2654,10 +2654,9 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
 }
 
 // a base64 body six bits at a time (read.go readBase64): the JSON string is
-// decoded first, then standard-alphabet symbols take zero to two trailing '='
-// of the right count. A symbol after padding, a byte outside the alphabet, a
-// length that does not decode or more than two pads is the wrong shape (one
-// kind mismatch); past the bound the excess is oor.
+// decoded first. JSON bytes require padded standard base64 with zero pad bits.
+// A body that cannot decode is damaged; a decodable noncanonical spelling is
+// refused separately. Past the bound the excess is out of range.
 function TableVariableBase64Read(inp, bound, report) {
   const s = inp.str();
   if (s === null) { return null; }
@@ -2677,7 +2676,11 @@ function TableVariableBase64Read(inp, bound, report) {
       bad = true;
     }
   }
-  if (bad) { report.mismatch++; return { bad: true, bytes: new Uint8Array(0) }; }
+  if (bad) { report.reason = "base64_damaged: " + inp.field; inp.bad = true; return null; }
+  let canonical = symbols % 4 === 0;
+  if (pad === 1) { canonical = (TableVariableBase64.indexOf(s[s.length - 2]) & 3) === 0; }
+  if (pad === 2) { canonical = (TableVariableBase64.indexOf(s[s.length - 3]) & 15) === 0; }
+  if (!canonical) { report.reason = "base64_not_canonical: " + inp.field; inp.bad = true; return null; }
   const out = [];
   let acc = 0, held = 0, oor = false;
   for (let i = 0; i < s.length; i++) {
