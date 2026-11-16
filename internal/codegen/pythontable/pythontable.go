@@ -612,7 +612,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("        pass\n")
 	} else {
 		for _, f := range st.Fields {
-			fmt.Fprintf(b, "        self.%s = %s\n", f.Name, defaultExpr(st.Name, f, st.FixedDeclared))
+			fmt.Fprintf(b, "        self.%s = %s\n", f.Name, defaultExprForClass(st.Name, f, st.FixedDeclared))
 		}
 	}
 	emitGraphEqRepr(b, name)
@@ -1141,7 +1141,7 @@ func emitUnion(b *strings.Builder, un *ir.Union) {
 	b.WriteString("        self.type = 0\n")
 	for _, v := range un.Variants {
 		if v.F != nil {
-			fmt.Fprintf(b, "        self.%s = %s\n", v.Name, defaultExpr(un.Name, v.F, false))
+			fmt.Fprintf(b, "        self.%s = %s\n", v.Name, defaultExpr(un.Name, v.F))
 		}
 	}
 	emitGraphEqRepr(b, un.Name)
@@ -1727,7 +1727,11 @@ func pythonType(st *ir.Struct, f *ir.Field) string {
 // defaultExpr is the value a field is born with (docs/PORT-PYTHON.md, THE
 // VALUE MAPPING): a container before its element's kind, so an array is never
 // one element and a map is never a scalar.
-func defaultExpr(owner string, f *ir.Field, fixed bool) string {
+func defaultExpr(owner string, f *ir.Field) string {
+	return defaultExprForClass(owner, f, false)
+}
+
+func defaultExprForClass(owner string, f *ir.Field, fixed bool) string {
 	if f.Array != ir.ArrayNone && f.Type.Pointer && !f.IsMap() && f.KeyEnum == "" && !f.Type.Optional {
 		count := int64(0)
 		switch f.Array {
