@@ -96,9 +96,11 @@ for(const c of cases)for(const retaining of [false,true]){
   if(v!==null){
    if(hex(m.RootSave(v))!==c.Saved)throw new Error(c.Name+" wrong save");
    if(retaining && hex(m.RootSaveRetain(v,store,r))!==c.Saved)throw new Error(c.Name+" wrong retained save");
-   if(c.Name==="distinct_equal"){
+   if(c.Name.startsWith("distinct_")){
     if(typeof v.a!=="string" || typeof v.b!=="string" || v.c===v.d)throw new Error("distinct blob identities collapsed");
     v.d=v.c;
+    const why=m.RootMeasureReason(v);
+    if(!Array.isArray(why)||why[0]!==-1||why[1]!=="blob_shared")throw new Error("shared blob measurement reason "+JSON.stringify(why));
     if(m.RootSave(v)!==null || m.RootToJson(v)!==null)throw new Error("shared blob writer accepted");
     if(retaining && m.RootSaveRetain(v,store,r)!==null)throw new Error("shared blob retained writer accepted");
    }

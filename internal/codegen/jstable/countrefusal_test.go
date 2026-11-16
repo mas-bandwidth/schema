@@ -38,8 +38,8 @@ func TestCountCapRefusesWithoutDamageJavaScript(t *testing.T) {
 		wire := makeWire(count)
 		var report tabletext.Report
 		ok, err := tablewire.Decode(model, model.New(model.Lookup("Root")), wire, &report)
-		var refusal *tablewire.CountRefusal
-		if ok || !errors.As(err, &refusal) || !report.Refused {
+		_, isCount := errors.AsType[*tablewire.CountRefusal](err)
+		if ok || !isCount || !report.Refused {
 			t.Fatalf("engine count %d: ok=%v err=%v report=%+v", count, ok, err, report)
 		}
 		files[fmt.Sprintf("cap%d.bin", i)] = wire
