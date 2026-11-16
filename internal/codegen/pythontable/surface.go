@@ -102,7 +102,7 @@ func ValidateAvailableSurfaces(s Surfaces) error {
 		name    string
 		enabled bool
 	}{
-		{"message", s.Message}, {"textform", s.TextForm},
+		{"message", s.Message},
 	} {
 		if item.enabled {
 			return fmt.Errorf("python does not yet carry the explicitly requested %s surface (docs/SPEC-TABLES.md §8.8)", item.name)

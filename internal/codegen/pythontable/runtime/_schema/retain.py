@@ -12,7 +12,10 @@ from . import Refused
 from .load import Reader, _FIXED_WIDTH
 
 _MAX_DEPTH = 128
-_RESERVED = frozenset((0, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFD))
+# A reserved wire ID cannot be a retained identity, so it encodes a null
+# reference in resolved records without confusing it with the legal ID 0.
+_NULL_ID = 0xFFFFFFFFFFFFFFFF
+_RESERVED = frozenset((_NULL_ID, 0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFD))
 
 
 class _Excluded(Exception):
@@ -55,18 +58,18 @@ class _Sink:
         self.byte(value)
 
 
-def _ref(reader: Reader, sink: _Sink, zero: bool) -> int:
+def _ref(reader: Reader, sink: _Sink, zero: bool) -> bool:
     ref = reader.varint()
     if ref == 0:
         if not zero:
             raise Refused("wire_damaged", "a retained reference is zero")
-        sink.raw(bytes(8))
-        return 0
+        sink.raw(_NULL_ID.to_bytes(8, "little"))
+        return False
     identity = reader.id_at(ref)
     if identity in _RESERVED:
         raise Refused("wire_damaged", "a retained reference names a reserved id")
     sink.raw(identity.to_bytes(8, "little"))
-    return identity
+    return True
 
 
 def _framed(reader: Reader, sink: _Sink, kind: int, depth: int) -> None:
@@ -167,10 +170,10 @@ class _CountSink:
         self.pos += max(1, (value.bit_length() + 6) // 7)
 
 
-def _out_ref(reader: Reader, sink: Any, intern: Any) -> int:
+def _out_ref(reader: Reader, sink: Any, intern: Any) -> bool:
     identity = int.from_bytes(reader.take(8), "little")
-    sink.varint(0 if identity == 0 else intern(identity))
-    return identity
+    sink.varint(0 if identity == _NULL_ID else intern(identity))
+    return identity != _NULL_ID
 
 
 def _out_frame(reader: Reader, sink: Any, kind: int, depth: int, intern: Any, measure: bool) -> None:

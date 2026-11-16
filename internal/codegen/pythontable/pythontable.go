@@ -123,6 +123,9 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]
 		if !surfaces.Fixed && rel == "_schema/fixedform.py" {
 			continue
 		}
+		if (!surfaces.TextForm || !unitHasJSON(u, surfaces)) && (rel == "_schema/textform.py" || rel == "_schema/textform_scan.py") {
+			continue
+		}
 		out[path.Join(u.Package, rel)] = data
 	}
 	// The nameable set is fixed by the schema, not the retained input. It is
@@ -574,6 +577,10 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit, surfaces Surfa
 	if surfaces.Fixed {
 		b.WriteString("from ._schema.fixedform import fixed_load as _s_fixed_load, fixed_save as _s_fixed_save, fixed_measure as _s_fixed_measure\n")
 	}
+	if surfaces.TextForm && unitHasJSON(u, surfaces) {
+		b.WriteString("from ._schema.textform import Document as _s_TextDocument, Limits as _s_TextLimits, read as _s_read_text_form\n")
+	}
+	b.WriteString("from ._schema.text_carrier import decode_text as _s_decode_text, encode_text as _s_encode_text\n")
 	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
 	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _check_id_order, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
@@ -855,6 +862,10 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 		} else {
 			b.WriteString("        return _s_to_json(self)\n\n\n")
 		}
+	}
+	fmt.Fprintf(b, "    @classmethod\n    def load_text(cls, text: str, report: LoadReport | None = None) -> %s:\n        return cls.load(_s_decode_text(text), report)\n\n    def save_text(self) -> str:\n        return _s_encode_text(self.save())\n\n", name)
+	if surfaces.TextForm && surfaceCarries(surfaces, st, "json") {
+		b.WriteString("    @classmethod\n    def from_text_form(cls, text: bytes, *, max_bytes: int = 0, max_tokens: int = 0, max_nodes: int = 0, max_allocation: int = 0, max_depth: int = 0) -> _s_TextDocument:\n        return _s_read_text_form(cls, text, _s_TextLimits(max_bytes, max_tokens, max_nodes, max_allocation, max_depth))\n\n\n")
 	}
 	emitTableDescriptor(b, u, st, false, surfaces)
 	if surfaceCarries(surfaces, st, "cook") && cookScalarOnly(st) {
@@ -1453,6 +1464,9 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 			fmt.Fprintf(b, "        elif field_id == fields[%d].field_id:\n", i)
 		}
 		fmt.Fprintf(b, "            if kind != fields[%d].kind:\n", i)
+		b.WriteString("                from ._schema.kind_array import _widens\n")
+		fmt.Fprintf(b, "                if _widens(kind, fields[%d].kind):\n", i)
+		b.WriteString("                    return load_table(cls, data, report)\n")
 		fmt.Fprintf(b, "                raise Refused(\"kind_mismatch\", f\"{obj.descriptor.name}.{fields[%d].name} rides under kind {kind}, not {fields[%d].kind}\")\n", i, i)
 		fmt.Fprintf(b, "            obj.%s = _s_kinds._REGISTRY[fields[%d].codec].read(reader, fields[%d], ctx)\n", f.Name, i, i)
 	}
