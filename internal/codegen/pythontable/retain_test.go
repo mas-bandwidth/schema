@@ -8,6 +8,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestPythonRetainRoundTrip uses the shared cross-version C++-pinned files.
@@ -647,6 +648,51 @@ print('nested-body')
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire, "expected": expected})
 		if err != nil || strings.TrimSpace(out) != "nested-body" {
 			t.Fatalf("nested body: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
+
+func TestPythonRetainNodeBodyInternal(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+table Child { x int32 }
+table Root { ptr *Child }
+`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	ptr := unionCat(w.ref("ptr"), []byte{17, 2})
+	nodeRef := w.refID(ir.TableNodeWireId)
+	typeRef := w.ref("Child")
+	ghost := unionCat(w.ref("future"), []byte{4}, unionI32(7), []byte{0})
+	record := nodeRecord(typeRef, ghost)
+	payload := unionCat(unionLeb(1), record)
+	nodes := unionCat(nodeRef, []byte{12}, unionLeb(uint64(len(payload))), payload)
+	wire := w.file(ptr, nodes)
+	script := pyrun.ImportPrelude + `from probe import Root, LoadReport
+from probe._schema.retain import TableRetain
+from probe._schema.load import load_table
+from probe._schema.save import _encode_retain, Writer
+with open('wire','rb') as f: wire=f.read()
+keep=TableRetain(bytearray(1024),bytearray(24*8)); report=LoadReport()
+value=load_table(Root,wire,report,keep)
+assert (report.unknown,report.retained,report.retain_lost)==(1,1,0)
+out=bytearray(); size,lost=_encode_retain(value,keep,Writer(out))
+assert out==wire and size==len(wire) and lost==0, (out,wire,lost)
+value.ptr=None
+out=bytearray(); size,lost=_encode_retain(value,keep,Writer(out))
+assert lost==1 and size==len(out) and Root.load(out).ptr is None
+print('node-body')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "node-body" {
+			t.Fatalf("node body: %v\n%s\n%s", err, out, stderr)
 		}
 	}
 }
