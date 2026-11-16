@@ -3315,13 +3315,6 @@
       "python": "pin"
     },
     {
-<<<<<<< HEAD
-      "name": "python-packet-unions",
-      "when": "pull-request",
-      "why": "the union and payload-free-arm control (docs/PORT-PYTHON.md, THE PACKET CORE CUT; test/packet-void/README.md): a copy of the generated writer spends one extra set bit on the payload-free arms, and a copy of the generated reader widens a union's tag range over its unused tags; TestPythonPacketUnionsNegativeControl must go red on the write marker and on the unused-tag read against the Go reference. One SCHEMA_SLOW go test under a pinned interpreter, the cost of the pin cache restore rather than the run.",
-      "targets": [
-        "packet-void-python-negative-control"
-=======
       "name": "python-packet-close",
       "when": "pull-request",
       "why": "The packet golden and strict analyzer controls plant a reader fault and a type error into copies of generated code and require each gate to name its failure.",
@@ -3331,7 +3324,6 @@
         "packet-defaults-python-negative-control",
         "bench-python-negative-control",
         "python-hosted-packet-text-negative-control"
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
       ],
       "python": "pin"
     },
