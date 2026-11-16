@@ -14,11 +14,10 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
-// TestJavaTextInt64DomainBeforeCast holds a signed 64-bit field's text read to
-// the Go reader's verdict and value. A token whose binary64 value is 2^63 or
-// greater is outside int64's range and refuses out_of_range before any cast;
-// the largest double below 2^63 and -2^63 load with the reader's values
-// (docs/SPEC-TABLES.md §16.2).
+// TestJavaTextInt64DomainBeforeCast holds exact integer-string boundaries to
+// the Go reader. Bare numeric spellings, fractions, exponents and strings
+// outside the int64 domain refuse; valid endpoint strings retain their value.
+
 func TestJavaTextInt64DomainBeforeCast(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
@@ -70,8 +69,12 @@ table T
 		{"9223372036854775808e0", true, 0},
 		{"9.223372036854775808e18", true, 0},
 		{"9223372036854775807.0", true, 0},
-		{"9223372036854774784.0", false, 9223372036854774784},
-		{"-9223372036854775808.0", false, -9223372036854775808},
+		{"9223372036854774784.0", true, 0},
+		{"-9223372036854775808.0", true, 0},
+		{`"9223372036854774784"`, false, 9223372036854774784},
+		{`"-9223372036854775808"`, false, -9223372036854775808},
+		{`"9223372036854775807"`, false, 9223372036854775807},
+		{`"9223372036854775808"`, true, 0},
 	}
 
 	var in strings.Builder

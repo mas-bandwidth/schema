@@ -439,7 +439,7 @@ func optionalArraysInputs(t *testing.T, u *ir.Unit) map[string][]byte {
 	}
 	inputs["older.wire"] = optionalEngineWire(t, loadUnit(t, optionalArraysOlder), "Root", `{"whole":[6,7],"total":5}`)
 	inputs["over.wire"] = optionalEngineWire(t, loadUnit(t, optionalArraysOlder), "Root", `{"flags":[true,true,true,true,true],"total":5}`)
-	inputs["foreign.wire"] = optionalEngineWire(t, loadUnit(t, optionalArraysForeign), "Root", `{"whole":[1,2,3],"total":5}`)
+	inputs["foreign.wire"] = optionalEngineWire(t, loadUnit(t, optionalArraysForeign), "Root", `{"whole":["1","2","3"],"total":5}`)
 	present := inputs["present.wire"]
 	inputs["damaged.wire"] = append([]byte(nil), present[:len(present)-3]...)
 	inputs["main.py"] = []byte(pyrun.ImportPrelude + optionalArraysProbe)
