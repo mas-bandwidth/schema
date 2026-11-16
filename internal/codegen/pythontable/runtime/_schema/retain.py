@@ -15,11 +15,11 @@ _MAX_DEPTH = 128
 _RESERVED = frozenset((0, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFD))
 
 
-class Excluded(Exception):
+class _Excluded(Exception):
     """The field contains a node index and cannot be retained."""
 
 
-class Capacity(Exception):
+class _Capacity(Exception):
     """The complete resolved record does not fit the caller's buffer."""
 
 
@@ -33,19 +33,19 @@ class _Sink:
     def raw(self, value: Any) -> None:
         end = self.pos + len(value)
         if end > len(self.data):
-            raise Capacity()
+            raise _Capacity()
         self.data[self.pos:end] = value
         self.pos = end
 
     def byte(self, value: int) -> None:
         if self.pos >= len(self.data):
-            raise Capacity()
+            raise _Capacity()
         self.data[self.pos] = value
         self.pos += 1
 
     def u32(self, value: int) -> None:
         if value > 0xFFFFFFFF:
-            raise Capacity()
+            raise _Capacity()
         self.raw(value.to_bytes(4, "little"))
 
     def varint(self, value: int) -> None:
@@ -95,7 +95,7 @@ def _content(reader: Reader, sink: _Sink, kind: int, depth: int) -> None:
         element = reader.byte()
         count = reader.varint()
         if kind == 14 and element == 17:
-            raise Excluded()
+            raise _Excluded()
         sink.byte(element)
         sink.varint(count)
         for _ in range(count):
@@ -107,7 +107,7 @@ def _content(reader: Reader, sink: _Sink, kind: int, depth: int) -> None:
     elif kind == 15 or kind == 30:
         _payload(reader, sink, kind, depth)
     elif kind == 17:
-        raise Excluded()
+        raise _Excluded()
     else:
         sink.raw(reader.take(reader.end - reader.pos))
 
@@ -117,7 +117,7 @@ def _payload(reader: Reader, sink: _Sink, kind: int, depth: int) -> None:
     if width is not None:
         sink.raw(reader.take(width))
     elif kind == 17:
-        raise Excluded()
+        raise _Excluded()
     elif kind == 30:
         _ref(reader, sink, True)
     elif kind == 15:
@@ -135,10 +135,10 @@ def _payload(reader: Reader, sink: _Sink, kind: int, depth: int) -> None:
         raise Refused("wire_damaged", "a retained payload has an unknown kind")
 
 
-def resolve_payload(kind: int, payload: memoryview, ids: list[int], storage: memoryview, start: int = 0) -> int:
+def _resolve_payload(kind: int, payload: memoryview, ids: list[int], storage: memoryview, start: int = 0) -> int:
     """Resolve one already-validated payload into storage; return its end.
 
-    On Capacity or Excluded, the caller discards everything from start onward.
+    On _Capacity or _Excluded, the caller discards everything from start onward.
     No input length can grow the caller's storage.
     """
     if start < 0 or start > len(storage):
@@ -184,7 +184,7 @@ def _out_frame(reader: Reader, sink: Any, kind: int, depth: int, intern: Any, me
         _out_content(sub, count, kind, depth + 1, intern, True)
         measured = count.pos
         if measured > 0xFFFFFFFF:
-            raise Capacity()
+            raise _Capacity()
         reader.data[length_at:length_at + 4] = measured.to_bytes(4, "little")
         sink.varint(measured)
         sink.pos += measured
@@ -241,7 +241,7 @@ def _out_payload(reader: Reader, sink: Any, kind: int, depth: int, intern: Any, 
         raise Refused("wire_damaged", "a retained record has an unknown kind")
 
 
-def measure_payload(kind: int, resolved: memoryview, intern: Any) -> int:
+def _measure_payload(kind: int, resolved: memoryview, intern: Any) -> int:
     """Intern references and fill each frame's wire length in one post-order pass."""
     reader = Reader(resolved, 0, len(resolved), [])
     sink = _CountSink()
@@ -251,7 +251,7 @@ def measure_payload(kind: int, resolved: memoryview, intern: Any) -> int:
     return sink.pos
 
 
-def emit_payload(kind: int, resolved: memoryview, intern: Any, destination: memoryview, start: int = 0) -> int:
+def _emit_payload(kind: int, resolved: memoryview, intern: Any, destination: memoryview, start: int = 0) -> int:
     """Emit a measured record into caller-provided output; return its end."""
     reader = Reader(resolved, 0, len(resolved), [])
     sink = _Sink(destination, start)
@@ -401,7 +401,7 @@ class TableRetain:
 
     def add_retained_id(self, identity: int, slot: int) -> None:
         if self.id_used >= len(self.ids) // 24:
-            raise Capacity()
+            raise _Capacity()
         node = self.id_used + 1
         at = (node - 1) * 24
         self.ids[at:at + 8] = identity.to_bytes(8, "little")
@@ -482,7 +482,7 @@ class TableRetain:
             length_at = sink.pos
             sink.u32(0)
             body_at = sink.pos
-            end = resolve_payload(kind, payload, ids, memoryview(self.storage), body_at)
+            end = _resolve_payload(kind, payload, ids, memoryview(self.storage), body_at)
             sink.pos = end
             data = sink.data
             leaf = self._leaf(data, start)
@@ -503,7 +503,7 @@ class TableRetain:
                     sink.u32(difference)
                     sink.u32(0)
                     sink.u32(0)
-        except (Capacity, Excluded):
+        except (_Capacity, _Excluded):
             return False
         self._set_word(data, length_at, end - body_at)
         self._set_word(data, start, end - start - 4)
@@ -716,7 +716,7 @@ class TableRetain:
         """Write this body's records, returning the number lost to id capacity."""
         lost = 0
         for identity, kind, payload, record in self.records_at(node, steps):
-            if not emit_record(self, identity, kind, payload, known, ctx, writer):
+            if not _emit_record(self, identity, kind, payload, known, ctx, writer):
                 lost += 1
             self.storage[record + 4] |= 0x80
         return lost
@@ -772,7 +772,7 @@ class TableRetain:
             at = end
 
 
-def capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: list[int] | None = None) -> tuple[int, int]:
+def _capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: list[int] | None = None) -> tuple[int, int]:
     """Capture unknown fields from a file already accepted by the plain reader.
 
     The count pair is (retained, lost). The caller must run the ordinary file
@@ -926,7 +926,7 @@ def capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: lis
     return counts[0], counts[1]
 
 
-def emit_record(retain: TableRetain, identity: int, kind: int, resolved: memoryview, known: frozenset[int] | tuple[int, ...], ctx: Any, writer: Any) -> bool:
+def _emit_record(retain: TableRetain, identity: int, kind: int, resolved: memoryview, known: frozenset[int] | tuple[int, ...], ctx: Any, writer: Any) -> bool:
     """Place one record atomically, or return False when its ids do not fit.
 
     `ctx` is the normal save context. The caller initializes the fixed id
@@ -950,21 +950,21 @@ def emit_record(retain: TableRetain, identity: int, kind: int, resolved: memoryv
             if existing is not None:
                 return int(existing)
             if len(ctx.ids) + retain.id_used >= 4096:
-                raise Capacity()
+                raise _Capacity()
             return int(ctx.idref(value))
         existing = retain.retained_id(value)
         if existing:
             return existing
         if len(ctx.ids) + retain.id_used >= 4096:
-            raise Capacity()
+            raise _Capacity()
         slot = len(ctx.ids) + retain.id_used + 1
         retain.add_retained_id(value, slot)
         return slot
 
     try:
         field_ref = intern(identity)
-        measure_payload(kind, resolved, intern)
-    except Capacity:
+        _measure_payload(kind, resolved, intern)
+    except _Capacity:
         while len(ctx.ids) > previous_ids:
             value = ctx.ids.pop()
             del ctx.refs[value]

@@ -18,6 +18,7 @@ func init() {
 		Name{Name: "Refused", What: "the read refusal every generated package re-exports", Scoped: true},
 		Name{Name: "InvalidValue", What: "the write refusal every generated package re-exports", Scoped: true},
 		Name{Name: "LoadReport", What: "the counters a successful load fills", Scoped: true},
+		Name{Name: "TableRetain", What: "the caller-owned retention buffers"},
 		Name{Name: "FieldDesc", What: "one field's descriptor", Scoped: true},
 		Name{Name: "TableDesc", What: "one table's descriptor", Scoped: true},
 		Name{Name: "ArmDesc", What: "one table-side union arm's descriptor", Scoped: true},

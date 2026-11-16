@@ -122,9 +122,9 @@ def _write_array(w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
     bw = _writer(body)
     bw.byte(elem.kind)
     bw.varint(len(value))
-    from .save import RetainCtx
+    from .save import _RetainCtx
 
-    if isinstance(ctx, RetainCtx) and elem.codec == "table":
+    if isinstance(ctx, _RetainCtx) and elem.codec == "table":
         parent = ctx.steps
         ordinal = ctx.ordinal
         for index, item in enumerate(value):

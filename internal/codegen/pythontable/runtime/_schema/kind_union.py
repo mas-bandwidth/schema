@@ -151,7 +151,7 @@ def _write_union_element(w: Any, un: type[Any], value: Any, ctx: Any) -> None:
         return
     arm = _arm(un, value.type, un.descriptor.name)
     payload = None if arm.field is None else getattr(value, arm.name)
-    if isinstance(ctx, _save.RetainCtx):
+    if isinstance(ctx, _save._RetainCtx):
         parent = ctx.steps
         ctx.steps = parent + ((ctx.ordinal, arm.tag),)
         _write_arm_header(w, arm, payload, ctx)
@@ -307,7 +307,7 @@ class _Union:
             return
         arm = _arm(_union_class(fd.target), value.type, fd.name)
         payload = None if arm.field is None else getattr(value, arm.name)
-        if isinstance(ctx, _save.RetainCtx):
+        if isinstance(ctx, _save._RetainCtx):
             parent = ctx.steps
             ctx.steps = parent + ((ctx.ordinal, arm.tag),)
             _write_arm_header(w, arm, payload, ctx)
@@ -374,7 +374,7 @@ class _UnionArray:
         bw.byte(15)
         bw.varint(len(value))
         un = _union_class(fd.target)
-        if isinstance(ctx, _save.RetainCtx):
+        if isinstance(ctx, _save._RetainCtx):
             parent = ctx.steps
             ordinal = ctx.ordinal
             for index, element in enumerate(value):

@@ -129,7 +129,7 @@ class _Keyed:
         return out
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
-        from .save import RetainCtx, Writer, write_body
+        from .save import _RetainCtx, Writer, write_body
 
         elem = _elem(fd)
         values = value if fd.keyed_list else value._values
@@ -146,7 +146,7 @@ class _Keyed:
             key = ctx.idref(fd.keys[slot])
             element = bytearray()
             if elem.codec == "table":
-                if isinstance(ctx, RetainCtx):
+                if isinstance(ctx, _RetainCtx):
                     parent = ctx.steps
                     ctx.steps = parent + ((fd.ordinal, slot),)
                     write_body(Writer(element), current, ctx, False)

@@ -74,20 +74,20 @@ class Ctx:
         return reference
 
 
-class RetainCtx(Ctx):
+class _RetainCtx(Ctx):
     """Use the caller's id slots without growing the generated id map."""
 
     __slots__ = ("retain", "node", "steps", "lost", "known", "ordinal")
 
     def __init__(self, retain: Any) -> None:
-        from .retain_known import KNOWN
+        from importlib import import_module
 
         super().__init__()
         self.retain = retain
         self.node = 1
         self.steps: tuple[tuple[int, int], ...] = ()
         self.lost = 0
-        self.known = KNOWN
+        self.known = import_module(__package__ + ".retain_known").KNOWN
         self.ordinal = 0
 
     def idref(self, value: int) -> int:
@@ -148,7 +148,7 @@ def _encode_retain(value: Any, retain: Any, writer: Writer) -> tuple[int, int]:
     if retain.loaded_root is not value:
         raise InvalidValue("", "retention belongs to a different loaded root")
     _validate(value, value.descriptor, "", set())
-    ctx = RetainCtx(retain)
+    ctx = _RetainCtx(retain)
     ctx.indices[id(value)] = 1
     ctx.onstack.add(id(value))
     root_blobs: list[int] = []
@@ -165,7 +165,7 @@ def _encode_retain(value: Any, retain: Any, writer: Writer) -> tuple[int, int]:
     return writer.count, ctx.lost + retain.unplaced()
 
 
-def _write_retain_body(writer: Writer, value: Any, ctx: RetainCtx, root: bool) -> None:
+def _write_retain_body(writer: Writer, value: Any, ctx: _RetainCtx, root: bool) -> None:
     desc: TableDesc = value.descriptor
     previous = ctx.current
     parent_steps = ctx.steps
@@ -429,7 +429,7 @@ def _collect_map(field: FieldDesc, value: dict[Any, Any], ctx: Ctx, blobs: list[
 
 
 def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:
-    if isinstance(ctx, RetainCtx):
+    if isinstance(ctx, _RetainCtx):
         _write_retain_body(writer, value, ctx, root)
         return
     desc: TableDesc = value.descriptor

@@ -35,10 +35,19 @@ with open('expected','rb') as f: expected=f.read()
 keep=TableRetain(bytearray(65536), bytearray(24*8192))
 report=LoadReport()
 value=Node.load_retain(data, keep, report)
-assert report.unknown > 0 and report.retained > 0
+assert (report.unknown,report.retained,report.retain_lost)==(11,9,2)
 saved=value.save_retain(keep, report)
-assert saved==expected
+assert saved==expected and report.retain_lost==2
 assert value.measure_retain(keep)==len(saved)
+assert value.save_retain(keep,report)==saved and report.retain_lost==2
+try: value.save_retain(keep,None)
+except ValueError as error: assert 'report' in str(error)
+else: raise AssertionError('missing report was accepted')
+short=TableRetain(bytearray(65536),bytearray()); second=LoadReport()
+other=Node.load_retain(data,short,second)
+assert (second.retained,second.retain_lost)==(9,2)
+size=other.measure_retain(short); dropped=other.save_retain(short,second)
+assert len(dropped)==size and second.retain_lost==11
 print('retain-roundtrip')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
@@ -47,6 +56,9 @@ print('retain-roundtrip')
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "input": input, "expected": want})
 		if err != nil || strings.TrimSpace(out) != "retain-roundtrip" {
 			t.Fatalf("retain roundtrip: %v\n%s\n%s", err, out, stderr)
+		}
+		if output, err := pyrun.Analyze(t, dir, "tblrt1"); err != nil {
+			t.Fatalf("mypy: %v\n%s", err, output)
 		}
 	}
 }
@@ -64,7 +76,7 @@ func TestPythonRetainResolvedPayload(t *testing.T) {
 	if out, err := pyrun.Analyze(t, dir, "probe/_schema"); err != nil {
 		t.Fatalf("mypy: %v\n%s", err, out)
 	}
-	script := pyrun.ImportPrelude + `from probe._schema.retain import resolve_payload, measure_payload, emit_payload, Excluded, Capacity
+	script := pyrun.ImportPrelude + `from probe._schema.retain import _resolve_payload, _measure_payload, _emit_payload, _Excluded, _Capacity
 from probe import Refused, Root
 from probe._schema.retain_known import KNOWN
 assert tuple(sorted(KNOWN))==KNOWN and Root.descriptor.fields[0].field_id in KNOWN
@@ -73,7 +85,7 @@ def u64(v): return v.to_bytes(8,'little')
 def u32(v): return v.to_bytes(4,'little')
 def resolved(kind, payload, cap=128):
     store=bytearray(cap)
-    end=resolve_payload(kind,memoryview(payload),ids,memoryview(store))
+    end=_resolve_payload(kind,memoryview(payload),ids,memoryview(store))
     return bytes(store[:end])
 assert resolved(13,bytes([4,1,30,2,0])) == u32(25)+u32(0)+u64(ids[0])+bytes([30])+u64(ids[1])+u64(0)
 assert resolved(14,bytes([4,30,2,1,2])) == u32(18)+u32(0)+bytes([30,2])+u64(ids[0])+u64(ids[1])
@@ -88,20 +100,20 @@ for kind, payload, want in [
     (15, bytes([1,13,1,0]), bytes([2,13,1,0])),
 ]:
     store=bytearray(128)
-    end=resolve_payload(kind,memoryview(payload),ids,memoryview(store))
+    end=_resolve_payload(kind,memoryview(payload),ids,memoryview(store))
     record=memoryview(store)[:end]
     refs={ids[0]:2,ids[1]:1}
-    size=measure_payload(kind,record,refs.__getitem__)
+    size=_measure_payload(kind,record,refs.__getitem__)
     output=bytearray(size)
-    assert emit_payload(kind,record,refs.__getitem__,memoryview(output)) == size
+    assert _emit_payload(kind,record,refs.__getitem__,memoryview(output)) == size
     assert bytes(output)==want, (kind,bytes(output),want)
 
 for kind,payload in [(17,bytes([0])),(14,bytes([2,17,0])),(13,bytes([4,1,17,0,0]))]:
     try: resolved(kind,payload)
-    except Excluded: pass
+    except _Excluded: pass
     else: raise AssertionError('node index retained')
 try: resolved(13,bytes([4,1,30,2,0]),8)
-except Capacity: pass
+except _Capacity: pass
 else: raise AssertionError('capacity ignored')
 try: resolved(30,bytes([3]))
 except Refused: pass
@@ -118,36 +130,36 @@ small=TableRetain(bytearray(22), bytearray())
 assert not small.capture(1, (), 0xabc, 13, memoryview(bytes([4,1,30,2,0])), ids)
 assert small.used==0 and list(small.records())==[]
 keep.reset(); assert keep.used==0 and keep.id_used==0 and list(keep.records())==[]
-from probe._schema.retain import emit_record
-from probe._schema.save import Ctx, RetainCtx, Writer
+from probe._schema.retain import _emit_record
+from probe._schema.save import Ctx, _RetainCtx, Writer
 keep=TableRetain(bytearray(128), bytearray(24*2))
 assert keep.capture(1, (), 0xabc, 30, memoryview(bytes([1])), ids)
 node,steps,field,kind,payload=next(keep.records())
-ctx=RetainCtx(keep); output=bytearray(); writer=Writer(output)
-assert emit_record(keep,field,kind,payload,frozenset(),ctx,writer)
+ctx=_RetainCtx(keep); output=bytearray(); writer=Writer(output)
+assert _emit_record(keep,field,kind,payload,frozenset(),ctx,writer)
 assert bytes(output)==bytes([1,30,2]) and ctx.ids==[]
 assert keep.id_used==2 and keep.retained_id(0xabc)==1 and keep.retained_id(ids[0])==2
-keep.begin_save(); ctx=RetainCtx(keep); output=bytearray()
-assert emit_record(keep,field,kind,payload,(ids[0],),ctx,Writer(output))
+keep.begin_save(); ctx=_RetainCtx(keep); output=bytearray()
+assert _emit_record(keep,field,kind,payload,(ids[0],),ctx,Writer(output))
 assert ctx.ids==[ids[0]] and keep.retained_id(0xabc)==1 and keep.retained_id(ids[0])==0
 assert bytes(output)==bytes([1,30,2])
 short=TableRetain(bytearray(128), bytearray(24))
 assert short.capture(1, (), 0xabc, 30, memoryview(bytes([1])), ids)
 _,_,field,kind,payload=next(short.records())
-ctx=RetainCtx(short); output=bytearray(); writer=Writer(output)
-assert not emit_record(short,field,kind,payload,frozenset(),ctx,writer)
+ctx=_RetainCtx(short); output=bytearray(); writer=Writer(output)
+assert not _emit_record(short,field,kind,payload,frozenset(),ctx,writer)
 assert ctx.ids==[] and ctx.refs=={} and short.id_used==0 and output==bytearray()
-keep.begin_save(); ctx=RetainCtx(keep)
+keep.begin_save(); ctx=_RetainCtx(keep)
 assert ctx.idref(0x100)==1
 keep.add_retained_id(0xabc,2)
 assert ctx.idref(0x200)==3
 keep.add_retained_id(0xdef,4)
 trailer=bytearray(); ctx.write_ids(Writer(trailer))
 assert trailer==b''.join(v.to_bytes(8,'little') for v in (0x100,0xabc,0x200,0xdef,4))
-bound=TableRetain(bytearray(128), bytearray(24*2)); ctx=RetainCtx(bound)
+bound=TableRetain(bytearray(128), bytearray(24*2)); ctx=_RetainCtx(bound)
 for i in range(4096): ctx.idref(i+1)
 output=bytearray()
-assert not emit_record(bound,0xabc000,4,memoryview(bytes([1,2,3,4])),frozenset(),ctx,Writer(output))
+assert not _emit_record(bound,0xabc000,4,memoryview(bytes([1,2,3,4])),frozenset(),ctx,Writer(output))
 assert bound.id_used==0 and len(ctx.ids)==4096 and not output
 print('resolved')
 `
@@ -169,15 +181,15 @@ func TestPythonRetainResolverNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	const path = "probe/_schema/retain.py"
-	const guard = "        if kind == 14 and element == 17:\n            raise Excluded()\n"
+	const guard = "        if kind == 14 and element == 17:\n            raise _Excluded()\n"
 	if strings.Count(string(files[path]), guard) != 1 {
 		t.Fatal("node exclusion control anchor changed")
 	}
 	files[path] = []byte(strings.Replace(string(files[path]), guard, "", 1))
-	script := pyrun.ImportPrelude + `from probe._schema.retain import resolve_payload, Excluded
+	script := pyrun.ImportPrelude + `from probe._schema.retain import _resolve_payload, _Excluded
 try:
-    resolve_payload(14,memoryview(bytes([2,17,0])),[],memoryview(bytearray(64)))
-except Excluded:
+    _resolve_payload(14,memoryview(bytes([2,17,0])),[],memoryview(bytearray(64)))
+except _Excluded:
     pass
 else:
     raise SystemExit('retain_node_exclusion_control')
@@ -219,7 +231,7 @@ func TestPythonRetainCapture(t *testing.T) {
 		inputs[name] = data
 	}
 	script := pyrun.ImportPrelude + `from tblrt1 import Node, LoadReport
-from tblrt1._schema.retain import TableRetain, capture_file
+from tblrt1._schema.retain import TableRetain, _capture_file
 with open('wire','rb') as f: data=f.read()
 report=LoadReport()
 value=Node.load(data,report)
@@ -230,7 +242,7 @@ loaded_report=LoadReport()
 loaded=load_table(Node,data,loaded_report,keep)
 assert (loaded_report.unknown,loaded_report.retained,loaded_report.retain_lost)==(11,9,2)
 assert keep.loaded_root is loaded and isinstance(keep.directory,list)
-retained,lost=capture_file(Node,memoryview(data),keep)
+retained,lost=_capture_file(Node,memoryview(data),keep)
 assert (retained,lost)==(9,2), (retained,lost)
 assert len(list(keep.records()))==9
 def grouped(retain):
@@ -241,14 +253,14 @@ def grouped(retain):
 with open('expected','rb') as f: saved=f.read()
 Node.load(saved)
 again=TableRetain(bytearray(65536),bytearray(24*8192))
-assert capture_file(Node,memoryview(saved),again)==(9,0)
+assert _capture_file(Node,memoryview(saved),again)==(9,0)
 assert grouped(again)==grouped(keep)
 small=TableRetain(bytearray(), bytearray())
-assert capture_file(Node,memoryview(data),small)==(0,11)
+assert _capture_file(Node,memoryview(data),small)==(0,11)
 for name in ('retain_excluded_0','retain_excluded_1','retain_excluded_2','retain_excluded_3','retain_excluded_4','retain_excluded_5','retain_rt3'):
     with open(name,'rb') as f: sample=f.read()
     Node.load(sample)
-    assert capture_file(Node,memoryview(sample),keep)==(0,1), name
+    assert _capture_file(Node,memoryview(sample),keep)==(0,1), name
 print('captured')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
@@ -390,12 +402,12 @@ func TestPythonRetainTail(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := pyrun.ImportPrelude + `from probe._schema.retain import TableRetain
-from probe._schema.save import Ctx, RetainCtx, Writer
+from probe._schema.save import Ctx, _RetainCtx, Writer
 keep=TableRetain(bytearray(1024),bytearray(24*2))
 assert keep.capture(1,(),0xabc,30,memoryview(bytes([1])),[0x111])
 assert keep.capture(1,((1,0),),0xdef,4,memoryview(bytes([1,2,3,4])),[])
 def perform(output):
-    keep.begin_save(); ctx=RetainCtx(keep); writer=Writer(output)
+    keep.begin_save(); ctx=_RetainCtx(keep); writer=Writer(output)
     lost=keep.write_tail(1,(),frozenset(),ctx,writer)
     lost+=keep.write_tail(1,((1,0),),frozenset(),ctx,writer)
     lost+=keep.unplaced()
@@ -404,7 +416,7 @@ size,lost,ids=perform(None)
 output=bytearray(); actual,again,ids2=perform(output)
 assert size==actual==len(output)==3 and lost==again==1
 assert ids==ids2==[] and bytes(output)==bytes([1,30,2])
-keep.begin_save(); ctx=RetainCtx(keep); writer=Writer(bytearray())
+keep.begin_save(); ctx=_RetainCtx(keep); writer=Writer(bytearray())
 assert keep.write_tail(1,(),frozenset(),ctx,writer)==0 and keep.unplaced()==1
 print('tail')
 `
@@ -435,10 +447,10 @@ func TestPythonRetainTailNegativeControl(t *testing.T) {
 	}
 	files[path] = []byte(strings.Replace(string(files[path]), anchor, "            pass\n", 1))
 	script := pyrun.ImportPrelude + `from probe._schema.retain import TableRetain
-from probe._schema.save import Ctx, RetainCtx, Writer
+from probe._schema.save import Ctx, _RetainCtx, Writer
 keep=TableRetain(bytearray(128),bytearray(24*2))
 assert keep.capture(1,(),0xabc,4,memoryview(bytes([1,2,3,4])),[])
-keep.begin_save(); keep.write_tail(1,(),frozenset(),RetainCtx(keep),Writer(bytearray()))
+keep.begin_save(); keep.write_tail(1,(),frozenset(),_RetainCtx(keep),Writer(bytearray()))
 if keep.unplaced()!=0: raise SystemExit('retain_placement_control')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
@@ -501,12 +513,12 @@ func TestPythonRetainUnionArrayCapture(t *testing.T) {
 	innerPick := w.arm("pick", 15, nestedLeaf)
 	wire := w.file(trail, w.union("inner", innerPick), w.least())
 	script := pyrun.ImportPrelude + `from unions import Root, LoadReport
-from unions._schema.retain import TableRetain, capture_file
+from unions._schema.retain import TableRetain, _capture_file
 with open('wire','rb') as f: wire=f.read()
 report=LoadReport(); Root.load(wire,report)
 assert report.unknown==3, report.unknown
 retain=TableRetain(bytearray(4096),bytearray(240))
-assert capture_file(Root,memoryview(wire),retain)==(2,1)
+assert _capture_file(Root,memoryview(wire),retain)==(2,1)
 trail=Root.descriptor.field('trail'); inner=Root.descriptor.field('inner')
 from unions import Pick, Inner
 arm=next(a for a in Pick.descriptor.arms if a.name=='leaf')
@@ -522,7 +534,7 @@ assert size==len(out) and lost==0
 back=LoadReport(); Root.load(out,back)
 assert back.unknown==2
 again=TableRetain(bytearray(4096),bytearray(240))
-assert capture_file(Root,memoryview(out),again)==(2,0)
+assert _capture_file(Root,memoryview(out),again)==(2,0)
 assert {(node,path,identity,kind,bytes(payload)) for node,path,identity,kind,payload in again.records()}=={(node,path,identity,kind,bytes(payload)) for node,path,identity,kind,payload in rows}
 value.trail[0]=Pick(); value.inner=Inner()
 out=bytearray(); size,lost=_encode_retain(value,retain,Writer(out))
@@ -562,7 +574,7 @@ table Root { grades [2]Grade }
 	}
 	script := pyrun.ImportPrelude + `from probe import Root
 from probe._schema.descriptor import FieldDesc
-from probe._schema.retain import TableRetain, capture_file
+from probe._schema.retain import TableRetain, _capture_file
 with open('wire','rb') as f: wire=f.read()
 # The older base refuses this codec; provide the descriptor the list-kind
 # prerequisite generates so this isolated scan is tested against Go-validated wire.
@@ -570,7 +582,7 @@ field=Root.descriptor.field('grades')
 field.codec='array'
 field.element=FieldDesc('grades',0,30,'enum',variant_ids=field.variant_ids)
 retain=TableRetain(bytearray(4096),bytearray(240))
-assert capture_file(Root,memoryview(wire),retain)==(0,1)
+assert _capture_file(Root,memoryview(wire),retain)==(0,1)
 print('enum-array')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
@@ -845,6 +857,55 @@ print('cross-version-internal')
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "input": input, "expected": want})
 		if err != nil || strings.TrimSpace(out) != "cross-version-internal" {
 			t.Fatalf("cross-version internal: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
+
+func TestPythonRetainNames(t *testing.T) {
+	for _, name := range []string{"load_retain", "measure_retain", "save_retain"} {
+		u := loadUnit(t, "package probe\ntable Root { n int32 }\n")
+		u.Tables["Root"].Fields[0].Name = name
+		if _, err := Generate(u); err == nil || !strings.Contains(err.Error(), name) {
+			t.Fatalf("field %s was not refused by name: %v", name, err)
+		}
+	}
+	u := loadUnit(t, "package probe\ntable Root { n int32 }\n")
+	u.Tables["TableRetain"] = u.Tables["Root"]
+	if _, err := Generate(u); err == nil || !strings.Contains(err.Error(), "TableRetain") {
+		t.Fatalf("runtime name was not refused: %v", err)
+	}
+}
+
+func TestPythonRetainFixedRefusal(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
+	files, err := Generate(loadUnit(t, "package probe\nfixed table Root { n int32 }\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := files["probe/_schema/retain_known.py"]; ok {
+		t.Fatal("fixed-only unit emitted a retention ID inventory")
+	}
+	script := pyrun.ImportPrelude + `from probe import Root, LoadReport
+for name, call in (
+    ('load_retain', lambda: Root.load_retain(b'',object())),
+    ('measure_retain', lambda: Root().measure_retain(object())),
+    ('save_retain', lambda: Root().save_retain(object(),LoadReport())),
+):
+    try: call()
+    except ValueError as error: assert name in str(error), str(error)
+    else: raise AssertionError(name+' accepted')
+print('fixed-refusal')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err != nil || strings.TrimSpace(out) != "fixed-refusal" {
+			t.Fatalf("fixed refusal: %v\n%s\n%s", err, out, stderr)
+		}
+		if output, err := pyrun.Analyze(t, dir, "probe"); err != nil {
+			t.Fatalf("mypy: %v\n%s", err, output)
 		}
 	}
 }

@@ -53,6 +53,19 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := python.CheckNames(u); err != nil {
 		return nil, err
 	}
+	if u.Tables["TableRetain"] != nil || u.Structs["TableRetain"] != nil || u.Unions["TableRetain"] != nil || u.TableUnions["TableRetain"] != nil || u.Enums["TableRetain"] != nil || u.Flags["TableRetain"] != nil || u.Consts["TableRetain"] != nil {
+		return nil, fmt.Errorf("python: TableRetain is the table retention runtime name; rename the declaration")
+	}
+	for _, file := range u.Files {
+		for _, table := range file.Tables {
+			for _, field := range table.Fields {
+				switch field.Name {
+				case "load_retain", "measure_retain", "save_retain":
+					return nil, fmt.Errorf("python: %s.%s is a generated retention method; rename the field", table.Name, field.Name)
+				}
+			}
+		}
+	}
 	if err := refuseUncarriedPacketKinds(u); err != nil {
 		return nil, err
 	}
@@ -446,6 +459,9 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 	if len(imports.Serialize) > 0 {
 		fmt.Fprintf(&b, "from ._schema.serialize import %s\n", strings.Join(imports.Serialize, ", "))
 	}
+	if len(ir.VariableTables(u)) != 0 {
+		b.WriteString("from ._schema.retain import TableRetain\n")
+	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
 	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
@@ -631,7 +647,27 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("        return save_table(self)\n")
 	}
 	b.WriteString("\n    def measure(self) -> int:\n")
-	b.WriteString("        return measure_table(self)\n\n\n")
+	b.WriteString("        return measure_table(self)\n")
+	if ir.VariableTables(u)[st.Name] {
+		b.WriteString("\n    @classmethod\n")
+		b.WriteString("    def load_retain(cls, data: bytes | bytearray | memoryview, retain: TableRetain, report: LoadReport | None = None) -> Self:\n")
+		b.WriteString("        return load_table(cls, data, report, retain)\n")
+		b.WriteString("\n    def measure_retain(self, retain: TableRetain) -> int:\n")
+		b.WriteString("        from ._schema.save import _encode_retain, Writer\n")
+		b.WriteString("        return _encode_retain(self, retain, Writer(None))[0]\n")
+		b.WriteString("\n    def save_retain(self, retain: TableRetain, report: LoadReport) -> bytes:\n")
+		b.WriteString("        from ._schema.save import _encode_retain, Writer\n")
+		b.WriteString("        if report is None:\n            raise InvalidValue(\"report\", \"save_retain requires a report\")\n")
+		b.WriteString("        output = bytearray()\n        _, lost = _encode_retain(self, retain, Writer(output))\n        report.retain_lost += lost\n        return bytes(output)\n\n\n")
+	} else {
+		b.WriteString("\n    @classmethod\n")
+		b.WriteString("    def load_retain(cls, data: bytes | bytearray | memoryview, retain: object, report: LoadReport | None = None) -> Self:\n")
+		b.WriteString("        raise Refused(\"unsupported_kind\", \"load_retain is unavailable for a fixed-class root\")\n")
+		b.WriteString("\n    def measure_retain(self, retain: object) -> int:\n")
+		b.WriteString("        raise InvalidValue(\"measure_retain\", \"a fixed-class root cannot retain unknown fields\")\n")
+		b.WriteString("\n    def save_retain(self, retain: object, report: LoadReport) -> bytes:\n")
+		b.WriteString("        raise InvalidValue(\"save_retain\", \"a fixed-class root cannot retain unknown fields\")\n\n\n")
+	}
 	emitTableDescriptor(b, u, st, false)
 	if scalarOnly(st) {
 		emitStraightLine(b, st)
@@ -1093,6 +1129,10 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 	b.WriteString("from typing import Final\n\n")
 	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
 	names := []string{"BUILD_VERSION", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
+	if len(ir.VariableTables(u)) != 0 {
+		b.WriteString("from ._schema.retain import TableRetain\n")
+		names = append(names, "TableRetain")
+	}
 	for _, plan := range plans {
 		// A class or union in this module already occupies the public name.
 		// Its import below loads the module and preserves the public value.

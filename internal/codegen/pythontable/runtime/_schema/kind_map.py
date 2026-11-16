@@ -121,7 +121,7 @@ class _Map:
         # bytes write_body gives an entry object (its two fields in order, each
         # elided at its default, then the end mark) without building one: the
         # faster of the two shapes measured (docs/PORT-PYTHON.md, Maps bench).
-        from .save import RetainCtx, Writer
+        from .save import _RetainCtx, Writer
 
         key_field, value_field = _entry_fields(fd)
         key_codec = kinds._REGISTRY[key_field.codec]
@@ -140,7 +140,7 @@ class _Map:
             entry_writer = Writer(entry_body)
             if not key_default(key):
                 key_codec.write(entry_writer, key_field, key, ctx)
-            if isinstance(ctx, RetainCtx):
+            if isinstance(ctx, _RetainCtx):
                 parent = ctx.steps
                 previous_ordinal = ctx.ordinal
                 entry_path = parent + ((fd.ordinal, index),)
