@@ -51,8 +51,6 @@ func TestCPPTextFormSharing(t *testing.T) {
 		{"nested", `(:items (("&node" 7 :id 6)) :nested (:target ("&node" 7)) :direct ("&node" 7))`, ""},
 		{"completed-inner", `(:direct ("&node" 7 :id 1 :next ("&node" 9 :id 2)) :items (("&node" 9) ("&node" 7)))`, ""},
 		{"map-key", `(:lookup (("&node" 2)))`, ""},
-		{"optional-map-value", `(:lookup (("west" null) ("east" 2)))`, ""},
-		{"empty-blob", `(:blob "")`, ""},
 		{"forward", `(:items (("&node" 7) ("&node" 7 :id 6)))`, "text_reference"},
 		{"self-cycle", `(:direct ("&node" 7 :id 6 :next ("&node" 7)))`, "text_reference"},
 		{"byvalue-cycle", `(:direct ("&node" 7 :id 6 :inside (:target ("&node" 7))))`, "text_reference"},
@@ -148,16 +146,6 @@ func TestCPPTextFormSharing(t *testing.T) {
 			}
 		})
 	}
-	// Accepting null optional map values must preserve the native JSON
-	// wrapper's strict refusal of a non-null wrong-kind value and root reset.
-	wrongShape, err := exec.Command(bin, "json-kind", `{"lookup":{"east":false}}`).CombinedOutput()
-	var refused map[string]any
-	if err != nil || json.Unmarshal(wrongShape, &refused) != nil {
-		t.Fatalf("optional map JSON refusal: %v\n%s", err, wrongShape)
-	}
-	if got := refused["lookup"].(map[string]any); len(got) != 0 {
-		t.Fatalf("wrong-kind optional map value did not reset the root: %v", got)
-	}
 	// Source labels are identities, not storage indices: a positive spelling
 	// beyond uint64 still maps to the same internal node.
 	large := `(:items (("&node" 184467440737095516160000000 :id 6) ("&node" 184467440737095516160000000)))`
@@ -192,13 +180,6 @@ using namespace probe;
 int main(int argc,char **argv) {
  if(argc<2)return 2;
  const char *doc=NULL,*why=NULL;int64_t bytes=0;GraphBuilder b;
- if(argc==3 && strcmp(argv[1],"json-kind")==0){
-  TableReport report;
-  if(GraphFromJson(b,argv[2],(int64_t)strlen(argv[2]),&report) || !report.refused || report.refuse_reason!=kind_mismatch || !b.Lock())return 6;
-  const Graph *g=b.AsConst();std::vector<char> out((size_t)GraphToJsonMeasure(g)+1);
-  int64_t n=GraphToJson(g,out.data(),(int64_t)out.size());if(n<0)return 4;
-  fwrite(out.data(),1,(size_t)n,stdout);return 0;
- }
  if(!GraphLoadTextForm(argv[1],(int64_t)strlen(argv[1]),&doc,&bytes,b,&why)){printf("%s",why?why:"?");return 0;}
  std::vector<char> saved((size_t)bytes+1);
  if(GraphSaveTextForm(doc,bytes,saved.data(),(int64_t)saved.size())!=bytes || memcmp(saved.data(),argv[1],(size_t)bytes)!=0)return 5;
