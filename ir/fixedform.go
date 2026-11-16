@@ -640,29 +640,30 @@ func appendTableFixedU64(b []byte, v uint64) []byte {
 	return b
 }
 
-// TableFixedLayoutHash is fnv1a64 over the layout's bytes exactly as written,
-// then over a DEFINITIONS DIGEST computed from st (bill §13). The digest is
-// every fact of the versioning law that is not wire shape — each range, each
-// flags bit count, each bits(N), each fixed I and F, each reader-side limit,
-// in closure order. It is computed HERE from the schema: there is no digest
-// argument for a leg to omit. It is recorded in the lock's lineage and NEVER
-// rides the wire: the hash binds it. An empty digest (a table that carries
-// none of those facts) leaves the hash equal to the layout bytes alone.
+// TableFixedLayoutHash computes the current fixed-file identity from a checked
+// writer schema. Every non-nil root uses the prospective v2 definitions digest.
+// A nil schema retains the historical raw-layout operation for compatibility;
+// new raw historical callers should use TableFixedLayoutHashRecorded explicitly.
 func TableFixedLayoutHash(layout []byte, st *Struct) uint64 {
+	return TableFixedLayoutHashRecorded(layout, TableFixedDefinitionsDigest(st))
+}
+
+// TableFixedLayoutHashRecorded hashes the exact recorded layout and digest runs.
+// It never selects an identity epoch or interprets a historical declaration.
+func TableFixedLayoutHashRecorded(layout, digest []byte) uint64 {
 	h := uint64(0xcbf29ce484222325)
-	for _, b := range layout {
-		h ^= uint64(b)
-		h *= 0x100000001b3
-	}
-	for _, b := range TableFixedDefinitionsDigest(st) {
-		h ^= uint64(b)
-		h *= 0x100000001b3
+	for _, run := range [][]byte{layout, digest} {
+		for _, b := range run {
+			h ^= uint64(b)
+			h *= 0x100000001b3
+		}
 	}
 	return h
 }
 
-// TableFixedDefinitionsDigest is the digest [TableFixedLayoutHash] folds in
-// (bill §13): the facts of §2 that are not layout bytes, in closure order.
+// TableFixedDefinitionsDigestLegacy is the frozen legacy-v1 digest. Use it only
+// to validate recorded historical identity, never for a new writer. It preserves
+// the old omissions, including zero for an integer bound outside int64.
 // Layout format is unchanged; the hash moves when a range, a flags bit count,
 // a bits(N), a fixed I/F split, or a reader-side limit does.
 //
@@ -686,7 +687,7 @@ func TableFixedLayoutHash(layout []byte, st *Struct) uint64 {
 //	     union: recurse into each arm's payload, in declared order, once per union name
 //
 // Structs, flags and unions share one seen map keyed by bare name.
-func TableFixedDefinitionsDigest(st *Struct) []byte {
+func TableFixedDefinitionsDigestLegacy(st *Struct) []byte {
 	var b []byte
 	seen := map[string]bool{}
 	tableFixedDigestStruct(st, &b, seen)

@@ -877,6 +877,29 @@ Across releases, the previous-release differential above proves it.
 records the instances, so the history of "a release moved bits" lives where
 the compatibility rules do.
 
+- **Pending announced minor, fixed-file identity v2; WireLaw 3.** Fixed-file
+  definition identities now bind constraints to their wire field/arm paths and
+  preserve full-width integer/fixed bounds and counted minima. Every fixed root
+  receives the new digest prefix, including a root with no constraints. This
+  changes fixed-file header and per-record hashes for unchanged schemas, so
+  `WireLaw` moves from 2 to 3 under the existing rule. Every protocol id and
+  derived build version moves, including packet-only consumers: coordinated
+  peer redeployment and cook-cache invalidation are the deliberate cost. Packet
+  payload encoding itself is unchanged by this amendment. `ProjectionVersion`
+  remains 3, `BuildVersionForm` remains 5, and fixed file form remains 3.
+  This must ship in an announced minor (or an already planned major), never a
+  patch. The newest locally recorded release at preparation was v2.5.0; this
+  note does not assign or publish a release tag. The release operator must
+  verify the then-current tags before choosing the release number.
+  Lock rendering 9 preserves historical entries and adds the new own identity;
+  validated legacy writer snapshots select their recorded digest scheme.
+  Already-colliding historical writer files remain indistinguishable without
+  trusted per-file provenance. Rebuilding both sides of a fixture with the new
+  compiler is not cross-epoch proof: release evidence must also preserve old
+  writer bytes, demonstrate new-reader acceptance of unambiguous retained keys,
+  and old-reader refusal of new keys. Generated ids/fixed-wire pins and the
+  previous-release differential are reviewed with this announcement; a green
+  report that skips moved protocol ids alone does not establish backward reads.
 - **2026-08-15, fixed-point rounding unified: half away from zero.** The
   generated fixed-point narrowing changed from the bare arithmetic shift
   (ties toward +infinity) to the one fixed-point rounding rule, ties away
