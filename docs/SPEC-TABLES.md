@@ -20528,7 +20528,8 @@ flush's pad bits are zero. A value outside its domain refuses the whole batch
 on purpose, but a held bit past the writer's own variant count is outside the
 message domain: the write refuses it rather than drop it (§3.3). The check
 follows the language's write contract (SPEC.md §5.1); the narrower width does
-not authorize masking a caller's value. **THE INTEGRITY TRAILER IS PER BATCH** when the
+not authorize masking a caller's value (docs/rulings.json,
+`message-flags-width-is-caller-error`, Glenn, 2026-11-16). **THE INTEGRITY TRAILER IS PER BATCH** when the
 root declares `integrity` (§2.14): the little-endian CRC-32C of every byte of
 the batch, form byte through the final pad, appended after it. **THE ANNOUNCEMENT IS A
 COMPILE-TIME CONSTANT** (§3.3): a form-`1` file whose body is the build version
