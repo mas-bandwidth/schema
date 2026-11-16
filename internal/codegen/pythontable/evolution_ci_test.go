@@ -1,6 +1,7 @@
 package pythontable
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -140,8 +141,40 @@ func TestPythonVtEvolutionCICoverage(t *testing.T) {
 	if err := json.Unmarshal(out, &rows); err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) == 0 || len(rows) > 256 {
-		t.Fatalf("actual CI matrix has %d rows", len(rows))
+	if len(rows) < 2 || len(rows) > 512 {
+		t.Fatalf("actual CI plan has %d rows", len(rows))
+	}
+	var original []json.RawMessage
+	if err := json.Unmarshal(out, &original); err != nil {
+		t.Fatal(err)
+	}
+	counts := map[string]int{}
+	for _, row := range original {
+		counts[string(row)]++
+	}
+	for _, part := range []string{"0", "1"} {
+		cmd := exec.Command("sh", filepath.Join(root, "tools/python-ci-partition.sh"), part)
+		cmd.Dir = root
+		cmd.Stdin = bytes.NewReader(out)
+		data, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("partition %s: %v\n%s", part, err, data)
+		}
+		var shard []json.RawMessage
+		if err := json.Unmarshal(data, &shard); err != nil {
+			t.Fatal(err)
+		}
+		if len(shard) == 0 || len(shard) > 256 {
+			t.Fatalf("partition %s has %d rows", part, len(shard))
+		}
+		for _, row := range shard {
+			counts[string(row)]--
+		}
+	}
+	for _, remaining := range counts {
+		if remaining != 0 {
+			t.Fatal("matrix partitions omit or duplicate a planned row")
+		}
 	}
 	targets := map[string]int{}
 	parent, coverage := 0, 0

@@ -50,7 +50,7 @@ func TestPythonMapBenchCIPlan(t *testing.T) {
 	}
 	for _, name := range wanted {
 		want := 1
-		if name == "TestPythonMapShapeBench" {
+		if name == "TestPythonMapShapeBench" || name == "TestPythonVtEvolution" {
 			want = 0
 		}
 		if auto[name] != want {
