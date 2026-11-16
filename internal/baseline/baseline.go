@@ -54,8 +54,9 @@ import (
 // this rendering emits and an older one did not reads as an ADDITION to every
 // older file, and the added-token branch of the diff judges an addition on
 // every judged row — so an unbumped rendering greets an untouched schema with
-// a diagnostic per field. Recording a fact nothing judges (an `optional`) does
-// not need a bump; adding a rule does.
+// a diagnostic per field. A rule change on a token every rendering already
+// records needs no bump: older files carry the same fact, so untouched schemas
+// do not acquire false additions. `optional` has been recorded since version 1.
 const Version = 7
 
 // FileName is the baseline's name in the unit directory. Its presence is what
@@ -372,9 +373,8 @@ func renderField(f *ir.Field) Field {
 			add("type", f.Type.Name)
 		}
 	}
-	// PRESENCE IS RECORDED AND JUDGED ON NOTHING (docs/SPEC-TABLES.md §18.1): a
-	// field moving between T, ?T and *T moves no byte (§3.1), so the fact is
-	// here to be read in a diff and nowhere in the policy.
+	// Presence is recorded and judged one way (§18.1): adding optional to a
+	// shipped field refuses, while removing it passes.
 	if f.Type.Optional {
 		add("optional", "true")
 	}
