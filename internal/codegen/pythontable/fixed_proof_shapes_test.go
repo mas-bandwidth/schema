@@ -183,6 +183,9 @@ func TestPythonFixedProofShapesArrayBounds(t *testing.T) {
 	for _, n := range []uint32{3, ^uint32(0)} {
 		bad := bytes.Clone(clean)
 		binary.LittleEndian.PutUint32(bad[len(bad)-8:], n)
+		if err := verify(bad); err == nil {
+			t.Errorf("C++ accepted writer count %d", n)
+		}
 		count, why, _, _, _ := runner.LoadLineage(t, newer, "T", lineage, bad, 1)
 		if count != -1 || why != "count_over_bound" {
 			t.Errorf("writer count %d: count=%d reason=%s", n, count, why)
