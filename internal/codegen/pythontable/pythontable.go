@@ -1438,7 +1438,7 @@ func innerCodecOf(f *ir.Field) string {
 	}
 	if f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted {
 		switch optionalElemCodecOf(f) {
-		case "bool", "int", "table":
+		case "bool", "int", "table", "float32", "float64":
 			return "array"
 		}
 		return "unsupported"
@@ -1472,6 +1472,8 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 		def = "False"
 	case "int":
 		def = "0"
+	case "float32", "float64":
+		def = "0.0"
 	}
 	fmt.Fprintf(b, "            elem=FieldDesc(\n")
 	fmt.Fprintf(b, "                name=%s,\n", strconv.Quote(f.Name))
@@ -1482,6 +1484,12 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                hi=%s,\n", hi)
 	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
 	fmt.Fprintf(b, "                default=%s,\n", def)
+	if isFloat(f) {
+		fmt.Fprintf(b, "                f32=%s,\n", pyBool(f.Type.Kind == ir.TFloat32))
+		fmt.Fprintf(b, "                fmin=%s,\n", floatBound(f, f.FMin))
+		fmt.Fprintf(b, "                fmax=%s,\n", floatBound(f, f.FMax))
+		fmt.Fprintf(b, "                float_range=%s,\n", pyBool(compressedFloat(f)))
+	}
 	fmt.Fprintf(b, "            ),\n")
 }
 
