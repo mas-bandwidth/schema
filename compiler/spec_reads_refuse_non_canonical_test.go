@@ -38,7 +38,7 @@ func TestSpecReadsRefuseNonCanonical(t *testing.T) {
 			text: flat3,
 			wants: []string{
 				"fields out of the writer's order",
-				"under the same announced shape and build version, the reader checks",
+				"Under the same announced shape and build version, the reader checks",
 				"a field stored at its declared default",
 				"an explicit null pointer",
 				"an id-table entry that is unused, or out of first-use order",
@@ -54,6 +54,7 @@ func TestSpecReadsRefuseNonCanonical(t *testing.T) {
 				"A NON-CANONICAL SPELLING OF A GOOD VALUE",
 				"fields out of the writer's order",
 				"a field stored at its declared default",
+				"a field moved from `T` to `?T` are refused by the lineage check",
 				"an explicit null pointer",
 				"an id-table entry that is unused, or out of first-use order",
 				"an empty node table, or one out of its place",
