@@ -6219,12 +6219,14 @@ union at `None` (§22.2, §22.6). A reader therefore refuses the whole batch
   sender default this reader cannot know — one it meets under a different build
   version — is read as today: an absent field takes this reader's declared
   default, which is lawful version evolution.
-- **(b) A BODY'S FIELD REFERENCES OUT OF THE WRITER'S DECLARATION ORDER.** The
-  order a writer emits is the sender's declaration order (§22.2, §22.6), which
-  is the order the announcement gives each record's fields: the cook projection
-  renders a record's fields in declaration order (§20.2). A reader refuses a
-  body whose field references do not follow that order, and a field this reader
-  cannot name still has its place in that order.
+- **(b) A BODY'S FIELD REFERENCES OUT OF THE WRITER'S DECLARATION ORDER.**
+  Under the same announced shape and build version, the reader checks a body's
+  field references against the record's declaration order, because field order
+  is digested into the build version (§20.1). It refuses a body out of that
+  order and a field the record does not declare. The announcement stores each
+  field once even when several records share it, so its slot order is no one
+  record's order. Under a different build version, order is not judged and the
+  body reads, which is lawful version evolution.
 - **(c) A UNION FIELD WRITTEN WITH THE NONE REFERENCE.** Reference `0` is the
   union's empty arm, and a conforming writer elides an empty union (§22.2), so
   an explicit arm `0` is not the one encoding a conforming writer emits.
