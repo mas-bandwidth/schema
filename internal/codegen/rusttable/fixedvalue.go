@@ -203,8 +203,8 @@ func fixedValueExpr(f *ir.Field, x string) string {
 		e := *f
 		e.Array, e.KeyEnum = ir.ArrayNone, ""
 		element := fixedScalarExpr(&e, "(*element)", false)
-		if strings.HasSuffix(element, "?") {
-			element = strings.TrimSuffix(element, "?")
+		if trimmed, ok := strings.CutSuffix(element, "?"); ok {
+			element = trimmed
 		} else {
 			element = "Ok(" + element + ")"
 		}
