@@ -5815,13 +5815,12 @@ tables-wire-fuzz-retain: build/conformance-harness build/wire-fuzz-cpp build/wir
 # removes ONE check — through `go build -overlay`, so no tracked file moves —
 # and requires the leg to go red on the verdict that check guards.
 #
-# THE ORACLE'S DROP RULE. THE WALK IS AN INTERPRETATION AND ITS VERDICT IS
-# STATED (§6.6): a reference above the entry count, a reference at an entry of
-# zero, a reference at one of the three reserved ids, a non-canonical length,
-# an inner body whose terminator falls short, a nested `L` past its parent, and
-# a kind 17 at any depth all DROP THE RECORD. Without the verdict the oracle
-# keeps a record the reference drops, and the saved bytes differ on the
-# mutant that carried it.
+# THE ORACLE'S EXCLUDED-CLASS RULE (§6.6). Malformed wire is refused by the
+# strict read before retention; a valid payload in an excluded class, such as
+# a node reference, is dropped from the retained bytes. Hash zero is an
+# ordinary identity and must survive; reference zero alone means None or a
+# terminator. Ignoring the retaining walk's verdict keeps bytes for an
+# excluded class that the native reference drops, so saved values differ.
 RETAIN_ORACLE_NC := build/wire-fuzz-nc-retain-oracle
 .PHONY: tables-wire-fuzz-retain-oracle-negative-control
 tables-wire-fuzz-retain-oracle-negative-control: build/conformance-harness build/wire-fuzz-cpp
