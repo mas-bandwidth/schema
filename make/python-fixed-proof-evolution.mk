@@ -1,7 +1,7 @@
 # Fixed-form evolution and its generated-artifact controls. The original
 # local aggregate remains available; CI and test-python use bounded rows.
 PYTHON_FIXED_EVOLUTION_AGGREGATE := ^TestPythonFixedProofEvolution(Values|Strict|Numeric|WideningCorpus|WriterBounds|Hostile|HostileEnvelope|HostileShapes|HostileSweep|RetirementControl)?$$
-PYTHON_FIXED_EVOLUTION_ROWS := base values strict-a strict-b numeric widen-a widen-b writer-bounds hostile hostile-envelope hostile-shapes hostile-sweep retirement
+PYTHON_FIXED_EVOLUTION_ROWS := base values strict-a strict-b numeric widen-a widen-b widen-c widen-d writer-bounds hostile hostile-envelope hostile-shapes hostile-sweep retirement
 PYTHON_FIXED_EVOLUTION_TARGETS := $(addprefix python-fixed-proof-evolution-row-,$(PYTHON_FIXED_EVOLUTION_ROWS))
 PYTHON_FIXED_EVOLUTION_PATTERN_base := ^TestPythonFixedProofEvolution$$
 PYTHON_FIXED_EVOLUTION_PATTERN_values := ^TestPythonFixedProofEvolutionValues$$
@@ -10,6 +10,8 @@ PYTHON_FIXED_EVOLUTION_PATTERN_strict-b := ^TestPythonFixedProofEvolutionStrict$
 PYTHON_FIXED_EVOLUTION_PATTERN_numeric := ^TestPythonFixedProofEvolutionNumeric$$
 PYTHON_FIXED_EVOLUTION_PATTERN_widen-a := ^TestPythonFixedProofEvolutionWideningCorpus$$/^(int_widen|uint_widen|float_widen|array_elem_widen)$$
 PYTHON_FIXED_EVOLUTION_PATTERN_widen-b := ^TestPythonFixedProofEvolutionWideningCorpus$$/^(range_widen|cfloat_range_widen|union_arm_payload_widen)$$
+PYTHON_FIXED_EVOLUTION_PATTERN_widen-c := ^TestPythonFixedProofEvolutionWideningCorpus$$/^(bits_grow|fixed_I_grow)$$
+PYTHON_FIXED_EVOLUTION_PATTERN_widen-d := ^TestPythonFixedProofEvolutionWideningCorpus$$/^(fixed_I_grow_element|cfloat_res_refine)$$
 PYTHON_FIXED_EVOLUTION_PATTERN_writer-bounds := ^TestPythonFixedProofEvolutionWriterBounds$$
 PYTHON_FIXED_EVOLUTION_PATTERN_hostile := ^TestPythonFixedProofEvolutionHostile$$
 PYTHON_FIXED_EVOLUTION_PATTERN_hostile-envelope := ^TestPythonFixedProofEvolutionHostileEnvelope$$
