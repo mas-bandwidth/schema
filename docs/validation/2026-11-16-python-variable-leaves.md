@@ -1,6 +1,6 @@
 # Python variable-table leaf qualification
 
-This is evidence for 28 variable leaves, excluding the separately held keyed-array, widening and wire-fuzzer leaves. The source is a stacked candidate, not a claim that its prerequisites have landed.
+This is evidence for 30 variable leaves, excluding the separately held wire-fuzzer leaf. The source is a stacked candidate, not a claim that its prerequisites have landed.
 
 Source stack: `26536e381e8c1549c2e2fbce4191a9cdab2e222b` = Python acceptance `456fd42a013086e2ad9edb5c16475c750033b826`, reviewed public manifest bindings `8ed3e3bc457b186b4fbe4205cbf7c9d6366dc454`, flags field witness `404d54bf791cdd907ef81ab28c40deee17f21527`, and cards proof `a9e655e9f3b547e6b6b80dd9062bd693fada65e1`. The compiler, Python emitter and runtime are byte-identical between 456 and 265; within those paths the only additions are the blob-driver, cards and flags test files. Manifest-binding paths equal 8ed and cards-owned files equal a9 byte-for-byte.
 
@@ -11,6 +11,8 @@ The 21-surface public manifest passed on both pins at 8ed, including wire 116/11
 Additional compiler gates on 456 plus test-only 404: reflection public corpus, all kinds, packet-only, name collision and two negative controls; evolution old-writer C++/Go/Python parity, ID and rename controls; optional-variable carry and its planted control; 58 unsharded required-public-shape cases (the union of 16 CI partitions), timestamp carry and hosted/optional-float controls. All passed. `TestPythonReflectionSurfaceSelection` separately passed at source `f5acc48a62f69fd53075d31ebb13d0d6dd313d35` (reflection source unchanged from 265; the only runtime delta is the reviewed keyed-flags codec). An initial isolated attempt lacked pinned MYPY; the affected evolution case passed after using the existing pinned executable. The initial unpinned flags attempt likewise failed for missing PYTHON; the exact 404 test passed with both pins. Both setup failures are preserved in the receipts.
 
 Cards: the nine surfaces and four facade controls passed on both pins at reviewed a9, including public C++/Go identity, mypy and CR/deadline refusal checks. All `TestPythonCards*` and the flags-field witness then passed on the assembled 265 source; the negative-control registry passed. These checks do not substitute for the unrelated Python wire-fuzz qualification.
+
+The final assembled source `f5acc48a62f69fd53075d31ebb13d0d6dd313d35` adds the reviewed keyed-flags carrier and focused array/keyed/union/optional-array flags witnesses to 265. Its fresh unfiltered Python package passed with no test failures or skips; full JSON SHA-256 `f9a4d82176dffc4a6b783f37be69f132f986f7ef4403762d4416fe0f8f9f2f6f`. The unchanged standard manifest has no keyed-flags field; public keyed-driver, both-pin keyed reader/writer/refusal and independent historical widening witnesses cover that added shape directly. `TestPythonReflectionSurfaceSelection` also passed on f5.
 
 The proof names below identify the source tests for each leaf. They are supplemented by the full package and public surfaces above; compiler-only tests are identified by their path.
 
@@ -553,3 +555,39 @@ The proof names below identify the source tests for each leaf. They are suppleme
 - `internal/codegen/pythontable/cards_test.go: TestPythonCards, TestPythonCardsCppIdentity, TestPythonCardsCppJSON, TestPythonCardsFacade, TestPythonCardsFacadeNegativeControl`
 - `make/python-cards.mk: cards-python-conformance and four facade controls`
 
+
+## port/python/vt/enum-keyed-arrays
+
+- `internal/codegen/pythontable/vtkeyed_test.go: TestPythonVtKeyed`
+- `internal/codegen/pythontable/vtkeyed_test.go: TestPythonVtKeyedNegativeControl`
+- `internal/codegen/pythontable/vtkeyed_enum_test.go: TestPythonVtKeyedEnumRoundTripFunctional`
+- `internal/codegen/pythontable/vtkeyed_enum_test.go: TestPythonVtKeyedEnumEvolutionFunctional`
+- `internal/codegen/pythontable/vtkeyed_enum_test.go: TestPythonVtKeyedEnumNegativeControlFunctional`
+- `internal/codegen/pythontable/keyed_flags_test.go: TestPythonKeyedFlags and TestPythonKeyedFlagsNegativeControl`
+- `compiler/python_keyed_flags_test.go: TestPythonKeyedFlagsPublicDriver`
+- `internal/codegen/pythontable/flags_widen_audit_test.go: TestPythonAuditWidenFlags and TestPythonAuditWidenFlagsContainers`
+
+## port/python/vt/widening
+
+- `internal/codegen/pythontable/scalar_widen_test.go: TestPythonScalarWidenDamageAndControl`
+- `internal/codegen/pythontable/scalar_widen_test.go: TestPythonScalarWidenHistorical`
+- `internal/codegen/pythontable/scalar_widen_test.go: TestPythonScalarWidenMapInteraction`
+- `internal/codegen/pythontable/scalar_widen_test.go: TestPythonScalarWidenNonFinite`
+- `internal/codegen/pythontable/scalar_widen_test.go: TestPythonScalarWidenRefusals`
+- `internal/codegen/pythontable/container_widen_test.go: TestPythonContainerWidenHistorical`
+- `internal/codegen/pythontable/container_widen_test.go: TestPythonContainerWidenRefusalsAndControls`
+- `internal/codegen/pythontable/scalar_widen_test.go: TestPythonOptionalScalarWiden`
+- `internal/codegen/pythontable/array_widen_test.go: TestPythonArrayWidening`
+- `internal/codegen/pythontable/array_widen_test.go: TestPythonArrayWideningBoundaries`
+- `internal/codegen/pythontable/array_widen_test.go: TestPythonArrayWideningNegativeControl`
+- `internal/codegen/pythontable/array_widen_test.go: TestPythonArrayWideningRejectsIncompatible`
+- `internal/codegen/pythontable/array_widen_test.go: TestPythonArrayWideningWithFixedGrowth`
+- `internal/codegen/pythontable/map_key_widen_wire_test.go: TestPythonMapKeyWidenCountNegativeControl`
+- `internal/codegen/pythontable/map_key_widen_wire_test.go: TestPythonMapKeyWidenKinds`
+- `internal/codegen/pythontable/map_key_widen_wire_test.go: TestPythonMapKeyWidenManifest`
+- `internal/codegen/pythontable/timestamp_test.go: TestPythonVtTimestamp`
+- `internal/codegen/pythontable/timestamp_test.go: TestPythonVtTimestampNegativeControl`
+- `internal/codegen/pythontable/flags_widen_audit_test.go: TestPythonAuditWidenFlags, proposed durable test commit 404d54bf791cdd907ef81ab28c40deee17f21527 (not in 456)`
+- `internal/codegen/pythontable/keyed_flags_test.go: TestPythonKeyedFlags and TestPythonKeyedFlagsNegativeControl`
+- `compiler/python_keyed_flags_test.go: TestPythonKeyedFlagsPublicDriver`
+- `internal/codegen/pythontable/flags_widen_audit_test.go: TestPythonAuditWidenFlags and TestPythonAuditWidenFlagsContainers`
