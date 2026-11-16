@@ -49,7 +49,7 @@ table Root { head *Node
 	root := m.Lookup("Root")
 	seed := m.New(root)
 	var report tabletext.Report
-	if !m.Read(seed, []byte(`{"head":{"&node":1,"value":7,"next":{"value":9,"samples":[3,4]},"name":"node","samples":[1,2]},"alias":{"&node":1},"name":"root","values":[1,2],"children":[{"tag":3,"wides":[1,2]},{"tag":5,"wides":[3]}],"real":1.25}`), &report) {
+	if !m.Read(seed, []byte(`{"head":{"&node":1,"value":7,"next":{"value":9,"samples":[3,4]},"name":"node","samples":[1,2]},"alias":{"&node":1},"name":"root","values":[1,2],"children":[{"tag":3,"wides":["1","2"]},{"tag":5,"wides":["3"]}],"real":1.25}`), &report) {
 		t.Fatal(report)
 	}
 	wire, err := tablewire.Encode(m, seed)

@@ -708,6 +708,18 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(name))
 	fmt.Fprintf(b, "    type_id=%s,\n", hex64(ir.TableWireId(st.WireName())))
 	fmt.Fprintf(b, "    variable=%s,\n", pyBool(variable))
+	if !valueClass {
+		var forms []string
+		for _, form := range []string{"wire", "json", "block", "cook"} {
+			if st.CarriesForm(form) {
+				forms = append(forms, strconv.Quote(form))
+			}
+		}
+		if len(forms) == 1 {
+			forms[0] += ","
+		}
+		fmt.Fprintf(b, "    forms=(%s),\n", strings.Join(forms, ", "))
+	}
 	fmt.Fprintf(b, "    fields=(\n")
 	for ordinal, f := range st.Fields {
 		lo, hi := intRange(f)
@@ -931,7 +943,7 @@ func emitBlockDescriptors(b *strings.Builder, u *ir.Unit, st *ir.Struct, blocks 
 	fmt.Fprintf(b, "%s.block_row = BlockRecord(\n", name)
 	emitBlockRecordBody(b, u, row, nil, false)
 	b.WriteString(")\n")
-	if blocks == nil {
+	if blocks == nil || !st.CarriesForm("block") {
 		fmt.Fprintf(b, "%s.block = None\n\n", name)
 		return
 	}
