@@ -20,6 +20,8 @@ test-python: python-ci-support
 
 .PHONY: python-ci-support python-ci-packages python-ci-compiler python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted
 PYTHON_CI_SUPPORT_GROUPS += python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted python-ci-compiler-coverage
+PYTHON_PACKET_CORE_SHARDS := $(addprefix python-ci-packet-core-,0 1 2 3 4 5 6 7)
+PYTHON_CI_SUPPORT_GROUPS += $(PYTHON_PACKET_CORE_SHARDS) python-ci-packet-core-coverage
 python-ci-support: $(PYTHON_CI_SUPPORT_GROUPS)
 .PHONY: python-ci-support-list
 python-ci-support-list:
@@ -164,3 +166,12 @@ python-hosted-packet-text: python-toolchain-check
 python-hosted-packet-text-negative-control: python-toolchain-check
 	sh test/slowgate/proof python-hosted-packet-text-negative-control 'TestPythonHostedPacketTextNegativeControl/current TestPythonHostedPacketTextNegativeControl/floor' -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonHostedPacketTextNegativeControl$$' ./internal/codegen/pythontable/
 python-ci-hosted: python-hosted-packet-text python-hosted-packet-text-negative-control
+
+# Run every packet pin on both interpreters, partitioned for per-commit CI.
+.PHONY: $(PYTHON_PACKET_CORE_SHARDS)
+$(PYTHON_PACKET_CORE_SHARDS): python-ci-packet-core-%:
+	SCHEMA_SLOW=1 PYTHON_PACKET_CORE_SHARD=$* go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCore$$' ./internal/codegen/python/
+
+.PHONY: python-ci-packet-core-coverage
+python-ci-packet-core-coverage:
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestPythonPacketCoreCIPlan$$' ./internal/ci/

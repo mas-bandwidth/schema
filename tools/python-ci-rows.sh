@@ -56,6 +56,13 @@ while IFS= read -r package; do
     names=$(printf '%s\n' "$names" | sed '/^TestPythonArrayWidening$/d; /^TestPythonVtPointerArrays$/d') ;;
   esac
   skip=
+  if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/python" ]; then
+    printf '%s\n' "$names" | grep -qx TestPythonPacketCore || { echo "missing TestPythonPacketCore" >&2; exit 1; }
+    for part in 0 1 2 3 4 5 6 7; do
+      [ "$(printf '%s\n' "$support" | grep -cx "python-ci-packet-core-$part")" -eq 1 ] || { echo "missing or duplicate packet core shard $part" >&2; exit 1; }
+    done
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonPacketCore$/d')
+  fi
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
     printf '%s\n' "$names" | grep -qx TestPythonVtFixedClassBuildVersionImports || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }
     for delegated in TestPythonScalarWidenHistorical TestPythonContainerWidenHistorical; do
