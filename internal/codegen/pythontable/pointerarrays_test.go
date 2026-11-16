@@ -693,7 +693,7 @@ func TestPythonVtPointerArrays(t *testing.T) {
 		{"empty_root", "Root", `{}`},
 		{"single_list", "Root", `{"list_nodes": [{"label": 10, "tag": 3}, null, {"label": -20, "tag": 9}]}`},
 		{"diamond_shared", "Root", `{
-			"head": {"&node": 1, "label": 42, "leaf": {"&node": 10, "id": 7, "weight": 99}, "pair": [{"&node": 10}, null]},
+			"head": {"&node": 1, "label": 42, "leaf": {"&node": 10, "id": 7, "weight": "99"}, "pair": [{"&node": 10}, null]},
 			"list_nodes": [{"&node": 1}, null, {"&node": 2, "label": 55, "children": [{"&node": 1}], "pair": [null, {"&node": 10}]}],
 			"fixed_nodes": [null, {"&node": 1}, {"&node": 2}],
 			"bounded_nodes": [{"&node": 2}, {"&node": 1}],
@@ -707,7 +707,7 @@ func TestPythonVtPointerArrays(t *testing.T) {
 				"&node": 1,
 				"label": 100,
 				"active": true,
-				"guard_next": {"&node": 3, "label": 300, "active": false, "alt_leaf": {"&node": 9, "id": 9, "weight": 900}},
+				"guard_next": {"&node": 3, "label": 300, "active": false, "alt_leaf": {"&node": 9, "id": 9, "weight": "900"}},
 				"guard_kids": [{"&node": 2, "label": 200, "children": [{"&node": 3}]}, {"&node": 3}],
 				"children": [{"&node": 2}, null, {"&node": 3}]
 			}]
@@ -715,26 +715,26 @@ func TestPythonVtPointerArrays(t *testing.T) {
 		{"guard_true_nested_not_mode", "Root", `{
 			"enabled": true,
 			"mode": false,
-			"score": -123456,
+			"score": "-123456",
 			"guarded_ptr": {"&node": 1, "label": 11},
-			"guarded_list": [{"&node": 2, "id": 22, "weight": 220}, null, {"&node": 2}],
+			"guarded_list": [{"&node": 2, "id": 22, "weight": "220"}, null, {"&node": 2}],
 			"guarded_fixed": [null, {"&node": 2}],
 			"nested_guard": 777
 		}`},
 		{"guard_true_mode_true_suppresses_nested", "Root", `{
 			"enabled": true,
 			"mode": true,
-			"guarded_list": [{"id": 5, "weight": 50}]
+			"guarded_list": [{"id": 5, "weight": "50"}]
 		}`},
 		{"guard_false_else_branch", "Root", `{
 			"enabled": false,
-			"fallback_ptr": {"id": 33, "weight": 330},
+			"fallback_ptr": {"id": 33, "weight": "330"},
 			"fallback_count": 88
 		}`},
 		{"scalar_guard_nested_active", "Root", `{"scalar_sub": {"active": true, "origin": 4, "bonus": 19}}`},
 		{"scalar_guard_nested_else", "Root", `{"scalar_sub": {"active": false, "fallback": -12}}`},
 		{"ranged_default", "RangedHolder", `{"window": [null, null]}`},
-		{"ranged_two", "RangedHolder", `{"window": [{"&node": 1, "id": 8, "weight": 80}, {"&node": 1}], "note": 3}`},
+		{"ranged_two", "RangedHolder", `{"window": [{"&node": 1, "id": 8, "weight": "80"}, {"&node": 1}], "note": 3}`},
 		{"ranged_four", "RangedHolder", `{"window": [{"id": 1}, null, {"id": 2}, null]}`},
 		{"value_only_guarded", "ValueOnly", `{"count": 5, "guarded": {"active": true, "bonus": 42}}`},
 		// Two equal nodes built separately are two records; one node held

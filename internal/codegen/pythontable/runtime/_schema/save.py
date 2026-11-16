@@ -162,12 +162,12 @@ def _validate_fields(
                 kind_optional._validate_array(field, current, where)
                 if field.elem is not None and field.elem.codec == "table":
                     for index, item in enumerate(current):
-                        _validate(item, item.descriptor, f"{where}[{index}]", seen)
+                        yield item, f"{where}[{index}]"
             elif field.inner == "table":
                 target = descriptor.by_name(field.target)
                 if target is None or not isinstance(current, target):
                     raise InvalidValue(where, f"not a {field.target}")
-                _validate(current, current.descriptor, where, seen)
+                yield current, where
             else:
                 kinds._REGISTRY[field.inner].validate(field, current, where)
         elif field.codec == "pointer":
