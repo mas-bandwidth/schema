@@ -251,7 +251,7 @@ class FieldDesc:
             fields: tuple[FieldDesc, ...] = tuple(
                 field for field in value.descriptor.fields if field.guard_holds(value)
             )
-            return all(field.is_default(getattr(value, field.name)) for field in fields)
+            return all(not field.required and field.is_default(getattr(value, field.name)) for field in fields)
         if self.codec == "union":
             # None is the absence of the field, and a union whose arm is None
             # (type 0) is the same value on the wire (docs/SPEC-TABLES.md §2.6)
