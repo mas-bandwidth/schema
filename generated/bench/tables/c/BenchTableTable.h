@@ -5098,6 +5098,8 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_message_body(benchtable_ta
  { /* damage */
  if(!(value->damage == 0)) {
   benchtable_table_bit_put(w,14,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert(((uint64_t)(value->damage) >> 8) == 0);
+  /* message flags domain, debug only (§5.1) */
   benchtable_table_bit_put(w,(uint64_t)(value->damage)-UINT64_C(0),8);
  }
  }

@@ -5351,6 +5351,8 @@ static SCHEMA_UNUSED int blockdemo_render_ship_save_message_body(blockdemo_table
  { /* flags */
  if(!(value->flags == 0)) {
   blockdemo_table_bit_put(w,50,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert(((uint64_t)(value->flags) >> 4) == 0);
+  /* message flags domain, debug only (§5.1) */
   blockdemo_table_bit_put(w,(uint64_t)(value->flags)-UINT64_C(0),4);
  }
  }

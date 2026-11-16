@@ -7367,6 +7367,8 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_message_body(tabledemo_ta
   return 1;
   }
   tabledemo_table_bit_put(w,23,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert(((uint64_t)(value->perks) >> 3) == 0);
+  /* message flags domain, debug only (§5.1) */
   tabledemo_table_bit_put(w,(uint64_t)(value->perks)-UINT64_C(0),3);
  }
  }
