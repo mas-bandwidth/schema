@@ -13,4 +13,3 @@ conformance-cpp-positive-features: build/feature-witness-cpp/produce
 	@mkdir -p build/feature-witness-cpp/outputs
 	@rm -f build/feature-witness-cpp/outputs/Root.bin build/feature-witness-cpp/outputs/ArrayRoot.bin
 	./build/feature-witness-cpp/produce build/feature-witness-cpp/outputs
-
