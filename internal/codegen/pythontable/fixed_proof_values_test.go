@@ -3,6 +3,7 @@ package pythontable_test
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"maps"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // These are the scalar value rows of the shared fixed-form oracle. Setup is
@@ -46,10 +48,38 @@ var pythonFixedValueRows = []string{
 	"signed-fixed-point", "unsigned-fixed-point", "flags-values", "enum-values", "scalar-defaults",
 }
 
+// The byte round trip alone can hide a reader and writer that make the same
+// mistake. Compare the loaded scalar fields to independently constructed
+// Python values before re-saving the C++ reference file.
+type pythonScalarValueRunner struct{ pythonFixedProofRunner }
+
+func (pythonScalarValueRunner) LoadAndResave(t *testing.T, tc fixedproof.RowCase, u *ir.Unit, wire []byte) ([]byte, error) {
+	t.Helper()
+	files, err := pythontable.Generate(u)
+	if err != nil {
+		return nil, err
+	}
+	script := fmt.Sprintf(`from probe import T
+from probe._schema.fixedform import _ROOTS
+rows = [T() for _ in range(%d)]
+%s
+fields = _ROOTS["T"]["spec"]["children"]
+expected = [tuple(getattr(row, field["name"]) for field in fields) for row in rows]
+with open("wire", "rb") as f:
+    loaded = T.fixed_load(f.read(), %d)
+actual = [tuple(getattr(row, field["name"]) for field in fields) for row in loaded]
+assert actual == expected, (actual, expected)
+with open("saved", "wb") as f:
+    f.write(T.fixed_save(loaded))
+`, tc.Count, pythonFixedValueSetups[tc.ID], tc.Count)
+	_, saved := pythonFixedRun(t, files, script, map[string][]byte{"wire": wire})
+	return saved, nil
+}
+
 func TestPythonFixedProofValues(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "pinned Python and the C++ fixed oracle")
-	fixedproof.RunValueRows(t, pythonFixedProofRunner{}, pythonFixedValueRows...)
+	fixedproof.RunValueRows(t, pythonScalarValueRunner{}, pythonFixedValueRows...)
 }
 
 func TestPythonFixedProofValuesNegativeControl(t *testing.T) {
