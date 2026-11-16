@@ -158,7 +158,7 @@ func fieldKind(f *ir.Field) string {
 		return ""
 	}
 	if f.Array != ir.ArrayNone {
-		if (f.Array != ir.ArrayFixed && f.Array != ir.ArrayCounted) || f.KeyEnum != "" {
+		if f.Array != ir.ArrayFixed && f.Array != ir.ArrayCounted {
 			return ""
 		}
 		if fieldKind(arrayElem(f)) == "" {
@@ -221,8 +221,6 @@ func blockingKind(f *ir.Field) string {
 	switch {
 	case f.Array == ir.ArrayList:
 		return "list"
-	case f.Array != ir.ArrayNone && f.KeyEnum != "":
-		return "keyed array"
 	case f.Array != ir.ArrayNone:
 		// an array is carried whenever its element is, so the element's kind
 		// is what blocks it
