@@ -19,7 +19,7 @@ import (
 
 func TestPythonMessageCRC(t *testing.T) {
 	t.Parallel()
-	u := loadUnit(t, "package messagecrc\nfixed table Root | integrity = \"crc32c\" { value int32 }\n")
+	u := loadUnit(t, "package messagecrc\nfixed table Root | integrity = \"crc32c\" { value int32 }\nfixed table Plain { value int32 }\n")
 	m := tabletext.NewModel(u)
 	values := make([]*tabletext.Instance, 3)
 	for i, text := range []string{`{"value":0}`, `{"value":7}`, `{"value":-2}`} {
@@ -33,6 +33,15 @@ func TestPythonMessageCRC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	plain := m.New(m.Lookup("Plain"))
+	var plainReport tabletext.Report
+	if !m.Read(plain, []byte(`{"value":7}`), &plainReport) || plainReport.Refused {
+		t.Fatalf("plain fixture: %+v", plainReport)
+	}
+	plainWire, err := tablewire.EncodeMessages(m, []*tabletext.Instance{plain})
+	if err != nil {
+		t.Fatal(err)
+	}
 	cppWire := messageCRCCpp(t, u)
 	if !bytes.Equal(wire, cppWire) {
 		t.Fatalf("C++ vs Go: %x vs %x", cppWire, wire)
@@ -41,9 +50,13 @@ func TestPythonMessageCRC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	probe := pyrun.ImportPrelude + `from messagecrc import Root, MessageVocabulary, ANNOUNCEMENT, announce_read, save_messages, measure_messages, load_messages, Refused, LoadReport
+	probe := pyrun.ImportPrelude + `from messagecrc import Root, Plain, MessageVocabulary, ANNOUNCEMENT, announce_read, save_messages, measure_messages, load_messages, Refused, LoadReport
 with open('wire','rb') as f: wire=f.read()
+with open('plain','rb') as f: plain=f.read()
 v=MessageVocabulary();announce_read(v,ANNOUNCEMENT)
+p=Plain();p.value=7
+assert save_messages(Plain,[p])==plain and measure_messages(Plain,[p])==len(plain)
+assert load_messages(Plain,v,plain)[0].value==7
 values=[]
 for n in (0,7,-2):
  x=Root();x.value=n;values.append(x)
@@ -60,7 +73,7 @@ print('ok')
 `
 	dir := t.TempDir()
 	writeTree(t, dir, files)
-	inputs := map[string][]byte{"main.py": []byte(probe), "wire": wire}
+	inputs := map[string][]byte{"main.py": []byte(probe), "wire": wire, "plain": plainWire}
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", inputs)
 		if err != nil || string(bytes.TrimSpace([]byte(out))) != "ok" {
