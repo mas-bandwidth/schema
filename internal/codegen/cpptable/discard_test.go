@@ -2,6 +2,7 @@ package cpptable
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -393,34 +394,44 @@ func cyclePatch(t *testing.T, wire []byte, from, to byte) {
 	wire[bytes.Index(wire, pattern)+1] = to
 }
 
-// cycleGuardOff turns the root's left node's `on` (true) false on the wire,
-// leaving the guarded slot written: the engine is asked which byte it is, so
-// the patch is the rule's and not a guess.
-func cycleGuardOff(t *testing.T, m *tabletext.Model, wire []byte) {
+// cycleGuardOff removes the true guard field, so the reader supplies its
+// false default while the guarded pointer remains on the wire. The fixture's
+// short references and lengths are checked before editing; the now-unused id
+// is removed and later references are renumbered to preserve first-use order.
+func cycleGuardOff(t *testing.T, m *tabletext.Model, wire []byte) []byte {
 	t.Helper()
-	for i := 0; i+2 < len(wire); i++ {
-		if wire[i+1] != byte(ir.TableKindBool) || wire[i+2] != 1 {
-			continue
-		}
-		try := append([]byte(nil), wire...)
-		try[i+2] = 0
-		root := m.New(m.Lookup("Node"))
-		var report tabletext.Report
-		if ok, err := tablewire.Decode(m, root, try, &report); !ok || err != nil {
-			continue
-		}
-		left, _ := root.FieldByKey("left")
-		if left.Cell.Node == nil {
-			continue
-		}
-		on, _ := left.Cell.Node.FieldByKey("on")
-		side, _ := left.Cell.Node.FieldByKey("side")
-		if !on.Cell.B && side.Cell.Node != nil {
-			copy(wire, try)
-			return
-		}
+	prefix := []byte{1, 1, 17, 2, 2, 12, 13, 2, 3, 7, 4, 1, 1, 5, 17, 3, 0, 3, 1, 0, 0}
+	if len(wire) != len(prefix)+5*8+8 || !bytes.Equal(wire[:len(prefix)], prefix) || binary.LittleEndian.Uint64(wire[len(wire)-8:]) != 5 {
+		t.Fatalf("guard fixture has unexpected framing: %x", wire)
 	}
-	t.Fatal("no byte turns the guard off with the guarded slot kept")
+	on, ok := m.New(m.Lookup("Node")).FieldByKey("on")
+	if !ok || binary.LittleEndian.Uint64(wire[len(prefix)+3*8:]) != ir.TableFieldWireId(on.Def) {
+		t.Fatal("guard fixture's fourth id is not on")
+	}
+	body := bytes.Clone(wire[:len(prefix)])
+	body[6] -= 3 // node-table payload length
+	body[9] -= 3 // first node body length
+	body[13] = 4 // side's id moves down after on's id is removed
+	body = append(body[:10], body[13:]...)
+	ids := wire[len(prefix) : len(wire)-8]
+	body = append(body, ids[:3*8]...)
+	body = append(body, ids[4*8:]...)
+	body = binary.LittleEndian.AppendUint64(body, 4)
+	root := m.New(m.Lookup("Node"))
+	var report tabletext.Report
+	if ok, err := tablewire.Decode(m, root, body, &report); !ok || err != nil {
+		t.Fatalf("false-guard acyclic control refused: %v %+v", err, report)
+	}
+	left, _ := root.FieldByKey("left")
+	if left.Cell.Node == nil {
+		t.Fatal("false-guard control lost left")
+	}
+	guard, _ := left.Cell.Node.FieldByKey("on")
+	side, _ := left.Cell.Node.FieldByKey("side")
+	if guard.Cell.B || side.Cell.Node == nil {
+		t.Fatal("false-guard control did not retain its guarded edge")
+	}
+	return body
 }
 
 // cycleProbe is the C++ that loads one wire through the region Load, the
@@ -495,7 +506,8 @@ func TestCyclicWireIsRefusedCPP(t *testing.T) {
 	twinOff := cycleEncode(t, m, 3, nil, guarded[:1])
 	body.WriteString(cycleProbe("guard twin", twinOff, true, "cycle: the acyclic twin of the false-guard case was refused"))
 	off := cycleEncode(t, m, 3, []int{1}, guarded)
-	cycleGuardOff(t, m, off)
+	off = cycleGuardOff(t, m, off)
+	body.WriteString(cycleProbe("false guard acyclic", off, true, "cycle: the acyclic false-guard edge was refused"))
 	cyclePatch(t, off, 3, 2)
 	body.WriteString(cycleProbe("false guard", off, false, "cycle: a cycle through a slot under a false guard loaded"))
 

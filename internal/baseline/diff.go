@@ -134,9 +134,9 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// declared total warns and a raised or removed one passes
 	"total": RuleShrink,
 	"was":   RulePass, // `was` is the rename that PRESERVES identity — that is its whole job
-	// A new optional can write its default as present, which the old plain
-	// reader refuses. Removing optional passes (§4.1, §18.2).
-	"optional": RuleGain,
+	// Variable T and ?T share framing; presence changes are absorbed both
+	// ways, including explicit defaults (§2.3, §4, §18.2).
+	"optional": RulePass,
 	// `| required` ADDED to a shipped field: old records never wrote it and a
 	// newer reader refuses them as missing_required. Removed, the writer just
 	// starts eliding again, so removal passes (docs/SPEC-TABLES.md §2.3).
@@ -773,11 +773,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 		case RuleFixed, RuleRefs:
 			out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s added", tokenNoun(lt.Key), lt.Value)})
 		case RuleGain:
-			if lt.Key == "optional" {
-				out = append(out, Finding{Refuse, where, "optional added: a newer writer stores a present field at its defaults, which an older plain-T build refuses as a field stored at its declared default"})
-			} else {
-				out = append(out, Finding{Refuse, where, fmt.Sprintf("%s added: records written before it lack the field and a reader refuses them as missing_required", lt.Key)})
-			}
+			out = append(out, Finding{Refuse, where, fmt.Sprintf("%s added: records written before it lack the field and a reader refuses them as missing_required", lt.Key)})
 		case RuleShrink, RuleRaise:
 			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s added (%s)", tokenNoun(lt.Key), lt.Value, tightenNote(lt.Key))})
 		}

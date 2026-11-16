@@ -10347,7 +10347,6 @@ inline int64_t NodeSave( const Node & value, uint8_t * buffer, int64_t capacity 
 ARMDEMO_TABLE_INLINE bool NodeLoadBody( TableReader & r, Node & value )
 {
     NodeReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10387,12 +10386,6 @@ ARMDEMO_TABLE_INLINE bool NodeLoadBody( TableReader & r, Node & value )
         {
             case 0xaf63eb4c86020609ull: // v
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -10406,11 +10399,6 @@ ARMDEMO_TABLE_INLINE bool NodeLoadBody( TableReader & r, Node & value )
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.v = decoded_v;
                         r.report->widened++;
                         break;
@@ -10432,11 +10420,6 @@ ARMDEMO_TABLE_INLINE bool NodeLoadBody( TableReader & r, Node & value )
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.v = decoded_v;
                 break;
             }
@@ -10735,6 +10718,7 @@ inline bool NodeLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -11006,7 +10990,6 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
     (void) nodes;
     if ( nodes.refused ) { return false; }
     RingReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11046,12 +11029,6 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
         {
             case 0x3e7884bf4f412c6full: // items
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11099,11 +11076,6 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range
                         // cannot fire on it. A count above the int32 storage cap is the
                         // fill's refusal, and it moves no counter, the widening included.
@@ -11268,12 +11240,6 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -11287,11 +11253,6 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -11313,11 +11274,6 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }
@@ -11534,7 +11490,6 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
     (void) nodes;
     if ( nodes.refused ) { return false; }
     RackReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11574,12 +11529,6 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
         {
             case 0x3e7884bf4f412c6full: // items
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11627,11 +11576,6 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range
                         // cannot fire on it. A count above the int32 storage cap is the
                         // fill's refusal, and it moves no counter, the widening included.
@@ -11831,12 +11775,6 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -11850,11 +11788,6 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -11876,11 +11809,6 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }
@@ -12090,7 +12018,6 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
     (void) nodes;
     if ( nodes.refused ) { return false; }
     TrayReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12130,12 +12057,6 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
         {
             case 0xc5b2a72c0845a253ull: // entries
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12186,11 +12107,6 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 2 )
                         {
@@ -12363,12 +12279,6 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -12382,11 +12292,6 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -12408,11 +12313,6 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }
@@ -17140,7 +17040,6 @@ ARMDEMO_TABLE_INLINE bool NodeLoadBodyRetain( TableReader & r, Node & value, Tab
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -17180,12 +17079,6 @@ ARMDEMO_TABLE_INLINE bool NodeLoadBodyRetain( TableReader & r, Node & value, Tab
         {
             case 0xaf63eb4c86020609ull: // v
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -17199,11 +17092,6 @@ ARMDEMO_TABLE_INLINE bool NodeLoadBodyRetain( TableReader & r, Node & value, Tab
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.v = decoded_v;
                         r.report->widened++;
                         break;
@@ -17225,11 +17113,6 @@ ARMDEMO_TABLE_INLINE bool NodeLoadBodyRetain( TableReader & r, Node & value, Tab
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.v = decoded_v;
                 break;
             }
@@ -17423,7 +17306,6 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -17463,12 +17345,6 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
         {
             case 0x3e7884bf4f412c6full: // items
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -17516,11 +17392,6 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range
                         // cannot fire on it. A count above the int32 storage cap is the
                         // fill's refusal, and it moves no counter, the widening included.
@@ -17688,12 +17559,6 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -17707,11 +17572,6 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -17733,11 +17593,6 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }
@@ -17961,7 +17816,6 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -18001,12 +17855,6 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
         {
             case 0x3e7884bf4f412c6full: // items
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -18054,11 +17902,6 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range
                         // cannot fire on it. A count above the int32 storage cap is the
                         // fill's refusal, and it moves no counter, the widening included.
@@ -18261,12 +18104,6 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -18280,11 +18117,6 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -18306,11 +18138,6 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }
@@ -18527,7 +18354,6 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -18567,12 +18393,6 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
         {
             case 0xc5b2a72c0845a253ull: // entries
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -18623,11 +18443,6 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                         // records under this field go with the value it is about to lose.
                         TableRetainDiscardField( retain, path, 0 );
@@ -18803,12 +18618,6 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -18822,11 +18631,6 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -18848,11 +18652,6 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }

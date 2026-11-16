@@ -152,9 +152,8 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 	WideBlobReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -177,7 +176,7 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 		switch entry.ID {
 		case 0x39f7fcec8fcb623d:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -225,7 +224,7 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 			}
 		case 0xcfb8a9d063b5e9e5:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -268,7 +267,7 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 			}
 		case 0xe3b1ca6a3b48dddc:
 			{
-				if order >= 2 {
+				if exact && order >= 2 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -340,6 +339,10 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
