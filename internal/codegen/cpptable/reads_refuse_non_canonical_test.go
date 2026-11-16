@@ -133,6 +133,13 @@ func TestCppReadsRefuseNonCanonical(t *testing.T) {
 			switch row.form {
 			case "variable":
 				expected := "const uint8_t *expected = buf; const int64_t expected_n = n;"
+				if row.verdict == "read" && row.file == "variable-fields-out-of-order.bin" {
+					canonical, err := os.ReadFile(filepath.Join(vectorDir, "variable-canonical.bin"))
+					if err != nil {
+						t.Fatalf("canonical reordered rewrite: %v", err)
+					}
+					expected = fmt.Sprintf("const uint8_t expected[] = { %s }; const int64_t expected_n = sizeof(expected);", cppBytes(canonical))
+				}
 				if row.verdict == "read" {
 					switch row.spelling {
 					case "field-at-default", "explicit-null-pointer", "union-arm-zero":
@@ -689,7 +696,7 @@ table EvolReader {
         return true;
     };
 
-    // 1. Explicit null pointer alongside valid non-empty node table: measure > 0, all 4 loads refuse.
+    // 1. A Required writer may emit this null pointer: all four loads read it.
     {
         static const uint8_t wire[] = { %s };
         const int64_t n = (int64_t) sizeof( wire );
@@ -702,7 +709,7 @@ table EvolReader {
             []( const uint8_t * b, int64_t l, int64_t * a ) { return PtrRootLoadMeasure( b, l, a, NULL ); },
             PtrRootLoad, bfn,
             []( const uint8_t * b, int64_t l ) { return PtrRootReadStrict( b, l, NULL ); },
-            PtrRootLoadRetain, []( const PtrRoot * r, uint8_t * b, int64_t l ) { return PtrRootSave( r, b, l ); }, PtrRootSaveRetain, false, false ) ) { return 1; }
+            PtrRootLoadRetain, []( const PtrRoot * r, uint8_t * b, int64_t l ) { return PtrRootSave( r, b, l ); }, PtrRootSaveRetain, true, false ) ) { return 1; }
     }
 
     // 2. [..2]*Leaf with a null element [null, Leaf{v: 9}] is canonical and reads + re-saves byte-identically across all 4 entries.
@@ -737,7 +744,7 @@ table EvolReader {
             ReqRootLoadRetain, []( const ReqRoot * r, uint8_t * b, int64_t l ) { return ReqRootSave( r, b, l ); }, ReqRootSaveRetain, true, true ) ) { return 1; }
     }
 
-    // 4. Unknown + widened fields in Form 1 read and SaveRetain preserves unknown field; widened-at-default refuses.
+    // 4. Unknown + widened fields read, including a widened default from a Required writer.
     {
         static const uint8_t good_wire[] = { %s };
         auto bfn = []( const uint8_t * b, int64_t len ) {
@@ -779,7 +786,7 @@ table EvolReader {
             []( const uint8_t * b, int64_t l, int64_t * a ) { return EvolReaderLoadMeasure( b, l, a, NULL ); },
             EvolReaderLoad, bfn_bad,
             []( const uint8_t * b, int64_t l ) { return EvolReaderReadStrict( b, l, NULL ); },
-            EvolReaderLoadRetain, []( const EvolReader * r, uint8_t * b, int64_t l ) { return EvolReaderSave( r, b, l ); }, EvolReaderSaveRetain, false, false ) ) { return 1; }
+            EvolReaderLoadRetain, []( const EvolReader * r, uint8_t * b, int64_t l ) { return EvolReaderSave( r, b, l ); }, EvolReaderSaveRetain, true, false ) ) { return 1; }
     }
 
     // 5. ?T present at default, -0.0f plain float, [2]Sub all-default, [2]int32 all-default, and [Slot]int32 in Form 1 & Form 2.
@@ -830,21 +837,28 @@ table EvolReader {
             return 1;
         }
 
-        // 5b. Form 1 [2]int32 all-default, [Slot]int32 out-of-order, and [Slot]int32 slot-at-default all refuse.
+        // 5b. The fixed array's default and the writer's reordered keyed
+        // slots read; a keyed slot itself at its default still refuses.
         static const uint8_t bad_fixed_ints[] = { %s };
         static const uint8_t bad_keyed_order[] = { %s };
         static const uint8_t bad_keyed_def[] = { %s };
         for ( auto pair : { std::pair<const uint8_t *, size_t>{ bad_fixed_ints, sizeof( bad_fixed_ints ) },
-                            std::pair<const uint8_t *, size_t>{ bad_keyed_order, sizeof( bad_keyed_order ) },
-                            std::pair<const uint8_t *, size_t>{ bad_keyed_def, sizeof( bad_keyed_def ) } } )
+                            std::pair<const uint8_t *, size_t>{ bad_keyed_order, sizeof( bad_keyed_order ) } } )
         {
             OptMsg tmp; OptMsgReset( tmp );
             TableReport tr;
-            if ( OptMsgLoad( tmp, pair.first, (int64_t) pair.second, &tr ) && !tr.damaged && !tr.refused )
+            if ( !OptMsgLoad( tmp, pair.first, (int64_t) pair.second, &tr ) || tr.damaged || tr.refused )
             {
-                printf( "FAIL form1_container_noncanon accepted\n" );
+                printf( "FAIL form1_container_evolution refused\n" );
                 return 1;
             }
+            if ( pair.first == bad_fixed_ints && (tmp.fixed_ints[0] != 0 || tmp.fixed_ints[1] != 0) ) { printf( "FAIL fixed values moved\n" ); return 1; }
+            if ( pair.first == bad_keyed_order && (tmp.keyed[Slot::A] != 3 || tmp.keyed[Slot::B] != 4) ) { printf( "FAIL keyed values moved\n" ); return 1; }
+            uint8_t canonical[512]; const int64_t canonical_n = OptMsgSave( tmp, canonical, sizeof( canonical ) );
+            OptMsg again; OptMsgReset( again ); TableReport again_report;
+            if ( canonical_n <= 0 || !OptMsgLoad( again, canonical, canonical_n, &again_report ) || again_report.damaged || again_report.refused ) { printf( "FAIL canonical rewrite refused\n" ); return 1; }
+            uint8_t repeat[512]; const int64_t repeat_n = OptMsgSave( again, repeat, sizeof( repeat ) );
+            if ( repeat_n != canonical_n || memcmp( repeat, canonical, (size_t) canonical_n ) != 0 ) { printf( "FAIL canonical rewrite unstable\n" ); return 1; }
             auto vbfn = []( const uint8_t * b, int64_t len ) {
                 VarContainersBuilder lb; TableReport r;
                 return VarContainersLoadBuilder( lb, b, len, &r ) && !r.damaged && !r.refused && !r.missing_required;
@@ -853,11 +867,22 @@ table EvolReader {
                 []( const uint8_t * b, int64_t l, int64_t * a ) { return VarContainersLoadMeasure( b, l, a, NULL ); },
                 VarContainersLoad, vbfn,
                 []( const uint8_t * b, int64_t l ) { return VarContainersReadStrict( b, l, NULL ); },
-                VarContainersLoadRetain, []( const VarContainers * r, uint8_t * b, int64_t l ) { return VarContainersSave( r, b, l ); }, VarContainersSaveRetain, false, false ) )
+                VarContainersLoadRetain, []( const VarContainers * r, uint8_t * b, int64_t l ) { return VarContainersSave( r, b, l ); }, VarContainersSaveRetain, true, false ) )
             {
                 return 1;
             }
         }
+        OptMsg invalid; OptMsgReset( invalid ); TableReport invalid_report;
+        if ( OptMsgLoad( invalid, bad_keyed_def, sizeof( bad_keyed_def ), &invalid_report ) ) { printf( "FAIL default keyed slot accepted\n" ); return 1; }
+        auto invalid_builder = []( const uint8_t * b, int64_t len ) {
+            VarContainersBuilder lb; TableReport r;
+            return VarContainersLoadBuilder( lb, b, len, &r ) && !r.damaged && !r.refused && !r.missing_required;
+        };
+        if ( !check_var( "default keyed slot", bad_keyed_def, sizeof( bad_keyed_def ),
+            []( const uint8_t * b, int64_t l, int64_t * a ) { return VarContainersLoadMeasure( b, l, a, NULL ); },
+            VarContainersLoad, invalid_builder,
+            []( const uint8_t * b, int64_t l ) { return VarContainersReadStrict( b, l, NULL ); },
+            VarContainersLoadRetain, []( const VarContainers * r, uint8_t * b, int64_t l ) { return VarContainersSave( r, b, l ); }, VarContainersSaveRetain, false, false ) ) { return 1; }
     }
 
     // 6. Form 2 below this reader's build version: a widened field at the
