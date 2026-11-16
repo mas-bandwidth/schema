@@ -28,4 +28,8 @@ func init() {
 		old: `g.Pf("  return stream:serializeEnd()\n")`,
 		new: `g.Pf("  return true -- SABOTAGED: no end check\n")`,
 	}}
+	sabotages["packet-write-text-luau-write"] = []edit{{
+		old: `if t.Kind == ir.TString {`,
+		new: `if false && t.Kind == ir.TString { // SABOTAGED: the writer takes ill-formed text`,
+	}}
 }
