@@ -141,7 +141,7 @@ func wireScalarDefault(fd *ir.Field, kind int, data []byte) bool {
 	}
 	if kind == ir.TableKindF64 && len(data) == 8 {
 		var bits uint64
-		for j := 0; j < 8; j++ {
+		for j := range 8 {
 			bits |= uint64(data[j]) << uint(8*j)
 		}
 		return math.Float64frombits(bits) == fd.DefFloat

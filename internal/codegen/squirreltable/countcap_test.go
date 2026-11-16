@@ -3,6 +3,7 @@ package squirreltable_test
 import (
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -200,9 +201,7 @@ func readOrderFaults(t *testing.T, mutate func(dir string)) map[string]string {
 	}
 	got, out := runCountCapProbe(t, countCapFloatSchema, keys[:2], inputs, mutate)
 	reversed, more := runCountCapProbe(t, "package probe\n table Root { values []int32\n f float32 }\n", keys[2:], inputs, mutate)
-	for key, value := range reversed {
-		got[key] = value
-	}
+	maps.Copy(got, reversed)
 	out += more
 	bad := map[string]string{}
 	for _, k := range keys {
