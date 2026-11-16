@@ -5287,8 +5287,8 @@ tables-distinctness-negative-control: bin/schema test/tables/distinct_main.cpp
 
 .PHONY: tables-wire-fuzz
 tables-wire-fuzz: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-plain.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-plain-asan.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
 		--failed build/wire-fuzz/failed-asan.bin
 
 # THE WIRE FUZZER'S NEGATIVE CONTROLS (docs/SPEC-TABLES.md §4.2). A fuzzer
@@ -5806,8 +5806,8 @@ tables-wire-fuzz-nested-arm-trailing-negative-control: build/conformance-harness
 # name (§3.3).
 .PHONY: tables-wire-fuzz-retain
 tables-wire-fuzz-retain: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
-	./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
-	./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-retain.log ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-retain-asan.log ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
 		--failed build/wire-fuzz/failed-retain-asan.bin
 
 # TWO NEGATIVE CONTROLS STAND BEHIND THE RETENTION LEG, one per engine,
@@ -8050,3 +8050,10 @@ tables-wire-fuzz-regressions: build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
 	./build/wire-fuzz-cpp-asan --regressions
 
 tables-wire-fuzz: tables-wire-fuzz-regressions
+
+# An absent codec cannot turn a smaller wire-fuzz campaign green.
+.PHONY: wire-fuzz-roster-negative-control
+wire-fuzz-roster-negative-control:
+	python3 test/conformance/wire_fuzz_complete_test.py
+
+tables-wire-fuzz-negative-control tables-c-wire-fuzz-negative-control tables-js-wire-fuzz-negative-control: wire-fuzz-roster-negative-control
