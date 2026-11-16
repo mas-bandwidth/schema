@@ -35,7 +35,8 @@ python-ci-compiler-coverage:
 # named gates of the aggregate. New matching tests are discovered by Go.
 python-ci-compiler-shard-%:
 	@names=$$(printf '%s' '$*' | tr '+' ' '); pattern=$$(printf '%s' '$*' | tr '+' '|'); \
-	sh test/slowgate/proof python-ci-compiler-$* "$$names" -tags schema_leg_python ./compiler -run "^($$pattern)$$" -count=1
+	label=$$(printf '%s' '$*' | cksum | cut -d ' ' -f1); \
+	sh test/slowgate/proof python-ci-compiler-$$label "$$names" -tags schema_leg_python ./compiler -run "^($$pattern)$$" -count=1
 update-goldens-python: ;
 
 # python-packet-core-negative-control: the packet core's own control. It edits

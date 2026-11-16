@@ -28,7 +28,7 @@ printf '%s\n' "$support" | while IFS= read -r target; do
       fi
       printf '%s\n' "$test"
     done)
-    printf '%s\n' "$selected" | paste -d+ - - - | sed 's/+*$//' | while IFS= read -r group; do
+    printf '%s\n' "$selected" | paste -d+ - - - - - | sed 's/+*$//' | while IFS= read -r group; do
       [ -n "$group" ] || continue
       jq -cn --arg name "python compiler $group" --arg target "python-ci-compiler-shard-$group" '{name:$name,target:$target,package:"",test:""}' >> "$rows"
     done
