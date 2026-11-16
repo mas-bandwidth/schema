@@ -356,6 +356,7 @@ func init() {
 		Name{Name: "tableJSONReadNullAsEmpty", What: "the null-as-empty option's read (docs/SPEC-TABLES.md §16.2)"},
 		Name{Name: "tableJSONBytes", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJSONCount", What: "one step of the text form's generic walk (§16)"},
+		Name{Name: "tableJSONCountInContract", What: "the text writer's count and length bounds (§16.3)"},
 		Name{Name: "tableJSONElementShape", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJSONEncodeUTF8", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJSONFinite", What: "one step of the text form's generic walk (§16)"},
