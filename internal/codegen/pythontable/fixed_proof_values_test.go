@@ -178,7 +178,7 @@ func TestPythonFixedProofValuesReadRules(t *testing.T) {
 			}
 			badWriter, err := runner.SaveMutated(t, row, u)
 			if err == nil && (bytes.Equal(badWriter, cpp) || verify(badWriter) == nil) {
-				t.Fatal("writer negative control did not change the reference verdict")
+				t.Fatal("writer negative control did not change the reference equality verdict")
 			}
 			probe := `from probe import T, Refused
 try:
