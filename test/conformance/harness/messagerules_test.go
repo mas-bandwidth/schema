@@ -349,7 +349,10 @@ func TestAReferenceOfTheWrongSort(t *testing.T) {
 	// THE MESSAGE CLOSURE ANNOUNCES NO NODE-TABLE ID (§3.3), but a vocabulary
 	// from a build that still announced one carries it once, so the rows read
 	// against the unit's own entries with the node-table id after them
-	v, vreport, verr := readAnnouncement(announce(own.BuildVersion(), append(append([]ir.TableVocabularyEntry(nil), own.Entries()...), ir.TableVocabularyEntry{Id: ir.TableNodeWireId})))
+	// Unknown fields may be skipped for another build, allowing the malformed
+	// value references below to reach the kept and skipped enum walks.
+	future := evolvedMessageVocabulary(t, bunit)
+	v, vreport, verr := readAnnouncement(announce(future.BuildVersion(), append(append([]ir.TableVocabularyEntry(nil), own.Entries()...), ir.TableVocabularyEntry{Id: ir.TableNodeWireId})))
 	if verr != nil || !v.Announced() || vreport.Refused {
 		t.Fatalf("the announcement carrying the node-table id was refused: %v %+v", verr, vreport)
 	}
@@ -1175,8 +1178,13 @@ func TestAZeroWidthElementUnderAWideCount(t *testing.T) {
 	if got.ok || !readRefused(got.err, got.report) {
 		t.Fatalf("a count past the bound refuses: ok=%v err=%v report=%+v", got.ok, got.err, got.report)
 	}
-	if fv := fieldOf(t, got.inst, "few"); fv.Count != 0 {
-		t.Errorf("a refused read handed back a count of %d", fv.Count)
+	// Counted arrays are born at their declared minimum, even on refusal.
+	born := fieldOf(t, model.New(model.Lookup("Bases")), "few").Count
+	if born != 2 {
+		t.Fatalf("few's born count is %d, want 2", born)
+	}
+	if fv := fieldOf(t, got.inst, "few"); fv.Count != born {
+		t.Errorf("a refused read changed the born count: got %d, want %d", fv.Count, born)
 	}
 }
 
@@ -1253,8 +1261,12 @@ func TestTheSixFindings(t *testing.T) {
 		if ok || !readRefused(derr, rep) {
 			t.Errorf("the surplus body refuses: ok=%v err=%v report=%+v", ok, derr, rep)
 		}
-		if few := fieldOf(t, read, "few"); few.Count != 0 {
-			t.Errorf("a refused read handed back %d elements", few.Count)
+		born := fieldOf(t, model.New(model.Lookup("Bases")), "few").Count
+		if born != 2 {
+			t.Fatalf("few's born count is %d, want 2", born)
+		}
+		if few := fieldOf(t, read, "few"); few.Count != born {
+			t.Errorf("a refused read changed the born count: got %d, want %d", few.Count, born)
 		}
 	}
 
