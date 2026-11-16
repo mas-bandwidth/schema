@@ -1272,6 +1272,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"schema-luau-resource-bounds.yml:luau-resource-bounds",
 		"schema-luau-runs-hostile-corpus.yml:corpus",
 		"schema-luau-runs-hostile-corpus.yml:negative-control",
+		"schema-python-nightly-fuzz.yml:nightly",
 		"schema-rust-runs-hostile-corpus.yml:corpus",
 		"schema-rust-runs-hostile-corpus.yml:negative-control",
 	} {
@@ -1429,6 +1430,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-moo-generated-analyze-strict-gate.yml:gate",
 		"schema-moo-nightly-fuzz.yml:nightly",
 		"schema-moo-nightly-fuzz.yml:wiring",
+		"schema-python-nightly-fuzz.yml:nightly",
 		"schema-rust-runs-hostile-corpus.yml:corpus",
 		"schema-rust-runs-hostile-corpus.yml:negative-control",
 		"schema-shared-hostile-corpus.yml:drift",
