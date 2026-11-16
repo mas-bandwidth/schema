@@ -11,7 +11,38 @@ import math
 import struct
 from typing import Final
 
-__all__: Final = ["InvalidValue", "LoadReport", "Refused"]
+__all__: Final = ["BlobRef", "InvalidValue", "LoadReport", "Refused"]
+
+
+class BlobRef:
+    """An explicit blob node shared by identity between pointer slots.
+
+    Plain strings and bytes are values; use the same BlobRef in two slots to
+    name the same in-memory blob. Its payload is fixed at construction.
+    """
+
+    __slots__ = ("_value",)
+    _value: str | bytes
+
+    def __init__(self, value: str | bytes) -> None:
+        if type(value) not in (str, bytes):
+            raise TypeError("BlobRef requires str or bytes")
+        object.__setattr__(self, "_value", value)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("BlobRef is immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError("BlobRef is immutable")
+
+    @property
+    def value(self) -> str | bytes:
+        return self._value
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, BlobRef):
+            other = other.value
+        return self._value == other
 
 
 class Refused(ValueError):
