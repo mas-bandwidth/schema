@@ -201,14 +201,16 @@ func TestPythonReflectionCorpusNegativeControl(t *testing.T) {
 				t.Fatalf("%s control anchor absent", tc.name)
 			}
 			files[path] = []byte(strings.Replace(src, tc.from, tc.to, 1))
-			got := reflectionListing(t, u, files, false)
-			want := viewlisting.Listing(u)
-			diff := reflectionFirstDiff(want, got)
-			if tc.name == "drop-table" && strings.Contains(got, "table Record file=") {
-				t.Fatal("dropped row still listed")
-			}
-			if got == want || !strings.Contains(diff, tc.line) {
-				t.Fatalf("%s sabotage did not fail on %s: %s", tc.name, tc.line, diff)
+			for _, floor := range []bool{false, true} {
+				got := reflectionListing(t, u, files, floor)
+				want := viewlisting.Listing(u)
+				diff := reflectionFirstDiff(want, got)
+				if tc.name == "drop-table" && strings.Contains(got, "table Record file=") {
+					t.Fatal("dropped row still listed")
+				}
+				if got == want || !strings.Contains(diff, tc.line) {
+					t.Fatalf("%s sabotage did not fail on %s: %s", tc.name, tc.line, diff)
+				}
 			}
 		})
 	}
@@ -284,11 +286,13 @@ func TestPythonReflectionVocabularyNegativeControl(t *testing.T) {
 				t.Fatalf("%s anchor absent: %q", name, from)
 			}
 			files[path] = []byte(strings.Replace(src, from, to, 1))
-			got := reflectionListing(t, u, files, false)
-			want := viewlisting.Listing(u)
-			diff := reflectionFirstDiff(want, got)
-			if got == want || !strings.Contains(diff, line) {
-				t.Fatalf("%s drift not detected on %s: %s", name, line, diff)
+			for _, floor := range []bool{false, true} {
+				got := reflectionListing(t, u, files, floor)
+				want := viewlisting.Listing(u)
+				diff := reflectionFirstDiff(want, got)
+				if got == want || !strings.Contains(diff, line) {
+					t.Fatalf("%s drift not detected on %s: %s", name, line, diff)
+				}
 			}
 		})
 	}
