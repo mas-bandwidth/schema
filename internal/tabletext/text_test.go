@@ -510,8 +510,10 @@ var numberCases = []struct {
 	{"9e99999", "precision", "out_of_range"},
 	{"-1e400", "precision", "out_of_range"},
 	{"1e308", "precision", "value=1e+308"},
-	// an int64 is wider than 32 bits: written as a string of digits (§16.2)
-	{"-9223372036854775808", "timestamp", `value="-9223372036854775808"`},
+	// an int64 is wider than 32 bits: written as a string of digits, and read
+	// from that string only; its bare number token is the wrong shape (§16.2)
+	{`"-9223372036854775808"`, "timestamp", `value="-9223372036854775808"`},
+	{"-9223372036854775808", "timestamp", "kind_mismatch"},
 }
 
 func TestNumberGrammarAndSemantics(t *testing.T) {
@@ -631,26 +633,24 @@ func TestRepeatedKeyRefusesWhateverItHolds(t *testing.T) {
 }
 
 // AN INTEGER FIELD READS ITS TOKEN EXACTLY, never through a double (§16.2):
-// at 2^53 the digits land as the token spells them, and the range is tested on
-// the exact value, so the uint64 maximum reads and one past it refuses.
+// at 2^53 the digits land as the string spells them, and the range is tested
+// on the exact value, so the uint64 maximum reads and one past it refuses. A
+// uint64 is wider than 32 bits, so its JSON form is that string only and its
+// bare number token refuses kind_mismatch.
 func TestAnIntegerFieldReadsItsTokenExactly(t *testing.T) {
-	m, inst, r := read(t, "ProfileConfig", `{ "epoch": 9007199254740993 }`)
+	m, inst, r := read(t, "ProfileConfig", `{ "epoch": "9007199254740993" }`)
 	accepts(t, m, inst, r)
 	if got := field(t, inst, "epoch").Cell.U; got != 9007199254740993 {
 		t.Fatalf("the field path must land the exact digits: got %d, want 9007199254740993", got)
 	}
-	// the same value as a string, a wide integer's other spelling (§16.2)
-	m, inst, r = read(t, "ProfileConfig", `{ "epoch": "9007199254740993" }`)
-	accepts(t, m, inst, r)
-	if got := field(t, inst, "epoch").Cell.U; got != 9007199254740993 {
-		t.Fatalf("the string spelling must land the exact digits: got %d", got)
-	}
-	m, inst, r = read(t, "ProfileConfig", `{ "epoch": 18446744073709551615 }`)
+	_, _, r = read(t, "ProfileConfig", `{ "epoch": 9007199254740993 }`)
+	refuses(t, r, "kind_mismatch")
+	m, inst, r = read(t, "ProfileConfig", `{ "epoch": "18446744073709551615" }`)
 	accepts(t, m, inst, r)
 	if got := field(t, inst, "epoch").Cell.U; got != 18446744073709551615 {
 		t.Fatalf("uint64's own maximum must read: got %d", got)
 	}
-	_, _, r = read(t, "ProfileConfig", `{ "epoch": 18446744073709551616 }`)
+	_, _, r = read(t, "ProfileConfig", `{ "epoch": "18446744073709551616" }`)
 	refuses(t, r, "out_of_range")
 }
 
