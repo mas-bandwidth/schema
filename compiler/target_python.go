@@ -26,7 +26,10 @@ func (pythonTarget) ValidateOptions(u *ir.Unit, opts Options) error {
 	if err != nil {
 		return err
 	}
-	return pythontable.ValidateSurfaces(u, surfaces)
+	if err := pythontable.ValidateSurfaces(u, surfaces); err != nil {
+		return err
+	}
+	return pythontable.ValidateAvailableSurfaces(surfaces)
 }
 
 func (pythonTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
@@ -35,6 +38,9 @@ func (pythonTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error
 		return nil, err
 	}
 	if err := pythontable.ValidateSurfaces(u, surfaces); err != nil {
+		return nil, err
+	}
+	if err := pythontable.ValidateAvailableSurfaces(surfaces); err != nil {
 		return nil, err
 	}
 	if len(u.Tables) == 0 {

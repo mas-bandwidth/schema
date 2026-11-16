@@ -68,3 +68,24 @@ func ValidateSurfaces(u *ir.Unit, s Surfaces) error {
 	}
 	return nil
 }
+
+// ValidateAvailableSurfaces refuses explicit requests for seams whose Python
+// generators are not yet wired up. A later surface owner removes its entry
+// when it connects the selection to emission; default remains today's output.
+func ValidateAvailableSurfaces(s Surfaces) error {
+	if s == gotable.DefaultSurfaces() {
+		return nil
+	}
+	for _, item := range []struct {
+		name    string
+		enabled bool
+	}{
+		{"fixed", s.Fixed}, {"json", s.JSON}, {"cook", s.Cook}, {"view", s.View},
+		{"message", s.Message}, {"retain", s.Retain}, {"textform", s.TextForm},
+	} {
+		if item.enabled {
+			return fmt.Errorf("python does not yet carry the explicitly requested %s surface (docs/SPEC-TABLES.md §8.8)", item.name)
+		}
+	}
+	return nil
+}

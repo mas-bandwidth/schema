@@ -864,9 +864,8 @@ func fail(err error) {
 	fatalf("%v", err)
 }
 
-// refuseSurfaceForTarget returns an error when a non-Go target is handed the
-// --surface flag: the flag is refused by name, not by value, so the empty
-// `--surface=` is refused too (SPEC §8.8).
+// refuseSurfaceForTarget checks the flag by presence, including --surface=;
+// Go and Python accept it, and other targets refuse it by name.
 func refuseSurfaceForTarget(surfaceSet bool, lang string) error {
 	if surfaceSet && lang != "go" && lang != "python" {
 		return fmt.Errorf("the %s target refuses the --surface flag by name; only the go and python targets honor it (SPEC-TABLES.md §8.8)", lang)
