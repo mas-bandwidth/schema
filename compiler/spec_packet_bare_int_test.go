@@ -10,6 +10,7 @@ package compiler
 
 import (
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -69,6 +70,34 @@ func TestSpecPacketWriteBareIntWidth(t *testing.T) {
 		"A bare integer outside its declared width cannot be built either")
 	mustState(t, "SPEC §5.1 the Rust idiom row", oneLine(spec),
 		"the storage is `iN`/`uN`")
+
+	writeSection := specTablesSection(t, spec, "Each leg's `FixedSave`", "## 6. ")
+	row11 := regexp.MustCompile(`11 (every build|debug|unrepresentable|not yet held)`)
+	for _, leg := range []string{"C++", "C", "C#", "Rust", "Java", "Dart", "Go", "JavaScript", "Elixir", "Lua", "Luau", "Squirrel", "MOO", "Goose", "Lobster"} {
+		marker := "- **" + leg + "**"
+		start := strings.Index(writeSection, marker)
+		if start < 0 {
+			t.Errorf("packet column missing %s", leg)
+			continue
+		}
+		cell := writeSection[start+len(marker):]
+		if end := strings.Index(cell, "\n- **"); end >= 0 {
+			cell = cell[:end]
+		}
+		packet := ""
+		for _, line := range strings.Split(cell, "\n") {
+			if strings.Contains(line, "packet `Write`:") {
+				packet = line
+				break
+			}
+		}
+		if !row11.MatchString(packet) {
+			t.Errorf("%s packet Write does not state row 11: %s", leg, packet)
+		}
+		if (leg == "Rust" || leg == "Goose") && !strings.Contains(packet, "11 unrepresentable") {
+			t.Errorf("%s packet Write must state row 11 unrepresentable", leg)
+		}
+	}
 
 	for _, page := range []struct{ name, text string }{
 		{"docs/SPEC.md", spec},
