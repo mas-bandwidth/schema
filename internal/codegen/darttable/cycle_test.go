@@ -157,10 +157,10 @@ void main(List<String> args) {
     final base = wire('node_cycle_self');
     final over = Uint8List(base.length + 3);
     over.setRange(0, 7, base, 0);
-    over.setRange(7, 13, const <int>[3, 17, 1, 3, 17, 0]);
+    over.setRange(7, 13, const <int>[2, 17, 1, 2, 17, 0]);
     over.setRange(13, over.length, base, 10);
     for (var i = 13; i + 2 < over.length; i++) {
-      if (over[i] == 3 && over[i + 1] == 17 && over[i + 2] == 2) {
+      if (over[i] == 2 && over[i + 1] == 17 && over[i + 2] == 2) {
         over[i + 2] = 0;
         break;
       }
