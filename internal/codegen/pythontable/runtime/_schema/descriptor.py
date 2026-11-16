@@ -117,7 +117,7 @@ class FieldDesc:
     elem_size: int
     elem_align: int
     name: str
-    json_key: str
+    json_key: str | None
     required: bool
     frac_bits: int
     json_variants: tuple[str, ...]
@@ -191,7 +191,7 @@ class FieldDesc:
         field_id: int,
         kind: int,
         codec: str,
-        json_key: str = "",
+        json_key: str | None = None,
         required: bool = False,
         frac_bits: int = 0,
         json_variants: tuple[str, ...] = (),
@@ -280,7 +280,7 @@ class FieldDesc:
         self.elem_size = elem_size
         self.elem_align = elem_align
         self.name = name
-        self.json_key = json_key or name
+        self.json_key = json_key
         self.required = required
         self.frac_bits = frac_bits
         self.json_variants = json_variants
