@@ -39,11 +39,12 @@ func init() {
 // docs/SPEC-TABLES.md §16.7): _writePtr writes every node in place, so a node
 // two slots name is written twice in full with no "&node" label. `dart /
 // json-write` goes red on the shared-node rows; the reader and the wire never
-// run this branch and stay green.
+// run this branch and stay green. Keep large graphs on the normal path: a
+// diamond chain has exponentially many paths when sharing is sabotaged.
 func init() {
 	sabotages["table-dart-text-share"] = []edit{{
 		old: "  if ((sh.count[node] ?? 0) <= 1) {\n    body(null);",
-		new: "  if (true /* SABOTAGED: every node written in place */) {\n    body(null);",
+		new: "  if (sh.count.length <= 8 /* SABOTAGED: every node written in place */ || (sh.count[node] ?? 0) <= 1) {\n    body(null);",
 	}}
 }
 
