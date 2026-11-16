@@ -519,6 +519,53 @@ print('ok')
 	}
 }
 
+func TestPythonJsonUnionBlobAgainstEngine(t *testing.T) {
+	t.Parallel()
+	const schema = `package jsonunionblob
+ union Reach { text *string }
+ table Root { reach Reach }`
+	unit := loadUnit(t, schema)
+	model := tabletext.NewModel(unit)
+	instance := model.New(model.Lookup("Root"))
+	input := []byte(`{"reach":{"text":"hello"}}`)
+	var report tabletext.Report
+	if !model.Read(instance, input, &report) {
+		t.Fatalf("engine refused: %+v", report)
+	}
+	canonical, err := model.Write(instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := tablewire.Encode(model, instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from jsonunionblob import Root
+with open('input', encoding='utf-8') as f: text = f.read()
+with open('text','rb') as f: expected_text = f.read()
+with open('wire','rb') as f: expected_wire = f.read()
+value = Root.from_json(text)
+assert value.reach.type == 1 and value.reach.text == 'hello'
+assert value.to_json().encode() == expected_text
+assert value.save() == expected_wire
+assert Root.load(expected_wire).to_json().encode() == expected_text
+print('ok')
+`
+	inputs := map[string][]byte{"main.py": []byte(probe), "input": input, "text": append(canonical, '\n'), "wire": wire}
+	if got := string(pyrun.Run(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("current: %q", got)
+	}
+	if got := string(pyrun.RunFloor(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("floor: %q", got)
+	}
+}
+
 func TestPythonJsonKeyedWideAndVocabulary(t *testing.T) {
 	t.Parallel()
 	const schema = `package jsonkeyed
