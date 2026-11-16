@@ -28,13 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-<<<<<<< HEAD
-const _ = uint64(goruntime.Version - 0x11536863a144e917)
-const _ = uint64(0x11536863a144e917 - goruntime.Version)
-=======
-const _ = uint64(goruntime.Version - 0x716700b912cdb71d)
-const _ = uint64(0x716700b912cdb71d - goruntime.Version)
->>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
+const _ = uint64(goruntime.Version - 0x89b203cfa90364c5)
+const _ = uint64(0x89b203cfa90364c5 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -47,10 +42,6 @@ func tableJSONSetRaw(a0 unsafe.Pointer, a1 uint32, a2 uint64) { goruntime.TableJ
 func tableJSONGetSigned(a0 unsafe.Pointer, a1 uint32) int64 {
 	return goruntime.TableJSONGetSigned(a0, a1)
 }
-
-type tableFirstUse = goruntime.TableFirstUse
-
-type tableFirstUseRun = goruntime.TableFirstUseRun
 
 func tableFirstUseCount(a0 *TableReport, a1 uint8) { goruntime.TableFirstUseCount(a0, a1) }
 
@@ -289,16 +280,6 @@ func tableFixedOverlay(a0 unsafe.Pointer, a1 uintptr) []byte {
 const TableMessageBatchMax = goruntime.TableMessageBatchMax
 
 func tableMessageBits(a0 uint64) int64 { return goruntime.TableMessageBits(a0) }
-
-func tableMessageSeenOpen(a0 *TableVocabulary, a1 []uint64, a2 int) {
-	goruntime.TableMessageSeenOpen(a0, a1, a2)
-}
-
-func tableMessageSeenFirst(a0 *TableVocabulary) { goruntime.TableMessageSeenFirst(a0) }
-
-func tableMessageSeenRepeat(a0 *TableVocabulary, a1 []uint64, a2 int, a3 uint64) bool {
-	return goruntime.TableMessageSeenRepeat(a0, a1, a2, a3)
-}
 
 func tableMessageRefuse(a0 *TableReport, a1 string) bool { return goruntime.TableMessageRefuse(a0, a1) }
 

@@ -656,12 +656,9 @@ type TableMessageShape struct {
 	QCount        uint32
 }
 
-// An entry also keeps, in the caller's storage, the first slot announcing its
-// id and when and at which nesting levels a body read last named it.
 type TableMessageEntry struct {
-	ID                                   uint64
-	Shape, Element                       TableMessageShape
-	bodyFirst, bodySeenAt, bodySeenBelow uint64
+	ID             uint64
+	Shape, Element TableMessageShape
 }
 
 // Storage belongs to the caller and is resolved once for one connection direction.
@@ -672,7 +669,6 @@ type TableVocabulary struct {
 	Announced, Refused bool
 	MaxBytes           int64
 	Strict             bool
-	bodyClock          uint64
 }
 
 type TableMessageReader struct {
@@ -1862,63 +1858,6 @@ func (v *TableVocabulary) Init(storage []TableMessageEntry) {
 	*v = TableVocabulary{Entries: storage, MaxBytes: 64 * 1024}
 }
 
-// A FIELD ID TWICE IN ONE BODY IS DAMAGE (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3), and the
-// check is one test of the entry, in the caller's storage, whatever the
-// vocabulary's size. Each body read takes the next tick of the vocabulary's
-// clock and keeps it in starts[depth], an array the generated read declares
-// at the unit's deepest nesting. An entry keeps the tick of its last naming
-// (above seven bits holding that body's level) and a bit for each shallower
-// level whose body had named it: a level's mark still stands when that level's
-// open body began at or before the last naming, and the levels whose bodies
-// were opened since are dropped as the entry is named again. Two slots
-// announcing one id are one entry, the first.
-func TableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
-	v.bodyClock++
-	starts[depth] = v.bodyClock
-}
-
-func TableMessageSeenFirst(v *TableVocabulary) {
-	for i := range v.Count {
-		for j := range i {
-			if v.Entries[j].ID == v.Entries[i].ID {
-				v.Entries[i].bodyFirst = uint64(j + 1)
-				break
-			}
-		}
-	}
-}
-
-func TableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
-	e := &v.Entries[ref-1]
-	if e.bodyFirst != 0 {
-		e = &v.Entries[e.bodyFirst-1]
-	}
-	at, last, below := e.bodySeenAt>>7, int(e.bodySeenAt&127), e.bodySeenBelow
-	if starts[depth] <= at {
-		if last == depth || below>>uint(depth)&1 != 0 {
-			return true
-		}
-		below &= 1<<uint(depth) - 1
-	} else {
-		kept, hi := 0, depth
-		for kept < hi {
-			mid := (kept + hi) / 2
-			if starts[mid] <= at {
-				kept = mid + 1
-			} else {
-				hi = mid
-			}
-		}
-		if last < kept {
-			below |= 1 << uint(last)
-		}
-		below &= 1<<uint(kept) - 1
-	}
-	e.bodySeenBelow = below
-	e.bodySeenAt = v.bodyClock<<7 | uint64(depth)
-	return false
-}
-
 func (v *TableVocabulary) Entry(ref uint64) (TableMessageEntry, bool) {
 	if ref == 0 || ref > uint64(v.Count) {
 		return TableMessageEntry{}, false
@@ -2223,8 +2162,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-<<<<<<< HEAD
-const Version uint64 = 0x11536863a144e917
-=======
-const Version uint64 = 0x716700b912cdb71d
->>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
+const Version uint64 = 0x89b203cfa90364c5

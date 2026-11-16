@@ -131,20 +131,12 @@ func TeamConfigSaveMessages(values []*TeamConfig, buffer []byte, report *TableRe
 	return 2 + w.Bits/8
 }
 func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
-	var starts [1]uint64
-	return tableMessageBodyTeamConfig(r, value, starts[:], 0)
-}
-func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts []uint64, depth int) bool {
-	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TeamConfigReset(value)
-<<<<<<< HEAD
-=======
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -159,10 +151,11 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
+		if slices.Contains(seen, entry.ID) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xceec99e2d65db674:
 			{
@@ -389,20 +382,12 @@ func GunnerConfigSaveMessages(values []*GunnerConfig, buffer []byte, report *Tab
 	return 2 + w.Bits/8
 }
 func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) bool {
-	var starts [1]uint64
-	return tableMessageBodyGunnerConfig(r, value, starts[:], 0)
-}
-func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, starts []uint64, depth int) bool {
-	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	GunnerConfigReset(value)
-<<<<<<< HEAD
-=======
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -417,10 +402,11 @@ func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, st
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
+		if slices.Contains(seen, entry.ID) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xb75aa3662201646a:
 			{
@@ -657,20 +643,12 @@ func TurretConfigSaveMessages(values []*TurretConfig, buffer []byte, report *Tab
 	return 2 + w.Bits/8
 }
 func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) bool {
-	var starts [2]uint64
-	return tableMessageBodyTurretConfig(r, value, starts[:], 0)
-}
-func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, starts []uint64, depth int) bool {
-	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TurretConfigReset(value)
-<<<<<<< HEAD
-=======
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -685,10 +663,11 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, st
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
+		if slices.Contains(seen, entry.ID) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x7f6308be8ab37fc0:
 			{
@@ -800,7 +779,7 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, st
 						return false
 					}
 				}
-				if !tableMessageBodyGunnerConfig(r, &value.Gunner, starts, depth+1) {
+				if !GunnerConfigLoadMessageBody(r, &value.Gunner) {
 					return false
 				}
 				value.GunnerPresent = true
@@ -995,20 +974,12 @@ func HullConfigSaveMessages(values []*HullConfig, buffer []byte, report *TableRe
 	return 2 + w.Bits/8
 }
 func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
-	var starts [3]uint64
-	return tableMessageBodyHullConfig(r, value, starts[:], 0)
-}
-func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts []uint64, depth int) bool {
-	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	HullConfigReset(value)
-<<<<<<< HEAD
-=======
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1023,10 +994,11 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
+		if slices.Contains(seen, entry.ID) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x7f69d4b5288ba9cf:
 			{
@@ -1184,9 +1156,6 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 						} else {
 							r.Report.Unknown++
 						}
-<<<<<<< HEAD
-						if !tableMessageBodyTurretConfig(r, &(*p), starts, depth+1) {
-=======
 						slotDefault := true
 						{
 							start := r.Bits.Offset
@@ -1199,7 +1168,6 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 						}
 						if exact && known && slotDefault {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
->>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 							return false
 						}
 					}
@@ -1438,20 +1406,12 @@ func KeyedConfigSaveMessages(values []*KeyedConfig, buffer []byte, report *Table
 	return 2 + w.Bits/8
 }
 func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool {
-	var starts [4]uint64
-	return tableMessageBodyKeyedConfig(r, value, starts[:], 0)
-}
-func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, starts []uint64, depth int) bool {
-	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	KeyedConfigReset(value)
-<<<<<<< HEAD
-=======
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1466,10 +1426,11 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
+		if slices.Contains(seen, entry.ID) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xbaaeb048a5a8fa6d:
 			{
@@ -1533,9 +1494,6 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						} else {
 							r.Report.Unknown++
 						}
-<<<<<<< HEAD
-						if !tableMessageBodyTeamConfig(r, &(*p), starts, depth+1) {
-=======
 						slotDefault := true
 						{
 							start := r.Bits.Offset
@@ -1548,7 +1506,6 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						}
 						if exact && known && slotDefault {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
->>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 							return false
 						}
 					}
@@ -1619,9 +1576,6 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						} else {
 							r.Report.Unknown++
 						}
-<<<<<<< HEAD
-						if !tableMessageBodyHullConfig(r, &(*p), starts, depth+1) {
-=======
 						slotDefault := true
 						{
 							start := r.Bits.Offset
@@ -1634,7 +1588,6 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						}
 						if exact && known && slotDefault {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
->>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 							return false
 						}
 					}
@@ -1659,10 +1612,6 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						return false
 					}
 				}
-<<<<<<< HEAD
-				if !tableMessageBodyScoreBoard(r, &value.Scores, starts, depth+1) {
-					return false
-=======
 				{
 					start := r.Bits.Offset
 					if !ScoreBoardLoadMessageBody(r, &value.Scores) {
@@ -1672,7 +1621,6 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
->>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 				}
 				if widened {
 					r.Report.Widened++
@@ -1769,20 +1717,12 @@ func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool
 	return !w.Overflow
 }
 func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool {
-	var starts [1]uint64
-	return tableMessageBodyScoreBoard(r, value, starts[:], 0)
-}
-func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, starts []uint64, depth int) bool {
-	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	ScoreBoardReset(value)
-<<<<<<< HEAD
-=======
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 8e867ec7455d6b7aa00ef26e4b75c4a3cecd7780
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1797,10 +1737,11 @@ func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, sta
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
+		if slices.Contains(seen, entry.ID) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xf10fad739a0e1660:
 			{
