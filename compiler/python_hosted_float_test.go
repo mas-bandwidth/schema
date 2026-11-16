@@ -229,10 +229,17 @@ int main() { RootBuilder b; TableReport r{}; const char *s=R"json(%s)json";
 	}
 }
 
-const optionalFloatProbe = `from probe import Root, Refused, InvalidValue
+const optionalFloatProbe = `import struct
+from probe import Root, Refused, InvalidValue
 with open("wire", "rb") as fh: data=fh.read()
 v=Root.load(data)
 assert (v.f,v.d,v.c)==(-1.25,2.5,0.5) and v.a==[1.0,-2.0] and v.b==[3.0] and v.ca==[0.25,-0.5] and v.save()==data
+for before in (0.5, 0.25):
+    bad=data.replace(struct.pack("<f",before),struct.pack("<f",2.0),1)
+    assert bad != data
+    try: Root.load(bad)
+    except Refused: pass
+    else: raise AssertionError("optional range read accepted")
 r=Root(); r.f=-1.25; r.d=2.5; r.c=0.5; r.a=[1.0,-2.0]; r.b=[3.0]; r.ca=[0.25,-0.5]
 assert r.save()==data
 r.f=None; r.d=None; r.c=None; r.a=None; r.b=None; r.ca=None
