@@ -92,7 +92,7 @@ func Diff(locked, live *Unit, policy Policy) []error {
 		// token, so a lock from before the token is salvage rather than a
 		// refusal, and a table whose roll-up disagrees says nothing further that
 		// can be trusted.
-		if lk.Decl == DeclFixedTable && lk.rollupWritten && locked.Version == Version {
+		if lk.Decl == DeclFixedTable && lk.rollupWritten {
 			if err := diffRollup(lk); err != nil {
 				errs = append(errs, err)
 				continue

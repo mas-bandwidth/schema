@@ -309,7 +309,11 @@ func decodeFixed(m *tabletext.Model, inst *tabletext.Instance, data []byte, repo
 	if got := binary.LittleEndian.Uint64(data[tableFixedHashAt:]); got != hash {
 		// ANOTHER LAYOUT IS READ THROUGH THE LOCK OR NOT AT ALL (§21): an
 		// older writer the unit's lineage holds, under the lock's layout bytes
-		if reason := decodeFixedLineage(m, inst, got, layout, data[tableFixedHeaderBytes+4+layoutBytes:], report); reason != "" {
+		reason, err := decodeFixedLineage(m, inst, got, layout, data[tableFixedHeaderBytes+4+layoutBytes:], report)
+		if err != nil {
+			return err
+		}
+		if reason != "" {
 			return refuse(reason)
 		}
 		return nil

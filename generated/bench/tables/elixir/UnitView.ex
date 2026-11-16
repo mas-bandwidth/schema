@@ -12,7 +12,7 @@ defmodule Benchtable.UnitView do
 
   @unit_view %{
     package: "benchtable",
-    protocol_id: 0x0926221BCB6F475F,
+    protocol_id: 0x4C9383EBE3CDE248,
     num_constants: 0,
     constants: [],
     num_enums: 1,

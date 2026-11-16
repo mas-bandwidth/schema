@@ -196,6 +196,8 @@ fixed table T
 // after it (an uncompressed range carries the zero), a reader-side limit is 'L'
 // and is RESERVED because no table spelling exists, and a flags type is 'F'
 // once by bare name however many fields name it.
+// Legacy v1 byte/tag/dedup checks below preserve historical identity.
+// Current v2 version and path checks follow; emitted hash checks use v2.
 func t03R5(t *testing.T) {
 	ranged := t03Table(t, unitFrom(t, `package probe
 
@@ -204,9 +206,9 @@ fixed table T
     x int32 | min = -5, max = 5
 }
 `), "T")
-	rangedDigest := ir.TableFixedDefinitionsDigest(ranged)
+	rangedDigest := ir.TableFixedDefinitionsDigestLegacy(ranged)
 	if d := rangedDigest; len(d) != 17 || d[0] != 'R' || d[1] != 0xfb {
-		t.Errorf("R5: a range digest = % x, want 'R' and min=-5", d)
+		t.Errorf("R5 legacy: a range digest = % x, want 'R' and min=-5", d)
 	}
 
 	compressed := t03Table(t, unitFrom(t, `package probe
@@ -216,9 +218,9 @@ fixed table T
     q float32 = 0.0 | min = 0.0, max = 1.0, resolution = 0.01
 }
 `), "T")
-	compressedDigest := ir.TableFixedDefinitionsDigest(compressed)
+	compressedDigest := ir.TableFixedDefinitionsDigestLegacy(compressed)
 	if d := compressedDigest; len(d) != 26 || d[0] != 'R' || d[17] != 'Q' {
-		t.Errorf("R5: a compressed-float digest = % x, want 'R' min max 'Q' resolution", d)
+		t.Errorf("R5 legacy: a compressed-float digest = % x, want 'R' min max 'Q' resolution", d)
 	}
 
 	flagsOnce := t03Table(t, unitFrom(t, `package probe
@@ -230,9 +232,9 @@ fixed table T
     m Marks
 }
 `), "T")
-	once := ir.TableFixedDefinitionsDigest(flagsOnce)
+	once := ir.TableFixedDefinitionsDigestLegacy(flagsOnce)
 	if len(once) != 23 || once[0] != 'F' || once[5] != 'f' || once[14] != 'f' {
-		t.Errorf("R5: a flags digest = % x, want 'F' count, then 'f' name per flag", once)
+		t.Errorf("R5 legacy: a flags digest = % x, want 'F' count, then 'f' name per flag", once)
 	}
 	if n := binary.LittleEndian.Uint32(once[1:5]); n != 2 {
 		t.Errorf("R5: the flags row names %d wire bits, want 2", n)
@@ -248,7 +250,7 @@ fixed table T
     n Marks
 }
 `), "T")
-	twiceDigest := ir.TableFixedDefinitionsDigest(flagsTwice)
+	twiceDigest := ir.TableFixedDefinitionsDigestLegacy(flagsTwice)
 	if got := twiceDigest; string(got) != string(once) {
 		t.Errorf("R5: the flags type is not deduped by name: once % x, twice % x", once, got)
 	}
@@ -274,6 +276,23 @@ fixed table T
 				t.Error("R5: the digest carries a reader-limit row no table spelling produces")
 			}
 		}
+	}
+
+	// Current v2 binds each occurrence to its wire path. The shared IR tests
+	// own the framed-byte contract; these fixtures must use that version and
+	// retain both references even when they name the same flags definition.
+	for _, root := range []*ir.Struct{ranged, compressed, flagsOnce, flagsTwice} {
+		if version, err := ir.TableFixedDefinitionsDigestVersion(ir.TableFixedDefinitionsDigest(root)); err != nil || version != 2 {
+			t.Errorf("R5 v2: digest version = %d, err = %v", version, err)
+		}
+	}
+	if string(ir.TableFixedDefinitionsDigest(flagsOnce)) == string(ir.TableFixedDefinitionsDigest(flagsTwice)) {
+		t.Error("R5 v2: a second flags occurrence left the digest unchanged")
+	}
+	first, second := *flagsTwice, *flagsTwice
+	first.Fields, second.Fields = flagsTwice.Fields[:1], flagsTwice.Fields[1:]
+	if string(ir.TableFixedDefinitionsDigest(&first)) == string(ir.TableFixedDefinitionsDigest(&second)) {
+		t.Error("R5 v2: the same flags definition at different field paths collided")
 	}
 }
 
