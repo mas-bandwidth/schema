@@ -13468,7 +13468,20 @@ imply, intersected with each table's `forms` declaration (§2.12); the one list
 it refuses is one naming `json`, `cook` or `block` for a table whose `forms`
 declaration leaves that form out, and the default full set refuses nothing.
 
-Only the Go target honors the flag; any other `--lang` refuses it by name.
+Go honors all nine names. Python also honors the flag for `wire`, `fixed`
+and `block`; explicit requests for its remaining unconnected surfaces are
+refused by name. Python's absent option and explicit full default set preserve
+its existing output while those surfaces are connected. Every other `--lang`
+refuses the flag by name.
+
+Python's `wire` selection keeps the table descriptors and the variable-table
+wire methods. If `fixed` is omitted, it emits no fixed batch methods, layout
+metadata or fixed runtime. A declared fixed root still cannot borrow form `1`:
+its plain file load, save and measure refuse `fixed_surface_not_selected`.
+Selecting `fixed` (which implies `wire`) restores the fixed batch methods and
+makes those plain file methods use form `3`. The default does the same. Omitting
+`block` removes the table's block descriptor. This selection does not opt Python
+into the separate per-table `forms` declaration (§2.12).
 
 **A default generate removes stale surface files.** A `generate --lang go`
 without `--surface` removes from the output directory every `.go` file whose
