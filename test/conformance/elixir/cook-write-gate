@@ -1,10 +1,9 @@
 #!/bin/sh
 # THE ELIXIR COOK-WRITE GATE (docs/SPEC-TABLES.md §7.2, §7.6): reads one
 # `conformance-harness run --only elixir` log and its work directory, and
-# passes only when the leg's cook-write line reads `pass N/N` with the same N
-# twice, no case of the surface is relaxed, and no case answers absent except
-# blob_shared in both byte orders (its own work, which tightens this gate when
-# it lands). The run's other surfaces are not this gate's verdict.
+# passes only when the leg's cook-write line reads `pass N/N` with the same N,
+# no absence suffix, and no relaxed case. The run's other surfaces are not
+# this gate's verdict.
 #
 # usage: cook-write-gate <log> <work>
 log=$1
@@ -19,25 +18,20 @@ set -- $line
 verdict=$2
 count=$3
 suffix=${4:-}
-if [ "$verdict" != pass ] || [ "${count%/*}" != "${count#*/}" ]; then
+case "$count" in
+  *[!0-9/]* | */*/* | 0/* | /* | */ | "") echo "elixir cook-write gate: invalid count $count"; exit 1 ;;
+esac
+if [ "$verdict" != pass ] || [ "${count%/*}" = "$count" ] || [ "${count%/*}" != "${count#*/}" ]; then
 	echo "elixir cook-write gate: the cook-write line reads '$line', want pass N/N"
 	exit 1
 fi
 
-absent=$(ls "$work/out/elixir/cook-write" 2>/dev/null | grep '\.absent$' | LC_ALL=C sort | tr '\n' ' ')
-case "$suffix" in
-"")
-	want=""
-	;;
-+2a)
-	want="blob_shared-be.absent blob_shared.absent "
-	;;
-*)
-	want="(none past blob_shared)"
-	;;
-esac
-if [ "$absent" != "$want" ]; then
-	echo "elixir cook-write gate: '$line' answers absent: ${absent:-none}; only blob_shared may"
+if [ ! -d "$work/out/elixir/cook-write" ]; then
+  echo "elixir cook-write gate: missing output directory"
+  exit 1
+fi
+if [ -n "$suffix" ] || find "$work/out/elixir/cook-write" -name '*.absent' -print -quit | grep -q .; then
+	echo "elixir cook-write gate: '$line' has absent cases"
 	exit 1
 fi
 
