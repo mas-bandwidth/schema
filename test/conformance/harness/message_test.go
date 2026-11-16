@@ -869,6 +869,9 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 		t.Fatalf("the vector is %d bytes, the arithmetic says %d", len(one), want)
 	}
 	terminator := 8 + r + 64
+	// An unknown field at a different build may be skipped, so the only
+	// reason these references fail is that they are outside the vocabulary.
+	future := evolvedMessageVocabulary(t, model.Unit)
 	for _, past := range []uint64{entries + 1, entries + 2, top} {
 		damaged := append([]byte(nil), one...)
 		setBits(damaged, 1, terminator, r, past)
@@ -879,7 +882,7 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 		}
 		out := model.New(login)
 		var report tabletext.Report
-		count, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{out}, damaged, vocabulary, &report)
+		count, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{out}, damaged, future, &report)
 		if ok || !readRefused(derr, report) || report.Unknown != 0 {
 			t.Errorf("reference %d: count=%d ok=%v err=%v report=%+v", past, count, ok, derr, report)
 		}
@@ -915,7 +918,6 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 	if count, ok, err := tablewire.DecodeMessages(model, []*tabletext.Instance{same}, last, vocabulary, &sameReport); ok || err == nil || count != 0 || instU64(t, same, "player_id") != 0 {
 		t.Errorf("same-build undeclared field did not refuse the whole batch: count=%d ok=%v err=%v report=%+v", count, ok, err, sameReport)
 	}
-	future := evolvedMessageVocabulary(t, model.Unit)
 	out := model.New(login)
 	var report tabletext.Report
 	count, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{out}, last, future, &report)
