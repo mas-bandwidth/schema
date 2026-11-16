@@ -162,6 +162,14 @@ func TestPythonHandtextSurfaceSelection(t *testing.T) {
 	if _, err := generateHandtext(field); err == nil || !strings.Contains(err.Error(), "from_text_form") {
 		t.Fatalf("selected name not refused: %v", err)
 	}
+	wireOnly := loadUnit(t, "package probe\ntable Root | forms = \"wire\" { from_text_form int32 }\n")
+	files, err := Generate(wireOnly)
+	if err != nil {
+		t.Fatalf("wire-only name refused: %v", err)
+	}
+	if strings.Contains(string(files["probe/Core.py"]), "def from_text_form(") {
+		t.Fatal("wire-only table emitted textform")
+	}
 }
 
 func TestPythonHandtextSurfaceNegativeControl(t *testing.T) {
