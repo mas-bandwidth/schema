@@ -23,7 +23,6 @@ def run(manifest, outdir):
             report = package.LoadReport()
             value = cls.load_retain(data, retain, report)
             text = value.to_json()
-            prefix = f"{report.unknown},0,{report.widened},0,0,false,read\n"
-            write_bytes(outdir, case, (prefix + text).encode("utf-8"))
+            write_bytes(outdir, case, ("read\n" + text).encode("utf-8"))
         except Exception as err:  # noqa: BLE001 - a case this leg cannot answer is absent
             absent(outdir, case, err)
