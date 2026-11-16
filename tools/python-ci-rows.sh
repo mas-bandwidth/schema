@@ -13,7 +13,7 @@ trap 'rm -f "$rows" "$packages"' EXIT HUP INT TERM
 : > "$rows"
 make -s python-ci-support-list | while IFS= read -r target; do
   corpus=false
-  case "$target" in python-fixed-*|python-retain|python-retain-negative-control|python-reflection-ci-corpus|python-ci-framing-driver) corpus=true ;; esac
+  case "$target" in python-fixed-*|python-retain|python-retain-negative-control|python-reflection-ci-corpus|python-ci-framing-driver|python-ci-message-applicability) corpus=true ;; esac
   jq -cn --arg name "$target" --arg target "$target" --argjson corpus "$corpus" '{name:$name,target:$target,package:"",test:"",corpus:$corpus}' >> "$rows"
 done
 go list -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... > "$packages"
