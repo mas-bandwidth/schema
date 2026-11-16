@@ -23,9 +23,12 @@ type Sample {
  b [..2]float64
  ca [..2]float32 | min = -1, max = 1, resolution = 0.25
 }
-table Root { value Sample }
+union Choice { x float32 }
+table Root { value Sample
+ pick Choice
+}
 `
-const hostedFloatJSON = `{"value":{"f":1.5,"d":-2.25,"c":0.5,"a":[1.0,-3.25],"b":[2.0,4.5],"ca":[0.25,-0.5]}}`
+const hostedFloatJSON = `{"value":{"f":1.5,"d":-2.25,"c":0.5,"a":[1.0,-3.25],"b":[2.0,4.5],"ca":[0.25,-0.5]},"pick":{"x":1.75}}`
 
 func TestPythonHostedFloatFunctional(t *testing.T) {
 	t.Parallel()
@@ -81,7 +84,7 @@ from probe import Root, Refused, InvalidValue
 with open("wire", "rb") as f: data=f.read()
 v=Root.load(data)
 assert (v.value.f,v.value.d,v.value.c)==(1.5,-2.25,0.5)
-assert v.value.a==[1.0,-3.25] and v.value.b==[2.0,4.5] and v.value.ca==[0.25,-0.5]
+assert v.value.a==[1.0,-3.25] and v.value.b==[2.0,4.5] and v.value.ca==[0.25,-0.5] and v.pick.x==1.75
 assert v.save()==data
 bad=data.replace(struct.pack("<d", -2.25), struct.pack("<Q", 0x7ff8000000000000), 1)
 assert bad != data
@@ -276,9 +279,9 @@ func TestPythonOptionalFloatNegativeControls(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ name, old, replacement string }{
-		{"pack", "if fd.f32:\n            return struct.pack", "if fd.codec == \"float32\":\n            return struct.pack"},
-		{"unpack", "if fd.f32:\n        return float(struct.unpack", "if fd.codec == \"float32\":\n        return float(struct.unpack"},
-		{"width", "r.take(4 if fd.f32 else 8)", "r.take(4 if fd.codec == \"float32\" else 8)"},
+		{"pack", "if fd.kind == 10:\n            return struct.pack", "if fd.codec == \"float32\":\n            return struct.pack"},
+		{"unpack", "if fd.kind == 10:\n        return float(struct.unpack", "if fd.codec == \"float32\":\n        return float(struct.unpack"},
+		{"width", "r.take(4 if fd.kind == 10 else 8)", "r.take(4 if fd.codec == \"float32\" else 8)"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cloned := maps.Clone(files)
