@@ -729,17 +729,14 @@ func variantWireId(e *ir.Enum, value uint64, field string, key bool) (id uint64,
 
 // elides is THE VARIABLE FORM'S ELISION RULE (docs/SPEC-TABLES.md §3, §22.2):
 // whether a conforming writer leaves out a by-value field holding fv. ONE
-// FUNCTION, TWO CALLERS: the writer elides by it (encodeField, encodeKeyed,
-// encodeMap) and the read refuses a field stored at it (decode.go), so what
-// the writer elides and what the read refuses cannot drift apart. A
-// `| required` field and a present `?T` ride whatever they hold, and a
+// FUNCTION supplies the writer's elision decisions (encodeField, encodeKeyed,
+// encodeMap). A variable reader cannot invert it: lawful Required/optional
+// removal may leave a stored default without declaring the writer's policy.
+// A `| required` field and a present `?T` ride whatever they hold, and a
 // pointer elides at null; the callers judge those before asking.
 //
-// A NESTED TABLE AND AN ENUM-KEYED ARRAY ELIDE BY WHAT THEIR BODY HOLDS, which
-// only the bytes say, so the caller passes it as `empty`: the writer from the
-// body it built, the read from the body it met. A nested body is empty when it
-// is its terminator alone (a retained or unknown field is content), and a
-// keyed array when no slot rides. Every other kind ignores `empty`.
+// A nested table or enum-keyed field elides when its built body is empty:
+// a table's terminator alone or a keyed array with no slots.
 func elides(e *encoder, fv *tabletext.Field, empty bool) bool {
 	f := fv.Def
 	kind := ir.TableWireScalarKind(f)

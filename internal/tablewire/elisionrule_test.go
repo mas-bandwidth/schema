@@ -60,25 +60,19 @@ func elisionVerdict(t *testing.T, writerSrc, readerSrc, text string) string {
 	return verdict
 }
 
-// TestReadRefusesEveryKindTheWriterElides holds docs/SPEC-TABLES.md §3 and
-// docs/rulings.json reads-refuse-non-canonical over EVERY kind the variable
-// form's writer elides, not only the scalar ones: an enum at its default
-// variant, a nested table whose body is empty, an all-default fixed array and
-// an enum-keyed array with no slot are each a spelling no conforming writer
-// produces for a reader that does not declare the field `| required`. A
-// `| required` writer is what stores them, so the bytes are a real writer's.
-// The same values written by a plain writer, and values a reader substitutes
-// (an unknown variant, a deprecated one), read as before.
-func TestReadRefusesEveryKindTheWriterElides(t *testing.T) {
+// A Required writer stores defaults and removing Required is lawful (§2.3).
+// The file has no writer declaration, so each of these stored fields reads
+// under the newer plain declaration and rewrites with the new writer's elision.
+func TestReadPreservesRequiredRemoval(t *testing.T) {
 	t.Parallel()
 	const variants = "Idle, Run, Fly"
 	for _, c := range []struct {
 		name, writerVariants, writer, readerVariants, reader, text, want string
 	}{
-		{"enum at its default", variants, "f Mode = Run | required", variants, "f Mode = Run", `{"tick":1,"f":"Run"}`, "refused"},
-		{"empty nested table", variants, "f Inner | required", variants, "f Inner", `{"tick":1,"f":{}}`, "refused"},
-		{"all-default fixed array", variants, "f [3]uint8 | required", variants, "f [3]uint8", `{"tick":1,"f":[0,0,0]}`, "refused"},
-		{"keyed array with no slot", variants, "f [Mode]int32 | required", variants, "f [Mode]int32", `{"tick":1,"f":{}}`, "refused"},
+		{"enum at its default", variants, "f Mode = Run | required", variants, "f Mode = Run", `{"tick":1,"f":"Run"}`, "read"},
+		{"empty nested table", variants, "f Inner | required", variants, "f Inner", `{"tick":1,"f":{}}`, "read"},
+		{"all-default fixed array", variants, "f [3]uint8 | required", variants, "f [3]uint8", `{"tick":1,"f":[0,0,0]}`, "read"},
+		{"keyed array with no slot", variants, "f [Mode]int32 | required", variants, "f [Mode]int32", `{"tick":1,"f":{}}`, "read"},
 
 		{"enum off its default", variants, "f Mode", variants, "f Mode", `{"tick":1,"f":"Run"}`, "read"},
 		{"nested table with a value", variants, "f Inner", variants, "f Inner", `{"tick":1,"f":{"v":3}}`, "read"},
@@ -549,7 +543,8 @@ func TestVariableReadPreservesFieldReordering(t *testing.T) {
 
 // A non-null wire pointer to a type the reader cannot name substitutes null
 // (§3.1). That evolution must not turn its containing fixed array into a
-// falsely classified stored-default field. Actual all-null spellings refuse.
+// falsely classified stored-default field. A Required writer may also store
+// actual all-null elements, which remain readable after Required is removed.
 func TestReadAllowsUnknownNodePointerArraySubstitution(t *testing.T) {
 	t.Parallel()
 	schema := func(name, required string) string {
@@ -572,7 +567,7 @@ func TestReadAllowsUnknownNodePointerArraySubstitution(t *testing.T) {
 				name string
 				data []byte
 				read bool
-			}{{"substituted unknown node", unknown, true}, {"stored all-null default", allNull, false}} {
+			}{{"substituted unknown node", unknown, true}, {"stored all-null default", allNull, true}} {
 				value := older.New(older.Lookup("Root"))
 				var report tabletext.Report
 				rt := &Retain{Capacity: 4096, IdCapacity: 128}
@@ -594,7 +589,11 @@ func TestReadAllowsUnknownNodePointerArraySubstitution(t *testing.T) {
 					continue
 				}
 				links, _ := value.FieldByKey("links")
-				if report.Unknown != 1 || links.Elems[0].Node != nil || links.Elems[1].Node != nil {
+				wantUnknown := 0
+				if tc.name == "substituted unknown node" {
+					wantUnknown = 1
+				}
+				if report.Unknown != wantUnknown || links.Elems[0].Node != nil || links.Elems[1].Node != nil {
 					t.Errorf("unknown node did not substitute null: %+v", report)
 				}
 			}
@@ -602,9 +601,9 @@ func TestReadAllowsUnknownNodePointerArraySubstitution(t *testing.T) {
 	}
 }
 
-// A legal widening preserves the value exactly, so a stored scalar at its
-// unchanged default is still noncanonical. Required fields remain exempt.
-func TestReadRefusesWidenedStoredDefaults(t *testing.T) {
+// A lawful older Required writer may store zero at a narrower width. Both
+// widening and Required removal preserve that value.
+func TestReadPreservesWidenedStoredDefaults(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ writer, reader string }{{"int8", "int32"}, {"uint8", "uint64"}, {"float32", "float64"}} {
 		for _, required := range []bool{false, true} {
@@ -612,22 +611,22 @@ func TestReadRefusesWidenedStoredDefaults(t *testing.T) {
 			if required {
 				tag = " | required"
 			}
-			writer := covModel(t, "package wideneddefault\ntable Root {f "+tc.writer+tag+"}\n")
+			writer := covModel(t, "package wideneddefault\ntable Root {f "+tc.writer+" | required}\n")
 			reader := covModel(t, "package wideneddefault\ntable Root {f "+tc.reader+tag+"}\n")
 			canonical, err := Encode(writer, covPlace(t, writer, "Root", `{"f":1}`))
 			if err != nil {
 				t.Fatal(err)
 			}
-			zero := append([]byte(nil), canonical...)
-			width := ir.TableKindWidth(ir.TableWireScalarKind(writer.Lookup("Root").Fields[0]))
-			for i := 3; i < 3+width; i++ {
-				zero[i] = 0
+			zero, err := Encode(writer, covPlace(t, writer, "Root", `{"f":0}`))
+			if err != nil {
+				t.Fatal(err)
 			}
+
 			for _, c := range []struct {
 				name string
 				wire []byte
 				read bool
-			}{{"nondefault", canonical, true}, {"zero", zero, required}} {
+			}{{"nondefault", canonical, true}, {"zero", zero, true}} {
 				for _, retain := range []bool{false, true} {
 					var report tabletext.Report
 					value := reader.New(reader.Lookup("Root"))
@@ -642,6 +641,85 @@ func TestReadRefusesWidenedStoredDefaults(t *testing.T) {
 					}
 					if ok && report.Widened != 1 {
 						t.Errorf("widening count=%d, want 1", report.Widened)
+					}
+				}
+			}
+		}
+	}
+}
+
+// Both supported presence removals leave lawful older bytes. The current
+// writer may elide them, but every read entry must preserve their value.
+func TestVariablePresenceRemovalCanonicalRewrite(t *testing.T) {
+	t.Parallel()
+	const prefix = `package removal
+ enum Key { First, Second }
+ table Child { value int32 }
+ type Payload { value int32 }
+ union Choice { number Payload }
+ table Root { tick uint8
+ `
+	for _, tc := range []struct {
+		decl, text string
+		optional   bool
+	}{
+		{"f int32", `{"tick":1,"f":0}`, true},
+		{"f string(8) = \"abc\"", `{"tick":1,"f":"abc"}`, false},
+		{"f bytes(8) = \"abc\"", `{"tick":1,"f":"YWJj"}`, false},
+		{"f Child", `{"tick":1,"f":{}}`, true},
+		{"f *Child", `{"tick":1,"f":null}`, false},
+		{"f Choice", `{"tick":1,"f":{}}`, false},
+		{"f [2]int32", `{"tick":1,"f":[0,0]}`, true},
+		{"f [..2]int32", `{"tick":1,"f":[]}`, true},
+		{"f [2]*Child", `{"tick":1,"f":[null,null]}`, false},
+		{"f []int32", `{"tick":1,"f":[]}`, false},
+		{"f map[int32]int32", `{"tick":1,"f":{}}`, true},
+		{"f [Key]int32", `{"tick":1,"f":{}}`, false},
+	} {
+		reader := covModel(t, prefix+tc.decl+"\n}\n")
+		for _, marker := range []string{"required", "optional"} {
+			if marker == "optional" && !tc.optional {
+				continue
+			}
+			decl := tc.decl + " | required"
+			if marker == "optional" {
+				decl = strings.Replace(tc.decl, "f ", "f ?", 1)
+			}
+			writer := covModel(t, prefix+decl+"\n}\n")
+			wire, err := Encode(writer, covPlace(t, writer, "Root", tc.text))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := Encode(reader, covPlace(t, reader, "Root", tc.text))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(wire) == string(want) {
+				t.Fatalf("%s %s: witness must carry a field the current writer elides", marker, tc.decl)
+			}
+			for _, region := range []bool{false, true} {
+				for _, retaining := range []bool{false, true} {
+					value := reader.New(reader.Lookup("Root"))
+					var report tabletext.Report
+					rt := &Retain{Capacity: 4096, IdCapacity: 128}
+					var ok bool
+					switch {
+					case region && retaining:
+						ok, err = DecodeRegionRetain(reader, value, wire, rt, &report)
+					case region:
+						ok, err = DecodeRegion(reader, value, wire, &report)
+					case retaining:
+						ok, err = DecodeRetain(reader, value, wire, rt, &report)
+					default:
+						ok, err = Decode(reader, value, wire, &report)
+					}
+					if !ok || err != nil || !report.Silent() {
+						t.Errorf("%s %s region=%v retain=%v: ok=%v err=%v report=%+v", marker, tc.decl, region, retaining, ok, err, report)
+						continue
+					}
+					saved, err := Encode(reader, value)
+					if err != nil || string(saved) != string(want) {
+						t.Errorf("%s %s region=%v retain=%v changed value or canonical rewrite: %x want %x err=%v", marker, tc.decl, region, retaining, saved, want, err)
 					}
 				}
 			}

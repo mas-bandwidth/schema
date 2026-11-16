@@ -1,8 +1,9 @@
 // Command gen writes the non-canonical spelling vectors
 // (docs/SPEC-TABLES.md §3, §3.1, §3.3, §22; docs/rulings.json
 // reads-refuse-non-canonical): the canonical variable-form file and the
-// message-form batch the engine writes, then deliberate non-canonical cases
-// and a variable-order evolution positive, re-encoded from canonical bytes with
+// message-form batch the engine writes, deliberate non-canonical cases, and
+// variable evolution positives. A prior required or optional declaration can
+// make stored defaults, nulls and None readable; each case is re-encoded with
 // every LEB128, length, count and id reference recomputed.
 //
 // The canonical bytes are the engine's own Encode. Each variant is parsed back
@@ -75,6 +76,9 @@ func main() {
 		fatal("%s: %v", *out, err)
 	}
 	for name, data := range files {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(*out, name)), 0o755); err != nil {
+			fatal("%s: %v", name, err)
+		}
 		if err := os.WriteFile(filepath.Join(*out, name), data, 0o644); err != nil {
 			fatal("%s: %v", name, err)
 		}
@@ -147,6 +151,7 @@ func variableCases(u *ir.Unit, m *tabletext.Model, canonical []byte) map[string]
 	f = mustParse(canonical)
 	f.root.fields = append([]*wireField{{id: modeID, kind: byte(ir.TableKindU8), raw: []byte{7}}}, f.root.fields...)
 	cases["variable-field-at-default.bin"] = encodeFile(f)
+	cases["canonical/variable-field-at-default.bin"] = canonical
 
 	// AN EXPLICIT NULL POINTER: the head field written with index 0.
 	f = mustParse(canonical)
@@ -154,6 +159,8 @@ func variableCases(u *ir.Unit, m *tabletext.Model, canonical []byte) map[string]
 	// Null is the only edge to the node, so omit its otherwise orphaned table.
 	removeField(f.root, ir.TableNodeWireId)
 	cases["variable-explicit-null-pointer.bin"] = encodeFile(f)
+	removeField(f.root, headID)
+	cases["canonical/variable-explicit-null-pointer.bin"] = encodeFile(f)
 
 	// AN UNUSED ID-TABLE ENTRY: one entry no body references.
 	f = mustParse(canonical)
@@ -196,6 +203,8 @@ func variableCases(u *ir.Unit, m *tabletext.Model, canonical []byte) map[string]
 	pick := findField(f.root, pickID)
 	pick.un = &wireUnion{}
 	cases["variable-union-arm-zero.bin"] = encodeFile(f)
+	removeField(f.root, pickID)
+	cases["canonical/variable-union-arm-zero.bin"] = encodeFile(f)
 
 	return cases
 }
@@ -207,13 +216,13 @@ func manifestText() string {
 	return "file\tform\tcase\tverdict\n" +
 		"variable-canonical.bin\tvariable\tcanonical\tread\n" +
 		"variable-fields-out-of-order.bin\tvariable\tcanonical\tread\n" +
-		"variable-field-at-default.bin\tvariable\tfield-at-default\trefused\n" +
-		"variable-explicit-null-pointer.bin\tvariable\texplicit-null-pointer\trefused\n" +
+		"variable-field-at-default.bin\tvariable\tfield-at-default\tread\n" +
+		"variable-explicit-null-pointer.bin\tvariable\texplicit-null-pointer\tread\n" +
 		"variable-unused-id-entry.bin\tvariable\tunused-id-entry\trefused\n" +
 		"variable-id-table-out-of-order.bin\tvariable\tid-table-out-of-order\trefused\n" +
 		"variable-empty-node-table.bin\tvariable\tempty-node-table\trefused\n" +
 		"variable-node-table-out-of-place.bin\tvariable\tnode-table-out-of-place\trefused\n" +
-		"variable-union-arm-zero.bin\tvariable\tunion-arm-zero\trefused\n" +
+		"variable-union-arm-zero.bin\tvariable\tunion-arm-zero\tread\n" +
 		"message-canonical.bin\tmessage\tcanonical\tread\n" +
 		"announcement.bin\tannouncement\tannouncement\tread\n" +
 		"../message-one-encoding/explicit-default.bin\tmessage\tfield-at-default\trefused\n" +

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -446,9 +447,7 @@ func TestLuaCountCapReadOrderNegativeControl(t *testing.T) {
 			t.Parallel()
 			got := map[string]bool{}
 			for _, group := range countCapFloatGroups(rows) {
-				for key, value := range countCapFailed(t, group.schema, group.rows, c.edit) {
-					got[key] = value
-				}
+				maps.Copy(got, countCapFailed(t, group.schema, group.rows, c.edit))
 			}
 			for read := range c.want {
 				if !got[read] {

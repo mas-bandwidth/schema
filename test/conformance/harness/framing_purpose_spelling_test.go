@@ -267,7 +267,7 @@ func TestNoncanonicalVariablePurposeShapes(t *testing.T) {
 		t.Fatal(err)
 	}
 	seen := 0
-	for _, line := range strings.Split(string(manifest), "\n") {
+	for line := range strings.SplitSeq(string(manifest), "\n") {
 		row := strings.Split(line, "\t")
 		if len(row) != 4 || row[1] != "variable" {
 			continue

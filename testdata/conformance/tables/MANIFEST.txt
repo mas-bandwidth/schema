@@ -1183,7 +1183,7 @@ framing nested_unknown_id_inside                tblr1 Cfg testdata/wire/tables/f
 framing nested_ref_above_count_inside           tblr1 Cfg testdata/wire/tables/framing/nested_ref_above_count_inside.bin    refused -
 framing array_L0_inert                          tblr1 Cfg testdata/wire/tables/framing/array_L0_inert.bin                   refused -
 framing array_L1_inert                          tblr1 Cfg testdata/wire/tables/framing/array_L1_inert.bin                   refused -
-framing array_L2_empty                          tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin                   refused -
+framing array_L2_empty                          tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin                   read    testdata/conformance/tables/framing/cfg_default.json
 framing array_count_at_bound                    tblr1 Cfg testdata/wire/tables/framing/array_count_at_bound.bin             read    testdata/conformance/tables/framing/cfg_grades_four.json
 framing array_count_bound_plus_one              tblr1 Cfg testdata/wire/tables/framing/array_count_bound_plus_one.bin       refused -
 framing array_count_over_length                 tblr1 Cfg testdata/wire/tables/framing/array_count_over_length.bin          refused -
@@ -1221,7 +1221,7 @@ framing union_body_arm_terminator_early         tblr1 Cfg testdata/wire/tables/f
 framing union_void_arm_L_nonzero                tblr1 Cfg testdata/wire/tables/framing/union_void_arm_L_nonzero.bin         refused -
 framing union_void_arm                          tblr1 Cfg testdata/wire/tables/framing/union_void_arm.bin                   read    testdata/conformance/tables/framing/cfg_ping.json
 framing union_unknown_arm                       tblr1 Cfg testdata/wire/tables/framing/union_unknown_arm.bin                read    testdata/conformance/tables/framing/cfg_silver.json
-framing union_arm_zero_in_field                 tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin          refused -
+framing union_arm_zero_in_field                 tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin          read    testdata/conformance/tables/framing/cfg_silver.json
 framing node_clean                              graphdemo ListNode testdata/wire/tables/framing/node_clean.bin                       read    testdata/conformance/tables/framing/listnode_1_to_2.json
 framing node_count_disagrees                    graphdemo ListNode testdata/wire/tables/framing/node_count_disagrees.bin             refused -
 framing node_record_L_past_field                graphdemo ListNode testdata/wire/tables/framing/node_record_L_past_field.bin         refused -
@@ -1230,7 +1230,7 @@ framing node_bytes_left_over                    graphdemo ListNode testdata/wire
 framing node_field_wrong_kind                   graphdemo ListNode testdata/wire/tables/framing/node_field_wrong_kind.bin            refused -
 framing node_type_ref_zero                      graphdemo ListNode testdata/wire/tables/framing/node_type_ref_zero.bin               refused -
 framing node_index_above_count                  graphdemo ListNode testdata/wire/tables/framing/node_index_above_count.bin           refused -
-framing node_index_null                         graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin                  refused -
+framing node_index_null                         graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin                  read    testdata/conformance/tables/framing/listnode_1.json
 framing node_reserved_id_in_record              graphdemo ListNode testdata/wire/tables/framing/node_reserved_id_in_record.bin       refused -
 framing node_unknown_to_fixed_reader            tblr1 Cfg testdata/wire/tables/framing/node_unknown_to_fixed_reader.bin     refused -
 framing node_table_L_past_body                  graphdemo ListNode testdata/wire/tables/framing/node_table_L_past_body.bin           refused -
@@ -1393,6 +1393,10 @@ rewrite node_chain_two graphdemo ListNode testdata/wire/tables/framing/node_chai
 # and repeated-field inputs refuse; the field-reordered input below is lawful.
 # A field order may come from another lawful declaration. The ID table
 # remains first-use ordered; the current writer emits its own field order.
+rewrite array_L2_empty tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin
+rewrite union_arm_zero_in_field tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin
+rewrite node_index_null graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin
+
 rewrite rewrite_fields_reversed tblw1 Fleet testdata/wire/tables/rewrite_fields_reversed.bin
 
 # THE WRITE-ALGORITHM EDGES (docs/SPEC-TABLES.md §22): one value per degree of

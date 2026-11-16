@@ -219,9 +219,7 @@ func readOrderFaults(t *testing.T, edit func(map[string][]byte)) map[string]stri
 	ordinary := map[string][]byte{"float_good": inputs["float_good"], "nan_then_over_cap": inputs["nan_then_over_cap"]}
 	reversed := map[string][]byte{"over_cap_then_nan": inputs["over_cap_then_nan"]}
 	got := runLuauCountCap(t, countCapFloatSchema, ordinary, edit)
-	for key, value := range runLuauCountCap(t, "package probe\n table Root { values []int32\n f float32 }\n", reversed, edit) {
-		got[key] = value
-	}
+	maps.Copy(got, runLuauCountCap(t, "package probe\n table Root { values []int32\n f float32 }\n", reversed, edit))
 	bad := map[string]string{}
 	for name, reason := range strict {
 		for _, path := range countCapPaths {
