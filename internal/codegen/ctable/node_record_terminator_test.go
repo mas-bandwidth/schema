@@ -198,7 +198,7 @@ func TestCNodeRecordEndsAtTerminatorNegativeControl(t *testing.T) {
     return failures != 0;
 `, cBytes(cNodeRecordTerminatorWire(t, u, true)))
 	mutate := func(files map[string][]byte) error {
-		const check = "if(body.offset!=body.size)"
+		const check = "if(!nodes->refused && body.offset!=body.size)"
 		hit := false
 		for name, data := range files {
 			if bytes.Contains(data, []byte(check)) {
