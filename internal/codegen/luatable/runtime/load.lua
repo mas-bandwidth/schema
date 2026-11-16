@@ -2597,7 +2597,9 @@ end
 local function wire_check(st, bytes, blen)
   local c = st.wc
   local nids = #st.ids
-  for k in pairs(c.used) do c.used[k] = nil end
+  for k in pairs(c.used) do
+    c.used[k] = nil
+  end
   c.next_id = 1
   c.ids, c.nids, c.fail, c.nonFinite, c.depth, c.ne, c.table = st.ids, nids, nil, false, 0, 0, nil
   local stop = blen - 8 - nids * 8
