@@ -2,6 +2,7 @@ package pythontable
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"testing"
@@ -17,7 +18,7 @@ func TestPythonScalarWidenHistorical(t *testing.T) {
 	cases := []struct{ old, new, value, check string }{
 		{"int8", "int16", "-100", "-100"}, {"int16", "int32", "-1234", "-1234"},
 		{"int32", "int64", "-123456", "-123456"}, {"int64", "int128", `"-9007199254740993"`, "-9007199254740993"},
-		{"uint8", "uint16", "250", "250"}, {"uint16", "uint32", "65000", "65000"},
+		{"uint8", "uint16", "250", "250"}, {"uint8", "bits(9)", "250", "250"}, {"uint16", "uint32", "65000", "65000"},
 		{"uint32", "uint64", "4000000000", "4000000000"}, {"uint64", "uint128", `"18446744073709551615"`, "18446744073709551615"},
 		{"float32", "float64", "-1.5", "-1.5"},
 	}
@@ -179,6 +180,56 @@ with open("wire", "rb") as f: Root.load(f.read())
 		_, stderr, err := pyrun.Try(t, py, control, "main.py", map[string][]byte{"main.py": []byte(accept), "wire": wire})
 		if err == nil || !strings.Contains(stderr, "kind_mismatch") {
 			t.Fatalf("control did not catch scalar widening: %s %v", stderr, err)
+		}
+	}
+}
+
+// Map keys count once per map; widened value fields count per entry.
+func TestPythonScalarWidenMapInteraction(t *testing.T) {
+	slowtest.Gate(t, "scalar values and map keys widen independently")
+	writer := loadUnit(t, "package probe\ntable Root { values map[int8]int8 }\n")
+	reader := loadUnit(t, "package probe\ntable Root { values map[int32]int32 }\n")
+	text := `{"values":{"-3":4,"2":5}}`
+	wire := pythonVTMapEngineWire(t, writer, "Root", text)
+	canonical := pythonVTMapEngineWire(t, reader, "Root", text)
+	mapKeyWireProbe(t, reader, "Root", wire, canonical, 3, "")
+}
+
+func TestPythonScalarWidenNonFinite(t *testing.T) {
+	slowtest.Gate(t, "non-finite widened float and atomic report")
+	writer := loadUnit(t, "package scalarwiden\ntable Root { value float32 }\n")
+	reader := loadUnit(t, "package scalarwiden\ntable Root { value float64 }\n")
+	wire := wideEngineWire(t, writer, "Root", `{"value":1.5}`)
+	if len(wire) < 7 || wire[1] != 1 || wire[2] != 10 {
+		t.Fatalf("unexpected float wire %x", wire)
+	}
+	binary.LittleEndian.PutUint32(wire[3:7], 0x7fc00000)
+	model := tabletext.NewModel(reader)
+	value := model.New(model.Lookup("Root"))
+	var report tabletext.Report
+	ok, err := tablewire.Decode(model, value, wire, &report)
+	if ok || tablewire.RefusalReason(err) != "non_finite_float" {
+		t.Fatalf("Go non-finite: %v %v", ok, err)
+	}
+	files, err := Generate(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from scalarwiden import Root, Refused, LoadReport
+with open("wire", "rb") as f: data=f.read()
+r=LoadReport();r.widened=77;r.unknown=66
+try: Root.load(data,r)
+except Refused as e:
+ assert e.reason=="non_finite_float" and r.widened==77 and r.unknown==66
+ print("refused")
+else: raise AssertionError("accepted non-finite float")
+`
+	for _, py := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		out, stderr, err := pyrun.Try(t, py, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "wire": wire})
+		if err != nil || out != "refused\n" {
+			t.Errorf("%s: %q %s %v", py, out, stderr, err)
 		}
 	}
 }

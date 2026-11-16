@@ -23,6 +23,12 @@ func TestPythonContainerWidenHistorical(t *testing.T) {
  table Root { pick Choice }`, `package contwiden
  union Choice { number int32 }
  table Root { pick Choice }`, `{"pick":{"number":-100}}`, `v.pick.number == -100`},
+		{"optional_array", `package contwiden
+ table Root { values ?[..4]int8 }`, `package contwiden
+ table Root { values ?[..4]int32 }`, `{"values":[-7,9]}`, `v.values == [-7,9]`},
+		{"optional_empty", `package contwiden
+ table Root { values ?[..4]int8 }`, `package contwiden
+ table Root { values ?[..4]int32 }`, `{"values":[]}`, `v.values == []`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			writer := loadUnit(t, tc.old)
@@ -74,6 +80,9 @@ func TestPythonContainerWidenRefusalsAndControls(t *testing.T) {
  table Root { pick Choice }`, `package contwiden
  union Choice { number int32 }
  table Root { pick Choice }`, `{"pick":{"number":-100}}`, `if arm.field is None or not _widens(kind, arm.kind):`},
+		{"optional_array", `package contwiden
+ table Root { values ?[..4]int8 }`, `package contwiden
+ table Root { values ?[..4]int32 }`, `{"values":[-7,9]}`, `if widened and not _widens(elem_kind, elem.kind):`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			writer := loadUnit(t, tc.old)
@@ -83,7 +92,7 @@ func TestPythonContainerWidenRefusalsAndControls(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			path := "contwiden/_schema/kind_" + map[string]string{"keyed": "keyed", "arm": "union"}[tc.name] + ".py"
+			path := "contwiden/_schema/kind_" + map[string]string{"keyed": "keyed", "arm": "union", "optional_array": "optional"}[tc.name] + ".py"
 			src := string(files[path])
 			if strings.Count(src, tc.anchor) != 1 {
 				t.Fatal("control anchor missing or repeated")
