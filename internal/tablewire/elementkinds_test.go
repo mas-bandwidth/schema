@@ -235,15 +235,15 @@ func TestArrayElementKindsClosed(t *testing.T) {
 		}
 	}
 
-	// At its own element kind a count-one body reads; the count-zero
-	// spelling stores a field at its default and must refuse (§3).
+	// At its own element kind count-one and count-zero bodies read. An old
+	// Required writer can store an empty field, and Required removal is lawful.
 	for _, count := range []uint64{0, 1} {
 		var elems, triples [][]byte
 		if count == 1 {
 			elems = [][]byte{make([]byte, ir.TableKindWidth(ir.TableKindI32))}
 			triples = [][]byte{elemKeyedTriple(2, make([]byte, ir.TableKindWidth(ir.TableKindI32)))}
 		}
-		want := count != 0
+		want := true
 		if ok, err := read(elemArrayWire([]uint64{nums}, 1, ir.TableKindI32, count, elems...)); ok != want {
 			t.Errorf("declared array control count %d: accepted=%v want=%v (%v)", count, ok, want, err)
 		}

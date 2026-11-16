@@ -5073,13 +5073,11 @@ one document rather than two.
     names the same ELEMENT kind, never the list's own kind (§3.3), so a
     declaration announces only a kind on this list.
   - **An arm id of `0` is the empty union** and carries nothing after it, not
-    even a kind byte. It rides in TWO places: a `None` element of an array of
-    unions (above), and the payload of a NESTED-UNION arm whose inner union
-    is `None`, which is `L = 1` and that one zero byte. An empty union FIELD
-    elides instead (below), and a reader REFUSES a union written with arm
-    reference `0` at a field — a `None` field that should have elided — while
-    it accepts the id where those two positions are the only lawful spelling
-    of `None` (§4).
+    even a kind byte. It rides as a `None` array element or the payload of
+    a NESTED-UNION arm whose inner union is `None` (`L = 1`, that zero byte).
+    A non-required empty union FIELD elides for this writer, but a Required
+    writer stores its header and reference `0` (§22.2). Required removal is
+    lawful, so a variable reader accepts that payload at a field too (§4).
 - **Skipping a field you cannot name** needs the kind byte and nothing else,
   which is what makes an unknown field survivable (§4). Four rules cover the
   set. Kinds `1`–`11`, `18`–`29` and `36` skip their fixed width. Kinds `17` and
@@ -5930,12 +5928,13 @@ element carries:
   at all (§3) and a slot must say which variant it keys, so a body carrying one
   is damaged rather than merely foreign. It is damage: the whole load refuses
   `wire_damaged` and nothing is kept (§4).
-- **Slots are written in ascending variant ordinal**, and a reader enforces
-  it — the field-order rule (§3) one level down. Every slot is
-  found by its key, but a body whose slots arrive out of ascending ordinal is
-  a spelling no conforming writer produces, so the read refuses it (§4); byte-identical
-  output against this implementation requires matching the ascending order
-  as well as the framing.
+- **Slots are written in ascending variant ordinal in the writer's enum.**
+  The variable file carries keys by identity and does not declare the writer's
+  enum order. A reader places each slot by its key and refuses a repeated key,
+  but cannot compare the wire order with its current enum ordinal: lawful
+  variant reordering changes that ordinal. Canonical first-use ID order still
+  applies. Byte-identical output from the same writer requires its ascending
+  order as well as the framing.
 - **Each element is a triple**: the `key reference`, then `L`, then `L`
   bytes of element. The key reference names the key variant's own name hash,
   the same `fnv1a64` a field id takes (§5), carried in the file's id table
@@ -6638,9 +6637,9 @@ plain float's NaN or infinity.
 
 **THE MESSAGE FORM REFUSES THE NON-CANONICAL SPELLING TOO, ON §4's RULE.** A
 batch that decodes to a good value but that no conforming writer of a lawful
-lineage version would produce is refused: fields out of the writer's order; a
-field stored at its declared default; and a union written with arm reference
-`0`. Absent fields, unknown fields from a newer writer and widened fields stay
+lineage version would produce is refused: fields out of the writer's order and a
+field stored at its declared default under the same announced shape and build;
+and a union written with arm reference `0` at a message field. Absent fields, unknown fields from a newer writer and widened fields stay
 lawful and read as today (§4).
 
 **AN ENTRY THIS READER CANNOT NAME IS §4's ORDINARY `unknown`**, counted when a
@@ -6718,8 +6717,8 @@ The ways a batch is damaged, at bit granularity:
   the byte boundary is not zero, or BYTES REMAIN AFTER THE PAD, which is §3's
   rule for a file with bytes left over met on a batch.
 - **A BODY THAT IS NOT THE ONE A CONFORMING WRITER EMITS.** A field written at
-  the default the writer elides, fields out of the writer's declaration order,
-  the same field id twice in one body (last-wins is retired: a repeated field id
+  the default the writer elides or fields out of its declaration order, judged
+  under the same announced shape and build (§3.3(a),(b)); the same field id twice in one body (last-wins is retired: a repeated field id
   is damage in every body, this form's included), or a union written with the
   None reference (above): the body is damage, and the whole batch is discarded.
 

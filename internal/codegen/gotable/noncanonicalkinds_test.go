@@ -375,12 +375,12 @@ func nonCanonicalKindRows(t *testing.T) (rows []string, announcement []byte) {
 	refused("message", "a keyed integer slot at its default", u.bits().keys(mcounts, 1).name(north).put(0, 8).done())
 	refused("message", "a keyed table slot that is its terminator alone", u.bits().keys(mleaves, 1).name(north).none().done())
 	refused("message", "a keyed enum slot at None", u.bits().keys(mtones, 1).name(north).none().done())
-	// slot order is the variant ordinal, which is for life, and a union field
-	// at None elides in every build: no build writes either, so each is refused
-	// under any announcement
+	// Slot order is judged only under the same announced build: a different
+	// build may reorder the enum. A union field at None elides in every
+	// admitted message build, so its negative stays independent.
 	for _, other := range []bool{false, true} {
 		all = append(all, nonCanonicalKindRow{name: fmt.Sprintf("keyed slots out of ascending variant order (another build %v)", other), form: "message",
-			wire: u.bits().keys(mcounts, 2).name(south).put(1, 8).name(north).put(1, 8).done(), other: other},
+			wire: u.bits().keys(mcounts, 2).name(south).put(1, 8).name(north).put(1, 8).done(), other: other, read: other},
 			nonCanonicalKindRow{name: fmt.Sprintf("a union at None (another build %v)", other), form: "message", wire: u.bits().field(pick).none().done(), other: other})
 	}
 

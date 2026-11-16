@@ -246,10 +246,6 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 			clear(value.Label[:])
 			copy(value.Label[:], sub.Buffer)
 			value.LabelLength = int32(len(sub.Buffer))
-			if !(value.LabelLength > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xcfb8a9d063b5e9e5: // payload
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.payload")
@@ -295,10 +291,6 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-			}
-			if !(value.PayloadLength > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		case 0xe3b1ca6a3b48dddc: // samples
 			if kind != 14 {
@@ -348,10 +340,6 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-			}
-			if !(value.SamplesCount > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -632,10 +620,6 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 			clear(value.Label[:])
 			copy(value.Label[:], sub.Buffer)
 			value.LabelLength = int32(len(sub.Buffer))
-			if !(value.LabelLength > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xcfb8a9d063b5e9e5: // payload
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WideBlob.payload")
@@ -682,10 +666,6 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-			}
-			if !(value.PayloadLength > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		case 0xe3b1ca6a3b48dddc: // samples
 			if kind != 14 {
@@ -736,10 +716,6 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-			}
-			if !(value.SamplesCount > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++

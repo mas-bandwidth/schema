@@ -150,10 +150,6 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
-			if len(sub.Buffer) == 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 			sub.Depth += 1
 			if sub.Depth > tableBinaryMaxDepth {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -182,10 +178,6 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 						}
 						value.Count = int32(v)
 					}
-					if !(value.Count != 1) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
-					}
 					r.Report.Widened++
 					break
 				}
@@ -204,10 +196,6 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 					return false
 				}
 				value.Count = int32(v)
-			}
-			if !(value.Count != 1) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -436,10 +424,6 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
-			if len(sub.Buffer) == 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 			sub.Path = r.Path.step(0, uint32(0))
 			sub.Depth += 1
 			if sub.Depth > tableBinaryMaxDepth {
@@ -469,10 +453,6 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 						}
 						value.Count = int32(v)
 					}
-					if !(value.Count != 1) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
-					}
 					r.Report.Widened++
 					break
 				}
@@ -491,10 +471,6 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 					return false
 				}
 				value.Count = int32(v)
-			}
-			if !(value.Count != 1) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++

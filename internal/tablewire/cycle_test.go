@@ -139,11 +139,10 @@ func cyclePatch(t *testing.T, wire []byte, from, to byte) {
 	wire[bytes.Index(wire, pattern)+1] = to
 }
 
-// cycleGuardOff clears the one `on = true` byte on the wire, so the guarded
-// slot rides under a FALSE guard. The forged wire is non-canonical now (`on`
-// at its default rides, docs/rulings.json reads-refuse-non-canonical), so the
-// read refuses it; the cycle through the stored slot is still detected, since
-// the pointer graph runs before any value is decoded.
+// cycleGuardOff clears the one on=true payload while preserving the stored
+// pointer. A lawful older declaration may have required the false scalar or
+// stored the pointer without this guard. The acyclic twin reads; closing the
+// stored edge into a cycle still refuses, regardless of the current guard.
 func cycleGuardOff(t *testing.T, wire []byte) {
 	t.Helper()
 	for i := 0; i+2 < len(wire); i++ {
@@ -208,13 +207,26 @@ func TestCyclicWireIsDamage(t *testing.T) {
 	cycleRead(t, m, "unreached", unreached, false)
 
 	// root(1) -> A(2), A.side -> L(3) under a guard the wire turns false: the
-	// load still STORES the slot, so the slot is an edge. The forged wire is
-	// refused for the non-canonical `on` at its default; the cycle through the
-	// stored slot is refused by the pointer graph below.
+	// load still STORES the slot, so the slot is an edge. The acyclic wire
+	// reads and closing that stored edge is refused by the pointer graph.
 	guarded := []cycleLink{{0, "left", 1}, {1, "side", 2}}
 	off := cycleEncode(t, m, 3, []int{1}, guarded)
 	cycleGuardOff(t, off)
-	cycleRead(t, m, "false guard twin", off, false)
+	cycleRead(t, m, "false guard twin", off, true)
+	probe := m.New(m.Lookup("Node"))
+	var report tabletext.Report
+	if ok, err := tablewire.Decode(m, probe, off, &report); !ok || err != nil {
+		t.Fatalf("acyclic guarded probe: %v %+v", err, report)
+	}
+	a, _ := probe.FieldByKey("left")
+	if a.Cell.Node == nil {
+		t.Fatal("acyclic guarded probe lost root edge")
+	}
+	on, _ := a.Cell.Node.FieldByKey("on")
+	side, _ := a.Cell.Node.FieldByKey("side")
+	if on.Cell.B || side.Cell.Node == nil {
+		t.Fatal("false guard must retain the stored side edge before cycle insertion")
+	}
 	cyclePatch(t, off, 3, 2)
 	cycleRead(t, m, "false guard", off, false)
 }
