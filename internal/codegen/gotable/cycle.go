@@ -38,16 +38,19 @@ func tableCycleCheckReason(base unsafe.Pointer,root *TableTypeInfo,a *TableArena
    if e.Offset&tableNodeWireNamed!=0{return TableRefuseBlobShared};if e.Offset&tableNodeBlobSeen==0{return TableRefuseWireDamaged}
    e.Offset&^=tableNodeBlobSeen
   }
+  // The cycle ordinal occupies the high bits, including the no-storage bit.
+  // Convert unplaced entries to the reserved ordinal before encoding types.
+  if e.Offset&tableNodeNoStorage!=0 {e.Offset=^uint64(0)}
  }
  vertices:=0
  for i:=range dir {
-  e:=&dir[i];if e.Offset&tableNodeNoStorage!=0{continue};t:=nodeType(e.TypeID);if i==0{t=root};if t==nil{continue}
+  e:=&dir[i];if e.Offset==^uint64(0){continue};t:=nodeType(e.TypeID);if i==0{t=root};if t==nil{continue}
   off:=e.Offset&mask;seed:=e.Offset&tableNodeWireNamed!=0
   if off>mask||t.CycleIndex==0||t.CycleIndex>=65535{return TableRefuseWireDamaged}
   e.Offset=off|t.CycleIndex<<48;e.TypeID=0;if seed{e.TypeID=tableNodeSeed};vertices++
  }
  each:=func(i int,visit func(*TableRef,*TableFieldInfo)bool)bool{
-  e:=&dir[i];if e.Offset&tableNodeNoStorage!=0{return true};ordinal:=e.Offset>>48;if ordinal==0||ordinal==65535{return true}
+  e:=&dir[i];if e.Offset==^uint64(0){return true};ordinal:=e.Offset>>48;if ordinal==0||ordinal==65535{return true}
   t:=root.CycleType(ordinal);if t==nil{return false}
   var p unsafe.Pointer;if a!=nil{p=a.At(int64(e.Offset&mask))}else{p=unsafe.Add(base,e.Offset&mask)}
   return tableCycleEdges(p,t,visit)
@@ -63,7 +66,7 @@ func tableCycleCheckReason(base unsafe.Pointer,root *TableTypeInfo,a *TableArena
  push:=func(i int){dir[i].TypeID=uint64(head)<<32;head=uint32(i+1)}
  push(0)
  for i:=range dir {
-  if i==0||dir[i].Offset&tableNodeNoStorage!=0||dir[i].TypeID&tableNodeSeed==0{continue}
+  if i==0||dir[i].Offset==^uint64(0)||dir[i].TypeID&tableNodeSeed==0{continue}
   dir[i].TypeID&^=tableNodeSeed
   if dir[i].TypeID==0{push(i)}
  }
@@ -80,7 +83,7 @@ func tableCycleCheckReason(base unsafe.Pointer,root *TableTypeInfo,a *TableArena
   return true
  }
  for i:=range dir{if !each(i,resolve){return TableRefuseWireDamaged}}
- for i:=range dir{e:=&dir[i];if e.Offset&tableNodeNoStorage!=0{continue};ordinal:=e.Offset>>48;if ordinal!=0&&ordinal!=65535{e.TypeID=root.CycleType(ordinal).ID;e.Offset&=mask}}
+ for i:=range dir{e:=&dir[i];if e.Offset==^uint64(0){continue};ordinal:=e.Offset>>48;if ordinal!=0&&ordinal!=65535{e.TypeID=root.CycleType(ordinal).ID;e.Offset&=mask}}
  return TableRefuseOk
 }
 `

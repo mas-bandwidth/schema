@@ -4423,11 +4423,16 @@ func tableCycleCheckReason(base unsafe.Pointer, root *TableTypeInfo, a *TableAre
 			}
 			e.Offset &^= tableNodeBlobSeen
 		}
+		// The cycle ordinal occupies the high bits, including the no-storage bit.
+		// Convert unplaced entries to the reserved ordinal before encoding types.
+		if e.Offset&tableNodeNoStorage != 0 {
+			e.Offset = ^uint64(0)
+		}
 	}
 	vertices := 0
 	for i := range dir {
 		e := &dir[i]
-		if e.Offset&tableNodeNoStorage != 0 {
+		if e.Offset == ^uint64(0) {
 			continue
 		}
 		t := nodeType(e.TypeID)
@@ -4451,7 +4456,7 @@ func tableCycleCheckReason(base unsafe.Pointer, root *TableTypeInfo, a *TableAre
 	}
 	each := func(i int, visit func(*TableRef, *TableFieldInfo) bool) bool {
 		e := &dir[i]
-		if e.Offset&tableNodeNoStorage != 0 {
+		if e.Offset == ^uint64(0) {
 			return true
 		}
 		ordinal := e.Offset >> 48
@@ -4496,7 +4501,7 @@ func tableCycleCheckReason(base unsafe.Pointer, root *TableTypeInfo, a *TableAre
 	push := func(i int) { dir[i].TypeID = uint64(head) << 32; head = uint32(i + 1) }
 	push(0)
 	for i := range dir {
-		if i == 0 || dir[i].Offset&tableNodeNoStorage != 0 || dir[i].TypeID&tableNodeSeed == 0 {
+		if i == 0 || dir[i].Offset == ^uint64(0) || dir[i].TypeID&tableNodeSeed == 0 {
 			continue
 		}
 		dir[i].TypeID &^= tableNodeSeed
@@ -4549,7 +4554,7 @@ func tableCycleCheckReason(base unsafe.Pointer, root *TableTypeInfo, a *TableAre
 	}
 	for i := range dir {
 		e := &dir[i]
-		if e.Offset&tableNodeNoStorage != 0 {
+		if e.Offset == ^uint64(0) {
 			continue
 		}
 		ordinal := e.Offset >> 48

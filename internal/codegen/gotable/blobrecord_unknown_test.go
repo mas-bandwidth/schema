@@ -91,6 +91,16 @@ func field(i int) uint64 { return NodeTableFields[i].ID }
 
 const (fN, fNext = 0, 1)
 
+func TestCycleOrdinalDoesNotCollideWithUnstoredBlob(t *testing.T) {
+ var info = NodeTableInfo
+ info.CycleIndex = 8192
+ info.CycleType = func(i uint64) *TableTypeInfo { if i == info.CycleIndex { return &info }; return nil }
+ var row Node
+ dir := []TableNodeDirEntry{{0, info.ID}}
+ if reason := tableCycleCheckReason(unsafe.Pointer(&row), &info, nil, dir, func(uint64) *TableTypeInfo { return nil }); reason != TableRefuseOk { t.Fatalf("high ordinal refused: %v", reason) }
+ if dir[0].Offset != 0 || dir[0].TypeID != info.ID { t.Fatalf("high ordinal was not restored: %+v", dir[0]) }
+}
+
 func TestUnknownBlobSizeCapIsIndependentOfMask(t *testing.T) {
 	t.Parallel()
 	for _, id := range []uint64{tableBytesTypeID, tableStringTypeID} {
