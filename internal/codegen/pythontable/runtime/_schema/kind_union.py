@@ -10,10 +10,10 @@ An array of unions (kind 14 over element kind 15) is one union payload per
 element in place, a `None` element as the single zero reference.
 """
 
-from typing import Any
+from typing import Any, Iterator
 
 from . import InvalidValue, Refused
-from . import descriptor, kinds
+from . import descriptor, kind_blob, kinds
 # load and save import this module for its registration; binding them as
 # modules (not their names) resolves at call time, so the hot paths pay
 # no per-call import.
@@ -155,18 +155,7 @@ def _write_union_element(w: Any, un: type[Any], value: Any, ctx: Any) -> None:
 
 
 def _validate_union(value: Any, name: str, path: str, seen: set[int]) -> None:
-    un = _union_class(name)
-    if not isinstance(value, un):
-        raise InvalidValue(path, f"not a {name}")
-    tag = value.type
-    if type(tag) is not int or tag < 0 or tag > len(un.descriptor.arms):
-        raise InvalidValue(path, f"type {tag!r} names no arm")
-    if tag == 0:
-        return
-    arm = un.descriptor.arms[tag - 1]
-    if arm.field is None:
-        return
-    _validate_arm_value(getattr(value, arm.name), arm.field, f"{path}.{arm.name}", seen)
+    _save._validate_drain([_validation_union(value, name, path)], seen)
 
 
 def _check_union_count(f: FieldDesc, count: int, path: str) -> None:
@@ -184,46 +173,7 @@ def _check_union_count(f: FieldDesc, count: int, path: str) -> None:
 
 
 def _validate_union_array(value: Any, f: FieldDesc, path: str, seen: set[int]) -> None:
-    if not isinstance(value, list):
-        raise InvalidValue(path, "not a list")
-    _check_union_count(f, len(value), path)
-    for index, element in enumerate(value):
-        _validate_union(element, f.target, f"{path}[{index}]", seen)
-
-
-def _validate_arm_value(value: Any, f: FieldDesc, path: str, seen: set[int]) -> None:
-    if f.codec == "pointer":
-        if value is None:
-            return
-        target = descriptor.by_name(f.target)
-        if target is None or not isinstance(value, target):
-            raise InvalidValue(path, f"not a {f.target} or None")
-        _save._validate(value, value.descriptor, path, seen)
-        return
-    if f.codec == "table":
-        target = descriptor.by_name(f.target)
-        if target is None or not isinstance(value, target):
-            raise InvalidValue(path, f"not a {f.target}")
-        _save._validate(value, value.descriptor, path, seen)
-        return
-    if f.codec == "union":
-        _validate_union(value, f.target, path, seen)
-        return
-    if f.codec == "union_array":
-        _validate_union_array(value, f, path, seen)
-        return
-    if f.codec == "map":
-        _save._validate_map(f, value, path, seen)
-        return
-    kind = kinds._REGISTRY[f.codec]
-    kind.validate(f, value, path)
-    element = f.element
-    if f.codec == "array" and element is not None:
-        for index, item in enumerate(value):
-            _validate_arm_value(item, element, f"{path}[{index}]", seen)
-        return
-    for table, table_path in _save._held_tables(kind, f, value, path):
-        _save._validate(table, table.descriptor, table_path, seen)
+    _save._validate_drain([_validation_edges(f, value, path)], seen)
 
 
 def _collect_union(value: Any, ctx: Any, blobs: list[int]) -> None:
@@ -279,6 +229,98 @@ def _collect_arm_value(value: Any, f: FieldDesc, ctx: Any, blobs: list[int]) -> 
     if f.codec == "array" and element is not None:
         for item in value:
             _collect_arm_value(item, element, ctx, blobs)
+
+
+def _validation_edges(f: FieldDesc, value: Any, path: str) -> Iterator[tuple[Any, str]]:
+    """Validate a union's inline values and yield table edges to the shared stack."""
+    if f.codec == "union_array":
+        if not isinstance(value, list):
+            raise InvalidValue(path, "not a list")
+        _check_union_count(f, len(value), path)
+        for index, item in enumerate(value):
+            yield from _validation_union(item, f.target, f"{path}[{index}]")
+    else:
+        yield from _validation_union(value, f.target, path)
+
+
+def _validation_union(value: Any, name: str, path: str) -> Iterator[tuple[Any, str]]:
+    un = _union_class(name)
+    if not isinstance(value, un):
+        raise InvalidValue(path, f"not a {name}")
+    tag = value.type
+    if type(tag) is not int or tag < 0 or tag > len(un.descriptor.arms):
+        raise InvalidValue(path, f"type {tag!r} names no arm")
+    if tag:
+        arm = un.descriptor.arms[tag - 1]
+        if arm.field is not None:
+            yield from _validation_arm(arm.field, getattr(value, arm.name), f"{path}.{arm.name}")
+
+
+def _validation_arm(f: FieldDesc, value: Any, path: str) -> Iterator[tuple[Any, str]]:
+    if f.codec in ("pointer", "table"):
+        if f.codec == "pointer" and value is None:
+            return
+        target = descriptor.by_name(f.target)
+        if target is None or not isinstance(value, target):
+            raise InvalidValue(path, f"not a {f.target}" + (" or None" if f.codec == "pointer" else ""))
+        yield value, path
+    elif f.codec == "pointer_array":
+        kinds._REGISTRY[f.codec].validate(f, value, path)
+        for index, item in enumerate(value):
+            if item is not None:
+                yield item, f"{path}[{index}]"
+    elif f.codec in ("union", "union_array"):
+        yield from _validation_edges(f, value, path)
+    elif f.codec == "map":
+        yield from _save._validate_map_entries(f, value, path)
+    elif f.codec == "array" and f.element is not None:
+        kinds._REGISTRY[f.codec].validate(f, value, path)
+        for index, item in enumerate(value):
+            yield from _validation_arm(f.element, item, f"{path}[{index}]")
+    else:
+        kind = kinds._REGISTRY[f.codec]
+        kind.validate(f, value, path)
+        yield from _save._held_tables(kind, f, value, path)
+
+
+def _collection_edges(f: FieldDesc, value: Any, ctx: Any, blobs: list[int], path: Any) -> Iterator[tuple[Any, Any, bool, list[int]]]:
+    """Yield the selected arms' table edges in serialization slot order."""
+    if f.codec == "union_array":
+        for index, item in enumerate(value):
+            yield from _collection_union(item, ctx, blobs, (path, "", index))
+    else:
+        yield from _collection_union(value, ctx, blobs, path)
+
+
+def _collection_union(value: Any, ctx: Any, blobs: list[int], path: Any) -> Iterator[tuple[Any, Any, bool, list[int]]]:
+    if value.type:
+        arm = type(value).descriptor.arms[value.type - 1]
+        if arm.field is not None:
+            yield from _collection_arm(arm.field, getattr(value, arm.name), ctx, blobs, (path, arm.name, _save._NO_SUB))
+
+
+def _collection_arm(f: FieldDesc, value: Any, ctx: Any, blobs: list[int], path: Any) -> Iterator[tuple[Any, Any, bool, list[int]]]:
+    if f.codec in ("string_blob", "bytes_blob"):
+        if value is not None:
+            body = kind_blob._encode(f, value, _save._render(path))
+            blobs.append(len(ctx.order) + 2)
+            ctx.order.append(kind_blob._BlobNode(f.codec == "string_blob", body))
+    elif f.codec == "pointer":
+        if value is not None:
+            yield value, path, True, blobs
+    elif f.codec == "pointer_array":
+        for index, item in enumerate(value):
+            if item is not None:
+                yield item, (path, "", index), True, blobs
+    elif f.codec == "table":
+        yield value, path, False, blobs
+    elif f.codec in ("union", "union_array"):
+        yield from _collection_edges(f, value, ctx, blobs, path)
+    elif f.codec == "map":
+        yield from _save._collect_map_edges(f, value, path, ctx, blobs)
+    elif f.codec == "array" and f.element is not None:
+        for index, item in enumerate(value):
+            yield from _collection_arm(f.element, item, ctx, blobs, (path, "", index))
 
 
 class _Union:
