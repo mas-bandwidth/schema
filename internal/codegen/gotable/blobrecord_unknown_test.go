@@ -52,10 +52,12 @@ func framed(w *TableWriter, id uint64, kind uint8, payload []byte) { w.ID(id); w
 func ptr(w *TableWriter, id uint64, index uint64) { w.ID(id); w.Put8(17); w.PutLeb(index) }
 
 func file(ids *TableIds, root func(w *TableWriter), records ...record) []byte {
+	*ids = TableIds{}
 	w := TableWriter{Buffer: make([]byte, 8192), Ids: ids}
 	w.Put8(1)
 	root(&w)
 	if len(records) > 0 {
+		ids.Ref(0xffffffffffffffff)
 		payload := body(ids, func(p *TableWriter) {
 			p.PutLeb(uint64(len(records)))
 			for _, r := range records { p.ID(r.typ); p.PutLeb(uint64(len(r.body))); p.Raw(r.body) }
@@ -71,9 +73,11 @@ func file(ids *TableIds, root func(w *TableWriter), records ...record) []byte {
 // rawFile writes the node table's payload from its own builder, so a record's
 // declared length can be made to run past its framing.
 func rawFile(ids *TableIds, root func(w *TableWriter), payload func(p *TableWriter)) []byte {
+	*ids = TableIds{}
 	w := TableWriter{Buffer: make([]byte, 8192), Ids: ids}
 	w.Put8(1)
 	root(&w)
+	ids.Ref(0xffffffffffffffff)
 	framed(&w, 0xffffffffffffffff, 12, body(ids, payload))
 	w.Put8(0)
 	w.Trailer()
