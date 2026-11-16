@@ -885,6 +885,12 @@ def _capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: li
         elif arm.field.codec in ("array", "map", "keyed") and arm_kind in (14, 16):
             array_ordinal = ordinal if arm.field.codec == "array" else arm.field.ordinal
             array(payload, arm.field, node, child_steps, array_ordinal, True)
+        elif arm.field.codec == "union_array" and arm_kind == 14:
+            array_reader = Reader(payload, 0, len(payload), ids)
+            array_reader.byte()
+            count = array_reader.varint()
+            for index in range(count):
+                union(array_reader, arm.field.target, ordinal, node, child_steps + ((ordinal, index),))
         elif arm.field.codec == "enum" and arm_kind == 30:
             enum_reader = Reader(payload, 0, len(payload), ids)
             enum_ref = enum_reader.varint()

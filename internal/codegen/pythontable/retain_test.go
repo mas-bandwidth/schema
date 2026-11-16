@@ -1610,3 +1610,52 @@ print('optional-enum-retain')
 		}
 	}
 }
+
+func TestPythonRetainUnionUnionArrayArm(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+table Child { n int32 }
+union Inner { leaf Child }
+union Outer { list [2]Inner }
+table Root { pick Outer }
+`
+	u := loadUnit(t, schema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	field := w.ref("pick")
+	arm := w.ref("list")
+	inner := w.ref("leaf")
+	ghost := unionCat(w.ref("future"), []byte{4}, unionI32(7), []byte{0})
+	item := unionCat(inner, []byte{13}, unionLeb(uint64(len(ghost))), ghost)
+	array := unionCat([]byte{15, 2}, item, []byte{0})
+	wire := w.file(unionCat(field, []byte{15}, arm, []byte{14}, unionLeb(uint64(len(array))), array))
+	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+with open('wire','rb') as f: wire=f.read()
+keep=TableRetain(bytearray(1024),bytearray(24*8)); report=LoadReport()
+value=Root.load_retain(wire,keep,report)
+assert (report.unknown,report.retained,report.retain_lost)==(1,1,0)
+saved=value.save_retain(keep,report)
+assert saved==wire and report.retain_lost==0
+with open('saved','wb') as f: f.write(saved)
+print('union-union-array')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "union-union-array" {
+			t.Fatalf("union union-array arm: %v\n%s\n%s", err, out, stderr)
+		}
+		saved, err := os.ReadFile(filepath.Join(dir, "saved"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if verdict := unionEngineVerdict(t, u, saved); !strings.HasPrefix(verdict, "read 1 ") {
+			t.Fatalf("Go engine rejected union-array arm: %s", verdict)
+		}
+	}
+}
