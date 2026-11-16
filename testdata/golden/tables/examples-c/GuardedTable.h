@@ -3787,11 +3787,16 @@ static SCHEMA_UNUSED int tabledemo_table_node_scan_open( tabledemo_table_node_sc
             scan->present = 1;
             if ( kind != 12 || !tabledemo_table_reader_span(fields,&scan->payload) )
             { scan->damaged = 1; return 0; }
+            /* The numbering is the root's final field (SPEC-TABLES §3.1).
+               Only the root terminator may follow its complete payload. */
+            if ( !tabledemo_table_reader_leb(fields,&ref) || ref != 0 || fields->offset != fields->size )
+            { scan->damaged = 1; return 0; }
+            break;
         }
         else if ( !tabledemo_table_reader_skip(fields,kind) ) { break; }
     }
     if ( !scan->present ) { return 0; }
-    if ( !tabledemo_table_reader_leb(&scan->payload,&scan->declared) ) { scan->damaged = 1; return 0; }
+    if ( !tabledemo_table_reader_leb(&scan->payload,&scan->declared) || scan->declared == 0 ) { scan->damaged = 1; return 0; }
     return 1;
 }
 
@@ -6592,6 +6597,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_patrol_load_layout_(const tabledem
         if (type!=NULL) { int64_t size=tabledemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; }
         records++;
     }
+    if (!tabledemo_table_node_scan_whole(&scan)) { if(reader->report!=NULL) { reader->report->refused=1; reader->report->reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; reader->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; } return -1; }
     if (records>=INT64_MAX/(int64_t)sizeof(tabledemo_table_node_dir_entry_t)-1 || (records+1)*(int64_t)sizeof(tabledemo_table_node_dir_entry_t)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(tabledemo_table_node_dir_entry_t);
 }
