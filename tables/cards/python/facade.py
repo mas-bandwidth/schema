@@ -132,6 +132,15 @@ def _row(cls: type[Any], value: str) -> Any:
     return obj
 
 
+def _line_content(line: str) -> str:
+    # The reference strips one LF and at most one terminal CR.
+    if line.endswith("\n"):
+        line = line[:-1]
+    if line.endswith("\r"):
+        line = line[:-1]
+    return line
+
+
 def parse(text: str) -> Record:
     _text(text)
     parts = text.split("\n")
@@ -140,7 +149,7 @@ def parse(text: str) -> Record:
         lines.append(parts[-1])
     if not lines:
         raise CardError("malformed")
-    first = _HEADER.fullmatch(lines[0].rstrip("\r\n"))
+    first = _HEADER.fullmatch(_line_content(lines[0]))
     if first is None or first.group(1) != "RESULT":
         raise CardError("malformed")
     value = first.group(2)
@@ -162,7 +171,7 @@ def parse(text: str) -> Record:
     strings = {"REPO": ("repo", 96), "BASE": ("_base", 96), "KIND": ("kind", 24), "TEST": ("test", 192)}
     lists = {"PATHS": ("paths", PathText, 192), "NEW": ("_new", PathText, 192), "SHARED": ("shared", PathText, 192), "DEPENDS-ON": ("needs", CardID, 64)}
     for line in lines[1:]:
-        content = line.rstrip("\r\n")
+        content = _line_content(line)
         end = offset + len(line)
         offset = end
         if not content.strip(" \t\r"):
@@ -176,6 +185,8 @@ def parse(text: str) -> Record:
             if key in _STRANDED:
                 raise CardError("stranded-key " + key)
             continue
+        if "\r" in val or "\n" in val:
+            raise CardError("malformed")
         if key in _RESERVED:
             if key in seen:
                 raise CardError("malformed")
@@ -206,9 +217,12 @@ def parse(text: str) -> Record:
             root.source = val or None
         elif key == "DEADLINE":
             m = re.fullmatch(r"finish within ([0-9]+) minutes\.", val.strip())
-            if m is None or int(m.group(1)) > 100000:
+            if m is None:
                 raise CardError("malformed")
-            root.deadline_minutes = int(m.group(1))
+            digits = m.group(1).lstrip("0") or "0"
+            if len(digits) > 6 or (len(digits) == 6 and digits > "100000"):
+                raise CardError("malformed")
+            root.deadline_minutes = int(digits)
         elif key not in _RESERVED:
             _text(key, 32)
             item = KeyValue()
