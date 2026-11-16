@@ -436,6 +436,8 @@ def _read_node_table(payload: memoryview, ctx: Ctx) -> None:
         if blob and length > kind_blob._BLOB_CAP:
             raise Refused("blob_over_size_cap", "a byte buffer record is past the storage cap")
         body = reader.take(length)
+        if type_id in (NODE_WIRE_ID, _BUILD_VERSION_WIRE_ID, _MESSAGE_VOCABULARY_WIRE_ID):
+            raise Refused("wire_damaged", "a reserved id in a record's type position")
         edges: list[int] = []
         ctx.children.append(edges)
         types.append(type_id)
