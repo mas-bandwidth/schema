@@ -469,6 +469,15 @@ assert doc.value.rules[0] == 'x' and len(doc.value.rules[1]) > 255
 assert doc.value.first == ['x', None]
 assert doc.value.capped == []
 assert len(doc.value.byname) == 2 and max(map(len,doc.value.byname)) > 255
+large = Tags.from_text_form(b'(:rules ("x"))', max_bytes=80000, max_allocation=80000)
+changed = large.edit([('rules[0]', b'"' + b'a' * 70000 + b'"')])
+assert len(changed.value.rules[0]) == 70000 and large.write() == b'(:rules ("x"))'
+try:
+    large.edit([('rules[0]', b'"' + b'a' * 81000 + b'"')])
+except TextError as e:
+    assert e.reason == 'text_limit' and large.write() == b'(:rules ("x"))'
+else:
+    raise AssertionError('oversized edit')
 try:
     Tags.from_text_form(b'(:capped ("one" "two" "three"))')
 except TextError as e:

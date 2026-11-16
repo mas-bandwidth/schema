@@ -451,7 +451,11 @@ class Document:
             if current.kind == "list":
                 raise TextError("text_edit_conflict", current.start)
             spans.append((current.start, current.end))
-            probe = parse(b"(" + replacement + b")")
+            byte_limit = self.limits.bytes if self.limits.bytes > 0 else 65536
+            if len(replacement) > byte_limit:
+                raise TextError("text_limit", current.start)
+            probe = parse(b"(" + replacement + b")", max_bytes=byte_limit + 2,
+                          max_allocation=self.limits.allocation)
             if (len(probe.children) != 1 or probe.children[0].kind == "list"
                     or probe.children[0].start != 1 or probe.children[0].end != len(replacement) + 1):
                 raise TextError("text_edit_conflict", current.start)
