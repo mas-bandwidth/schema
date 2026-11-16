@@ -101,3 +101,34 @@ TEST_LEGS             += test-python
 CONFORMANCE_LEGS      += $(call unless_skipped,python,build/conformance-python)
 BENCH_TABLES_LEGS     += generated/bench/tables/python/.stamp
 GOLDENS_LEGS          += update-goldens-python
+
+# The packet close gate covers every packet wire pin, including framed and
+# shared-stream multi-root pins, and analyzes the complete generated corpus.
+.PHONY: python-packet-close python-packet-close-negative-control python-packet-analyzer python-packet-analyzer-negative-control
+python-packet-close: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketClose$$' ./internal/codegen/python/
+python-packet-close-negative-control: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCloseNegativeControl$$' ./internal/codegen/python/
+python-packet-analyzer: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCloseAnalyzer$$' ./internal/codegen/python/
+python-packet-analyzer-negative-control: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCloseAnalyzerNegativeControl$$' ./internal/codegen/python/
+test-python: python-packet-close python-packet-close-negative-control python-packet-analyzer python-packet-analyzer-negative-control
+
+.PHONY: packet-defaults-python packet-defaults-python-negative-control
+packet-defaults-python: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketDefaults$$' ./internal/codegen/python/
+packet-defaults-python-negative-control: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketDefaultsNegativeControl$$' ./internal/codegen/python/
+test-python: packet-defaults-python packet-defaults-python-negative-control
+
+generated/bench/python/.stamp: build/schema-python $(SCHEMAS_BENCH)
+	@mkdir -p generated/bench/python
+	./build/schema-python generate --lang python --out generated/bench/python bench/corpus/Bench.schema
+	@touch $@
+
+.PHONY: bench-python-gate bench-python-negative-control
+bench-python-gate: generated/bench/python/.stamp python-toolchain-check
+	bench/python/run --gate
+bench-python-negative-control: generated/bench/python/.stamp python-toolchain-check
+	bench/python/negative-control
