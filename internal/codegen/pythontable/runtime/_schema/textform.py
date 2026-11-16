@@ -368,7 +368,7 @@ class Document:
         """Return the original bytes, including all trivia and line endings."""
         return self.source
 
-    def edit(self, edits: list[tuple[str, bytes]]) -> Document:
+    def edit(self, edits: list[tuple[str | tuple[str | int, ...], bytes]]) -> Document:
         """Replace existing scalar tokens transactionally by original span."""
         from .json_table import to_json
         import re
@@ -376,10 +376,15 @@ class Document:
         replacements: list[tuple[int, int, bytes]] = []
         original = to_json(self.value)
         for path, replacement in edits:
-            parts = re.findall(r'([A-Za-z_][A-Za-z_0-9./-]*)|\[([0-9]+)\]', path)
-            rebuilt = ''.join((('.' if i and name else '') + name) if name else '[' + index + ']' for i, (name, index) in enumerate(parts))
-            if not parts or rebuilt != path:
-                raise TextError("text_edit_conflict", 0)
+            if isinstance(path, str):
+                parts = re.findall(r'([A-Za-z_][A-Za-z_0-9/-]*)|\[([0-9]+)\]', path)
+                rebuilt = ''.join((('.' if i and name else '') + name) if name else '[' + index + ']' for i, (name, index) in enumerate(parts))
+                if not parts or rebuilt != path:
+                    raise TextError("text_edit_conflict", 0)
+            else:
+                if not path or any(not isinstance(p, (str, int)) or isinstance(p, bool) or p == "" or (isinstance(p, int) and p < 0) for p in path):
+                    raise TextError("text_edit_conflict", 0)
+                parts = [(p, "") if isinstance(p, str) else ("", str(p)) for p in path]
             current = self.root
             for name, index in parts:
                 if name:

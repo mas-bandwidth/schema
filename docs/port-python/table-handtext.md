@@ -16,7 +16,8 @@ source of the comment text and whitespace.
 
 `document.edit([(path, token), ...])` replaces existing scalar tokens. Paths
 use field keys and array indices, for example `nodes[0].title`; tokens are
-UTF-8 bytes in the hand-editable grammar. An edit returns a new document after
+UTF-8 bytes in the hand-editable grammar. A tuple path such as
+`("nodes", 0, "title")` also supports field keys that contain a dot. An edit returns a new document after
 validating the complete result; the original document is unchanged on refusal.
 Disjoint edits use original byte spans, and a semantic no-op keeps its original
 spelling. Structural edits and whole-compound replacements are refused.

@@ -69,7 +69,7 @@ func TestPythonHandtextResolution(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, files)
 	src := pyrun.ImportPrelude + `
-from core import Counters
+from core import Counters, Root
 from core._schema.textform import load
 from core._schema.textform_scan import TextError
 for data in (b'(:small 1e1 :enabled true)', b'(:small 1.5)', b'(:small 128)', b'(:bogus 1)', b'(:small 1 "small" 2)'):
@@ -87,6 +87,9 @@ else:
 doc = Counters.from_text_form(b'(:small 7 :enabled true)')
 edited = doc.edit([('small', b'8'), ('enabled', b'false')])
 assert edited.write() == b'(:small 8 :enabled false)' and doc.write() == b'(:small 7 :enabled true)'
+nested = Root.from_text_form(b'(:counter (:small 7))')
+assert nested.edit([('counter.small', b'8')]).write() == b'(:counter (:small 8))'
+assert nested.edit([(('counter', 'small'), b'9')]).write() == b'(:counter (:small 9))'
 for token in (b'8 :enabled false', b' 8', b'(8)'):
     try:
         doc.edit([('small', token)])
@@ -364,6 +367,31 @@ print('ok')
 	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
 		if got := string(run(t, dir, "main.py", inputs)); got != "ok\n" {
 			t.Fatalf("unbounded: %s", got)
+		}
+	}
+}
+
+func TestPythonHandtextDottedKey(t *testing.T) {
+	t.Parallel()
+	unit := loadUnit(t, `package probe
+fixed table Dot {
+ value int32 | json = "a.b"
+}`)
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from probe import Dot
+doc = Dot.from_text_form(b'("a.b" 2e0)')
+assert doc.edit([(('a.b',), b'3')]).write() == b'("a.b" 3)'
+assert doc.edit([(('a.b',), b'2')]).write() == doc.write()
+print('ok')
+`
+	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+		if got := string(run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})); got != "ok\n" {
+			t.Fatalf("dotted: %s", got)
 		}
 	}
 }
