@@ -328,7 +328,8 @@ def _decode(spec: _Spec, data: bytes | bytearray | memoryview, at: int, current:
     if shape == "bool":
         return data[at] == 1
     if shape in ("int", "enum"):
-        return _integer(data, at, size, spec.get("signed", False))
+        value = _integer(data, at, size, spec.get("signed", False))
+        return spec.get("default", 0) if shape == "enum" and value in spec.get("deprecated", ()) else value
     if shape == "float":
         result: float = struct.unpack_from("<f" if size == 4 else "<d", data, at)[0]
         return 0.0 if spec.get("ranged", False) and result == 0 else result

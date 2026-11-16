@@ -40,3 +40,8 @@ python-fixed-core-values-negative-control:
 test-python: python-fixed-refused-hash-negative-control
 python-fixed-refused-hash-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedFormRefusedHash$$' ./internal/codegen/pythontable/
+
+.PHONY: python-fixed-deprecated-enum-negative-control
+test-python: python-fixed-deprecated-enum-negative-control
+python-fixed-deprecated-enum-negative-control:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedFormDeprecatedEnum$$' ./internal/codegen/pythontable/
