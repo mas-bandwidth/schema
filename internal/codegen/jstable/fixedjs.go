@@ -660,7 +660,8 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 // emitReadCheckBody validates one image without projecting any caller storage.
 // FixedLoad runs it over the whole batch before its first destination write.
 func (g *fixedGen) emitReadCheckBody(st *ir.Struct) {
-	if !fixedStructChecked(st) {
+	// Only tables have FixedLoad; nested type checks are inlined at that root.
+	if !st.IsTable || !fixedStructChecked(st) {
 		return
 	}
 	g.pf("export function %sFixedCheckRead(view, at, report) {\n", st.Name)
