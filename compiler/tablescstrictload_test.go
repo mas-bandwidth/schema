@@ -123,7 +123,8 @@ int main(void) {
  CHECK(root_builder_root(&builder)->low==1000 && root_builder_root(&builder)->wide==0);
  root_builder_shutdown(&builder);
  CHECK(root_builder_init(&builder));
- CHECK(root_from_json(&builder,"{\"low\":1200,\"wide\":7}",21,&report) && root_builder_root(&builder)->wide==7);
+ const char good_json[]="{\"low\":1200,\"wide\":\"7\"}";
+ CHECK(root_from_json(&builder,good_json,sizeof(good_json)-1,&report) && root_builder_root(&builder)->wide==7);
  root_builder_shutdown(&builder);
  return 0;
 }
