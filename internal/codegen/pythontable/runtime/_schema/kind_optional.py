@@ -19,7 +19,7 @@ from . import InvalidValue, Refused
 from . import descriptor, kind_int, kinds
 from .descriptor import FieldDesc
 
-_ELEMENT_KINDS = frozenset(list(range(1, 14)) + [15, 17] + list(range(18, 30)) + [30, 36])
+_ELEMENT_KINDS = frozenset(list(range(1, 14)) + [15, 17] + list(range(18, 30)) + [30])
 
 
 def _elem(fd: FieldDesc) -> FieldDesc:
