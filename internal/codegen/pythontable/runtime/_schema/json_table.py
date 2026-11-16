@@ -689,7 +689,9 @@ def _write_table(value: Any, depth: int, counts: dict[int, int], labels: dict[in
         if field.codec == "optional" and item is None:
             continue
         rendered = _render(field, item, depth + 1, counts, labels)
-        lines.append(f'{indent}{_quote(field.json_key)}: {rendered}')
+        key = field.json_key
+        assert key is not None  # Live table fields always carry their JSON key.
+        lines.append(f'{indent}{_quote(key)}: {rendered}')
     if label is not None and len(lines) == 1:
         raise InvalidValue(value.descriptor.name, "a shared node with no field has no text spelling")
     if not lines:
