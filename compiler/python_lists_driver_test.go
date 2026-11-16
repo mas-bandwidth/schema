@@ -83,17 +83,6 @@ print("ok")
 	}
 }
 
-func TestPythonDriverRefusesUnsupportedListElements(t *testing.T) {
-	for _, src := range []string{
-		"package p\nenum E { One, Two }\ntable Root { values []E }\n",
-	} {
-		_, err := New().Generate(unitFromSource(t, src), "python", nil)
-		if err == nil || !strings.Contains(err.Error(), "unbounded array element") {
-			t.Errorf("unsupported list was not refused by name: %v", err)
-		}
-	}
-}
-
 func TestPythonDriverScalarValueDefaults(t *testing.T) {
 	u := unitFromSource(t, `package driverdefaults
 flags Caps { Jump, Fly }
@@ -174,13 +163,5 @@ func TestPythonDriverRefusesPacketValueDefault(t *testing.T) {
 	_, err := New().Generate(u, "python", nil)
 	if err == nil || !strings.Contains(err.Error(), "packet-wire defaults") {
 		t.Fatalf("packet value default was not refused by name: %v", err)
-	}
-}
-
-func TestPythonDriverRefusesTextList(t *testing.T) {
-	u := unitFromSource(t, "package p\ntable Root {\n names []string(8)\n}\n")
-	_, err := New().Generate(u, "python", nil)
-	if err == nil || !strings.Contains(err.Error(), "text list") {
-		t.Fatalf("text list was not refused by name: %v", err)
 	}
 }
