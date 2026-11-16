@@ -6086,6 +6086,9 @@ static SCHEMA_UNUSED int64_t graphdemo_tally_save_messages(const graphdemo_tally
 static SCHEMA_UNUSED int graphdemo_tally_load_message_body(graphdemo_table_message_reader_t * r,graphdemo_tally_t * value)
 {
  uint8_t seen[512];
+ int same_build=r->vocabulary->build_version==SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE;
+ int32_t last_field_ord=0;
+ (void)last_field_ord;
  graphdemo_tally_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const graphdemo_table_message_entry_t * entry;
@@ -6099,9 +6102,10 @@ static SCHEMA_UNUSED int graphdemo_tally_load_message_body(graphdemo_table_messa
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x732dfbcc9b0cf0bb): {
- int same_shape=r->vocabulary->build_version==SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE && entry->own_slot==6;
+ int same_shape=same_build && entry->own_slot==6;
+ if(same_shape && 1<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=1;
  int32_t unknown_before=r->report->unknown;
- (void)same_shape;
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && graphdemo_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
@@ -6128,7 +6132,8 @@ static SCHEMA_UNUSED int graphdemo_tally_load_message_body(graphdemo_table_messa
  }
  break;
  }
- default:r->report->unknown++;
+ default:if(same_build && entry->own_slot!=0)goto damaged;
+ r->report->unknown++;
  if(!graphdemo_table_message_skip(r,entry))goto damaged;
  break;
  } }

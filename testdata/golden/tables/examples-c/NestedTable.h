@@ -6000,6 +6000,9 @@ static SCHEMA_UNUSED int64_t tabledemo_archive_config_save_messages(const tabled
 static SCHEMA_UNUSED int tabledemo_archive_config_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_archive_config_t * value)
 {
  uint8_t seen[512];
+ int same_build=r->vocabulary->build_version==SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE;
+ int32_t last_field_ord=0;
+ (void)last_field_ord;
  tabledemo_archive_config_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
@@ -6013,9 +6016,10 @@ static SCHEMA_UNUSED int tabledemo_archive_config_load_message_body(tabledemo_ta
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xa354fd1ff0c467c5): {
- int same_shape=r->vocabulary->build_version==SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE && entry->own_slot==1;
+ int same_shape=same_build && entry->own_slot==1;
+ if(same_shape && 1<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=1;
  int32_t unknown_before=r->report->unknown;
- (void)same_shape;
  (void)unknown_before;
  tabledemo_table_bit_reader_t original=r->bits;
  uint64_t first_ref=0;
@@ -6030,9 +6034,10 @@ static SCHEMA_UNUSED int tabledemo_archive_config_load_message_body(tabledemo_ta
  break;
  }
  case UINT64_C(0xb1e5e28e4479a274): {
- int same_shape=r->vocabulary->build_version==SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE && entry->own_slot==2;
+ int same_shape=same_build && entry->own_slot==2;
+ if(same_shape && 2<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=2;
  int32_t unknown_before=r->report->unknown;
- (void)same_shape;
  (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
@@ -6059,7 +6064,8 @@ static SCHEMA_UNUSED int tabledemo_archive_config_load_message_body(tabledemo_ta
  }
  break;
  }
- default:r->report->unknown++;
+ default:if(same_build && entry->own_slot!=0)goto damaged;
+ r->report->unknown++;
  if(!tabledemo_table_message_skip(r,entry))goto damaged;
  break;
  } }
