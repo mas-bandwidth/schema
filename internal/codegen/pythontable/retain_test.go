@@ -499,7 +499,7 @@ func TestPythonRetainUnionArrayCapture(t *testing.T) {
 	nestedGhost := unionCat(w.ref("nested_future"), []byte{4}, unionI32(74), []byte{0})
 	nestedLeaf := w.arm("leaf", 13, nestedGhost)
 	innerPick := w.arm("pick", 15, nestedLeaf)
-	wire := w.file(trail, w.union("inner", innerPick))
+	wire := w.file(trail, w.union("inner", innerPick), w.least())
 	script := pyrun.ImportPrelude + `from unions import Root, LoadReport
 from unions._schema.retain import TableRetain, capture_file
 with open('wire','rb') as f: wire=f.read()
@@ -514,6 +514,19 @@ inner_arm=next(a for a in Inner.descriptor.arms if a.name=='pick')
 rows=list(retain.records())
 assert len(rows)==2 and rows[0][0:2]==(1,((trail.ordinal,0),(trail.ordinal,arm.tag))), rows
 assert rows[1][0:2]==(1,((inner.ordinal,inner_arm.tag),(inner.ordinal,arm.tag))), rows
+from unions._schema.load import load_table
+from unions._schema.save import _encode_retain, Writer
+value=load_table(Root,wire,report,retain)
+out=bytearray(); size,lost=_encode_retain(value,retain,Writer(out))
+assert size==len(out) and lost==0
+back=LoadReport(); Root.load(out,back)
+assert back.unknown==2
+again=TableRetain(bytearray(4096),bytearray(240))
+assert capture_file(Root,memoryview(out),again)==(2,0)
+assert {(node,path,identity,kind,bytes(payload)) for node,path,identity,kind,payload in again.records()}=={(node,path,identity,kind,bytes(payload)) for node,path,identity,kind,payload in rows}
+value.trail[0]=Pick(); value.inner=Inner()
+out=bytearray(); size,lost=_encode_retain(value,retain,Writer(out))
+assert size==len(out) and lost==2
 print('union-array')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {

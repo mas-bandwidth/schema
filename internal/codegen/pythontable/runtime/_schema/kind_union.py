@@ -151,7 +151,13 @@ def _write_union_element(w: Any, un: type[Any], value: Any, ctx: Any) -> None:
         return
     arm = _arm(un, value.type, un.descriptor.name)
     payload = None if arm.field is None else getattr(value, arm.name)
-    _write_arm_header(w, arm, payload, ctx)
+    if isinstance(ctx, _save.RetainCtx):
+        parent = ctx.steps
+        ctx.steps = parent + ((ctx.ordinal, arm.tag),)
+        _write_arm_header(w, arm, payload, ctx)
+        ctx.steps = parent
+    else:
+        _write_arm_header(w, arm, payload, ctx)
 
 
 def _validate_union(value: Any, name: str, path: str, seen: set[int]) -> None:
@@ -301,7 +307,13 @@ class _Union:
             return
         arm = _arm(_union_class(fd.target), value.type, fd.name)
         payload = None if arm.field is None else getattr(value, arm.name)
-        _write_arm_header(w, arm, payload, ctx)
+        if isinstance(ctx, _save.RetainCtx):
+            parent = ctx.steps
+            ctx.steps = parent + ((ctx.ordinal, arm.tag),)
+            _write_arm_header(w, arm, payload, ctx)
+            ctx.steps = parent
+        else:
+            _write_arm_header(w, arm, payload, ctx)
 
 
 class _UnionArray:
@@ -362,8 +374,16 @@ class _UnionArray:
         bw.byte(15)
         bw.varint(len(value))
         un = _union_class(fd.target)
-        for element in value:
-            _write_union_element(bw, un, element, ctx)
+        if isinstance(ctx, _save.RetainCtx):
+            parent = ctx.steps
+            ordinal = ctx.ordinal
+            for index, element in enumerate(value):
+                ctx.steps = parent + ((ordinal, index),)
+                _write_union_element(bw, un, element, ctx)
+            ctx.steps = parent
+        else:
+            for element in value:
+                _write_union_element(bw, un, element, ctx)
         w.varint(reference)
         w.byte(fd.kind)
         w.varint(len(body))
