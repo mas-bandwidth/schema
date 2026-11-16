@@ -674,6 +674,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		fmt.Fprintf(b, "            map_entry=%s,\n", strconv.Quote(mapEntry))
 		fmt.Fprintf(b, "            pointer=%s,\n", pyBool(f.Type.Pointer))
 		fmt.Fprintf(b, "            optional=%s,\n", pyBool(f.Type.Optional))
+		fmt.Fprintf(b, "            required=%s,\n", pyBool(f.Required))
 		fmt.Fprintf(b, "            array=%s,\n", pyBool(f.Array != ir.ArrayNone))
 		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
@@ -848,7 +849,7 @@ func emitFastStraightLine(b *strings.Builder, st *ir.Struct, variable bool, guar
 				ind = "        "
 			}
 			fmt.Fprintf(b, "%scurrent = value.%s\n", ind, f.Name)
-			fmt.Fprintf(b, "%sif not f%d.is_default(current):\n", ind, i)
+			fmt.Fprintf(b, "%sif f%d.required or not f%d.is_default(current):\n", ind, i, i)
 			fmt.Fprintf(b, "%s    w%d(writer, f%d, current, ctx)\n", ind, i, i)
 		}
 	}
@@ -998,7 +999,7 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("    current: object\n")
 	for i, f := range st.Fields {
 		fmt.Fprintf(b, "    current = value.%s\n", f.Name)
-		fmt.Fprintf(b, "    if not fields[%d].is_default(current):\n", i)
+		fmt.Fprintf(b, "    if fields[%d].required or not fields[%d].is_default(current):\n", i, i)
 		fmt.Fprintf(b, "        _s_kinds._REGISTRY[%q].write(writer, fields[%d], current, ctx)\n", codecOf(f), i)
 	}
 	b.WriteString("    writer.byte(0)\n")
@@ -1043,7 +1044,10 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	}
 	b.WriteString("    if reader.pos != reader.end:\n")
 	b.WriteString("        raise Refused(\"wire_damaged\", \"bytes between the root terminator and the id table\")\n")
+	b.WriteString("    missing = [f.name for f in fields if f.required and f.field_id not in seen]\n")
 	b.WriteString("    _resolve(ctx)\n")
+	b.WriteString("    if missing:\n")
+	b.WriteString("        raise Refused(\"missing_required\", \", \".join(missing))\n")
 	b.WriteString("    if report is not None:\n")
 	b.WriteString("        report.unknown = ctx.unknown\n")
 	b.WriteString("        report.widened = 0\n")
