@@ -452,7 +452,8 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 	for _, name := range imports.Typing {
 		typing[name] = true
 	}
-	fmt.Fprintf(&b, "from typing import %s\n\n", strings.Join(sortedSet(typing), ", "))
+	fmt.Fprintf(&b, "from typing import %s\n", strings.Join(sortedSet(typing), ", "))
+	b.WriteString("from typing import Any as _s_Any\n\n")
 	for _, base := range python.SortedSiblingBases(imports.Siblings) {
 		fmt.Fprintf(&b, "from . import %s as %s\n", base, imports.Siblings[base])
 	}
@@ -486,6 +487,8 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 		fmt.Fprintf(&b, "from ._schema.serialize import %s\n", strings.Join(imports.Serialize, ", "))
 	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
+	b.WriteString("from ._schema.json_table import from_json as _s_from_json, to_json as _s_to_json\n")
+	b.WriteString("from ._schema.json_table import _guard_holds as _s_json_guard, _read_field as _s_json_read_field, _render as _s_json_render, _skip as _s_json_skip, _write_field as _s_json_field\n")
 	b.WriteString("from ._schema.integrity import open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
 	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
@@ -679,17 +682,114 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "        return %s\n", call)
 	b.WriteString("\n    def measure(self) -> int:\n")
 	if st.Integrity == "crc32c" {
-		b.WriteString("        return measure_table(self) + 4\n\n\n")
+		b.WriteString("        return measure_table(self) + 4\n")
 	} else {
-		b.WriteString("        return measure_table(self)\n\n\n")
+		b.WriteString("        return measure_table(self)\n")
+	}
+	if st.CarriesForm("json") {
+		b.WriteString("\n    @classmethod\n")
+		b.WriteString("    def from_json(cls, text: str, report: LoadReport | None = None) -> Self:\n")
+		if scalarOnly(st) {
+			fmt.Fprintf(b, "        return _s_from_json(cls, text, report, _s_json_fill_%s)\n", name)
+		} else {
+			b.WriteString("        return _s_from_json(cls, text, report)\n")
+		}
+		b.WriteString("\n    def to_json(self) -> str:\n")
+		if scalarOnly(st) {
+			fmt.Fprintf(b, "        return _s_json_write_%s(self)\n\n\n", name)
+		} else {
+			b.WriteString("        return _s_to_json(self)\n\n\n")
+		}
 	}
 	emitTableDescriptor(b, u, st, false)
 	if fast {
 		emitFastStraightLine(b, st, variable, guards)
 	} else if scalarOnly(st) {
 		emitStraightLine(b, st)
+		if st.CarriesForm("json") {
+			emitStraightLineJSON(b, st)
+		}
 	}
 	b.WriteString("\n")
+}
+
+// emitStraightLineJSON unrolls a scalar table's canonical writer. Both this
+// shape and the descriptor walk use the same field validation and formatting.
+func emitStraightLineJSON(b *strings.Builder, st *ir.Struct) {
+	fmt.Fprintf(b, "def _s_json_fill_%s(value: %s, data: dict[str, _s_Any], graph: dict[int, tuple[_s_Any, bool]] | None, unknown: list[int]) -> None:\n", st.Name, st.Name)
+	b.WriteString("    fields = value.descriptor.fields\n")
+	b.WriteString("    for key, item in data.items():\n")
+	b.WriteString("        if '\\x00' in key or len(key.encode('utf-8')) > 255 or key.startswith('&'):\n")
+	b.WriteString("            raise Refused('malformed')\n")
+	for i, f := range st.Fields {
+		branch := "if"
+		if i > 0 {
+			branch = "elif"
+		}
+		fmt.Fprintf(b, "        %s key == %s:\n", branch, strconv.Quote(ir.TableFieldJsonKey(f)))
+		fmt.Fprintf(b, "            value.%s = _s_json_read_field(fields[%d], item, graph, unknown)\n", f.Name, i)
+	}
+	if len(st.Fields) > 0 {
+		b.WriteString("        else:\n")
+		b.WriteString("            unknown[0] += 1\n            _s_json_skip(item, graph)\n")
+	} else {
+		b.WriteString("        unknown[0] += 1\n        _s_json_skip(item, graph)\n")
+	}
+	for i, f := range st.Fields {
+		if f.Required {
+			fmt.Fprintf(b, "    if %s not in data and _s_json_guard(fields[%d], value):\n", strconv.Quote(ir.TableFieldJsonKey(f)), i)
+			fmt.Fprintf(b, "        raise Refused('missing_required', %s)\n", strconv.Quote(f.Name))
+		}
+	}
+	b.WriteString("\n")
+	fmt.Fprintf(b, "def _s_json_write_%s(value: %s) -> str:\n", st.Name, st.Name)
+	b.WriteString("    fields = value.descriptor.fields\n")
+	b.WriteString("    lines: list[str] = []\n")
+	for i, f := range st.Fields {
+		indent := "    "
+		prefix := strconv.Quote("  " + pythonJSONKey(ir.TableFieldJsonKey(f)) + ": ")
+		if f.Guard != "" {
+			fmt.Fprintf(b, "    if _s_json_guard(fields[%d], value):\n", i)
+			indent = "        "
+		}
+		if _, ok := f.Type.Ref.(*ir.Flags); ok {
+			fmt.Fprintf(b, "%slines.append(%s + _s_json_render(fields[%d], value.%s, 1, {}, {}))\n", indent, prefix, i, f.Name)
+		} else {
+			fmt.Fprintf(b, "%slines.append(%s + _s_json_field(fields[%d], value.%s))\n", indent, prefix, i, f.Name)
+		}
+	}
+	b.WriteString("    return '{}\\n' if not lines else '{\\n' + ',\\n'.join(lines) + '\\n}\\n'\n\n")
+}
+
+// pythonJSONKey spells a schema key with the text writer's canonical escapes.
+func pythonJSONKey(key string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range key {
+		switch r {
+		case '"', '\\':
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		case '\b':
+			b.WriteString(`\b`)
+		case '\f':
+			b.WriteString(`\f`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\t':
+			b.WriteString(`\t`)
+		default:
+			if r < 0x20 {
+				fmt.Fprintf(&b, `\u%04x`, r)
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 // emitTableDescriptor emits one generated class's table descriptor: the facts
@@ -708,6 +808,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(name))
 	fmt.Fprintf(b, "    type_id=%s,\n", hex64(ir.TableWireId(st.WireName())))
 	fmt.Fprintf(b, "    variable=%s,\n", pyBool(variable))
+	fmt.Fprintf(b, "    json_array=%s,\n", pyBool(st.JsonArray))
 	if !valueClass {
 		var forms []string
 		for _, form := range []string{"wire", "json", "block", "cook"} {
@@ -726,6 +827,25 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		codec := codecOf(f)
 		fmt.Fprintf(b, "        FieldDesc(\n")
 		fmt.Fprintf(b, "            name=%s,\n", strconv.Quote(f.Name))
+		fmt.Fprintf(b, "            json_key=%s,\n", strconv.Quote(ir.TableFieldJsonKey(f)))
+		fmt.Fprintf(b, "            required=%s,\n", pyBool(f.Required))
+		fmt.Fprintf(b, "            frac_bits=%d,\n", f.Type.FracBits)
+		unbounded := f.Type.TextUnbounded()
+		if f.IsTextList() {
+			unbounded = ir.TextListValue(f).Type.TextUnbounded()
+		}
+		fmt.Fprintf(b, "            unbounded=%s,\n", pyBool(unbounded))
+		fmt.Fprintf(b, "            json_text_list=%s,\n", pyBool(f.IsTextList()))
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			fmt.Fprintf(b, "            json_variants=%s,\n", pythonJSONNames(ref.Variants))
+		case *ir.Flags:
+			fmt.Fprintf(b, "            json_variants=%s,\n", pythonJSONNames(ref.Variants))
+			fmt.Fprintln(b, "            json_flags=True,")
+		}
+		if f.KeyEnumRef != nil {
+			fmt.Fprintf(b, "            json_keys=%s,\n", pythonJSONNames(f.KeyEnumRef.Variants))
+		}
 		fmt.Fprintf(b, "            field_id=%s,\n", hex64(ir.TableFieldWireId(f)))
 		fmt.Fprintf(b, "            kind=%d,\n", ir.TableWireFieldKind(f))
 		fmt.Fprintf(b, "            codec=%s,\n", strconv.Quote(codec))
@@ -1026,6 +1146,17 @@ func emitValueBlockRow(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("))\n\n\n")
 }
 
+func pythonJSONNames(names []string) string {
+	quoted := make([]string, 0, len(names))
+	for _, name := range names {
+		quoted = append(quoted, strconv.Quote(name))
+	}
+	if len(quoted) == 1 {
+		return "(" + quoted[0] + ",)"
+	}
+	return "(" + strings.Join(quoted, ", ") + ")"
+}
+
 // scalarOnly reports whether every field is a scalar the generated
 // straight-line shape can bind directly: a bool, an integer (a flags mask
 // included), a string, a bytes or an enum. A by-value table, a pointer, a
@@ -1288,6 +1419,10 @@ func armFieldDesc(v ir.UnionVariant, tag int) string {
 		", elem_kind=" + strconv.Itoa(ir.TableWireElemKind(f)) +
 		", elem_codec=" + strconv.Quote(elemCodec) +
 		", size=" + strconv.FormatInt(fieldSize(f), 10) +
+		", frac_bits=" + strconv.Itoa(f.Type.FracBits) +
+		", unbounded=" + pyBool(f.Type.TextUnbounded()) +
+		", json_variants=" + pythonJSONFieldVariants(f) +
+		", json_flags=" + pyBool(pythonJSONIsFlags(f)) +
 		", variant_ids=" + variantIds(f) +
 		deprecated +
 		", default=" + defaultFor(f, codec) +
@@ -1407,11 +1542,14 @@ func emitKeyedDesc(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                lo=%s,\n", lo)
 	fmt.Fprintf(b, "                hi=%s,\n", hi)
 	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
-	if codec == "enum" {
-		fmt.Fprintf(b, "                variant_ids=%s,\n", variantIds(f))
-		if dep := deprecatedOrdinals(f); dep != "" {
-			fmt.Fprintf(b, "                deprecated=%s,\n", dep)
-		}
+	fmt.Fprintf(b, "                size=%d,\n", fieldSize(f))
+	fmt.Fprintf(b, "                frac_bits=%d,\n", f.Type.FracBits)
+	fmt.Fprintf(b, "                unbounded=%s,\n", pyBool(f.Type.TextUnbounded()))
+	fmt.Fprintf(b, "                json_variants=%s,\n", pythonJSONFieldVariants(f))
+	fmt.Fprintf(b, "                json_flags=%s,\n", pyBool(pythonJSONIsFlags(f)))
+	fmt.Fprintf(b, "                variant_ids=%s,\n", variantIds(f))
+	if dep := deprecatedOrdinals(f); dep != "" {
+		fmt.Fprintf(b, "                deprecated=%s,\n", dep)
 	}
 	fmt.Fprintf(b, "                default=%s,\n", defaultFor(f, codec))
 	fmt.Fprintf(b, "            ),\n")
@@ -1428,6 +1566,22 @@ func emitKeyedDesc(b *strings.Builder, f *ir.Field) {
 	} else {
 		fmt.Fprintf(b, "            keys=(%s),\n", strings.Join(keys, ", "))
 	}
+}
+
+func pythonJSONFieldVariants(f *ir.Field) string {
+	switch ref := f.Type.Ref.(type) {
+	case *ir.Enum:
+		return pythonJSONNames(ref.Variants)
+	case *ir.Flags:
+		return pythonJSONNames(ref.Variants)
+	default:
+		return "()"
+	}
+}
+
+func pythonJSONIsFlags(f *ir.Field) bool {
+	_, ok := f.Type.Ref.(*ir.Flags)
+	return ok
 }
 
 // keyedElemCodec is the codec of an enum-keyed array's element, or "" for an
@@ -1719,6 +1873,11 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                lo=%s,\n", lo)
 	fmt.Fprintf(b, "                hi=%s,\n", hi)
 	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
+	fmt.Fprintf(b, "                size=%d,\n", fieldSize(f))
+	fmt.Fprintf(b, "                frac_bits=%d,\n", f.Type.FracBits)
+	fmt.Fprintf(b, "                unbounded=%s,\n", pyBool(f.Type.TextUnbounded()))
+	fmt.Fprintf(b, "                json_variants=%s,\n", pythonJSONFieldVariants(f))
+	fmt.Fprintf(b, "                json_flags=%s,\n", pyBool(pythonJSONIsFlags(f)))
 	fmt.Fprintf(b, "                variant_ids=%s,\n", variantIds(f))
 	if dep := deprecatedOrdinals(f); dep != "" {
 		fmt.Fprintf(b, "                deprecated=%s,\n", dep)
