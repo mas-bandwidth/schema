@@ -41,8 +41,9 @@ func fastPolicyErrors(wf string) []string {
 	jobs := yamlJobs(wf)
 	lint, policy := jobs["lint-fast"], jobs["ci-policy"]
 	var errs []string
-	const statusPrefix = "always() && !cancelled() && "
-	if lint == "" || policy == "" || strings.Replace(jobIfCondition(wf, "lint-fast"), statusPrefix, "", 1) != jobIfCondition(wf, "ci-policy") || !strings.Contains(jobIfCondition(wf, "lint-fast"), statusPrefix) {
+	admissionPrefix, admissionRest, ok := strings.Cut(jobIfCondition(wf, "ci-policy"), " && ")
+	wantLint := admissionPrefix + " && (always() && !cancelled() && " + admissionRest + ")"
+	if lint == "" || policy == "" || !ok || jobIfCondition(wf, "lint-fast") != wantLint {
 		errs = append(errs, "policy and lint jobs must have the same admission, with status-aware lint")
 	}
 	const gate = `      - name: require CI policy success
