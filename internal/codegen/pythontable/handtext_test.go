@@ -64,6 +64,22 @@ for data in (b'(:small 1e1 :enabled true)', b'(:small 1.5)', b'(:small 128)', b'
         print(value.small, value.enabled)
     except TextError as e:
         print(e.reason)
+try:
+    Counters.from_text_form(b'(:small 7)', max_bytes=4)
+except TextError as e:
+    assert e.reason == 'text_limit'
+else:
+    raise AssertionError('public limit')
+doc = Counters.from_text_form(b'(:small 7 :enabled true)')
+edited = doc.edit([('small', b'8'), ('enabled', b'false')])
+assert edited.write() == b'(:small 8 :enabled false)' and doc.write() == b'(:small 7 :enabled true)'
+for token in (b'8 :enabled false', b' 8', b'(8)'):
+    try:
+        doc.edit([('small', token)])
+    except TextError:
+        pass
+    else:
+        raise AssertionError('non-scalar edit')
 `
 	inputs := map[string][]byte{"main.py": []byte(src)}
 	want := "10 True\ntext_kind_mismatch\ntext_bound\ntext_unknown_key\ntext_duplicate_key\n"
