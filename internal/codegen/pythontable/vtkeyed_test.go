@@ -654,13 +654,13 @@ func pyKeyedUnwalkedControl(t *testing.T) {
 func pyKeyedDescendingControl(t *testing.T) {
 	t.Parallel()
 	const path = "probe/_schema/kind_keyed.py"
-	const anchor = "for slot in range(len(fd.keys)):"
+	const anchor = "        for slot in range(len(fd.keys)):"
 	mutate := func(t *testing.T, files map[string][]byte) {
 		src := string(files[path])
 		if strings.Count(src, anchor) != 1 {
 			t.Fatalf("%s carries %q %d times, want 1: the control would be vacuous", path, anchor, strings.Count(src, anchor))
 		}
-		files[path] = []byte(strings.Replace(src, anchor, "for slot in reversed(range(len(fd.keys))):", 1))
+		files[path] = []byte(strings.Replace(src, anchor, "        for slot in reversed(range(len(fd.keys))):", 1))
 	}
 	fails := pyKeyedConstructFailures(t, mutate)
 	if len(fails) == 0 {
