@@ -177,7 +177,7 @@ func javaIdOrderAnswers(t *testing.T, mutate bool) map[string]string {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
 	answers := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		f := strings.Fields(line)
 		if len(f) != 3 {
 			t.Fatalf("bad verdict %q", line)
