@@ -55,7 +55,9 @@ table Root {
 		t.Run(tc.field+"/"+tc.input, func(t *testing.T) {
 			value := m.New(u.Tables["Root"])
 			var rep tabletext.Report
-			text := fmt.Sprintf(`{"%s":%s}`, tc.field, tc.input)
+			// every field here is wider than 32 bits: its JSON form is a
+			// string of digits (docs/SPEC-TABLES.md §16.2)
+			text := fmt.Sprintf(`{"%s":"%s"}`, tc.field, tc.input)
 			read := m.Read(value, []byte(text), &rep)
 			if tc.over > 0 {
 				if read || !rep.Refused || !strings.HasPrefix(rep.Reason, "out_of_range") {

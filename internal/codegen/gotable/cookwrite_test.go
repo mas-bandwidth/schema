@@ -21,17 +21,17 @@ table Tail { wides []uint128 }
 table Root { tail *Tail
  wides []uint128
  tags []uint64 }
-`, []string{`{"tail":{"wides":[3]},"wides":[1],"tags":[2]}`}, true},
+`, []string{`{"tail":{"wides":["3"]},"wides":["1"],"tags":["2"]}`}, true},
 		{"wide-list", `package probe
 table Root { items []uint128
  tail int32 }
-`, []string{`{}`, `{"items":[1],"tail":7}`, `{"items":[1,340282366920938463463374607431768211455],"tail":9}`}, true},
+`, []string{`{}`, `{"items":["1"],"tail":7}`, `{"items":["1","340282366920938463463374607431768211455"],"tail":9}`}, true},
 		{"nested-wide-list", `package probe
 table Child { tag uint8
  items []uint128 }
 table Root { children []Child
  tail int32 }
-`, []string{`{"children":[{"tag":3,"items":[1]},{"tag":5,"items":[2,3]}],"tail":7}`}, true},
+`, []string{`{"children":[{"tag":3,"items":["1"]},{"tag":5,"items":["2","3"]}],"tail":7}`}, true},
 		{"fixed", `package probe
 enum Mode { First, Second }
 fixed table Child { n int32 = 7 }
@@ -49,7 +49,7 @@ fixed table Root { flag bool
  child ?Child
  values [..3]Value
  value Value }
-`, []string{`{}`, `{"flag":true,"mode":"Second","text":"abc","data":"YWJj","wide":340282366920938463463374607431768211455,"real":1.25,"child":{"n":12},"values":[{"amount":123456789012345678901234567890},{"words":"hello"}],"value":{"rows":{"items":[{"n":8},{"n":9}]}}}`}, false},
+`, []string{`{}`, `{"flag":true,"mode":"Second","text":"abc","data":"YWJj","wide":"340282366920938463463374607431768211455","real":1.25,"child":{"n":12},"values":[{"amount":"123456789012345678901234567890"},{"words":"hello"}],"value":{"rows":{"items":[{"n":8},{"n":9}]}}}`}, false},
 		{"variable", `package probe
 table Node { value int32
  next *Node }
@@ -69,7 +69,7 @@ table Root { head *Node
  items []Child
  payload Value
  other [..2]Value }
-`, []string{`{}`, `{"head":{"&node":1,"value":5,"next":{"value":6}},"alias":{"&node":1},"small":2,"wide":12345678901234567890,"items":[{"id":7,"samples":[10,20],"link":{"&node":1}}],"payload":{"children":{"items":[{"samples":[8,9]}]}},"other":[{"nodes":{"items":[{"&node":1}]}},{"children":{"items":[{"id":4}]}}]}`}, true},
+`, []string{`{}`, `{"head":{"&node":1,"value":5,"next":{"value":6}},"alias":{"&node":1},"small":2,"wide":"12345678901234567890","items":[{"id":7,"samples":[10,20],"link":{"&node":1}}],"payload":{"children":{"items":[{"samples":[8,9]}]}},"other":[{"nodes":{"items":[{"&node":1}]}},{"children":{"items":[{"id":4}]}}]}`}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.name == "fixed" {

@@ -1031,6 +1031,66 @@ public final class MixedEntityVariable {
         }
     }
 
+    // checkWrite is save's contract walk (docs/SPEC.md §5.1 rows 1-5 and 8),
+    // called through `assert`: THE WRITE-SIDE CHECKS ARE DEBUG ONLY, and
+    // without -ea the writer trusts its caller. It reaches every table the
+    // value points to, each once, so a cycle ends it.
+    static boolean checkWrite(Value v) {
+        TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
+        walk.point(v);
+        for (Object o = walk.next(); o != null; o = walk.next()) {
+            if (o instanceof BenchBitsVariable.Value) {
+                assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchIntsVariable.Value) {
+                assert BenchIntsVariable.checkWrite((BenchIntsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchMixedVariable.Value) {
+                assert BenchMixedVariable.checkWrite((BenchMixedVariable.Value) o, walk);
+            }
+            if (o instanceof BenchPacketVariable.Value) {
+                assert BenchPacketVariable.checkWrite((BenchPacketVariable.Value) o, walk);
+            }
+            if (o instanceof FixedTableVariable.Value) {
+                assert FixedTableVariable.checkWrite((FixedTableVariable.Value) o, walk);
+            }
+            if (o instanceof MixedChatEventVariable.Value) {
+                assert MixedChatEventVariable.checkWrite((MixedChatEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedEntityVariable.Value) {
+                assert MixedEntityVariable.checkWrite((MixedEntityVariable.Value) o, walk);
+            }
+            if (o instanceof MixedHitEventVariable.Value) {
+                assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedPickupEventVariable.Value) {
+                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedStatVariable.Value) {
+                assert MixedStatVariable.checkWrite((MixedStatVariable.Value) o, walk);
+            }
+        }
+        return true;
+    }
+
+    static boolean checkWrite(Value v, TableVariable.WriteCheck walk) {
+        if (v == null) {
+            return true;
+        }
+        assert (v.entityId & 0xffffffffL) <= 0xfffL : "MixedEntity.entity_id";
+        assert v.posX >= -16383 && v.posX <= 16383 : "MixedEntity.pos_x";
+        assert v.posY >= -16383 && v.posY <= 16383 : "MixedEntity.pos_y";
+        assert v.posZ >= -16383 && v.posZ <= 16383 : "MixedEntity.pos_z";
+        assert (v.yaw & 0xffffffffL) <= 0x1ffL : "MixedEntity.yaw";
+        assert (v.pitch & 0xffffffffL) <= 0x1ffL : "MixedEntity.pitch";
+        assert v.velX >= -2048 && v.velX <= 2047 : "MixedEntity.vel_x";
+        assert v.velY >= -2048 && v.velY <= 2047 : "MixedEntity.vel_y";
+        assert v.velZ >= -2048 && v.velZ <= 2047 : "MixedEntity.vel_z";
+        assert v.health >= 0 && v.health <= 1000 : "MixedEntity.health";
+        assert v.weapon >= 0 && v.weapon <= 15 : "MixedEntity.weapon";
+        return true;
+    }
+
     private static int weaponEnum(long vid, TableVariable.Report report) {
         if (vid == 0xa790eee12766cf0cL) {
             return 1;
@@ -1090,6 +1150,7 @@ public final class MixedEntityVariable {
     public static byte[] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
+        assert checkWrite(v);
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;
@@ -1125,7 +1186,7 @@ public final class MixedEntityVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite) {
+        if (w.ids.nonFinite || w.ids.offRange) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
