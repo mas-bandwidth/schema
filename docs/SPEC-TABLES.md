@@ -5771,6 +5771,20 @@ and a loader materializes one node and stores that index in all three
 slots. §2.1's own example — a large `*Palette` several parents share — is
 one node on the wire, in a builder and in a region alike (§6.3).
 
+**A leg without object identity loads a root plus a node directory.** A
+runtime that copies a value flat (into a message, a shared table or a log
+line) does not keep term sharing, so a node three slots hold would be copied
+three times, and a value this section requires to load would grow with its
+paths rather than its nodes. Such a leg returns a table that reaches a pointer
+to a table as the root beside a directory of the table nodes in index order,
+and every table-pointer field holds the index of the node it names (`2` and
+up, since no pointer names the root; null as the language's null). A field the
+root did not store reads its declared default. Its save numbers a node by that
+index, so two fields holding one index are one node. A `*string` or `*bytes`
+field holds its bytes, and the directory holds null at the node-table position
+that blob spent; a table that reaches no pointer to a table loads as a plain
+map. Elixir is the leg that does this today (USAGE.md, Per-language notes).
+
 **A data cycle is refused at SAVE FROM A BUILDER, and the refusal is
 free.** The numbering walk carries one entry per reachable node — that
 map IS identity; a node must know its index to be named twice — so

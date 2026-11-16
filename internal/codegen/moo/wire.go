@@ -203,6 +203,17 @@ func (g *gen) writeScalar(val, length string, f *ir.Field, ind string) error {
 			"a float32 is its finite binary32 pattern (SPEC §4.3)")
 		g.pf("%sNUM.value = %s\n", ind, val)
 		if f.HasFloatRange {
+			key := func(bits uint32) uint32 {
+				if bits&0x7fffffff == 0 {
+					return 0x80000000
+				}
+				if bits&0x80000000 != 0 {
+					return ^bits
+				}
+				return bits ^ 0x80000000
+			}
+			ordered := fmt.Sprintf("(if bit32.band(%s, 0x7FFFFFFF) == 0 then 0x80000000 elseif bit32.band(%s, 0x80000000) ~= 0 then bit32.bnot(%s) else bit32.bxor(%s, 0x80000000))", val, val, val, val)
+			g.refuse(ind, fmt.Sprintf("%s < 0x%08X or %s > 0x%08X", ordered, key(float32Bits(f.FMin)), ordered, key(float32Bits(f.FMax))), "compressed float range")
 			g.call(ind, g.compressedCall(f), "the step index (SPEC §4.3)")
 		} else {
 			g.call(ind, "stream:serializeFloatBits(NUM)", "")
