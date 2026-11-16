@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"math"
+	"strconv"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -21,6 +22,17 @@ import (
 // 14 array, 15 union, 16 enum-keyed array, 17 pointer, 30 enum, 32 no payload.
 // A body is `ref, kind, payload ... 0`; a reference is the 1-based slot of the
 // id table the vector names in `ids`.
+//
+// THE FILE'S ID TABLE IS IN FIRST-USE ORDER (docs/SPEC-TABLES.md §3), which a
+// reader holds too (§4, docs/rulings.json reads-refuse-non-canonical). A script
+// names its ids against a SHARED map (cfgIds, squadIds, listNodeIds, ...) so
+// that every script of one unit reads against one numbering; `bytes` then
+// numbers the file the way a writer would: the table is the slots the body
+// references, in the order of their first use, and every reference is moved to
+// its id's new slot. No byte but a reference moves, and a reference keeps its
+// width. A reference above the entry count names no entry and is left as it
+// is, so it stays above the count. framing_canonical_test.go holds every file
+// to the rule, and names the one vector whose table IS its defect.
 
 type framingVector struct {
 	name, unit, root string
@@ -344,11 +356,13 @@ var framingVectors = []framingVector{
 	{name: "frame_count_one_over", unit: "tblr1", root: "Cfg", ids: []string{"zzz"}, body: b(0), count: new(uint64(2))},
 	// F5: a byte between the root's terminator and the first entry.
 	{name: "frame_slack_after_terminator", unit: "tblr1", root: "Cfg", ids: nil, body: b(0, 0)},
-	// F5: one id in two entries.
-	{name: "frame_duplicate_entry", unit: "tblr1", root: "Cfg", ids: []string{"grade", "grade"}, body: b(0)},
-	// F6: 4096 entries is the bound and resolves; 4097 is malformed.
-	{name: "frame_entries_4096", unit: "tblr1", root: "Cfg", entries: counting(4096), body: b(0)},
-	{name: "frame_entries_4097", unit: "tblr1", root: "Cfg", entries: counting(4097), body: b(0)},
+	// F5: one id in two entries, each referenced once (the field, then its
+	// variant), so the duplicate is the table's one defect.
+	{name: "frame_duplicate_entry", unit: "tblr1", root: "Cfg", ids: []string{"grade", "grade"}, body: b(1, 30, 2, 0)},
+	// F6: 4096 entries is the bound and resolves; 4097 is malformed. Each entry
+	// is one unknown field of the root, in slot order.
+	{name: "frame_entries_4096", unit: "tblr1", root: "Cfg", entries: counting(4096), body: countingFields(4096)},
+	{name: "frame_entries_4097", unit: "tblr1", root: "Cfg", entries: counting(4097), body: countingFields(4097)},
 	// F8: the entry count itself is the last legal slot and resolves.
 	{name: "frame_ref_last_slot", unit: "tblr1", root: "Cfg", ids: []string{"Silver", "grade"}, body: b(2, 30, 1, 0)},
 	// F9, L2: a reference above the count stops the root with grade standing.
@@ -690,8 +704,8 @@ var framingVectors = []framingVector{
 		body: cat(b(11, 16, 5, 17, 1, 18, 1, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
 }
 
-// counting is n distinct raw entries, 1..n: a reader checks distinctness and
-// nothing else about an entry nobody references (F6, F7).
+// counting is n distinct raw entries, 1..n: ids no Cfg declares, so each is an
+// unknown field to the reader (F6).
 func counting(n int) []uint64 {
 	out := make([]uint64, n)
 	for i := range out {
@@ -700,9 +714,90 @@ func counting(n int) []uint64 {
 	return out
 }
 
+// countingFields is a root body that references slots 1..n once each, in slot
+// order: one unknown uint8 field per slot (`ref, kind 6, 1`), then the
+// terminator.
+func countingFields(n int) []byte {
+	var out []byte
+	for ref := 1; ref <= n; ref++ {
+		out = append(out, leb(uint64(ref))...)
+		out = append(out, 6, 1)
+	}
+	return append(out, 0)
+}
+
 // bytes assembles one vector's file: the form byte, the body, the entries in
-// slot order, then the count (docs/SPEC-TABLES.md §3).
+// slot order, then the count (docs/SPEC-TABLES.md §3), with the table put in
+// first-use order (firstUseOrder).
 func (v framingVector) bytes(u *units) ([]byte, error) {
+	out, err := v.scriptBytes(u)
+	if err != nil || v.raw != nil || v.count != nil {
+		// a raw file is verbatim, and a vector whose entry count is its defect
+		// has no table to number
+		return out, err
+	}
+	if _, exempt := framingNonCanonicalTables[v.name]; exempt {
+		return out, nil
+	}
+	return firstUseOrder(out)
+}
+
+// firstUseOrder renumbers one file's id table into FIRST-USE ORDER (§3): the
+// slots the body references, in the order the framing locator meets them —
+// root body first, the node table's records in index order — and every
+// reference moved to its slot's new place. A slot no reference names is
+// dropped. A reference above the count is left as it is.
+func firstUseOrder(data []byte) ([]byte, error) {
+	f := frameWire(data)
+	n := uint64(len(f.entries))
+	if n == 0 {
+		return data, nil
+	}
+	moved := map[uint64]uint64{}
+	var order []uint64
+	var refs []wireSpot
+	for _, sp := range f.spots {
+		switch sp.kind {
+		case spotRef, spotArm, spotKey, spotVariant, spotRecordType:
+		default:
+			continue
+		}
+		if sp.value == 0 || sp.value > n {
+			continue
+		}
+		refs = append(refs, sp)
+		if _, seen := moved[sp.value]; !seen {
+			order = append(order, sp.value)
+			moved[sp.value] = uint64(len(order))
+		}
+	}
+	body := append([]byte(nil), data[f.bodyStart:f.bodyEnd]...)
+	for _, sp := range refs {
+		if moved[sp.value] == sp.value {
+			continue // a reference already in its place keeps its spelling, `81 00` included
+		}
+		spelled := lebBytes(moved[sp.value])
+		if len(spelled) != sp.width {
+			return nil, errReferenceWidth(sp.off)
+		}
+		copy(body[sp.off-f.bodyStart:], spelled)
+	}
+	out := append([]byte{data[0]}, body...)
+	for _, slot := range order {
+		out = append(out, u64(f.entries[slot-1])...)
+	}
+	return append(out, u64(uint64(len(order)))...), nil
+}
+
+type errReferenceWidth int
+
+func (e errReferenceWidth) Error() string {
+	return "the reference at byte " + strconv.Itoa(int(e)) + " changes width in first-use order"
+}
+
+// scriptBytes is the file exactly as the script spells it, its id table in the
+// shared map's slot order.
+func (v framingVector) scriptBytes(u *units) ([]byte, error) {
 	if v.raw != nil {
 		return v.raw, nil
 	}

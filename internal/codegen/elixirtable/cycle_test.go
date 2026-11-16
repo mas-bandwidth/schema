@@ -70,23 +70,24 @@ func TestCyclicWireIsDamageElixir(t *testing.T) {
 	chainCanonical := canonical("node_chain_two", "ListNode")
 	diamondCanonical := canonical("node_diamond_chain", "Scene")
 
+	// next is slot 2: the unused name entry left ListNode's id table.
 	unreached := bytes.Clone(read("node_cycle_mid"))
-	if len(unreached) < 10 || !bytes.Equal(unreached[7:10], []byte{3, 17, 2}) {
+	if len(unreached) < 10 || !bytes.Equal(unreached[7:10], []byte{2, 17, 2}) {
 		t.Fatal("node_cycle_mid root-next fixture moved")
 	}
 	unreached[9] = 0 // the remaining directory records still contain a cycle
 	unreachedPath := put("unreached_cycle", unreached)
 
 	base := read("node_cycle_self")
-	if len(base) < 10 || !bytes.Equal(base[7:10], []byte{3, 17, 2}) {
+	if len(base) < 10 || !bytes.Equal(base[7:10], []byte{2, 17, 2}) {
 		t.Fatal("node_cycle_self root-next fixture moved")
 	}
 	// Root next=self followed by next=null: the same field id twice in one
 	// body is damage (§4), so the whole load is discarded before any cycle
 	// check runs. The original node's self edge is cleared as well.
-	overwritten := append(bytes.Clone(base[:7]), 3, 17, 1, 3, 17, 0)
+	overwritten := append(bytes.Clone(base[:7]), 2, 17, 1, 2, 17, 0)
 	tail := bytes.Clone(base[10:])
-	self := []byte{3, 17, 2}
+	self := []byte{2, 17, 2}
 	if bytes.Count(tail, self) != 1 {
 		t.Fatal("node_cycle_self directory self-edge fixture moved")
 	}
