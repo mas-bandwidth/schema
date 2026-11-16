@@ -10,4 +10,6 @@ python-framing-driver: python-toolchain-check build/conformance-python
 python-framing-driver-negative-control: python-toolchain-check build/conformance-python
 	$(PYTHON) -I -B test/conformance/python/framing-probe.py --negative
 	$(PYTHON_FLOOR) -I -B test/conformance/python/framing-probe.py --negative
+	$(PYTHON) -I -B test/conformance/python/framing-probe.py --negative-save
+	$(PYTHON_FLOOR) -I -B test/conformance/python/framing-probe.py --negative-save
 test-python: python-framing-driver python-framing-driver-negative-control

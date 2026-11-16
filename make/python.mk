@@ -91,8 +91,9 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 	@echo "conformance-python: $$(ls -d $@/*/ 2>/dev/null | wc -l | tr -d " ") units generated, $$(ls $@/*.refused 2>/dev/null | wc -l | tr -d " ") refused by name"
 	# Framing exercises form 1 for Cfg, whose source also declares a fixed class.
 	@test "$$(grep -c '^fixed table Cfg$$' test/tables/R1.schema)" = 1
+	@test "$$(grep -c '^package tblr1$$' test/tables/R1.schema)" = 1
 	@mkdir -p $@/tblr1/_framing/source $@/tblr1/_framing/tblr1
-	@sed 's/^fixed table Cfg$$/table Cfg/' test/tables/R1.schema > $@/tblr1/_framing/source/R1.schema
+	@sed -e 's/^fixed table Cfg$$/table Cfg/' -e 's/^package tblr1$$/package tblr1_framing/' test/tables/R1.schema > $@/tblr1/_framing/source/R1.schema
 	./build/schema-python generate --lang python --out $@/tblr1/_framing/tblr1 $@/tblr1/_framing/source/R1.schema
 
 # The table core's negative control: the generated runtime's form byte is
