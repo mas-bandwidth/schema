@@ -74,6 +74,7 @@ func TestSharedFixturesCanonical(t *testing.T) {
 	shapesWant := map[string]string{"testdata/wire/tables/framing/array_L2_empty.bin": "stored-default", "testdata/wire/tables/framing/union_arm_zero_in_field.bin": "union-arm-zero", "testdata/wire/tables/framing/node_index_null.bin": "explicit-null-pointer"}
 	idsWant := map[string]string{"testdata/wire/tables/framing/frame_unreferenced_entry.bin": "unused ID-table entries", "testdata/wire/tables/rewrite_ids_reversed.bin": "first use of ID slot", "testdata/wire/tables/framing/frame_duplicate_entry.bin": "duplicate ID-table entry"}
 	seen := map[string]bool{}
+	writerPaths := map[string]bool{}
 	foundPurposes := map[string]bool{}
 	counts := map[string]int{}
 	checkFile := func(x fileRow) {
@@ -192,8 +193,22 @@ func TestSharedFixturesCanonical(t *testing.T) {
 			if len(shapes) != 1 || !shapes[want] {
 				t.Errorf("%s: shapes=%v, want %s", x.name, shapes, want)
 			}
-		} else if len(shapes) > 0 {
-			t.Errorf("%s (%s): shapes=%v", x.name, x.path, shapes)
+		} else {
+			// The current reader cannot know whether a variable writer made
+			// a field required or optional. These observations are not
+			// refusal evidence. For this reader's own canonical outputs the
+			// writer declaration is known, so elision remains testable.
+			for shape := range shapes {
+				switch shape {
+				case "stored-default", "explicit-null-pointer", "union-arm-zero":
+					counts["writer-dependent-descriptions"]++
+					if writerPaths[x.unit+"/"+x.table+"/"+x.path] {
+						t.Errorf("%s (%s): own-writer output stores %s", x.name, x.path, shape)
+					}
+				default:
+					t.Errorf("%s (%s): structural spelling %s", x.name, x.path, shape)
+				}
+			}
 		}
 	}
 	// Canonical output files are fixtures too: read every declared save and
@@ -242,6 +257,11 @@ func TestSharedFixturesCanonical(t *testing.T) {
 	// Aggregate repeated surface rows before walking so a refused occurrence
 	// cannot hide another row that requires the same bytes to read.
 	rows := map[string]fileRow{}
+	for _, x := range files {
+		if strings.HasSuffix(x.name, "/save") || strings.HasSuffix(x.name, "/canonical") {
+			writerPaths[x.unit+"/"+x.table+"/"+x.path] = true
+		}
+	}
 	for _, x := range files {
 		key := fmt.Sprintf("%s/%s/%s/variable=%t", x.unit, x.table, x.path, x.variable)
 		if old, ok := rows[key]; ok {
