@@ -153,7 +153,7 @@ end
 		t.Fatal(err)
 	}
 	tokenRows := 0
-	for _, line := range strings.Split(string(tokenManifest), "\n") {
+	for line := range strings.SplitSeq(string(tokenManifest), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
