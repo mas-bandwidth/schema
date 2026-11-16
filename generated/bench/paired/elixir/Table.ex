@@ -8362,23 +8362,15 @@ defmodule Bench.Table do
         buf
       end
 
+    # AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (§7.2): its presence byte is
+    # zero and its payload stays zero whatever its declared defaults are,
+    # which stay a read rule
     if Map.get(f, :optional, false) and not present do
-      cook_absent(f, base, index, order, buf)
+      buf
     else
       cook_value(f, Map.get(value, f.name, f.default), base, index, order, buf)
     end
   end
-
-  # WHAT THE STORAGE HOLDS IS WHAT IS WRITTEN (§7.6): an absent optional's
-  # storage is value-initialized, so a record keeps its declared defaults and
-  # an array its value-initialized slots; a scalar's is zero.
-  defp cook_absent(%{t: t} = f, base, index, order, buf) when t in [:table, :keyed],
-    do: cook_value(f, %{}, base, index, order, buf)
-
-  defp cook_absent(%{t: :list} = f, base, index, order, buf),
-    do: cook_value(f, [], base, index, order, buf)
-
-  defp cook_absent(_f, _base, _index, _order, buf), do: buf
 
   # a blob slot holds the mark cook_collect gave it, {:cook_blob, n}: the
   # node of this slot (§2.5)
@@ -8483,10 +8475,11 @@ defmodule Bench.Table do
         buf
       end
 
-    # the storage is allocate-max (§7.2): a record slot past the live count
-    # holds the element type's declared defaults, every other one zero
+    # the storage is allocate-max (§7.2): a counted array's slot past the live
+    # count is dead storage and stays zero; a fixed array's record slot the
+    # value leaves out holds the element type's declared defaults
     elems =
-      if f.elem_t == :record and ceiling != nil and length(elems) < ceiling,
+      if not counted and f.elem_t == :record and ceiling != nil and length(elems) < ceiling,
         do: elems ++ List.duplicate(%{}, ceiling - length(elems)),
         else: elems
 

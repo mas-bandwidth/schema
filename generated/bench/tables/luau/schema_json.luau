@@ -499,7 +499,7 @@ walk_default = function(T: any, desc: any): any
 end
 
 -- §16.2: an integer or fixed-point kind wider than 32 bits writes as a JSON
--- string of digits and reads from a string or a number. A timestamp is a
+-- string of digits and reads from a string only. A timestamp is a
 -- string only, and flags ride under shape == "flags".
 local function wide_int(d: any): boolean
   return d.shape == "int" and not d.timestamp and (d.width or 0) > 4
@@ -507,7 +507,7 @@ end
 
 local function shape_matches(want: string, got: string?): boolean
   if want == got then return true end
-  return want == 'N' and (got == 's' or got == 'n')
+  return want == 'N' and got == 's'
 end
 
 -- §16.10: a table value uses its declared array-root shape at every depth.

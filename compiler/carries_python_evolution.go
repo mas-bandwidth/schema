@@ -1,5 +1,3 @@
-//go:build schema_leg_python
-
 package compiler
 
 // THE EVOLUTION KINDS — string, bytes and flags defaults, a table, table

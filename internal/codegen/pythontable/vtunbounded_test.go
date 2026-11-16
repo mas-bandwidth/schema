@@ -95,18 +95,18 @@ type vtUnboundedCase struct {
 var vtUnboundedCases = []vtUnboundedCase{
 	{"list_scalars", "Save", `{"scores":[5,-7,100,0]}`},
 	{"list_bools", "Save", `{"flags":[true,false,true]}`},
-	{"list_wide", "Save", `{"wide":[-1,123456789012345678901234567890,-123456789012345678901234567890]}`},
+	{"list_wide", "Save", `{"wide":["-1","123456789012345678901234567890","-123456789012345678901234567890"]}`},
 	{"list_tables", "Save", `{"placements":[{"x":1,"y":-2},{"x":3,"y":4}]}`},
 	{"list_nested", "Save", `{"mids":[{"inner":{"label":1}},{"inner":{"label":65535}}]}`},
 	{"list_table_pointers", "Save", `{"nodes":[{"value":1,"next":{"value":2}},{"value":3}]}`},
 	{"list_fixed_tables", "Save", `{"counters":[{"enabled":true,"small":-3,"count":4000000000},{"small":7},{}]}`},
-	{"list_unsigned_wide", "Save", `{"totals":[18446744073709551615,0,1]}`},
+	{"list_unsigned_wide", "Save", `{"totals":["18446744073709551615","0","1"]}`},
 	// list_empty: the Go engine ELIDES an empty plain array (§3), so this wire
 	// carries no scores field at all: it reads to scores == [] by the declared
 	// default and writes back the same elided wire. The array codec itself never
 	// sees a count of 0 here; refusal/present_empty is the case that does.
 	{"list_empty", "Save", `{"scores":[]}`},
-	{"closure", "Save", `{"live":true,"total":-5,"counter":{"enabled":true,"small":-3,"count":4000000000},"scores":[1,2],"flags":[true],"wide":[7],"placements":[{"x":1,"y":2}],"mids":[{"inner":{"label":9}}],"nodes":[{"value":4,"next":{"value":99}},{"value":5}],"head":{"value":6,"next":{"value":7}},"counters":[{"count":1}],"totals":[2]}`},
+	{"closure", "Save", `{"live":true,"total":"-5","counter":{"enabled":true,"small":-3,"count":4000000000},"scores":[1,2],"flags":[true],"wide":["7"],"placements":[{"x":1,"y":2}],"mids":[{"inner":{"label":9}}],"nodes":[{"value":4,"next":{"value":99}},{"value":5}],"head":{"value":6,"next":{"value":7}},"counters":[{"count":1}],"totals":["2"]}`},
 }
 
 // vtUnboundedEngineWire is the Go engine's form-1 wire of the JSON text at

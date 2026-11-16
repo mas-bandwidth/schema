@@ -489,7 +489,7 @@ table EvolReader {
 	mSenderWide := tabletext.NewModel(uSenderWide)
 	instVarWide := mSenderWide.New(mSenderWide.Lookup("EvolReader"))
 	var repWide tabletext.Report
-	if !mSenderWide.Read(instVarWide, []byte(`{"a": 5, "b": 12, "extra": 99}`), &repWide) {
+	if !mSenderWide.Read(instVarWide, []byte(`{"a": 5, "b": "12", "extra": 99}`), &repWide) {
 		t.Fatalf("sender wide read: %+v", repWide)
 	}
 	v2VarRetainSavedWire, err := tablewire.Encode(mSenderWide, instVarWide)
@@ -590,7 +590,7 @@ table EvolReader {
 	// announced shape and build version.
 	instSameA := mClauses.New(mClauses.Lookup("EvolMsgReader"))
 	rep = tabletext.Report{}
-	if !mClauses.Read(instSameA, []byte(`{"a": 5, "b": 257}`), &rep) {
+	if !mClauses.Read(instSameA, []byte(`{"a": 5, "b": "257"}`), &rep) {
 		t.Fatalf("same-build message read: %+v", rep)
 	}
 	sameA, err := tablewire.EncodeMessage(mClauses, instSameA)
@@ -599,7 +599,7 @@ table EvolReader {
 	}
 	instSameB := mClauses.New(mClauses.Lookup("EvolMsgReader"))
 	rep = tabletext.Report{}
-	if !mClauses.Read(instSameB, []byte(`{"a": 5, "b": -258}`), &rep) {
+	if !mClauses.Read(instSameB, []byte(`{"a": 5, "b": "-258"}`), &rep) {
 		t.Fatalf("same-build complement read: %+v", rep)
 	}
 	sameB, err := tablewire.EncodeMessage(mClauses, instSameB)
