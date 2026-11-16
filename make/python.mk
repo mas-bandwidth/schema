@@ -34,9 +34,7 @@ python-ci-compiler-coverage:
 # Planner-selected compiler shards retain run-proof, including the four
 # named gates of the aggregate. New matching tests are discovered by Go.
 python-ci-compiler-shard-%:
-	@names=$$(printf '%s' '$*' | tr '+' ' '); pattern=$$(printf '%s' '$*' | tr '+' '|'); \
-	label=$$(printf '%s' '$*' | cksum | cut -d ' ' -f1); \
-	sh test/slowgate/proof python-ci-compiler-$$label "$$names" -tags schema_leg_python ./compiler -run "^($$pattern)$$" -count=1
+	sh tools/python-ci-compiler-shard.sh '$*'
 update-goldens-python: ;
 
 # python-packet-core-negative-control: the packet core's own control. It edits
