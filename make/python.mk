@@ -29,6 +29,11 @@ python-ci-packages:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 python-ci-compiler:
 	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
+# Planner-selected compiler shards retain run-proof, including the four
+# named gates of the aggregate. New matching tests are discovered by Go.
+python-ci-compiler-shard-%:
+	@names=$$(printf '%s' '$*' | tr '+' ' '); pattern=$$(printf '%s' '$*' | tr '+' '|'); \
+	sh test/slowgate/proof python-ci-compiler-$* "$$names" -tags schema_leg_python ./compiler -run "^($$pattern)$$" -count=1
 update-goldens-python: ;
 
 # python-packet-core-negative-control: the packet core's own control. It edits
