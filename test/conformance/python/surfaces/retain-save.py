@@ -1,6 +1,6 @@
 """The retained rewrite surface, using the caller's two bounded stores."""
 
-from _common import absent, entries, read_bytes, root_class, unit_package, write_bytes
+from _common import absent, entries, read_bytes, root_class, supported, unit_package, write_bytes
 
 
 def run(manifest, outdir):
@@ -9,7 +9,7 @@ def run(manifest, outdir):
         try:
             package = unit_package(unit)
             cls = root_class(unit, root)
-            if package is None or cls is None or not hasattr(package, "TableRetain"):
+            if package is None or cls is None or not hasattr(package, "TableRetain") or not supported(cls):
                 absent(outdir, case, "unit does not provide retaining file reads")
                 continue
             id_count = 1 << 17 if ids == "full" else int(ids)
@@ -23,5 +23,5 @@ def run(manifest, outdir):
             report = package.LoadReport()
             value = cls.load_retain(data, retain, report)
             write_bytes(outdir, case, value.save_retain(retain, report))
-        except Exception as err:  # noqa: BLE001 - a case this leg cannot answer is absent
-            absent(outdir, case, err)
+        except Exception as err:
+            raise RuntimeError(f"{case}: retaining file operation failed: {err}") from err

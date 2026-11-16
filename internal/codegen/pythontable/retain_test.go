@@ -1754,3 +1754,55 @@ print('optional-map-retain')
 		}
 	}
 }
+
+func TestPythonRetainDriverNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and retain manifest")
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := Generate(loadUnitPaths(t, filepath.Join(root, "test/tables/RT1.schema")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	planted := 0
+	for name, data := range files {
+		if !strings.HasPrefix(name, "tblrt1/") || strings.Contains(name, "/_schema/") {
+			continue
+		}
+		text := string(data)
+		anchor := "        output = bytearray()\n        _, lost = _encode_retain(self, retain, Writer(output))\n"
+		if strings.Contains(text, anchor) {
+			files[name] = []byte(strings.ReplaceAll(text, anchor, "        raise RuntimeError(\"retain_driver_control\")\n"))
+			planted++
+		}
+	}
+	if planted == 0 {
+		t.Fatal("driver sabotage anchor absent")
+	}
+	generated := t.TempDir()
+	unitdir := filepath.Join(generated, "tblrt1")
+	if err := os.MkdirAll(unitdir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeTree(t, unitdir, files)
+	manifest := filepath.Join(t.TempDir(), "retain.manifest")
+	line := "retain retain_round_trip tblrt1 Node testdata/wire/tables/retain_rt2.bin full full\n"
+	if err := os.WriteFile(manifest, []byte(line), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		outdir := t.TempDir()
+		cmd := exec.Command(pin, "-W", "error", "-I", "-B", filepath.Join(root, "test/conformance/python/main.py"), manifest, "retain-save", outdir)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), "PYTHON_CONFORMANCE_GENERATED="+generated)
+		output, err := cmd.CombinedOutput()
+		if err == nil || !strings.Contains(string(output), "retain_driver_control") {
+			t.Fatalf("driver hid retaining failure: %v\n%s", err, output)
+		}
+		if _, err := os.Stat(filepath.Join(outdir, "retain_round_trip.absent")); !os.IsNotExist(err) {
+			t.Fatalf("retaining failure was misreported absent: %v", err)
+		}
+	}
+}
