@@ -1175,7 +1175,7 @@ func armFieldDesc(v ir.UnionVariant, tag int) string {
 	}
 	codec := codecOf(f)
 	switch codec {
-	case "keyed", "string_blob", "bytes_blob":
+	case "keyed":
 		codec = "unsupported"
 	}
 	elemCodec := ""
