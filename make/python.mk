@@ -51,7 +51,7 @@ packet-finite-python: build/schema-python python-toolchain-check
 	$(PYTHON_FLOOR) -W error -I -B test/packet-finite/python/main.py build/packet-finite/python/generated
 
 packet-finite-python-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonPacketFloats/negative-control' ./internal/codegen/python/
+	sh test/slowgate/proof python-packet-finite-negative-control 'TestPythonPacketFloats/negative-control' -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonPacketFloats/negative-control' ./internal/codegen/python/
 
 # build/schema-python is the compiler the conformance tree is generated with.
 # The tag remains accepted by existing leg gates; the target is built in.
@@ -139,3 +139,10 @@ generated/python/.stamp: bin/schema $(SCHEMAS)
 generated/python-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang python --out generated/python-ludicrous examples128
 	@touch $@
+
+.PHONY: python-hosted-packet-text python-hosted-packet-text-negative-control
+python-hosted-packet-text: python-toolchain-check
+	sh test/slowgate/proof python-hosted-packet-text 'TestPythonHostedPacketText/current TestPythonHostedPacketText/floor' -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonHostedPacketText$$' ./internal/codegen/pythontable/
+python-hosted-packet-text-negative-control: python-toolchain-check
+	sh test/slowgate/proof python-hosted-packet-text-negative-control 'TestPythonHostedPacketTextNegativeControl/current TestPythonHostedPacketTextNegativeControl/floor' -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonHostedPacketTextNegativeControl$$' ./internal/codegen/pythontable/
+test-python: python-hosted-packet-text python-hosted-packet-text-negative-control

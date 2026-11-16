@@ -3260,7 +3260,8 @@
         "python-packet-close-negative-control",
         "python-packet-analyzer-negative-control",
         "packet-defaults-python-negative-control",
-        "bench-python-negative-control"
+        "bench-python-negative-control",
+        "python-hosted-packet-text-negative-control"
       ],
       "python": "pin"
     },
