@@ -10,7 +10,7 @@ from typing import Any, Iterator
 
 from . import InvalidValue
 from . import descriptor, kinds
-from . import kind_array, kind_blob, kind_map, kind_optional, kind_unsupported
+from . import kind_array, kind_blob, kind_map, kind_optional, kind_union, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1
@@ -383,6 +383,8 @@ def _validate_fields(
             if target is None or type(current) is not target:
                 raise InvalidValue(where, f"not a {field.target}")
             yield current, where
+        elif field.codec in ("union", "union_array"):
+            yield from kind_union._validation_edges(field, current, where)
         elif field.codec == "map":
             yield from _validate_map_entries(field, current, where)
         elif field.codec == "array":
@@ -439,6 +441,8 @@ def _validate_map_entries(
             yield current, where
         elif value_field.codec == "map":
             yield from _validate_map_entries(value_field, current, where)
+        elif value_field.codec in ("union", "union_array"):
+            yield from kind_union._validation_edges(value_field, current, where)
         else:
             kinds._REGISTRY[value_field.codec].validate(value_field, current, where)
 
@@ -560,6 +564,8 @@ def _collect_edges(
             if element is not None and element.codec == "table":
                 for index, item in enumerate(current):
                     yield item, (path, field.name, index), False, blobs
+        elif codec in ("union", "union_array"):
+            yield from kind_union._collection_edges(field, current, ctx, blobs, (path, field.name, _NO_SUB))
         elif codec == "map":
             yield from _collect_map_edges(
                 field, current, (path, field.name, _NO_SUB), ctx, blobs
@@ -601,6 +607,8 @@ def _collect_map_edges(
                 yield current, where, False, blobs
         elif value_field.codec == "map":
             yield from _collect_map_edges(value_field, current, where, ctx, blobs)
+        elif value_field.codec in ("union", "union_array"):
+            yield from kind_union._collection_edges(value_field, current, ctx, blobs, where)
 
 
 def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:
