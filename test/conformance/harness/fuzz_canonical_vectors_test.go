@@ -385,3 +385,105 @@ func TestNestedArmEnvelopeBoundary(t *testing.T) {
 		}
 	}
 }
+
+// TestRetainedArrayDuplicatePins isolates duplicate root IDs and pairs them
+// with the same single array holding an unknown field for retaining reads.
+func TestRetainedArrayDuplicatePins(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	// One Squad table element with a future uint32 field and its terminator.
+	element := cat(b(2, 8), i32(9), b(0))
+	payload := cat(b(13, 1), leb(uint64(len(element))), element)
+	field := cat(b(1, 14), leb(uint64(len(payload))), payload)
+	for _, tc := range []struct {
+		name      string
+		duplicate bool
+	}{{"retain_array_replaced", true}, {"retain_array_unique", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := bytes.Clone(field)
+			if tc.duplicate {
+				body = append(body, field...)
+			}
+			body = append(body, 0)
+			wire, err := (framingVector{ids: []string{"many", "future"}, body: body}).bytes(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors", tc.name+".bin")
+			if os.Getenv("FRAMING_WRITE") == "1" {
+				if err := os.WriteFile(path, wire, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, wire) {
+				t.Errorf("%s differs from its builder", tc.name)
+			}
+		})
+	}
+}
+
+func TestRetainedArrayDuplicateBoundary(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	m, err := ReadManifest(filepath.Join(root, defaultManifest), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Units {
+		for j, p := range m.Units[i].Paths {
+			if !filepath.IsAbs(p) {
+				m.Units[i].Paths[j] = filepath.Join(root, p)
+			}
+		}
+	}
+	units := newUnits(m)
+	u, err := units.get("mapdemo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := u.Tables["Depth"]
+	for _, tc := range []struct {
+		name      string
+		duplicate bool
+	}{{"retain_array_replaced", true}, {"retain_array_unique", false}} {
+		wire, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/fuzz-vectors", tc.name+".bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fault := framingTableFault(framingVector{}, wire); fault != "" {
+			t.Errorf("%s: %s", tc.name, fault)
+		}
+		for _, shapes := range []map[string]bool{rootStructuralSpellings(st, wire), rootStoredDefaults(st, wire), nestedStructuralSpellings(u, st, wire), nestedStoredDefaults(u, st, wire)} {
+			if len(shapes) > 0 {
+				t.Errorf("%s: %v", tc.name, shapes)
+			}
+		}
+		wr, err := newWireRoot(units, "mapdemo", "Depth", false, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		value := wr.model.New(wr.def)
+		var report tabletext.Report
+		store := tablewire.Retain{Capacity: 65536, IdCapacity: 1024}
+		ok, err := tablewire.DecodeRetain(wr.model, value, wire, &store, &report)
+		if tc.duplicate {
+			if ok || err == nil || !strings.Contains(err.Error(), "the same field id twice") {
+				t.Errorf("%s: %v %v", tc.name, ok, err)
+			}
+			continue
+		}
+		if !ok || err != nil || report.Unknown != 1 || report.Retained != 1 {
+			t.Fatalf("%s: %v %v %+v", tc.name, ok, err, report)
+		}
+		var savedReport tabletext.Report
+		saved, err := tablewire.EncodeRetain(wr.model, value, &store, &savedReport)
+		if err != nil || savedReport.RetainLost != 0 || !bytes.Equal(saved, wire) {
+			t.Errorf("%s: retaining fixed point %v %+v", tc.name, err, savedReport)
+		}
+	}
+}

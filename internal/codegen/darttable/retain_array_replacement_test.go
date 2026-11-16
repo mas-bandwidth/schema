@@ -22,12 +22,10 @@ func TestDartRetainedArrayReplacementGlobalVector(t *testing.T) {
 		dir, unit, root, vector                                  string
 		unknown, mismatch, duplicate, retained, lost, savedBytes int
 	}{
-		{"maps", "Mapdemo", "Depth", "retain_array_replaced", 6, 1, 0, 3, 3, 113},
-		{"lists", "Listdemo", "Save", "retain_list_replaced", 4, 0, 0, 4, 0, 47},
-		{"lists", "Listdemo", "Army", "retain_list_maps_replaced", 8, 0, 4, 8, 0, 133},
-		// STRICT VERDICT: the mismatch/duplicate counts above are the old
-		// tolerant counters; under the strict read those rows refuse whole
-		// (kind_mismatch / wire_damaged), handled by refusalFor below.
+		{"maps", "Mapdemo", "Depth", "retain_array_replaced", 0, 0, 1, 0, 0, 0},
+		{"maps", "Mapdemo", "Depth", "retain_array_unique", 1, 0, 0, 1, 0, 39},
+		{"lists", "Listdemo", "Save", "retain_list_replaced", 0, 0, 1, 0, 0, 0},
+		{"lists", "Listdemo", "Army", "retain_list_maps_replaced", 0, 0, 1, 0, 0, 0},
 	} {
 		t.Run(tc.vector, func(t *testing.T) {
 			schemas, err := filepath.Glob("../../../tables/" + tc.dir + "/*.schema")
@@ -60,8 +58,8 @@ func TestDartRetainedArrayReplacementGlobalVector(t *testing.T) {
 			}
 			ok, derr := tablewire.DecodeRetain(m, v, wire, store, &r)
 			if refusal != "" {
-				if ok && !r.Refused {
-					t.Fatalf("independent read must refuse: %+v %v", r, derr)
+				if ok || derr == nil || !r.Refused || !strings.Contains(derr.Error(), "the same field id twice") {
+					t.Fatalf("independent read must refuse duplicate field: %+v %v", r, derr)
 				}
 			} else if !ok || derr != nil || r.Refused || r.Unknown != tc.unknown || r.Widened != 0 || r.Retained != tc.retained || r.RetainLost != tc.lost {
 				t.Fatalf("independent read: %+v %v", r, derr)
