@@ -142,6 +142,35 @@ print("required_ok")
 			t.Errorf("%s: %v %s %s", pin.name, err, out, stderr)
 		}
 	}
+	plain := loadUnit(t, strings.ReplaceAll(requiredForm1Schema, " | required", ""))
+	plainModel := tabletext.NewModel(plain)
+	canonical, err := tablewire.EncodeVariable(plainModel, plainModel.New(plainModel.Lookup("Root")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plainFiles, err := Generate(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plainDir := t.TempDir()
+	writeTree(t, plainDir, plainFiles)
+	evolutionProbe := pyrun.ImportPrelude + `from req import Root
+with open("wire", "rb") as f: wire=f.read()
+with open("canonical", "rb") as f: canonical=f.read()
+v=Root.load(wire)
+assert v.number==0 and v.items==[] and v.pointer_array==[] and v.fixed_pointers==[None,None], "prior_values"
+assert v.pointer is None and v.blob is None and v.save()==canonical, "prior_resave"
+print("ok")
+`
+	for _, pin := range []struct {
+		name string
+		path func(testing.TB) string
+	}{{"current", pyrun.Interpreter}, {"floor", pyrun.Floor}} {
+		out, stderr, err := pyrun.Try(t, pin.path(t), plainDir, "main.py", map[string][]byte{"main.py": []byte(evolutionProbe), "wire": wire, "canonical": canonical})
+		if err != nil || out != "ok\n" {
+			t.Errorf("required removal/%s: %v %s %s", pin.name, err, out, stderr)
+		}
+	}
 }
 
 func TestPythonForm1RequiredMissing(t *testing.T) {
