@@ -676,12 +676,13 @@ local function expect_shape(T, d)
 end
 
 -- shape_ok reports whether a value of the given JSON shape satisfies d's row:
--- a wide integer takes a string OR a number (docs/SPEC-TABLES.md §16.2). Only
--- an integer row takes the string form: a flags row rides under the u64 kind
--- but its text is a name array, not the integer spelling.
+-- a wide integer takes a string only (docs/SPEC-TABLES.md §16.2). Flags share
+-- an integer kind but take an array; timestamps take their own RFC 3339 string.
 local function shape_ok(T, d, got)
-  if got == expect_shape(T, d) then return true end
-  return (d.shape == "int" or d.shape == "wide") and is_wide_integer_kind(d.kind) and got == "s"
+  if not d.timestamp and (d.shape == "int" or d.shape == "wide") and is_wide_integer_kind(d.kind) then
+    return got == "s"
+  end
+  return got == expect_shape(T, d)
 end
 
 -- the JSON shape of the value at the cursor, without consuming it (§16.2)

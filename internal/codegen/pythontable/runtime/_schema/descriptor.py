@@ -9,7 +9,19 @@ built once at import, so the codec modules only ever read them.
 
 from __future__ import annotations
 
+import struct
 from typing import Any
+
+# An array element is born at its kind's zero: an element carries no
+# specified default (docs/SPEC.md §4.6; docs/SPEC-TABLES.md §2.9).
+_ELEMENT_ZERO: dict[str, Any] = {
+    "bool": False,
+    "int": 0,
+    "enum": 0,
+    "float32": 0.0,
+    "float64": 0.0,
+    "string": "",
+}
 
 
 class FieldDesc:
@@ -19,6 +31,10 @@ class FieldDesc:
     (its wire kind, codec, range, target and default); an enum-keyed array
     also carries keys, the key variants' wire ids in slot order, so slot i
     holds the variant whose value is i + 1 (§2.4, §3.2).
+
+    A float field carries f32 (a float32 rather than a float64), and a
+    COMPRESSED float32 (a declared min, max and resolution) carries
+    float_range with its range in fmin and fmax.
     """
 
     __slots__ = (
@@ -26,6 +42,7 @@ class FieldDesc:
         "field_id",
         "kind",
         "codec",
+        "inner",
         "ordinal",
         "lo",
         "hi",
@@ -33,10 +50,13 @@ class FieldDesc:
         "map_entry",
         "pointer",
         "optional",
+        "required",
         "array",
         "bound",
         "size",
+        "text_total",
         "key_enum",
+        "keyed_list",
         "array_kind",
         "array_min",
         "elem_kind",
@@ -49,12 +69,20 @@ class FieldDesc:
         "element",
         "elem",
         "keys",
+        "array_mode",
+        "min_count",
+        "guards",
+        "f32",
+        "fmin",
+        "fmax",
+        "float_range",
     )
 
     name: str
     field_id: int
     kind: int
     codec: str
+    inner: str
     ordinal: int
     lo: int
     hi: int
@@ -62,10 +90,13 @@ class FieldDesc:
     map_entry: str
     pointer: bool
     optional: bool
+    required: bool
     array: bool
     bound: int
     size: int
+    text_total: int
     key_enum: str
+    keyed_list: bool
     array_kind: int
     array_min: int
     elem_kind: int
@@ -78,6 +109,13 @@ class FieldDesc:
     element: FieldDesc | None
     elem: "FieldDesc | None"
     keys: tuple[int, ...]
+    array_mode: str
+    min_count: int
+    guards: tuple[tuple[str, bool], ...]
+    f32: bool
+    fmin: float
+    fmax: float
+    float_range: bool
 
     def __init__(
         self,
@@ -92,9 +130,11 @@ class FieldDesc:
         map_entry: str = "",
         pointer: bool = False,
         optional: bool = False,
+        required: bool = False,
         array: bool = False,
         bound: int = 0,
         size: int = 0,
+        text_total: int = 0,
         key_enum: str = "",
         array_kind: int = 0,
         array_min: int = 0,
@@ -102,14 +142,24 @@ class FieldDesc:
         variant_ids: tuple[int, ...] = (),
         deprecated: tuple[int, ...] = (),
         default: Any = None,
+        inner: str = "",
         elem_codec: str = "",
         elem: "FieldDesc | None" = None,
         keys: tuple[int, ...] = (),
+        array_mode: str = "",
+        min_count: int = 0,
+        guards: tuple[tuple[str, bool], ...] = (),
+        f32: bool = False,
+        fmin: float = 0.0,
+        fmax: float = 0.0,
+        float_range: bool = False,
+        keyed_list: bool = False,
     ) -> None:
         self.name = name
         self.field_id = field_id
         self.kind = kind
         self.codec = codec
+        self.inner = inner
         self.ordinal = ordinal
         self.lo = lo
         self.hi = hi
@@ -117,10 +167,13 @@ class FieldDesc:
         self.map_entry = map_entry
         self.pointer = pointer
         self.optional = optional
+        self.required = required
         self.array = array
         self.bound = bound
         self.size = size
+        self.text_total = text_total
         self.key_enum = key_enum
+        self.keyed_list = keyed_list
         self.array_kind = array_kind
         self.array_min = array_min
         self.elem_kind = elem_kind
@@ -133,6 +186,10 @@ class FieldDesc:
         self.deprecated = frozenset(deprecated)
         self.default = default
         self.elem_codec = elem_codec
+        self.f32 = f32
+        self.fmin = fmin
+        self.fmax = fmax
+        self.float_range = float_range
         self.element = (
             FieldDesc(
                 name=name,
@@ -143,15 +200,41 @@ class FieldDesc:
                 hi=hi,
                 target=target,
                 pointer=pointer,
+                size=size,
+                variant_ids=variant_ids,
+                deprecated=tuple(deprecated),
+                default=_ELEMENT_ZERO.get(elem_codec),
+                f32=f32,
+                fmin=fmin,
+                fmax=fmax,
+                float_range=float_range,
             )
             if codec == "array" and elem_codec
             else None
         )
         self.elem = elem
         self.keys = keys
+        self.array_mode = array_mode
+        self.min_count = min_count
+        self.guards = guards
+
+    def guard_holds(self, owner: Any) -> bool:
+        """Whether every enclosing field guard holds on owner (docs/SPEC-TABLES.md §4)."""
+        for cond_name, want in self.guards:
+            if (getattr(owner, cond_name) is True) != want:
+                return False
+        return True
 
     def is_default(self, value: Any) -> bool:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""
+        if self.codec == "pointer_array":
+            if type(value) is not list:
+                return False
+            if self.array_mode == "fixed":
+                return all(elem is None for elem in value)
+            if self.array_mode == "counted":
+                return len(value) == self.min_count and all(elem is None for elem in value)
+            return len(value) == 0
         if self.pointer or self.optional:
             return value is None
         if self.codec in ("bool", "int", "enum", "string", "unsupported"):
@@ -159,6 +242,10 @@ class FieldDesc:
         if self.codec == "bytes":
             raw = _as_bytes(value)
             return raw is not None and bool(raw == self.default)
+        if self.codec == "float32":
+            return _float32_is_default(self, value)
+        if self.codec == "float64":
+            return _float64_is_default(self, value)
         if self.codec == "table":
             if value is None:
                 return True
@@ -169,8 +256,10 @@ class FieldDesc:
             # elided: judged field by field through the descriptors, never by
             # the generated __eq__, so a union inside it elides by its
             # selected arm and a user __eq__ cannot move a byte.
-            fields: tuple[FieldDesc, ...] = value.descriptor.fields
-            return all(field.is_default(getattr(value, field.name)) for field in fields)
+            fields: tuple[FieldDesc, ...] = tuple(
+                field for field in value.descriptor.fields if field.guard_holds(value)
+            )
+            return all(not field.required and field.is_default(getattr(value, field.name)) for field in fields)
         if self.codec == "union":
             # None is the absence of the field, and a union whose arm is None
             # (type 0) is the same value on the wire (docs/SPEC-TABLES.md §2.6)
@@ -178,19 +267,19 @@ class FieldDesc:
         if self.codec == "array":
             return _array_is_default(self, value)
         if self.codec == "union_array":
-            # As the engine elides (internal/tablewire/encode.go): a counted
-            # or unbounded array only when it holds nothing, a fixed array
-            # when every element is at the declared default, judged per
-            # element by its selected arm, never by == against a fresh value.
-            if self.array_kind != 1:
-                return len(value) == 0
-            return all(element.type == 0 for element in value)
+            # Fixed arrays elide when every arm is None. Counted arrays
+            # elide at their birth count only when every born arm is None;
+            # an unbounded list has birth count zero.
+            if self.array_kind == 1:
+                return all(element.type == 0 for element in value)
+            return len(value) == self.array_min and all(element.type == 0 for element in value)
         if self.codec == "keyed":
             # A keyed array whose every slot elides writes no field
             # (kind_keyed.py): the same test, slot by slot, so a table that
             # holds one elides as its body does.
             elem = self.elem
-            return elem is not None and all(elem.is_default(slot) for slot in value._values)
+            slots = value if self.keyed_list else value._values
+            return elem is not None and all(elem.is_default(slot) for slot in slots)
         return bool(value == self.default)
 
 
@@ -198,12 +287,38 @@ def _array_is_default(fd: FieldDesc, value: Any) -> bool:
     """Whether a positional array of a declared type elides (docs/SPEC-TABLES.md §3).
 
     A fixed array of a declared type writes every element, because position is
-    identity there; a counted or unbounded one elides only when it is empty,
-    exactly as the engine's writer does.
+    identity there; a fixed array of any other element elides when every
+    element is at its zero, parity with the reader's prefill; a counted or
+    unbounded one elides only when it is empty, exactly as the engine's writer
+    does.
     """
     if fd.array_kind == 1:  # [N]T
-        return False
+        element = fd.element
+        if fd.elem_kind == 13 or element is None:
+            return False
+        return all(element.is_default(item) for item in value)
     return len(value) == 0
+
+
+def _float32_is_default(fd: FieldDesc, value: Any) -> bool:
+    """A float32 at its default: by its float32 bits, so -0.0 is not 0.0; a
+    compressed float by its float32 value, because its -0 is +0 (§3.3)."""
+    if type(value) is not float:
+        return False
+    if fd.float_range:
+        return float(struct.unpack("<f", struct.pack("<f", value))[0]) == float(
+            struct.unpack("<f", struct.pack("<f", fd.default))[0]
+        )
+    return struct.pack("<f", value) == struct.pack("<f", fd.default)
+
+
+def _float64_is_default(fd: FieldDesc, value: Any) -> bool:
+    """A float64 at its default, by its bits."""
+    if type(value) is not float:
+        return False
+    if fd.float_range:
+        return bool(value == fd.default)
+    return struct.pack("<d", value) == struct.pack("<d", fd.default)
 
 
 def _as_bytes(value: Any) -> bytes | None:
@@ -222,13 +337,14 @@ def _as_bytes(value: Any) -> bytes | None:
 class TableDesc:
     """One generated table: its name, type id and fields."""
 
-    __slots__ = ("name", "type_id", "variable", "fields", "by_id")
+    __slots__ = ("name", "type_id", "variable", "fields", "by_id", "forms")
 
     name: str
     type_id: int
     variable: bool
     fields: tuple[FieldDesc, ...]
     by_id: dict[int, FieldDesc]
+    forms: tuple[str, ...]
 
     def __init__(
         self,
@@ -236,7 +352,9 @@ class TableDesc:
         type_id: int,
         variable: bool,
         fields: tuple[FieldDesc, ...],
+        forms: tuple[str, ...] = ("wire", "json", "block", "cook"),
     ) -> None:
+        self.forms = forms
         self.name = name
         self.type_id = type_id
         self.variable = variable
@@ -349,3 +467,145 @@ def new_union_by_name(name: str) -> Any:
     if cls is None:
         raise KeyError(f"the union {name} is not registered in this package")
     return cls()
+
+
+class BlockField:
+    """One field of a block record (docs/SPEC-TABLES.md §19.2, §19.3).
+
+    The columns are the GENERIC ROW WALK's: where the field starts, how many
+    slots it holds, how wide one is, and where its count and presence
+    companions live. An out-of-line array's field is its sixteen-byte triple.
+    """
+
+    __slots__ = (
+        "name",
+        "kind",
+        "offset",
+        "size",
+        "out_of_line",
+        "counted",
+        "optional",
+        "array",
+        "bound",
+        "elem_size",
+        "count_offset",
+        "present_offset",
+        "target",
+        "offset_of_offset",
+        "stride_offset",
+        "stride",
+    )
+
+    name: str
+    kind: int
+    offset: int
+    size: int
+    out_of_line: bool
+    counted: bool
+    optional: bool
+    array: bool
+    bound: int
+    elem_size: int
+    count_offset: int
+    present_offset: int
+    target: str
+    offset_of_offset: int
+    stride_offset: int
+    stride: int
+
+    def __init__(
+        self,
+        name: str,
+        kind: int,
+        offset: int,
+        size: int,
+        out_of_line: bool = False,
+        counted: bool = False,
+        optional: bool = False,
+        array: bool = False,
+        bound: int = 0,
+        elem_size: int = 0,
+        count_offset: int = -1,
+        present_offset: int = -1,
+        target: str = "",
+        offset_of_offset: int = -1,
+        stride_offset: int = -1,
+        stride: int = 0,
+    ) -> None:
+        self.name = name
+        self.kind = kind
+        self.offset = offset
+        self.size = size
+        self.out_of_line = out_of_line
+        self.counted = counted
+        self.optional = optional
+        self.array = array
+        self.bound = bound
+        self.elem_size = elem_size
+        self.count_offset = count_offset
+        self.present_offset = present_offset
+        self.target = target
+        self.offset_of_offset = offset_of_offset
+        self.stride_offset = stride_offset
+        self.stride = stride
+
+
+class BlockRecord:
+    """One record the block form touches, as data (docs/SPEC-TABLES.md §19.3)."""
+
+    __slots__ = ("name", "size", "align", "fields")
+
+    name: str
+    size: int
+    align: int
+    fields: tuple[BlockField, ...]
+
+    def __init__(self, name: str, size: int, align: int, fields: tuple[BlockField, ...]) -> None:
+        self.name = name
+        self.size = size
+        self.align = align
+        self.fields = fields
+
+
+class BlockArray:
+    """One out-of-line array of a block-form table (docs/SPEC-TABLES.md §19.1)."""
+
+    __slots__ = ("name", "offset", "maximum", "stride", "elem_align", "element")
+
+    name: str
+    offset: int
+    maximum: int
+    stride: int
+    elem_align: int
+    element: str
+
+    def __init__(self, name: str, offset: int, maximum: int, stride: int, elem_align: int, element: str) -> None:
+        self.name = name
+        self.offset = offset
+        self.maximum = maximum
+        self.stride = stride
+        self.elem_align = elem_align
+        self.element = element
+
+
+class BlockTable:
+    """A table's block form: its projection, arrays and maximum-sized extent."""
+
+    __slots__ = ("name", "projection", "arrays", "max_bytes")
+
+    name: str
+    projection: BlockRecord
+    arrays: tuple[BlockArray, ...]
+    max_bytes: int
+
+    def __init__(
+        self,
+        name: str,
+        projection: BlockRecord,
+        arrays: tuple[BlockArray, ...],
+        max_bytes: int,
+    ) -> None:
+        self.name = name
+        self.projection = projection
+        self.arrays = arrays
+        self.max_bytes = max_bytes

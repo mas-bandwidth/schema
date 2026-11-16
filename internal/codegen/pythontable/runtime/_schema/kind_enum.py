@@ -33,6 +33,9 @@ class _Enum:
             raise InvalidValue(path, f"{value} names a deprecated variant; a strict write refuses it")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
+        return self.read_element(r, fd, ctx)
+
+    def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         reference = r.varint()
         if reference == 0:
             return 0
@@ -51,9 +54,18 @@ class _Enum:
         # variant, so the lookup cannot miss.
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
+<<<<<<< HEAD
         if value != 0:
             wire_id = fd.wire_of[value]
             w.varint(ctx.idref(wire_id))
+=======
+        self.write_element(w, fd, value, ctx)
+
+    def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        _check(fd, value, fd.name)
+        if value == 0:
+            w.varint(0)
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
             return
         w.varint(0)
 

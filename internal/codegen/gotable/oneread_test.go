@@ -43,20 +43,32 @@ func i32(w *TableWriter, id uint64, v int32) { w.ID(id); w.Put8(4); w.Put32(uint
 func ptr(w *TableWriter, id uint64, index uint64) { w.ID(id); w.Put8(17); w.PutLeb(index) }
 func framed(w *TableWriter, id uint64, kind uint8, payload []byte) { w.ID(id); w.Put8(kind); w.PutLeb(uint64(len(payload))); w.Raw(payload) }
 
-type record struct { typ uint64; body []byte }
+type record struct { typ uint64; build func(ids *TableIds) []byte }
+
+// framedBody writes a framed payload whose body is built after the reference,
+// so the id table records the outer id before the ids the body names.
+func framedBody(w *TableWriter, id uint64, kind uint8, build func() []byte) {
+	w.ID(id); w.Put8(kind)
+	payload := build()
+	w.PutLeb(uint64(len(payload))); w.Raw(payload)
+}
 
 // file is a form-1 file: the root's fields, the node table when records are
-// given, the terminator and the id table.
-func file(ids *TableIds, root func(w *TableWriter), records ...record) []byte {
-	w := TableWriter{Buffer: make([]byte, 8192), Ids: ids}
+// given, the terminator and the id table. Each file has its own TableIds, and
+// a record's body is built after the root and the node-table reference that
+// first name it, so the table is ordered by first use on the wire.
+func file(root func(w *TableWriter), records ...record) []byte {
+	var ids TableIds
+	w := TableWriter{Buffer: make([]byte, 8192), Ids: &ids}
 	w.Put8(1)
 	root(&w)
 	if len(records) > 0 {
-		payload := body(ids, func(p *TableWriter) {
-			p.PutLeb(uint64(len(records)))
-			for _, r := range records { p.ID(r.typ); p.PutLeb(uint64(len(r.body))); p.Raw(r.body) }
+		framedBody(&w, 0xffffffffffffffff, 12, func() []byte {
+			return body(&ids, func(p *TableWriter) {
+				p.PutLeb(uint64(len(records)))
+				for _, r := range records { p.ID(r.typ); b := r.build(&ids); p.PutLeb(uint64(len(b))); p.Raw(b) }
+			})
 		})
-		framed(&w, 0xffffffffffffffff, 12, payload)
 	}
 	w.Put8(0)
 	w.Trailer()
@@ -64,12 +76,16 @@ func file(ids *TableIds, root func(w *TableWriter), records ...record) []byte {
 	return w.Buffer[:w.Offset]
 }
 
-func leaf(ids *TableIds, v int32) record {
-	return record{LeafTableType().ID, body(ids, func(w *TableWriter) { i32(w, LeafTableFields[0].ID, v); w.Put8(0) })}
+func leaf(v int32) record {
+	return record{LeafTableType().ID, func(ids *TableIds) []byte {
+		return body(ids, func(w *TableWriter) { i32(w, LeafTableFields[0].ID, v); w.Put8(0) })
+	}}
 }
 
-func node(ids *TableIds, f func(w *TableWriter)) record {
-	return record{NodeTableType().ID, body(ids, func(w *TableWriter) { f(w); w.Put8(0) })}
+func node(f func(w *TableWriter)) record {
+	return record{NodeTableType().ID, func(ids *TableIds) []byte {
+		return body(ids, func(w *TableWriter) { f(w); w.Put8(0) })
+	}}
 }
 
 // verdict reads one input on every path and requires one answer: the region
@@ -116,53 +132,54 @@ func accepts(t *testing.T, what string, wire []byte) { t.Helper(); if !verdict(t
 
 const oneReadConditions = oneReadPrelude + `
 func TestConditions(t *testing.T) {
-	var ids TableIds
 	// a repeated field id in one body is damage
-	accepts(t, "one n", file(&ids, func(w *TableWriter) { i32(w, field(fN), 5) }))
-	refuses(t, "n twice", file(&ids, func(w *TableWriter) { i32(w, field(fN), 5); i32(w, field(fN), 6) }))
+	accepts(t, "one n", file(func(w *TableWriter) { i32(w, field(fN), 5) }))
+	refuses(t, "n twice", file(func(w *TableWriter) { i32(w, field(fN), 5); i32(w, field(fN), 6) }))
 
 	// an unknown field is skipped and counted, and damage inside it refuses
 	unknown := uint64(0x1234567890abcdef)
-	good := body(&ids, func(w *TableWriter) { w.ID(field(fN)); w.Put8(1); w.Put8(1); w.Put8(0) })
-	bad := body(&ids, func(w *TableWriter) { w.ID(field(fN)); w.Put8(1); w.Put8(2); w.Put8(0) })
-	accepts(t, "unknown body", file(&ids, func(w *TableWriter) { framed(w, unknown, 13, good) }))
-	refuses(t, "a bool byte of 2 inside an unknown body", file(&ids, func(w *TableWriter) { framed(w, unknown, 13, bad) }))
-	refuses(t, "a repeated id inside an unknown body", file(&ids, func(w *TableWriter) {
-		framed(w, unknown, 13, body(&ids, func(b *TableWriter) { i32(b, field(fN), 1); i32(b, field(fN), 2); b.Put8(0) }))
+	good := func(w *TableWriter) []byte { return body(w.Ids, func(b *TableWriter) { b.ID(field(fN)); b.Put8(1); b.Put8(1); b.Put8(0) }) }
+	bad := func(w *TableWriter) []byte { return body(w.Ids, func(b *TableWriter) { b.ID(field(fN)); b.Put8(1); b.Put8(2); b.Put8(0) }) }
+	accepts(t, "unknown body", file(func(w *TableWriter) { framedBody(w, unknown, 13, func() []byte { return good(w) }) }))
+	refuses(t, "a bool byte of 2 inside an unknown body", file(func(w *TableWriter) { framedBody(w, unknown, 13, func() []byte { return bad(w) }) }))
+	refuses(t, "a repeated id inside an unknown body", file(func(w *TableWriter) {
+		framedBody(w, unknown, 13, func() []byte {
+			return body(w.Ids, func(b *TableWriter) { i32(b, field(fN), 1); i32(b, field(fN), 2); b.Put8(0) })
+		})
 	}))
 
 	// an array's header inside its L, every byte of the L an element's
 	xs := func(count byte, extra ...byte) []byte { return append([]byte{3, count, 1, 0}, extra...) }
-	accepts(t, "xs", file(&ids, func(w *TableWriter) { framed(w, field(fXs), 14, xs(1)) }))
-	refuses(t, "a byte left in the array's L", file(&ids, func(w *TableWriter) { framed(w, field(fXs), 14, xs(1, 0)) }))
-	refuses(t, "an array body too short for its header", file(&ids, func(w *TableWriter) { framed(w, field(fXs), 14, []byte{3}) }))
-	refuses(t, "a count past the reader's bound", file(&ids, func(w *TableWriter) { framed(w, field(fXs), 14, []byte{3, 5, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0}) }))
-	refuses(t, "an element kind that is not a widening", file(&ids, func(w *TableWriter) { framed(w, field(fXs), 14, []byte{4, 1, 1, 0, 0, 0}) }))
-	accepts(t, "an element kind that widens", file(&ids, func(w *TableWriter) { framed(w, field(fXs), 14, []byte{2, 1, 0xff}) }))
+	accepts(t, "xs", file(func(w *TableWriter) { framed(w, field(fXs), 14, xs(1)) }))
+	refuses(t, "a byte left in the array's L", file(func(w *TableWriter) { framed(w, field(fXs), 14, xs(1, 0)) }))
+	refuses(t, "an array body too short for its header", file(func(w *TableWriter) { framed(w, field(fXs), 14, []byte{3}) }))
+	refuses(t, "a count past the reader's bound", file(func(w *TableWriter) { framed(w, field(fXs), 14, []byte{3, 5, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0}) }))
+	refuses(t, "an element kind that is not a widening", file(func(w *TableWriter) { framed(w, field(fXs), 14, []byte{4, 1, 1, 0, 0, 0}) }))
+	accepts(t, "an element kind that widens", file(func(w *TableWriter) { framed(w, field(fXs), 14, []byte{2, 1, 0xff}) }))
 
 	// a value is held to the reader's range; nothing clamps
-	accepts(t, "n at its max", file(&ids, func(w *TableWriter) { i32(w, field(fN), 100) }))
-	refuses(t, "n past its max", file(&ids, func(w *TableWriter) { i32(w, field(fN), 101) }))
-	refuses(t, "a kind mismatch", file(&ids, func(w *TableWriter) { w.ID(field(fN)); w.Put8(10); w.Put32(0) }))
-	accepts(t, "name at its bound", file(&ids, func(w *TableWriter) { framed(w, field(fName), 12, []byte("12345678")) }))
-	refuses(t, "name past its bound", file(&ids, func(w *TableWriter) { framed(w, field(fName), 12, []byte("123456789")) }))
-	refuses(t, "a bool byte of 2", file(&ids, func(w *TableWriter) { w.ID(field(fOn)); w.Put8(1); w.Put8(2) }))
+	accepts(t, "n at its max", file(func(w *TableWriter) { i32(w, field(fN), 100) }))
+	refuses(t, "n past its max", file(func(w *TableWriter) { i32(w, field(fN), 101) }))
+	refuses(t, "a kind mismatch", file(func(w *TableWriter) { w.ID(field(fN)); w.Put8(10); w.Put32(0) }))
+	accepts(t, "name at its bound", file(func(w *TableWriter) { framed(w, field(fName), 12, []byte("12345678")) }))
+	refuses(t, "name past its bound", file(func(w *TableWriter) { framed(w, field(fName), 12, []byte("123456789")) }))
+	refuses(t, "a bool byte of 2", file(func(w *TableWriter) { w.ID(field(fOn)); w.Put8(1); w.Put8(2) }))
 
 	// THE GRAPH: node 2 is the first record
-	accepts(t, "a leaf", file(&ids, func(w *TableWriter) { ptr(w, field(fLeaf), 2) }, leaf(&ids, 3)))
-	refuses(t, "a record no pointer reaches", file(&ids, func(w *TableWriter) {}, leaf(&ids, 3)))
-	refuses(t, "a record reached only from an unreachable record", file(&ids, func(w *TableWriter) {},
-		node(&ids, func(w *TableWriter) { ptr(w, field(fNext), 3) }), node(&ids, func(w *TableWriter) {})))
-	refuses(t, "a cycle", file(&ids, func(w *TableWriter) { ptr(w, field(fNext), 2) },
-		node(&ids, func(w *TableWriter) { ptr(w, field(fNext), 2) })))
-	refuses(t, "a pointer to the root", file(&ids, func(w *TableWriter) { ptr(w, field(fNext), 1) }))
-	accepts(t, "a pointer from an unknown slot reaches a record", file(&ids, func(w *TableWriter) { ptr(w, unknown, 2) }, leaf(&ids, 3)))
+	accepts(t, "a leaf", file(func(w *TableWriter) { ptr(w, field(fLeaf), 2) }, leaf(3)))
+	refuses(t, "a record no pointer reaches", file(func(w *TableWriter) {}, leaf(3)))
+	refuses(t, "a record reached only from an unreachable record", file(func(w *TableWriter) {},
+		node(func(w *TableWriter) { ptr(w, field(fNext), 3) }), node(func(w *TableWriter) {})))
+	refuses(t, "a cycle", file(func(w *TableWriter) { ptr(w, field(fNext), 2) },
+		node(func(w *TableWriter) { ptr(w, field(fNext), 2) })))
+	refuses(t, "a pointer to the root", file(func(w *TableWriter) { ptr(w, field(fNext), 1) }))
+	accepts(t, "a pointer from an unknown slot reaches a record", file(func(w *TableWriter) { ptr(w, unknown, 2) }, leaf(3)))
 	refuses(t, "a record reached through an unknown slot is held to its declaration",
-		file(&ids, func(w *TableWriter) { ptr(w, unknown, 2) }, node(&ids, func(w *TableWriter) { i32(w, field(fN), 101) })))
-	refuses(t, "a pointer to a named record of another type", file(&ids, func(w *TableWriter) { ptr(w, field(fLeaf), 2) },
-		node(&ids, func(w *TableWriter) {})))
-	stranger := record{0x0bad0bad0bad0bad, body(&ids, func(w *TableWriter) { w.Put8(0) })}
-	if !verdict(t, "a pointer to a type this reader cannot name", file(&ids, func(w *TableWriter) { ptr(w, field(fLeaf), 2) }, stranger)) {
+		file(func(w *TableWriter) { ptr(w, unknown, 2) }, node(func(w *TableWriter) { i32(w, field(fN), 101) })))
+	refuses(t, "a pointer to a named record of another type", file(func(w *TableWriter) { ptr(w, field(fLeaf), 2) },
+		node(func(w *TableWriter) {})))
+	stranger := record{0x0bad0bad0bad0bad, func(ids *TableIds) []byte { return body(ids, func(w *TableWriter) { w.Put8(0) }) }}
+	if !verdict(t, "a pointer to a type this reader cannot name", file(func(w *TableWriter) { ptr(w, field(fLeaf), 2) }, stranger)) {
 		t.Fatal("a pointer to an unnameable type must read null, not refuse")
 	}
 }
@@ -172,11 +189,10 @@ func TestConditions(t *testing.T) {
 // measure refusal implies a load refusal, and an accepted value writes back
 // bytes that read.
 func TestPathsAgree(t *testing.T) {
-	var ids TableIds
-	seed := file(&ids, func(w *TableWriter) {
+	seed := file(func(w *TableWriter) {
 		i32(w, field(fN), 7); ptr(w, field(fNext), 2); ptr(w, field(fLeaf), 3)
 		framed(w, field(fXs), 14, []byte{3, 2, 1, 0, 2, 0}); framed(w, field(fName), 12, []byte("ab")); w.ID(field(fOn)); w.Put8(1); w.Put8(1)
-	}, node(&ids, func(w *TableWriter) { i32(w, field(fN), 9); ptr(w, field(fLeaf), 3) }), leaf(&ids, 4))
+	}, node(func(w *TableWriter) { i32(w, field(fN), 9); ptr(w, field(fLeaf), 3) }), leaf(4))
 	accepts(t, "the seed", seed)
 	rng := rand.New(rand.NewSource(20261103))
 	accepted, refused := 0, 0

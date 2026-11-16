@@ -110,20 +110,16 @@ func TestJavaDriverSurfacesStrict(t *testing.T) {
 		t.Fatalf("map_key_widen write-back wire (%d bytes) differs from the canonical wire (%d bytes)", len(gotWire), len(wantWire))
 	}
 
-	// A fixed root's positive (form-3) wire, read through framing by its
-	// variable form: the write-back is the root's own form-3 bytes.
+	// An unused trailer entry is noncanonical even at a fixed root's
+	// variable-form framing entry point (§3); no write-back is produced.
 	framingWire := filepath.Join(root, "testdata", "wire", "tables", "framing", "frame_unreferenced_entry.bin")
 	outDir = javaDriverSurface(t, root, "framing", "framing frame_unreferenced_entry tblr1 Cfg "+framingWire+"\n")
-	gotWire, err = os.ReadFile(filepath.Join(outDir, "frame_unreferenced_entry.wire"))
-	if err != nil {
-		t.Fatalf("accepted framing read wrote no write-back wire: %v", err)
+	got, err = os.ReadFile(filepath.Join(outDir, "frame_unreferenced_entry"))
+	if err != nil || string(got) != "refused\n" {
+		t.Fatalf("frame_unreferenced_entry: got %q, err %v; want refused", got, err)
 	}
-	wantWire, err = os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "save-wire", "frame_unreferenced_entry.bin"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(gotWire, wantWire) {
-		t.Fatalf("frame_unreferenced_entry write-back wire (%d bytes) differs from the canonical fixed wire (%d bytes)", len(gotWire), len(wantWire))
+	if _, err := os.Stat(filepath.Join(outDir, "frame_unreferenced_entry.wire")); !os.IsNotExist(err) {
+		t.Fatalf("refused frame_unreferenced_entry wrote a wire: %v", err)
 	}
 
 	// Retain: `read\n` plus the complete known value, and the retained

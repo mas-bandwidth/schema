@@ -33,6 +33,7 @@ mod bench_cook;
 pub use bench_cook::*;
 mod bench_fixed;
 pub use bench_fixed::*;
+mod bench_fixed_values;
 mod bench_message;
 pub use bench_message::*;
 mod bench_records;

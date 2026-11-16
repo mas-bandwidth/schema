@@ -239,7 +239,8 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.storageAssert("    ", "value."+name+"_length", f.Type.Size)
-		g.pf("    if ( value.%s_length > 0 )\n    {\n", name)
+		g.emitBytesDefaultLocal(f)
+		g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
 		g.emitMessageHeader(entry, pass, "        ")
 		g.emitMessageTextPayload(f, entry, "value."+name, fmt.Sprintf("value.%s_length", name), "        ", pass)
 		g.pf("    }\n")
@@ -408,6 +409,12 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 	default:
 		width := msgValueBits(shape.Elem, inner)
 		if pass == messagePassMeasure {
+			if _, flags := f.Type.Ref.(*ir.Flags); flags && width < 64 {
+				// The arithmetic measure otherwise never visits scalar elements.
+				// Keep this validation loop entirely out of release builds.
+				g.pf("#ifndef NDEBUG\n%s", loop)
+				g.pf("%s    schema_assert( ( uint64_t( %s ) >> %d ) == 0 ); // message flags domain, debug only (§5.1)\n%s}\n#endif\n", ind, elem, width, ind)
+			}
 			if int(shape.Elem) == tkF32 || int(shape.Elem) == tkF64 {
 				// THE WRITER'S FINITE RULE over every element (§3.3): the
 				// measure refuses what the save refuses
@@ -444,6 +451,12 @@ func (g *tableGen) emitMessageEnumRef(f *ir.Field, expr, ind string, pass messag
 // its storage width, a `flags` mask at its declared W bits.
 func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMessageShape, expr, ind string, pass messagePass) {
 	width := msgValueBits(kind, shape)
+	if _, flags := f.Type.Ref.(*ir.Flags); flags && width < 64 {
+		// File and cook masks retain all storage bits; a message may carry
+		// only its announced width. This is writer misuse, checked in debug
+		// like the packet writer (SPEC.md §5.1; SPEC-TABLES.md §3.3).
+		g.pf("%sschema_assert( ( uint64_t( %s ) >> %d ) == 0 ); // message flags domain, debug only (§5.1)\n", ind, expr, width)
+	}
 	if int(kind) == tkF32 || int(kind) == tkF64 {
 		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
 		// §3.3), a compressed float's too, before it is quantized: the measure

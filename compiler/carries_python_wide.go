@@ -1,5 +1,3 @@
-//go:build schema_leg_python
-
 package compiler
 
 // THE WIDE TABLE KINDS (int128, uint128, fixed(I, F) and ufixed(I, F)) register
