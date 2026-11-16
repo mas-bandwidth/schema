@@ -16,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // TestPythonHandtextReferencesFunctional compares the same source and typed output with
@@ -439,6 +441,96 @@ print(Tags.from_text_form(Path('input.sexp').read_bytes()).value.to_json().encod
 	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
 		if got := strings.TrimSpace(string(run(t, pyDir, "main.py", inputs))); got != expected {
 			t.Fatal("Python unbounded value differs from Go and C++")
+		}
+	}
+}
+
+func TestPythonHandtextFixedCarrierCRCFunctional(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "Go and C++ fixed-wire CRC references and pinned Python interpreters")
+	const schema = `package probe
+fixed table Root | integrity = "crc32c" { n int32 }
+`
+	unit := loadUnit(t, schema)
+	model := tabletext.NewModel(unit)
+	value := model.New(model.Lookup("Root"))
+	var report tabletext.Report
+	if !model.Read(value, []byte(`{"n":7}`), &report) {
+		t.Fatalf("Go JSON: %+v", report)
+	}
+	wire, err := tablewire.EncodeFixed(model, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cppFiles, err := cpp.Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cppTables, err := cpptable.Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(cppFiles, cppTables)
+	cppDir := t.TempDir()
+	writeTree(t, cppDir, cppFiles)
+	source := `#include <cstdio>
+#include <vector>
+#include "CoreTable.h"
+using namespace probe;
+int main() {
+ Root value[1] = {}; value[0].n = 7;
+ const auto n = RootFixedMeasure(1); if (n < 0) return 1;
+ std::vector<unsigned char> out((size_t)n);
+ if (RootFixedSave(value,1,out.data(),n) != n) return 2;
+ return std::fwrite(out.data(),1,(size_t)n,stdout) == (size_t)n ? 0 : 3;
+}`
+	path := filepath.Join(cppDir, "main.cpp")
+	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ser, err := filepath.Abs("../../../../serialize")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(cppDir, "oracle")
+	cmd := exec.Command("c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("C++ compile: %v\n%s", err, out)
+	}
+	cpp, err := exec.Command(bin).Output()
+	if err != nil {
+		t.Fatalf("C++ oracle: %v", err)
+	}
+	if !bytes.Equal(wire, cpp) {
+		t.Fatalf("fixed Go and C++ wires differ: %x vs %x", wire, cpp)
+	}
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `import base64
+from pathlib import Path
+from probe import Root, Refused, LoadReport
+wire = Path('wire').read_bytes()
+v = Root(); v.n = 7
+assert v.save_text() == base64.b64encode(wire).decode('ascii')
+assert Root.load_text(v.save_text()).n == 7
+bad = base64.b64encode(wire[:-1] + bytes([wire[-1] ^ 1])).decode('ascii')
+r = LoadReport(); r.unknown = 77
+try:
+    Root.load_text(bad,r)
+except Refused as e:
+    assert e.reason == 'integrity_mismatch' and r.unknown == 77
+else:
+    raise AssertionError('fixed CRC was not checked')
+print('ok')
+`
+	inputs := map[string][]byte{"main.py": []byte(probe), "wire": wire}
+	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+		if got := string(run(t, dir, "main.py", inputs)); got != "ok\n" {
+			t.Fatalf("fixed carrier CRC: %s", got)
 		}
 	}
 }
