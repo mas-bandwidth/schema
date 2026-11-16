@@ -71,8 +71,8 @@ func TestPythonGeneratesAnEmptyUnitThroughTheDriver(t *testing.T) {
 }
 
 // TestPythonCarriesThePacketCoreThroughTheDriver: a constant and a type of
-// carried kinds generate through the driver, and a field of an uncarried kind
-// is refused by name at compile time.
+// carried kinds generate through the driver, including keyed packet arrays
+// whose wire storage is the corresponding fixed positional array.
 func TestPythonCarriesThePacketCoreThroughTheDriver(t *testing.T) {
 	t.Parallel()
 	c := New()
@@ -91,9 +91,12 @@ func TestPythonCarriesThePacketCoreThroughTheDriver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = c.Generate(u, "python", nil)
-	if err == nil || !strings.Contains(err.Error(), "uses keyed array, which the Python target does not carry yet") {
-		t.Fatalf("got %v, want the keyed array field refused by name", err)
+	files, err = c.Generate(u, "python", nil)
+	if err != nil {
+		t.Fatalf("keyed packet array refused: %v", err)
+	}
+	if !strings.Contains(string(files["game/Game.py"]), "class Probe:") {
+		t.Fatal("keyed packet declaration was not emitted")
 	}
 }
 

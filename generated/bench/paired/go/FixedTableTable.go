@@ -136,10 +136,6 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
-			if len(sub.Buffer) == 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 			sub.Depth += 1
 			if sub.Depth > tableBinaryMaxDepth {
 				r.Report.Refuse(TableRefuseWireDamaged, "")

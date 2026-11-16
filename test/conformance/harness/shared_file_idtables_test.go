@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -153,8 +154,8 @@ func TestRewriteFieldOrderFixturePinned(t *testing.T) {
 		t.Fatal("canonical Fleet fixture shape changed")
 	}
 	body := []byte{base[0]}
-	for i := len(fields) - 1; i >= 0; i-- {
-		body = append(body, base[fields[i].start:fields[i].end]...)
+	for _, field := range slices.Backward(fields) {
+		body = append(body, base[field.start:field.end]...)
 	}
 	body = append(body, base[node.start:node.end]...)
 	body = append(body, 0)

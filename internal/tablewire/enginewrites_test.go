@@ -25,7 +25,7 @@ func TestEngineReadsEverythingItWrites(t *testing.T) {
 	}
 	units := map[string][]string{}
 	models := map[string]*tabletext.Model{}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Fields(strings.SplitN(line, "#", 2)[0])
 		if len(fields) == 0 {
 			continue
