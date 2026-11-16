@@ -2354,6 +2354,17 @@ func (in *reader) placeWide(cell *Cell, f *ir.Field, token string, kind int) boo
 	if (kind == ir.TableKindI128 || kind == ir.TableKindU128) && !integerToken(token) {
 		return in.fail("kind_mismatch: " + f.Name)
 	}
+	if kind != ir.TableKindI128 && kind != ir.TableKindU128 {
+		// A wide fixed value is a JSON string, but its decoded content is
+		// still one complete RFC 8259 number, with no surrounding spaces.
+		check := reader{text: []byte(token)}
+		if len(token) == 0 || token[0] == ' ' || token[0] == '\t' || token[0] == '\n' || token[0] == '\r' {
+			return in.fail("kind_mismatch: " + f.Name)
+		}
+		if _, ok := check.walkNumber(); !ok || check.pos != len(token) {
+			return in.fail("kind_mismatch: " + f.Name)
+		}
+	}
 	raw, exact, saturated := ParseWide(token, kind, f.Type.FracBits)
 	if !exact {
 		return in.fail("kind_mismatch: " + f.Name)
