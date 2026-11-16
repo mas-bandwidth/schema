@@ -8833,7 +8833,7 @@ diagnostic name, which is not normative and is never compared:
   produce (the owner, 2026-11-10: "strict. refuse non-canonical.",
   docs/rulings.json reads-refuse-non-canonical). The six shapes, on the
   variable and message forms: fields out of the writer's order; a field stored
-  at its declared default (a default change is refused by the lineage check,
+  at its declared default (a default change and a field moved from `T` to `?T` are refused by the lineage check,
   docs/VERSIONING.md, so every lawful writer's default for a field the reader
   names is the reader's own, which is what makes the case decidable); an
   explicit null pointer; an id-table entry that is unused, or out of first-use
@@ -9042,7 +9042,7 @@ the one the committed baseline (§18) exists to refuse:
 Everything else is either reported or safe. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
 added anywhere, removed, reordered and renamed under `was`; array bounds may move; a field may
-change between `T` and `?T` — all of it either invisible to the wire or
+change from `?T` to `T` — all of it either invisible to the wire or
 answered by the read: counted as evolution or refused by name. Moving a field
 to or from `*T` is a kind change and is refused `kind_mismatch` (§3.1).
 
@@ -9138,7 +9138,8 @@ only.
 | a MAP changed to or from `[E]T`, a scalar, a string or a pointer (§2.8) | refuses `kind_mismatch` | **refuses** | **moves** |
 | an array changed between `[]T` and `[..N]T` (§2.9) | silent where the count fits the new bound, refuses `count_over_bound` past it | **warns** on the direction that ADDS a bound, as any capacity shrunk, and passes on the one that removes it | **moves**, because the storage is a reference and a count on one side and the maximum inline on the other |
 | an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (§2.9) | refuses `kind_mismatch` | **refuses**, as any element kind changed | **moves** |
-| a field moved between `T` and `?T` | silent — no byte moves | passes | **moves** — the presence companion is storage |
+| a field moved from `T` to `?T` | silent — no byte moves for non-default content | **refuses** — the old plain reader refuses a present field stored at its default | **moves** — the presence companion is storage |
+| a field moved from `?T` to `T` | silent — no byte moves for non-default content | passes | **moves** — the presence companion is storage |
 | a field moved to or from `*T` | refuses `kind_mismatch` | **refuses** — a pointer is kind 17, so the edit is an ordinary kind change | **moves** |
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
 | a DECLARATION renamed — a `type`, or a table held BY VALUE | silent: a name held by value is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
@@ -18190,12 +18191,11 @@ tightened total is a data edit exactly as a tightened range is. A list that
 declares none records no token, so every committed baseline regenerates
 byte-identically and the rendering version does not move.
 
-**Presence is RECORDED and judged on nothing.** An optional's presence
-companion is a fact in the file so a person reading a diff can see it, and a
-field moving between `T` and `?T` moves no byte (§3.1) and passes in silence.
-A field moved to or from `*T` is NOT this row: a pointer is kind 17, so that
-edit changes the `kind=` fact and is refused (§4.1). Recording a fact and
-judging it are two different things, and presence alone is only recorded.
+**Presence is RECORDED and judged one way.** A field moved from `T` to
+`?T` is refused: a newer optional writer can store a present field at its
+specified default, which an older plain reader refuses (§4). Moving from `?T`
+to `T` passes, because a plain writer elides its default. A field moved to or
+from `*T` is a kind change and is refused (§4.1).
 
 It carries no protocol id and no packet fact: the type wire, the wire-shape
 projection and the protocol id are untouched by all of it (§10).
@@ -18228,7 +18228,8 @@ therefore every `schema generate` — diffs the live closure against the
 committed file whenever one is there, and:
 
 - **REFUSES, naming `table.field` and the edit** — a specified default
-  changed, added or removed; a flags variant inserted, removed, reordered,
+  changed, added or removed; a field moved from `T` to `?T`, because an old
+  plain reader refuses the newer writer's present field at its default; a flags variant inserted, removed, reordered,
   or RENAMED IN PLACE (a rename moves no byte, and a new meaning on a spent
   bit remaps every stored file; nothing distinguishes the two, so the
   author says which); a field's wire kind or an array's ELEMENT kind
@@ -18284,9 +18285,8 @@ committed file whenever one is there, and:
   added anywhere or renamed under `was`; flags variants APPENDED at the end; bounds, capacities,
   ranges and a text list's `total=` grown or removed, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
   which is the largest growth there is; a bounded array made fixed or the
-  reverse; a field moved
-  between `T` and `?T` (a field moved to or from `*T` is a kind change and is
-  refused above, because a pointer is kind 17).
+  reverse; a field moved from `?T` to `T` (a field moved to or from `*T` is a
+  kind change and is refused above, because a pointer is kind 17).
 
 **The CLI enforces the same file, by name.** `--reason` without `--update`
 is refused: it records why a baseline MOVED, and a read has nothing for it to
@@ -18468,7 +18468,8 @@ A field REPOINTED at another union carries a pair too (§18.3): a
 replacement whose shared arm holds a twin payload refuses on `default=`, one
 whose shared arm holds a scalar refuses on `payload=`, and a union carrying
 every arm of the old one under the same facts stands in.
-The projection over the corpus regenerates byte-identical. The warn class
+`TestBaselineRefusesTToOptional` holds the one-way optional edit and a new
+optional field. The projection over the corpus regenerates byte-identical. The warn class
 warns and does not refuse. A tightened range
 warns from either end and a loosened one is silent, over a ranged integer, a
 fixed field's whole-unit bounds and a compressed float's. The `was` chain
