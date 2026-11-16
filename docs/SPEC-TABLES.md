@@ -3559,6 +3559,8 @@ fixed table ShipConfig
 }
 ```
 
+New locks start with `schema-lock 8` and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
+
 ```
 schema-lock 7
 package fleet
@@ -3781,14 +3783,16 @@ at all.
 
 **A lock written under rendering version 6 is SALVAGED, not deleted.** Its one
 layout becomes the first lineage entry, its field lines are carried forward
-unchanged, and `schema lock` writes the file as version 7; deleting this file
+unchanged, and `schema lock` writes the file as version 8. Rendering 7 is also SALVAGED with every existing lineage entry preserved; a missing writer snapshot stays unknown until explicitly imported. Deleting this file
 now means wiping a fleet's lineage. A lock older than the salvage floor holds
 nothing a lineage can start from, and is refused with the one remedy that
 works: write it again with `schema lock`. A lock written by a NEWER compiler
 than this one is refused in its own sentence: *"this lock is rendering version
-8 and this compiler writes version 7 — it was written by a NEWER compiler than
+9 and this compiler writes version 8 — it was written by a NEWER compiler than
 this one, and this one cannot know what it holds: build the compiler this tree
 pins, or relock with it"*.
+
+**Explicit writer-metadata import adds facts, not a new layout.** `schema lock --writer 'Table@0x<hash>' --from historical/unit current/unit` enriches only that existing entry from trusted checked historical source. Root, layout, digest, record-body size and hash must match. Different captured constraints under one legacy hash are refused, not overwritten. The caller establishes provenance; anonymous legacy digests cannot recover all historical bounds. Missing metadata never implies retirement. The complete migration and compatibility boundary are in `FIXED-FORM-ALGORITHM.md` §5.2.
 
 **`--retire` is the lock's ONE NON-APPEND EDIT.** `schema lock --retire Table@0x… --reason <text>` marks one lineage entry retired; the entry stays in
 the lineage forever, and a file carrying that layout is then answered
@@ -3834,7 +3838,7 @@ and then written by `schema lock`, with every line before them untouched; a
 field at the bottom of a nested `type` is refused twice, at the holder's width
 and at the nested record's own entry; a type dropped from the closure is
 refused in each of its four spellings; a hand-edited value list is caught by
-its hash; a lock from rendering version 6 is SALVAGED by both verbs into a v7
+its hash; a lock from rendering version 6 is SALVAGED by both verbs into a v8
 with one lineage entry, a lock older than the salvage floor is refused with the
 one remedy that works, a lock from a newer compiler is refused in its own
 sentence, and a retirement marks one lineage entry or a whole table while
