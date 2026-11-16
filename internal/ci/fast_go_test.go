@@ -119,7 +119,7 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 		PlanPkgs: "./internal/codegen/gotable",
 		PlanLegs: `["go"]`,
 	}
-	for _, job := range []string{"plan", "lint-fast", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "ci-policy", "block-gate", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, ev); err != nil || !ok {
 			t.Fatalf("ci-fast.yml %s did not run on a pull request into %s: ok=%v err=%v", job, ev.Branch, ok, err)
 		}
