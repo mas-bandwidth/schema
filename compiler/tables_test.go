@@ -8,6 +8,7 @@ package compiler
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -758,6 +759,17 @@ table NativeRoot
 // The unit carries ONE trivial table, because that is what makes the C++
 // backend emit a view at all today (§8.3's port status); every declaration the
 // scan is about sits outside its closure.
+func TestViewNameAuditScopes(t *testing.T) {
+	t.Parallel()
+	claimed := tablenames.Claimed()
+	if !tablenames.Registered("parse") || slices.Contains(claimed, "parse") {
+		t.Fatal("the scoped Python parse helper must not be a unit-level claim")
+	}
+	if !slices.Contains(claimed, "TableTypeInfo") || !tablenames.InEveryUnit("TableTypeInfo") {
+		t.Fatal("the actual C++ view descriptor must remain a unit-level view claim")
+	}
+}
+
 func TestViewFileNamesAreClaimedInEveryUnit(t *testing.T) {
 	c := New()
 	found := map[string]bool{}
