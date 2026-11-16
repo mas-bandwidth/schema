@@ -29,7 +29,7 @@ func pythonFixedLineage(lineage map[string][]fixedproof.LineageEntry) map[string
 	out := map[string][]pythontable.FixedLineageEntry{}
 	for name, entries := range lineage {
 		for _, e := range entries {
-			out[name] = append(out[name], pythontable.FixedLineageEntry{Wire: e.Wire, Layout: e.Layout, Record: e.Record, Retired: e.Retired, Reason: e.Reason, Writer: e.Writer})
+			out[name] = append(out[name], pythontable.FixedLineageEntry{Wire: e.Wire, Layout: e.Layout, Record: e.Record, Retired: e.Retired, Reason: e.Reason, Writer: e.Writer, Digest: e.Digest, LegacyLayoutOnly: e.LegacyLayoutOnly})
 		}
 	}
 	return out

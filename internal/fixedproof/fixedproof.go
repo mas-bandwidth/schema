@@ -108,12 +108,14 @@ type LegRunner interface {
 type LineageEntry struct {
 	// Writer is the checked declaration snapshot that produced this layout.
 	// Definition facts are not recoverable from anonymous digest records.
-	Writer  *ir.Struct
-	Wire    uint64
-	Layout  []byte
-	Record  int64
-	Retired bool
-	Reason  string
+	Writer           *ir.Struct
+	Digest           []byte
+	LegacyLayoutOnly bool
+	Wire             uint64
+	Layout           []byte
+	Record           int64
+	Retired          bool
+	Reason           string
 }
 
 // LoadCounters is the target-neutral report a load accumulates: unknown
@@ -313,6 +315,7 @@ func LineageEntryOf(u *ir.Unit, root string) (LineageEntry, bool) {
 		layout, hash, body := RootFacts(st)
 		return LineageEntry{
 			Writer: st,
+			Digest: ir.TableFixedDefinitionsDigest(st),
 			Wire:   hash,
 			Layout: layout,
 			Record: 8 + body,
