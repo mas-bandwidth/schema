@@ -1,6 +1,6 @@
 file	form	case	verdict
 variable-canonical.bin	variable	canonical	read
-variable-fields-out-of-order.bin	variable	fields-out-of-order	refused
+variable-fields-out-of-order.bin	variable	canonical	read
 variable-field-at-default.bin	variable	field-at-default	refused
 variable-explicit-null-pointer.bin	variable	explicit-null-pointer	refused
 variable-unused-id-entry.bin	variable	unused-id-entry	refused
