@@ -1853,6 +1853,7 @@ struct WireCheck {
     non_finite: bool,
     depth: i64,
     serial: i64,
+    next_ref: u64,       // the next id first-use must name (§3)
     stamp: i64[>..<]&,
     undo: i64[>..<]&,
     edges: u64[>..<]&,     // every kind 17 payload, in wire order
@@ -1873,6 +1874,13 @@ fn wc_refuse(w: WireCheck&, code: i64) -> bool {
 
 fn wc_id(w: WireCheck&, ref: u64) -> u64 {
     return le_at(w.data, w.ids_at + ((ref - 1) as! i64) * 8, 8);
+}
+
+// A first reference appends the next id; repeats may name any earlier id.
+fn wc_use(w: WireCheck&, ref: u64) -> bool {
+    if ref > w.next_ref { return wc_damage(w); }
+    if ref == w.next_ref { w.next_ref += 1; }
+    return true;
 }
 
 // wc_open is a new scope's number and the undo mark that closes it.
@@ -1964,6 +1972,7 @@ recursive fn wc_keyed(w: WireCheck&, at: i64, end: i64) -> bool {
     while i < count {
         let key, after_key, good = leb_at(w.data, off, end);
         if !good || key == 0 || key > w.ids_n as! u64 { wc_close(w, mark); return wc_damage(w); }
+        if !wc_use(w, key) { wc_close(w, mark); return false; }
         if !wc_name(w, key, scope) { wc_close(w, mark); return wc_damage(w); }
         let n, after, framed = leb_at(w.data, after_key, end);
         if !framed || n > (end - after) as! u64 { wc_close(w, mark); return wc_damage(w); }
@@ -1984,6 +1993,7 @@ recursive fn wc_union(w: WireCheck&, at: i64, end: i64) -> i64 {
     if !ok { wc_damage(w); return -1; }
     if ref == 0 { return next; }
     if ref > w.ids_n as! u64 || next >= end { wc_damage(w); return -1; }
+    if !wc_use(w, ref) { return -1; }
     let kind = w.data[next];
     let n, after, framed = leb_at(w.data, next + 1, end);
     if !framed || n > (end - after) as! u64 { wc_damage(w); return -1; }
@@ -2016,6 +2026,7 @@ recursive fn wc_payload(w: WireCheck&, at: i64, end: i64, kind: u8) -> i64 {
     if kind == 30 {
         let ref, next, ok = leb_at(w.data, at, end);
         if !ok || ref > w.ids_n as! u64 { wc_damage(w); return -1; }
+        if ref != 0 && !wc_use(w, ref) { return -1; }
         return next;
     }
     if kind == 15 { return wc_union(w, at, end); }
@@ -2085,6 +2096,7 @@ recursive fn wc_body(w: WireCheck&, at: i64, end: i64, root: bool) -> bool {
             return true;
         }
         if ref > w.ids_n as! u64 { wc_close(w, mark); return wc_damage(w); }
+        if !wc_use(w, ref) { wc_close(w, mark); return false; }
         if !wc_name(w, ref, scope) { wc_close(w, mark); return wc_damage(w); } // the same field id twice in one body
         if off >= end { wc_close(w, mark); return wc_damage(w); }
         let kind = w.data[off];
@@ -2167,7 +2179,7 @@ fn wire_check(data: const u8[:], at: i64, end: i64, ids_at: i64, ids_n: i64, ann
     var undo: i64[>..<] = [];
     var edges: u64[>..<] = [];
     var w = WireCheck { data: data, ids_at: ids_at, ids_n: ids_n, announcement: announcement, fail: 0,
-                        non_finite: false, depth: 0, serial: 0, stamp: stamp, undo: undo, edges: edges,
+                        non_finite: false, depth: 0, serial: 0, next_ref: 1, stamp: stamp, undo: undo, edges: edges,
                         table_off: 0, table_end: 0, table_present: false };
     if !wc_body(w, at, end, true) { return w.fail, w.non_finite; }
     var first: i64[>..<] = [];
@@ -2184,6 +2196,7 @@ fn wire_check(data: const u8[:], at: i64, end: i64, ids_at: i64, ids_n: i64, ann
         while off < w.table_end {
             let ref, next, good = leb_at(data, off, w.table_end);
             if !good || ref == 0 || ref > ids_n as! u64 { wc_damage(w); return w.fail, w.non_finite; }
+            if !wc_use(w, ref) { return w.fail, w.non_finite; }
             let len, body, framed = leb_at(data, next, w.table_end);
             if !framed || len > (w.table_end - body) as! u64 { wc_damage(w); return w.fail, w.non_finite; }
             let stop = body + (len as! i64);
@@ -2209,6 +2222,7 @@ fn wire_check(data: const u8[:], at: i64, end: i64, ids_at: i64, ids_n: i64, ann
         if off != w.table_end || found != declared { wc_damage(w); return w.fail, w.non_finite; }
     }
     first.push(w.edges.len);
+    if w.next_ref - 1 != ids_n as! u64 { wc_damage(w); return w.fail, w.non_finite; }
     wc_graph(w, first, blob);
     return w.fail, w.non_finite;
 }
