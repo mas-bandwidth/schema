@@ -136,6 +136,21 @@ func TestPythonReflectionSurfaceSelection(t *testing.T) {
 			if got := strings.Contains(string(files["surfaceprobe/__init__.py"]), "def UnitView("); got != tc.view {
 				t.Fatalf("%s: UnitView export=%t", tc.selection, got)
 			}
+			dir := t.TempDir()
+			pythonWriterTree(t, dir, files)
+			probe := pyrun.ImportPrelude + "import surfaceprobe as p\nassert hasattr(p, 'UnitView') == "
+			if tc.view {
+				probe += "True\nassert p.UnitView().types or p.UnitView().tables\n"
+			} else {
+				probe += "False\n"
+			}
+			probe += "print('ok')\n"
+			for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+				out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+				if err != nil || string(out) != "ok\n" {
+					t.Fatalf("%s %s: %v\n%s", tc.selection, pin, err, stderr)
+				}
+			}
 		}
 	}
 }
