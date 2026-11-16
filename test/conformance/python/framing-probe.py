@@ -1,14 +1,17 @@
 """Exercise the framing adapter with real generated classes and wire vectors."""
 
 import importlib.util
+import os
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 
 root = Path(__file__).resolve().parent
 sys.path.insert(0, str(root / "surfaces"))
 source = (root / "surfaces" / "framing.py").read_text(encoding="utf-8")
-negative = len(sys.argv) == 2 and sys.argv[1] == "--negative"
+negative = "--negative" in sys.argv[1:]
+override = "--override" in sys.argv[1:]
 if negative:
     old = 'write_bytes(outdir, case, b"refused\\n")'
     assert source.count(old) == 1
@@ -16,6 +19,10 @@ if negative:
 
 with tempfile.TemporaryDirectory() as temp:
     temp = Path(temp)
+    if override:
+        tree = temp / "generated"
+        shutil.copytree("build/conformance-python/tblr1/_framing", tree / "tblr1" / "_framing")
+        os.environ["PYTHON_CONFORMANCE_GENERATED"] = str(tree)
     adapter = temp / "framing.py"
     adapter.write_text(source, encoding="utf-8")
     spec = importlib.util.spec_from_file_location("framing_probe", adapter)

@@ -6,6 +6,7 @@ python-ci-framing-driver: python-framing-driver python-framing-driver-negative-c
 python-framing-driver: python-toolchain-check build/conformance-python
 	$(PYTHON) -I -B test/conformance/python/framing-probe.py
 	$(PYTHON_FLOOR) -I -B test/conformance/python/framing-probe.py
+	$(PYTHON) -I -B test/conformance/python/framing-probe.py --override
 python-framing-driver-negative-control: python-toolchain-check build/conformance-python
 	$(PYTHON) -I -B test/conformance/python/framing-probe.py --negative
 	$(PYTHON_FLOOR) -I -B test/conformance/python/framing-probe.py --negative
