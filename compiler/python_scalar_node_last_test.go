@@ -41,7 +41,7 @@ table Crews {
 	if plant != "" {
 		old := "        if ctx.saw_node:\n            raise Refused(\"wire_damaged\", \"the node table is not the root body's last field\")\n"
 		if plant == "walk" {
-			old = "                _check_file(view, _id_table(view))\n"
+			old = "                _s_check_file(view, _id_table(view))\n"
 		}
 		found := 0
 		for name, data := range files {
@@ -130,4 +130,44 @@ for name in ("bad.bin", "mismatch.bin"):
 			t.Fatalf("scalar probe: %v\n%s%s", err, out, stderr)
 		}
 	}
+}
+
+func TestPythonScalarNodeLastHelperNames(t *testing.T) {
+	slowtest.Gate(t, "public scalar helper name collision")
+	u := unitFromSource(t, `package collision
+ table Foo { a int32 }
+ table checked_Foo { b int32 }
+ `)
+	files, err := New().Generate(u, "python", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emitted := string(files["collision/Probe.py"])
+	for _, name := range []string{"_check_file as _s_check_file", "def _s_checked_load_Foo(", "def _s_load_checked_Foo("} {
+		if !strings.Contains(emitted, name) {
+			t.Errorf("generated module lacks disjoint helper %q", name)
+		}
+	}
+	dir := t.TempDir()
+	for name, data := range files {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, data, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if out, err := pyrun.Analyze(t, dir, "collision"); err != nil {
+		t.Fatalf("strict mypy: %v\n%s", err, out)
+	}
+	probe := pyrun.ImportPrelude + `from collision import Foo, checked_Foo
+a=Foo(); a.a=11
+b=checked_Foo(); b.b=22
+assert Foo.load(a.save()).a == 11
+assert checked_Foo.load(b.save()).b == 22
+`
+	inputs := map[string][]byte{"probe.py": []byte(probe)}
+	pyrun.Run(t, dir, "probe.py", inputs)
+	pyrun.RunFloor(t, dir, "probe.py", inputs)
 }
