@@ -292,6 +292,9 @@ def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool) -> None:
             )
         value = kinds._REGISTRY[field.codec].read(reader, field, ctx)
         setattr(obj, field.name, value)
+    missing = [field.name for field in descriptor_.fields if field.required and field.field_id not in seen]
+    if missing:
+        raise Refused("missing_required", ", ".join(missing))
     ctx.current = previous
 
 

@@ -319,7 +319,7 @@ def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:
     ctx.current = value
     for field in desc.fields:
         current = getattr(value, field.name)
-        if field.is_default(current):
+        if not field.required and field.is_default(current):
             continue
         kinds._REGISTRY[field.codec].write(writer, field, current, ctx)
     if root and ctx.order:
