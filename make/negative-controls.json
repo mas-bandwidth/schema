@@ -1996,6 +1996,17 @@
       "java": "21"
     },
     {
+      "name": "java-write-refusal",
+      "when": "pull-request",
+      "why": "the Java leg's write-contract controls (docs/SPEC.md §5.1): the conformance driver runs write-refusal, write-refusal-fixed and write-refusal-message under -ea, and each control removes one generated assertion from a copy of the unit and requires its surface red by the row it names while wire (or message) stays green. Three javac passes over one small unit each, beside the conformance classpath the gate already builds.",
+      "targets": [
+        "conformance-negative-control-java-write-refusal",
+        "conformance-negative-control-java-write-refusal-fixed",
+        "conformance-negative-control-java-write-refusal-message"
+      ],
+      "java": "21"
+    },
+    {
       "name": "java-packet-a",
       "when": "pull-request",
       "why": "slice 1 of 2 of java-packet, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: packet-arm-defaults-java-negative-control 15 s, packet-defaults-java-negative-control 21 s, packet-utf8-java-negative-control 15 s.",
