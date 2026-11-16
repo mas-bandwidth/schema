@@ -1,0 +1,25 @@
+name: schema python nightly fuzz
+on:
+  schedule:
+    - cron: '27 3 * * *'
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  nightly:
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Pinned Python interpreters
+        uses: ./.github/actions/python
+      - name: Stage pinned siblings and reference corpus
+        run: |
+          make serialize-siblings
+          sh tools/python-ci-corpus.sh build
+      - name: Generated codec verdict pipe
+        run: make schema-python-nightly-fuzz

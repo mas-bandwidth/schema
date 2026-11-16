@@ -18,6 +18,11 @@ go list -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen
 while IFS= read -r package; do
   tests=$(go test -tags schema_leg_python -list '^(Test|Example|Fuzz)' "$package")
   names=$(printf '%s\n' "$tests" | sed -n '/^\(Test\|Example\|Fuzz\)[A-Za-z0-9_]*$/p')
+  # The full wire-fuzz omnibus is covered by the twelve explicit support rows.
+  # Keep the focused pipe and fault controls in the automatically discovered shards.
+  if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonWireFuzzVerdictPipe$/d')
+  fi
   skip=
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
     printf '%s\n' "$names" | grep -qx TestPythonVtFixedClassBuildVersionImports || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }

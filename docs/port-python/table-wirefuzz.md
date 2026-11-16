@@ -14,3 +14,22 @@ runs, in microseconds per read, was:
 | 1024 | 155.958 | 25.505 | 168.501 | 27.734 |
 
 Both shapes included the range check and result list. The bulk form was kept.
+
+The verdict pipe dispatches ordinary variable and declared fixed file roots,
+message batches, and retaining reads and writes through their generated public
+APIs. The retaining negative control replaces retaining write-back with ordinary
+save on a pinned retained-record vector; the shared Go oracle must report a
+value mismatch, on both pinned interpreters. This focused control does not by
+itself establish the full roster or seeded release runs.
+
+The pull-request support plan partitions the full-roster gate into twelve
+independent rows: current and floor interpreters, normal and development
+modes, and plain, mixed-builder and retaining arms. Each row runs every
+applicable enumerated mutation and pinned vector plus `N` random mutations at
+`SEED`; neither roster nor count is reduced by the partition. Defaults are
+`N=100000` and `SEED=24845619678`. The partition control removes an arm from
+a copied make fragment and requires the coverage check to identify the gap.
+The nightly target uses the same rows at `N=500000` for the default seed and
+seed 2. Release-tier plain and retain runs additionally require seeds 1, 2 and
+3 at `N=100000`. Row timings and the release-tier registration are not yet
+established by this draft.
