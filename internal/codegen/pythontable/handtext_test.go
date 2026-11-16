@@ -562,13 +562,13 @@ for cls in (Counters, Root):
     text = value.save_text()
     assert text == base64.b64encode(wire).decode('ascii') and '\n' not in text
     assert cls.load_text(text).save() == wire
-    for damaged in ('/x==', 'AQ=', 'AQ==\n', 'AQ== ', '!AAA', 'é', b'AQ=='):
+    for damaged, reason in (('/x==', 'base64_not_canonical'), ('AQ=', 'base64_damaged'), ('AQ===', 'base64_damaged'), ('AAAA=', 'base64_damaged'), ('A=AA', 'base64_damaged'), ('AQ==\n', 'base64_not_canonical'), ('AQ==\r\n', 'base64_not_canonical'), ('AQ== ', 'base64_damaged'), ('!AAA', 'base64_damaged'), ('é', 'base64_damaged'), (b'AQ==', 'base64_damaged')):
         report = LoadReport()
         report.unknown = 17
         try:
             cls.load_text(damaged, report)
-        except Refused:
-            assert report.unknown == 17
+        except Refused as e:
+            assert e.reason == reason and report.unknown == 17, (damaged, e.reason)
         else:
             raise AssertionError(('accepted', damaged))
 print('ok')
