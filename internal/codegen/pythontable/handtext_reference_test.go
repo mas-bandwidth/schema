@@ -18,9 +18,9 @@ import (
     "github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// TestPythonHandtextReferences compares the same source and typed output with
+// TestPythonHandtextReferencesFunctional compares the same source and typed output with
 // generated Go and C++ readers, including the canonical JSON's final newline.
-func TestPythonHandtextReferences(t *testing.T) {
+func TestPythonHandtextReferencesFunctional(t *testing.T) {
     t.Parallel()
     slowtest.Gate(t, "generated Go and C++ readers and the pinned interpreters")
     const schema = `package probe

@@ -197,7 +197,7 @@ def _value(field: FieldDesc, node: Node, labels: dict[str, str]) -> str:
         if node.kind != "list":
             _fail("text_kind_mismatch", node)
         count = len(node.children)
-        if (field.array_kind == 1 and count != field.bound) or (field.array_kind != 3 and count > field.bound):
+        if (field.array_kind == 1 and count != field.bound) or (field.array_kind != 3 and count > field.bound) or (field.array_kind == 2 and count < field.array_min):
             _fail("text_bound", node)
         element = _array_element(field)
         if field.json_text_list:

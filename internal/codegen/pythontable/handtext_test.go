@@ -66,6 +66,14 @@ for data in (b'(:small 1e1 :enabled true)', b'(:small 1.5)', b'(:small 128)', b'
     }
 }
 
+func TestPythonHandtextReservedName(t *testing.T) {
+    t.Parallel()
+    unit := loadUnit(t, "package probe\ntable Root { from_text_form int32 }\n")
+    if _, err := Generate(unit); err == nil || !strings.Contains(err.Error(), "from_text_form") {
+        t.Fatalf("generated method collision was not refused: %v", err)
+    }
+}
+
 const handtextSchema = `package probe
 enum State { unknown, done }
 flags Features { Fast, Safe }
@@ -152,6 +160,7 @@ func testPythonHandtextCorpus(t *testing.T, fixed bool) {
 from probe import Document, Graph
 from pathlib import Path
 import struct
+import json
 from probe._schema.textform_scan import TextError
 for stem in ("roadmap", "layout", "kinds", "variable"):
     data = Path(stem + ".input.sexp").read_bytes()
@@ -176,6 +185,9 @@ for stem in ("roadmap", "layout", "kinds", "variable"):
         assert v.signed_value == -(1 << 127) and v.unsigned_value == (1 << 128) - 1
         assert v.fraction == 1 and struct.pack(">f", v.real) == bytes.fromhex("80000000")
         assert v.flags == 3 and v.optional == [] and v.text == []
+        rendered = json.loads(v.to_json())
+        assert rendered["state"] == "done" and rendered["keyed"] == {"unknown": 4, "done": 7}
+        assert rendered["choice"] == {"ping": None} and rendered["time"] == "2026-10-15T12:34:05Z"
 print("positive", 4)
 for stem in ` + fmt.Sprintf("%#v", names) + `:
     data = Path(stem + ".sexp").read_bytes()
@@ -228,5 +240,45 @@ assert doc.value.small == 7, "HANDTEXT_FIELD_CONTROL"`},
                 t.Fatalf("%s control did not fail by name: %v %s", control.name, err, stderr)
             }
         }
+    }
+}
+
+func TestPythonHandtextUnbounded(t *testing.T) {
+    t.Parallel()
+    const schema = `package probe
+table Tags {
+ rules []string
+ first [..4]?string
+ capped [..2]string
+ byname map[string]int32
+}`
+    files, err := Generate(loadUnit(t,schema)); if err != nil {t.Fatal(err)}
+    dir := t.TempDir(); writeTree(t,dir,files)
+    vectors := filepath.Join("..","..","..","test","conformance","textform")
+    inputs := map[string][]byte{}
+    for _, name := range []string{"unbounded.input.sexp","unbounded.rewrite.sexp"} {
+        b, err := os.ReadFile(filepath.Join(vectors,name)); if err != nil {t.Fatal(err)}; inputs[name] = b
+    }
+    src := pyrun.ImportPrelude + `from pathlib import Path
+from probe import Tags
+from probe._schema.textform_scan import TextError
+text = Path('unbounded.input.sexp').read_bytes()
+doc = Tags.from_text_form(text)
+assert doc.write() == Path('unbounded.rewrite.sexp').read_bytes()
+assert doc.value.rules[0] == 'x' and len(doc.value.rules[1]) > 255
+assert doc.value.first == ['x', None]
+assert doc.value.capped == []
+assert len(doc.value.byname) == 2 and max(map(len,doc.value.byname)) > 255
+try:
+    Tags.from_text_form(b'(:capped ("one" "two" "three"))')
+except TextError as e:
+    assert e.reason == 'text_bound'
+else:
+    raise AssertionError('count bound')
+print('ok')
+`
+    inputs["main.py"] = []byte(src)
+    for _, run := range []func(testing.TB,string,string,map[string][]byte) []byte{pyrun.Run,pyrun.RunFloor} {
+        if got := string(run(t,dir,"main.py",inputs)); got != "ok\n" {t.Fatalf("unbounded: %s",got)}
     }
 }
