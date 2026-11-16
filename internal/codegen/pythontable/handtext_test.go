@@ -37,6 +37,13 @@ for kw in ({"max_bytes": 2}, {"max_tokens": 1}, {"max_nodes": 1}, {"max_allocati
     else:
         raise AssertionError(kw)
 assert parse(b'(:x 1)', max_tokens=4, max_nodes=1).kind == 'list'
+for invalid_root in (b'', b'true'):
+    try:
+        parse(invalid_root)
+    except TextError as e:
+        assert e.reason == 'text_syntax'
+    else:
+        raise AssertionError('root must be a record')
 try:
     parse(b'(:x 1)', max_tokens=3)
 except TextError as e:

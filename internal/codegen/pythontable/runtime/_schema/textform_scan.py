@@ -156,9 +156,9 @@ def parse_with_comments(data: bytes, *, max_bytes: int = 0, max_tokens: int = 0,
     """Parse a text and retain the byte span of each comment."""
     parser = _Parser(data, max_bytes, max_tokens, max_nodes, max_allocation, max_depth)
     parser.gap()
+    if parser.pos == len(data) or data[parser.pos] != 40:
+        raise TextError("text_syntax", parser.pos)
     root = parser.node(0)
-    if root.kind != "list":
-        raise TextError("text_syntax", root.start)
     parser.gap()
     if parser.pos != len(data):
         raise TextError("text_syntax", parser.pos)
