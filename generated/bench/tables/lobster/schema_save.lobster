@@ -878,7 +878,7 @@ def wc_slot(sl:Slot) -> bool:
             if er and not wc_body(er):
                 return false
             let k = if er: er.fields[0].cell else: Value {}
-            if i > 0 and map_key_order(key, last, k) >= 0:
+            if i > 0 and map_key_order(key, last, k) == 0:
                 return false
             last = k
         return true
