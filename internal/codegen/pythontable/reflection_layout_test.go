@@ -293,10 +293,12 @@ func TestPythonReflectionLayoutNegativeControl(t *testing.T) {
 		t.Fatal("control anchor absent")
 	}
 	files[key] = []byte(strings.Replace(src, anchor, "at=4, pieces=((0, 4), ), elem_size=4", 1))
-	got := reflectionLayoutRun(t, u, files, false)
-	want := reflectionLayoutWant(u)
-	if got == want || !strings.Contains(reflectionFirstDiff(want, got), "field Record.value") {
-		t.Fatalf("offset drift was not detected on Record.value: %s", reflectionFirstDiff(want, got))
+	for _, floor := range []bool{false, true} {
+		got := reflectionLayoutRun(t, u, files, floor)
+		want := reflectionLayoutWant(u)
+		if got == want || !strings.Contains(reflectionFirstDiff(want, got), "field Record.value") {
+			t.Fatalf("offset drift was not detected on Record.value: %s", reflectionFirstDiff(want, got))
+		}
 	}
 }
 
@@ -357,9 +359,11 @@ assert f is not None
 f.set(r, 42)
 assert r.total == 42, 'field write drift'
 `
-	_, stderr, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
-	if err == nil || !strings.Contains(stderr, "field write drift") {
-		t.Fatalf("setter sabotage did not fail by name: %v\n%s", err, stderr)
+	for _, bin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		_, stderr, err := pyrun.Try(t, bin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err == nil || !strings.Contains(stderr, "field write drift") {
+			t.Fatalf("setter sabotage did not fail by name: %v\n%s", err, stderr)
+		}
 	}
 }
 

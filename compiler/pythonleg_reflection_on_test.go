@@ -400,8 +400,10 @@ union Pick { child Child }
 arm = only.UnitView().unions[0].variants[1]
 assert arm.payload is not None, 'packet union payload missing'
 `
-	_, stderr, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
-	if err == nil || !strings.Contains(stderr, "packet union payload missing") {
-		t.Fatalf("payload sabotage escaped: %v\n%s", err, stderr)
+	for _, bin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		_, stderr, err := pyrun.Try(t, bin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err == nil || !strings.Contains(stderr, "packet union payload missing") {
+			t.Fatalf("payload sabotage escaped: %v\n%s", err, stderr)
+		}
 	}
 }

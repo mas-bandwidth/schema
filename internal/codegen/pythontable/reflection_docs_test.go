@@ -118,8 +118,10 @@ func TestPythonReflectionDescriptorDocsNegativeControl(t *testing.T) {
 					t.Fatal("control could not find annotation")
 				}
 				files[name] = []byte(strings.Replace(string(data), tc.from, tc.to, 1))
-				if reflectionDocsCompare(t, files, false) {
-					t.Fatalf("%s drift passed the descriptor comparison", tc.name)
+				for _, floor := range []bool{false, true} {
+					if reflectionDocsCompare(t, files, floor) {
+						t.Fatalf("%s drift passed the descriptor comparison", tc.name)
+					}
 				}
 				return
 			}
@@ -168,9 +170,11 @@ func TestPythonReflectionAnnotationAgreementNegativeControl(t *testing.T) {
 	files[path] = []byte(strings.Replace(src, from, `"drift", ("arm_tag", ))`, 1))
 	dir := t.TempDir()
 	writeTree(t, dir, files)
-	_, stderr, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", map[string][]byte{"main.py": []byte(reflectionAnnotationAgreementProbe)})
-	if err == nil || !strings.Contains(stderr, "arm annotation drift") {
-		t.Fatalf("arm metadata drift escaped the agreement gate: %v\n%s", err, stderr)
+	for _, bin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		_, stderr, err := pyrun.Try(t, bin, dir, "main.py", map[string][]byte{"main.py": []byte(reflectionAnnotationAgreementProbe)})
+		if err == nil || !strings.Contains(stderr, "arm annotation drift") {
+			t.Fatalf("arm metadata drift escaped the agreement gate: %v\n%s", err, stderr)
+		}
 	}
 }
 
@@ -305,9 +309,11 @@ func TestPythonReflectionFieldVocabularyNegativeControl(t *testing.T) {
 			dir := t.TempDir()
 			writeTree(t, dir, files)
 			probe := reflectionFieldVocabularyProbe(ir.TableWireId(u.Enums["Grade"].VariantWireName(0)), ir.TableWireId(u.TableUnions["Choice"].Variants[1].WireName()))
-			_, stderr, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
-			if err == nil || !strings.Contains(stderr, tc.reason) {
-				t.Fatalf("%s sabotage escaped: %v\n%s", tc.name, err, stderr)
+			for _, bin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+				_, stderr, err := pyrun.Try(t, bin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+				if err == nil || !strings.Contains(stderr, tc.reason) {
+					t.Fatalf("%s sabotage escaped: %v\n%s", tc.name, err, stderr)
+				}
 			}
 		})
 	}
