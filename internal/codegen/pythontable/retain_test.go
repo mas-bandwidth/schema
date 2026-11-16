@@ -568,6 +568,7 @@ table Root { grades [2]Grade }
 		t.Fatal(err)
 	}
 	w := &unionWire{}
+	w.ref("grades")
 	known, unknown := w.ref("A"), w.ref("new_grade")
 	wire := w.file(w.array("grades", 30, 2, known, unknown))
 	if verdict := unionEngineVerdict(t, u, wire); !strings.HasPrefix(verdict, "read 1 ") {
