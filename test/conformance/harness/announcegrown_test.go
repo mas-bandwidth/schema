@@ -60,7 +60,8 @@ func grownAnnouncement(t *testing.T, m *Manifest, g AnnounceGrown) ([]byte, Conn
 // TestLimitAnnounceGrownIsTheEnginesAnswer: every row's answer is the one
 // the engine gives its grown announcement. A `message` row is read clean and
 // announces exactly the connection's own vocabulary, so its message golden
-// decodes against it; a `malformed` row is damage, which sets no vocabulary
+// decodes against it; the added fields count as unknown. A `malformed` row
+// is damage, which sets no vocabulary
 // and is refused. The corpus carries all three shapes: 4096 distinct accepted,
 // 4097 and a repeat at 4096 refused.
 func TestLimitAnnounceGrownIsTheEnginesAnswer(t *testing.T) {
@@ -78,7 +79,7 @@ func TestLimitAnnounceGrownIsTheEnginesAnswer(t *testing.T) {
 			}
 		} else {
 			_, own := announced(t, u, c)
-			if err != nil || report.Refused || !v.Announced() || !report.Silent() {
+			if err != nil || report.Refused || !v.Announced() || report.Unknown != g.Entries-2 || report.Widened != 0 || report.Retained != 0 || report.RetainLost != 0 {
 				t.Errorf("%s: the row says message and the engine answered err=%v report=%+v announced=%v", g.Name, err, report, v.Announced())
 				continue
 			}
@@ -117,7 +118,8 @@ func (g AnnounceGrown) answerShape() string {
 }
 
 // TestLimitGrowIdTable holds the grown bytes to their shape: the body and the
-// original entries unmoved, the count word the new length, every added id new,
+// original fields and entries unmoved, every new id used by an added field,
+// the count word the new length, every added id new,
 // and a repeat that names the first id twice and nothing else.
 func TestLimitGrowIdTable(t *testing.T) {
 	corpus(t)
@@ -129,11 +131,18 @@ func TestLimitGrowIdTable(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(grown) != len(golden)+8*(n-k) {
-				t.Fatalf("n=%d: %d bytes, want %d", n, len(grown), len(golden)+8*(n-k))
+			entriesAt := len(golden) - 8*(k+1)
+			wantBody := bytes.Clone(golden[:entriesAt-1])
+			for ref := k + 1; ref <= n; ref++ {
+				wantBody = binary.AppendUvarint(wantBody, uint64(ref))
+				wantBody = append(wantBody, 6, 1)
 			}
-			if !bytes.Equal(grown[:len(golden)-8], golden[:len(golden)-8]) {
-				t.Fatalf("n=%d: the body or an original entry moved", n)
+			wantBody = append(wantBody, 0)
+			if !bytes.Equal(grown[:len(grown)-8*(n+1)], wantBody) {
+				t.Fatalf("n=%d: original fields moved or added ids are not used in first-use order", n)
+			}
+			if !bytes.Equal(grown[len(wantBody):len(wantBody)+8*k], golden[entriesAt:len(golden)-8]) {
+				t.Fatalf("n=%d: an original id moved", n)
 			}
 			if got := binary.LittleEndian.Uint64(grown[len(grown)-8:]); got != uint64(n) {
 				t.Fatalf("n=%d: the count word is %d", n, got)

@@ -393,7 +393,7 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 }
  func TestWide(t *testing.T) {
   var v,got Root;var r TableReport
-  text:=[]byte("{\"n\":-170141183460469231731687303715884105728,\"u\":340282366920938463463374607431768211455,\"q\":-0.25,\"w\":-0.5,\"many\":[18446744073709551616]}")
+  text:=[]byte("{\"n\":\"-170141183460469231731687303715884105728\",\"u\":\"340282366920938463463374607431768211455\",\"q\":-0.25,\"w\":\"-0.5\",\"many\":[\"18446744073709551616\"]}")
   if !RootFromJSON(&v,text,&r)||r!=(TableReport{}) {t.Fatalf("json %+v",r)}
   n:=rootForm1Measure(&v);b:=make([]byte,n);if rootForm1Save(&v,b)!=n||!rootForm1(&got,b,&r)||got!=v||r!=(TableReport{}) {t.Fatalf("roundtrip %+v %+v %+v",v,got,r)}
   a,c:=make([]byte,2048),make([]byte,2048);na,nc:=RootToJSON(&v,a),RootToJSON(&got,c);if na<0||nc!=na||!bytes.Equal(a[:na],c[:nc]) {t.Fatal("text mismatch")}
