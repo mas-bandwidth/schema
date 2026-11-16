@@ -1,0 +1,28 @@
+#!/bin/sh
+# The three fixed-root value surfaces must answer every accepted case. The
+# separately owned shared-blob cook recipes may remain absent by name.
+set -eu
+dir=$1
+test -s "$dir/results.json" || { echo 'fixed roots: results missing'; exit 1; }
+for surface in json-read json-write; do
+	grep -qE "^$surface +pass ([1-9][0-9]*)/\\1 *\$" "$dir/log" || {
+		grep -E "^$surface " "$dir/log" || true
+		echo "fixed roots: $surface has a failure or an absent case"
+		exit 1
+	}
+done
+grep -qE '^cook-write +pass ([1-9][0-9]*)/\1( +\+2a)? *$' "$dir/log" || {
+	grep -E '^cook-write ' "$dir/log" || true
+	echo 'fixed roots: cook-write has a failure or unexpected absences'
+	exit 1
+}
+awk '
+  /"cook-write": \{/ { surface = 1 }
+  surface && /"cases": \{/ { cases = 1; next }
+  cases && /^[[:space:]]*}/ { exit bad }
+  cases && /: "absent"/ && !/"blob_shared(-be)?": "absent"/ {
+    print "fixed roots: unexpected cook absence: " $0; bad = 1
+  }
+  END { exit bad }
+' "$dir/results.json"
+grep -E '^json-read |^json-write |^cook-write ' "$dir/log"

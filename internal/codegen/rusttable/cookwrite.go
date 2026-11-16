@@ -365,16 +365,11 @@ func (g *gen) emitCookField(b *strings.Builder, f *ir.Field, x, base string, off
 		inner := *f
 		inner.Type.Optional = false
 		fmt.Fprintf(b, "%sw.put(%s, if %s.is_some() { 1 } else { 0 }, 1);\n", ind, cookAt(base, present.Offset), x)
-		fmt.Fprintf(b, "%smatch %s {\n", ind, cookRef(x))
-		fmt.Fprintf(b, "%s    Some(o) => {\n", ind)
-		g.emitCookFieldValue(b, &inner, "(*o)", base, off, ind+"        ")
-		fmt.Fprintf(b, "%s    }\n", ind)
-		// an ABSENT optional holds its declared default, which is what the
-		// reference's instance carries and what `T x = {}` leaves (§2.3)
-		fmt.Fprintf(b, "%s    None => {\n", ind)
-		fmt.Fprintf(b, "%s        let d: %s = %s;\n", ind, variableFieldType(&inner), fieldDefault(&inner))
-		g.emitCookFieldValue(b, &inner, "d", base, off, ind+"        ")
-		fmt.Fprintf(b, "%s    }\n", ind)
+		if inner.IsMap() || inner.IsList() {
+			return // the carve owns the live span; an absent payload stays zero
+		}
+		fmt.Fprintf(b, "%sif let Some(o) = %s {\n", ind, cookRef(x))
+		g.emitCookFieldValue(b, &inner, "(*o)", base, off, ind+"    ")
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
@@ -417,11 +412,17 @@ func (g *gen) emitCookFieldValue(b *strings.Builder, f *ir.Field, x, base string
 			fmt.Fprintf(b, "%sif %s.len() > %d { w.fail(); }\n", ind, x, bound)
 			fmt.Fprintf(b, "%sw.put(%s, %s.len() as u64, 4);\n", ind, cookAt(base, pieces[1].Offset), x)
 		}
-		fmt.Fprintf(b, "%sfor i in 0..%d_usize {\n", ind, bound)
+		count := fmt.Sprintf("%d_usize", bound)
+		if f.Array == ir.ArrayCounted && f.KeyEnum == "" {
+			count = x + ".len()"
+			if unparen(x) != x {
+				count = cookRef(x) + ".len()"
+			}
+		}
+		fmt.Fprintf(b, "%sfor i in 0..%s {\n", ind, count)
 		fmt.Fprintf(b, "%s    let ea = %s + i as i64 * %d;\n", ind, cookAt(base, value.Offset), step)
-		// a slot past the live count holds the VALUE-INITIALIZED element:
-		// zero for a scalar, the element type's own defaults for a record
-		// (internal/tabletext/value.go's elementZero)
+		// Counted arrays visit only live slots. A positional or keyed array
+		// still materializes any unprovided element's declared defaults.
 		if ref, ok := f.Type.Ref.(*ir.Struct); ok && !f.Type.Pointer && f.Type.Kind == ir.TNamed {
 			fmt.Fprintf(b, "%s    match %s.get(i) {\n", ind, x)
 			fmt.Fprintf(b, "%s        Some(e) => %s(e, w, ea),\n", ind, fn(ref.Name, "cook_body"))
