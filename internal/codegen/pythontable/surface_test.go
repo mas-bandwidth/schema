@@ -141,4 +141,31 @@ func TestPythonRetainSurfaceSelection(t *testing.T) {
 			t.Fatal("retain collision accepted")
 		}
 	}
+	jsonSurface, err := ParseSurfaces("wire,json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"from_json", "to_json"} {
+		named := loadUnit(t, "package names\ntable Root { ordinary int32 }\n")
+		named.Tables["Root"].Fields[0].Name = field
+		if _, err := GenerateSurface(named, wire); err != nil {
+			t.Fatalf("wire-only JSON name refused: %v", err)
+		}
+		if _, err := GenerateSurface(named, jsonSurface); err == nil {
+			t.Fatalf("selected JSON collision accepted: %s", field)
+		}
+	}
+	jsonOnly, err := GenerateSurface(u, jsonSurface)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(jsonOnly["surfaces/Core.py"]), "def from_json(") {
+		t.Fatal("selected JSON method omitted")
+	}
+	if _, ok := jsonOnly["surfaces/_schema/json_table.py"]; !ok {
+		t.Fatal("selected JSON runtime omitted")
+	}
+	if _, ok := plain["surfaces/_schema/json_table.py"]; ok {
+		t.Fatal("wire-only JSON runtime emitted")
+	}
 }
