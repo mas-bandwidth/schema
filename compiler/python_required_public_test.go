@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -64,7 +65,21 @@ func TestPythonRequiredPublicShapes(t *testing.T) {
 		{"map_list_value", "table Item { n int32 }", "map[uint8][]Item"},
 		{"map_list_pointer", "table Node { n int32 }", "map[uint8][]*Node"},
 	}
-	for _, c := range cases {
+	// CI runs disjoint shards so every case retains both pinned runtimes and
+	// strict mypy within the fleet's per-job time limit. Ordinary go test runs
+	// the complete matrix when no shard is selected.
+	shard := -1
+	if setting := os.Getenv("SCHEMA_PYTHON_REQUIRED_SHARD"); setting != "" {
+		var err error
+		shard, err = strconv.Atoi(setting)
+		if err != nil || shard < 0 || shard >= 8 {
+			t.Fatalf("invalid required shape shard %q", setting)
+		}
+	}
+	for index, c := range cases {
+		if shard >= 0 && index%8 != shard {
+			continue
+		}
 		t.Run(c.name, func(t *testing.T) {
 			src := func(required bool) string {
 				marker := ""
