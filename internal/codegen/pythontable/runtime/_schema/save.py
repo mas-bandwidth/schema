@@ -153,24 +153,7 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
                 raise InvalidValue(where, f"not a {field.target}")
             _validate(current, current.descriptor, where, seen)
         elif field.codec == "array":
-            if not isinstance(current, list):
-                raise InvalidValue(where, "not a list")
-            kind_array._check_count(where, len(current))
-            kind_array._check_shape(field, len(current), where)
-            element = field.element
-            if element is None:
-                raise InvalidValue(where, "an array carries no element descriptor")
-            for i, item in enumerate(current):
-                cell = f"{where}[{i}]"
-                if element.codec == "table":
-                    target = descriptor.by_name(element.target)
-                    if target is None or type(item) is not target:
-                        raise InvalidValue(cell, f"not a {element.target}")
-                    _validate(item, item.descriptor, cell, seen)
-                else:
-                    kinds._REGISTRY[element.codec].validate(element, item, cell)
-            if field.text_total and sum(len(item.encode("utf-8")) for item in current if item is not None) > field.text_total:
-                raise InvalidValue(where, "text total exceeded")
+            _validate_array(field, current, where, seen)
         elif field.codec == "map":
             _validate_map(field, current, where, seen)
         else:
@@ -180,6 +163,27 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
             # each is validated as a field's table is
             for table, table_path in _held_tables(kind, field, current, where):
                 _validate(table, table.descriptor, table_path, seen)
+
+
+def _validate_array(field: FieldDesc, current: Any, where: str, seen: set[int]) -> None:
+    if not isinstance(current, list):
+        raise InvalidValue(where, "not a list")
+    kind_array._check_count(where, len(current))
+    kind_array._check_shape(field, len(current), where)
+    element = field.element
+    if element is None:
+        raise InvalidValue(where, "an array carries no element descriptor")
+    for i, item in enumerate(current):
+        cell = f"{where}[{i}]"
+        if element.codec == "table":
+            target = descriptor.by_name(element.target)
+            if target is None or type(item) is not target:
+                raise InvalidValue(cell, f"not a {element.target}")
+            _validate(item, item.descriptor, cell, seen)
+        else:
+            kinds._REGISTRY[element.codec].validate(element, item, cell)
+    if field.text_total and sum(len(item.encode("utf-8")) for item in current if item is not None) > field.text_total:
+        raise InvalidValue(where, "text total exceeded")
 
 
 def _validate_map(field: FieldDesc, value: Any, path: str, seen: set[int]) -> None:
@@ -205,6 +209,8 @@ def _validate_map(field: FieldDesc, value: Any, path: str, seen: set[int]) -> No
         elif value_field.codec == "table":
             kinds._REGISTRY["table"].validate(value_field, current, where)
             _validate(current, current.descriptor, where, seen)
+        elif value_field.codec == "array":
+            _validate_array(value_field, current, where, seen)
         elif value_field.codec == "map":
             _validate_map(value_field, current, where, seen)
         else:
@@ -320,6 +326,9 @@ def _collect_map(field: FieldDesc, value: dict[Any, Any], ctx: Ctx, blobs: list[
             if value_field.is_default(current):
                 continue
             _collect(current, ctx, blobs)
+        elif value_field.codec == "array" and value_field.element is not None and value_field.element.codec == "table":
+            for item in current:
+                _collect(item, ctx, blobs)
         elif value_field.codec == "map":
             _collect_map(value_field, current, ctx, blobs)
 

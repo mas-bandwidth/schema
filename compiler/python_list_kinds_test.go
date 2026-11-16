@@ -15,6 +15,8 @@ func TestPythonDriverListScalarKinds(t *testing.T) {
 	u := unitFromSource(t, `package listkinds
 enum Grade { A, B, C }
 flags Perm { Read, Write, Own }
+table Node { value int32 }
+table Item { child *Node }
 table Root {
     values []float32
     grades []Grade
@@ -23,6 +25,8 @@ table Root {
     options [..4]?string(8) | total = 3
     free []?string
     lookup map[string]int32
+    series map[uint8][]float32
+    items map[uint8][]Item
 }
 `)
 	files, err := New().Generate(u, "python", nil)
@@ -42,7 +46,7 @@ table Root {
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables["Root"])
 	var report tabletext.Report
-	if !model.Read(value, []byte(`{"values":[1.5,-2.25,0],"grades":["A","C"],"perms":[["Read"],["Write","Own"]],"words":["", "hi", "é"],"options":[null,"", "ok"],"free":["longer text", null],"lookup":{"long key":3,"é":5}}`), &report) || report.Refused || report.Unknown != 0 {
+	if !model.Read(value, []byte(`{"values":[1.5,-2.25,0],"grades":["A","C"],"perms":[["Read"],["Write","Own"]],"words":["", "hi", "é"],"options":[null,"", "ok"],"free":["longer text", null],"lookup":{"long key":3,"é":5},"series":{"1":[1.5,-2.25]},"items":{"2":[{"child":{"value":7}}]}}`), &report) || report.Refused || report.Unknown != 0 {
 		t.Fatalf("Go input: %+v", report)
 	}
 	wire, err := tablewire.Encode(model, value)
@@ -58,6 +62,8 @@ assert v.words == ["", "hi", "é"], "plain text values"
 assert v.options == [None, "", "ok"], "optional text values"
 assert v.free == ["longer text", None], "unbounded text values"
 assert v.lookup == {"long key": 3, "é": 5}, "unbounded key"
+assert v.series == {1: [1.5, -2.25]}, "map float list"
+assert v.items[2][0].child.value == 7, "map list edge"
 assert v.save() == open("wire", "rb").read(), "Go bytes"
 for field, bad in (("values", [float("nan")]), ("grades", [4]), ("perms", [-1]), ("words", ["x" * 9]), ("words", ["ééé"]), ("options", [None, "éé"]), ("options", ["nul\0"]), ("free", ["\ud800"])):
     original = getattr(v, field)
@@ -68,6 +74,12 @@ for field, bad in (("values", [float("nan")]), ("grades", [4]), ("perms", [-1]),
     except InvalidValue:
         pass
     setattr(v, field, original)
+v.series = {1: [float("nan")]}
+try:
+    v.save()
+    raise AssertionError("accepted nested float")
+except InvalidValue:
+    pass
 print("ok")
 `
 	inputs := map[string][]byte{"main.py": []byte(probe), "wire": wire}
