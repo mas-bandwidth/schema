@@ -411,7 +411,11 @@ struct Loaded
 
     void load( const uint8_t * wire, int64_t n )
     {
-        region.size( tblrt1::NodeLoadMeasure( wire, n ) );
+        const int64_t needed = tblrt1::NodeLoadMeasure( wire, n );
+        // A malformed wire may refuse in preflight. Give the separate load
+        // valid scratch storage rather than casting -1 into an allocation.
+        region.size( needed > 0 ? needed : (int64_t) sizeof( tblrt1::Node ) + 16 );
+        report = tblrt1::TableReport();
         retain.bytes = storage;
         retain.capacity = sizeof( storage );
         retain.ids = ids;
@@ -617,9 +621,8 @@ static void capacities()
 
 // ---- RECORD LIFETIME (docs/SPEC-TABLES.md §6.6) ----
 //
-// A body carrying `inner { future = 7 }` and then `inner { hits = 2 }`: the
-// second occurrence resets the first, the save carries `hits = 2` and no
-// `future`, retain_lost is 0, and retained is unchanged by the discard.
+// Repeated fields refuse before capture. Reusing the caller's retaining
+// storage for a separate valid load must not resurrect the previous record.
 static void record_lifetime()
 {
     WireBuilder b;
@@ -629,6 +632,10 @@ static void record_lifetime()
     b.u32( 7 );
     b.end();
     b.close_len( first );
+    WireBuilder initial = b;
+    initial.end();
+    uint8_t first_wire[4096];
+    const int64_t first_bytes = initial.finish( first_wire );
     b.field( "inner", 13 );
     const int64_t second = b.open_len();
     b.field( "hits", 4 );
@@ -641,13 +648,33 @@ static void record_lifetime()
 
     Loaded l;
     l.load( wire, n );
+    CHECK( l.root == NULL );
+    CHECK( l.report.damaged );
+    CHECK( l.report.retained == 0 && l.retain.count == 0 );
+
+    l.load( first_wire, first_bytes );
+    CHECK( l.root != NULL );
+    CHECK( whole( l.report ) && l.report.retained == 1 && l.retain.count == 1 );
+    CHECK( l.report.unknown == 1 );
+    if ( l.root == NULL ) { return; }
+
+    WireBuilder replacement;
+    replacement.field( "inner", 13 );
+    const int64_t body = replacement.open_len();
+    replacement.field( "hits", 4 );
+    replacement.u32( 2 );
+    replacement.end();
+    replacement.close_len( body );
+    replacement.end();
+    const int64_t replacement_bytes = replacement.finish( wire );
+    l.load( wire, replacement_bytes );
     CHECK( l.root != NULL );
     CHECK( whole( l.report ) );
+    if ( l.root == NULL ) { return; }
     CHECK( l.root->inner.hits == 2 );
-    CHECK( l.report.unknown == 1 );
-    CHECK( l.report.retained == 1 );    // counted when its bytes were kept
-    CHECK( l.report.retain_lost == 0 ); // and a reset is the writer's act, not a loss
-    CHECK( l.retain.count == 0 );       // the record went with the occurrence that carried it
+    CHECK( l.report.unknown == 0 && l.report.retained == 0 );
+    CHECK( l.report.retain_lost == 0 );
+    CHECK( l.retain.count == 0 ); // the separate read replaced the prior capture
 
     tblrt1::TableReport save_report;
     uint8_t out[ 4096 ];
@@ -661,16 +688,15 @@ static void record_lifetime()
     tblrt2::TableReport read_report;
     const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
     CHECK( reread != NULL );
+    if ( reread == NULL ) { return; }
     CHECK( reread->inner.hits == 2 );
     CHECK( reread->inner.future == 0 ); // and `7` was never resurrected beside it
 }
 
 // ---- THE RESOLVING WALK'S VERDICT (docs/SPEC-TABLES.md §6.6) ----
 //
-// A retained field whose INNER structure is damaged inside sound outer
-// framing: retain_lost at one, the read WHOLE, and every sibling field's
-// value intact. Retention can lose a field; it can never turn a good read into
-// a bad one.
+// Malformed inner structure refuses even in an unknown field. The strict
+// wire walk runs before retention; sound outer framing cannot hide damage.
 static void damaged_inner_structure()
 {
     WireBuilder b;
@@ -689,23 +715,16 @@ static void damaged_inner_structure()
 
     Loaded l;
     l.load( wire, n );
-    CHECK( l.root != NULL );
-    CHECK( whole( l.report ) ); // THE OUTER FRAMING WAS SOUND
-    CHECK( l.root->name_length == 5 ); // and every sibling field's value is intact
-    CHECK( l.report.unknown == 1 );
+    CHECK( l.root == NULL );
+    CHECK( l.report.damaged );
+    CHECK( l.report.unknown == 0 );
     CHECK( l.report.retained == 0 );
-    CHECK( l.report.retain_lost == 1 );
+    CHECK( l.report.retain_lost == 0 );
 }
 
-// ---- A SECOND OCCURRENCE REPLACES ONLY WHAT IT CARRIES (§6.6) ----
-//
-// A discard taken at the FIELD is right only where a second occurrence
-// replaces the first WHOLE. An ENUM-KEYED ARRAY never does: it overwrites the
-// slots it carries and leaves every other slot standing. A LIST's repeat can
-// be INERT, replacing nothing at all.
-//
-// CONTROL: discard at the field on either of these and the records under the
-// slots the writer never touched die, with no counter moving to say so.
+// ---- DISTINCT SLOTS KEEP DISTINCT RECORDS (§6.6) ----
+// Repeated fields refuse; two disjoint keyed slots belong in one body. Their
+// unknown records remain independent through a retaining save and reload.
 static void disjoint_occurrences()
 {
     // the two Slot variant ids, as the wire names them (§3.2)
@@ -734,15 +753,41 @@ static void disjoint_occurrences()
     uint8_t wire[ 4096 ];
     const int64_t n = b.finish( wire );
 
+    Loaded repeated;
+    repeated.load( wire, n );
+    CHECK( repeated.root == NULL && repeated.report.damaged );
+    CHECK( repeated.report.retained == 0 && repeated.retain.count == 0 );
+
+    WireBuilder joined;
+    joined.field( "banks", 16 );
+    const int64_t joined_body = joined.open_len();
+    joined.u8( 13 );
+    joined.leb( 2 );
+    for ( int32_t pass = 0; pass < 2; pass++ )
+    {
+        joined.leb( joined.ref( pass == 0 ? kLow : kHigh ) );
+        const int64_t slot = joined.open_len();
+        joined.field( "future", 4 );
+        joined.u32( pass == 0 ? 41 : 42 );
+        joined.field( "hits", 4 );
+        joined.u32( pass == 0 ? 4 : 5 );
+        joined.end();
+        joined.close_len( slot );
+    }
+    joined.close_len( joined_body );
+    joined.end();
+    const int64_t joined_bytes = joined.finish( wire );
+
     Loaded l;
-    l.load( wire, n );
+    l.load( wire, joined_bytes );
     CHECK( l.root != NULL );
     CHECK( whole( l.report ) );
+    if ( l.root == NULL ) { return; }
     CHECK( l.root->banks.slots[0].hits == 4 );
-    CHECK( l.root->banks.slots[1].hits == 5 ); // both slots landed, from different occurrences
+    CHECK( l.root->banks.slots[1].hits == 5 ); // both slots landed from one keyed body
     CHECK( l.report.retained == 2 );
     CHECK( l.report.retain_lost == 0 );
-    CHECK( l.retain.count == 2 ); // and NEITHER record went with the other slot's occurrence
+    CHECK( l.retain.count == 2 );
 
     tblrt1::TableReport save_report;
     uint8_t out[ 4096 ];
@@ -756,12 +801,12 @@ static void disjoint_occurrences()
     tblrt2::TableReport read_report;
     const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
     CHECK( reread != NULL && whole( read_report ) );
+    if ( reread == NULL ) { return; }
     CHECK( reread->banks.slots[0].future == 41 );
     CHECK( reread->banks.slots[1].future == 42 );
 
-    // `list` twice, the second occurrence INERT: a body too short for its own
-    // header keeps the value the field has (§4), so it replaces nothing and
-    // the first occurrence's record stands.
+    // A short-header repeated list is malformed. Its complete first body
+    // separately proves the unknown record still rides under a valid list.
     WireBuilder c;
     c.field( "list", 14 );
     const int64_t at = c.open_len();
@@ -775,19 +820,27 @@ static void disjoint_occurrences()
     c.end();
     c.close_len( element );
     c.close_len( at );
+    WireBuilder live = c;
+    live.end();
+    uint8_t live_wire[4096];
+    const int64_t live_bytes = live.finish( live_wire );
     c.field( "list", 14 );
-    c.leb( 0 ); // fewer than two bytes of body, and INERT
+    c.leb( 0 ); // no element kind or count
     c.end();
     uint8_t inert[ 4096 ];
     const int64_t in = c.finish( inert );
 
     Loaded l2;
     l2.load( inert, in );
+    CHECK( l2.root == NULL && l2.report.damaged );
+    CHECK( l2.report.retained == 0 && l2.retain.count == 0 );
+    l2.load( live_wire, live_bytes );
     CHECK( l2.root != NULL );
     CHECK( whole( l2.report ) );
+    if ( l2.root == NULL ) { return; }
     CHECK( l2.report.retained == 1 );
     CHECK( l2.report.retain_lost == 0 );
-    CHECK( l2.retain.count == 1 ); // the inert repeat replaced nothing, and took nothing
+    CHECK( l2.retain.count == 1 );
 
     tblrt1::TableReport inert_save;
     uint8_t inert_out[ 4096 ];

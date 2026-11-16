@@ -53,7 +53,7 @@ func TestGoCountedArraysBornAtMinimum(t *testing.T) {
 import("bytes";"testing";"unsafe")
 var _=unsafe.Pointer(nil)
 func check(t *testing.T,v *Root){t.Helper();if v.ItemsCount!=2||v.RowsCount!=1||v.Rows[0].N!=55||v.Rows[0].SubCount!=1||v.VariantsCount!=1||v.Variants[0].Type!=PickTypeNone||v.EmptyCount!=0||v.MaybePresent{t.Errorf("birth/default counts or values: %+v",v)}}
-func TestBirthAndOmitted(t *testing.T){SETUP
+func TestBirthAndOmitted(t *testing.T){t.Parallel();SETUP
  options:=TableJSONOptions{OmitDefaults:true};sizeJSON:=RootToJSONMeasureWith(value,options);if sizeJSON<0{t.Errorf("birth JSON measure refused: %d",sizeJSON)}else{json:=make([]byte,sizeJSON);if n:=RootToJSONWith(value,json,options);n!=int64(len(json))||!bytes.Equal(json,[]byte("{}\n")){t.Errorf("default JSON did not elide: %q",json)}}
  WIRE
  value.MaybePresent=true
@@ -73,6 +73,7 @@ func TestBirthAndOmitted(t *testing.T){SETUP
 }
 
 func TestGoCountedPointerBirthAndLiveValue(t *testing.T) {
+	t.Parallel()
 	schema := `package probe
 fixed table Leaf {n int32 = 7}
 table Root {refs [1..2]*Leaf}`
@@ -83,7 +84,7 @@ table Root {refs [1..2]*Leaf}`
 	}
 	probe := fmt.Sprintf(`package probe
 import("bytes";"testing";"unsafe")
-func TestPointerBirth(t *testing.T){var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();check:=func(v *Root){if v==nil||v.RefsCount!=1||LeafAt(&v.Refs[0])!=nil{t.Fatalf("pointer birth: %%+v",v)}};check(b.GetRoot());var report TableReport;if !RootFromJSON(&b,[]byte("{}"),&report){t.Fatal(report)};v:=b.GetRoot();check(v);out:=make([]byte,RootMeasure(v,&b.Arena));if RootSave(v,out,&b.Arena)!=int64(len(out))||!bytes.Equal(out,%#v){t.Fatalf("default pointer array wire %%x",out)}
+func TestPointerBirth(t *testing.T){t.Parallel();var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();check:=func(v *Root){if v==nil||v.RefsCount!=1||LeafAt(&v.Refs[0])!=nil{t.Fatalf("pointer birth: %%+v",v)}};check(b.GetRoot());var report TableReport;if !RootFromJSON(&b,[]byte("{}"),&report){t.Fatal(report)};v:=b.GetRoot();check(v);out:=make([]byte,RootMeasure(v,&b.Arena));if RootSave(v,out,&b.Arena)!=int64(len(out))||!bytes.Equal(out,%#v){t.Fatalf("default pointer array wire %%x",out)}
  if !RootFromJSON(&b,[]byte("{\"refs\":[{}]}"),&report){t.Fatal(report)};v=b.GetRoot();out=make([]byte,RootMeasure(v,&b.Arena));if RootSave(v,out,&b.Arena)!=int64(len(out)){t.Fatal("live save")};size:=RootLoadMeasure(out);raw:=make([]byte,size+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;got:=RootLoad(raw[off:off+uintptr(size)],out,&report);if got==nil||got.RefsCount!=1||LeafAt(&got.Refs[0])==nil||LeafAt(&got.Refs[0]).N!=7{t.Fatalf("nonnull default node lost: %%+v %%+v",got,report)}
 }
 `, want)

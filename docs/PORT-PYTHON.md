@@ -308,7 +308,7 @@ generated class per table and per map entry, each with its descriptor
   own field id before its body's ids, so a nested table's id table is the
   reference's first-use order and a read-then-write is its bytes.
 - **Optional fields are presence.** `?T` is carried over the base kinds (bool,
-  bits, the full-width integers and by-value tables), at every depth: `None` is
+  bits, the full-width integers, floats and by-value tables), at every depth: `None` is
   absent and writes no field, and an absent value owns no node, because the
   save's numbering follows an optional's edges only when its value is present.
   A present value ALWAYS rides, its default included, through the inner kind
@@ -321,7 +321,7 @@ generated class per table and per map entry, each with its descriptor
   once, and a T made absent while it still holds a pointer writes no stale
   node.
 - **Optional arrays are the array framing behind presence.** `?[N]T`,
-  `?[..N]T` and `?[Min..N]T` over bool, the integers, bits and by-value tables
+  `?[..N]T` and `?[Min..N]T` over bool, the integers, bits, floats and by-value tables
   (the by-value `?[N]T` of a T that holds a pointer included) are carried by
   `kind_optional.py`, with `inner` "array" and the element's own descriptor in
   `elem`: an absent array (`None`) writes no field; a present list ALWAYS rides

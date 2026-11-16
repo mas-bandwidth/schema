@@ -9,8 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TestFramingRootFieldsInDeclarationOrder checks the known root-order cases
-// directly against the declaration, without decoding or re-encoding the file.
+// TestFramingRootFieldsInDeclarationOrder pins the chosen builders' own field
+// order. Variable readers may accept another writer's declaration order.
 func TestFramingRootFieldsInDeclarationOrder(t *testing.T) {
 	t.Parallel()
 	root := conformanceRoot(t)

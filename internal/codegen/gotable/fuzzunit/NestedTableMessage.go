@@ -13,7 +13,6 @@ package tabledemo
 import (
 	"encoding/binary"
 	"math"
-	"slices"
 	"unsafe"
 )
 
@@ -95,9 +94,12 @@ func ArchiveConfigSaveMessages(values []*ArchiveConfig, buffer []byte, report *T
 	return 2 + w.Bits/8
 }
 func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) bool {
+	var starts [6]uint64
+	return tableMessageBodyArchiveConfig(r, value, starts[:], 0)
+}
+func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	ArchiveConfigReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -114,11 +116,10 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xa354fd1ff0c467c5:
 			{
@@ -138,7 +139,7 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 				}
 				{
 					start := r.Bits.Offset
-					if !RootConfigLoadMessageBody(r, &value.Root) {
+					if !tableMessageBodyRootConfig(r, &value.Root, starts, depth+1) {
 						return false
 					}
 					if exact && r.Bits.Offset-start == r.Vocabulary.RefBits {

@@ -11,11 +11,21 @@ import (
 
 // Projection to a reader default does not prove the sender wrote a default.
 func TestGoBirthMessageChecksOriginalSpelling(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, writer, reader, text string
 		unknown                    int
 		foreign                    bool
 	}{
+		{"sender minimum differs", `package probe
+fixed table Root {items [..3]int8}`, `package probe
+fixed table Root {items [2..3]int8}`, `{"items":[0,0]}`, 0, false},
+		{"sender maximum differs", `package probe
+fixed table Root {items ?[2..4]int8}`, `package probe
+fixed table Root {items [2..3]int8}`, `{"items":[0,0]}`, 0, false},
+		{"sender element range differs", `package probe
+fixed table Root {items ?[2..3]int8 | min = -1, max = 5}`, `package probe
+fixed table Root {items [2..3]int8 | min = -2, max = 6}`, `{"items":[0,0]}`, 0, false},
 		{"enum", `package probe
 enum E {Known,Newer}
 fixed table Root {items [2..3]E}`, `package probe
@@ -51,7 +61,7 @@ fixed table Root {items [1..2]Child}`, `{"items":[{"added":7}]}`, 1, true},
 			}
 			probe := fmt.Sprintf(`package probe
 import "testing"
-func TestOriginalSpelling(t *testing.T){var storage [256]TableMessageEntry;var vocab TableVocabulary;vocab.Init(storage[:]);var report TableReport;if !AnnounceRead(&vocab,%#v,&report){t.Fatal(report)};vocab.BuildVersion=BuildVersion;var out [1]Root;if n,ok:=RootLoadMessages(out[:],&vocab,%#v,&report);!ok||n!=1||report.Unknown!=%d{t.Fatalf("projected default refused: n=%%d ok=%%v report=%%+v",n,ok,report)}}
+func TestOriginalSpelling(t *testing.T){t.Parallel();var storage [256]TableMessageEntry;var vocab TableVocabulary;vocab.Init(storage[:]);var report TableReport;if !AnnounceRead(&vocab,%#v,&report){t.Fatal(report)};vocab.BuildVersion=BuildVersion;var out [1]Root;if n,ok:=RootLoadMessages(out[:],&vocab,%#v,&report);!ok||n!=1||report.Unknown!=%d{t.Fatalf("projected default refused: n=%%d ok=%%v report=%%+v",n,ok,report)}}
 `, tablewire.Announce(u), wire, tc.unknown)
 			// Current message policy refuses unknown FIELDS in an own-build body;
 			// foreign records retain their sender's build, while enum values test

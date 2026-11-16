@@ -135,4 +135,5 @@ func pythonRefusePacketUnionArrays(u *ir.Unit) error {
 
 func init() {
 	registerBuiltin(pythonTarget{}, true, true, false, false)
+	wasRowTargets = append(wasRowTargets, "python")
 }
