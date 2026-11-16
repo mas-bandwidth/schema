@@ -599,8 +599,30 @@ defmodule Bench.TableMessage do
                 if is_float(lof) and is_float(hif) and is_float(resf) and lof < hif and resf > 0.0 do
                   delta = round_f32(hif - lof)
 
-                  if delta != :nonfinite and round_f32(delta / resf) != :nonfinite do
-                    {:ok, %{kind: kind, packing: 2, qmin: lof, qmax: hif, qres: resf}, rest2}
+                  if delta != :nonfinite do
+                    values = round_f32(delta / resf)
+
+                    if values != :nonfinite do
+                      # the step count and the index width derive from the
+                      # triple exactly as the packet wire derives them (SPEC.md
+                      # §4.3): the count clamps to [1, 2^32 - 256]
+                      values = if values < 1.0, do: 1.0, else: values
+                      values = if values > 4_294_967_040.0, do: 4_294_967_040.0, else: values
+                      count = ceil(values)
+
+                      {:ok,
+                       %{
+                         kind: kind,
+                         packing: 2,
+                         qmin: lof,
+                         qmax: hif,
+                         qres: resf,
+                         count: count,
+                         bits: bit_length(count)
+                       }, rest2}
+                    else
+                      :error
+                    end
                   else
                     :error
                   end
@@ -739,6 +761,20 @@ defmodule Bench.TableMessage do
       <<f::little-float-32>> = <<bits::little-32>>
       f
     end
+  end
+
+  # The compressed float's step-index arithmetic (docs/SPEC-TABLES.md §3.3,
+  # SPEC.md §4.3): the index a value takes, in float32 at every step, never
+  # fused, never widened. The announcement already held the triple to the
+  # packet wire's own rule, so an in-range value quantizes without overflow;
+  # the clamp to [0, 1] absorbs only the float32 rounding at the ends.
+  defp quantize(%{qmin: qmin, qmax: qmax, count: count}, value) do
+    delta = round_f32(qmax - qmin)
+    count32 = round_f32(count * 1.0)
+    normalized = round_f32(round_f32(value - qmin) / delta)
+    normalized = if normalized < 0.0, do: 0.0, else: normalized
+    normalized = if normalized > 1.0, do: 1.0, else: normalized
+    min(floor(round_f32(round_f32(normalized * count32) + 0.5)), count)
   end
 
   @batch_max 256
@@ -957,6 +993,18 @@ defmodule Bench.TableMessage do
 
   defp encode_float(%{packing: 0}, value, acc),
     do: {:ok, put_bits(acc, f32_to_bits(value), 32)}
+
+  # A QUANTIZED FLOAT RIDES ITS STEP INDEX (docs/SPEC-TABLES.md §3.3,
+  # SPEC.md §4.3): narrow to float32, refuse a value that overflows the width
+  # and a finite value outside [min, max] (invalid_value, refused whole), then
+  # quantize by the packet wire's rule, in float32 at every step.
+  defp encode_float(%{packing: 2} = shape, value, acc) do
+    case round_f32(value) do
+      :nonfinite -> throw(:non_finite_float)
+      v32 when v32 < shape.qmin or v32 > shape.qmax -> throw(:invalid_value)
+      v32 -> {:ok, put_bits(acc, quantize(shape, v32), shape.bits)}
+    end
+  end
 
   defp encode_float(_shape, _value, _acc), do: :error
 
