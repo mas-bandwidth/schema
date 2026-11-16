@@ -20,7 +20,14 @@ func TestCommittedSplitsRunEveryDeclaredTestExactlyOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	packages := map[string]bool{}
 	for pkg := range tb.splits {
+		packages[pkg] = true
+	}
+	for pkg := range tb.subsplits {
+		packages[pkg] = true
+	}
+	for pkg := range packages {
 		t.Run(pkg, func(t *testing.T) {
 			t.Parallel()
 			rows := plan(tb, []string{pkg}, true, 60)
@@ -47,8 +54,21 @@ func TestCommittedSplitsRunEveryDeclaredTestExactlyOnce(t *testing.T) {
 							matches[i]++
 						}
 					}
-					if selected != 1 {
-						t.Errorf("%s is selected by %d rows, want exactly one", fn.Name.Name, selected)
+					want := 1
+					parent := ""
+					for _, sub := range tb.subsplits[pkg] {
+						if regexp.MustCompile(sub.parent).MatchString(fn.Name.Name) {
+							if parent != "" && parent != sub.parent {
+								t.Fatalf("%s has overlapping parent groups", fn.Name.Name)
+							}
+							parent = sub.parent
+							want++
+						}
+					}
+					// Subdivided parents run to discover children in each
+					// child row and its complement; leaves run exactly once.
+					if selected != want {
+						t.Errorf("%s is selected by %d rows, want %d", fn.Name.Name, selected, want)
 					}
 				}
 			}
@@ -161,14 +181,38 @@ func TestTheTableParses(t *testing.T) {
 			t.Fatalf("split package %s does not exist: %v", p, err)
 		}
 	}
+	for p, subs := range tb.subsplits {
+		for _, sub := range subs {
+			for _, pat := range []string{sub.parent, sub.child} {
+				if pat == "" || strings.Contains(pat, "/") {
+					t.Fatalf("%s: subsplit pattern %q must name one nonempty hierarchy level", p, pat)
+				}
+				if _, err := regexp.Compile(pat); err != nil {
+					t.Fatalf("%s: subsplit %q: %v", p, pat, err)
+				}
+			}
+		}
+		if _, err := os.Stat(filepath.Join("..", "..", strings.TrimPrefix(p, "./"))); err != nil {
+			t.Fatalf("subsplit package %s does not exist: %v", p, err)
+		}
+	}
 }
 
 func selects(t *testing.T, r Row, name string) bool {
 	t.Helper()
-	if r.Run != "" && !regexp.MustCompile(r.Run).MatchString(name) {
+	match := func(pattern string) (bool, bool) {
+		pats, names := strings.Split(pattern, "/"), strings.Split(name, "/")
+		for i := 0; i < len(pats) && i < len(names); i++ {
+			if !regexp.MustCompile(pats[i]).MatchString(names[i]) {
+				return false, false
+			}
+		}
+		return true, len(pats) > len(names)
+	}
+	if ok, _ := match(r.Run); r.Run != "" && !ok {
 		return false
 	}
-	if r.Skip != "" && regexp.MustCompile(r.Skip).MatchString(name) {
+	if ok, partial := match(r.Skip); r.Skip != "" && ok && !partial {
 		return false
 	}
 	return true

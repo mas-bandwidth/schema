@@ -816,6 +816,8 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) bool {
 		if count > uint64(f.Type.Size) {
 			return r.refuseField(ReasonLengthOverBound, f)
 		}
+	case f.Array == ir.ArrayCounted && count < uint64(f.ArrayMin):
+		return r.refuseField(ReasonCountOverBound, f)
 	case f.Array != ir.ArrayList && count > uint64(f.ArrayBound):
 		return r.refuseField(ReasonCountOverBound, f)
 	}
