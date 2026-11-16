@@ -1387,6 +1387,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"python-leg.yml:fixed-corpus",
 		"python-leg.yml:plan",
 		"python-leg.yml:test",
+		"python-leg.yml:test-second",
 		"release.yml:release",
 		"roadmap.yml:page",
 		"roadmap.yml:roadmap",
