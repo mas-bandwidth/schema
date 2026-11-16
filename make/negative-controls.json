@@ -1563,6 +1563,13 @@
       "rust": "stable"
     },
     {
+      "name": "rust-unused-ids",
+      "when": "pull-request",
+      "why": "Native unused-ID census proofs include all reference sites, bounded union depth, standalone diagnostics and two omission controls.",
+      "targets": ["tables-rust-unused-ids-negative-control"],
+      "rust": "stable"
+    },
+    {
       "name": "rust-conformance-absent",
       "when": "pull-request",
       "why": "the Rust per-case absence control (docs/PORTING.md I4), split from rust-conformance-framing: that group ran 213-224 s on AWS runners (main CI full 43635368439, 43640159584) against the 2-minute per-commit rule. One cargo build of the sabotaged driver.",
