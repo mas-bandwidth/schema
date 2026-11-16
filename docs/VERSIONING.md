@@ -888,8 +888,8 @@ the compatibility rules do.
   payload encoding itself is unchanged by this amendment. `ProjectionVersion`
   remains 3, `BuildVersionForm` remains 5, and fixed file form remains 3.
   This must ship in an announced minor (or an already planned major), never a
-  patch. The newest locally recorded release at preparation was v2.5.0; this
-  note does not assign or publish a release tag. The release operator must
+  patch. This amendment does not assign or publish a release tag. The release
+  operator must
   verify the then-current tags before choosing the release number.
   Lock rendering 9 preserves historical entries and adds the new own identity;
   validated legacy writer snapshots select their recorded digest scheme.

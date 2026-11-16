@@ -59,7 +59,7 @@ representation cannot express a cycle**, and there is no cycle rule to write.
 as a text kind; `string(N)` (`12`) is the only text kind in a layout. **The hash** is
 `h := 0xcbf29ce484222325; for each byte v: h ^= v; h *= 0x100000001b3` over the layout's bytes as written,
 **the 4-byte count included**, and then over the DEFINITIONS DIGEST (§5.2) — the facts a range, a `bits(N)`, a
-`fixed(I,F)` split or a `flags` bit count states and the layout's sizes do not, which never ride the wire. An
+`fixed(I,F)` split or a `flags` bit count states and the layout's sizes do not, which never ride the wire. A
 legacy empty digest leaves the hash the layout's alone; prospective v2 roots always include their identity prefix (§5.2). It is a wire identity, never a security claim (fix 8). **The closed
 kind set is `1..30`, `32`, `35`** — `31` (§3's framing escape), `33` (retired) and `34` (reserved) are not in it, and a
 kind outside it names a form this reader never saw: `REFUSE layout_kind_unknown`, never stepped over.
