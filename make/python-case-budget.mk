@@ -19,4 +19,4 @@ python-pointer-arrays-deep-floor: python-toolchain-check
 	SCHEMA_SLOW=1 SCHEMA_PYTHON_POINTER_ARRAY_PHASE=deep go test -v -count=1 -timeout 120s -tags schema_leg_python -run '^TestPythonVtPointerArrays$$/deep$$/floor$$' ./internal/codegen/pythontable
 python-pointer-arrays-typing: python-toolchain-check
 	SCHEMA_SLOW=1 SCHEMA_PYTHON_POINTER_ARRAY_PHASE=typing go test -v -count=1 -timeout 120s -tags schema_leg_python -run '^TestPythonVtPointerArrays$$/typing$$' ./internal/codegen/pythontable
-test-python: python-array-widening python-pointer-array-phases
+test-python: python-array-widening-0 python-array-widening-1 python-array-widening-2 python-pointer-arrays-functional python-pointer-arrays-deep-current python-pointer-arrays-deep-floor python-pointer-arrays-typing
