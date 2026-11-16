@@ -84,7 +84,6 @@ print("ok")
 func TestPythonDriverRefusesUnsupportedListElements(t *testing.T) {
 	for _, src := range []string{
 		"package p\ntable Node { value int32 }\ntable Root { nodes []*Node }\n",
-		"package p\nenum E { One, Two }\ntable Root { values []E }\n",
 	} {
 		_, err := New().Generate(unitFromSource(t, src), "python", nil)
 		if err == nil || !strings.Contains(err.Error(), "unbounded array element") {

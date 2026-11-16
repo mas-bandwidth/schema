@@ -63,7 +63,7 @@ _UNSIGNED_CODE = {1: "B", 2: "H", 4: "I", 8: "Q"}
 
 def _element_kind_allowed(kind: int) -> bool:
     """The array element kinds are closed (docs/SPEC-TABLES.md §3, §4)."""
-    return 1 <= kind <= 13 or kind == 15 or kind == 17 or 18 <= kind <= 30
+    return 1 <= kind <= 13 or kind == 15 or kind == 17 or 18 <= kind <= 30 or kind == 36
 
 
 def _check_count(path: str, count: int, cap: int = _MAX_COUNT) -> None:

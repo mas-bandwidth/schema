@@ -66,9 +66,13 @@ func pythonRefuseUnsupportedLists(u *ir.Unit) error {
 			carried := !f.Type.Pointer && !f.Type.Optional
 			if carried {
 				switch f.Type.Kind {
-				case ir.TBool, ir.TInt:
+				case ir.TBool, ir.TInt, ir.TFixed, ir.TBits, ir.TFloat32, ir.TFloat64:
 				case ir.TNamed:
-					_, carried = f.Type.Ref.(*ir.Struct)
+					switch f.Type.Ref.(type) {
+					case *ir.Struct, *ir.Enum, *ir.Flags, *ir.Union:
+					default:
+						carried = false
+					}
 				default:
 					carried = false
 				}

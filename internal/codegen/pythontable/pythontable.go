@@ -1336,10 +1336,18 @@ func elementCodecOf(f *ir.Field) string {
 		return "bool"
 	case ir.TInt, ir.TFixed, ir.TBits:
 		return "int"
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
 	case ir.TNamed:
-		if _, ok := f.Type.Ref.(*ir.Struct); ok {
-			// a table or a packet type by value: both ride a kind-13 body
+		switch f.Type.Ref.(type) {
+		case *ir.Struct:
 			return "table"
+		case *ir.Enum:
+			return "enum"
+		case *ir.Flags:
+			return "int"
 		}
 	}
 	return "unsupported"
