@@ -88,6 +88,14 @@ assert bad != data
 try: Root.load(bad)
 except Refused: pass
 else: raise AssertionError("nonfinite read accepted")
+bad_range=data.replace(struct.pack("<f",0.5),struct.pack("<f",2.0),1)
+assert bad_range != data
+try: Root.load(bad_range)
+except Refused: pass
+else: raise AssertionError("compressed read accepted")
+try: Root.load(data[:-1])
+except Refused: pass
+else: raise AssertionError("truncated read accepted")
 v.value.f=float("nan")
 try: v.save()
 except InvalidValue: pass
@@ -135,6 +143,7 @@ func TestPythonHostedFloatNegativeControls(t *testing.T) {
 		{"read-nonfinite", "if not math.isfinite(value):\n            raise Refused", "if False:\n            raise Refused"},
 		{"write-nonfinite", "if not math.isfinite(value):\n            raise InvalidValue", "if False:\n            raise InvalidValue"},
 		{"write-range", "if fd.float_range and (stored < fd.fmin or stored > fd.fmax):", "if False:"},
+		{"read-range", "if value < fd.fmin or value > fd.fmax:", "if False:"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cloned := maps.Clone(files)
