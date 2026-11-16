@@ -99,7 +99,7 @@ $(LUA_LUACHECK_CONFIG): make/schema-lua-generated-luacheck-gate.mk
 # generate the corpus exactly as the other legs generate theirs: one directory
 # (or one schema file) per unit, a refusal kept by name in <unit>.refused, and
 # the count printed. A refused unit is not checked, and it says so.
-$(LUA_LUACHECK_CORPUS)/.stamp: bin/schema make/schema-lua-generated-luacheck-gate.mk $(LUA_LUACHECK_UNITS) $(LUA_LUACHECK_SOURCES)
+$(LUA_LUACHECK_CORPUS)/.stamp: bin/schema make/schema-lua-generated-luacheck-gate.mk tools/lua-luacheck-dedupe.py $(LUA_LUACHECK_UNITS) $(LUA_LUACHECK_SOURCES)
 	@rm -rf $(LUA_LUACHECK_CORPUS) && mkdir -p $(LUA_LUACHECK_CORPUS)
 	@set -e; ok=0; refused=0; \
 	for u in $(LUA_LUACHECK_UNITS) $(LUA_LUACHECK_GROUPS); do \
@@ -115,16 +115,9 @@ $(LUA_LUACHECK_CORPUS)/.stamp: bin/schema make/schema-lua-generated-luacheck-gat
 		fi; \
 	done; \
 	echo "luacheck-lua corpus: $$ok units generated, $$refused refused by name"
-	@mkdir -p $(LUA_LUACHECK_CORPUS)/unique; \
-	seen=$(LUA_LUACHECK_CORPUS)/.seen; : > $$seen; n=0; \
-	for f in $$(find $(LUA_LUACHECK_CORPUS) -name '*.lua' | sort); do \
-		h=$$(sha256sum "$$f" | cut -d' ' -f1); \
-		if grep -qx "$$h" $$seen; then continue; fi; \
-		echo "$$h" >> $$seen; n=$$((n + 1)); \
-		cp "$$f" "$(LUA_LUACHECK_CORPUS)/unique/$$n-$$(basename $$f)"; \
-	done; \
-	rm -f $$seen; \
-	echo "luacheck-lua corpus: $$n distinct files (the runtime repeats in every unit and is checked once)"
+	@mkdir -p $(LUA_LUACHECK_CORPUS)/unique
+	@find $(LUA_LUACHECK_CORPUS) -name '*.lua' -print0 | sort -z | \
+		python3 tools/lua-luacheck-dedupe.py $(LUA_LUACHECK_CORPUS)/unique
 	@touch $@
 
 # THE GATE. One run over the whole generated corpus and the runtime emitted
