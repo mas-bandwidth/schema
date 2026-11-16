@@ -221,6 +221,9 @@ def _write_retain(w: Any, fd: FieldDesc, elem: FieldDesc, values: list[Any], ctx
                 _rollback(ctx, ids_slot)
                 w.truncate(start_slot)
                 continue
+        elif elem.codec == "enum":
+            codec = cast(kinds._ElementKind, kinds._REGISTRY[elem.codec])
+            codec.write_element(w, elem, current, ctx)
         else:
             _write_scalar(w, elem, current)
         w.finish_frame(element_frame)

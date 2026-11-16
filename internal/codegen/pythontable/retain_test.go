@@ -1412,3 +1412,52 @@ print('retained-growth')
 		}
 	}
 }
+
+func TestPythonRetainKeyedEnum(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+enum Slot { A, B }
+enum Grade { Low, High }
+table Root { grades [Slot]Grade }
+`
+	u := loadUnit(t, schema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	field := w.ref("grades")
+	a := w.ref("A")
+	low := w.ref("Low")
+	b := w.ref("B")
+	future := w.ref("Future")
+	body := unionCat([]byte{30, 2}, a, unionLeb(uint64(len(low))), low, b, unionLeb(uint64(len(future))), future)
+	wire := w.file(unionCat(field, []byte{16}, unionLeb(uint64(len(body))), body))
+	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+with open('wire','rb') as f: wire=f.read()
+keep=TableRetain(bytearray(1024),bytearray(24*8)); report=LoadReport()
+value=Root.load_retain(wire,keep,report)
+assert (report.unknown,report.retained,report.retain_lost)==(1,0,1), (report.unknown,report.retained,report.retain_lost)
+saved=value.save_retain(keep,report)
+assert report.retain_lost==1
+assert Root.load(saved)==value
+with open('saved','wb') as f: f.write(saved)
+print('keyed-enum-retain')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "keyed-enum-retain" {
+			t.Fatalf("keyed enum retain: %v\n%s\n%s", err, out, stderr)
+		}
+		saved, err := os.ReadFile(filepath.Join(dir, "saved"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if verdict := unionEngineVerdict(t, u, saved); !strings.HasPrefix(verdict, "read 0 ") {
+			t.Fatalf("Go engine rejected retained keyed enum: %s", verdict)
+		}
+	}
+}
