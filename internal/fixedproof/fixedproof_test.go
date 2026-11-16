@@ -21,7 +21,9 @@ import (
 // the Form 3 envelope and the lineage entries, and never runs the C++ oracle,
 // a target interpreter or a clock.
 type stubEvoRunner struct {
-	ignoreCap bool
+	ignoreCap        bool
+	ignoreDefaultCap bool
+	ignoreDead       bool
 }
 
 func (s stubEvoRunner) Name() string { return "stub" }
@@ -201,6 +203,9 @@ func (s stubEvoRunner) loadLineage(t *testing.T, u *ir.Unit, root string, lineag
 		return -1, "leg_diagnostic_ragged", nil, nil
 	}
 	nRec := rest / recSize
+	if cap < 0 && !s.ignoreDefaultCap {
+		cap = 4096
+	}
 	if !s.ignoreCap && cap >= 0 && nRec > cap {
 		return -1, "leg_diagnostic_caller_cap", nil, nil
 	}
@@ -235,9 +240,26 @@ func (s stubEvoRunner) loadLineage(t *testing.T, u *ir.Unit, root string, lineag
 		fields["r0.opt_present"] = "false"
 	}
 	if root == "T" && recSize == 8+13 {
-		fields["r0.arr_count"] = "1"
-		fields["r0.arr[0]"] = "1"
-		fields["r0.opt_present"] = "false"
+		body := wireBytes[20+layoutLen+8:][:13]
+		count := int(binary.LittleEndian.Uint32(body))
+		if count < 0 || count > 3 {
+			return -1, "leg_diagnostic_count", nil, nil
+		}
+		if !s.ignoreDead {
+			for _, v := range body[4+count : 7] {
+				if v != 0 {
+					return -1, "leg_diagnostic_dead_array", nil, nil
+				}
+			}
+			if body[7] == 0 && body[8] != 0 {
+				return -1, "leg_diagnostic_dead_optional", nil, nil
+			}
+		}
+		fields["r0.arr_count"] = strconv.Itoa(count)
+		for i := range count {
+			fields[fmt.Sprintf("r0.arr[%d]", i)] = strconv.Itoa(int(body[4+i]))
+		}
+		fields["r0.opt_present"] = strconv.FormatBool(body[7] != 0)
 		fields["r0.tail"] = "77"
 	}
 	if root == "T" && recSize == 8+10 {
@@ -424,4 +446,31 @@ func TestEvolutionSuiteVerdictAndCallerCapacity(t *testing.T) {
 	t.Parallel()
 	checkMemoryCeilingOverlap(t)
 	RunEvolutionSuite(t, "../..", stubEvoRunner{})
+}
+
+// TestEvolutionContractNegativeControlFunctional runs the real row assertions
+// against a reader adapter with one planted fault, in a child test process.
+// Both faults must be detected by the corresponding row's own assertion.
+func TestEvolutionContractNegativeControlFunctional(t *testing.T) {
+	t.Parallel()
+	if fault := os.Getenv("SCHEMA_FIXEDPROOF_CONTRACT_FAULT"); fault != "" {
+		runner := stubEvoRunner{ignoreDefaultCap: fault == "capacity", ignoreDead: fault == "dead"}
+		row := "batch-capacity"
+		if fault == "dead" {
+			row = "live-extents"
+		}
+		RunEvolutionRows(t, "../..", runner, row)
+		return
+	}
+	for _, c := range []struct{ fault, marker string }{
+		{"capacity", "4097 records with no capacity"},
+		{"dead", "nonzero counted-array dead bytes"},
+	} {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestEvolutionContractNegativeControlFunctional$", "-test.count=1")
+		cmd.Env = append(os.Environ(), "SCHEMA_FIXEDPROOF_CONTRACT_FAULT="+c.fault)
+		out, err := cmd.CombinedOutput()
+		if err == nil || !bytes.Contains(out, []byte(c.marker)) {
+			t.Fatalf("%s fault did not fail its named row: %v\n%s", c.fault, err, out)
+		}
+	}
 }

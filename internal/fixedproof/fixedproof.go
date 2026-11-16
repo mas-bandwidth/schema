@@ -1938,7 +1938,8 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 			{"the room exactly", three, 3, 3},
 			{"no capacity", three, -1, 3},
 			{"the bad hash in the room", badLast, 3, -1},
-			{"4097 records with no capacity", four097, -1, 4097},
+			{"4097 records with no capacity", four097, -1, -1},
+			{"4097 records in caller-set capacity", four097, 4097, 4097},
 			{"4097 records past 4096 capacity", four097, 4096, -1},
 		} {
 			n, reason, _, _ := zeroLoad(t, runner, u, "Point", lin, c.file, c.capacity)
@@ -2480,14 +2481,38 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 		if why != "" {
 			t.Fatalf("save live_extents_base failed: %s", why)
 		}
+		if len(file) < 13 {
+			t.Fatal("live-extents fixture has no complete record body")
+		}
 		body := len(file) - 13
-		file[body+5] = 99
-		file[body+6] = 99
-		file[body+8] = 99
 		eOwn, _ := LineageEntryOf(u, "T")
-		n, r, f, _ := zeroLoad(t, runner, u, "T", map[string][]LineageEntry{"T": {eOwn}}, file, -1)
-		if n != 1 || f["r0.arr_count"] != "1" || f["r0.arr[0]"] != "1" || f["r0.tail"] != "77" || !booleanFieldMatches(f["r0.opt_present"], false) {
-			t.Errorf("C14/W4: n=%d r=%q fields=%v", n, r, f)
+		lineage := map[string][]LineageEntry{"T": {eOwn}}
+		n, r, f, resaved := zeroLoad(t, runner, u, "T", lineage, file, -1)
+		if n != 1 || f["r0.arr_count"] != "1" || f["r0.arr[0]"] != "1" || f["r0.tail"] != "77" || !booleanFieldMatches(f["r0.opt_present"], false) || !bytes.Equal(resaved, file) {
+			t.Errorf("C14/W4 clean image: n=%d r=%q fields=%v", n, r, f)
+		}
+		live := bytes.Clone(file)
+		binary.LittleEndian.PutUint32(live[body:], 2)
+		live[body+5] = 2
+		if n, r, f, _ := zeroLoad(t, runner, u, "T", lineage, live, -1); n != 1 || f["r0.arr_count"] != "2" || f["r0.arr[1]"] != "2" {
+			t.Errorf("C14/W4 live second slot: n=%d r=%q fields=%v", n, r, f)
+		}
+		// Dead bytes are zero, not another unchecked value extent. Check
+		// counted-array slack and the absent optional independently.
+		for _, c := range []struct {
+			name    string
+			offsets []int
+		}{
+			{"nonzero counted-array dead bytes", []int{body + 5, body + 6}},
+			{"nonzero absent-optional dead bytes", []int{body + 8}},
+		} {
+			stained := bytes.Clone(file)
+			for _, at := range c.offsets {
+				stained[at] = 99
+			}
+			if n, r, _, _ := zeroLoad(t, runner, u, "T", lineage, stained, -1); n != -1 {
+				t.Errorf("C14/W4 %s: n=%d r=%q, want refusal", c.name, n, r)
+			}
 		}
 		corpus, _ := findFixedCorpus(t, repoRoot)
 		older := LoadRepoUnit(t, repoRoot, "test/tables/VOLD_field_append.schema")
