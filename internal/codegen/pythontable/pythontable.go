@@ -84,6 +84,9 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]
 		out[path.Join(u.Package, plan.base+".py")] = []byte(emitModule(u, plan, blocks, surfaces))
 	}
 	out[path.Join(u.Package, "__init__.py")] = []byte(packageInit(u, plans, surfaces))
+	if message := messageModule(u); surfaces.Message && message != "" {
+		out[path.Join(u.Package, RuntimeDir, "_message_unit.py")] = []byte(message)
+	}
 	out[path.Join(u.Package, "py.typed")] = []byte{}
 	runtime, err := Runtime()
 	if err != nil {
@@ -1615,7 +1618,6 @@ func packageInit(u *ir.Unit, plans []*filePlan, surfaces Surfaces) string {
 	if surfaces.Fixed {
 		names = append(names, "FixedLoadReport")
 	}
-
 	for _, plan := range plans {
 		// A class or union in this module already occupies the public name.
 		// Its import below loads the module and preserves the public value.
@@ -1661,6 +1663,22 @@ func packageInit(u *ir.Unit, plans []*filePlan, surfaces Surfaces) string {
 				names = append(names, valueDeclName(d))
 			}
 			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(values, ", "))
+		}
+	}
+	if surfaces.Message && messageModule(u) != "" {
+		alias := "_unit_message"
+		for slices.Contains(names, alias) {
+			alias += "_"
+		}
+		fmt.Fprintf(&b, "from ._schema import _message_unit as %s\n", alias)
+		for _, name := range []string{"ANNOUNCEMENT", "BuildVersionMismatch", "MessageVocabulary", "announce_read", "load_messages", "measure_messages", "save_messages"} {
+			// A schema export keeps its existing public binding. The complete
+			// message API remains available through _schema._message_unit.
+			if slices.Contains(names, name) {
+				continue
+			}
+			fmt.Fprintf(&b, "from ._schema._message_unit import %s as %s\n", name, name)
+			names = append(names, name)
 		}
 	}
 	if surfaces.Fixed {
