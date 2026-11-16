@@ -237,3 +237,151 @@ print('captured')
 		}
 	}
 }
+
+func TestPythonRetainPathIndex(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
+	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `import sys
+from probe._schema.retain import TableRetain
+keep=TableRetain(bytearray(262144),[])
+steps=[0]
+def trace(frame,event,arg):
+    if event=='call' and frame.f_code.co_name in ('_bit','_query_bit'):
+        steps[0]+=1
+    return trace
+sys.settrace(trace)
+for index in range(1000):
+    before=steps[0]
+    assert keep.capture(1,((index,0),),1000+index,4,memoryview(bytes([1,2,3,4])),[])
+    assert steps[0]-before <= 128
+for index in range(1000):
+    before=steps[0]
+    row=list(keep.records_at(1,((index,0),)))
+    assert len(row)==1 and row[0][0]==1000+index and bytes(row[0][2])==bytes([1,2,3,4])
+    assert steps[0]-before <= 128
+sys.settrace(None)
+assert list(keep.records_at(1,((1001,0),)))==[]
+assert keep.capture(1,((7,0),),9999,4,memoryview(bytes([9,8,7,6])),[])
+assert [r[0] for r in keep.records_at(1,((7,0),))]==[1007,9999]
+first=TableRetain(bytearray(1024),[])
+assert first.capture(1,((0,0),),7,4,memoryview(bytes([1,2,3,4])),[])
+small=TableRetain(bytearray(first.used+35),[])
+assert small.capture(1,((0,0),),7,4,memoryview(bytes([1,2,3,4])),[])
+before=small.used
+assert not small.capture(1,((1,0),),8,4,memoryview(bytes([1,2,3,4])),[])
+assert small.used==before and [r[0] for r in small.records_at(1,((0,0),))]==[7]
+print('path-index')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err != nil || strings.TrimSpace(out) != "path-index" {
+			t.Fatalf("path index: %v\n%s\n%s", err, out, stderr)
+		}
+		if output, err := pyrun.Analyze(t, dir, "probe/_schema"); err != nil {
+			t.Fatalf("mypy: %v\n%s", err, output)
+		}
+	}
+}
+
+func TestPythonRetainPathIndexNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const path = "probe/_schema/retain.py"
+	const anchor = "            self._set_word(data, last + 5, start + 1)\n"
+	if strings.Count(string(files[path]), anchor) != 1 {
+		t.Fatal("path index control anchor changed")
+	}
+	files[path] = []byte(strings.Replace(string(files[path]), anchor, "            pass\n", 1))
+	script := pyrun.ImportPrelude + `from probe._schema.retain import TableRetain
+keep=TableRetain(bytearray(1024),[])
+for identity in (7,8): assert keep.capture(1,((0,0),),identity,4,memoryview(bytes([1,2,3,4])),[])
+if [r[0] for r in keep.records_at(1,((0,0),))] != [7,8]: raise SystemExit('retain_path_link_control')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err == nil || !strings.Contains(stderr, "retain_path_link_control") {
+			t.Fatalf("path link sabotage not detected by name: %v\n%s", err, stderr)
+		}
+	}
+}
+
+func TestPythonRetainTail(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
+	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `from probe._schema.retain import TableRetain
+from probe._schema.save import Ctx, Writer
+keep=TableRetain(bytearray(1024),[None]*2)
+assert keep.capture(1,(),0xabc,30,memoryview(bytes([1])),[0x111])
+assert keep.capture(1,((1,0),),0xdef,4,memoryview(bytes([1,2,3,4])),[])
+def perform(output):
+    keep.begin_save(); ctx=Ctx(); writer=Writer(output)
+    lost=keep.write_tail(1,(),frozenset(),ctx,writer)
+    lost+=keep.write_tail(1,((1,0),),frozenset(),ctx,writer)
+    lost+=keep.unplaced()
+    return writer.count,lost,ctx.ids
+size,lost,ids=perform(None)
+output=bytearray(); actual,again,ids2=perform(output)
+assert size==actual==len(output)==3 and lost==again==1
+assert ids==ids2==[0xabc,0x111] and bytes(output)==bytes([1,30,2])
+keep.begin_save(); ctx=Ctx(); writer=Writer(bytearray())
+assert keep.write_tail(1,(),frozenset(),ctx,writer)==0 and keep.unplaced()==1
+print('tail')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err != nil || strings.TrimSpace(out) != "tail" {
+			t.Fatalf("tail: %v\n%s\n%s", err, out, stderr)
+		}
+		if output, err := pyrun.Analyze(t, dir, "probe/_schema"); err != nil {
+			t.Fatalf("mypy: %v\n%s", err, output)
+		}
+	}
+}
+
+func TestPythonRetainTailNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const path = "probe/_schema/retain.py"
+	const anchor = "            self.storage[record + 4] |= 0x80\n"
+	if strings.Count(string(files[path]), anchor) != 1 {
+		t.Fatal("placement control anchor changed")
+	}
+	files[path] = []byte(strings.Replace(string(files[path]), anchor, "            pass\n", 1))
+	script := pyrun.ImportPrelude + `from probe._schema.retain import TableRetain
+from probe._schema.save import Ctx, Writer
+keep=TableRetain(bytearray(128),[None]*2)
+assert keep.capture(1,(),0xabc,4,memoryview(bytes([1,2,3,4])),[])
+keep.begin_save(); keep.write_tail(1,(),frozenset(),Ctx(),Writer(bytearray()))
+if keep.unplaced()!=0: raise SystemExit('retain_placement_control')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err == nil || !strings.Contains(stderr, "retain_placement_control") {
+			t.Fatalf("placement sabotage not detected by name: %v\n%s", err, stderr)
+		}
+	}
+}

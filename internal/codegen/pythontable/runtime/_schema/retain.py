@@ -262,13 +262,14 @@ def emit_payload(kind: int, resolved: memoryview, intern: Any, destination: memo
 
 
 class TableRetain:
-    """Caller-owned record bytes and retained-id slots for one loaded value.
+    """Caller-owned records, a bounded path index, and retained-id slots.
 
-    Both stores have fixed capacity. A failed capture rolls back its entire
-    record; a later load clears the used lengths, not the caller's buffers.
+    Index nodes and links occupy the same fixed bytearray as the records. A
+    Patricia walk tests at most one bit per key bit; no map or second retained
+    data store grows with the number of records.
     """
 
-    __slots__ = ("storage", "ids", "used", "id_used")
+    __slots__ = ("storage", "ids", "used", "id_used", "root")
 
     def __init__(self, storage: bytearray, ids: list[tuple[int, int] | None]) -> None:
         if type(storage) is not bytearray or type(ids) is not list:
@@ -277,10 +278,65 @@ class TableRetain:
         self.ids = ids
         self.used = 0
         self.id_used = 0
+        self.root = 0  # offsets are stored plus one, so zero is null
 
     def reset(self) -> None:
         self.used = 0
         self.id_used = 0
+        self.root = 0
+
+    @staticmethod
+    def _word(data: memoryview, at: int) -> int:
+        return int.from_bytes(data[at:at + 4], "little")
+
+    @staticmethod
+    def _set_word(data: memoryview, at: int, value: int) -> None:
+        data[at:at + 4] = value.to_bytes(4, "little")
+
+    @staticmethod
+    def _key_end(data: memoryview, record: int) -> int:
+        return record + 17 + 8 * TableRetain._word(data, record + 13)
+
+    @staticmethod
+    def _bit(data: memoryview, record: int, bit: int) -> int:
+        at = record + 9 + bit // 8
+        if at >= TableRetain._key_end(data, record):
+            return 0
+        return (int(data[at]) >> (bit % 8)) & 1
+
+    @staticmethod
+    def _first_difference(data: memoryview, left: int, right: int) -> int | None:
+        a = left + 9
+        b = right + 9
+        a_end = TableRetain._key_end(data, left)
+        b_end = TableRetain._key_end(data, right)
+        if a_end - a != b_end - b:
+            # Depth is encoded in the first eight bytes, so distinct lengths
+            # necessarily differ before either key ends.
+            limit = min(a_end - a, b_end - b)
+        else:
+            limit = a_end - a
+        for offset in range(limit):
+            changed = int(data[a + offset]) ^ int(data[b + offset])
+            if changed:
+                return offset * 8 + (changed & -changed).bit_length() - 1
+        if a_end - a != b_end - b:
+            raise ValueError("invalid retained path key")
+        return None
+
+    def _leaf(self, data: memoryview, record: int) -> int:
+        pointer = self.root
+        while pointer:
+            at = pointer - 1
+            tag = int(data[at + 4])
+            if tag == 2:
+                return at
+            if tag != 3:
+                raise ValueError("corrupt retained path index")
+            bit = self._word(data, at + 5)
+            side = self._bit(data, record, bit)
+            pointer = self._word(data, at + 9 + side * 4)
+        return -1
 
     def capture(self, node: int, steps: tuple[tuple[int, int], ...], identity: int, kind: int, payload: memoryview, ids: list[int]) -> bool:
         """Attempt one complete, already-validated field; False loses one field."""
@@ -290,6 +346,8 @@ class TableRetain:
         sink = _Sink(memoryview(self.storage), start)
         try:
             sink.u32(0)  # record bytes following this word
+            sink.byte(1)  # record, followed by next record at the same path
+            sink.u32(0)
             sink.u32(node)
             sink.u32(len(steps))
             for ordinal, index in steps:
@@ -303,34 +361,176 @@ class TableRetain:
             sink.u32(0)
             body_at = sink.pos
             end = resolve_payload(kind, payload, ids, memoryview(self.storage), body_at)
-            sink.data[length_at:length_at + 4] = (end - body_at).to_bytes(4, "little")
-            sink.data[start:start + 4] = (end - start - 4).to_bytes(4, "little")
+            sink.pos = end
+            data = sink.data
+            leaf = self._leaf(data, start)
+            difference = None if leaf < 0 else self._first_difference(data, start, self._word(data, leaf + 5) - 1)
+            new_leaf = -1
+            new_branch = -1
+            if leaf < 0 or difference is not None:
+                new_leaf = sink.pos
+                sink.u32(13)
+                sink.byte(2)
+                sink.u32(start + 1)
+                sink.u32(start + 1)
+                sink.u32(0)
+                if difference is not None:
+                    new_branch = sink.pos
+                    sink.u32(13)
+                    sink.byte(3)
+                    sink.u32(difference)
+                    sink.u32(0)
+                    sink.u32(0)
         except (Capacity, Excluded):
             return False
-        self.used = end
+        self._set_word(data, length_at, end - body_at)
+        self._set_word(data, start, end - start - 4)
+        if leaf < 0:
+            self.root = new_leaf + 1
+        elif difference is None:
+            last = self._word(data, leaf + 9) - 1
+            self._set_word(data, last + 5, start + 1)
+            self._set_word(data, leaf + 9, start + 1)
+        else:
+            pointer = self.root
+            parent = -1
+            parent_side = 0
+            while pointer:
+                at = pointer - 1
+                if int(data[at + 4]) != 3 or self._word(data, at + 5) >= difference:
+                    break
+                parent = at
+                parent_side = self._bit(data, start, self._word(data, at + 5))
+                pointer = self._word(data, at + 9 + parent_side * 4)
+            side = self._bit(data, start, difference)
+            self._set_word(data, new_branch + 9 + side * 4, new_leaf + 1)
+            self._set_word(data, new_branch + 9 + (1 - side) * 4, pointer)
+            if parent < 0:
+                self.root = new_branch + 1
+            else:
+                self._set_word(data, parent + 9 + parent_side * 4, new_branch + 1)
+        self.used = sink.pos
         return True
+
+    @staticmethod
+    def _query_bit(node: int, steps: tuple[tuple[int, int], ...], bit: int) -> int:
+        word = bit // 32
+        if word == 0:
+            value = node
+        elif word == 1:
+            value = len(steps)
+        else:
+            pair = (word - 2) // 2
+            if pair >= len(steps):
+                return 0
+            value = steps[pair][(word - 2) % 2]
+        return (value >> (bit % 32)) & 1
+
+    def records_at(self, node: int, steps: tuple[tuple[int, int], ...]) -> Any:
+        """Yield one body's retained fields in capture order without a heap index."""
+        data = memoryview(self.storage)
+        pointer = self.root
+        while pointer:
+            at = pointer - 1
+            tag = int(data[at + 4])
+            if tag == 2:
+                break
+            if tag != 3:
+                raise ValueError("corrupt retained path index")
+            bit = self._word(data, at + 5)
+            side = self._query_bit(node, steps, bit)
+            pointer = self._word(data, at + 9 + side * 4)
+        if not pointer:
+            return
+        leaf = pointer - 1
+        pointer = self._word(data, leaf + 5)
+        record = pointer - 1
+        if self._word(data, record + 9) != node or self._word(data, record + 13) != len(steps):
+            return
+        cursor = record + 17
+        for ordinal, index in steps:
+            if self._word(data, cursor) != ordinal or self._word(data, cursor + 4) != index:
+                return
+            cursor += 8
+        while pointer:
+            record = pointer - 1
+            end = record + 4 + self._word(data, record)
+            cursor = self._key_end(data, record)
+            identity = int.from_bytes(data[cursor:cursor + 8], "little")
+            kind = int(data[cursor + 8])
+            payload_size = self._word(data, cursor + 9)
+            cursor += 13
+            if end > self.used or cursor + payload_size != end:
+                raise ValueError("corrupt retained payload length")
+            yield identity, kind, data[cursor:end], record
+            pointer = self._word(data, record + 5)
+
+    def begin_save(self) -> None:
+        """Clear per-save placement marks and the caller-owned id list."""
+        self.id_used = 0
+        data = memoryview(self.storage)
+        at = 0
+        while at < self.used:
+            length = self._word(data, at)
+            end = at + 4 + length
+            if end > self.used or length < 1:
+                raise ValueError("corrupt retained record")
+            data[at + 4] = int(data[at + 4]) & 0x7F
+            at = end
+
+    def write_tail(self, node: int, steps: tuple[tuple[int, int], ...], known: frozenset[int], ctx: Any, writer: Any) -> int:
+        """Write this body's records, returning the number lost to id capacity."""
+        lost = 0
+        for identity, kind, payload, record in self.records_at(node, steps):
+            if not emit_record(self, identity, kind, payload, known, ctx, writer):
+                lost += 1
+            self.storage[record + 4] |= 0x80
+        return lost
+
+    def unplaced(self) -> int:
+        """Count records whose body was never reached by this save walk."""
+        count = 0
+        data = memoryview(self.storage)
+        at = 0
+        while at < self.used:
+            length = self._word(data, at)
+            end = at + 4 + length
+            if end > self.used or length < 1:
+                raise ValueError("corrupt retained record")
+            if int(data[at + 4]) == 1:
+                count += 1
+            at = end
+        return count
 
     def records(self) -> Any:
         """Yield record headers and writable payload slices in capture order."""
         data = memoryview(self.storage)
         at = 0
         while at < self.used:
-            length = int.from_bytes(data[at:at + 4], "little")
+            length = self._word(data, at)
             end = at + 4 + length
-            if end > self.used or length < 21:
+            if end > self.used or length < 1:
                 raise ValueError("corrupt retained record")
-            node = int.from_bytes(data[at + 4:at + 8], "little")
-            depth = int.from_bytes(data[at + 8:at + 12], "little")
-            cursor = at + 12
+            tag = int(data[at + 4]) & 0x7F
+            if tag in (2, 3):
+                if length != 13:
+                    raise ValueError("corrupt retained index entry")
+                at = end
+                continue
+            if tag != 1 or length < 26:
+                raise ValueError("corrupt retained record")
+            node = self._word(data, at + 9)
+            depth = self._word(data, at + 13)
+            cursor = at + 17
             steps = []
             for _ in range(depth):
-                ordinal = int.from_bytes(data[cursor:cursor + 4], "little")
-                index = int.from_bytes(data[cursor + 4:cursor + 8], "little")
+                ordinal = self._word(data, cursor)
+                index = self._word(data, cursor + 4)
                 steps.append((ordinal, index))
                 cursor += 8
             identity = int.from_bytes(data[cursor:cursor + 8], "little")
             kind = int(data[cursor + 8])
-            payload_size = int.from_bytes(data[cursor + 9:cursor + 13], "little")
+            payload_size = self._word(data, cursor + 9)
             cursor += 13
             if cursor + payload_size != end:
                 raise ValueError("corrupt retained payload length")
