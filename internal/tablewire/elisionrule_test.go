@@ -45,14 +45,19 @@ func elisionVerdict(t *testing.T, writerSrc, readerSrc, text string) string {
 	}
 	r := covModel(t, readerSrc)
 	ok, err := Decode(r, r.New(r.Lookup("Root")), wire, &tabletext.Report{})
+	verdict := "read"
 	if !ok || err != nil {
-		return "refused"
+		verdict = "refused"
 	}
 	ok, err = DecodeRetain(r, r.New(r.Lookup("Root")), wire, &Retain{Capacity: 1024, IdCapacity: 64}, &tabletext.Report{})
+	retained := "read"
 	if !ok || err != nil {
-		return "refused " + hex.EncodeToString(wire)
+		retained = "refused"
 	}
-	return "read"
+	if retained != verdict {
+		t.Errorf("retaining read %s differs from strict read %s: %s", retained, verdict, hex.EncodeToString(wire))
+	}
+	return verdict
 }
 
 // TestReadRefusesEveryKindTheWriterElides holds docs/SPEC-TABLES.md §3 and
