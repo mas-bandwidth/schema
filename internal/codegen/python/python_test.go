@@ -223,7 +223,7 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 
 		{"array of an uncarried kind", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TString, Unbounded: true}}}}, "uses string"},
 
-		{"keyed array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, KeyEnum: "Slot", Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses keyed array"},
+		{"keyed array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, KeyEnum: "Slot", Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, ""},
 
 		{"list", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayList, Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses list"},
 

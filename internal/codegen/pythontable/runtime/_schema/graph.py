@@ -19,7 +19,8 @@ Name(...), so the text is bounded by the size of the graph.
 
 from typing import Any
 
-from .descriptor import TableDesc, UnionDesc
+from . import _float32_bits_eq, _float64_bits_eq
+from .descriptor import FieldDesc, TableDesc, UnionDesc
 
 
 def _fields(value: Any) -> tuple[str, ...] | None:
@@ -34,10 +35,10 @@ def _fields(value: Any) -> tuple[str, ...] | None:
 
 
 def _graph_eq(a: Any, b: Any) -> bool:
-    assumed: set[tuple[int, int]] = set()
-    stack: list[tuple[Any, Any]] = [(a, b)]
+    assumed: set[tuple[int, int, int]] = set()
+    stack: list[tuple[Any, Any, FieldDesc | None]] = [(a, b, None)]
     while stack:
-        x, y = stack.pop()
+        x, y, field = stack.pop()
         if x is y:
             continue
         if type(x) is not type(y):
@@ -49,27 +50,38 @@ def _graph_eq(a: Any, b: Any) -> bool:
                 return False
             continue
         if type(x) is list or type(x) is dict:
-            pair = (id(x), id(y))
+            pair = (id(x), id(y), id(field))
             if pair in assumed:
                 continue
             assumed.add(pair)
         slots = _fields(x)
         if slots is not None:
-            pair = (id(x), id(y))
+            pair = (id(x), id(y), 0)
             if pair in assumed:
                 continue
             assumed.add(pair)
+            desc = getattr(type(x), "descriptor", None)
+            children: dict[str, FieldDesc | None] = {}
+            if isinstance(desc, TableDesc):
+                children = {field.name: field for field in desc.fields}
+            elif isinstance(desc, UnionDesc):
+                children = {arm.name: arm.field for arm in desc.arms}
             for name in slots:
-                stack.append((getattr(x, name), getattr(y, name)))
+                stack.append((getattr(x, name), getattr(y, name), children.get(name)))
         elif type(x) is list:
             if len(x) != len(y):
                 return False
-            stack.extend(zip(x, y))
+            elem = field.element if field is not None and field.codec == "array" else None
+            stack.extend((left, right, elem) for left, right in zip(x, y))
         elif type(x) is dict:
             if x.keys() != y.keys():
                 return False
             for key in x:
-                stack.append((x[key], y[key]))
+                stack.append((x[key], y[key], None))
+        elif field is not None and field.codec in ("float32", "float64") and not field.optional and not field.pointer:
+            equal = _float32_bits_eq(x, y) if field.codec == "float32" else _float64_bits_eq(x, y)
+            if not equal:
+                return False
         elif x != y:
             return False
     return True

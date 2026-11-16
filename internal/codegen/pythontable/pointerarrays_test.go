@@ -646,8 +646,8 @@ func TestPythonVtPointerArrays(t *testing.T) {
 		if got := codecOf(f); got != "pointer_array" {
 			t.Errorf("codecOf(Root.%s) = %q, want \"pointer_array\"", fn, got)
 		}
-		if got := pythonType(rootSt, f); got != "list[object]" {
-			t.Errorf("pythonType(Root.%s) = %q, want \"list[object]\"", fn, got)
+		if got := pythonType(rootSt, f); got != "_s_list[object]" {
+			t.Errorf("pythonType(Root.%s) = %q, want \"_s_list[object]\"", fn, got)
 		}
 	}
 	if got := codecOf(fieldByName(rangedSt, "window")); got != "pointer_array" {

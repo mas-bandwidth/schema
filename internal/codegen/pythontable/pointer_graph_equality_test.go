@@ -1,6 +1,7 @@
 package pythontable
 
 import (
+	"fmt"
 	"maps"
 	"strings"
 	"testing"
@@ -48,7 +49,7 @@ finally:
 print('container-equality')
 `
 	const path = "ptrarr/_schema/graph.py"
-	const guard = "        if type(x) is list or type(x) is dict:\n            pair = (id(x), id(y))\n            if pair in assumed:\n                continue\n            assumed.add(pair)\n"
+	const guard = "        if type(x) is list or type(x) is dict:\n            pair = (id(x), id(y), id(field))\n            if pair in assumed:\n                continue\n            assumed.add(pair)\n"
 	if strings.Count(string(files[path]), guard) != 1 {
 		t.Fatal("container cycle control anchor changed")
 	}
@@ -67,6 +68,80 @@ print('container-equality')
 			if planted && (err == nil || !strings.Contains(stderr, "container_cycle_control")) {
 				t.Fatalf("cycle control did not fail by name: %v\n%s\n%s", err, out, stderr)
 			}
+		}
+	}
+}
+
+// Both scalar and array float fields retain bit equality inside graph walks.
+func TestPythonPointerGraphFloatEquality(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	u := loadUnit(t, `package grapheq
+fixed table Leaf {
+ f float32
+ d float64
+ values [2]float32
+}
+table Root { leaf *Leaf }
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `from grapheq import Root, Leaf
+left=Root(); right=Root(); left.leaf=Leaf(); right.leaf=Leaf()
+assert left == right, "equal"
+right.leaf.f=-0.0
+assert left != right, "float32"
+right.leaf.f=0.0; right.leaf.d=-0.0
+assert left != right, "float64"
+right.leaf.d=0.0; right.leaf.values[1]=-0.0
+assert left != right, "float array"
+print("graph-floats")
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err != nil || strings.TrimSpace(out) != "graph-floats" {
+			t.Fatalf("float graph equality: %v %s %s", err, out, stderr)
+		}
+	}
+}
+
+// A wide node visits descriptors once, rather than scanning every field for
+// every slot. Replacing the linear lookup with a throwing control catches the
+// formerly quadratic graph walk on both interpreters.
+func TestPythonPointerGraphWideEquality(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	var schema strings.Builder
+	schema.WriteString("package widegraph\ntable Root {\n")
+	for i := range 128 {
+		fmt.Fprintf(&schema, "f%d float32\n", i)
+	}
+	schema.WriteString("}\n")
+	u := loadUnit(t, schema.String())
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `from widegraph import Root
+from widegraph._schema.descriptor import TableDesc
+def no_scan(self, name): raise AssertionError("repeated descriptor scan")
+TableDesc.field=no_scan
+left=Root(); right=Root()
+assert left == right
+right.f127=-0.0
+assert left != right
+print("wide-graph")
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err != nil || strings.TrimSpace(out) != "wide-graph" {
+			t.Fatalf("wide graph: %v %s %s", err, out, stderr)
 		}
 	}
 }

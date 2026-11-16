@@ -2635,12 +2635,12 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 		}
 	}
 	{
-		if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+		if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 			return false
 		}
 		if value.EntitiesCount > 0 {
 			w.Put(10, TableMessageRefBitsHere)
-			if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+			if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 				return false
 			}
 			w.Put(uint64(value.EntitiesCount)-1, 3)
@@ -3447,6 +3447,10 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					if n < 1 {
+						r.Report.Refuse(TableRefuseCountOverBound, "BenchMixed.entities")
+						return false
+					}
 					if n > 8 {
 						r.Report.Refuse(TableRefuseCountOverBound, "BenchMixed.entities")
 						return false
