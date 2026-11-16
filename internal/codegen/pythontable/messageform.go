@@ -32,7 +32,7 @@ func messageModule(u *ir.Unit) string {
 	for _, name := range roots {
 		fmt.Fprintf(&b, "    %q,\n", name)
 	}
-	b.WriteString("))\n_CRC_ROOTS = frozenset((\n")
+	b.WriteString("))\n_CRC_ROOTS: frozenset[str] = frozenset((\n")
 	for _, name := range roots {
 		if u.Tables[name].Integrity == "crc32c" {
 			fmt.Fprintf(&b, "    %q,\n", name)
