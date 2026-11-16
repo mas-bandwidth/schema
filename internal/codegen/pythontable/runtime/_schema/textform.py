@@ -340,9 +340,13 @@ def load(cls: type[Any], data: bytes, limits: Limits = Limits()) -> tuple[Node, 
     """Resolve one input transactionally through the table JSON walk."""
     root = parse(data, max_bytes=limits.bytes, max_tokens=limits.tokens,
                  max_nodes=limits.nodes, max_allocation=limits.allocation, max_depth=limits.depth)
+    return root, _land(cls, root)
+
+
+def _land(cls: type[Any], root: Node) -> Any:
     text = _record(cls, root, False, {})
     try:
-        return root, from_json(cls, text)
+        return from_json(cls, text)
     except Refused as exc:
         reasons = {"out_of_range": "text_bound", "length_over_bound": "text_bound", "count_over_bound": "text_bound", "timestamp_not_rfc3339": "text_timestamp", "kind_mismatch": "text_kind_mismatch", "missing_required": "text_missing_required", "malformed": "text_reference"}
         raise TextError(reasons.get(exc.reason, "text_kind_mismatch"), root.start) from exc
@@ -351,15 +355,13 @@ def load(cls: type[Any], data: bytes, limits: Limits = Limits()) -> tuple[Node, 
 class Document:
     """An immutable source document and the value it resolved to."""
 
-    def __init__(self, cls: type[Any], source: bytes, root: Node, value: Any, limits: Limits) -> None:
+    def __init__(self, cls: type[Any], source: bytes, root: Node, value: Any,
+                 limits: Limits, spans: tuple[tuple[int, int], ...]) -> None:
         self._cls = cls
         self.source = source
         self.root = root
         self.value = value
         self.limits = limits
-        _, spans = parse_with_comments(source, max_bytes=limits.bytes, max_tokens=limits.tokens,
-                                       max_nodes=limits.nodes, max_allocation=limits.allocation,
-                                       max_depth=limits.depth)
         self.comments = _comments(source, root, cls, spans)
 
     def write(self) -> bytes:
@@ -392,7 +394,8 @@ class Document:
             if current.kind == "list":
                 raise TextError("text_edit_conflict", current.start)
             probe = parse(b"(" + replacement + b")")
-            if len(probe.children) != 1 or probe.children[0].kind == "list":
+            if (len(probe.children) != 1 or probe.children[0].kind == "list"
+                    or probe.children[0].start != 1 or probe.children[0].end != len(replacement) + 1):
                 raise TextError("text_edit_conflict", current.start)
             candidate = self.source[:current.start] + replacement + self.source[current.end:]
             _, value = load(self._cls, candidate, self.limits)
@@ -410,5 +413,8 @@ class Document:
 
 def read(cls: type[Any], data: bytes, limits: Limits = Limits()) -> Document:
     """Read a document and its typed value, or raise a refusal."""
-    root, value = load(cls, data, limits)
-    return Document(cls, data, root, value, limits)
+    data = bytes(data)
+    root, spans = parse_with_comments(data, max_bytes=limits.bytes, max_tokens=limits.tokens,
+                                      max_nodes=limits.nodes, max_allocation=limits.allocation,
+                                      max_depth=limits.depth)
+    return Document(cls, data, root, _land(cls, root), limits, spans)

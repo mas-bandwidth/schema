@@ -128,3 +128,195 @@ print(v.to_json().encode().hex())
 		}
 	}
 }
+
+// TestPythonHandtextGoCorpusFunctional compares every positive contract value
+// and canonical JSON byte with the generated Go reader of the same input.
+func TestPythonHandtextGoCorpusFunctional(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "generated Go reader and pinned Python interpreters")
+	for _, fixed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("fixed=%t", fixed), func(t *testing.T) {
+			t.Parallel()
+			schema := handtextSchema
+			if fixed {
+				schema = strings.Replace(schema, "table Document {", "fixed table Document {", 1)
+			}
+			unit := loadUnit(t, schema)
+			files, err := golang.Generate(unit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			surfaces := gotable.DefaultSurfaces()
+			surfaces.TextForm = true
+			tables, err := gotable.GenerateLineageSurface(unit, nil, surfaces)
+			if err != nil {
+				t.Fatal(err)
+			}
+			maps.Copy(files, tables)
+			runtime := slowtest.SerializeGo(t, "../../../")
+			files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
+			vectors, err := filepath.Abs("../../../test/conformance/textform")
+			if err != nil {
+				t.Fatal(err)
+			}
+			files["oracle_test.go"] = []byte(fmt.Sprintf(`package probe
+import ("fmt"; "os"; "path/filepath"; "testing")
+func TestOracle(t *testing.T) {
+ for _, stem := range []string{"roadmap", "layout", "kinds", "variable"} {
+  data, err := os.ReadFile(filepath.Join(%q, stem+".input.sexp")); if err != nil { t.Fatal(err) }
+  if stem == "variable" {
+   _, v, err := GraphLoadTextForm(data, TableTextFormDefaultLimits()); if err != nil { t.Fatal(stem, err) }
+   n := GraphToJSONMeasure(v); if n < 0 {t.Fatal(stem,"measure")}; b := make([]byte,n); if GraphToJSON(v,b) != n {t.Fatal(stem,"write")}; fmt.Printf("ORACLE:%%s:%%x\n",stem,b)
+  } else {
+   _, v, err := DocumentLoadTextForm(data, TableTextFormDefaultLimits()); if err != nil { t.Fatal(stem, err) }
+   n := DocumentToJSONMeasure(v); if n < 0 {t.Fatal(stem,"measure")}; b := make([]byte,n); if DocumentToJSON(v,b) != n {t.Fatal(stem,"write")}; fmt.Printf("ORACLE:%%s:%%x\n",stem,b)
+  }
+ }
+}`, vectors))
+			dir := t.TempDir()
+			writeTree(t, dir, files)
+			cmd := exec.Command("go", "test", "-count=1", "-v", "-run", "^TestOracle$", ".")
+			cmd.Dir = dir
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("Go oracle: %v\n%s", err, output)
+			}
+			var expected []string
+			for _, line := range strings.Split(string(output), "\n") {
+				if strings.HasPrefix(line, "ORACLE:") {
+					expected = append(expected, line)
+				}
+			}
+			if len(expected) != 4 {
+				t.Fatalf("Go oracle returned %d rows: %s", len(expected), output)
+			}
+			pyFiles, err := Generate(unit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pyDir := t.TempDir()
+			writeTree(t, pyDir, pyFiles)
+			inputs := map[string][]byte{}
+			for _, stem := range []string{"roadmap", "layout", "kinds", "variable"} {
+				b, err := os.ReadFile(filepath.Join(vectors, stem+".input.sexp"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				inputs[stem] = b
+			}
+			inputs["main.py"] = []byte(pyrun.ImportPrelude + `from pathlib import Path
+from probe import Document, Graph
+for stem in ('roadmap','layout','kinds','variable'):
+    doc = (Graph if stem == 'variable' else Document).from_text_form(Path(stem).read_bytes())
+    print('ORACLE:' + stem + ':' + doc.value.to_json().encode().hex())
+`)
+			for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+				got := strings.TrimSpace(string(run(t, pyDir, "main.py", inputs)))
+				if got != strings.Join(expected, "\n") {
+					t.Fatalf("Python does not match Go:\ngot %s\nwant %s", got, strings.Join(expected, "\n"))
+				}
+			}
+		})
+	}
+}
+
+// TestPythonHandtextCppCorpusFunctional compares all four positive documents
+// directly against generated C++ for fixed and variable Document roots.
+func TestPythonHandtextCppCorpusFunctional(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "generated C++ reader and pinned Python interpreters")
+	for _, fixed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("fixed=%t", fixed), func(t *testing.T) {
+			t.Parallel()
+			schema := handtextSchema
+			if fixed {
+				schema = strings.Replace(schema, "table Document {", "fixed table Document {", 1)
+			}
+			unit := loadUnit(t, schema)
+			files, err := cpp.Generate(unit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tables, err := cpptable.Generate(unit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			maps.Copy(files, tables)
+			dir := t.TempDir()
+			writeTree(t, dir, files)
+			docRead := `DocumentBuilder b; if (!DocumentLoadTextForm(text.data(), (int64_t)text.size(), b, &reason) || !b.Lock()) return 3; const Document *v = b.AsConst();`
+			if fixed {
+				docRead = `Document v; if (!DocumentLoadTextForm(text.data(), (int64_t)text.size(), v, &reason)) {std::fprintf(stderr,"%s",reason ? reason : "?"); return 3;}`
+			}
+			source := `#include <cstdio>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <vector>
+#include "CoreTable.h"
+using namespace probe;
+int main(int argc, char **argv) {
+ if (argc != 3) return 1;
+ std::ifstream f(argv[2], std::ios::binary); std::string text((std::istreambuf_iterator<char>(f)), {});
+ const char *reason = nullptr;
+ if (std::string(argv[1]) == "variable") {
+  GraphBuilder b; if (!GraphLoadTextForm(text.data(), (int64_t)text.size(), b, &reason)) {std::fprintf(stderr,"%s",reason ? reason : "?"); return 2;} if (!b.Lock()) {std::fprintf(stderr,"lock"); return 2;}
+  const Graph *v = b.AsConst(); auto n = GraphToJsonMeasure(v); std::vector<char> out((size_t)n + 1);
+  if (GraphToJson(v, out.data(), (int64_t)out.size()) != n) return 4; std::fwrite(out.data(), 1, (size_t)n, stdout);
+ } else {` + docRead + `auto n = DocumentToJsonMeasure(v); std::vector<char> out((size_t)n + 1); if (DocumentToJson(v, out.data(), (int64_t)out.size()) != n) return 4; std::fwrite(out.data(), 1, (size_t)n, stdout); }
+ return 0;
+}`
+			path := filepath.Join(dir, "main.cpp")
+			if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+				t.Fatal(err)
+			}
+			ser, err := filepath.Abs("../../../../serialize")
+			if err != nil {
+				t.Fatal(err)
+			}
+			bin := filepath.Join(dir, "oracle")
+			cmd := exec.Command("c++", "-std=c++17", "-O1", "-I"+dir, "-I"+ser, path, filepath.Join(dir, "CoreTable.cpp"), "-o", bin)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("compile: %v\n%s", err, out)
+			}
+			vectors, err := filepath.Abs("../../../test/conformance/textform")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var expected []string
+			for _, stem := range []string{"roadmap", "layout", "kinds", "variable"} {
+				out, err := exec.Command(bin, stem, filepath.Join(vectors, stem+".input.sexp")).CombinedOutput()
+				if err != nil {
+					t.Fatalf("C++ %s: %v: %s", stem, err, out)
+				}
+				expected = append(expected, fmt.Sprintf("ORACLE:%s:%x", stem, out))
+			}
+			pyFiles, err := Generate(unit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pyDir := t.TempDir()
+			writeTree(t, pyDir, pyFiles)
+			inputs := map[string][]byte{}
+			for _, stem := range []string{"roadmap", "layout", "kinds", "variable"} {
+				b, err := os.ReadFile(filepath.Join(vectors, stem+".input.sexp"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				inputs[stem] = b
+			}
+			inputs["main.py"] = []byte(pyrun.ImportPrelude + `from pathlib import Path
+from probe import Document, Graph
+for stem in ('roadmap','layout','kinds','variable'):
+    doc = (Graph if stem == 'variable' else Document).from_text_form(Path(stem).read_bytes())
+    print('ORACLE:' + stem + ':' + doc.value.to_json().encode().hex())
+`)
+			for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+				got := strings.TrimSpace(string(run(t, pyDir, "main.py", inputs)))
+				if got != strings.Join(expected, "\n") {
+					t.Fatalf("Python does not match C++: got %s want %s", got, strings.Join(expected, "\n"))
+				}
+			}
+		})
+	}
+}
