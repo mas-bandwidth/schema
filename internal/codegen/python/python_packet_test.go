@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -401,6 +402,45 @@ func topLevelFields(u *ir.Unit, root string) (intField, boolField string, intMin
 // both pinned interpreters, refuses hostile input and wrong-typed values, runs
 // the analyzer over each generated tree, and lists every pin it skips with the
 // kind that blocks it (docs/PORT-PYTHON.md, THE HARNESS).
+const packetCoreShards = 8
+
+func packetCoreShard(value string) (int, error) {
+	if value == "" {
+		return -1, nil
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 0 || n >= packetCoreShards || strconv.Itoa(n) != value {
+		return 0, fmt.Errorf("invalid PYTHON_PACKET_CORE_SHARD %q", value)
+	}
+	return n, nil
+}
+
+func packetCoreSelected(index, shard int) bool {
+	return shard < 0 || index%packetCoreShards == shard
+}
+
+func TestPythonPacketCoreShardPlan(t *testing.T) {
+	if shard, err := packetCoreShard(""); err != nil || shard != -1 {
+		t.Fatal("unset selector must run every case")
+	}
+	for _, value := range []string{"-1", "8", "01", "bad"} {
+		if _, err := packetCoreShard(value); err == nil {
+			t.Errorf("accepted invalid shard %q", value)
+		}
+	}
+	for i := range packetPins() {
+		count := 0
+		for shard := range packetCoreShards {
+			if packetCoreSelected(i, shard) {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("case %d selected %d times", i, count)
+		}
+	}
+}
+
 func TestPythonPacketCore(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -457,7 +497,17 @@ func TestPythonPacketCore(t *testing.T) {
 		t.Fatal("no C++-pinned packet golden uses only carried kinds; the harness would prove nothing")
 	}
 	sort.Slice(carried, func(i, j int) bool { return carried[i].name < carried[j].name })
-	for _, pin := range carried {
+	shard, err := packetCoreShard(os.Getenv("PYTHON_PACKET_CORE_SHARD"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shard >= 0 && len(carried) < packetCoreShards {
+		t.Fatalf("only %d carried cases for %d shards", len(carried), packetCoreShards)
+	}
+	for i, pin := range carried {
+		if !packetCoreSelected(i, shard) {
+			continue
+		}
 		t.Run(pin.name, func(t *testing.T) {
 			t.Parallel()
 			u := load(pin.paths)

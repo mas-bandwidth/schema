@@ -11,8 +11,8 @@ rows=$(mktemp)
 packages=$(mktemp)
 trap 'rm -f "$rows" "$packages"' EXIT HUP INT TERM
 : > "$rows"
-support=$(make -s python-ci-support-list)
-printf '%s\n' "$support" | while IFS= read -r target; do
+supports=$(make -s python-ci-support-list)
+printf '%s\n' "$supports" | while IFS= read -r target; do
   if [ "$target" = python-ci-compiler ]; then
     # Group matching compiler tests into deterministic namespace shards.
     # Keep the local/nightly aggregate, but bound every per-commit row.
@@ -20,9 +20,9 @@ printf '%s\n' "$support" | while IFS= read -r target; do
     names=$(printf '%s\n' "$listed" | sed -n '/^\(Test\|Example\|Fuzz\)[A-Za-z0-9_]*$/p')
     [ -n "$names" ] || { echo "no Python compiler tests discovered" >&2; exit 1; }
     selected=$(printf '%s\n' "$names" | while IFS= read -r test; do
-      if [ "$test" = TestPythonRequiredPublicShapes ] && printf '%s\n' "$support" | grep -qx python-ci-required-shape-0; then
+      if [ "$test" = TestPythonRequiredPublicShapes ] && printf '%s\n' "$supports" | grep -qx python-ci-required-shape-0; then
         for part in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-          printf '%s\n' "$support" | grep -qx "python-ci-required-shape-$part" || { echo "missing required shape shard $part" >&2; exit 1; }
+          printf '%s\n' "$supports" | grep -qx "python-ci-required-shape-$part" || { echo "missing required shape shard $part" >&2; exit 1; }
         done
         continue
       fi
@@ -46,6 +46,13 @@ while IFS= read -r package; do
     names=$(printf '%s\n' "$names" | sed '/^TestPythonArrayWidening$/d; /^TestPythonVtPointerArrays$/d') ;;
   esac
   skip=
+  if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/python" ]; then
+    printf '%s\n' "$names" | grep -qx TestPythonPacketCore || { echo "missing TestPythonPacketCore" >&2; exit 1; }
+    for part in 0 1 2 3 4 5 6 7; do
+      [ "$(printf '%s\n' "$supports" | grep -cx "python-ci-packet-core-$part")" -eq 1 ] || { echo "missing or duplicate packet core shard $part" >&2; exit 1; }
+    done
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonPacketCore$/d')
+  fi
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
     printf '%s\n' "$names" | grep -qx TestPythonVtFixedClassBuildVersionImports || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }
     skip=TestPythonVtFixedClassBuildVersionImports
