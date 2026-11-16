@@ -14,7 +14,6 @@ import (
 )
 
 func TestJavaScriptBlobSharedReportCensus(t *testing.T) {
-	t.Skip("layer 4 (js): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "native JavaScript blob sharing report")
 	dir := "../../../testdata/conformance/feature-witnesses/blob-shared-report"
 	source, err := os.ReadFile(filepath.Join(dir, "Probe.schema"))
@@ -28,6 +27,7 @@ func TestJavaScriptBlobSharedReportCensus(t *testing.T) {
 	var rows []struct {
 		Name, Wire, Saved    string
 		Shared, KindMismatch int
+		OK                   bool
 	}
 	if err := json.Unmarshal(data, &rows); err != nil {
 		t.Fatal(err)
@@ -37,42 +37,45 @@ func TestJavaScriptBlobSharedReportCensus(t *testing.T) {
 	}
 	u := unitFrom(t, string(source))
 	m := tabletext.NewModel(u)
-	for _, row := range rows {
+	for i := range rows {
+		row := &rows[i]
 		wire, err := hex.DecodeString(row.Wire)
 		if err != nil {
 			t.Fatal(err)
 		}
-		v := m.New(u.Tables["Root"])
+		expectRead := row.Name == "distinct_empty" || row.Name == "distinct_equal" || row.Name == "all_null"
 		for _, retaining := range []bool{false, true} {
-			r := tabletext.Report{}
+			value := m.New(u.Tables["Root"])
+			var report tabletext.Report
 			store := &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}
-			for repeat := 1; repeat <= 2; repeat++ {
-				var ok bool
-				var err error
-				if retaining {
-					ok, err = tablewire.DecodeRetain(m, v, wire, store, &r)
-				} else {
-					ok, err = tablewire.Decode(m, v, wire, &r)
-				}
-				if !ok || err != nil || r.Refused || r.Unknown != row.Shared*repeat || r.Unknown != row.KindMismatch*repeat {
-					t.Fatalf("%s neutral retain=%v: %+v %v", row.Name, retaining, r, err)
+			var ok bool
+			if retaining {
+				ok, err = tablewire.DecodeRetain(m, value, wire, store, &report)
+			} else {
+				ok, err = tablewire.Decode(m, value, wire, &report)
+			}
+			if ok != expectRead || (ok && err != nil) || (!ok && !tablewire.ReadRefusal(err)) {
+				t.Fatalf("%s retain=%v: ok=%v err=%v report=%+v", row.Name, retaining, ok, err, report)
+			}
+			if !ok && retaining && store.Used() != 0 {
+				t.Fatalf("%s retained a refused input", row.Name)
+			}
+			if ok {
+				saved, err := tablewire.Encode(m, value)
+				if err != nil || hex.EncodeToString(saved) != row.Saved {
+					t.Fatalf("%s save: %x %v", row.Name, saved, err)
 				}
 			}
 		}
-		saved, err := tablewire.Encode(m, v)
-		if row.Shared == 0 && (err != nil || hex.EncodeToString(saved) != row.Saved) {
-			t.Fatalf("%s canonical save: %x %v", row.Name, saved, err)
-		}
-		if row.Shared != 0 && (err == nil || !strings.Contains(err.Error(), "blob_shared")) {
-			t.Fatalf("%s writer: %v", row.Name, err)
-		}
+		row.OK = expectRead
 	}
+
 	files, err := generateVariableFiles(u, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	out := runJSConstructProbe(t, files, runtimeHome(u)+"Variable.js", jsBlobSharedReportProbe, rows)
-	if !strings.Contains(out, "BLOB REPORT OK 72\n") {
+	if !strings.Contains(out, "BLOB REPORT OK 36\n") {
 		t.Fatal(out)
 	}
 }
@@ -84,40 +87,27 @@ const cases=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
 const m=await import(pathToFileURL(process.argv[3]).href);
 const bytes=s=>new Uint8Array(Buffer.from(s,"hex"));
 const hex=b=>Buffer.from(b).toString("hex");
-const failures=[];
 let checks=0;
-function check(ok,why){if(!ok)failures.push(why);}
-for(const c of cases)for(const retaining of [false,true])for(const history of [0,7]){
+for(const c of cases)for(const retaining of [false,true]){
  const r=new m.TableVariableReport(),store=new m.TableVariableRetain(new Uint8Array(65536),new Array(1024));
- check(r.sharedBlob===0,"new report counter "+c.Name);
- r.sharedBlob=history;r.unknown=11;r.widened=13;r.oor=17;
- for(let repeat=1;repeat<=2;repeat++){
-  const wire=bytes(c.Wire);
-  const v=retaining?m.RootLoadRetain(wire,store,r):m.RootLoad(wire,r);
-  const why=c.Name+" retain="+retaining+" history="+history+" repeat="+repeat;
-  check(v!==null&&!r.damaged&&!r.refused&&r.sharedBlob===history+c.Shared*repeat&&r.mismatch===c.KindMismatch*repeat,"census "+why+" "+JSON.stringify(r));
-  check(r.unknown===11&&r.widened===13&&r.oor===17,"history preserved "+why);
+ for(let repeat=0;repeat<2;repeat++){
+  const v=retaining?m.RootLoadRetain(bytes(c.Wire),store,r):m.RootLoad(bytes(c.Wire),r);
+  if((v!==null)!==c.OK)throw new Error(c.Name+" wrong verdict retain="+retaining);
   if(v!==null){
-   if(["shared_empty","shared_equal","repeated_field_naming"].includes(c.Name)){
-    check(v.a instanceof String&&v.a===v.b&&v.c===v.d,"one shared object per blob "+why);
-   }
+   if(hex(m.RootSave(v))!==c.Saved)throw new Error(c.Name+" wrong save");
+   if(retaining && hex(m.RootSaveRetain(v,store,r))!==c.Saved)throw new Error(c.Name+" wrong retained save");
    if(c.Name.startsWith("distinct_")){
-    check(typeof v.a==="string"&&typeof v.b==="string"&&v.c!==v.d,"distinct equal blob identities "+why);
+    if(typeof v.a!=="string" || typeof v.b!=="string" || v.c===v.d)throw new Error("distinct blob identities collapsed");
+    v.d=v.c;
+    const why=m.RootMeasureReason(v);
+    if(!Array.isArray(why)||why[0]!==-1||why[1]!=="blob_shared")throw new Error("shared blob measurement reason "+JSON.stringify(why));
+    if(m.RootSave(v)!==null || m.RootToJson(v)!==null)throw new Error("shared blob writer accepted");
+    if(retaining && m.RootSaveRetain(v,store,r)!==null)throw new Error("shared blob retained writer accepted");
    }
-   if(c.Name==="all_null")check(v.a===null&&v.b===null&&v.c===null&&v.d===null,"null slots "+why);
-   if(c.Shared===0){
-    check(hex(m.RootSave(v))===c.Saved,"distinct/null save "+why);
-    if(retaining)check(hex(m.RootSaveRetain(v,store,r))===c.Saved,"distinct/null retained save "+why);
-   }else{
-    check(m.RootSave(v)===null&&m.RootToJson(v)===null,"shared writer refusal "+why);
-    check(JSON.stringify(m.RootMeasureReason(v))===JSON.stringify([-1,"blob_shared"]),"shared named reason "+why);
-    if(retaining)check(m.RootSaveRetain(v,store,r)===null,"shared retained writer refusal "+why);
-   }
-  }
+   if(c.Name==="all_null" && (v.a!==null||v.b!==null||v.c!==null||v.d!==null))throw new Error("null slots changed");
+  } else if(retaining && (store.used!==0||store.count!==0))throw new Error(c.Name+" retained refused data");
   checks++;
  }
- check(m.RootLoad(bytes(c.Wire),null)!==null,"nil report remains tolerant "+c.Name);
 }
-if(failures.length)throw new Error(failures.join("\n"));
 console.log("BLOB REPORT OK "+checks);
 `

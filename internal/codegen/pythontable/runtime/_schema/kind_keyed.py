@@ -163,7 +163,7 @@ class _Keyed:
             sw.varint(len(element))
             sw.raw(element)
             present += 1
-        if present == 0:
+        if present == 0 and not fd.required:
             _rollback(ctx, mark)  # no present slot: the field is not written
             return
         inner = bytearray()
