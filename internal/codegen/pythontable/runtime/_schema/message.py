@@ -12,7 +12,7 @@ class BitReader:
 
     __slots__ = ("data", "position")
 
-    def __init__(self, data: bytes, position: int = 0) -> None:
+    def __init__(self, data: bytes | memoryview, position: int = 0) -> None:
         self.data = data
         self.position = position
 
@@ -169,6 +169,17 @@ class Entry:
         self.key = key
 
 
+class BuildVersionMismatch(Refused):
+    """A strict connection refused a different announced build."""
+
+    __slots__ = ("peer", "own")
+
+    def __init__(self, peer: int, own: int) -> None:
+        super().__init__("build_version_mismatch")
+        self.peer = peer
+        self.own = own
+
+
 class MessageVocabulary:
     """One connection's terminal announcement state and peer vocabulary."""
 
@@ -188,17 +199,28 @@ class MessageVocabulary:
         return max(1, len(self.entries).bit_length())
 
 
-def announce_read(vocab: MessageVocabulary, data: bytes, *, max_bytes: int = 65536, max_entries: int = 4096) -> None:
+def announce_read(vocab: MessageVocabulary, data: bytes | bytearray | memoryview, *, max_bytes: int = 65536, max_entries: int = 4096) -> None:
     """Resolve the first announcement once; any refusal is terminal."""
-    from .load import Ctx, _body_end, _id_table, _skip, buffer_view
+    from .descriptor import TableDesc
+    from .load import Ctx, _body_end, _check_node_table, _id_table, _read_node_table, _resolve, _skip, buffer_view
 
     if vocab.announced or vocab.refused:
         raise Refused("second_announcement")
     vocab.refused = True
     view = buffer_view(data)
+    if not view:
+        raise Refused("wire_damaged", "announcement has no form byte")
+    if view[0] != 1:
+        raise Refused("message_form_as_file" if view[0] == 2 else "newer_form")
     ids = _id_table(view)
     reader = Reader(view, 1, _body_end(view), ids)
     ctx = Ctx(ids)
+    ctx.nonfinite = []
+
+    class AnnouncementRoot:
+        descriptor = TableDesc("_announcement", 0, True, ())
+
+    ctx.root = AnnouncementRoot()
     seen: set[int] = set()
     raw_vocab: memoryview | None = None
     version_seen = False
@@ -232,13 +254,23 @@ def announce_read(vocab: MessageVocabulary, data: bytes, *, max_bytes: int = 655
             raw_vocab = content.take(length)
         else:
             if field_id == 0xFFFFFFFFFFFFFFFF:
-                raise Refused("wire_damaged", "announcement contains a node table")
-            _skip(reader, kind, ctx)
+                if kind != 12:
+                    raise Refused("wire_damaged", "announcement node table has wrong kind")
+                payload = reader.take(reader.varint())
+                check = Ctx(ids)
+                check.nonfinite = ctx.nonfinite
+                _check_node_table(payload, check)
+                _read_node_table(payload, ctx)
+            else:
+                _skip(reader, kind, ctx)
             unknown += 1
     if reader.pos != reader.end or not version_seen or raw_vocab is None:
         raise Refused("wire_damaged", "incomplete announcement")
+    _resolve(ctx)
+    if ctx.nonfinite:
+        raise Refused("non_finite_float")
     if vocab.strict and vocab.build_version != vocab.own_version:
-        raise Refused("build_version_mismatch")
+        raise BuildVersionMismatch(vocab.build_version, vocab.own_version)
     source = Reader(raw_vocab, 0, len(raw_vocab), [])
     entries: list[Entry] = []
     triples: set[bytes] = set()
@@ -423,10 +455,12 @@ def _read_body(reader: BitReader, cls: type[object], vocab: MessageVocabulary, o
 
 def _encode_messages(root: type[object], values: list[object], vocab: MessageVocabulary, keys: dict[tuple[str, str], bytes], roots: frozenset[str], measure: bool, fast: Callable[[BitWriter, Any], None] | None = None) -> BitWriter:
     from . import InvalidValue
+    from .descriptor import by_name
     from .save import _validate
     if not 1 <= len(values) <= 256:
         raise InvalidValue("", "batch_too_large")
-    if not vocab.announced or getattr(root, "descriptor").name not in roots:
+    root_name = getattr(getattr(root, "descriptor", None), "name", "")
+    if not vocab.announced or root_name not in roots or by_name(root_name) is not root:
         raise InvalidValue("", "message root or vocabulary is invalid")
     for value in values:
         if type(value) is not root:
@@ -452,28 +486,33 @@ def measure_messages(root: type[object], values: list[object], vocab: MessageVoc
     return _encode_messages(root, values, vocab, keys, roots, True, fast).position // 8
 
 
-def load_messages(root: type[object], vocab: MessageVocabulary, data: bytes, own_version: int, keys: dict[tuple[str, str], bytes], roots: frozenset[str], capacity: int = 256, report: "LoadReport | None" = None) -> list[object]:
-    if getattr(root, "descriptor").name not in roots:
+def load_messages(root: type[object], vocab: MessageVocabulary, data: bytes | bytearray | memoryview, own_version: int, keys: dict[tuple[str, str], bytes], roots: frozenset[str], capacity: int = 256, report: "LoadReport | None" = None) -> list[object]:
+    from .descriptor import by_name
+    from .load import buffer_view
+
+    root_name = getattr(getattr(root, "descriptor", None), "name", "")
+    if root_name not in roots or by_name(root_name) is not root:
         raise Refused("invalid_root")
-    if not data:
+    view = buffer_view(data)
+    if not view:
         raise Refused("wire_damaged", "empty batch")
-    if data[0] != 2:
+    if view[0] != 2:
         raise Refused("newer_form")
     if not vocab.announced:
         raise Refused("no_vocabulary")
-    if len(data) < 2:
+    if len(view) < 2:
         raise Refused("wire_damaged", "missing batch count")
-    count = data[1] + 1
+    count = view[1] + 1
     if count > capacity:
         raise Refused("batch_too_large")
-    scan = BitReader(data, 16)
+    scan = BitReader(view, 16)
     pending: list[str] = []
     for _ in range(count):
         _scan_body(scan, vocab, 0, pending)
     scan.finish()
     if pending:
         raise Refused(pending[0])
-    reader = BitReader(data, 16)
+    reader = BitReader(view, 16)
     stats = [0, 0]
     values = [_read_body(reader, root, vocab, own_version, keys, stats) for _ in range(count)]
     reader.finish()
@@ -780,6 +819,13 @@ def _skip_value(reader: BitReader, shape: Shape, vocab: MessageVocabulary, depth
             reader.align()
         inner = shape.inner
         if kind == 14 and inner.kind in (0, 32):
+            return
+        if kind == 14 and (inner.kind == 1 or inner.kind == 36 or (2 <= inner.kind <= 9 or 18 <= inner.kind <= 29) and inner.packing == 0):
+            width = 1 if inner.kind == 1 else 64 if inner.kind == 36 else _kind_bits(inner.kind)
+            bits = count * width
+            if bits > len(reader.data) * 8 - reader.position:
+                raise Refused("wire_damaged", "message array exceeds the remaining bits")
+            reader.position += bits
             return
         if kind == 14 and inner.packing == 1 and inner.bits == 0:
             _skip_value(reader, inner, vocab, depth + 1, False, pending)

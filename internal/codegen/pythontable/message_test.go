@@ -53,6 +53,8 @@ wire = save_messages(Probe, [p, p])
 assert measure_messages(Probe, [p, p]) == len(wire)
 values = load_messages(Probe, v, wire)
 assert len(values) == 2 and all(x.enabled and x.number == 7 for x in values)
+assert len(load_messages(Probe, v, bytearray(wire))) == 2
+assert len(load_messages(Probe, v, memoryview(wire))) == 2
 print(wire.hex())
 `
 	inputs := map[string][]byte{"main.py": []byte(probe)}
@@ -119,7 +121,7 @@ func TestPythonMessageAnnouncement(t *testing.T) {
 	}
 	dir := t.TempDir()
 	writeTree(t, dir, files)
-	probe := pyrun.ImportPrelude + `from messageprobe._schema.message import MessageVocabulary, announce_read
+	probe := pyrun.ImportPrelude + `from messageprobe._schema.message import MessageVocabulary, BuildVersionMismatch, announce_read
 from messageprobe import Refused
 with open('announcement','rb') as f: data=f.read()
 v=MessageVocabulary()
@@ -391,11 +393,16 @@ fixed table Probe {
 	}
 	dir := t.TempDir()
 	writeTree(t, dir, files)
-	probe := pyrun.ImportPrelude + `from msgkinds import Probe, MessageVocabulary, ANNOUNCEMENT, announce_read, save_messages, load_messages
+	probe := pyrun.ImportPrelude + `from msgkinds import Probe, MessageVocabulary, ANNOUNCEMENT, announce_read, save_messages, load_messages, InvalidValue
 v=MessageVocabulary();announce_read(v,ANNOUNCEMENT)
 p=Probe();p.name='hello';p.data=b'\x01\x02\x03';p.f32=1.5;p.f64=-2.25;p.quant=0.5;p.numbers=[-1,7]
 w=save_messages(Probe,[p]); q=load_messages(Probe,v,w)[0]
 assert (q.name,q.data,q.f32,q.f64,q.quant,q.numbers)==('hello',b'\x01\x02\x03',1.5,-2.25,0.5,[-1,7])
+for name,value in (('name','x'*17),('name','a\0b'),('quant',1.5),('f64',float('nan')),('numbers',[1,2,3,4])):
+ bad=Probe();setattr(bad,name,value)
+ try:save_messages(Probe,[bad])
+ except InvalidValue:pass
+ else:raise AssertionError('message_fixed_kind_write_refusal')
 print(w.hex())
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
@@ -555,7 +562,7 @@ func TestPythonMessageHostileAnnouncement(t *testing.T) {
 	}
 	dir := t.TempDir()
 	writeTree(t, dir, files)
-	probe := pyrun.ImportPrelude + `from messageprobe._schema.message import MessageVocabulary, announce_read
+	probe := pyrun.ImportPrelude + `from messageprobe._schema.message import MessageVocabulary, BuildVersionMismatch, announce_read
 from messageprobe import Refused
 
 def leb(n):
@@ -571,6 +578,22 @@ def announce(raw,extra=False):
  return b'\x01'+body+b'\0'+b''.join(x.to_bytes(8,'little') for x in ids)+len(ids).to_bytes(8,'little')
 good=entry(17,4,b'\x01\x04\x07')
 v=MessageVocabulary();announce_read(v,announce(good,True));assert v.unknown==1 and v.build_version==123
+def graph_announcement(point):
+ payload=b'\x06'+leb(len(good))+good
+ body=b'\x01\x09'+(123).to_bytes(8,'little')+b'\x02\x0e'+leb(len(payload))+payload
+ if point:body+=b'\x03\x11\x02'
+ node=b'\x01\x05\x01\x00'
+ body+=b'\x04\x0c'+leb(len(node))+node+b'\x00'
+ ids=[0xfffffffffffffffe,0xfffffffffffffffd,987,0xffffffffffffffff,654]
+ return b'\x01'+body+b''.join(x.to_bytes(8,'little') for x in ids)+len(ids).to_bytes(8,'little')
+v=MessageVocabulary();announce_read(v,graph_announcement(True));assert v.announced
+try:announce_read(MessageVocabulary(),graph_announcement(False))
+except Refused as e:assert e.reason=='wire_damaged'
+else:raise AssertionError('message_announcement_graph')
+for form,reason in ((2,'message_form_as_file'),(3,'newer_form')):
+ try:announce_read(MessageVocabulary(),bytes([form]))
+ except Refused as e:assert e.reason==reason
+ else:raise AssertionError('message_announcement_form')
 for raw in (entry(17,4,b'\x01\x21\x00'),entry(17,99),good+good,entry(0xfffffffffffffffe,0)):
  v=MessageVocabulary()
  try:announce_read(v,announce(raw))
@@ -586,7 +609,7 @@ for kwargs in ({'max_bytes':1},{'max_entries':0}):
  else:raise AssertionError('message_vocabulary_bound')
 v=MessageVocabulary(own_version=456,strict=True)
 try:announce_read(v,announce(good))
-except Refused as e:assert e.reason=='build_version_mismatch' and v.build_version==123
+except BuildVersionMismatch as e:assert e.reason=='build_version_mismatch' and e.peer==123 and e.own==456 and v.build_version==123
 else:raise AssertionError('message_strict_version')
 print('ok')
 `
@@ -627,11 +650,15 @@ fixed table Probe {
 	}
 	dir := t.TempDir()
 	writeTree(t, dir, files)
-	probe := pyrun.ImportPrelude + `from msgwide import Probe, MessageVocabulary, ANNOUNCEMENT, announce_read, save_messages, load_messages
+	probe := pyrun.ImportPrelude + `from msgwide import Probe, MessageVocabulary, ANNOUNCEMENT, announce_read, save_messages, load_messages, InvalidValue
 v=MessageVocabulary();announce_read(v,ANNOUNCEMENT)
 p=Probe();p.wide=-(1<<100);p.huge=1<<100;p.price=212992;p.flags=5
 w=save_messages(Probe,[p]);q=load_messages(Probe,v,w)[0]
 assert (q.wide,q.huge,q.price,q.flags)==(-(1<<100),1<<100,212992,5)
+bad=Probe();bad.flags=8
+try:save_messages(Probe,[bad])
+except InvalidValue:pass
+else:raise AssertionError('message_mask_width_refusal')
 print(w.hex())
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
@@ -875,6 +902,108 @@ print('ok')
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
 		if err != nil || string(bytes.TrimSpace([]byte(out))) != "ok" {
 			t.Fatalf("hostile payload: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
+
+// TestPythonMessageWriteNegativeControl removes the real writer preflight.
+func TestPythonMessageWriteNegativeControl(t *testing.T) {
+	t.Parallel()
+	u := loadUnit(t, messageSchema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "messageprobe/_schema/message.py"
+	const anchor = `_validate(value, getattr(value, "descriptor"), "", set())`
+	if strings.Count(string(files[name]), anchor) != 1 {
+		t.Fatal("message write control lost its anchor")
+	}
+	files[name] = []byte(strings.Replace(string(files[name]), anchor, "pass  # removed preflight", 1))
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from messageprobe import Probe, save_messages, InvalidValue
+p=Probe();p.number=11
+try:save_messages(Probe,[p])
+except InvalidValue:print('ok')
+else:raise AssertionError('message_write_preflight_control')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err == nil || !strings.Contains(stderr, "message_write_preflight_control") {
+			t.Fatalf("write preflight sabotage did not fail by name: %v\n%s", err, stderr)
+		}
+	}
+}
+
+// TestPythonMessageRootIdentity refuses a class from another unit with the same name.
+func TestPythonMessageRootIdentity(t *testing.T) {
+	t.Parallel()
+	a := loadUnit(t, "package msgroota\nfixed table Probe { value int32 }\n")
+	b := loadUnit(t, "package msgrootb\nfixed table Probe { value int32 }\n")
+	files, err := Generate(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := Generate(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range other {
+		files[name] = content
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `import msgroota as a, msgrootb as b
+v=a.MessageVocabulary();a.announce_read(v,a.ANNOUNCEMENT)
+try:a.save_messages(b.Probe,[b.Probe()])
+except a.InvalidValue:pass
+else:raise AssertionError('message_cross_unit_writer')
+try:a.load_messages(b.Probe,v,b'\x02\x00\x00')
+except a.Refused as e:assert e.reason=='invalid_root'
+else:raise AssertionError('message_cross_unit_reader')
+print('ok')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err != nil || string(bytes.TrimSpace([]byte(out))) != "ok" {
+			t.Fatalf("root identity: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
+
+// TestPythonMessageZeroWidthSkip holds an unknown zero-width run to bounded work.
+func TestPythonMessageZeroWidthSkip(t *testing.T) {
+	t.Parallel()
+	u := loadUnit(t, "package msgskip\nfixed table Probe { known bool }\n")
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from msgskip import Probe, MessageVocabulary, announce_read, load_messages, LoadReport
+from msgskip._schema.message import BitWriter
+
+def leb(n):
+ b=bytearray()
+ while n>=128:b.append((n&127)|128);n>>=7
+ b.append(n);return bytes(b)
+# Unknown kind-14 array, [0,2^32-1], element u8 ranged [0,0].
+entry=(1234).to_bytes(8,'little')+b'\x0e'+leb(0)+leb(0xffffffff)+b'\x06\x01\x00\x00'
+payload=b'\x06'+leb(len(entry))+entry
+body=b'\x01\x09'+(999).to_bytes(8,'little')+b'\x02\x0e'+leb(len(payload))+payload+b'\x00'
+announce=b'\x01'+body+(0xfffffffffffffffe).to_bytes(8,'little')+(0xfffffffffffffffd).to_bytes(8,'little')+(2).to_bytes(8,'little')
+v=MessageVocabulary();announce_read(v,announce)
+w=BitWriter();w.put(2,8);w.put(0,8);w.put(1,v.ref_bits);w.put(0xffffffff,32);w.align();w.put(0,v.ref_bits)
+r=LoadReport();out=load_messages(Probe,v,w.finish(),report=r)
+assert len(out)==1 and out[0].known is False and r.unknown==1
+print('ok')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err != nil || string(bytes.TrimSpace([]byte(out))) != "ok" {
+			t.Fatalf("zero-width skip: %v\n%s\n%s", err, out, stderr)
 		}
 	}
 }

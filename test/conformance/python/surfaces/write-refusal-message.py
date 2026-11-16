@@ -24,7 +24,24 @@ def run(manifest, outdir):
         value = cls.load(read_bytes(wire))
         parts = path.replace("[", ".").replace("]", "").split(".")
         owner = _target(value, ".".join(parts[:-1])) if len(parts) > 1 else value
-        converted = int(token) if kind == "int" else float(token) if kind == "float" else bytes.fromhex(token) if kind == "bytes" else token.lower() in ("true", "1") if kind == "bool" else token
+        current = owner[int(parts[-1])] if parts[-1].isdigit() else getattr(owner, parts[-1])
+        if kind in ("int", "ordinal"):
+            converted = int(token)
+        elif kind == "length":
+            converted = "x" * int(token) if isinstance(current, str) else bytes(int(token))
+        elif kind == "float":
+            converted = float(token)
+        elif kind == "bytes":
+            converted = bytes.fromhex(token)
+            if isinstance(current, str):
+                try:
+                    converted = converted.decode("utf-8")
+                except UnicodeDecodeError:
+                    pass
+        elif kind == "bool":
+            converted = token.lower() in ("true", "1")
+        else:
+            converted = token
         if parts[-1].isdigit():
             owner[int(parts[-1])] = converted
         else:

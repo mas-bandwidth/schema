@@ -75,7 +75,7 @@ func messageModule(u *ir.Unit) string {
 	b.WriteString(`
 from typing import Any, Callable, TypeVar, cast
 from . import LoadReport
-from .message import MessageVocabulary as _Vocabulary, announce_read as _announce, resolve_vocabulary as _resolve
+from .message import BuildVersionMismatch as BuildVersionMismatch, MessageVocabulary as _Vocabulary, announce_read as _announce, resolve_vocabulary as _resolve
 from .message import BitWriter, _write_value
 from .descriptor import by_name as _by_name
 from .message import load_messages as _load, measure_messages as _measure, save_messages as _save
@@ -89,17 +89,17 @@ class MessageVocabulary(_Vocabulary):
 _local = MessageVocabulary()
 _announce(_local, ANNOUNCEMENT)
 
-def announce_read(vocab: MessageVocabulary, data: bytes, *, max_bytes: int = 65536, max_entries: int = 4096) -> None:
+def announce_read(vocab: MessageVocabulary, data: bytes | bytearray | memoryview, *, max_bytes: int = 65536, max_entries: int = 4096) -> None:
     _announce(vocab, data, max_bytes=max_bytes, max_entries=max_entries)
     _resolve(vocab, _local)
 
 def save_messages(root: type[_T], values: list[_T]) -> bytes:
-    return _save(root, list(values), _local, FIELD_KEYS, ROOTS, _WRITERS.get(getattr(root, "descriptor").name))
+    return _save(root, list(values), _local, FIELD_KEYS, ROOTS, _WRITERS.get(getattr(getattr(root, "descriptor", None), "name", "")))
 
 def measure_messages(root: type[_T], values: list[_T]) -> int:
-    return _measure(root, list(values), _local, FIELD_KEYS, ROOTS, _WRITERS.get(getattr(root, "descriptor").name))
+    return _measure(root, list(values), _local, FIELD_KEYS, ROOTS, _WRITERS.get(getattr(getattr(root, "descriptor", None), "name", "")))
 
-def load_messages(root: type[_T], vocab: MessageVocabulary, data: bytes, capacity: int = 256, report: LoadReport | None = None) -> list[_T]:
+def load_messages(root: type[_T], vocab: MessageVocabulary, data: bytes | bytearray | memoryview, capacity: int = 256, report: LoadReport | None = None) -> list[_T]:
     return cast(list[_T], _load(root, vocab, data, BUILD_VERSION, FIELD_KEYS, ROOTS, capacity, report))
 `)
 	entries := tablewire.MessageVocabulary(u)

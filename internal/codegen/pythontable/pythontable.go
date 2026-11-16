@@ -1152,7 +1152,7 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 			alias += "_"
 		}
 		fmt.Fprintf(&b, "from ._schema import _message_unit as %s\n", alias)
-		for _, name := range []string{"ANNOUNCEMENT", "MessageVocabulary", "announce_read", "load_messages", "measure_messages", "save_messages"} {
+		for _, name := range []string{"ANNOUNCEMENT", "BuildVersionMismatch", "MessageVocabulary", "announce_read", "load_messages", "measure_messages", "save_messages"} {
 			// A schema export keeps its existing public binding. The complete
 			// message API remains available through _schema._message_unit.
 			if slices.Contains(names, name) {
