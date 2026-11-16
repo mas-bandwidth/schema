@@ -200,8 +200,11 @@ func readOrderFaults(t *testing.T, edit func(map[string][]byte)) map[string]stri
 	strict := map[string]string{}
 	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Split(line, "\t")
-		if len(f) != 6 || f[1] != "float" {
+		if len(f) != 6 || (f[1] != "float" && f[1] != "float_reversed") {
 			continue
+		}
+		if (f[0] == "over_cap_then_nan") != (f[1] == "float_reversed") {
+			t.Fatalf("%s has wrong schema %s", f[0], f[1])
 		}
 		wire, err := hex.DecodeString(f[2])
 		if err != nil {
@@ -213,7 +216,12 @@ func readOrderFaults(t *testing.T, edit func(map[string][]byte)) map[string]stri
 	if len(inputs) != 3 {
 		t.Fatalf("%d float rows, want float_good, nan_then_over_cap and over_cap_then_nan", len(inputs))
 	}
-	got := runLuauCountCap(t, countCapFloatSchema, inputs, edit)
+	ordinary := map[string][]byte{"float_good": inputs["float_good"], "nan_then_over_cap": inputs["nan_then_over_cap"]}
+	reversed := map[string][]byte{"over_cap_then_nan": inputs["over_cap_then_nan"]}
+	got := runLuauCountCap(t, countCapFloatSchema, ordinary, edit)
+	for key, value := range runLuauCountCap(t, "package probe\n table Root { values []int32\n f float32 }\n", reversed, edit) {
+		got[key] = value
+	}
 	bad := map[string]string{}
 	for name, reason := range strict {
 		for _, path := range countCapPaths {

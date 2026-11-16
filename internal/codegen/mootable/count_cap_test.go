@@ -99,12 +99,12 @@ func countCapInputs(t *testing.T) (map[string][]byte, []string) {
 // first in read order names it (docs/SPEC-TABLES.md §2.9), so
 // nan_then_over_cap answers non_finite_float and over_cap_then_nan answers
 // count_over_extent_cap.
-func countCapFloatInputs(t *testing.T) (map[string][]byte, []string) {
+func countCapFloatInputsFor(t *testing.T, schema string) (map[string][]byte, []string) {
 	t.Helper()
 	in := map[string][]byte{}
 	var names []string
 	for _, r := range reasonRows(t) {
-		if r.schema != "float" {
+		if r.schema != schema {
 			continue
 		}
 		b, err := hex.DecodeString(r.wire)
@@ -114,8 +114,12 @@ func countCapFloatInputs(t *testing.T) (map[string][]byte, []string) {
 		in[r.name] = b
 		names = append(names, r.name)
 	}
-	if !slices.Equal(names, []string{"float_good", "nan_then_over_cap", "over_cap_then_nan"}) {
-		t.Fatalf("the pin's float rows are %v", names)
+	want := []string{"float_good", "nan_then_over_cap"}
+	if schema == "float_reversed" {
+		want = []string{"over_cap_then_nan"}
+	}
+	if !slices.Equal(names, want) {
+		t.Fatalf("the %s pin rows are %v, want %v", schema, names, want)
 	}
 	return in, names
 }
@@ -129,7 +133,7 @@ func countCapRed(t *testing.T, file string, mutate func(string) string, load fun
 	for _, u := range []struct {
 		unit   string
 		inputs func(*testing.T) (map[string][]byte, []string)
-	}{{"measure", countCapInputs}, {"float", countCapFloatInputs}} {
+	}{{"measure", countCapInputs}, {"float", func(t *testing.T) (map[string][]byte, []string) { return countCapFloatInputsFor(t, "float") }}, {"float_reversed", func(t *testing.T) (map[string][]byte, []string) { return countCapFloatInputsFor(t, "float_reversed") }}} {
 		bad = append(bad, countCapUnitRed(t, u.unit, u.inputs, file, mutate, load)...)
 	}
 	return bad

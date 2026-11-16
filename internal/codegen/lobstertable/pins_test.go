@@ -15,9 +15,10 @@ import (
 // lobsterPinSchemas are the units of internal/codegen/goosetable/testdata/
 // load_refusal_reasons.tsv, by its schema column.
 var lobsterPinSchemas = map[string]string{
-	"measure": "package probe\n table Child { values []int32 }\n table Root { values []int32\n entries map[int32]int32\n child Child\n next *Root }\n",
-	"fixed":   "package probe\n fixed table Root { a int32\n flag bool\n small int8 | max = 5\n f float32 }\n",
-	"float":   "package probe\n table Root { f float32\n values []int32 }\n",
+	"measure":        "package probe\n table Child { values []int32 }\n table Root { values []int32\n entries map[int32]int32\n child Child\n next *Root }\n",
+	"fixed":          "package probe\n fixed table Root { a int32\n flag bool\n small int8 | max = 5\n f float32 }\n",
+	"float":          "package probe\n table Root { f float32\n values []int32 }\n",
+	"float_reversed": "package probe\n table Root { values []int32\n f float32 }\n",
 }
 
 // lobsterPin is one row of the shared pin table.
