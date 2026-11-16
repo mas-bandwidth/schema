@@ -562,6 +562,47 @@ print('ok')
 	}
 }
 
+func TestPythonJsonKeyedEnumAgainstEngine(t *testing.T) {
+	t.Parallel()
+	unit := loadUnit(t, pyKeyedEnumSchema)
+	model := tabletext.NewModel(unit)
+	instance := model.New(model.Lookup("Root"))
+	input := []byte(`{"ranks":{"head":"Low","body":"Mid","feet":"None"},"tail":4}`)
+	var report tabletext.Report
+	if !model.Read(instance, input, &report) {
+		t.Fatalf("engine refused: %+v", report)
+	}
+	canonical, err := model.Write(instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := tablewire.Encode(model, instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from enumkey import Root
+value = Root.from_json(open('input', encoding='utf-8').read())
+assert value.ranks[1] == 1 and value.ranks[2] == 2 and value.ranks[3] == 0
+assert value.to_json().encode() == open('text','rb').read()
+assert value.save() == open('wire','rb').read()
+assert Root.load(open('wire','rb').read()).to_json().encode() == open('text','rb').read()
+print('ok')
+`
+	inputs := map[string][]byte{"main.py": []byte(probe), "input": input, "text": append(canonical, '\n'), "wire": wire}
+	if got := string(pyrun.Run(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("current: %q", got)
+	}
+	if got := string(pyrun.RunFloor(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("floor: %q", got)
+	}
+}
+
 func TestPythonJsonTimestamp(t *testing.T) {
 	t.Parallel()
 	const schema = `package jsontimestamp
