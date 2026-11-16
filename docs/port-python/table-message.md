@@ -7,7 +7,9 @@ A connection accepts one announcement; a refused first announcement remains
 terminal. The optional strict vocabulary rejects a different build version.
 A save validates the batch before producing bytes, and a read returns the
 whole batch or raises `Refused`. `load_messages` takes a capacity and an
-optional `LoadReport`.
+optional `LoadReport`. A root declared with `integrity = "crc32c"` seals
+the complete batch with one CRC-32C trailer, checks it before decoding, and
+includes the trailer in the measured size.
 
 The announcement, field slots, and payload shapes are compiler-settled facts.
 The writer emits one continuous low-bit-first stream and verifies or writes
@@ -27,7 +29,7 @@ from `package._schema._message_unit`.
 The root writer is emitted as a straight-line field walk with settled slot
 numbers; nested payloads use descriptor walks. For a two-field body, including
 whole-value validation and final bytes, a Linux benchmark using the minimum of
-five 3,000-call samples measured the descriptor writer at 13,283 ns versus the
-emitted root writer at 12,408 ns on CPython 3.15.2, and 12,842 ns versus
-11,897 ns on CPython 3.11.18. Both shapes produced identical bytes. These are
+five 3,000-call samples measured the descriptor writer at 13,732 ns versus the
+emitted root writer at 12,870 ns on CPython 3.15.2, and 14,112 ns versus
+13,142 ns on CPython 3.11.18. Both shapes produced identical bytes. These are
 single-case measurements, not a claim about every schema.
