@@ -106,6 +106,7 @@ def _optional_field(fd: Any) -> Any:
     field = _copy(fd)
     field.codec = fd.inner
     field.optional = False
+    field.guards = ()
     field.at = 0
     field.pieces = tuple((offset - fd.at, size) for offset, size in fd.pieces[:-1])
     if field.codec == "array" and field.elem is not None:

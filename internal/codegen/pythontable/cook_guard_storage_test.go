@@ -26,6 +26,8 @@ func TestPythonCookInactiveGuardStorage(t *testing.T) {
    next *Node
    hidden *bytes
    child Child
+   maybe ?int32
+   maybe_items ?[2]int32
   }
   live *Other
   live_blob *bytes
@@ -87,6 +89,11 @@ for op in (cook.cook_measure, cook.cook):
     else: raise AssertionError("inactive-unindexed-child-" + op.__name__)
 r = Root(); blob = BlobRef(b"x"); r.child.data = blob; r.live_blob = blob
 cook.check_cook(Root, cook.cook(r))
+for active in (False, True):
+    r = Root(); r.active = active; r.maybe = 7; r.maybe_items = [4, 5]
+    size = cook.cook_measure(r); data = cook.cook(r)
+    assert len(data) == size
+    cook.check_cook(Root, data)
 r = Root(); r.items = [7]; r.text = "ok"
 cook.check_cook(Root, cook.cook(r))
 for order in (1, 2): print(cook.cook(r, order).hex())
@@ -116,6 +123,8 @@ for order in (1, 2): print(cook.cook(r, order).hex())
 		}
 	})
 	for _, control := range []struct{ name, from, to, want string }{
+		{"optional-guard", `field.optional = False
+    field.guards = ()`, `field.optional = False`, "AttributeError"},
 		{"inactive-index", `_edges(entry.desc, entry.value, inactive_edges, True)`, `pass`, "inactive-unindexed-pointer-cook_measure"},
 		{"inherited-blob", `if inactive:
                     blob_entry`, `if hasattr(fd, "guard_holds") and not fd.guard_holds(value):
