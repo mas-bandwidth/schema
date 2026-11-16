@@ -358,7 +358,7 @@ func TestSharedFixturesCanonical(t *testing.T) {
 	for _, sub := range []struct {
 		name string
 		fn   func(*testing.T)
-	}{{"messages", TestSharedMessageManifestSpellings}, {"message-purposes", TestSharedMessagePurposeSpellings}, {"message-damage-boundary", TestSharedMessageDamageDiscardsProvisionalSpellings}, {"blob-witnesses", TestSharedBlobWitnessSpellings}, {"variable-purposes", TestNoncanonicalVariablePurposeShapes}, {"framing-purposes", TestFramingPurposeSpellingsRemain}, {"reordered-variable", TestVariableFieldOrderAcrossDeclarations}, {"unknown-required-union", TestUnknownEmptyUnionPurpose}, {"damage-boundaries", TestDamageAwareBoundaries}, {"reserved-node-kind", TestDamageAwareReservedNodeKind}, {"damage-id-controls", TestDamageAwareIDTableControls}} {
+	}{{"messages", TestSharedMessageManifestSpellings}, {"message-purposes", TestSharedMessagePurposeSpellings}, {"message-damage-boundary", TestSharedMessageDamageDiscardsProvisionalSpellings}, {"blob-witnesses", TestSharedBlobWitnessSpellings}, {"variable-purposes", TestNoncanonicalVariablePurposeShapes}, {"framing-purposes", TestFramingPurposeSpellingsRemain}, {"reordered-variable", TestVariableFieldOrderAcrossDeclarations}, {"unknown-required-union", TestUnknownEmptyUnionPurpose}, {"damage-boundaries", TestDamageAwareBoundaries}, {"reserved-node-kind", TestDamageAwareReservedNodeKind}, {"boolean-text-domains", TestDamageAwareBooleanAndText}, {"damage-id-controls", TestDamageAwareIDTableControls}} {
 		t.Run(sub.name, sub.fn)
 	}
 	for path := range idsWant {

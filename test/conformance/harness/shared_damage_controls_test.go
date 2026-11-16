@@ -147,3 +147,31 @@ func TestDamageAwareReservedNodeKind(t *testing.T) {
 		t.Fatalf("shapes=%v damage=%v", shapes, err)
 	}
 }
+
+func TestDamageAwareBooleanAndText(t *testing.T) {
+	t.Parallel()
+	u := damageControlUnit(t)
+	for _, tc := range []struct {
+		name   string
+		body   []byte
+		reason string
+	}{{"bad boolean", b(1, 1, 2, 0), "invalid boolean byte"}, {"valid boolean", b(1, 1, 1, 0), ""}, {"zero text", b(1, 12, 2, 'a', 0, 0), "ill-formed text"}, {"bad utf8", b(1, 12, 1, 0xff, 0), "ill-formed text"}, {"valid utf8", b(1, 12, 2, 0xc3, 0xa9, 0), ""}} {
+		t.Run(tc.name, func(t *testing.T) {
+			wire, err := (framingVector{ids: []string{"future"}, body: tc.body}).scriptBytes(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = damageAwareFileSpellings(u, u.Tables["Root"], wire)
+			if tc.reason == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			damage, ok := errors.AsType[*fixtureDamage](err)
+			if !ok || len(damage.Issues) == 0 || !strings.Contains(damage.Issues[0], tc.reason) {
+				t.Fatalf("damage=%v", err)
+			}
+		})
+	}
+}

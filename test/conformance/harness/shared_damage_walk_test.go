@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -40,6 +42,11 @@ func (s *fixtureWalker) damage(off int, why string) {
 		s.prefixEnd = off
 	}
 	s.issues = append(s.issues, fmt.Sprintf("byte %d: %s", off, why))
+}
+func (s *fixtureWalker) text(a, b int) {
+	if !utf8.Valid(s.data[a:b]) || bytes.IndexByte(s.data[a:b], 0) >= 0 {
+		s.damage(a, "ill-formed text")
+	}
 }
 func (s *fixtureWalker) leb(off, end int, kind wireSpotKind) (uint64, int, bool) {
 	var v uint64
@@ -157,7 +164,7 @@ func (s *fixtureWalker) payload(k, off, end int, nodes bool) (int, bool) {
 		if nodes {
 			return s.envelope(off, end, false, false, s.nodes)
 		}
-		return s.envelope(off, end, false, false, nil)
+		return s.envelope(off, end, false, false, s.text)
 	case ir.TableKindTable:
 		return s.envelope(off, end, false, true, func(a, b int) { s.body(a, b, false) })
 	case ir.TableKindArray, ir.TableKindKeyed:
@@ -189,6 +196,10 @@ func (s *fixtureWalker) payload(k, off, end int, nodes bool) (int, bool) {
 			s.damage(off, "scalar crosses enclosing boundary")
 			return off, false
 		}
+		if k == ir.TableKindBool && s.data[off] > 1 {
+			s.damage(off, "invalid boolean byte")
+			return off, false
+		}
 		return off + w, true
 	}
 }
@@ -200,7 +211,9 @@ func (s *fixtureWalker) raw(k, a, b int) {
 		s.body(a, b, false)
 	case ir.TableKindArray, ir.TableKindKeyed:
 		s.collection(a, b, k == ir.TableKindKeyed)
-	case ir.TableKindString, ir.TableKindEscape:
+	case ir.TableKindString:
+		s.text(a, b)
+	case ir.TableKindEscape:
 	case ir.TableKindNoPayload:
 		if a != b {
 			s.damage(a, "payload-free kind has bytes")
@@ -313,7 +326,9 @@ func (s *fixtureWalker) nodes(off, end int) {
 			return
 		}
 		var inner func(int, int)
-		if id != ir.BytesWireTypeId && id != ir.StringWireTypeId {
+		if id == ir.StringWireTypeId {
+			inner = s.text
+		} else if id != ir.BytesWireTypeId {
 			inner = func(x, y int) { s.body(x, y, false) }
 		}
 		a, ok = s.envelope(b, end, false, false, inner)
@@ -328,8 +343,8 @@ func (s *fixtureWalker) nodes(off, end int) {
 }
 
 // damageAwareFrame is independent of frameWire, frameScanner and the production
-// reader. It covers variable file framing, not value legality (UTF-8, finite
-// floats, declaration bounds or graph reachability). Only completed fields are
+// reader. It covers variable file framing and wire-level boolean/text validity,
+// not finite floats, declaration bounds or graph reachability. Only completed fields are
 // exposed to the six-shape classifier. Damage is retained as an explicit result.
 func damageAwareFrame(data []byte) (*wireFrame, error) {
 	f := &wireFrame{}
