@@ -541,7 +541,7 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit, surfaces Surfa
 		if !closure[st.Name] {
 			continue
 		}
-		emitTableDescriptor(&b, u, st, true)
+		emitTableDescriptor(&b, u, st, true, surfaces)
 		if surfaces.Block {
 			emitValueBlockRow(&b, u, st)
 		}
@@ -574,7 +574,11 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit, surfaces Surfa
 		emitTable(&b, u, st, surfaces)
 		if surfaceCarries(surfaces, st, "block") {
 			emitBlockDescriptors(&b, u, st, blocks)
-		} else {
+		} else if surfaces.Block {
+            // A table excluded as a block root may still be a by-value child
+            // of an included root. Keep its row layout for that enclosing block.
+            emitBlockDescriptors(&b, u, st, nil)
+        } else {
 			fmt.Fprintf(&b, "%s.block = None\n\n", st.Name)
 		}
 	}
@@ -743,7 +747,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 	} else {
 		b.WriteString("        return measure_table(self)\n\n\n")
 	}
-	emitTableDescriptor(b, u, st, false)
+	emitTableDescriptor(b, u, st, false, surfaces)
 	if fast {
 		emitFastStraightLine(b, st, variable, guards)
 	} else if scalarOnly(st) {
@@ -757,7 +761,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 // hosted from the packet core: it registers by name, because a packet type by
 // value never rides the node table's type ids, and its class is the packet
 // core's.
-func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueClass bool) {
+func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueClass bool, surfaces Surfaces) {
 	name := st.Name
 	variable := false
 	if !valueClass {
@@ -768,6 +772,16 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(name))
 	fmt.Fprintf(b, "    type_id=%s,\n", hex64(ir.TableWireId(st.WireName())))
 	fmt.Fprintf(b, "    variable=%s,\n", pyBool(variable))
+	if !valueClass {
+		var forms []string
+		for _, form := range surfaceForms(surfaces, st) {
+            forms = append(forms, strconv.Quote(form))
+        }
+		if len(forms) == 1 {
+			forms[0] += ","
+		}
+		fmt.Fprintf(b, "    forms=(%s),\n", strings.Join(forms, ", "))
+	}
 	fmt.Fprintf(b, "    fields=(\n")
 	for ordinal, f := range st.Fields {
 		lo, hi := intRange(f)
@@ -991,7 +1005,7 @@ func emitBlockDescriptors(b *strings.Builder, u *ir.Unit, st *ir.Struct, blocks 
 	fmt.Fprintf(b, "%s.block_row = BlockRecord(\n", name)
 	emitBlockRecordBody(b, u, row, nil, false)
 	b.WriteString(")\n")
-	if blocks == nil {
+	if blocks == nil || !st.CarriesForm("block") {
 		fmt.Fprintf(b, "%s.block = None\n\n", name)
 		return
 	}
