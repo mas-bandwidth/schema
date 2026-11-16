@@ -16,6 +16,7 @@ import (
  "github.com/mas-bandwidth/schema/v2/internal/slowtest"
  "github.com/mas-bandwidth/schema/v2/internal/tabletext"
  "github.com/mas-bandwidth/schema/v2/internal/tablewire"
+ "github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const requiredForm1Schema = `package req
@@ -29,6 +30,7 @@ table Root {
  text string(8) | required
  data bytes(8) | required
  items []int32 | required
+ pointer_array []*Leaf | required
  pointer *Leaf | required
  blob *string | required
  nested Child | required
@@ -63,7 +65,7 @@ value=Root()
 assert value.save() == expected, "required_writer"
 assert value.measure() == len(expected), "required_measure"
 loaded=Root.load(expected)
-assert loaded.items == [] and loaded.pointer is None and loaded.blob is None, "required_values"
+assert loaded.items == [] and loaded.pointer_array == [] and loaded.pointer is None and loaded.blob is None, "required_values"
 try:
     Root.load(bytes([1,0])+bytes(8))
 except Refused as err:
@@ -218,4 +220,55 @@ assert v.save()==wire and Root.load(wire).count==1, "required_range_set"
 print("ok")
 `
  for _,p:=range []struct{name string;path func(testing.TB)string}{{"current",pyrun.Interpreter},{"floor",pyrun.Floor}} {out,stderr,err:=pyrun.Try(t,p.path(t),dir,"main.py",map[string][]byte{"main.py":[]byte(probe),"wire":wire});if err!=nil||out!="ok\n"{t.Errorf("%s: %v %s %s",p.name,err,out,stderr)}}
+}
+
+func TestPythonForm1RequiredGuards(t *testing.T) {
+ t.Parallel(); slowtest.Gate(t,"both pinned Python interpreters")
+ newer:=loadUnit(t,`package reqguard
+table Root { active bool
+if active { amount int32 | required } else { fallback int32 | required } }`)
+ older:=loadUnit(t,`package reqguard
+table Root { active bool
+if active { amount int32 } else { fallback int32 } }`)
+ encode:=func(u *ir.Unit,text string) []byte {m:=tabletext.NewModel(u);v:=m.New(m.Lookup("Root"));var rep tabletext.Report;if !m.Read(v,[]byte(text),&rep){t.Fatalf("guard input: %+v",rep)};wire,err:=tablewire.EncodeVariable(m,v);if err!=nil{t.Fatal(err)};return wire}
+ off:=encode(newer,`{"fallback":0}`);on:=encode(newer,`{"active":true,"amount":0}`);missingOff:=encode(older,`{}`);missingOn:=encode(older,`{"active":true}`)
+ files,err:=Generate(newer);if err!=nil{t.Fatal(err)};dir:=t.TempDir();writeTree(t,dir,files)
+ probe:=pyrun.ImportPrelude+`from reqguard import Root, Refused
+
+def get(name):
+    with open(name, "rb") as f: return f.read()
+v=Root()
+assert v.save()==get("off") and Root.load(get("off")).active is False, "guard_off"
+v.active=True
+assert v.save()==get("on") and Root.load(get("on")).active is True, "guard_on"
+for name, field in (("missing_off","fallback"),("missing_on","amount")):
+    try: Root.load(get(name))
+    except Refused as err: assert err.reason == "missing_required" and field in str(err), name
+    else: raise AssertionError(name)
+print("ok")
+`
+ for _,p:=range []struct{name string;path func(testing.TB)string}{{"current",pyrun.Interpreter},{"floor",pyrun.Floor}} {out,stderr,err:=pyrun.Try(t,p.path(t),dir,"main.py",map[string][]byte{"main.py":[]byte(probe),"off":off,"on":on,"missing_off":missingOff,"missing_on":missingOn});if err!=nil||out!="ok\n"{t.Errorf("%s: %v %s %s",p.name,err,out,stderr)}}
+}
+
+func TestPythonForm1RequiredGuardControls(t *testing.T) {
+ t.Parallel(); slowtest.Gate(t,"both pinned Python interpreters")
+ u:=loadUnit(t,`package reqguard
+table Root { active bool
+if active { amount int32 | required } else { fallback int32 | required } }`)
+ m:=tabletext.NewModel(u);v:=m.New(m.Lookup("Root"));var rep tabletext.Report;if !m.Read(v,[]byte(`{"active":true,"amount":0}`),&rep){t.Fatalf("guard input: %+v",rep)};wire,err:=tablewire.EncodeVariable(m,v);if err!=nil{t.Fatal(err)};files,err:=Generate(u);if err!=nil{t.Fatal(err)}
+ probe:=pyrun.ImportPrelude+`from reqguard import Root
+with open("wire", "rb") as f: wire=f.read()
+v=Root();v.active=True
+try: out=v.save(); loaded=Root.load(wire)
+except Exception as err: raise AssertionError("required_guard") from err
+assert out==wire and loaded.active is True, "required_guard"
+print("ok")
+`
+ controls:=[]struct{name,path,from,to string}{
+  {"fast_write","reqguard/Core.py","if f1.required or not f1.is_default(current):","if not f1.is_default(current):"},
+  {"inactive_missing","reqguard/_schema/load.py","field.required and field.guard_holds(obj) and field.field_id not in seen","field.required and field.field_id not in seen"},
+ }
+ for _,c:=range controls {t.Run(c.name,func(t *testing.T){fs:=maps.Clone(files);if strings.Count(string(fs[c.path]),c.from)!=1{t.Fatalf("%s anchor moved",c.name)};fs[c.path]=[]byte(strings.Replace(string(fs[c.path]),c.from,c.to,1));dir:=t.TempDir();writeTree(t,dir,fs)
+  for _,p:=range []struct{name string;path func(testing.TB)string}{{"current",pyrun.Interpreter},{"floor",pyrun.Floor}} {_,stderr,err:=pyrun.Try(t,p.path(t),dir,"main.py",map[string][]byte{"main.py":[]byte(probe),"wire":wire});if err==nil || !strings.Contains(stderr,"AssertionError: required_guard"){t.Errorf("%s/%s did not fail on required guard: %v %s",c.name,p.name,err,stderr)}}
+ })}
 }
