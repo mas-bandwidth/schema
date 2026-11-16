@@ -394,7 +394,7 @@ func TestPythonVtFixedClassBuildVersionImports(t *testing.T) {
 			if out, err := pyrun.Analyze(t, dir, u.Package); err != nil {
 				t.Errorf("strict analyzer: %v\n%s", err, out)
 			}
-			probe := fmt.Sprintf("import importlib\nm = importlib.import_module(%q)\nassert m.BUILD_VERSION == %d\nprint('build-version')\n", u.Package, ir.BuildVersion(u))
+			probe := vtFixedClassBuildVersionProbe(u.Package, ir.BuildVersion(u))
 			for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 				out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + probe)})
 				if err != nil || strings.TrimSpace(string(out)) != "build-version" {
@@ -402,5 +402,33 @@ func TestPythonVtFixedClassBuildVersionImports(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func vtFixedClassBuildVersionProbe(pkg string, expected uint64) string {
+	return fmt.Sprintf("import importlib\nm = importlib.import_module(%q)\nif m.BUILD_VERSION != %d:\n    raise AssertionError('build_version_control')\nprint('build-version')\n", pkg, expected)
+}
+
+// TestPythonVtFixedClassBuildVersionImportsNegativeControl moves the emitted
+// package version in a copy and requires the import check to detect it.
+func TestPythonVtFixedClassBuildVersionImportsNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Python interpreters")
+	u, files := vtFixedClassFiles(t)
+	name := filepath.ToSlash(filepath.Join(u.Package, "__init__.py"))
+	before := string(files[name])
+	anchor := fmt.Sprintf("BUILD_VERSION: Final = 0x%016x", ir.BuildVersion(u))
+	if strings.Count(before, anchor) != 1 {
+		t.Fatal("build-version control anchor changed")
+	}
+	files[name] = []byte(strings.Replace(before, anchor, anchor+" ^ 1", 1))
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		probe := vtFixedClassBuildVersionProbe(u.Package, ir.BuildVersion(u))
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + probe)})
+		if err == nil || !strings.Contains(stderr, "build_version_control") {
+			t.Fatalf("build-version control did not go red by name: %v\n%s", err, stderr)
+		}
 	}
 }
