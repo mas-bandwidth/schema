@@ -459,11 +459,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   FIRST, then the arms, then any guardless present-defaults entry that must\n")
 	g.pf("   run after the guarded payload it replaces: the entries that are nearly\n")
 	g.pf("   all of a plan never test a guard at all. */\n")
-	// THE EMITTED PLAN IS THE COALESCED PLAN, SPLIT ONLY WHERE A COPY ENTRY
-	// SPANS LEAVES OF DIFFERENT WIDTHS, so a big-endian copy knows its element
-	// width (ir.TableFixedSplitByWidth). The split count is the new guarded split.
-	split := ir.TableFixedSplitByWidth(entries, plan, guarded)
+	// Preserve union tags as validation boundaries before splitting mixed-width
+	// copies for host byte order. Both splits retain the copy destinations and
+	// recount the guarded partition.
 	dead := fixedDeadMetaOf(g.unit, st)
+	plan, guarded = dead.splitUnionTags(plan, guarded)
+	split := ir.TableFixedSplitByWidth(entries, plan, guarded)
 	g.pf("static SCHEMA_UNUSED const TableFixedEntry %s_fixed_plan[] = {\n", n)
 	for i, e := range split.Plan {
 		guard := "SCHEMA_TABLE_FIXED_NO_GUARD"
@@ -500,16 +501,21 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		deadBytes, armBytes, armCount, tagWidth := int64(0), int64(0), int64(0), int64(0)
 		switch e.Op {
 		case ir.TableFixedOpCount:
-			deadBytes = dead.counts[e.Src]
+			deadBytes = fixedExtentAt(dead.counts, e.Src, e.GuardLinks)
 		case ir.TableFixedOpPresentDefaults:
-			deadBytes = dead.presents[e.Src]
+			deadBytes = fixedExtentAt(dead.presents, e.Src, e.GuardLinks)
 		case ir.TableFixedOpCopy:
-			if un, ok := dead.unions[e.Src]; ok && e.Size == un.tagWidth {
+			if un, ok := dead.unionAt(e.Src, e.GuardLinks); ok && e.Size == un.tagWidth {
 				deadBytes, tagWidth, armCount = un.widest, un.tagWidth, int64(len(un.arms)-1)
+				split.Elems[i] = un.tagWidth // a tag keeps its declared host-order width after splitting
 			}
 		}
 		if e.Guard != ir.TableFixedNoGuard {
-			if un, ok := dead.unions[e.Guard]; ok && e.Arg >= 0 && e.Arg < len(un.arms) {
+			outer := e.GuardLinks
+			if len(outer) > 0 {
+				outer = outer[:len(outer)-1]
+			}
+			if un, ok := dead.unionAt(e.Guard, outer); ok && e.Arg >= 0 && e.Arg < len(un.arms) {
 				armBytes = un.arms[e.Arg]
 			}
 		}
@@ -518,7 +524,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		// not run and validate nothing; zero is "under no optional". The span
 		// the present-defaults entry judges is the whole absent payload.
 		present := int64(0)
-		if at := dead.presentOf(e.Src); at >= 0 {
+		if at := dead.presentOf(e.Src, e.GuardLinks); at >= 0 {
 			present = at + 1
 		}
 		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d, %du, %du, %du, %d, %du }, /* %s */\n",
