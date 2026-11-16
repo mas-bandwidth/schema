@@ -494,27 +494,16 @@ func tableJSONCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 }
 
 // tableJSONCountInContract reports whether a counted field's companion is one
-<<<<<<< HEAD
-// the declaration admits: never negative, and past its bound only for a
-// container with no declared bound. The binary writers refuse these values
-// (docs/SPEC.md §5.1 rows 3 and 4), so the text writer does too rather than
-// write a truncated count or a clamped length.
-=======
 // the declaration admits: at or above its declared minimum (never negative), and
 // past its bound only for a container with no declared bound. The binary writers
 // refuse these values (docs/SPEC.md §5.1 rows 3 and 4), so the text writer does
 // too rather than write a truncated count or a clamped length.
->>>>>>> f73f6cf561aef1c3ed01dd843e2317f30431362b
 func tableJSONCountInContract(base unsafe.Pointer, f *TableFieldInfo) bool {
 	if !f.Counted {
 		return true
 	}
 	count := *(*int32)(unsafe.Add(base, uintptr(f.CountOffset)))
-<<<<<<< HEAD
-	return count >= 0 && (f.UnboundedContainer || count <= f.ArrayBound)
-=======
 	return count >= f.ArrayMin && (f.UnboundedContainer || count <= f.ArrayBound)
->>>>>>> f73f6cf561aef1c3ed01dd843e2317f30431362b
 }
 
 func tableJSONSetCount(base unsafe.Pointer, f *TableFieldInfo, count int32) {

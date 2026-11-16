@@ -259,11 +259,6 @@ func init() {
 		Name{Name: "tableBinaryMaxDepth", What: "the binary nesting bound the wire-alone check holds (docs/SPEC-TABLES.md §4, binary_max_depth)"},
 		Name{Name: "tableWireBytesID", What: "the wire-alone check: the bytes kind's field id"},
 		Name{Name: "tableWireStringID", What: "the wire-alone check: the string kind's field id"},
-		Name{Name: "tableFirstUse", What: "the id table's first-use order (docs/SPEC-TABLES.md §3, §3.1, §3.2, §3.3)"},
-		Name{Name: "tableFirstUseCount", What: "the id table's first-use order (docs/SPEC-TABLES.md §3, §3.1, §3.2, §3.3)"},
-		Name{Name: "tableFirstUseMeet", What: "the id table's first-use order (docs/SPEC-TABLES.md §3, §3.1, §3.2, §3.3)"},
-		Name{Name: "tableFirstUseRun", What: "the id table's first-use order (docs/SPEC-TABLES.md §3, §3.1, §3.2, §3.3)"},
-		Name{Name: "tableFirstUseWhole", What: "the id table's first-use order (docs/SPEC-TABLES.md §3, §3.1, §3.2, §3.3)"},
 		Name{Name: "tableOpenFramed", What: "the form-1 wire runtime"},
 		Name{Name: "tableKindWidens", What: "the form-1 wire runtime"},
 		Name{Name: "tableUTF8Valid", What: "the form-1 wire runtime"},
@@ -360,11 +355,7 @@ func init() {
 		Name{Name: "tableJSONReadNullAsEmpty", What: "the null-as-empty option's read (docs/SPEC-TABLES.md §16.2)"},
 		Name{Name: "tableJSONBytes", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJSONCount", What: "one step of the text form's generic walk (§16)"},
-<<<<<<< HEAD
-		Name{Name: "tableJSONCountInContract", What: "a counted field's companion inside the declared contract (docs/SPEC-TABLES.md §16.2)"},
-=======
 		Name{Name: "tableJSONCountInContract", What: "the text writer's count and length bounds (§16.3)"},
->>>>>>> f73f6cf561aef1c3ed01dd843e2317f30431362b
 		Name{Name: "tableJSONElementShape", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJSONEncodeUTF8", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJSONFinite", What: "one step of the text form's generic walk (§16)"},
@@ -530,9 +521,6 @@ func init() {
 		Name{Name: "tableFixedTextRefusal", What: "the fixed form: the text CONTENT refusal as a pre-scan of the plan's text entries (§4.12)"},
 		Name{Name: "tableFixedPresent", What: "the fixed form: the plan entry mark for an optional's present byte (§3.4, THE SLACK RULE)"},
 		Name{Name: "tableFixedDead", What: "the fixed form: whether a source offset lies in slack the pre-scan found (§3.4, THE SLACK RULE)"},
-		Name{Name: "tableFixedSlack", What: "the fixed form: a plan entry for a dead range, an inactive union arm's bytes (§3.4)"},
-		Name{Name: "tableFixedAllZero", What: "the fixed form: whether every byte of a dead range is zero (§3.4)"},
-		Name{Name: "tableFixedDeadSpan", What: "the fixed form: a dead range checked for zero and clamped to the record (§3.4)"},
 		// THE FIXED LOAD'S REFUSAL NAMES — EXPORTED (docs/FIXED-FORM-ALGORITHM.md
 		// §5.3): one string constant per fixed-load refusal name, used by the
 		// emitted <T>FixedLoad in place of a literal so an adopter's

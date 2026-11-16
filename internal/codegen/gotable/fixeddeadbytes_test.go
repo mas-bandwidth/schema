@@ -1,10 +1,7 @@
 package gotable
 
 import (
-<<<<<<< HEAD
-=======
 	"encoding/binary"
->>>>>>> f73f6cf561aef1c3ed01dd843e2317f30431362b
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -90,8 +87,6 @@ func TestFixedDeadBytes(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 }
-<<<<<<< HEAD
-=======
 
 // A lineage read checks the writer's source spans before landing any record,
 // including dead tails whose offsets change when this reader widens storage.
@@ -225,4 +220,3 @@ func TestFixedDeadBytesRejectRemovedWriterShape(t *testing.T) {
 		})
 	}
 }
->>>>>>> f73f6cf561aef1c3ed01dd843e2317f30431362b
