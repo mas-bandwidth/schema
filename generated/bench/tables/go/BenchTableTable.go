@@ -479,6 +479,9 @@ type tableMapKey struct {
 	raw  uint64
 }
 
+func tableMapKeyValid(k tableMapKey, f *TableFieldInfo) bool {
+	return f.Kind != 12 || k.raw == 0 && len(k.text) <= int(f.ArrayBound)
+}
 func tableMapStoredKey(p unsafe.Pointer, f *TableFieldInfo) tableMapKey {
 	key := tableMapKey{}
 	if f.Kind == 12 {
