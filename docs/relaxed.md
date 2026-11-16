@@ -74,16 +74,6 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-moo`: gated again (both hostile rows).
   - `relax/hostile-rows-rust`: str-zero-escape-unknown-key, in the conformance leg and in the port's hostile-corpus run (carried findings); base64-unpadded is gated again.
   - `relax/hostile-rows-squirrel`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run, `internal/ci/schema_squirrel_runs_hostile_corpus_test.go`); the JSON walk refuses a U+0000 in an object key or a skipped string (read.go scanKey).
-- `relax/deprecated-carried`: `test/conformance/go/rows/R20_test.go`, clause 2
-  (`TestRowR20DroppedFieldUnknown`). The header is restored to the
-  maintainer's ruling of 2026-11-10 (a `| deprecated` fixed-form field is
-  carried: "if it's supplied, use the value there, otherwise, use the
-  default"; docs/FIXED-FORM-ALGORITHM.md §5.1; the C++ R20), and the one
-  assertion that the stored value lands (`B == 2`) is commented out, because
-  Go's fixed reader still yields the declared default. Real fix: the ruling's
-  rollout across Go's emitter (`fixedDeprecatedDefault`), the engine
-  (tablewire), Lobster, Go's TestFixedDeprecatedSlotIsTheDeclaredDefault, and
-  docs/SPEC-TABLES.md §3.4, §21.2 and §22.6. WIP: none.
 
 ## Negative controls
 
