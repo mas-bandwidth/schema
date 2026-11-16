@@ -1325,6 +1325,56 @@ print('ok')
 	}
 }
 
+func TestPythonJsonOptionalMapsAgainstEngine(t *testing.T) {
+	t.Parallel()
+	unit := loadUnit(t, optionalMapSchema)
+	model := tabletext.NewModel(unit)
+	root := model.Lookup("Root")
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	inputs := map[string][]byte{}
+	for i, text := range []string{`{}`, `{"tags":{}}`, `{"tags":{"a":1},"nodes":{"1":{"value":7}}}`} {
+		instance := model.New(root)
+		var report tabletext.Report
+		if !model.Read(instance, []byte(text), &report) {
+			t.Fatalf("engine refused %s: %+v", text, report)
+		}
+		canonical, err := model.Write(instance)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire, err := tablewire.Encode(model, instance)
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs[fmt.Sprintf("input%d", i)] = []byte(text)
+		inputs[fmt.Sprintf("text%d", i)] = append(canonical, '\n')
+		inputs[fmt.Sprintf("wire%d", i)] = wire
+	}
+	probe := pyrun.ImportPrelude + `from optmap import Root
+for i in range(3):
+    with open('input'+str(i), encoding='utf-8') as f: text = f.read()
+    with open('text'+str(i), encoding='utf-8') as f: expected_text = f.read()
+    with open('wire'+str(i), 'rb') as f: expected_wire = f.read()
+    value = Root.from_json(text)
+    assert value.to_json() == expected_text, i
+    assert value.save() == expected_wire, i
+    assert Root.load(expected_wire).to_json() == expected_text, i
+print('ok')
+`
+	inputs["main.py"] = []byte(probe)
+	if got := string(pyrun.Run(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("current: %q", got)
+	}
+	if got := string(pyrun.RunFloor(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("floor: %q", got)
+	}
+}
+
 func TestPythonJsonPointerArraysAgainstEngine(t *testing.T) {
 	t.Parallel()
 	const schema = `package jsonpointerarrays
