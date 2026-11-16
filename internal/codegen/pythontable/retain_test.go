@@ -568,3 +568,85 @@ print('enum-array')
 		}
 	}
 }
+
+func TestPythonRetainRootBodyInternal(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
+	files, err := Generate(loadUnit(t, "package probe\ntable Root { x int32 }\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	first := unionCat(w.ref("x"), []byte{4}, unionI32(4))
+	unknown := unionCat(w.ref("future"), []byte{4}, unionI32(7))
+	wire := w.file(first, unknown)
+	script := pyrun.ImportPrelude + `from probe import Root, LoadReport
+from probe._schema.retain import TableRetain
+from probe._schema.load import load_table
+from probe._schema.save import _encode_retain, Writer
+with open('wire','rb') as f: wire=f.read()
+keep=TableRetain(bytearray(1024),bytearray(24*8)); report=LoadReport()
+value=load_table(Root,wire,report,keep)
+assert (report.unknown,report.retained,report.retain_lost)==(1,1,0)
+size,lost=_encode_retain(value,keep,Writer(None))
+for _ in range(2):
+    out=bytearray(); actual,lost2=_encode_retain(value,keep,Writer(out))
+    assert out==wire and size==actual==len(wire) and lost==lost2==0
+print('root-body')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "root-body" {
+			t.Fatalf("root body: %v\n%s\n%s", err, out, stderr)
+		}
+		if output, err := pyrun.Analyze(t, dir, "probe/_schema"); err != nil {
+			t.Fatalf("mypy: %v\n%s", err, output)
+		}
+	}
+}
+
+func TestPythonRetainNestedBodyInternal(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+table Child { x int32 }
+table Root {
+ inner Child
+ ptr *Child
+}
+`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	ghost := unionCat(w.ref("future"), []byte{4}, unionI32(7))
+	wire := w.file(w.table("inner", ghost))
+	canonical := &unionWire{}
+	canonical.ref("inner")
+	canonicalGhost := unionCat(canonical.ref("future"), []byte{4}, unionI32(7))
+	expected := canonical.file(canonical.table("inner", canonicalGhost))
+	script := pyrun.ImportPrelude + `from probe import Root, LoadReport
+from probe._schema.retain import TableRetain
+from probe._schema.load import load_table
+from probe._schema.save import _encode_retain, Writer
+with open('wire','rb') as f: wire=f.read()
+with open('expected','rb') as f: expected=f.read()
+keep=TableRetain(bytearray(1024),bytearray(24*8)); report=LoadReport()
+value=load_table(Root,wire,report,keep)
+assert (report.unknown,report.retained,report.retain_lost)==(1,1,0)
+out=bytearray(); size,lost=_encode_retain(value,keep,Writer(out))
+assert out==expected and size==len(expected) and lost==0, (out,expected,lost)
+print('nested-body')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire, "expected": expected})
+		if err != nil || strings.TrimSpace(out) != "nested-body" {
+			t.Fatalf("nested body: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}

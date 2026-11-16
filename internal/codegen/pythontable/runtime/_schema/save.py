@@ -77,11 +77,17 @@ class Ctx:
 class RetainCtx(Ctx):
     """Use the caller's id slots without growing the generated id map."""
 
-    __slots__ = ("retain",)
+    __slots__ = ("retain", "node", "steps", "lost", "known")
 
     def __init__(self, retain: Any) -> None:
+        from .retain_known import KNOWN
+
         super().__init__()
         self.retain = retain
+        self.node = 1
+        self.steps: tuple[tuple[int, int], ...] = ()
+        self.lost = 0
+        self.known = KNOWN
 
     def idref(self, value: int) -> int:
         reference = self.refs.get(value)
@@ -134,6 +140,73 @@ def _encode(value: Any, writer: Writer) -> int:
         writer.raw(table_id.to_bytes(8, "little"))
     writer.raw(len(ctx.ids).to_bytes(8, "little"))
     return writer.count
+
+
+def _encode_retain(value: Any, retain: Any, writer: Writer) -> tuple[int, int]:
+    """Experimental retaining walk; the public entry points are not emitted yet."""
+    if retain.loaded_root is not value:
+        raise InvalidValue("", "retention belongs to a different loaded root")
+    _validate(value, value.descriptor, "", set())
+    ctx = RetainCtx(retain)
+    ctx.indices[id(value)] = 1
+    ctx.onstack.add(id(value))
+    root_blobs: list[int] = []
+    ctx.node_blobs[1] = root_blobs
+    _collect(value, ctx, root_blobs)
+    ctx.blob_slots = list(root_blobs)
+    for position, node in enumerate(ctx.order):
+        if not isinstance(node, kind_blob._BlobNode):
+            ctx.blob_slots.extend(ctx.node_blobs[position + 2])
+    retain.begin_save(ctx, retain.directory)
+    writer.byte(FORM)
+    write_body(writer, value, ctx, True)
+    ctx.write_ids(writer)
+    return writer.count, ctx.lost + retain.unplaced()
+
+
+def _write_retain_body(writer: Writer, value: Any, ctx: RetainCtx, root: bool) -> None:
+    desc: TableDesc = value.descriptor
+    previous = ctx.current
+    parent_steps = ctx.steps
+    ctx.current = value
+    for field in desc.fields:
+        current = getattr(value, field.name)
+        codec = field.inner if field.codec == "optional" else field.codec
+        child = parent_steps + ((field.ordinal, 0),)
+        has_child = codec == "table" and current is not None and ctx.retain.has_body(ctx.node, child)
+        if field.is_default(current) and not has_child:
+            continue
+        if codec == "table":
+            ctx.steps = child
+        kinds._REGISTRY[field.codec].write(writer, field, current, ctx)
+        ctx.steps = parent_steps
+    ctx.lost += ctx.retain.write_tail(ctx.node, parent_steps, ctx.known, ctx, writer)
+    if root and ctx.order:
+        writer.varint(ctx.idref(NODE_WIRE_ID))
+        writer.byte(12)
+        payload = bytearray()
+        nodes = Writer(payload)
+        nodes.varint(len(ctx.order))
+        for index, node in enumerate(ctx.order):
+            if isinstance(node, kind_blob._BlobNode):
+                type_id = kind_blob._STRING_BLOB_ID if node.string else kind_blob._BYTES_BLOB_ID
+                nodes.varint(ctx.idref(type_id))
+                nodes.varint(len(node.body))
+                nodes.raw(node.body)
+                continue
+            nodes.varint(ctx.idref(node.descriptor.type_id))
+            body = bytearray()
+            ctx.node = index + 2
+            ctx.steps = ()
+            _write_retain_body(Writer(body), node, ctx, False)
+            nodes.varint(len(body))
+            nodes.raw(body)
+        ctx.node = 1
+        ctx.steps = parent_steps
+        writer.varint(len(payload))
+        writer.raw(payload)
+    writer.byte(0)
+    ctx.current = previous
 
 
 def _path(parent: str, name: str) -> str:
@@ -346,6 +419,9 @@ def _collect_map(field: FieldDesc, value: dict[Any, Any], ctx: Ctx, blobs: list[
 
 
 def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:
+    if isinstance(ctx, RetainCtx):
+        _write_retain_body(writer, value, ctx, root)
+        return
     desc: TableDesc = value.descriptor
     previous = ctx.current
     ctx.current = value
