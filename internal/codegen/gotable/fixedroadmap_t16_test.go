@@ -3,17 +3,15 @@ package gotable
 // FULL-WIDTH ENUM AND UNION ORDINALS ON THE GO LEG (docs/roadmap.sexp node
 // `fixed-tables`, leaf go/R31; docs/FIXED-FORM-ALGORITHM.md §4.1, §5.2, §5.8
 // rows 5, 7 and 14). One fixture per the card: an enum with an ordinal past
-// 65535 and a union with more than 255 arms, written by a writer with more
-// variants than the reader.
+// 65535 and a union with more than 255 arms, with an append-only reader.
 //
-// The writer declares 300 enum variants and 300 union arms; the reader keeps
-// three variants and two arms, so the writer's last variant (ordinal 300)
-// must remap through a table whose length word is the WRITER's count. The
-// 8-byte Wide enum (max past 2^32) carries forged ordinals past 65535 and
-// past MaxUint32: read through a 64-bit temporary they land None, while a
-// 32-bit temporary would truncate 0x1_0000_0001 to variant 1. The reader
-// finding on this card pins the lanes unconditionally: Arg/Arg2 are u64, so
-// the generated probe below also stamps 0x1_0000_0001 on both guard lanes.
+// The writer declares 300 enum variants and 300 union arms; the reader retains
+// every one and appends another. The writer's ordinal 300 stays full-width, and
+// the remap table's length word is the WRITER's count rather than the reader's.
+// Direct eight-byte ordinal probes refuse forged values past 65535 and
+// MaxUint32; a 32-bit temporary would truncate 0x1_0000_0001 to variant 1.
+// Arg/Arg2 are u64 unconditionally, and the generated probe stamps that
+// value on both guard lanes.
 //
 // Assertions on the emitted plan that read Go values in-process are unit
 // tests. The generated-unit probe is a functional test: it opens with
@@ -40,7 +38,7 @@ func t16Names(prefix string, n int) []string {
 
 // t16Fixture is the one schema shape every leg of this card declares. many /
 // pick / outer select the variant and arm lists, so one builder spells the
-// writer (300 of each) and the reader (a subset) with identical ids.
+// writer (300 of each) and the reader (an appended list) with identical ids.
 func t16Fixture(many, pick, outer []string) string {
 	var b strings.Builder
 	b.WriteString("package probe\n\ntype Cell { n int32 }\n\nenum Many { ")
@@ -66,7 +64,7 @@ func t16WriterSchema() string {
 }
 
 func t16ReaderSchema() string {
-	return t16Fixture([]string{"v0", "v1", "v299"}, []string{"a0", "a299"}, []string{"a0", "a299"})
+	return t16Fixture(t16Names("v", 301), t16Names("a", 301), t16Names("a", 301))
 }
 
 // t16OverflowSchema is a writer whose enum alone passes the remap length
@@ -176,7 +174,7 @@ func TestT16OrdinalLanes(t *testing.T) {
 	if made <= 0 { t.Fatalf("compile made %d (%+v)", made, r) }
 
 	// THE REMAP TABLE'S LENGTH WORD IS THE WRITER'S VARIANT COUNT (§5.2):
-	// table[0] == 300, not the reader's 3 and never a capped 255.
+	// table[0] == 300, not the reader's 301 and never a capped 255.
 	ordinals := 0
 	for i := int32(0); i < made; i++ {
 		if plan[i].Op != tableFixedOrdinal { continue }
@@ -188,8 +186,8 @@ func TestT16OrdinalLanes(t *testing.T) {
 	}
 	if ordinals != 1 { t.Fatalf("the compiled plan carries %d ordinal entries, want many only", ordinals) }
 
-	// THE COMPILED RUN: variant 300 remaps to the reader's v299 (ordinal 3),
-	// arm 300 to the reader's second arm, and both payloads land.
+	// THE COMPILED RUN: variant and arm 300 retain their full ordinals,
+	// and both the direct and nested payloads land.
 	var co Root
 	RootReset(&co)
 	var rr TableReport

@@ -188,6 +188,7 @@ const variableWideJsonRuntime = `
                 token=scanned;
             }
         }else if(c=='-'||(c>='0'&&c<='9')){
+            if(stringOk){in.skipValue();in.rep.refuse("kind_mismatch");return null;}
             token=in.scanNumber(new boolean[1]);if(in.bad||token==null)return null;
             if(integerOnly&&!integerToken(token)){in.rep.refuse("kind_mismatch");return null;}
         }else{in.skipValue();in.rep.refuse("kind_mismatch");return null;}

@@ -408,9 +408,9 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
       return def;
     }
     token = val;
-  } else if (val is int) {
+  } else if (!wide && val is int) {
     token = val.toString();
-  } else if (val is _JNum) {
+  } else if (!wide && val is _JNum) {
     token = val.token;
   }
   if (token == null) {
@@ -916,8 +916,8 @@ func unionArmShapeCond(f *ir.Field, item string) string {
 	case f.Type.Kind == ir.TBool:
 		cond = item + " is bool"
 	case jsonIntegerWide(f), isWide(f) && jsonWideIntegerKind(wideKind(f)):
-		// a wide integer or fixed kind reads as a string OR a number (§16.2)
-		cond = "(" + item + " is String || " + item + " is num || " + item + " is _JNum)"
+		// a wide integer or fixed kind reads only its string form (§16.2)
+		cond = item + " is String"
 	default:
 		cond = "(" + item + " is num || " + item + " is _JNum)"
 	}
