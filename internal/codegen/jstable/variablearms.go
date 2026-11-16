@@ -547,7 +547,6 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     // the array list first, under any count (docs/SPEC-TABLES.md §3, §4).
     if (!TableVariableArrayElementKindAllowed(ek)) { report.damaged = true; r.at = end; return false; }
     if (ek !== 13) { report.mismatch++; r.at = end; return undefined; }
-    if (!fd.opt && !fd.req && count === 0) { report.damaged = true; r.at = end; return false; }
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     const m = new Map();
     v[fd.n] = m;
@@ -616,10 +615,8 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
     if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; r.at = end; return undefined; }
     report.widened++;
   }
-  if (!fd.opt && !fd.req && count === 0) { report.damaged = true; r.at = end; return false; }
   const arr = v[fd.n];
   let rode = null;
-  let lastSlot = -1;
   for (let i = 0; i < count; i++) {
     const key = sub.leb();
     if (sub.bad || key === 0 || key > table.length) { report.damaged = true; break; }
@@ -637,17 +634,13 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
       sub.at += elen;
       continue;
     }
-    // Slots ride in ascending variant ordinal (§3.2): a slot that does not
-    // increase is a spelling no conforming writer produces.
-    if (slot <= lastSlot) { report.damaged = true; break; }
-    lastSlot = slot;
     const er = new TableVariableReader(r.b, sub.at, sub.at + elen);
     switch (fd.e.s) {
       case "enum": {
         const unknownBefore = report.unknown;
         const x = TableVariableEnumRead(fd.e, er, table, report, retain, st);
         if (x !== undefined) {
-          if (!fd.opt && !fd.req && TableVariableElemIsDefault(fd.e, x) && !(x === null && report.unknown !== unknownBefore)) { report.damaged = true; break; }
+          if (TableVariableElemIsDefault(fd.e, x) && !(x === null && report.unknown !== unknownBefore)) { report.damaged = true; break; }
           arr[slot] = x;
         }
         break;
@@ -661,14 +654,14 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
         if (er.at !== er.end) { report.damaged = true; inst = fd.e.c.make(); }
         // A slot whose table body is its terminator alone is the default the
         // writer elides (§3.2).
-        if (!fd.opt && !fd.req && elen <= 1) { report.damaged = true; break; }
+        if (elen <= 1) { report.damaged = true; break; }
         arr[slot] = inst;
         break;
       }
       default: {
         const x = TableVariableScalar(er, fd.e, ek, report);
         if (x !== undefined) {
-          if (!fd.opt && !fd.req && TableVariableElemIsDefault(fd.e, x)) { report.damaged = true; break; }
+          if (TableVariableElemIsDefault(fd.e, x)) { report.damaged = true; break; }
           arr[slot] = x;
         }
       }
@@ -694,12 +687,8 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
   const ref = r.leb();
   if (r.bad) { report.damaged = true; return undefined; }
   if (ref === 0) {
-    const atField = st !== null && st.unionAtField;
-    if (st !== null) { st.unionAtField = false; }
-    if (atField) { report.damaged = true; return undefined; }
     return null;
   }
-  if (st !== null) { st.unionAtField = false; }
   if (ref > table.length || r.at >= r.end) { report.damaged = true; return undefined; }
   TableVariableIntroduce(st, ref);
   const armId = table[ref - 1];

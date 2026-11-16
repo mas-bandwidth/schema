@@ -864,7 +864,7 @@ func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("export function %sLoadMessageBody(r, value, elideEmpty) {\n", st.Name)
 	g.pf("  Init%s(value);\n", st.Name)
 	g.pf("  const seen = [];\n")
-	g.pf("  let lastRef = 0n;\n")
+	g.pf("  let lastOrdinal = -1;\n")
 	g.pf("  let any = false;\n")
 	g.pf("  for (;;) {\n")
 	g.pf("    const [ref, ok] = r.Bits.Get(r.RefBits);\n")
@@ -876,31 +876,17 @@ func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("    const entry = tableMessageEntry(r.Vocabulary, ref);\n")
 	g.pf("    if (entry === null || entry.Id >= 0xfffffffffffffffdn || seen.includes(entry.Id)) { r.Report.Damaged = true; return false; }\n")
 	g.pf("    seen.push(entry.Id);\n")
-	// Known fields keep the writer's declaration order, which is the
-	// announcement's slot order. An unknown field keeps its place without
-	// moving that cursor: a newer field before an older one still reads.
-	if len(st.Fields) > 0 {
-		g.pf("    if (")
-		for i, f := range st.Fields {
-			if i > 0 {
-				g.pf(" || ")
-			}
-			g.pf("entry.Id === 0x%016xn", ir.TableFieldEntry(f).Id)
-		}
-		g.pf(") {\n")
-		g.pf("      if (ref <= lastRef) { r.Report.Damaged = true; return false; }\n")
-		g.pf("      lastRef = ref;\n")
-		g.pf("    }\n")
-	}
 	g.pf("    any = true;\n")
 	g.pf("    switch (entry.Id) {\n")
-	for _, f := range st.Fields {
+	for ordinal, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
 		g.pf("      case 0x%016xn: {\n", mine.Id)
+		g.pf("        if (r.Vocabulary.BuildVersion === %s && lastOrdinal >= %d) { r.Report.Damaged = true; return false; }\n", jsId(ir.BuildVersion(g.unit)), ordinal)
+		g.pf("        lastOrdinal = %d;\n", ordinal)
 		g.emitMessageReadField(f, mine, "        ")
 		g.pf("        break;\n      }\n")
 	}
-	g.pf("      default: { r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }\n")
+	g.pf("      default: { if (r.Vocabulary.BuildVersion === %s) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }\n", jsId(ir.BuildVersion(g.unit)))
 	g.pf("    }\n  }\n}\n\n")
 }
 
@@ -1013,6 +999,7 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string, elideEm
 	e := messageElementField(f)
 	if f.KeyEnum != "" {
 		g.pf("%s  const seenKeys = [];\n", ind)
+		g.pf("%s  let lastKey = 0;\n", ind)
 		g.pf("%s  for (let i = 0n; i < n; i++) {\n", ind)
 		g.pf("%s    const [kref, kok] = r.Bits.Get(r.RefBits); if (!kok) { %s; }\n", ind, bad)
 		g.pf("%s    const ken = tableMessageEntry(r.Vocabulary, kref);\n", ind)
@@ -1025,6 +1012,8 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string, elideEm
 			g.pf("%s      case 0x%016xn: key = %d; break;\n", ind, ir.TableWireId(ke.VariantWireName(i)), i+1)
 		}
 		g.pf("%s      default: r.Report.Unknown++;\n%s    }\n", ind, ind)
+		g.pf("%s    if (key !== 0 && r.Vocabulary.BuildVersion === %s && key <= lastKey) { %s; }\n", ind, jsId(ir.BuildVersion(g.unit)), bad)
+		g.pf("%s    if (key !== 0) { lastKey = key; }\n", ind)
 		g.pf("%s    if (key === 0) { if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: entry.Element }, 0)) { %s; } }\n", ind, bad)
 		g.pf("%s    else {\n", ind)
 		g.emitMessageReadElement(e, mem+"[key - 1]", ind+"      ", "entry.Element")
