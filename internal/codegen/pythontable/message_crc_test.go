@@ -6,6 +6,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -19,6 +20,7 @@ import (
 
 func TestPythonMessageCRC(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "generated C++ and pinned Python interpreters")
 	u := loadUnit(t, "package messagecrc\nfixed table Root | integrity = \"crc32c\" { value int32 }\nfixed table Plain { value int32 }\n")
 	m := tabletext.NewModel(u)
 	values := make([]*tabletext.Instance, 3)
