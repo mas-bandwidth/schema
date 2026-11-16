@@ -1,20 +1,23 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
+	"reflect"
 	"testing"
 
 	"tblv2"
 )
 
 func TestRowC14(t *testing.T) {
+	t.Parallel()
 	// The bounds pass walks LIVE elements only: a counted array's live count,
 	// not its slack; an optional's payload only when present
 	// (docs/FIXED-FORM-ALGORITHM.md §4.6).
 	//
 	// Build a Cfg with ItemsCount=1, then forge Items[4] out of range BEYOND
-	// the live count: the read keeps the slack value, because the bounds pass
-	// only walks the live count.
+	// the live count: the non-zero dead byte refuses before bounds are walked.
+	// The clean control still checks the live value.
 	//
 	// Wire layout (CfgFixedWriteBody):
 	//   [0..4)   a      float32
@@ -44,28 +47,39 @@ func TestRowC14(t *testing.T) {
 	}
 	data := buf[:n]
 
-	// Items[4] out of range in the slack (ItemsCount=1) is not walked, and the
-	// file reads with the slack value kept; the same value in a live element,
-	// or an enum byte past its variants, refuses (docs/SPEC-TABLES.md §4).
+	// Dead slots must be zero; live elements and enum bytes keep their own
+	// value checks (docs/SPEC-TABLES.md §3.4, §4). Each mutation is independent.
 	bodyAt := tblv2.TableFixedHeaderBytes + 4 + len(tblv2.CfgFixedLayout) + 8
 	plan := make([]tblv2.TableFixedEntry, 64)
+	var sentinel tblv2.Cfg
+	tblv2.CfgReset(&sentinel)
+	sentinel.ItemsCount = 2
+	sentinel.Items[0] = 77
 	read := func(forge func(body []byte)) (tblv2.Cfg, int64, tblv2.TableReport) {
 		wire := append([]byte(nil), data...)
 		forge(wire[bodyAt : bodyAt+tblv2.CfgFixedBodyBytes])
-		var scratch [1]tblv2.Cfg
+		scratch := [1]tblv2.Cfg{sentinel}
 		var report tblv2.TableReport
 		got := tblv2.CfgFixedLoad(scratch[:], wire, plan, &report)
 		return scratch[0], got, report
 	}
-	slack := func(body []byte) { binary.LittleEndian.PutUint32(body[70:], 500) }
-	if v, got, report := read(slack); got != 1 || report.Err() != nil || v.Items[4] != 500 || v.ItemsCount != 1 || v.Items[0] != 7 {
-		t.Fatalf("slack out of range: got=%d %+v items=%v count=%d", got, report, v.Items, v.ItemsCount)
+	clean, got, report := read(func([]byte) {})
+	if got != 1 || report.Err() != nil || clean.ItemsCount != 1 || clean.Items[0] != 7 || clean.Items[4] != 0 {
+		t.Fatalf("clean live-extent control: n=%d report=%+v value=%+v", got, report, clean)
 	}
-	live := func(body []byte) { slack(body); binary.LittleEndian.PutUint32(body[54:], 300) }
+	again := make([]byte, len(data))
+	if tblv2.CfgFixedSave([]tblv2.Cfg{clean}, again) != int64(len(again)) || !bytes.Equal(again, data) {
+		t.Fatal("clean control did not save byte identically")
+	}
+	slack := func(body []byte) { binary.LittleEndian.PutUint32(body[70:], 500) }
+	if value, got, report := read(slack); got >= 0 || report.Err() == nil || !reflect.DeepEqual(value, sentinel) {
+		t.Fatalf("non-zero dead slot read: n=%d report=%+v", got, report)
+	}
+	live := func(body []byte) { binary.LittleEndian.PutUint32(body[54:], 300) }
 	if _, got, report := read(live); got != -1 || report.Err() == nil {
 		t.Fatalf("live element out of range read: got=%d %+v", got, report)
 	}
-	mode := func(body []byte) { slack(body); body[5] = 99 }
+	mode := func(body []byte) { body[5] = 99 }
 	if _, got, report := read(mode); got != -1 || report.Err() == nil {
 		t.Fatalf("enum byte past its variants read: got=%d %+v", got, report)
 	}

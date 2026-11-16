@@ -328,7 +328,7 @@ func TestHashIncludesTheCountWord(t *testing.T) {
 // an ABSENT optional whose payload is stained in STORAGE, and a union on its
 // NARROWER arm. A buffer the caller pre-zeroed would hide a writer that did not
 // lay the whole template, so the second write lands on 0x5A — the doc's own
-// poison, the "on a POISONED destination it fails louder" of the slack rule.
+// poison, the "on a POISONED destination it fails louder" of the dead-byte rule.
 // If a byte differs, the failure names which field's span it falls in.
 func TestFixedFormWriteReadWriteIsByteIdentical(t *testing.T) {
 	runGenerated(t, `package probe
@@ -1006,7 +1006,9 @@ func TestHostileBoolControl(t *testing.T) {
 // TestFixedFormHostileUnionTag is the union tag's rule. A tag beyond the arms
 // this reader has is an ORDINAL past the set (docs/FIXED-FORM-ALGORITHM.md
 // §4.6): the load refuses out_of_range and nothing lands. The control is the
-// known arm and None, which read.
+// known arm, and tag 0 with the whole arm span zero, which read; a non-zero
+// byte in that span refuses the whole load (docs/rulings.json
+// fixed-dead-bytes-are-zero).
 func TestFixedFormHostileUnionTag(t *testing.T) {
 	runGenerated(t, `package probe
 type Hit { damage int32 }
@@ -1064,11 +1066,25 @@ func TestTagPastTheArmsRefuses(t *testing.T) {
 	}
 
 	none := append([]byte(nil), buf...)
-	none[len(none)-HostFixedRecordBytes+8] = 0
+	at := len(none) - HostFixedRecordBytes + 8
+	none[at] = 0
+	clear(none[at+1 : at+5]) // the widest arm's span is dead under tag 0
 	got = make([]Host, 1)
 	r = TableReport{}
 	if n := HostFixedLoad(got, none, plan, &r); n != 1 || got[0].Pick.Type != PickTypeNone || r != (TableReport{}) {
 		t.Fatalf("None is not unknown: n=%d %+v %+v", n, got[0], r)
+	}
+	// TAG 0 IS AN INACTIVE ARM: a non-zero byte in its span is dead damage.
+	stained := append([]byte(nil), none...)
+	stained[at+1] = 1
+	got = make([]Host, 1)
+	HostReset(&got[0])
+	r = TableReport{}
+	if n := HostFixedLoad(got, stained, plan, &r); n != -1 || r.Err() == nil {
+		t.Fatalf("a non-zero dead byte under tag 0: n=%d %+v", n, r)
+	}
+	if got[0].Pick.Type != PickTypeNone || got[0].Tail != 9 {
+		t.Fatalf("the refused load wrote the destination: %+v", got[0])
 	}
 }
 `)
@@ -1879,16 +1895,16 @@ func TestLiveCount(t *testing.T) {
 	one.Marks[0] = 99
 	refused("a live element past its bound", one)
 
-	// THE CONTROL: the slack and an absent optional's payload are not live,
-	// and a value in them past the bound reads
+	// THE CONTROL: the writer's zeroed dead bytes and absent optional payload
+	// read. A non-zero dead byte is refused by TestFixedFormNonZeroSlackRefused
+	// and by the fixedvector dead-byte cases.
 	RootReset(&one)
 	one.MarksCount = 1
 	one.Marks[0] = 10
-	one.Marks[1], one.Marks[2], one.Marks[3] = 99, 99, 99
 	one.NotePresent = false
-	one.Note = 99
-	if got, r, n := load("slack", one); n != 1 || r != (TableReport{}) || got.Marks[0] != 10 || got.MarksCount != 1 {
-		t.Fatalf("LIVE: the slack or an absent payload was held: n=%d %+v %+v", n, got, r)
+	one.Note = 0
+	if got, r, n := load("zero dead bytes", one); n != 1 || r != (TableReport{}) || got.Marks[0] != 10 || got.MarksCount != 1 {
+		t.Fatalf("CONTROL: writer zero-dead-byte image did not read: n=%d %+v %+v", n, got, r)
 	}
 
 	// an ordinal past its set refuses, the union tag and the enum alike
@@ -2740,21 +2756,14 @@ func TestDuplicateStaysZero(t *testing.T) {
 `)
 }
 
-// TestFixedFormReadSlackUnspecified is W4: a fixed record's declared slack is
-// UNSPECIFIED ON READ (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md
-// §3.1): a reader validates the USED UNITS ONLY and never looks at the slack,
-// so an endpoint that leaves garbage past a string's stated length or an array's
-// live count is an endpoint this reader reads correctly. NON-ZERO SLACK IS NOT
-// malformed, NOT A REFUSAL, AND MOVES NO COUNTER.
-//
-// The C++ reference's slack_case (test/tables/fixedform_main.cpp:715-777)
-// reads a wire its OWN writer zeroed; the read half is exactly the tolerance
-// above. This is that half with the wire slack poisoned AFTER the write, which
-// is the only way to reach the read rule at all: the writer's zeros would make
-// the assertion vacuous. The poison is chosen out of the array's declared
-// [0,10] range so that a pass which walked the declared bound instead of the
-// live count would count it.
-func TestFixedFormReadSlackUnspecified(t *testing.T) {
+// TestFixedFormNonZeroSlackRefused is the dead-byte rule on the Go leg: every
+// dead byte in a fixed record is zero, and a non-zero one refuses the whole
+// load (docs/rulings.json fixed-dead-bytes-are-zero; docs/SPEC-TABLES.md §3.4;
+// docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3). The text past its used length
+// and the array slots past the live count are dead, so an endpoint that leaves
+// garbage in either is refused as wire_damaged and writes nothing; the writer's
+// own zeroed image reads.
+func TestFixedFormNonZeroSlackRefused(t *testing.T) {
 	runGenerated(t, `package probe
 fixed table Slack {
     label string(8)
@@ -2764,7 +2773,7 @@ fixed table Slack {
 `, `package probe
 import ("testing"; "encoding/binary")
 
-func TestReadSlackUnspecified(t *testing.T) {
+func TestNonZeroSlackRefused(t *testing.T) {
 	one := Slack{}
 	SlackReset(&one)
 	one.Label[0] = 'h'
@@ -2779,30 +2788,36 @@ func TestReadSlackUnspecified(t *testing.T) {
 	if SlackFixedBodyBytes != 36 {
 		t.Fatalf("the record body moved (%d bytes), so the offsets below are stale", SlackFixedBodyBytes)
 	}
-	body := buf[len(buf)-SlackFixedRecordBytes+8:]
 	// the declared wire order: label length (4) + 8 label bytes, marks count
 	// (4) + four int32 elements (16), then tail (4).
 	const labelSlackAt = 4 + 2              // past the stated length of 2
 	const marksSlackAt = 4 + 8 + 4 + 4      // past the live count of 1
-	// AN ENDPOINT left garbage in the declared slack: a byte no clean record carries.
-	copy(body[labelSlackAt:], []byte{0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA})
-	for i := 0; i < 3; i++ {
-		binary.LittleEndian.PutUint32(body[marksSlackAt+4*i:], 0x5A5A5A5A)
-	}
-	// NOT VACUOUS: the wire really carries non-zero garbage in the declared
-	// slack (the exact bytes are a control knob; the RULE is about non-zero).
-	if body[labelSlackAt] == 0 || binary.LittleEndian.Uint32(body[marksSlackAt:]) == 0 {
-		t.Fatal("the wire slack was not poisoned, so nothing below is tested")
+	for _, tc := range []struct {
+		name  string
+		stain func([]byte)
+	}{
+		{"text", func(b []byte) { b[labelSlackAt] = 0xAA }},
+		{"counted array", func(b []byte) { binary.LittleEndian.PutUint32(b[marksSlackAt:], 0x5A5A5A5A) }},
+	} {
+		hostile := append([]byte(nil), buf...)
+		tc.stain(hostile[len(hostile)-SlackFixedRecordBytes+8:])
+		got := make([]Slack, 1)
+		got[0].Tail = 1234
+		var r TableReport
+		if n := SlackFixedLoad(got, hostile, make([]TableFixedEntry, 256), &r); n != -1 || r.Err() == nil {
+			t.Fatalf("%s: a non-zero dead byte did not refuse: n=%d %+v", tc.name, n, r)
+		}
+		if got[0].Tail != 1234 {
+			t.Fatalf("%s: the refused load wrote the destination: %+v", tc.name, got[0])
+		}
 	}
 
+	// THE CONTROL: the writer's own image has every dead byte zero, so it reads
+	// and the live values land.
 	got := make([]Slack, 1)
 	var r TableReport
-	plan := make([]TableFixedEntry, 256)
-	if n := SlackFixedLoad(got, buf, plan, &r); n != 1 {
-		t.Fatalf("an endpoint's garbage in the slack refused the record: n=%d %+v", n, r)
-	}
-	if r != (TableReport{}) {
-		t.Fatalf("an endpoint's garbage in the slack moved a counter or named a refusal: %+v", r)
+	if n := SlackFixedLoad(got, buf, make([]TableFixedEntry, 256), &r); n != 1 || r != (TableReport{}) {
+		t.Fatalf("CONTROL FAILED: the writer's zeroed image refused: n=%d %+v", n, r)
 	}
 	if got[0].LabelLength != 2 || got[0].Label[0] != 'h' || got[0].Label[1] != 'i' {
 		t.Fatalf("the used text did not read: %+v", got[0])
@@ -3038,10 +3053,11 @@ func TestIdentityEqualsCompiled(t *testing.T) {
 
 // TestFixedFormZeroBehindNarrowerArm is item W3 of schema#876, "zero behind a
 // narrower arm", asserted BY NAME on this leg (docs/FIXED-FORM-ALGORITHM.md
-// §3.1: "**A union** writes the tag and the taken arm only, zero behind a
-// narrower one"; docs/SPEC-TABLES.md §3.4, the union row: "ZERO on write behind
-// a narrower arm, IGNORED on read, never a refusal"). The rule has no C++
-// reference case of its own — the reference's slack_case() is the TEXT and
+// §3.1: a narrow arm's dead tail is zero on write and a non-zero byte refuses
+// the whole read as wire_damaged; docs/SPEC-TABLES.md §3.4). This test checks
+// the writer's zero fill; the generated-reader refusal is covered by
+// TestFixedDeadBytesAreZero's dead_union_narrow_tail.bin vector. The rule has
+// no C++ reference case of its own — the reference's slack_case() is the TEXT and
 // ARRAY rows, and its absent_optional_case() is the `?T` row — so the case is
 // written from the two docs, and it names them.
 //
