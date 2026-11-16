@@ -170,13 +170,25 @@ func TestGuardChain(t *testing.T) {
 		}
 		got := make([]Root, 1)
 		var r TableReport
-		if n := RootFixedLoad(got, file, make([]TableFixedEntry, 1<<16), &r); n != 1 || r.Reason != "" {
-			t.Fatalf("identity poison %%d: load %%d %%+v", poison, n, r)
+		n := RootFixedLoad(got, file, make([]TableFixedEntry, 1<<16), &r)
+		if poison == 0 {
+			if n != 1 || r.Reason != "" || leafOf(&got[0]) != 42 {
+				t.Fatalf("identity: the record as written did not land its deepest leaf: n=%%d %%+v", n, r)
+			}
+			continue
 		}
-		if poison == 0 && leafOf(&got[0]) != 42 {
-			t.Fatalf("identity: the record as written did not land its deepest leaf")
+		// A WIDER ARM'S TAIL IS DEAD: the nested tags and leaf that the written
+		// arm left there are non-zero, so the whole load refuses
+		// (docs/rulings.json fixed-dead-bytes-are-zero). The three-union fixture's
+		// dead tails are the template's zeros, so those poison levels read the
+		// other arm and never the deepest leaf.
+		if depth > 3 {
+			if n != -1 || r.Err() == nil {
+				t.Fatalf("identity poison %%d: a non-zero dead arm tail did not refuse: n=%%d %%+v", poison, n, r)
+			}
+			continue
 		}
-		if poison > 0 && leafOf(&got[0]) == 42 {
+		if n != 1 || leafOf(&got[0]) == 42 {
 			t.Fatalf("identity: the deepest leaf landed while tag %%d names another arm: an arm inside an arm answers to EVERY outer tag", poison-1)
 		}
 	}
@@ -201,13 +213,20 @@ func TestGuardChain(t *testing.T) {
 		var got Root
 		RootReset(&got)
 		var r TableReport
-		if why := tableFixedRun(plan, made, body, tableFixedOverlay(unsafe.Pointer(&got), unsafe.Sizeof(got)), &r); why != "" {
-			t.Fatalf("compiled poison %%d: %%s", poison, why)
+		why := tableFixedRun(plan, made, body, tableFixedOverlay(unsafe.Pointer(&got), unsafe.Sizeof(got)), &r)
+		if poison == 0 {
+			if why != "" || leafOf(&got) != 42 {
+				t.Fatalf("compiled: the record as written did not land its deepest leaf: %%s", why)
+			}
+			continue
 		}
-		if poison == 0 && leafOf(&got) != 42 {
-			t.Fatalf("compiled: the record as written did not land its deepest leaf")
+		if depth > 3 {
+			if why == "" {
+				t.Fatalf("compiled poison %%d: a non-zero dead arm tail did not refuse", poison)
+			}
+			continue
 		}
-		if poison > 0 && leafOf(&got) == 42 {
+		if why != "" || leafOf(&got) == 42 {
 			t.Fatalf("compiled: the deepest leaf landed while tag %%d names another arm", poison-1)
 		}
 	}
