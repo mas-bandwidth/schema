@@ -1134,6 +1134,7 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-all-retain.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-all-retain.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all-retain.log
+	@! grep -qE '[0-9]+ seeds absent ' build/tables-js-wire-fuzz-all-retain.log || { echo 'JavaScript retaining wire-fuzz roster incomplete'; exit 1; }
 
 # THE TWO ARMS ONE AT A TIME, for ci-full.yml's js-fuzz rows. Together the
 # arms measured 88 s on a workstation at the default SEED and N (the
@@ -1164,6 +1165,7 @@ tables-js-wire-fuzz-retain: build/conformance-harness build/tables-generated-js/
 	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-retain.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-retain.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-retain.log
+	@! grep -qE '[0-9]+ seeds absent ' build/tables-js-wire-fuzz-retain.log || { echo 'JavaScript retaining wire-fuzz roster incomplete'; exit 1; }
 
 # tables-js-wire-fuzz-negative-control is I15's control for this leg
 # (docs/PORTING.md): the twin of the reference's numbering-resolve control.
