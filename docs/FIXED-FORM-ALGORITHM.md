@@ -593,6 +593,46 @@ served by being RETIRED, `schema lock --retire T@0x<hash> --reason "…"`, which
 floor. A lock written before the lineage existed is SALVAGED and never deleted (bill §11.8): its single layout
 becomes the first entry, and every field line, default and deprecation mark is carried forward unchanged.
 
+
+**WRITER SNAPSHOTS IN RENDERING 8.** A new lineage entry also captures the complete evaluated by-value writer
+closure in an optional `writer=<hex>` token. `lockfile.LineageEntry.Writer` is that closure as `*ir.Struct`;
+COMPILE passes it unchanged alongside the layout and the whole-record size. The snapshot preserves field
+identity and nesting, optional and array shape/count minima, exact 128-bit bounds, fixed-point scale,
+float bounds/resolution, enum/flags sets, union arms and defaults. It is metadata, never a new wire fact:
+`Wire`, `Layout`, `Digest` and `Record` retain their existing meanings and bytes. The snapshot is bound by
+the lineage roll-up and checked against its root, layout, digest, record size and wire hash when parsed.
+
+Rendering 8 **reads and salvages renderings 6 and 7**, preserving every historical entry, its order, hashes,
+retirement and reason. A missing snapshot is **legacy-unknown**, never an empty set of constraints. Normal
+migration does not guess a historical snapshot from the wider reader or from anonymous digest records.
+The old parser/check acceptance remains; missing metadata does not retire a hash and is not a runtime
+`layout_unsupported` event. A backend that requires complete source checks must report its concrete missing
+metadata at generation time, rather than claiming a conforming historical read it cannot implement.
+
+A trusted historical schema can supply the missing facts explicitly:
+
+```
+schema lock --writer 'Config@0x<recorded-hash>' --from path/to/historical-unit path/to/current-unit
+```
+
+The current lock must be current first. The historical unit is checked as source, and its named fixed root,
+layout bytes, digest, record-body size and hash must all match the selected existing entry. Only that entry
+is enriched. Repeating the same import is idempotent; different captured constraints under the same legacy
+hash refuse without changing the lock. `--writer` and `--from` are paired and cannot combine with `--print`,
+`--retire` or `--reason`. **The caller establishes the source's provenance**: matching a legacy hash is a
+necessary consistency check, not proof that the source is the historical writer.
+
+This boundary is irreducible. Optional anonymous `R` digest records omit the field they constrain, so two
+lawful histories can end in the same rendering-7 lock after removing a range from either of two same-kind
+fields. A lock alone cannot reconstruct which writer field had the bound. Count minima are absent from
+the wire digest too, but their `born:N` lock defaults are invariant under lawful evolution, so changing a
+minimum is refused as a default change. Integer bounds outside int64 also lose information in the legacy
+digest. Capturing snapshots does not repair these legacy identity ambiguities: distinct fully captured
+constraints with one wire hash are diagnosed rather than overwritten. Correcting the prospective wire
+identity is separate work and must preserve all previously recorded hashes; this extension changes none.
+If no historical source or trusted snapshot exists, those concrete histories remain unproven. Other entries
+with complete snapshots and new locked units can still be generated and validated independently.
+
 **§5.1 has its implementation too**: `internal/lockfile/monotone.go`, reached from the lock's own diff — one
 comparison per recorded fact, in the order that names the change best, the first difference is the finding,
 and the rule phrase is the clause a person greps for.

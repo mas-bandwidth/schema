@@ -7,17 +7,14 @@ build/table-base64/%/.stamp: bin/schema test/table-base64/Bytes.schema
 	./bin/schema generate --lang $* --out build/table-base64/$* test/table-base64/Bytes.schema
 	@touch $@
 
-# RELAXED 2026-11-14 (maintainer: get main green): C, C++ and C# still read
-# non-canonical Base64 (json-base64-canonical); -relax keeps that accept.
-# re-enable: relax/hostile-rows-c, relax/hostile-rows-cpp, relax/hostile-rows-cs
 .PHONY: table-base64-cpp table-base64-c table-base64-go table-base64-cs
 table-base64-cpp: build/table-base64/harness build/table-base64/cpp/.stamp
 	$(CXX) -std=c++17 -O2 -Wall -Wextra -Werror -x c++ -Ibuild/table-base64/cpp test/table-base64/driver.c build/table-base64/cpp/BytesTable.cpp -o build/table-base64/cpp/driver
-	./build/table-base64/harness -relax relax/hostile-rows-cpp ./build/table-base64/cpp/driver
+	./build/table-base64/harness ./build/table-base64/cpp/driver
 
 table-base64-c: build/table-base64/harness build/table-base64/c/.stamp
 	$(CC) -std=c11 -O2 -Wall -Wextra -Werror -Ibuild/table-base64/c test/table-base64/driver.c build/table-base64/c/BytesTable.c -lm -o build/table-base64/c/driver
-	./build/table-base64/harness -relax relax/hostile-rows-c ./build/table-base64/c/driver
+	./build/table-base64/harness ./build/table-base64/c/driver
 
 table-base64-go: build/table-base64/harness build/table-base64/go/.stamp
 	@printf 'module base64test\n\ngo 1.24.0\n' > build/table-base64/go/go.mod
@@ -26,7 +23,7 @@ table-base64-go: build/table-base64/harness build/table-base64/go/.stamp
 
 table-base64-cs: build/table-base64/harness build/table-base64/cs/.stamp
 	$(DOTNET) build --configuration Release --nologo test/table-base64/cs/table-base64.csproj
-	./build/table-base64/harness -relax relax/hostile-rows-cs $(DOTNET) test/table-base64/cs/bin/Release/net10.0/table-base64.dll
+	./build/table-base64/harness $(DOTNET) test/table-base64/cs/bin/Release/net10.0/table-base64.dll
 
 test: table-base64-cpp
 test-c: table-base64-c

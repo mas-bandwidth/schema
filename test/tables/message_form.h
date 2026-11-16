@@ -1196,9 +1196,9 @@ static void test_message_form_announcement_check()
     {
         int64_t at = 0;
         memcpy( body + at, version_field, 10 ); at += 10;
+        memcpy( body + at, vocabulary_field, (size_t) field_bytes ); at += field_bytes;
         const uint8_t unknown[6] = { 3, 8, 9, 0, 0, 0 }; // slot 3 is an ordinary id, under kind 8 with a u32 payload
         memcpy( body + at, unknown, 6 ); at += 6;
-        memcpy( body + at, vocabulary_field, (size_t) field_bytes ); at += field_bytes;
         body[at++] = 0;
         const int64_t bytes = forge_announcement( forged, sizeof( forged ), body, at, ids, 3 );
         VOCABULARY( backenddemo, vocabulary );
@@ -1238,18 +1238,10 @@ static void test_message_form_reserved_ids()
             backenddemo::LoginRequest out;
             backenddemo::TableReport report;
             backenddemo::LoginRequestLoad( out, file, at, &report );
-            if ( i == 0 )
-            {
-                // THE ROOT BODY IS THE NODE TABLE'S OWN TRANSPORT (§3.1): a fixed
-                // reader meeting one there is the table-gained-a-pointer edit, and
-                // it reads it as the ordinary unknown it is
-                CHECK( !report.damaged && report.unknown == 1 );
-            }
-            else
-            {
-                CHECK( report.damaged );
-                CHECK( report.unknown == 0 );
-            }
+            // The root node-table transport requires its framed kind12
+            // payload; kind9 here is malformed too, not an unknown field.
+            CHECK( report.damaged );
+            CHECK( report.unknown == 0 );
             CHECK( report.refuse_reason != backenddemo::kind_mismatch );
             CHECK( !report.refused );
             char name[128];
@@ -1375,9 +1367,9 @@ static void test_message_form_reference_bound()
         if ( past[i] == top ) { pin_table_golden( "message_reference_past_table", damaged, bytes ); }
     }
     // the entry count itself names the message closure's last entry, a union
-    // arm (kind 13, a nested body) no field of LoginRequest carries: an
-    // ordinary unknown, its nested body empty (one terminator), then the
-    // root's terminator
+    // arm (kind13, a nested body) no field of LoginRequest carries. The slot
+    // is in range, but a same-build announcement cannot add that field to
+    // this record. A separate different-build gate control may skip it.
     const backenddemo::TableMessageEntry last_entry = backenddemo::TableVocabularyEntryAt( vocabulary, entries );
     CHECK( last_entry.kind == 13 );
     {
@@ -1392,9 +1384,18 @@ static void test_message_form_reference_bound()
         backenddemo::LoginRequestReset( out );
         int64_t count = 1;
         backenddemo::TableReport ok;
-        CHECK( backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, last, last_bytes, &ok ) );
-        CHECK( !ok.damaged && !ok.refused );
-        CHECK( ok.unknown == 1 && out.player_id == 5 && count == 1 );
+        CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, last, last_bytes, &ok ) );
+        CHECK( ok.damaged && !ok.refused && ok.unknown == 0 && count == 0 );
+
+        // This plants only the foreign-build condition; it does not claim
+        // these bytes came from a reconstructed historical writer.
+        backenddemo::TableVocabulary foreign = vocabulary;
+        foreign.build_version ^= 1;
+        count = 1;
+        backenddemo::TableReport foreign_report;
+        CHECK( backenddemo::LoginRequestLoadMessages( &out, &count, foreign, last, last_bytes, &foreign_report ) );
+        CHECK( !foreign_report.damaged && !foreign_report.refused );
+        CHECK( foreign_report.unknown == 1 && out.player_id == 5 && count == 1 );
         pin_table_golden( "message_reference_last_slot", last, last_bytes );
     }
 }

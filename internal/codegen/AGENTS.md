@@ -33,6 +33,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../../AGENTS.md
 | `moo/` | moo packet emitter | `make test-moo` | `make test-moo` |
 | `mootable/` | moo table emitter | `make test-moo-tables` | `make test-moo-tables` |
 | `python/` | Python emitter and runtime (docs/PORT-PYTHON.md) | `make test-python` | `make test-python` |
+| `pythontable/` | Python table emitter (docs/PORT-PYTHON.md) | `go test ./internal/codegen/pythontable` | `make test-python` |
 | `rust/` | Rust packet emitter | `go test ./internal/codegen/rust` | `go test ./internal/codegen/rust` |
 | `rusttable/` | Rust table emitter | `go test ./internal/codegen/rusttable` | `go test ./internal/codegen/rusttable` |
 | `squirrel/` | Squirrel packet emitter | `go test ./internal/codegen/squirrel` | `go test ./internal/codegen/squirrel` |

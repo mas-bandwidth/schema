@@ -279,15 +279,15 @@ func TestLispRendererSuite(t *testing.T) {
 	}
 }
 
-// TestRoadmapIsGeneratedFromTheData holds the committed tables to what
-// render.lisp makes of docs/roadmap.sexp and docs/roadmap-evidence/, where
-// sbcl is installed (the same check as `make roadmap-check`). With
-// ROADMAP_DATA_ONLY set (a pull request, whose cards never commit the page;
-// tools/roadmap/roadmap.mk) it holds the data to rendering instead, into a
-// copy of the page, as `make roadmap-data-check` does.
+// TestRoadmapIsGeneratedFromTheData holds the data to rendering, into a copy
+// of the page, where sbcl is installed (the same check as `make
+// roadmap-check`): cards never commit ROADMAP.md (tools/roadmap/roadmap.mk),
+// so the committed tables may lag the data on any branch and on main between
+// re-renders. With ROADMAP_PAGE_CHECK set (`make roadmap-page-check`, the
+// nightly) it holds the committed tables to the render instead.
 func TestRoadmapIsGeneratedFromTheData(t *testing.T) {
 	sbcl := sbclOrSkip(t)
-	if os.Getenv("ROADMAP_DATA_ONLY") != "" {
+	if os.Getenv("ROADMAP_PAGE_CHECK") == "" {
 		raw, err := os.ReadFile("../../ROADMAP.md")
 		if err != nil {
 			t.Fatal(err)
@@ -366,13 +366,47 @@ func TestOnlyGlennEditsTheHandText(t *testing.T) {
 // whose table has gone stale and whose hand text carries a planted paragraph:
 // the render restores the table and leaves every byte outside the markers,
 // the planted paragraph included, exactly as it was.
+//
+// The expected page is the RENDER of the planted page, never the committed
+// page itself: cards never commit ROADMAP.md (tools/roadmap/roadmap.mk), so
+// the committed tables may lag the data, and a test that compared with them
+// would be red on every branch that adds evidence, for a page main has yet
+// to re-render. The stale-base case below holds that.
 func TestRegenerationKeepsTheHandText(t *testing.T) {
 	sbcl := sbclOrSkip(t)
 	raw := readRoadmap(t)
+	regenerationKeepsTheHandText(t, sbcl, raw)
+	t.Run("the committed page is behind the data", func(t *testing.T) {
+		behind := strings.Replace(raw, "| complete |", "| complete | 0% |", 1)
+		if behind == raw {
+			t.Fatal("no table row to make stale")
+		}
+		regenerationKeepsTheHandText(t, sbcl, behind)
+	})
+}
+
+func regenerationKeepsTheHandText(t *testing.T, sbcl, raw string) {
+	t.Helper()
 	hand := plantAfter(t, raw, "## Variable tables", plantedUpdate)
 	stale := strings.Replace(hand, "| complete |", "| complete | 0% |", 1)
+	want := renderCopy(t, sbcl, hand)
+	got := renderCopy(t, sbcl, stale)
+	if got != want {
+		t.Fatal("the render did not restore the stale table to what the data renders")
+	}
+	if OutsideMarkers(got) != OutsideMarkers(hand) {
+		t.Fatal("the render changed the page outside the markers")
+	}
+	if OutsideMarkers(got) == OutsideMarkers(raw) {
+		t.Fatal("negative control: the planted paragraph is invisible to OutsideMarkers")
+	}
+}
+
+// renderCopy renders the data into a scratch copy of page and returns it.
+func renderCopy(t *testing.T, sbcl, page string) string {
+	t.Helper()
 	path := t.TempDir() + "/ROADMAP.md"
-	if err := os.WriteFile(path, []byte(stale), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(page), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(sbcl, "--script", "tools/roadmap/render.lisp", "docs/roadmap.sexp", path)
@@ -384,10 +418,5 @@ func TestRegenerationKeepsTheHandText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != hand {
-		t.Fatal("the render did not restore the stale table, or changed the page outside the markers")
-	}
-	if OutsideMarkers(string(got)) == OutsideMarkers(raw) {
-		t.Fatal("negative control: the planted paragraph is invisible to OutsideMarkers")
-	}
+	return string(got)
 }

@@ -170,7 +170,7 @@ table Root { value int64 | required, min = 9007199254740993 }
 		t.Fatalf("missing: %+v", rep)
 	}
 	rep = tabletext.Report{}
-	if !m.Read(v, []byte(`{"value":9007199254740993}`), &rep) || rep.Refused {
+	if !m.Read(v, []byte(`{"value":"9007199254740993"}`), &rep) || rep.Refused {
 		t.Fatalf("old refusal poisoned valid JSON: %+v", rep)
 	}
 	wire, err := tablewire.Encode(m, v)

@@ -1,0 +1,12 @@
+# The SPEC §4.8 wire the Python packet-void fixture writes and reads. Each
+# line is a case name and its hand-calculated bytes, never produced by the
+# writer under test. Little-endian, least-significant-bit first.
+mixed-none 00
+mixed-ping 01
+mixed-pong 03
+mixed-payload feff07
+frame-ping 0b
+tags-none 00
+tags-pong 02
+single-ack 01
+empty-none --

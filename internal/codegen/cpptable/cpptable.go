@@ -187,8 +187,9 @@ type tableGen struct {
 	//
 	// Empty everywhere else, INCLUDING every measure with no write beside it:
 	// a measure emitted on its own has nobody to hand the number to.
-	elemCache      string
-	elemCacheSlots int64
+	elemCache         string
+	elemCacheSlots    int64
+	elemNonDefaultVar string
 }
 
 // kElemCacheSlots is the most per-element lengths one array field keeps on the

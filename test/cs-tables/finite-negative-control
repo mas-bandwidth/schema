@@ -4,7 +4,8 @@
 #
 # One probe holds three vectors and one finite control: the form-1 read must
 # refuse a NaN on its raw bits, the fixed read's finite pass must refuse one,
-# and the form-1 writer must refuse a NaN array element. The probe runs on the
+# and the form-1 writer must assert on a NaN array element (a debug assert,
+# docs/SPEC.md §5.1; the probe runs Debug). The probe runs on the
 # emitter as it is (every vector green), then once per blade with that blade
 # sabotaged through a go build -overlay (tools/sabotage), and each sabotaged run
 # must turn EXACTLY its own vector red: a blade that reddens nothing is not a
@@ -35,12 +36,26 @@ cat > "$control/control.csproj" <<'PROJECT'
 PROJECT
 cat > "$control/Program.cs" <<'CS'
 using System;
+using System.Diagnostics;
 using Finitecontrol;
+// The writer's finite check is a debug assert (docs/SPEC.md §5.1, C# is an
+// assert leg): the probe runs Debug and a listener turns the assert into an
+// exception the write vector can observe.
+sealed class WriteAssertion : Exception { }
+sealed class Listener : TraceListener
+{
+    public override void Write(string? message) { }
+    public override void WriteLine(string? message) { }
+    public override void Fail(string? message) { throw new WriteAssertion(); }
+    public override void Fail(string? message, string? detail) { throw new WriteAssertion(); }
+}
 class Program
 {
     static void Say(string vector, bool ok) { Console.WriteLine("VECTOR " + vector + ": " + (ok ? "ok" : "red")); }
+    static bool Asserts(Func<long> write) { try { write(); return false; } catch (WriteAssertion) { return true; } }
     static int Main()
     {
+        Trace.Listeners.Clear(); Trace.Listeners.Add(new Listener());
         // finite: a -0 and a subnormal ride every form bit-exact
         {
             Probe p = new Probe(); p.Lead = 7; p.V = -0.0f; p.Arr[1] = BitConverter.UInt32BitsToSingle(1u);
@@ -72,10 +87,10 @@ class Program
             Probe[] back = { new Probe() }; TableReport r = new TableReport();
             Say("fixed", at > 0 && Schema.ProbeFixedLoad(back, file, new TableFixedEntry[256], r) == -1 && r.Reason == "non_finite_float: Probe.v");
         }
-        // write: the form-1 writer refuses a NaN array element
+        // write: the form-1 writer's debug assert fires on a NaN array element
         {
             Probe p = new Probe(); p.Arr[1] = float.NaN;
-            Say("write", Schema.ProbeMeasure(p) == -1 && Schema.ProbeSave(p, new byte[256]) == -1);
+            Say("write", Asserts(() => Schema.ProbeMeasure(p)) && Asserts(() => Schema.ProbeSave(p, new byte[256])));
         }
         return 0;
     }
