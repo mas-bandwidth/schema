@@ -2155,11 +2155,14 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 				t.Errorf("R5: the hash did not move:\n%s", other)
 			}
 		}
-		// R4: a lineage entry handed under a hash that is not its layout's hash
-		// still selects its file: the runtime holds the hash as a constant.
-		older := ParseCheckUnit(t, "package probe\nfixed table T {\n    x int32 = 1\n}\n")
+		// R4: the runtime selects the compiler-handed definition hash as a
+		// constant, rather than rehashing only the layout bytes. Use a lawful
+		// writer snapshot: forged hashes are not historical authority.
+		older := ParseCheckUnit(t, "package probe\nfixed table T {\n    x int32 = 1 | min = -5, max = 5\n}\n")
 		eo, _ := LineageEntryOf(older, "T")
-		eo.Wire = 0x0123456789abcdef
+		if eo.Wire == ir.TableFixedLayoutHash(eo.Layout, nil) {
+			t.Fatal("R4 fixture must carry definition facts beyond the layout hash")
+		}
 		n, r, f, _ := zeroLoad(t, runner, u, "T", map[string][]LineageEntry{"T": {eo}}, MakeFixedFile(eo.Wire, eo.Layout, []byte{5, 0, 0, 0}), -1)
 		if n != 1 || f["r0.x"] != "5" {
 			t.Errorf("R4: the handed hash: n=%d r=%q fields=%v", n, r, f)
