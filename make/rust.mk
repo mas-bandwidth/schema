@@ -1235,12 +1235,12 @@ tables-rust-retain-negative-control:
 # to the old reader — a decoded U+0000 never flags the string, and the string's
 # bytes decode lossily to U+FFFD — through a `go test -overlay` of
 # internal/codegen/rusttable/variabletext.go, so no tracked file is edited.
-# TestJsonHostileTextRefusalsRust must go red on EXACTLY the nine rows the
+# TestJsonHostileTextRefusalsRust must go red on EXACTLY the eleven rows the
 # plant reaches (listed below; the strict reader refuses its other refusal rows
 # even with both checks removed: zero-map-key-over-bound, zero-integer-map-key,
 # zero-after-lone-lead, illformed-at-bound, illformed-surrogate-bytes), and its
-# five rows that are not the event (a skipped zero, a zero object
-# key, a `\u0001`, a well-formed clamp, a lone surrogate) must stay green: a
+# three rows that are not the event (a `\u0001`, a well-formed clamp,
+# a lone surrogate) must stay green: a
 # control that reddened those would localise nothing.
 tables-rust-json-hostile-negative-control:
 	@rm -rf build/rust-json-hostile-control && mkdir -p build/rust-json-hostile-control
@@ -1257,14 +1257,14 @@ tables-rust-json-hostile-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the suite stayed green with the old Rust JSON reader planted"; \
 		cat build/rust-json-hostile-control/log; exit 1; \
 	fi
-	@test "$$(grep -o 'MISMATCH [a-z-]*' build/rust-json-hostile-control/log | LC_ALL=C sort | tr '\n' ' ')" = "MISMATCH illformed-inside MISMATCH illformed-map-key MISMATCH illformed-object-key MISMATCH illformed-truncated MISMATCH illformed-unknown-value MISMATCH str-entry-zero MISMATCH zero-blob MISMATCH zero-map-key MISMATCH zero-string " || \
-		{ echo "NEGATIVE CONTROL FAILED: the old reader did not red exactly the nine rows it reaches"; \
+	@test "$$(grep -o 'MISMATCH [a-z-]*' build/rust-json-hostile-control/log | LC_ALL=C sort | tr '\n' ' ')" = "MISMATCH illformed-inside MISMATCH illformed-map-key MISMATCH illformed-object-key MISMATCH illformed-truncated MISMATCH illformed-unknown-value MISMATCH str-entry-zero MISMATCH zero-blob MISMATCH zero-map-key MISMATCH zero-object-key MISMATCH zero-string MISMATCH zero-unknown-value " || \
+		{ echo "NEGATIVE CONTROL FAILED: the old reader did not red exactly the eleven rows it reaches"; \
 		  cat build/rust-json-hostile-control/log; exit 1; }
-	@! grep -E 'MISMATCH (zero-unknown-value|zero-object-key|one-escape-stored|well-formed-at-bound|lone-lead-then-escape):' build/rust-json-hostile-control/log || \
+	@! grep -E 'MISMATCH (one-escape-stored|well-formed-at-bound|lone-lead-then-escape):' build/rust-json-hostile-control/log || \
 		{ echo "NEGATIVE CONTROL FAILED: a row that is not the event went red"; exit 1; }
 	@grep -m1 'MISMATCH illformed-inside:' build/rust-json-hostile-control/log
 	@grep -m1 'MISMATCH zero-map-key:' build/rust-json-hostile-control/log
-	@echo "rust json-hostile negative control: the old reader turns exactly the nine §16.3 refusal rows it reaches RED"
+	@echo "rust json-hostile negative control: the old reader turns exactly the eleven §16.3 refusal rows it reaches RED"
 
 # THE GUARD NEGATIVE CONTROL (docs/SPEC-TABLES.md §3.1, §4; test/tables/G1.schema):
 # the generated guard gate is taken out of the numbering, the save and the
@@ -1447,7 +1447,7 @@ test-rust: conformance-negative-control-rust-walk
 # I4 (docs/PORTING.md): PER-CASE ABSENT. A case this driver cannot answer on a
 # surface it otherwise implements is written `<case>.absent`, and the harness
 # counts it (`pass 98/98 +2a`) instead of failing it. The gate runs the Rust
-# leg and requires it green WITH absences counted; its control rebuilds the
+# leg and requires it green with no pending per-case absences; its control rebuilds the
 # driver (its own target directory) from a copy whose every absence write
 # (spill_absent, the named refusals and the not-applicable rows, on the plain,
 # `.json` and `-be` names alike) drops its `.absent` suffix and so writes an
@@ -1462,9 +1462,9 @@ conformance-rust-absent: build/conformance-harness build/conformance-cpp build/s
 		cat build/conformance-rust-absent.log; echo "conformance-rust-absent: the Rust leg is red"; exit 1; \
 	fi
 	@cat build/conformance-rust-absent.log
-	@grep -Eq 'pass [0-9]+/[0-9]+ \+[0-9]+a' build/conformance-rust-absent.log || \
-		{ echo "conformance-rust-absent: no surface counted a per-case absence"; exit 1; }
-	@echo "conformance-rust-absent: the Rust leg is green with its per-case absences counted"
+	@! grep -Eq 'pass [0-9]+/[0-9]+ \+[1-9][0-9]*a' build/conformance-rust-absent.log || \
+		{ echo "conformance-rust-absent: a surface still has a pending per-case absence"; exit 1; }
+	@echo "conformance-rust-absent: the Rust leg is green with no pending per-case absences"
 conformance-rust-absent-negative-control: build/conformance-harness build/tables-generated-rust/.stamp
 	@rm -rf $(RUST_ABSENT_CONTROL) && mkdir -p $(RUST_ABSENT_CONTROL)/driver/src
 	@sed -e 's|\.absent"\([,)]\)|" /* SABOTAGED: an absence answered as an answer */\1|' \

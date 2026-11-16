@@ -14,7 +14,6 @@
 # refuses a zero byte); these legs still read or write them.
 js json-hostile base64-unpadded relax/hostile-rows-js
 lua json-hostile str-zero-escape-unknown-key relax/hostile-rows-lua
-rust json-hostile str-zero-escape-unknown-key relax/hostile-rows-rust
 #
 # The go leg (the generated Go API driver): its cook writer still writes the
 # element defaults into dead counted slots (relax/cook-dead-slots-zero-ports).
