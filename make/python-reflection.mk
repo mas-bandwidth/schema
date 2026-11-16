@@ -24,4 +24,4 @@ python-reflection-ci-corpus: python-toolchain-check
 
 .PHONY: python-reflection-ci-names
 python-reflection-ci-names:
-	@go test -list '^TestPythonReflection' ./internal/codegen/pythontable/ | sed -n '/^TestPythonReflection[A-Za-z0-9_]*$$/p' | sed '/^TestPythonReflectionStrictTypes$$/d; /^TestPythonReflectionCorpus$$/d; /^TestPythonReflectionLayout$$/d'
+	@SCHEMA_SLOW=1 go test -list '^TestPythonReflection' ./internal/codegen/pythontable/ | sed -n '/^TestPythonReflection[A-Za-z0-9_]*$$/p' | sed '/^TestPythonReflectionStrictTypes$$/d; /^TestPythonReflectionCorpus$$/d; /^TestPythonReflectionLayout$$/d'
