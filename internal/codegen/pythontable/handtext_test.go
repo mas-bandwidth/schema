@@ -470,3 +470,64 @@ else:
 		}
 	}
 }
+
+func TestPythonHandtextArrayRoot(t *testing.T) {
+	t.Parallel()
+	const schema = `package probe
+table Root | json = "array" {
+ values []int32
+}
+table Outer {
+ inner Root
+}`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from probe import Root, Outer
+assert Root.from_text_form(b'()').value.values == []
+assert Root.from_text_form(b'(:values (1 2))').value.values == [1, 2]
+assert Outer.from_text_form(b'(:inner (:values (3 4)))').value.inner.values == [3, 4]
+print('ok')
+`
+	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+		if got := string(run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})); got != "ok\n" {
+			t.Fatalf("array root: %s", got)
+		}
+	}
+}
+
+func TestPythonHandtextArrayRootNegativeControl(t *testing.T) {
+	t.Parallel()
+	unit := loadUnit(t, `package probe
+table Root | json = "array" { values []int32 }
+`)
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "probe/_schema/textform.py"
+	source := string(files[path])
+	const anchor = "array_root = cls.descriptor.json_array and not label"
+	if strings.Count(source, anchor) != 1 {
+		t.Fatal("array root control anchor missing")
+	}
+	files[path] = []byte(strings.Replace(source, anchor, "array_root = False", 1))
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from probe import Root, Refused
+try:
+    value = Root.from_text_form(b'(:values (3))').value
+except Refused:
+    raise AssertionError('HANDTEXT_ARRAY_ROOT_CONTROL') from None
+assert value.values == [3], 'HANDTEXT_ARRAY_ROOT_CONTROL'
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err == nil || !strings.Contains(stderr, "HANDTEXT_ARRAY_ROOT_CONTROL") {
+			t.Fatalf("array root control: %v %s", err, stderr)
+		}
+	}
+}

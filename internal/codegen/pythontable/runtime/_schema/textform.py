@@ -77,6 +77,7 @@ def _record(cls: Any, node: Node, pointer: bool, labels: dict[str, str]) -> str:
         labels[label] = ""  # A definition is unavailable until complete.
         parts.append('"&node":' + label)
     raw: dict[str, Node] = {}
+    array_root = cls.descriptor.json_array and not label
     for key, item in pairs:
         name = _name(key)
         if name.startswith("&"):
@@ -88,7 +89,8 @@ def _record(cls: Any, node: Node, pointer: bool, labels: dict[str, str]) -> str:
             _fail("text_duplicate_key", key)
         seen.add(name)
         raw[field.name] = item
-        parts.append(json.dumps(name) + ':' + _value(field, item, labels))
+        resolved = _value(field, item, labels)
+        parts.append(resolved if array_root else json.dumps(name) + ':' + resolved)
     for field in fields.values():
         guards = getattr(field, "guards", ())
         active = True
@@ -104,6 +106,8 @@ def _record(cls: Any, node: Node, pointer: bool, labels: dict[str, str]) -> str:
             _fail("text_missing_required", node)
     if label:
         labels[label] = cls.__name__
+    if array_root:
+        return parts[0] if parts else '[]'
     return '{' + ','.join(parts) + '}'
 
 
