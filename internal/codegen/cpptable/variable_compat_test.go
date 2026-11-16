@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/baseline"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // Form 1 has no writer declaration: an older required or present optional
@@ -31,10 +34,14 @@ func TestCppVariableWriterEvolution(t *testing.T) {
 			schema := func(fields string) string {
 				return "package compat\n enum Mode { One, Two }\n type Leaf { n int32 }\n union Choice { leaf Leaf }\n table Child { n int32 }\n table Root {\n" + fields + "\n}\n"
 			}
+			old := cppUnitFrom(t, schema(c.oldFields))
 			current := cppUnitFrom(t, schema(c.newFields))
-			write := func(uFields string, set string) []byte {
+			refusals, _ := baseline.Split(baseline.Diff(baseline.Render(old), baseline.Render(current), baseline.DefaultTokenPolicy))
+			if len(refusals) != 0 {
+				t.Fatalf("the baseline refuses the proposed edit: %v", refusals)
+			}
+			write := func(u *ir.Unit, set string) []byte {
 				t.Helper()
-				u := cppUnitFrom(t, schema(uFields))
 				body := fmt.Sprintf(`Root value; RootReset(value); %s
 uint8_t wire[4096]; int64_t n = RootSave(&value, wire, sizeof(wire));
 if (n <= 0) { return 1; } for (int64_t i = 0; i < n; i++) { printf("%%02x", wire[i]); }
@@ -49,8 +56,8 @@ if (n <= 0) { return 1; } for (int64_t i = 0; i < n; i++) { printf("%%02x", wire
 				}
 				return wire
 			}
-			wire := write(c.oldFields, c.oldSet)
-			canonical := write(c.newFields, c.newSet)
+			wire := write(old, c.oldSet)
+			canonical := write(current, c.newSet)
 			body := fmt.Sprintf(`const uint8_t wire[] = { %s };
 const uint8_t want[] = { %s };
 const Root *value = RootReadStrict(wire, sizeof(wire), NULL);
