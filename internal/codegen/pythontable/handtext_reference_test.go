@@ -320,3 +320,125 @@ for stem in ('roadmap','layout','kinds','variable'):
 		})
 	}
 }
+
+func TestPythonHandtextUnboundedReferencesFunctional(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "generated Go and C++ readers and pinned Python interpreters")
+	const schema = `package probe
+table Tags {
+ rules []string
+ first [..4]?string
+ capped [..2]string
+ byname map[string]int32
+}`
+	unit := loadUnit(t, schema)
+	input, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "conformance", "textform", "unbounded.input.sexp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := golang.Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	surfaces := gotable.DefaultSurfaces()
+	surfaces.TextForm = true
+	tables, err := gotable.GenerateLineageSurface(unit, nil, surfaces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	runtime := slowtest.SerializeGo(t, "../../../")
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
+	files["input.sexp"] = input
+	files["oracle_test.go"] = []byte(`package probe
+import ("fmt"; "os"; "testing")
+func TestOracle(t *testing.T) {
+ data, err := os.ReadFile("input.sexp"); if err != nil {t.Fatal(err)}
+ _, v, err := TagsLoadTextForm(data,TableTextFormDefaultLimits()); if err != nil {t.Fatal(err)}
+ n := TagsToJSONMeasure(v); if n < 0 {t.Fatal("measure")}; b := make([]byte,n); if TagsToJSON(v,b) != n {t.Fatal("write")}; fmt.Printf("ORACLE:%x\n",b)
+}`)
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	cmd := exec.Command("go", "test", "-count=1", "-v", "-run", "^TestOracle$", ".")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Go oracle: %v\n%s", err, out)
+	}
+	var expected string
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "ORACLE:") {
+			expected = strings.TrimPrefix(line, "ORACLE:")
+		}
+	}
+	if expected == "" {
+		t.Fatalf("Go oracle absent: %s", out)
+	}
+	cppFiles, err := cpp.Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cppTables, err := cpptable.Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(cppFiles, cppTables)
+	cppDir := t.TempDir()
+	writeTree(t, cppDir, cppFiles)
+	source := `#include <cstdio>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <vector>
+#include "CoreTable.h"
+using namespace probe;
+int main(int argc, char **argv) {
+ if (argc != 2) return 1;
+ std::ifstream f(argv[1],std::ios::binary); std::string text((std::istreambuf_iterator<char>(f)),{});
+ TagsBuilder builder; const char *reason = nullptr;
+ if (!TagsLoadTextForm(text.data(),(int64_t)text.size(),builder,&reason)) {std::fprintf(stderr,"%s",reason ? reason : "?"); return 2;}
+ if (!builder.Lock()) return 3; const Tags *v = builder.AsConst(); auto n = TagsToJsonMeasure(v);
+ if (n < 0) return 4; std::vector<char> out((size_t)n+1); if (TagsToJson(v,out.data(),(int64_t)out.size()) != n) return 5;
+ return std::fwrite(out.data(),1,(size_t)n,stdout) == (size_t)n ? 0 : 6;
+}`
+	path := filepath.Join(cppDir, "main.cpp")
+	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cppInput := filepath.Join(cppDir, "input.sexp")
+	if err := os.WriteFile(cppInput, input, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ser, err := filepath.Abs("../../../../serialize")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(cppDir, "oracle")
+	cmd = exec.Command("c++", "-std=c++17", "-O1", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("C++ compile: %v\n%s", err, out)
+	}
+	cppOut, err := exec.Command(bin, cppInput).CombinedOutput()
+	if err != nil {
+		t.Fatalf("C++ oracle: %v\n%s", err, cppOut)
+	}
+	if got := fmt.Sprintf("%x", cppOut); got != expected {
+		t.Fatal("C++ unbounded value differs from Go")
+	}
+	pyFiles, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pyDir := t.TempDir()
+	writeTree(t, pyDir, pyFiles)
+	probe := pyrun.ImportPrelude + `from pathlib import Path
+from probe import Tags
+print(Tags.from_text_form(Path('input.sexp').read_bytes()).value.to_json().encode().hex())
+`
+	inputs := map[string][]byte{"main.py": []byte(probe), "input.sexp": input}
+	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+		if got := strings.TrimSpace(string(run(t, pyDir, "main.py", inputs))); got != expected {
+			t.Fatal("Python unbounded value differs from Go and C++")
+		}
+	}
+}
