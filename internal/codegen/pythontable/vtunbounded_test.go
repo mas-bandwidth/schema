@@ -211,7 +211,6 @@ func vtUnboundedRefusals(t *testing.T, u *ir.Unit) []vtUnboundedRefusal {
 		{"trailing_bytes", vtUnboundedFramed(scores, cat([]byte{elemKind}, leb(1), []byte{0, 0, 0, 0, 7})), "wire_damaged", "bytes left inside an array's L after its elements"},
 		{"element_range", vtUnboundedFramed(scores, cat([]byte{elemKind}, leb(2), []byte{1, 0, 0, 0, 101, 0, 0, 0})), "out_of_range", "101 is outside [-100, 100]"},
 		{"bool_payload", vtUnboundedFramed(flags, cat([]byte{boolKind}, leb(2), []byte{1, 2})), "wire_damaged", "a bool payload is not 0 or 1"},
-
 	}
 }
 
