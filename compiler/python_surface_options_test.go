@@ -22,8 +22,13 @@ func TestPythonSurfaceOptionsDriver(t *testing.T) {
 	if !strings.Contains(string(full["probe/Probe.py"]), "Root.block = BlockTable(") {
 		t.Fatal("default omitted the block descriptor")
 	}
-	if _, err := c.Generate(u, "python", Options{"surface": "wire,json"}); err == nil || !strings.Contains(err.Error(), "json") {
-		t.Fatalf("unavailable surface: %v", err)
+	json, err := c.Generate(u, "python", Options{"surface": "wire,json"})
+	if err != nil || !strings.Contains(string(json["probe/Probe.py"]), "def from_json(") || strings.Contains(string(json["probe/Probe.py"]), "def from_text_form(") {
+		t.Fatalf("JSON surface selection: %v", err)
+	}
+	text, err := c.Generate(u, "python", Options{"surface": "wire,json,textform"})
+	if err != nil || !strings.Contains(string(text["probe/Probe.py"]), "def from_text_form(") {
+		t.Fatalf("hand-text surface selection: %v", err)
 	}
 	if _, err := c.Generate(u, "python", Options{"surface": "wire,unknown"}); err == nil || !strings.Contains(err.Error(), "unknown surface") {
 		t.Fatalf("unknown surface: %v", err)
