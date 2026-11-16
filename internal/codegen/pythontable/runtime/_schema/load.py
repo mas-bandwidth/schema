@@ -198,7 +198,7 @@ class Ctx:
         # map's pointer value is rewritten to the map, (its key, the field)
         self.pending: list[tuple[Any, Any, int]] = []
         # every known byte buffer slot: its owner, its field and its node index
-        self.blob_pending: list[tuple[Any, FieldDesc, int]] = []
+        self.blob_pending: list[tuple[Any, Any, int]] = []
         self.current: Any = None
         self.root: Any = None
         # one entry per node record: the decoded table, or None for a blob or
@@ -357,7 +357,7 @@ def _placeable(root: type[Any]) -> frozenset[int]:
     """THE TYPE IDS THIS ROOT CAN PLACE (§3.1): every table a pointer below
     the root targets, through by-value tables and pointers alike, and the
     reserved id of each byte buffer kind a *bytes or *string slot below it
-    names (§2.5). A map's buffer value is not carried, so it places nothing."""
+    names (§2.5), including map value slots."""
     cached: frozenset[int] | None = getattr(root, "_s_placeable", None)
     if cached is not None:
         return cached
@@ -371,9 +371,9 @@ def _placeable(root: type[Any]) -> frozenset[int]:
             continue
         visited.add(desc.name)
         for field in _reached_fields(desc.fields):
-            if field.codec == "bytes_blob" and not entry:
+            if field.codec == "bytes_blob":
                 out.add(_BYTES_WIRE_TYPE_ID)
-            elif field.codec == "string_blob" and not entry:
+            elif field.codec == "string_blob":
                 out.add(_STRING_WIRE_TYPE_ID)
             if not field.target:
                 continue
@@ -571,22 +571,29 @@ def _resolve(ctx: Ctx) -> None:
             owner[slot[0]] = value
         else:
             setattr(owner, field.name, value)
-    for owner, field, index in ctx.blob_pending:
-        if index == 0:
-            setattr(owner, field.name, None)
-            continue
-        # the graph admitted the index and refused a record named twice
-        buffer = ctx.nodes[index - 2]
-        if not isinstance(buffer, kind_blob._BlobValue):
-            if descriptor.by_id(ctx.types[index - 2]) is not None:
-                raise Refused("wire_damaged", "a byte buffer slot names a table record")
-            # a record of a type this reader does not declare reads null; it
-            # counted once when the node table was read
-            setattr(owner, field.name, None)
-            continue
-        if buffer.string != (field.codec == "string_blob"):
-            raise Refused("wire_damaged", "a byte buffer slot names the other buffer kind")
-        setattr(owner, field.name, buffer.value)
+    for owner, slot, index in ctx.blob_pending:
+        # A map entry's temporary table has gone away: place its deferred
+        # buffer into the dictionary slot, just as a table pointer value does.
+        if isinstance(owner, dict):
+            key, field = slot
+        else:
+            key, field = None, slot
+        value = None
+        if index != 0:
+            # The graph admitted the index and refused a record named twice.
+            buffer = ctx.nodes[index - 2]
+            if not isinstance(buffer, kind_blob._BlobValue):
+                if descriptor.by_id(ctx.types[index - 2]) is not None:
+                    raise Refused("wire_damaged", "a byte buffer slot names a table record")
+                # An undeclared node type substitutes null, as for table slots.
+            elif buffer.string != (field.codec == "string_blob"):
+                raise Refused("wire_damaged", "a byte buffer slot names the other buffer kind")
+            else:
+                value = buffer.value
+        if isinstance(owner, dict):
+            owner[key] = value
+        else:
+            setattr(owner, field.name, value)
 
 
 # THE SKIP WALK: the engine's declaration-free wire check (wirecheck.go) over
