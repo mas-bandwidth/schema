@@ -463,13 +463,14 @@ def _read_body(reader: BitReader, cls: type[object], vocab: MessageVocabulary, o
             if field.ordinal <= last_ordinal:
                 raise Refused("wire_damaged", "message fields are out of order")
             last_ordinal = field.ordinal
+        substituted = stats[2]
         value = _read_value(reader, field, entry.shape, vocab, own_version, keys, stats, depth, True, getattr(obj, field.name), same_shape)
         if type(value) is int and (value < field.lo or value > field.hi):
             raise Refused("out_of_range", field.name)
         if type(value) is float and getattr(field, "float_range", False):
             if value < field.fmin or value > field.fmax:
                 raise Refused("out_of_range", field.name)
-        if same_shape and field.is_default(value) and not getattr(field, "required", False):
+        if same_shape and stats[2] == substituted and field.is_default(value) and not getattr(field, "required", False):
             raise Refused("wire_damaged", "message field is explicitly at its default")
         setattr(obj, field.name, value)
 
@@ -534,7 +535,9 @@ def load_messages(root: type[object], vocab: MessageVocabulary, data: bytes | by
     if pending:
         raise Refused(pending[0])
     reader = BitReader(view, 16)
-    stats = [0, 0]
+    # Unknown/widened are public counters; substitutions are internal evidence
+    # that the decoded default was not what the sender actually wrote.
+    stats = [0, 0, 0]
     values = [_read_body(reader, root, vocab, own_version, keys, stats) for _ in range(count)]
     reader.finish()
     if report is not None:
@@ -664,8 +667,12 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
             raise Refused("wire_damaged", "message enum name has a payload")
         ordinal = vocab.variants.get(id(fd), {}).get(entry.field_id)
         if ordinal is not None:
-            return fd.default if ordinal in fd.deprecated else ordinal
+            if ordinal in fd.deprecated:
+                stats[2] += 1
+                return fd.default
+            return ordinal
         stats[0] += 1
+        stats[2] += 1
         return 0
     if shape.kind == 15:
         cls = descriptor._union_by_name(fd.target)
@@ -683,6 +690,7 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
         if arm is None:
             _skip_value(reader, entry.shape, vocab, depth + 1)
             stats[0] += 1
+            stats[2] += 1
             return result
         if entry.kind != arm.kind:
             if not _widens(entry.kind, arm.kind):
@@ -712,13 +720,15 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
             if key.field_id not in fd.keys:
                 _skip_value(reader, shape.inner, vocab, depth + 1)
                 stats[0] += 1
+                stats[2] += 1
                 continue
             index = fd.keys.index(key.field_id)
             if same_shape and index <= last_index:
                 raise Refused("wire_damaged", "message keyed slots are out of order")
             last_index = index
+            substituted = stats[2]
             item = _read_value(reader, fd.elem, shape.inner, vocab, own_version, keys, stats, depth + 1)
-            if same_shape and fd.elem.is_default(item):
+            if same_shape and stats[2] == substituted and fd.elem.is_default(item):
                 raise Refused("wire_damaged", "message keyed slot is explicitly at its default")
             slots[index] = item
         return output

@@ -19,6 +19,10 @@ A same-build field's writer default and declaration order are inferred only
 when its full announced shape also matches. A differing shape is read under
 its own framing, including for older peers whose build versions did not
 encode a counted array's minimum.
+Unknown enum variants, deprecated enum variants, unknown union arms, and
+unknown keyed slots can substitute defaults during evolution. The reader keeps
+that distinct from a sender explicitly writing a default, including inside a
+nested body or keyed element.
 
 The package retains a schema's existing public export if its name overlaps a
 message API spelling. In that case the complete message API is available

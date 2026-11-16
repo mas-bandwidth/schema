@@ -33,3 +33,8 @@ test-python: python-message-crc-negative-control
 python-message-onesided-negative-control: python-toolchain-check deps-go
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMessageOneSided$$' ./internal/codegen/pythontable/
 test-python: python-message-onesided-negative-control
+
+.PHONY: python-message-substitution-negative-control
+python-message-substitution-negative-control: python-toolchain-check deps-go
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMessageSubstituted(Enum|Union|Key)$$' ./internal/codegen/pythontable/
+test-python: python-message-substitution-negative-control
