@@ -729,6 +729,21 @@ var codecTable = []codec{
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 
+	regionRow("messagedemo", "ToolEnvelope", messagedemo.ToolEnvelopeLoadMeasure, messagedemo.ToolEnvelopeLoad, messagedemo.ToolEnvelopeMeasure, messagedemo.ToolEnvelopeSave, func(text []byte, report *messagedemo.TableReport) (*messagedemo.ToolEnvelope, []byte, bool) {
+		var b messagedemo.ToolEnvelopeBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := messagedemo.ToolEnvelopeFromJSON(&b, text, report)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, messagedemo.ToolEnvelopeToJSONMeasure, messagedemo.ToolEnvelopeToJSON, messagedemo.ToolEnvelopeCookMeasure, messagedemo.ToolEnvelopeCookFrom, func(r *messagedemo.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+
 	row("scalars", "SimState", scalardemo.SimStateReset, scalardemo.SimStateLoad, scalardemo.SimStateMeasure, scalardemo.SimStateSave, scalardemo.SimStateFromJSON, scalardemo.SimStateToJSONMeasure, scalardemo.SimStateToJSON, scalardemo.SimStateCookMeasure, scalardemo.SimStateCookFrom, func(r *scalardemo.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
