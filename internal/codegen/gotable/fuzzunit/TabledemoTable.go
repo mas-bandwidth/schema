@@ -28,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xaf3c2a0488047dc2)
-const _ = uint64(0xaf3c2a0488047dc2 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x86bc2d1b737bcddd)
+const _ = uint64(0x86bc2d1b737bcddd - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -682,11 +682,11 @@ type TableFieldInfo struct {
 	Counted            bool  // a <Name>Count/<Name>Length int32 companion exists
 	Optional           bool  // a ?T field: a <Name>Present bool decides whether it rides
 
-	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
-	Offset        uint32 // unsafe.Offsetof the storage member
-	ElemSize      uint32 // unsafe.Sizeof the member (element size for arrays)
-	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
-	PresentOffset uint32 // unsafe.Offsetof the Present companion, or 0xffffffff
+	ArrayMin, ArrayBound int32  // counted minimum; capacity / string max length; 0 otherwise
+	Offset               uint32 // unsafe.Offsetof the storage member
+	ElemSize             uint32 // unsafe.Sizeof the member (element size for arrays)
+	CountOffset          uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
+	PresentOffset        uint32 // unsafe.Offsetof the Present companion, or 0xffffffff
 
 	FracBits         uint8 // fixed-point binary scale
 	WideRange        bool
