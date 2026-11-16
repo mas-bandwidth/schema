@@ -79,13 +79,17 @@ class _Map:
         out: dict[Any, Any] = {}
         last: Any = None
         landed = False
+        widened = False
         for _ in range(count):
             n = sub.varint()
             body = sub.take(n)
             entry = entry_cls()
             before = len(ctx.pending)
             blobs_before = len(ctx.blob_pending)
-            read_body(body, entry, ctx)
+            if read_body(body, entry, ctx, key_field) and not widened:
+                # The map counts once, regardless of how many keys widened.
+                ctx.widened += 1
+                widened = True
             key = getattr(entry, key_field.name)
             if landed and _compare(fd, last, key) >= 0:
                 raise Refused(
