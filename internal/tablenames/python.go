@@ -24,6 +24,7 @@ func init() {
 		Name{Name: "Refused", What: "the read refusal every generated package re-exports", Scoped: true},
 		Name{Name: "InvalidValue", What: "the write refusal every generated package re-exports", Scoped: true},
 		Name{Name: "LoadReport", What: "the counters a successful load fills", Scoped: true},
+		Name{Name: "TableRetain", What: "the caller-owned retention buffers"},
 		Name{Name: "Number", What: "a JSON number token retained exactly", Scoped: true},
 		Name{Name: "parse", What: "scan the table text dialect", Scoped: true},
 		Name{Name: "from_json", What: "read a table from JSON text", Scoped: true},

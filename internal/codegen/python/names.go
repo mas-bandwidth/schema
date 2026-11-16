@@ -45,6 +45,11 @@ var unionMembers = wordSet(`type read write load save descriptor`)
 // names, the names __init__.py always exports, dunder and helper prefixes,
 // builtins at module level, and the generated members.
 func CheckNames(u *ir.Unit) error {
+	return CheckNamesWithTextSurfaces(u, true, false)
+}
+
+// CheckNamesWithTextSurfaces reserves JSON table methods only when selected.
+func CheckNamesWithTextSurfaces(u *ir.Unit, json bool, _ bool) error {
 	if err := checkPackage(u.Package); err != nil {
 		return err
 	}
@@ -78,7 +83,7 @@ func CheckNames(u *ir.Unit) error {
 				return err
 			}
 			for _, field := range t.Fields {
-				if t.CarriesForm("json") && generatedTableJSONMembers[field.Name] {
+				if json && t.CarriesForm("json") && generatedTableJSONMembers[field.Name] {
 					return fmt.Errorf("python: %s.schema: %s's field %s is the name of a generated JSON method; rename the field", f.Base, t.Name, field.Name)
 				}
 			}

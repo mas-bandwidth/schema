@@ -34,6 +34,34 @@ class Writer:
         if self.buf is not None:
             self.buf.extend(data)
 
+    def begin_frame(self) -> int:
+        mark = self.count
+        for _ in range(10):
+            self.byte(0)
+        return mark
+
+    def finish_frame(self, mark: int) -> None:
+        self.finish_varint(mark, self.count - mark - 10)
+
+    def finish_varint(self, mark: int, value: int) -> None:
+        prefix = bytearray()
+        while value >= 128:
+            prefix.append((value & 127) | 128)
+            value >>= 7
+        prefix.append(value)
+        shift = 10 - len(prefix)
+        if self.buf is not None:
+            self.buf[mark:mark + len(prefix)] = prefix
+            for source in range(mark + 10, self.count):
+                self.buf[source - shift] = self.buf[source]
+            del self.buf[self.count - shift:self.count]
+        self.count -= shift
+
+    def truncate(self, mark: int) -> None:
+        if self.buf is not None:
+            del self.buf[mark:]
+        self.count = mark
+
     def varint(self, value: int) -> None:
         if value < 0:
             raise InvalidValue("", "a reference is negative")
@@ -74,6 +102,66 @@ class Ctx:
             self.refs[value] = reference
         return reference
 
+    def write_ids(self, writer: Writer) -> None:
+        if len(self.ids) > 4096:
+            raise InvalidValue("", "known values need more than 4096 wire IDs")
+        for table_id in self.ids:
+            writer.raw(table_id.to_bytes(8, "little"))
+        writer.raw(len(self.ids).to_bytes(8, "little"))
+
+
+class _RetainCtx(Ctx):
+    """Use the caller's id slots without growing the generated id map."""
+
+    __slots__ = ("retain", "node", "steps", "lost", "known", "ordinal", "preview", "reserved", "remaining", "emitted")
+
+    def __init__(self, retain: Any) -> None:
+        from importlib import import_module
+
+        super().__init__()
+        self.retain = retain
+        self.node = 1
+        self.steps: tuple[tuple[int, int], ...] = ()
+        self.lost = 0
+        self.known = import_module(__package__ + ".retain_known").KNOWN
+        self.ordinal = 0
+        self.preview = False
+        self.reserved: frozenset[int] = frozenset()
+        self.remaining = 0
+        self.emitted = 0
+
+    def can_id(self, value: int) -> bool:
+        return value in self.refs or value in self.reserved or len(self.ids) + self.retain.id_used + self.remaining < 4096
+
+    def idref(self, value: int) -> int:
+        reference = self.refs.get(value)
+        if reference is None:
+            reference = len(self.ids) + self.retain.id_used + 1
+            self.ids.append(value)
+            self.refs[value] = reference
+            if value in self.reserved:
+                self.remaining -= 1
+        return reference
+
+    def forget_id(self, value: int) -> None:
+        del self.refs[value]
+        if value in self.reserved:
+            self.remaining += 1
+
+    def write_ids(self, writer: Writer) -> None:
+        known = 0
+        retained = 1
+        while known < len(self.ids) or retained <= self.retain.id_used:
+            known_slot = self.refs[self.ids[known]] if known < len(self.ids) else 0
+            retained_slot = self.retain._id_word(retained, 8) if retained <= self.retain.id_used else 0
+            if known_slot and (not retained_slot or known_slot < retained_slot):
+                writer.raw(self.ids[known].to_bytes(8, "little"))
+                known += 1
+            else:
+                writer.raw(self.retain._id_key(retained).to_bytes(8, "little"))
+                retained += 1
+        writer.raw((len(self.ids) + self.retain.id_used).to_bytes(8, "little"))
+
 
 def save_table(value: Any) -> bytes:
     sink = bytearray()
@@ -102,9 +190,7 @@ def _encode(value: Any, writer: Writer) -> int:
     _collect_root(value, ctx)
     _write_form(writer)
     write_body(writer, value, ctx, True)
-    for table_id in ctx.ids:
-        writer.raw(table_id.to_bytes(8, "little"))
-    writer.raw(len(ctx.ids).to_bytes(8, "little"))
+    ctx.write_ids(writer)
     return writer.count
 
 
@@ -123,6 +209,114 @@ def _collect_root(value: Any, ctx: Ctx) -> None:
     for position, node in enumerate(ctx.order):
         if not isinstance(node, kind_blob._BlobNode):
             ctx.blob_slots.extend(ctx.node_blobs[position + 2])
+
+
+def _encode_retain(value: Any, retain: Any, writer: Writer) -> tuple[int, int]:
+    """Write one retaining form-1 file or count the same walk."""
+    _check_root(value)
+    if retain.loaded_root is not value:
+        raise InvalidValue("", "retention belongs to a different loaded root")
+    _validate(value, value.descriptor, "", set())
+    ctx = _RetainCtx(retain)
+    ctx.indices[id(value)] = 1
+    ctx.onstack.add(id(value))
+    _collect_root(value, ctx)
+    # Reserve the IDs the ordinary known-value walk must write before using
+    # any of the wire's 4096 slots for retained-only fields. Default containers
+    # forced solely by retention are decided when their bodies are reached.
+    retain.begin_save(ctx, retain.directory)
+    ctx.preview = True
+    counter = Writer(None)
+    _write_form(counter)
+    write_body(counter, value, ctx, True)
+    reserved = frozenset(ctx.ids)
+    if len(reserved) > 4096:
+        raise InvalidValue("", "known values need more than 4096 wire IDs")
+    ctx.ids.clear()
+    ctx.refs.clear()
+    ctx.reserved = reserved
+    ctx.remaining = len(reserved)
+    ctx.preview = False
+    ctx.blob_next = 0
+    ctx.lost = 0
+    ctx.emitted = 0
+    retain.begin_save(ctx, retain.directory)
+    _write_form(writer)
+    write_body(writer, value, ctx, True)
+    ctx.write_ids(writer)
+    return writer.count, ctx.lost + retain.unplaced()
+
+
+def _write_retain_body(writer: Writer, value: Any, ctx: _RetainCtx, root: bool) -> None:
+    desc: TableDesc = value.descriptor
+    previous = ctx.current
+    parent_steps = ctx.steps
+    parent_ordinal = ctx.ordinal
+    ctx.current = value
+    for field in desc.fields:
+        if not field.guard_holds(value):
+            continue
+        current = getattr(value, field.name)
+        codec = field.inner if field.codec == "optional" else field.codec
+        child = parent_steps + ((field.ordinal, 0),)
+        has_child = codec == "table" and current is not None and ctx.retain.has_body(ctx.node, child)
+        element = field.elem if field.codec == "optional" else field.element
+        if codec == "array" and current is not None and element is not None and element.codec == "table":
+            has_child = any(ctx.retain.has_body(ctx.node, parent_steps + ((field.ordinal, index),)) for index in range(len(current)))
+        if codec == "keyed" and field.elem is not None and field.elem.codec == "table":
+            slots = current if field.keyed_list else current._values
+            has_child = any(ctx.retain.has_body(ctx.node, parent_steps + ((field.ordinal, index),)) for index in range(len(slots)))
+        default = not field.required and field.is_default(current)
+        if ctx.preview:
+            has_child = False
+        if default and not has_child:
+            continue
+        forced = default and has_child
+        if forced and not ctx.can_id(field.field_id):
+            continue
+        start = writer.count
+        id_mark = len(ctx.ids)
+        retained_mark = ctx.retain.id_used
+        emitted_mark = ctx.emitted
+        ctx.ordinal = field.ordinal
+        if codec == "table":
+            ctx.steps = child
+        kinds._REGISTRY[field.codec].write(writer, field, current, ctx)
+        ctx.steps = parent_steps
+        ctx.ordinal = parent_ordinal
+        if forced and ctx.emitted == emitted_mark:
+            while len(ctx.ids) > id_mark:
+                ctx.forget_id(ctx.ids.pop())
+            ctx.retain.truncate_ids(retained_mark)
+            writer.truncate(start)
+    if not ctx.preview:
+        tail_start = writer.count
+        ctx.lost += ctx.retain.write_tail(ctx.node, parent_steps, ctx.known, ctx, writer)
+        if writer.count != tail_start:
+            ctx.emitted += 1
+    if root and ctx.order:
+        writer.varint(ctx.idref(NODE_WIRE_ID))
+        writer.byte(12)
+        nodes_frame = writer.begin_frame()
+        writer.varint(len(ctx.order))
+        for index, node in enumerate(ctx.order):
+            if isinstance(node, kind_blob._BlobNode):
+                type_id = kind_blob._STRING_BLOB_ID if node.string else kind_blob._BYTES_BLOB_ID
+                writer.varint(ctx.idref(type_id))
+                writer.varint(len(node.body))
+                writer.raw(node.body)
+                continue
+            writer.varint(ctx.idref(node.descriptor.type_id))
+            node_frame = writer.begin_frame()
+            ctx.node = index + 2
+            ctx.steps = ()
+            _write_retain_body(writer, node, ctx, False)
+            writer.finish_frame(node_frame)
+        ctx.node = 1
+        ctx.steps = parent_steps
+        writer.finish_frame(nodes_frame)
+    writer.byte(0)
+    ctx.current = previous
 
 
 def _path(parent: str, name: str) -> str:
@@ -462,6 +656,9 @@ def _collect_map_edges(
 
 
 def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:
+    if isinstance(ctx, _RetainCtx):
+        _write_retain_body(writer, value, ctx, root)
+        return
     desc: TableDesc = value.descriptor
     previous = ctx.current
     ctx.current = value
