@@ -32,7 +32,7 @@ type fixedLiteral string
 // GenerateLineage generates the ordinary classes and the fixed-form plans from
 // caller-supplied locked layouts. No generated reader parses a file's layout.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
-	return generatePythonTables(u, lineage)
+	return GenerateSurfaceLineage(u, DefaultSurfaces(), lineage)
 }
 
 func fixedLiteralOf(v any) string {
