@@ -140,21 +140,22 @@ def _map_entries(fd: Any, value: Any) -> list[Any]:
     return entries
 
 
-def _edges(desc: Any, value: Any, out: list[tuple[Any, Any]]) -> None:
+def _edges(desc: Any, value: Any, out: list[tuple[Any, Any]], inactive_only: bool = False, inherited_inactive: bool = False) -> None:
     for fd in desc.fields:
-        if hasattr(fd, "guard_holds") and not fd.guard_holds(value):
+        inactive = inherited_inactive or (hasattr(fd, "guard_holds") and not fd.guard_holds(value))
+        if inactive and not inactive_only:
             continue
         if fd.codec == "table":
             target = descriptor.by_name(fd.target)
             if target is None:
                 raise InvalidValue(fd.name, f"the table {fd.target} is not registered")
-            _edges(target.descriptor, getattr(value, fd.name), out)
+            _edges(target.descriptor, getattr(value, fd.name), out, inactive_only, inactive)
         elif fd.codec == "array" and fd.array_kind in (1, 2) and fd.elem_codec == "table":
             target = descriptor.by_name(fd.target)
             if target is None:
                 raise InvalidValue(fd.name, f"the table {fd.target} is not registered")
             for item in getattr(value, fd.name):
-                _edges(target.descriptor, item, out)
+                _edges(target.descriptor, item, out, inactive_only, inactive)
         elif fd.codec == "array" and fd.elem_codec in ("string", "text_optional"):
             continue
         elif fd.codec == "array" and fd.array_kind in (1, 2) and fd.elem_codec in ("bool", "int", "enum", "float32", "float64"):
@@ -168,45 +169,48 @@ def _edges(desc: Any, value: Any, out: list[tuple[Any, Any]]) -> None:
             keyed = getattr(value, fd.name)
             values = keyed if isinstance(keyed, list) else keyed._values
             for item in values:
-                _edges(target.descriptor, item, out)
+                _edges(target.descriptor, item, out, inactive_only, inactive)
         elif fd.codec == "optional":
             current = getattr(value, fd.name)
             if current is not None:
                 field = _optional_field(fd)
-                _edges(SimpleNamespace(fields=(field,)), SimpleNamespace(**{field.name: current}), out)
+                _edges(SimpleNamespace(fields=(field,)), SimpleNamespace(**{field.name: current}), out, inactive_only, inactive)
         elif fd.codec == "map":
             for item in _map_entries(fd, getattr(value, fd.name)):
-                _edges(item.descriptor, item, out)
+                _edges(item.descriptor, item, out, inactive_only, inactive)
         elif fd.codec == "union_array":
             field = _union_field(fd)
             for item in getattr(value, fd.name):
-                _edges(SimpleNamespace(fields=(field,)), SimpleNamespace(**{field.name: item}), out)
+                _edges(SimpleNamespace(fields=(field,)), SimpleNamespace(**{field.name: item}), out, inactive_only, inactive)
         elif fd.codec == "union":
             union = getattr(value, fd.name)
             if union is not None and union.type:
                 arm = union.descriptor.arms[union.type - 1]
                 if arm.field is not None:
                     item = getattr(union, arm.name)
-                    _edges(SimpleNamespace(fields=(arm.field,)), SimpleNamespace(**{arm.field.name: item}), out)
+                    _edges(SimpleNamespace(fields=(arm.field,)), SimpleNamespace(**{arm.field.name: item}), out, inactive_only, inactive)
         elif fd.codec in ("string_blob", "bytes_blob"):
             current = getattr(value, fd.name)
             if current is not None:
-                out.append((fd, current))
+                if not inactive_only or inactive:
+                    out.append((fd, current))
         elif fd.codec == "pointer":
             current = getattr(value, fd.name)
             if current is not None:
-                out.append((fd, current))
+                if not inactive_only or inactive:
+                    out.append((fd, current))
         elif fd.codec == "pointer_array":
             for current in getattr(value, fd.name):
                 if current is not None:
-                    out.append((fd, current))
+                    if not inactive_only or inactive:
+                        out.append((fd, current))
         elif fd.codec == "array" and fd.array_kind == 3 and fd.elem_codec in ("int", "bool", "enum", "float32", "float64", "table", "string", "text_optional"):
             if fd.elem_codec == "table":
                 target = descriptor.by_name(fd.target)
                 if target is None:
                     raise InvalidValue(fd.name, "a list table is not registered")
                 for item in getattr(value, fd.name):
-                    _edges(target.descriptor, item, out)
+                    _edges(target.descriptor, item, out, inactive_only, inactive)
             continue
         elif fd.codec in ("bool", "int", "enum", "float32", "float64", "string", "bytes"):
             continue
@@ -299,10 +303,11 @@ def _has_extent(desc: Any, seen: set[str]) -> bool:
     return any(_field_has_extent(fd, seen) for fd in desc.fields)
 
 
-def _plan_lists(desc: Any, value: Any, at: int, cursor: list[int], placements: dict[int, int], ignore_guard: bool = False) -> None:
+def _plan_lists(desc: Any, value: Any, at: int, cursor: list[int], placements: dict[int, int], ignore_guard: bool = False, skip_validation: bool = False, inherited_inactive: bool = False) -> None:
     for fd in desc.fields:
         current = getattr(value, fd.name)
-        if hasattr(fd, "guard_holds"):
+        inactive = inherited_inactive or (hasattr(fd, "guard_holds") and not fd.guard_holds(value))
+        if inactive and hasattr(fd, "guard_holds") and not skip_validation:
             # A cook writes inline storage even behind a false guard. Validate
             # that slot without traversing its pointer edges; numbering still
             # follows only active fields.
@@ -313,7 +318,7 @@ def _plan_lists(desc: Any, value: Any, at: int, cursor: list[int], placements: d
                 pass
         if not ignore_guard and hasattr(fd, "guard_holds") and not fd.guard_holds(value):
             trial = [0, cursor[1]]
-            _plan_lists(SimpleNamespace(fields=(fd,)), value, at, trial, {}, True)
+            _plan_lists(SimpleNamespace(fields=(fd,)), value, at, trial, {}, True, True, True)
             if trial[0]:
                 raise InvalidValue(fd.name, "an inactive field holds an extent")
             continue
@@ -332,7 +337,7 @@ def _plan_lists(desc: Any, value: Any, at: int, cursor: list[int], placements: d
                 placements[slot] = start
                 cursor[0] += len(entries) * fd.elem_size
                 for position, item in enumerate(entries):
-                    _plan_lists(item.descriptor, item, start + position * fd.elem_size, cursor, placements)
+                    _plan_lists(item.descriptor, item, start + position * fd.elem_size, cursor, placements, inherited_inactive=inactive)
         elif fd.codec == "pointer_array" and fd.array_mode == "list":
             if current:
                 cursor[0] = _align_up(cursor[0], fd.elem_align)
@@ -352,7 +357,7 @@ def _plan_lists(desc: Any, value: Any, at: int, cursor: list[int], placements: d
                 stride = fd.pieces[0][1] // fd.bound
             field = _union_field(fd)
             for position, item in enumerate(current):
-                _plan_lists(SimpleNamespace(fields=(field,)), SimpleNamespace(**{field.name: item}), start + position * stride, cursor, placements)
+                _plan_lists(SimpleNamespace(fields=(field,)), SimpleNamespace(**{field.name: item}), start + position * stride, cursor, placements, inherited_inactive=inactive)
         elif fd.codec == "array" and fd.array_kind == 3:
             if fd.elem_codec not in ("int", "bool", "enum", "float32", "float64", "table", "string", "text_optional"):
                 raise InvalidValue(fd.name, _RETIRED)
@@ -367,33 +372,33 @@ def _plan_lists(desc: Any, value: Any, at: int, cursor: list[int], placements: d
                         raise InvalidValue(fd.name, "a list table is not registered")
                     for position, item in enumerate(current):
                         element = _text_entry(fd, item) if fd.elem_codec != "table" else item
-                        _plan_lists(target.descriptor, element, start + position * fd.elem_size, cursor, placements)
+                        _plan_lists(target.descriptor, element, start + position * fd.elem_size, cursor, placements, inherited_inactive=inactive)
         elif fd.codec == "table":
             target = descriptor.by_name(fd.target)
             if target is not None:
-                _plan_lists(target.descriptor, current, slot, cursor, placements)
+                _plan_lists(target.descriptor, current, slot, cursor, placements, inherited_inactive=inactive)
         elif fd.codec == "array" and fd.array_kind in (1, 2) and fd.elem_codec in ("table", "string", "text_optional"):
             target = descriptor.by_name(fd.target)
             if target is not None:
                 stride = fd.pieces[0][1] // fd.bound
                 for position, item in enumerate(current):
                     element = _text_entry(fd, item) if fd.elem_codec != "table" else item
-                    _plan_lists(target.descriptor, element, slot + position * stride, cursor, placements)
+                    _plan_lists(target.descriptor, element, slot + position * stride, cursor, placements, inherited_inactive=inactive)
         elif fd.codec == "keyed" and fd.elem is not None and fd.elem.codec == "table":
             target = descriptor.by_name(fd.target)
             if target is not None:
                 values = current if isinstance(current, list) else current._values
                 stride = fd.pieces[0][1] // fd.bound
                 for position, item in enumerate(values):
-                    _plan_lists(target.descriptor, item, slot + position * stride, cursor, placements)
+                    _plan_lists(target.descriptor, item, slot + position * stride, cursor, placements, inherited_inactive=inactive)
         elif fd.codec == "optional" and current is not None:
             field = _optional_field(fd)
-            _plan_lists(SimpleNamespace(fields=(field,)), SimpleNamespace(**{field.name: current}), slot, cursor, placements)
+            _plan_lists(SimpleNamespace(fields=(field,)), SimpleNamespace(**{field.name: current}), slot, cursor, placements, False, True, inactive)
         elif fd.codec == "union" and current is not None and current.type:
             arm = current.descriptor.arms[current.type - 1]
             if arm.field is not None:
                 item = getattr(current, arm.name)
-                _plan_lists(SimpleNamespace(fields=(arm.field,)), SimpleNamespace(**{arm.field.name: item}), slot + current.descriptor.arm_offset, cursor, placements)
+                _plan_lists(SimpleNamespace(fields=(arm.field,)), SimpleNamespace(**{arm.field.name: item}), slot + current.descriptor.arm_offset, cursor, placements, inherited_inactive=inactive)
 
 
 
@@ -418,6 +423,18 @@ def _layout(value: Any) -> tuple[list[_Entry], dict[int, _Entry], int, int]:
         else:
             _plan_lists(entry.desc, entry.value, offset, [0, entry.desc.region_align], {})
             offset += entry.desc.size
+    # A false guard suppresses numbering, but the inline slot is still written.
+    # Any non-null reference there must already name a live numbered node.
+    for entry in entries:
+        if entry.blob is not None:
+            continue
+        inactive_edges: list[tuple[Any, Any]] = []
+        _edges(entry.desc, entry.value, inactive_edges, True)
+        for field, target in inactive_edges:
+            if field.codec in ("string_blob", "bytes_blob") and not isinstance(target, BlobRef):
+                raise InvalidValue(field.name, "an inactive blob slot has no node index")
+            if id(target) not in index:
+                raise InvalidValue(field.name, "an inactive reference has no node index")
     return entries, index, _align_up(offset, align), align
 
 
@@ -439,12 +456,14 @@ def _write_record(
     order: Literal["little", "big"],
     blobs: Iterator[_Entry],
     placements: dict[int, int],
+    inherited_inactive: bool = False,
 ) -> None:
     fast = getattr(type(value), "_s_cook_write", None)
     if callable(fast):
         fast(buf, value, base, order)
         return
     for fd in desc.fields:
+        inactive = inherited_inactive or (hasattr(fd, "guard_holds") and not fd.guard_holds(value))
         at = base + fd.at
         current = getattr(value, fd.name)
         if fd.codec == "bool":
@@ -470,7 +489,7 @@ def _write_record(
             target = descriptor.by_name(fd.target)
             if target is None:
                 raise InvalidValue(fd.name, f"the table {fd.target} is not registered")
-            _write_record(buf, target.descriptor, current, at, index, order, blobs, placements)
+            _write_record(buf, target.descriptor, current, at, index, order, blobs, placements, inactive)
         elif fd.codec == "array" and fd.array_kind in (1, 2) and fd.elem_codec in ("bool", "int", "enum", "float32", "float64"):
             stride = fd.pieces[0][1] // fd.bound
             for position, item in enumerate(current):
@@ -489,7 +508,7 @@ def _write_record(
             stride = fd.pieces[0][1] // fd.bound
             for position, item in enumerate(current):
                 element = _text_entry(fd, item) if fd.elem_codec != "table" else item
-                _write_record(buf, target.descriptor, element, at + position * stride, index, order, blobs, placements)
+                _write_record(buf, target.descriptor, element, at + position * stride, index, order, blobs, placements, inactive)
             if fd.array_kind == 2:
                 _put_int(buf, base + fd.pieces[1][0], len(current), 4, order, True)
         elif fd.codec == "keyed" and fd.elem is not None and fd.elem.codec == "table":
@@ -499,11 +518,11 @@ def _write_record(
             values = current if isinstance(current, list) else current._values
             stride = fd.pieces[0][1] // fd.bound
             for position, item in enumerate(values):
-                _write_record(buf, target.descriptor, item, at + position * stride, index, order, blobs, placements)
+                _write_record(buf, target.descriptor, item, at + position * stride, index, order, blobs, placements, inactive)
         elif fd.codec == "optional":
             if current is not None:
                 field = _optional_field(fd)
-                _write_record(buf, SimpleNamespace(fields=(field,)), SimpleNamespace(**{field.name: current}), at, index, order, blobs, placements)
+                _write_record(buf, SimpleNamespace(fields=(field,)), SimpleNamespace(**{field.name: current}), at, index, order, blobs, placements, inactive)
                 buf[base + fd.pieces[-1][0]] = 1
         elif fd.codec == "map":
             entries = _map_entries(fd, current)
@@ -512,7 +531,7 @@ def _write_record(
                 _put_int(buf, at, start - at, 8, order, True)
                 _put_int(buf, at + 8, len(entries), 4, order, True)
                 for position, item in enumerate(entries):
-                    _write_record(buf, item.descriptor, item, start + position * fd.elem_size, index, order, blobs, placements)
+                    _write_record(buf, item.descriptor, item, start + position * fd.elem_size, index, order, blobs, placements, inactive)
         elif fd.codec == "array" and fd.array_kind == 3 and fd.elem_codec in ("int", "bool", "enum", "float32", "float64", "table", "string", "text_optional"):
             if current:
                 start = HEADER_BYTES + placements[at - HEADER_BYTES]
@@ -525,7 +544,7 @@ def _write_record(
                         if target is None:
                             raise InvalidValue(fd.name, "a list table is not registered")
                         element = _text_entry(fd, item) if fd.elem_codec != "table" else item
-                        _write_record(buf, target.descriptor, element, element_at, index, order, blobs, placements)
+                        _write_record(buf, target.descriptor, element, element_at, index, order, blobs, placements, inactive)
                     else:
                         _write_scalar(buf, element_at, fd.elem_size, fd.elem_codec, item, fd.elem.lo < 0 if fd.elem is not None else fd.lo < 0, order)
         elif fd.codec == "union_array":
@@ -543,7 +562,7 @@ def _write_record(
                 if fd.array_kind == 2:
                     _put_int(buf, base + fd.pieces[1][0], len(current), 4, order, True)
             for position, item in enumerate(current):
-                _write_record(buf, SimpleNamespace(fields=(field,)), SimpleNamespace(**{field.name: item}), start + position * stride, index, order, blobs, placements)
+                _write_record(buf, SimpleNamespace(fields=(field,)), SimpleNamespace(**{field.name: item}), start + position * stride, index, order, blobs, placements, inactive)
         elif fd.codec == "union":
             union_cls = descriptor._union_by_name(fd.target)
             if union_cls is None:
@@ -556,10 +575,10 @@ def _write_record(
                 field = arm.field
                 if field is not None:
                     item = getattr(current, arm.name)
-                    _write_record(buf, SimpleNamespace(fields=(field,)), SimpleNamespace(**{field.name: item}), at + ud.arm_offset, index, order, blobs, placements)
+                    _write_record(buf, SimpleNamespace(fields=(field,)), SimpleNamespace(**{field.name: item}), at + ud.arm_offset, index, order, blobs, placements, inactive)
         elif fd.codec in ("string_blob", "bytes_blob"):
             if current is not None:
-                if hasattr(fd, "guard_holds") and not fd.guard_holds(value):
+                if inactive:
                     blob_entry = index.get(id(current)) if isinstance(current, BlobRef) else None
                     if blob_entry is None:
                         raise InvalidValue(fd.name, "an inactive blob slot has no node index")
