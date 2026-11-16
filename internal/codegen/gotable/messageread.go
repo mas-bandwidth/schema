@@ -250,6 +250,9 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 		if sink != "" {
 			g.pf("%s:=true\n", sink)
 		}
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			g.pf("if n<%d{%s};", f.ArrayMin, refuse(over, g.floatOwner(f), "return false"))
+		}
 		g.pf("if n>%d{%s};for i:=range n {p:=&base[i]\n", bound, refuse(over, g.floatOwner(f), "return false"))
 		g.sink = sink
 		g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t", true)
