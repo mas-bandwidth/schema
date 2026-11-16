@@ -85,3 +85,13 @@ tables-goose-message-peer-negative-control: build/fixedform-corpus/.stamp
 		{ echo "NEGATIVE CONTROL FAILED: the dropped widening rule reddened other rows than the five widening rows:"; \
 		  cat $(GOOSE_MESSAGE_PEER_NC)/failed; exit 1; }
 	@echo 'negative control: a dropped widening rule reds exactly the five widening rows of the Goose message versioning gate'
+
+# An announcement is an ordinary form-1 file: strict first-use checks include
+# unknown header fields. The proof wrapper requires native execution of both
+# the positive cases and the planted check-bypass control, never a slow skip.
+.PHONY: tables-goose-announcement-first-use-negative-control
+tables-goose-announcement-first-use-negative-control: goose-toolchain-ready
+	GOOSE="$(GOOSE)" sh test/slowgate/proof tables-goose-announcement-first-use-negative-control \
+		'TestGooseAnnouncementFirstUse TestGooseAnnouncementFirstUseNegativeControl TestGooseMessageFormAnnounceIdBound TestGooseMessageFormAnnounceIdBoundNegativeControl' \
+		./internal/codegen/goosetable -count=1 -run '^(TestGooseAnnouncementFirstUse|TestGooseAnnouncementFirstUseNegativeControl|TestGooseMessageFormAnnounceIdBound|TestGooseMessageFormAnnounceIdBoundNegativeControl)$$'
+test-goose: tables-goose-announcement-first-use-negative-control

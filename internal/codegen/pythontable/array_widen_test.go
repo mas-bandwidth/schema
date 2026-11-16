@@ -12,56 +12,59 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
+var arrayWideningCases = []struct{ old, new, json string }{
+	{"int8", "int16", `[-120,17]`}, {"int16", "int32", `[-1265,17]`},
+	{"int32", "int64", `[-1265,17]`}, {"int64", "int128", `["-1265","17"]`},
+	{"uint8", "uint16", `[250,17]`}, {"uint16", "uint32", `[65000,17]`},
+	{"uint32", "uint64", `[65000,17]`}, {"uint64", "uint128", `["65000","17"]`},
+	{"float32", "float64", `[-1.5,17.25]`},
+}
+
 func TestPythonArrayWidening(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "array widening under both Python pins")
-	for _, tc := range []struct{ old, new, json string }{
-		{"int8", "int16", `[-120,17]`}, {"int16", "int32", `[-1265,17]`},
-		{"int32", "int64", `[-1265,17]`}, {"int64", "int128", `["-1265","17"]`},
-		{"uint8", "uint16", `[250,17]`}, {"uint16", "uint32", `[65000,17]`},
-		{"uint32", "uint64", `[65000,17]`}, {"uint64", "uint128", `["65000","17"]`},
-		{"float32", "float64", `[-1.5,17.25]`},
-	} {
-		t.Logf("case %s to %s", tc.old, tc.new)
-		array := "[]"
-		if strings.HasPrefix(tc.old, "float") {
-			array = "[2]"
-		}
-		writer := loadUnit(t, fmt.Sprintf("package widenarray\ntable Root { values %s%s }\n", array, tc.old))
-		readerType := tc.new
-		if tc.new == "int128" {
-			readerType += " | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727"
-		}
-		reader := loadUnit(t, fmt.Sprintf("package widenarray\ntable Root { values %s%s }\n", array, readerType))
-		text := `{"values":` + tc.json + `}`
-		old := wideEngineWire(t, writer, "Root", text)
-		if tc.old == "int16" {
-			cpp := cppWideWire(t, writer, wideVTConstruct{root: "Root", json: text})
-			if !bytes.Equal(cpp, old) {
-				t.Fatalf("old C++ writer differs: %x vs %x", cpp, old)
+	for _, tc := range arrayWideningCases {
+		t.Run(tc.old+"_to_"+tc.new, func(t *testing.T) {
+			t.Logf("case %s to %s", tc.old, tc.new)
+			array := "[]"
+			if strings.HasPrefix(tc.old, "float") {
+				array = "[2]"
 			}
-		}
-		model := tabletext.NewModel(reader)
-		value := model.New(model.Lookup("Root"))
-		var report tabletext.Report
-		ok, err := tablewire.Decode(model, value, old, &report)
-		if err != nil || !ok || report.Widened != 1 {
-			t.Fatalf("oracle: %v %v %+v", ok, err, report)
-		}
-		want, err := tablewire.Encode(model, value)
-		if err != nil {
-			t.Fatal(err)
-		}
-		files, err := Generate(reader)
-		if err != nil {
-			t.Fatal(err)
-		}
-		dir := t.TempDir()
-		writeTree(t, dir, files)
-		if out, err := pyrun.Analyze(t, dir, "widenarray"); err != nil {
-			t.Fatalf("mypy %s -> %s: %v\n%s", tc.old, tc.new, err, out)
-		}
-		probe := pyrun.ImportPrelude + `from widenarray import Root, LoadReport
+			writer := loadUnit(t, fmt.Sprintf("package widenarray\ntable Root { values %s%s }\n", array, tc.old))
+			readerType := tc.new
+			if tc.new == "int128" {
+				readerType += " | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727"
+			}
+			reader := loadUnit(t, fmt.Sprintf("package widenarray\ntable Root { values %s%s }\n", array, readerType))
+			text := `{"values":` + tc.json + `}`
+			old := wideEngineWire(t, writer, "Root", text)
+			if tc.old == "int16" {
+				cpp := cppWideWire(t, writer, wideVTConstruct{root: "Root", json: text})
+				if !bytes.Equal(cpp, old) {
+					t.Fatalf("old C++ writer differs: %x vs %x", cpp, old)
+				}
+			}
+			model := tabletext.NewModel(reader)
+			value := model.New(model.Lookup("Root"))
+			var report tabletext.Report
+			ok, err := tablewire.Decode(model, value, old, &report)
+			if err != nil || !ok || report.Widened != 1 {
+				t.Fatalf("oracle: %v %v %+v", ok, err, report)
+			}
+			want, err := tablewire.Encode(model, value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			files, err := Generate(reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := t.TempDir()
+			writeTree(t, dir, files)
+			if out, err := pyrun.Analyze(t, dir, "widenarray"); err != nil {
+				t.Fatalf("mypy %s -> %s: %v\n%s", tc.old, tc.new, err, out)
+			}
+			probe := pyrun.ImportPrelude + `from widenarray import Root, LoadReport
 with open("wire", "rb") as f:
     wire = f.read()
 r = LoadReport()
@@ -69,13 +72,14 @@ v = Root.load(wire, r)
 assert r.widened == 1
 print(v.save().hex())
 `
-		inputs := map[string][]byte{"main.py": []byte(probe), "wire": old}
-		expected := fmt.Sprintf("%x\n", want)
-		for _, got := range [][]byte{pyrun.Run(t, dir, "main.py", inputs), pyrun.RunFloor(t, dir, "main.py", inputs)} {
-			if string(got) != expected {
-				t.Fatalf("%s -> %s: saved %s, want %s", tc.old, tc.new, got, expected)
+			inputs := map[string][]byte{"main.py": []byte(probe), "wire": old}
+			expected := fmt.Sprintf("%x\n", want)
+			for _, got := range [][]byte{pyrun.Run(t, dir, "main.py", inputs), pyrun.RunFloor(t, dir, "main.py", inputs)} {
+				if string(got) != expected {
+					t.Fatalf("%s -> %s: saved %s, want %s", tc.old, tc.new, got, expected)
+				}
 			}
-		}
+		})
 	}
 }
 
