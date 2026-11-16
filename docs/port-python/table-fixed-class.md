@@ -62,3 +62,16 @@ in nanoseconds per operation:
 The check costs the save under 5% on this host (the loads, which it does not
 touch, moved by up to 3% in the same runs, which is the noise), and the
 generated save stays the faster shape on both pins, so the pair is kept.
+
+A separate Linux x86-64 run compared the same scalar shape on the fixed-class
+integration and its base. The table lists base / integration nanoseconds per
+operation from `TestPythonTableCoreShapeBench`; each cell is the best of five
+10,000-operation rounds on a shared host, so scheduler noise is visible.
+
+| operation | 3.15.2 generated | 3.15.2 descriptor | 3.11.18 generated | 3.11.18 descriptor |
+|---|---:|---:|---:|---:|
+| save | 11,504 / 11,688 | 14,529 / 14,724 | 11,450 / 11,593 | 13,726 / 14,274 |
+| load | 11,410 / 11,315 | 11,266 / 11,258 | 12,138 / 12,467 | 12,149 / 12,426 |
+
+The generated save remained faster on both pins. The load results were close;
+these measurements do not establish a general load-speed advantage.
