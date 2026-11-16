@@ -20,7 +20,7 @@ func TestPythonReflectionCISelection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("planner: %v\n%s", err, out)
 	}
-	var rows []struct{ Name, Test string }
+	var rows []struct{ Name, Test, Target, Package string }
 	if err := json.Unmarshal(out, &rows); err != nil {
 		t.Fatal(err)
 	}
@@ -37,6 +37,55 @@ func TestPythonReflectionCISelection(t *testing.T) {
 		patterns = append(patterns, regexp.MustCompile(pattern))
 		term := strings.TrimSuffix(strings.TrimPrefix(pattern, "^("), ")$")
 		named = append(named, strings.Split(term, "|")...)
+	}
+	corpusRows := 0
+	for _, row := range rows {
+		if row.Target == "python-reflection-ci-corpus" {
+			corpusRows++
+		}
+		if strings.HasSuffix(row.Package, "/internal/codegen/pythontable") && !strings.Contains(row.Test, "/") && row.Test != "" {
+			pattern := regexp.MustCompile(row.Test)
+			for _, name := range []string{"TestPythonReflectionCorpus", "TestPythonReflectionLayout", "TestPythonReflectionStrictTypes"} {
+				if pattern.MatchString(name) {
+					t.Fatalf("unbounded or duplicate CI parent %s in %s", name, row.Name)
+				}
+			}
+		}
+	}
+	if corpusRows != 1 {
+		t.Fatalf("got %d corpus support rows, want 1", corpusRows)
+	}
+	namesCmd := exec.Command("make", "-s", "python-reflection-ci-names")
+	namesCmd.Dir = "../../.."
+	selectedOut, err := namesCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("list non-corpus reflection tests: %v\n%s", err, selectedOut)
+	}
+	listCmd := exec.Command("go", "test", "-list", "^TestPythonReflection", "./internal/codegen/pythontable/")
+	listCmd.Dir = "../../.."
+	allOut, err := listCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("list reflection tests: %v\n%s", err, allOut)
+	}
+	selected := map[string]int{}
+	for _, name := range strings.Fields(string(selectedOut)) {
+		selected[name]++
+	}
+	for _, name := range strings.Fields(string(allOut)) {
+		if !strings.HasPrefix(name, "TestPythonReflection") {
+			continue
+		}
+		want := 1
+		if name == "TestPythonReflectionCorpus" || name == "TestPythonReflectionLayout" || name == "TestPythonReflectionStrictTypes" {
+			want = 0
+		}
+		if selected[name] != want {
+			t.Fatalf("non-corpus test %s selected %d times, want %d", name, selected[name], want)
+		}
+		delete(selected, name)
+	}
+	if len(selected) != 0 {
+		t.Fatalf("unknown non-corpus selections: %v", selected)
 	}
 	if len(patterns) != 12 {
 		t.Fatalf("got %d strict rows, want 12", len(patterns))
