@@ -6,6 +6,12 @@ package main
 // the named gate runs is wrong, never the gate itself; make/js.mk builds the
 // compiler or the jstable tests against the copy through a Go overlay.
 func init() {
+	// A retained enum's actual hash zero is mistaken for the None reference.
+	sabotages["js-retain-hashzero-none"] = []edit{{
+		old: "// a None variant is the one zero reference (§3): it names no id at all\n      if (id === TableNodeTableId) { w.leb(0); return true; }",
+		new: "// SABOTAGED: hash zero is mistaken for None\n      if (id === 0n) { w.leb(0); return true; }",
+	}}
+
 	// §3.1: the cycle check never finds an OPEN vertex, so a pointer back
 	// into the walk's own descent reads as a share and a cyclic wire loads.
 	sabotages["js-cycle-dropped"] = []edit{{
