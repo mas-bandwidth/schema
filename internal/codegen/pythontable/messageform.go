@@ -72,6 +72,11 @@ func messageModule(u *ir.Unit) string {
 		}
 	}
 	b.WriteString("}\n")
+	b.WriteString("_RECORD_NAMES = (\n")
+	for _, name := range names {
+		fmt.Fprintf(&b, "    %q,\n", name)
+	}
+	b.WriteString(")\n")
 	b.WriteString(`
 from typing import Any, Callable, TypeVar, cast
 from . import LoadReport
@@ -88,10 +93,15 @@ class MessageVocabulary(_Vocabulary):
 
 _local = MessageVocabulary()
 _announce(_local, ANNOUNCEMENT)
+_records: dict[str, type[Any]] = {}
+for _name in _RECORD_NAMES:
+    _record = _by_name(_name)
+    if _record is not None:
+        _records[_name] = _record
 
 def announce_read(vocab: MessageVocabulary, data: bytes | bytearray | memoryview, *, max_bytes: int = 65536, max_entries: int = 4096) -> None:
     _announce(vocab, data, max_bytes=max_bytes, max_entries=max_entries)
-    _resolve(vocab, _local)
+    _resolve(vocab, _local, _records)
 
 def save_messages(root: type[_T], values: list[_T]) -> bytes:
     return _save(root, list(values), _local, FIELD_KEYS, ROOTS, _WRITERS.get(getattr(getattr(root, "descriptor", None), "name", "")))

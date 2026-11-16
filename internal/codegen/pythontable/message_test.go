@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"strings"
 	"testing"
 
@@ -608,6 +609,13 @@ for kwargs in ({'max_bytes':1},{'max_entries':0}):
  try:announce_read(v,announce(good),**kwargs)
  except Refused as e:assert e.reason=='vocabulary_too_large'
  else:raise AssertionError('message_vocabulary_bound')
+try:announce_read(MessageVocabulary(),announce(good+b'\x01'),max_entries=1)
+except Refused as e:assert e.reason=='vocabulary_too_large'
+else:raise AssertionError('message_capacity_before_entry')
+bad=announce(good,True).replace(b'\x03\x01\x01',b'\x03\x01\x02',1)
+try:announce_read(MessageVocabulary(),bad,max_bytes=1)
+except Refused as e:assert e.reason=='wire_damaged'
+else:raise AssertionError('message_announcement_damage_priority')
 v=MessageVocabulary(own_version=456,strict=True)
 try:announce_read(v,announce(good))
 except BuildVersionMismatch as e:assert e.reason=='build_version_mismatch' and e.peer==123 and e.own==456 and v.build_version==123
@@ -972,9 +980,7 @@ func TestPythonMessageRootIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, content := range other {
-		files[name] = content
-	}
+	maps.Copy(files, other)
 	dir := t.TempDir()
 	writeTree(t, dir, files)
 	probe := pyrun.ImportPrelude + `import msgroota as a, msgrootb as b
@@ -1069,5 +1075,96 @@ print(w.hex())
 		if err != nil || string(bytes.TrimSpace([]byte(out))) != fmt.Sprintf("%x", want) {
 			t.Fatalf("union array: %v\n%s\n%s\nwant %x", err, out, stderr, want)
 		}
+	}
+}
+
+// TestPythonMessageMixedKinds holds a mixed fixed closure to the engine's bytes.
+func TestPythonMessageMixedKinds(t *testing.T) {
+	t.Parallel()
+	const schema = `package msgmixed
+enum Mode { Idle, Run, Jump }
+flags Cap { Trace, Verbose, Extra }
+fixed table Leaf { n int32
+ tag string(8)
+}
+union Choice { number int32
+ leaf Leaf
+ ping
+}
+fixed table Root {
+ live bool
+ small int8
+ wide uint64
+ bits12 bits(12)
+ ranged int16 | min = -100, max = 100
+ f32 float32
+ f64 float64
+ cf32 float32 | min = -1.0, max = 1.0, resolution = 0.25
+ name string(16)
+ data bytes(8)
+ mode Mode
+ cap Cap
+ leaf Leaf
+ fixed_f32 [3]float32
+ fixed_i32 [2]int32
+ fixed_leaf [2]Leaf
+ fixed_mode [2]Mode
+ fixed_cap [2]Cap
+ counted_int [..4]int32
+ counted_f64 [1..3]float64
+ counted_leaf [..2]Leaf
+ counted_mode [..2]Mode
+ counted_cap [..3]Cap
+ selected Choice
+ choices [2]Choice
+ keyed [Mode]int32
+ present ?int32
+ x int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
+ y uint128
+ price fixed(48,16) | min = -100000, max = 100000
+}
+`
+	const input = `{"live":true,"small":-7,"wide":"18446744073709551615","bits12":4095,"ranged":99,"f32":1.5,"f64":-2.25,"cf32":0.5,"name":"héllo","data":"AQID","mode":"Run","cap":["Trace","Extra"],"leaf":{"n":7,"tag":"inner"},"fixed_f32":[1.0,2.5,-3.25],"fixed_i32":[11,12],"fixed_leaf":[{"n":1,"tag":"x"},{"n":2,"tag":"y"}],"fixed_mode":["Idle","Jump"],"fixed_cap":[["Trace"],[]],"counted_int":[-1,0,2147483647,5],"counted_f64":[1.0,2.0],"counted_leaf":[{"n":3,"tag":"z"}],"counted_mode":["Run","Idle"],"counted_cap":[["Verbose"],[]],"selected":{"number":7},"choices":[{},{"ping":null}],"keyed":{"Idle":7,"Jump":9},"present":0,"x":"-1267650600228229401496703205376","y":"1267650600228229401496703205376","price":"3.25"}`
+	u := loadUnit(t, schema)
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup("Root"))
+	var report tabletext.Report
+	if !m.Read(inst, []byte(input), &report) || report.Refused {
+		t.Fatalf("engine JSON fixture: %+v", report)
+	}
+	file, err := tablewire.EncodeVariable(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := tablewire.EncodeMessages(m, []*tabletext.Instance{inst, inst})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from msgmixed import Root, MessageVocabulary, ANNOUNCEMENT, announce_read, save_messages, load_messages, measure_messages
+from msgmixed._schema.load import load_table
+with open('file','rb') as f: value=load_table(Root,f.read())
+with open('wire','rb') as f: expected=f.read()
+v=MessageVocabulary();announce_read(v,ANNOUNCEMENT)
+encoded=save_messages(Root,[value,value])
+assert encoded==expected and measure_messages(Root,[value,value])==len(encoded)
+decoded=load_messages(Root,v,expected)
+assert len(decoded)==2 and save_messages(Root,decoded)==expected
+print('ok')
+`
+	inputs := map[string][]byte{"main.py": []byte(probe), "file": file, "wire": wire}
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", inputs)
+		if err != nil || string(bytes.TrimSpace([]byte(out))) != "ok" {
+			t.Fatalf("mixed kinds: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+	if out, err := pyrun.Analyze(t, dir, "msgmixed"); err != nil {
+		t.Fatalf("mixed kinds strict mypy: %v\n%s", err, out)
 	}
 }

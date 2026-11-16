@@ -31,6 +31,13 @@ class BitReader:
         if self.get(padding):
             raise Refused("wire_damaged", "message padding is nonzero")
 
+    def raw(self, length: int) -> bytes:
+        if self.position & 7 or length < 0 or length > (len(self.data) * 8 - self.position) // 8:
+            raise Refused("wire_damaged", "message bytes exceed their buffer")
+        start = self.position // 8
+        self.position += length * 8
+        return bytes(self.data[start : start + length])
+
     def finish(self) -> None:
         self.align()
         if self.position != len(self.data) * 8:
@@ -63,6 +70,13 @@ class BitWriter:
 
     def align(self) -> None:
         self.put(0, (-self.position) & 7)
+
+    def raw(self, data: bytes) -> None:
+        if self.position & 7:
+            raise ValueError("message bytes are not aligned")
+        if not self.measure:
+            self.data.extend(data)
+        self.position += len(data) * 8
 
     def finish(self) -> bytes:
         self.align()
@@ -183,7 +197,7 @@ class BuildVersionMismatch(Refused):
 class MessageVocabulary:
     """One connection's terminal announcement state and peer vocabulary."""
 
-    __slots__ = ("strict", "own_version", "build_version", "announced", "refused", "entries", "unknown")
+    __slots__ = ("strict", "own_version", "build_version", "announced", "refused", "entries", "unknown", "resolved", "slots", "names", "variants")
 
     def __init__(self, own_version: int = 0, strict: bool = False) -> None:
         self.strict = strict
@@ -193,6 +207,10 @@ class MessageVocabulary:
         self.refused = False
         self.entries: list[Entry] = []
         self.unknown = 0
+        self.resolved: dict[tuple[str, int], Any] = {}
+        self.slots: dict[bytes, int] = {}
+        self.names: dict[int, int] = {}
+        self.variants: dict[int, dict[int, int]] = {}
 
     @property
     def ref_bits(self) -> int:
@@ -225,6 +243,7 @@ def announce_read(vocab: MessageVocabulary, data: bytes | bytearray | memoryview
     raw_vocab: memoryview | None = None
     version_seen = False
     unknown = 0
+    oversize = False
     while True:
         ref = reader.varint()
         if not ref:
@@ -249,8 +268,7 @@ def announce_read(vocab: MessageVocabulary, data: bytes | bytearray | memoryview
             length = content.varint()
             if length != content.end - content.pos:
                 raise Refused("wire_damaged", "announcement vocabulary has invalid length")
-            if length > max_bytes:
-                raise Refused("vocabulary_too_large")
+            oversize = length > max_bytes
             raw_vocab = content.take(length)
         else:
             if field_id == 0xFFFFFFFFFFFFFFFF:
@@ -269,6 +287,8 @@ def announce_read(vocab: MessageVocabulary, data: bytes | bytearray | memoryview
     _resolve(ctx)
     if ctx.nonfinite:
         raise Refused("non_finite_float")
+    if oversize:
+        raise Refused("vocabulary_too_large")
     if vocab.strict and vocab.build_version != vocab.own_version:
         raise BuildVersionMismatch(vocab.build_version, vocab.own_version)
     source = Reader(raw_vocab, 0, len(raw_vocab), [])
@@ -276,6 +296,8 @@ def announce_read(vocab: MessageVocabulary, data: bytes | bytearray | memoryview
     triples: set[bytes] = set()
     node_seen = False
     while source.pos < source.end:
+        if len(entries) >= max_entries:
+            raise Refused("vocabulary_too_large")
         start = source.pos
         field_id = int.from_bytes(source.take(8), "little")
         kind = source.byte()
@@ -290,10 +312,10 @@ def announce_read(vocab: MessageVocabulary, data: bytes | bytearray | memoryview
         if key in triples:
             raise Refused("wire_damaged", "message vocabulary entry repeated")
         triples.add(key)
-        if len(entries) >= max_entries:
-            raise Refused("vocabulary_too_large")
         entries.append(Entry(field_id, kind, shape, key))
     vocab.entries = entries
+    vocab.slots = {entry.key: i + 1 for i, entry in enumerate(entries)}
+    vocab.names = {entry.field_id: i + 1 for i, entry in enumerate(entries) if entry.kind == 0}
     vocab.unknown = unknown
     vocab.announced = True
     vocab.refused = False
@@ -393,13 +415,12 @@ def _read_scalar(reader: BitReader, shape: Shape) -> object:
 def _write_body(writer: BitWriter, value: object, vocab: MessageVocabulary, keys: dict[tuple[str, str], bytes]) -> None:
     from typing import Any
     obj: Any = value
-    slots = {entry.key: i + 1 for i, entry in enumerate(vocab.entries)}
     for field in obj.descriptor.fields:
         current = getattr(obj, field.name)
         if field.is_default(current) and not getattr(field, "required", False):
             continue
         key = keys.get((obj.descriptor.name, field.name))
-        slot = slots.get(key) if key is not None else None
+        slot = vocab.slots.get(key) if key is not None else None
         if slot is None:
             raise ValueError("message field is absent from its own vocabulary")
         writer.put(slot, vocab.ref_bits)
@@ -412,7 +433,6 @@ def _read_body(reader: BitReader, cls: type[object], vocab: MessageVocabulary, o
     if depth > 128:
         raise Refused("wire_damaged", "message nesting exceeds 128")
     obj: Any = cls()
-    fields = obj.descriptor.by_id
     seen: set[int] = set()
     last_ordinal = -1
     while True:
@@ -425,7 +445,7 @@ def _read_body(reader: BitReader, cls: type[object], vocab: MessageVocabulary, o
         if entry.field_id in seen:
             raise Refused("wire_damaged", "message field repeated")
         seen.add(entry.field_id)
-        field = fields.get(entry.field_id)
+        field = vocab.resolved.get((obj.descriptor.name, entry.field_id))
         if field is None:
             if vocab.build_version == own_version:
                 raise Refused("wire_damaged", "same-build message names an undeclared field")
@@ -525,10 +545,10 @@ def load_messages(root: type[object], vocab: MessageVocabulary, data: bytes | by
 
 
 def _name_slot(vocab: MessageVocabulary, field_id: int) -> int:
-    for i, entry in enumerate(vocab.entries):
-        if entry.field_id == field_id and entry.kind == 0:
-            return i + 1
-    raise ValueError("message vocabulary is missing a name")
+    slot = vocab.names.get(field_id)
+    if slot is None:
+        raise ValueError("message vocabulary is missing a name")
+    return slot
 
 
 def _write_value(writer: BitWriter, field: object, value: object, shape: Shape, vocab: MessageVocabulary, keys: dict[tuple[str, str], bytes]) -> None:
@@ -544,14 +564,16 @@ def _write_value(writer: BitWriter, field: object, value: object, shape: Shape, 
             raise InvalidValue(fd.name, "message text is invalid")
         writer.put(len(raw), shape.maximum.bit_length())
         writer.align()
-        for byte in raw:
-            writer.put(byte, 8)
+        writer.raw(raw)
     elif shape.kind == 14:
         if not shape.minimum <= len(v) <= shape.maximum or shape.inner is None:
             raise InvalidValue(fd.name, "message array count exceeds its bound")
         writer.put(len(v) - shape.minimum, (shape.maximum - shape.minimum).bit_length())
         if shape.element == 6:
             writer.align()
+        if fd.codec == "bytes" and shape.element == 6 and shape.inner.packing == 0:
+            writer.raw(bytes(v))
+            return
         element = fd.elem if fd.elem is not None else fd.element if fd.element is not None else fd
         for item in v:
             _write_value(writer, element, item, shape.inner, vocab, keys)
@@ -564,8 +586,7 @@ def _write_value(writer: BitWriter, field: object, value: object, shape: Shape, 
             return
         arm = v.descriptor.arms[v.type - 1]
         key = keys.get((v.descriptor.name, arm.name))
-        slots = {entry.key: i + 1 for i, entry in enumerate(vocab.entries)}
-        arm_slot = slots.get(key) if key is not None else None
+        arm_slot = vocab.slots.get(key) if key is not None else None
         if arm_slot is None:
             raise ValueError("message union arm is absent from its vocabulary")
         writer.put(arm_slot, vocab.ref_bits)
@@ -602,7 +623,7 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
         if length > fd.size:
             raise Refused("length_over_bound", fd.name)
         reader.align()
-        raw = bytes(reader.get(8) for _ in range(length))
+        raw = reader.raw(length)
         if b"\0" in raw:
             raise Refused("wire_damaged", "message text contains NUL")
         try:
@@ -620,6 +641,8 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
             reader.align()
         if shape.inner is None:
             raise Refused("wire_damaged", "message element shape is absent")
+        if fd.codec == "bytes" and shape.element == 6 and shape.inner.packing == 0:
+            return reader.raw(count)
         element = fd.elem if fd.elem is not None else fd.element if fd.element is not None else fd
         if element is not fd and shape.element != element.kind:
             if not _widens(shape.element, element.kind):
@@ -638,9 +661,9 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
             return 0
         if entry.kind != 0:
             raise Refused("wire_damaged", "message enum name has a payload")
-        for i, variant in enumerate(fd.variant_ids, 1):
-            if variant == entry.field_id:
-                return fd.default if i in fd.deprecated else i
+        ordinal = vocab.variants.get(id(fd), {}).get(entry.field_id)
+        if ordinal is not None:
+            return fd.default if ordinal in fd.deprecated else ordinal
         stats[0] += 1
         return 0
     if shape.kind == 15:
@@ -719,26 +742,58 @@ def _widens(source: int, target: int) -> bool:
     return source == 10 and target == 11
 
 
-def resolve_vocabulary(vocab: MessageVocabulary, local: MessageVocabulary) -> None:
+def resolve_vocabulary(vocab: MessageVocabulary, local: MessageVocabulary, records: dict[str, type[Any]]) -> None:
     """Refuse known incompatible kinds before the first body is decoded."""
-    by_id: dict[int, list[Entry]] = {}
+    by_id: dict[int, set[tuple[int, int]]] = {}
     for entry in local.entries:
-        by_id.setdefault(entry.field_id, []).append(entry)
+        by_id.setdefault(entry.field_id, set()).add((entry.kind, entry.shape.element))
     for entry in vocab.entries:
         known = by_id.get(entry.field_id)
         if known is None:
             continue
-        def compatible(candidate: Entry) -> bool:
-            if entry.kind != candidate.kind:
-                return _widens(entry.kind, candidate.kind)
-            if entry.kind in (14, 16) and entry.shape.element != candidate.shape.element:
-                return entry.kind == 14 and _widens(entry.shape.element, candidate.shape.element)
+        def compatible(candidate: tuple[int, int]) -> bool:
+            kind, element = candidate
+            if entry.kind != kind:
+                return _widens(entry.kind, kind)
+            if entry.kind in (14, 16) and entry.shape.element != element:
+                return entry.kind == 14 and _widens(entry.shape.element, element)
             return True
         if not any(compatible(candidate) for candidate in known):
             vocab.entries = []
+            vocab.slots.clear()
+            vocab.names.clear()
+            vocab.resolved.clear()
+            vocab.variants.clear()
             vocab.announced = False
             vocab.refused = True
             raise Refused("kind_mismatch", "announcement field has an incompatible kind")
+    from .descriptor import _union_by_name
+
+    resolved: dict[tuple[str, int], Any] = {}
+    variants: dict[int, dict[int, int]] = {}
+    visited: set[int] = set()
+
+    def collect(field: Any) -> None:
+        if id(field) in visited:
+            return
+        visited.add(id(field))
+        if field.variant_ids:
+            variants[id(field)] = {value: index + 1 for index, value in enumerate(field.variant_ids)}
+        for child in (field.elem, field.element):
+            if child is not None:
+                collect(child)
+        union = _union_by_name(field.target) if field.target else None
+        if union is not None:
+            for arm in union.descriptor.arms:
+                if arm.field is not None:
+                    collect(arm.field)
+
+    for name, cls in records.items():
+        for field in cls.descriptor.fields:
+            resolved[(name, field.field_id)] = field
+            collect(field)
+    vocab.resolved = resolved
+    vocab.variants = variants
 
 
 def _skip_value(reader: BitReader, shape: Shape, vocab: MessageVocabulary, depth: int, in_field: bool = False, pending: list[str] | None = None) -> None:
@@ -785,7 +840,7 @@ def _skip_value(reader: BitReader, shape: Shape, vocab: MessageVocabulary, depth
         if length > shape.maximum:
             raise Refused("wire_damaged", "text length exceeds announcement")
         reader.align()
-        raw = bytes(reader.get(8) for _ in range(length))
+        raw = reader.raw(length)
         try:
             if b"\0" in raw:
                 raise UnicodeError("NUL")
