@@ -277,7 +277,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
     raw =
       case shape do
         %{packing: 1, base: base} -> value - base
-        _ -> if kind in [2, 3, 4, 5, 18, 36], do: value + (1 <<< (bits - 1)), else: value
+        _ when kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24, 36] -> value + (1 <<< (bits - 1))
+        _ -> value
       end
 
     if raw >= 0 and raw <= bit_mask(bits) do
@@ -839,7 +840,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     if kind_holds?(kind, value), do: value, else: :malformed
   end
 
-  defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18, 36],
+  defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24, 36],
     do: sign_extend(raw, kind_bits(kind))
 
   defp scalar_value(_kind, _shape, raw), do: raw
