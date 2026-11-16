@@ -2131,9 +2131,8 @@ recursive fn jr_value(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         return true;
     }
     if jv_wide(d) {
-        // a 128-bit integer or a fixed-point kind: it reads as a string or a
-        // number, the same digits, when its storage is wider than 32 bits
-        // (docs/SPEC-TABLES.md §16.2)
+        // Wide integer and fixed-point kinds read only strings; narrow fixed
+        // kinds retain number tokens (docs/SPEC-TABLES.md §16.2).
         let pure = d.ibits == 0 && d.fbits == 0;
         if d.kw > 4 && json_peek(c.jr) == '"' {
             let buf, ok = json_scan_all(c.jr);
@@ -2142,6 +2141,7 @@ recursive fn jr_value(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         }
         let start, end, whole, ok = json_number(c.jr);
         if !ok { return false; }
+        if d.kw > 4 { c.jr.rep.mismatch += 1; return true; }
         if pure && !whole {
             c.jr.rep.mismatch += 1;
             return true;

@@ -1176,8 +1176,8 @@ fn json_place_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&, tok: const u8[:
     return true;
 }
 
-// json_read_int reads an integer field: a wide kind (wider than 32 bits)
-// takes the same digits inside a JSON string too (docs/SPEC-TABLES.md §16.2).
+// json_read_int reads an integer field: a kind wider than 32 bits takes
+// its digits only inside a JSON string (docs/SPEC-TABLES.md §16.2).
 fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
     if f.kw > 4 && json_peek(jr) == '"' {
         let buf, ok = json_scan_all(jr);
@@ -1186,6 +1186,7 @@ fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
     }
     let start, end, whole, ok = json_number(jr);
     if !ok { return false; }
+    if f.kw > 4 { jr.rep.mismatch += 1; return true; }
     if !whole {
         // a fraction or an exponent is the wrong shape for an integer field
         jr.rep.mismatch += 1;
