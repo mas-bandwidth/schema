@@ -495,7 +495,7 @@ var vtUnboundedControls = []vtUnboundedControl{
 	// The write side: the element validation in the save walk, and the
 	// length cap. Each must leave the write probe without its line.
 	{"write:range True", "unbounded/_schema/save.py", "            kinds._REGISTRY[element.codec].validate(element, item, cell)\n", "            pass\n"},
-	{"write:long True", "unbounded/_schema/save.py", "            kind_array._check_count(where, len(current))\n", "            pass\n"},
+	{"write:long True", "unbounded/_schema/save.py", "    kind_array._check_count(where, len(current))\n", "    pass\n"},
 	{"write:cap refused", "unbounded/_schema/kind_array.py", "    if count > cap:\n", "    if False:\n"},
 }
 
