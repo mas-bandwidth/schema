@@ -13,7 +13,7 @@ whole, so present-and-empty and absent stay two values. The element descriptor
 is `elem`, and each element delegates to its own codec's payload.
 """
 
-from typing import Any
+from typing import Any, cast
 
 from . import InvalidValue, Refused
 from . import descriptor, kind_int, kinds
@@ -76,6 +76,9 @@ def _write_element(w: Any, elem: FieldDesc, item: Any, ctx: Any) -> None:
         from .kind_enum import _Enum
 
         _Enum().write_element(w, elem, item, ctx)
+        return
+    if elem.codec in ("float32", "float64"):
+        cast(kinds._ElementKind, kinds._REGISTRY[elem.codec]).write_element(w, elem, item, ctx)
         return
     from .save import write_body
 
