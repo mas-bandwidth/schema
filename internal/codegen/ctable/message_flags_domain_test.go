@@ -20,7 +20,7 @@ import (
 func cMessageFlagsDomainRun(t *testing.T, plant bool) (string, error) {
 	t.Helper()
 	var names []string
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		names = append(names, fmt.Sprintf("F%d", i))
 	}
 	u := unitFrom(t, `package probe
