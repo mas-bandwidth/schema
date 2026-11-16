@@ -28,13 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-<<<<<<< HEAD
-const _ = uint64(goruntime.Version - 0x11536863a144e917)
-const _ = uint64(0x11536863a144e917 - goruntime.Version)
-=======
-const _ = uint64(goruntime.Version - 0x716700b912cdb71d)
-const _ = uint64(0x716700b912cdb71d - goruntime.Version)
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
+const _ = uint64(goruntime.Version - 0xe92d61ae51cd23bc)
+const _ = uint64(0xe92d61ae51cd23bc - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -47,10 +42,6 @@ func tableJSONSetRaw(a0 unsafe.Pointer, a1 uint32, a2 uint64) { goruntime.TableJ
 func tableJSONGetSigned(a0 unsafe.Pointer, a1 uint32) int64 {
 	return goruntime.TableJSONGetSigned(a0, a1)
 }
-
-type tableFirstUse = goruntime.TableFirstUse
-
-type tableFirstUseRun = goruntime.TableFirstUseRun
 
 func tableFirstUseCount(a0 *TableReport, a1 uint8) { goruntime.TableFirstUseCount(a0, a1) }
 
@@ -3448,11 +3439,8 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 		}
 		k++
 	}
-<<<<<<< HEAD
-	nodes.from = 0
-=======
 	tableFirstUseCount(report, 2)
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
+	nodes.from = 0
 	r.Nodes = nodes
 	r.Nested = false
 	root.LoadBody(r, base)
@@ -3749,11 +3737,8 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		}
 		k++
 	}
-<<<<<<< HEAD
-	nodes.from = 0
-=======
 	tableFirstUseCount(report, 2)
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
+	nodes.from = 0
 	r.Nodes = nodes
 	r.Nested = false
 	ok := root.LoadBody(r, p)
@@ -5404,11 +5389,8 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 		}
 		k++
 	}
-<<<<<<< HEAD
-	nodes.from = 0
-=======
 	tableFirstUseCount(report, 2)
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
+	nodes.from = 0
 	r.Nodes = nodes
 	r.Nested = false
 	root.LoadBodyRetain(TableRetainReader{tableRetainPlainReader: r, Retain: retain, Path: tableRetainPath{at: base, node: 1}}, base)

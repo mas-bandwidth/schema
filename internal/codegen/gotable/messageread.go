@@ -9,7 +9,6 @@ import (
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
-<<<<<<< HEAD
 	// or unknown, at every nesting level: the body's open tick sits in starts,
 	// sized here at the deepest nesting this body's declaration reaches (fixed,
 	// since a by-value cycle does not compile), and the test is one look at the
@@ -21,11 +20,6 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {var starts [%d]uint64;return tableMessageBody%s(r,value,starts[:],0)}\n", st.Name, g.storageName(st.Name), nest+1, st.Name)
 	g.pf("func tableMessageBody%s(r *TableMessageReader,value *%s,starts []uint64,depth int)bool {\n", st.Name, g.storageName(st.Name))
 	g.pf("tableMessageSeenOpen(r.Vocabulary,starts,depth);%sReset(value);\n", st.Name)
-	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if tableMessageSeenRepeat(r.Vocabulary,starts,depth,ref){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};switch entry.ID {\n")
-	for _, f := range st.Fields {
-=======
-	// or unknown: the ids this body has carried are held in a stack buffer.
-	g.pf("var seenIDs [64]uint64;seen:=seenIDs[:0]\n")
 	// A BODY HAS EXACTLY ONE ENCODING FOR ITS VALUE (docs/SPEC-TABLES.md §3.3):
 	// its fields in the writer's declaration order, no union field at None, and
 	// no field at the default its writer elides where this reader knows that
@@ -33,9 +27,8 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	if len(st.Fields) > 0 {
 		g.pf("order:=-1;exact:=r.Vocabulary.BuildVersion==BuildVersion;_ = exact\n")
 	}
-	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if slices.Contains(seen,entry.ID){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};seen=append(seen,entry.ID);switch entry.ID {\n")
+	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if tableMessageSeenRepeat(r.Vocabulary,starts,depth,ref){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};switch entry.ID {\n")
 	for ordinal, f := range st.Fields {
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
 		mine := ir.TableFieldEntry(f)
 		g.pf("case 0x%016x:{\n", mine.Id)
 		g.pf("if order>=%d {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};order=%d\n", ordinal, ordinal)
@@ -108,17 +101,13 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 		g.elides = elide
 		g.emitMessageReadArray(f, expr, entry, ind)
 	case isStructRef(f.Type):
-<<<<<<< HEAD
-		g.pf("%sif !tableMessageBody%s(r,&%s,starts,depth+1){return false}\n", ind, f.Type.Name, expr)
-=======
 		if elide {
-			g.pf("%s{start:=r.Bits.Offset;if !%sLoadMessageBody(r,&%s){return false};if exact&&r.Bits.Offset-start==r.Vocabulary.RefBits{%s}}\n", ind, f.Type.Name, expr, bad)
+			g.pf("%s{start:=r.Bits.Offset;if !tableMessageBody%s(r,&%s,starts,depth+1){return false};if exact&&r.Bits.Offset-start==r.Vocabulary.RefBits{%s}}\n", ind, f.Type.Name, expr, bad)
 		} else if sink != "" {
-			g.pf("%s{start:=r.Bits.Offset;if !%sLoadMessageBody(r,&%s){return false};if r.Bits.Offset-start!=r.Vocabulary.RefBits{%s}}\n", ind, f.Type.Name, expr, sinkOff(sink))
+			g.pf("%s{start:=r.Bits.Offset;if !tableMessageBody%s(r,&%s,starts,depth+1){return false};if r.Bits.Offset-start!=r.Vocabulary.RefBits{%s}}\n", ind, f.Type.Name, expr, sinkOff(sink))
 		} else {
-			g.pf("%sif !%sLoadMessageBody(r,&%s){return false}\n", ind, f.Type.Name, expr)
+			g.pf("%sif !tableMessageBody%s(r,&%s,starts,depth+1){return false}\n", ind, f.Type.Name, expr)
 		}
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
 	case isUnionRef(f.Type):
 		target := g.nextWireWriter()
 		g.pf("{ %s:=&%s\n", target, expr)

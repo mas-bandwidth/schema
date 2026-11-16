@@ -2223,8 +2223,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-<<<<<<< HEAD
-const Version uint64 = 0x11536863a144e917
-=======
-const Version uint64 = 0x716700b912cdb71d
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
+const Version uint64 = 0xe92d61ae51cd23bc

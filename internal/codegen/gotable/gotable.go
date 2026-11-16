@@ -264,7 +264,7 @@ const (
 // files of its own, so leaving one out is leaving its files out, and what is
 // left is exactly what GenerateLineage emits for the forms that remain.
 func GenerateOmitting(u *ir.Unit, lineage map[string][]FixedLineageEntry, omit Form) (map[string][]byte, error) {
-	out, forms, err := generateForms(u, lineage, DefaultSurfaces())
+	out, forms, err := generateForms(u, lineage, DefaultSurfaces(), true)
 	if err != nil {
 		return nil, err
 	}
@@ -298,7 +298,7 @@ func GenerateLineageSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, 
 	if err := refuseUndeclaredSurface(u, s); err != nil {
 		return nil, err
 	}
-	out, _, err := generateForms(u, lineage, s)
+	out, _, err := generateForms(u, lineage, s, true)
 	return out, err
 }
 
@@ -421,11 +421,7 @@ func filterBlocks(b *ir.BlockUnit) *ir.BlockUnit {
 
 // generateForms is the whole output, and the optional form each file belongs
 // to (0 for the core).
-func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, map[string]Form, error) {
-	return generateFormsMode(u, lineage, s, true)
-}
-
-func generateFormsMode(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces, prune bool) (map[string][]byte, map[string]Form, error) {
+func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces, prune bool) (map[string][]byte, map[string]Form, error) {
 	// the Go escape (SPEC.md §4.6): a table named with a Go word is emitted
 	// under its escaped spelling; a unit without one is returned as it is
 	if esc := goEscapeTables(u); esc != u {
@@ -664,17 +660,7 @@ func generateFormsMode(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Sur
 		}
 		maps.Copy(out, view)
 	}
-	if err := goname.RespellFiles(out); err != nil { // every identifier in Go's initialisms
-		return nil, nil, err
-	}
-	if prune {
-		pruned, err := pruneUnreferencedDeclarations(out, schemaAPIEntries(u, out))
-		if err != nil {
-			return nil, nil, err
-		}
-		return pruned, forms, nil
-	}
-	return out, forms, nil
+	return finishForms(out, forms, u, prune) // every identifier in Go's initialisms
 }
 
 // emitForm assembles one optional form's buffer into its own file, when the
@@ -1441,15 +1427,12 @@ func GenerateRuntime(u *ir.Unit, lineage map[string][]FixedLineageEntry, rt Runt
 // RuntimeShared, §8.4's default, cuts the shared declarations and aliases them
 // to SharedRuntimeImport.
 func GenerateRuntimeSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces, rt Runtime) (map[string][]byte, error) {
-	if err := refuseUndeclaredSurface(u, s); err != nil {
-		return nil, err
-	}
-	out, _, err := generateFormsMode(u, lineage, s, false)
+	out, err := generateRuntimeForms(u, lineage, s)
 	if err != nil {
 		return out, err
 	}
 	if rt == RuntimeStandalone || len(out) == 0 {
-		return pruneUnreferencedDeclarations(out, schemaAPIEntries(goEscapeTables(u), out))
+		return pruneRuntimeForms(out, u)
 	}
 	sr, err := loadSharedRuntime()
 	if err != nil {
@@ -1737,7 +1720,7 @@ func buildSharedRuntime() (*sharedRuntime, error) {
 		if err != nil {
 			return nil, fmt.Errorf("shared runtime probe: %w", err)
 		}
-		files, _, err := generateFormsMode(u, nil, DefaultSurfaces(), false)
+		files, _, err := generateForms(u, nil, DefaultSurfaces(), false)
 		if err != nil {
 			return nil, fmt.Errorf("shared runtime probe: %w", err)
 		}

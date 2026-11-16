@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // pruneUnreferencedDeclarations drops private package declarations that the
@@ -431,4 +432,31 @@ func pruneImports(specs []ast.Spec, referenced map[string]bool) []ast.Spec {
 		}
 	}
 	return kept
+}
+
+// finishForms applies the Go initialisms and, for a unit's own output, drops
+// the declarations its API cannot reach.
+func finishForms(out map[string][]byte, forms map[string]Form, u *ir.Unit, prune bool) (map[string][]byte, map[string]Form, error) {
+	if err := goname.RespellFiles(out); err != nil {
+		return nil, nil, err
+	}
+	if !prune {
+		return out, forms, nil
+	}
+	pruned, err := pruneUnreferencedDeclarations(out, schemaAPIEntries(u, out))
+	return pruned, forms, err
+}
+
+// generateRuntimeForms is the unit's own output before the runtime choice,
+// with the surface it declares checked.
+func generateRuntimeForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, error) {
+	if err := refuseUndeclaredSurface(u, s); err != nil {
+		return nil, err
+	}
+	out, _, err := generateForms(u, lineage, s, false)
+	return out, err
+}
+
+func pruneRuntimeForms(out map[string][]byte, u *ir.Unit) (map[string][]byte, error) {
+	return pruneUnreferencedDeclarations(out, schemaAPIEntries(goEscapeTables(u), out))
 }

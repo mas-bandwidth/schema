@@ -161,14 +161,9 @@ func RootConfigLoadMessageBody(r *TableMessageReader, value *RootConfig) bool {
 func tableMessageBodyRootConfig(r *TableMessageReader, value *RootConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RootConfigReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -527,14 +522,9 @@ func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) boo
 func tableMessageBodyWeaponConfig(r *TableMessageReader, value *WeaponConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	WeaponConfigReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1116,14 +1106,9 @@ func LoadoutConfigLoadMessageBody(r *TableMessageReader, value *LoadoutConfig) b
 func tableMessageBodyLoadoutConfig(r *TableMessageReader, value *LoadoutConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	LoadoutConfigReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1374,20 +1359,15 @@ func tableMessageBodyLoadoutConfig(r *TableMessageReader, value *LoadoutConfig, 
 						return false
 					}
 				}
-<<<<<<< HEAD
-				if !tableMessageBodyWeaponConfig(r, &value.Primary, starts, depth+1) {
-					return false
-=======
 				{
 					start := r.Bits.Offset
-					if !WeaponConfigLoadMessageBody(r, &value.Primary) {
+					if !tableMessageBodyWeaponConfig(r, &value.Primary, starts, depth+1) {
 						return false
 					}
 					if exact && r.Bits.Offset-start == r.Vocabulary.RefBits {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
 				}
 				if widened {
 					r.Report.Widened++
@@ -1764,14 +1744,9 @@ func ProfileConfigLoadMessageBody(r *TableMessageReader, value *ProfileConfig) b
 func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	ProfileConfigReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -2350,20 +2325,15 @@ func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, 
 						return false
 					}
 				}
-<<<<<<< HEAD
-				if !tableMessageBodyLoadoutConfig(r, &value.Loadout, starts, depth+1) {
-					return false
-=======
 				{
 					start := r.Bits.Offset
-					if !LoadoutConfigLoadMessageBody(r, &value.Loadout) {
+					if !tableMessageBodyLoadoutConfig(r, &value.Loadout, starts, depth+1) {
 						return false
 					}
 					if exact && r.Bits.Offset-start == r.Vocabulary.RefBits {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
 				}
 				if widened {
 					r.Report.Widened++
@@ -2451,14 +2421,9 @@ func AttachmentLoadMessageBody(r *TableMessageReader, value *AttachmentRow) bool
 func tableMessageBodyAttachment(r *TableMessageReader, value *AttachmentRow, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	AttachmentReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -2602,14 +2567,9 @@ func BuffLoadMessageBody(r *TableMessageReader, value *BuffRow) bool {
 func tableMessageBodyBuff(r *TableMessageReader, value *BuffRow, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	BuffReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -2705,14 +2665,9 @@ func DebuffLoadMessageBody(r *TableMessageReader, value *DebuffRow) bool {
 func tableMessageBodyDebuff(r *TableMessageReader, value *DebuffRow, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	DebuffReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 76e9b743c53e097140c2794d825f70496892dd0b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {

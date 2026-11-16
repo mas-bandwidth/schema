@@ -56,11 +56,12 @@ func file(ids *TableIds, root func(w *TableWriter), records ...record) []byte {
 	w.Put8(1)
 	root(&w)
 	if len(records) > 0 {
+		w.ID(0xffffffffffffffff); w.Put8(12)
 		payload := body(ids, func(p *TableWriter) {
 			p.PutLeb(uint64(len(records)))
 			for _, r := range records { p.ID(r.typ); p.PutLeb(uint64(len(r.body))); p.Raw(r.body) }
 		})
-		framed(&w, 0xffffffffffffffff, 12, payload)
+		w.PutLeb(uint64(len(payload))); w.Raw(payload)
 	}
 	w.Put8(0)
 	w.Trailer()
@@ -74,7 +75,9 @@ func rawFile(ids *TableIds, root func(w *TableWriter), payload func(p *TableWrit
 	w := TableWriter{Buffer: make([]byte, 8192), Ids: ids}
 	w.Put8(1)
 	root(&w)
-	framed(&w, 0xffffffffffffffff, 12, body(ids, payload))
+	w.ID(0xffffffffffffffff); w.Put8(12)
+	b := body(ids, payload)
+	w.PutLeb(uint64(len(b))); w.Raw(b)
 	w.Put8(0)
 	w.Trailer()
 	if w.Overflow || ids.Overflow { panic("overflow") }
@@ -140,11 +143,11 @@ func TestBlobRecordUnderUnknownField(t *testing.T) {
 }
 
 func TestBlobRecordNamedTwiceUnderUnknownFields(t *testing.T) {
-	var ids TableIds
 	for _, tc := range []struct { name string; rec record }{
 		{"bytes", record{blobBytesID, []byte("abc")}},
 		{"string", record{blobStringID, []byte("hello")}},
 	} {
+		var ids TableIds
 		shared := file(&ids, func(w *TableWriter) { ptr(w, dataField, 2); ptr(w, noteField, 2) }, tc.rec)
 		var r TableReport
 		if NodeLoad(region(1<<16), shared, &r) != nil { t.Fatalf("%s: Load accepted a blob record named from two unknown fields: %+v", tc.name, r) }
@@ -155,11 +158,11 @@ func TestBlobRecordNamedTwiceUnderUnknownFields(t *testing.T) {
 }
 
 func TestBlobRecordNoPointerReachesRefused(t *testing.T) {
-	var ids TableIds
 	for _, tc := range []struct { name string; rec record }{
 		{"bytes", record{blobBytesID, []byte("abc")}},
 		{"string", record{blobStringID, []byte("hello")}},
 	} {
+		var ids TableIds
 		orphan := file(&ids, func(w *TableWriter) {}, tc.rec)
 		var r TableReport
 		if NodeLoad(region(1<<16), orphan, &r) != nil { t.Fatalf("%s: Load accepted a blob record no pointer reaches: %+v", tc.name, r) }
@@ -215,7 +218,8 @@ func TestStringRecordUnderUnknownField(t *testing.T) {
 	if err != nil || v == nil { t.Fatalf("ReadStrict refused the same file: %v", err) }
 	// the blob this unit does declare, under a field it does not know, is a
 	// blob it can place; the field is the one unknown event
-	known := file(&ids, func(w *TableWriter) {
+	var knownIDs TableIds
+	known := file(&knownIDs, func(w *TableWriter) {
 		w.ID(fieldB(bN)); w.Put8(4); w.Put32(1)
 		ptr(w, noteField, 2)
 	}, record{blobBytesID, []byte("abc")})
@@ -243,12 +247,12 @@ func TestDeclaredAndUnknownNameOneStringRecord(t *testing.T) {
 // whether this unit stores its type: the stored bytes record is refused the
 // same way as the unstored string record
 func TestStoredBlobRecordSharedOrUnreachableRefused(t *testing.T) {
-	var ids TableIds
 	for _, tc := range []struct { name string; root func(w *TableWriter) }{
 		{"declared and unknown", func(w *TableWriter) { w.ID(fieldB(bN)); w.Put8(4); w.Put32(1); ptr(w, fieldB(2), 2); ptr(w, noteField, 2) }},
 		{"two unknown", func(w *TableWriter) { w.ID(fieldB(bN)); w.Put8(4); w.Put32(1); ptr(w, noteField, 2); ptr(w, otherField, 2) }},
 		{"no pointer", func(w *TableWriter) { w.ID(fieldB(bN)); w.Put8(4); w.Put32(1) }},
 	} {
+		var ids TableIds
 		wire := file(&ids, tc.root, record{blobBytesID, []byte("abc")})
 		var r TableReport
 		if BlobNodeLoad(region(1<<16), wire, &r) != nil { t.Fatalf("%s: Load accepted a stored bytes record: %+v", tc.name, r) }
