@@ -1661,3 +1661,49 @@ print('union-union-array')
 		}
 	}
 }
+
+func TestPythonRetainOptionalTableArray(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+table Child { n int32 }
+table Root { children ?[2]Child }
+`
+	u := loadUnit(t, schema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	w.ref("children")
+	ghost := unionCat(w.ref("future"), []byte{4}, unionI32(7), []byte{0})
+	wire := w.file(w.array("children", 13, 2, unionCat(unionLeb(uint64(len(ghost))), ghost), []byte{1, 0}))
+	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+with open('wire','rb') as f: wire=f.read()
+keep=TableRetain(bytearray(1024),bytearray(24*8)); report=LoadReport()
+value=Root.load_retain(wire,keep,report)
+assert len(value.children)==2 and report.retained==1
+saved=value.save_retain(keep,report)
+assert saved==wire and report.retain_lost==0
+value.children=None
+cleared=value.save_retain(keep,report)
+assert report.retain_lost==1 and Root.load(cleared).children is None
+with open('saved','wb') as f: f.write(saved)
+print('optional-table-array')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "optional-table-array" {
+			t.Fatalf("optional table array retain: %v\n%s\n%s", err, out, stderr)
+		}
+		saved, err := os.ReadFile(filepath.Join(dir, "saved"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if verdict := unionEngineVerdict(t, u, saved); !strings.HasPrefix(verdict, "read 1 ") {
+			t.Fatalf("Go engine rejected optional array: %s", verdict)
+		}
+	}
+}
