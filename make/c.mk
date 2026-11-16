@@ -1615,10 +1615,15 @@ build/wire-fuzz-c: build/tables-generated-c/.stamp test/c-tables/wire_fuzz_main.
 build/wire-fuzz-c-asan: build/tables-generated-c/.stamp test/c-tables/wire_fuzz_main.c $(wildcard test/conformance/c/*.h) $(wildcard test/conformance/c/*.c)
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) $(C_CONFORMANCE_INCLUDES) test/c-tables/wire_fuzz_main.c $(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES)) -o $@ -lm
 
+# The ASan leg turns leak detection off: LeakSanitizer suspends threads with
+# ptrace to walk the still-reachable set, and a sandbox that denies ptrace
+# turns that into a fatal error at exit after every mutant has already run
+# (a harness crash, not a divergence and not a leak). AddressSanitizer and
+# UBSan stay on; only the leak report is off.
 .PHONY: tables-c-wire-fuzz
 tables-c-wire-fuzz: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N)
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-asan.bin
+	ASAN_OPTIONS=detect_leaks=0 ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-asan.bin
 
 
 
@@ -1639,7 +1644,7 @@ tables-c-wire-fuzz-negative-control: build/conformance-harness build/tables-gene
 	@if ./build/conformance-harness wire-fuzz --driver ./build/c-wire-sabotage/driver --seed 1 --n 0 --failed build/c-wire-sabotage/failed.bin > build/c-wire-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: noncanonical LEB128 was accepted and the differential stayed green'; exit 1; \
 	fi
-	@grep -qE 'the report differs|the oracle discards a damaged load' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
+	@grep -qE 'read acceptance differs: the leg says true, the oracle says false|the report differs|the oracle discards a damaged load' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
 	@echo 'C wire negative control: accepting noncanonical LEB128 changes the read report'
 
 test-c: tables-c-wire-fuzz-negative-control
