@@ -182,7 +182,7 @@ func TestLobsterStrictTextRead(t *testing.T) {
 		{"escapes", `(:need 1 :s "\u03b1")`, `{"need":1,"s":"α"}`},
 		{"exact exponent", `(:need 1e0 :n 10.0)`, `{"need":1,"n":10}`},
 		{"sharing", `(:need 1 :link ("&node" 1 :value 3) :other ("&node" 1))`, `{"need":1,"link":{"&node":1,"value":3},"other":{"&node":1}}`},
-		{"exact int64 exponent", `(:need 1 :big 9007199254740993e0)`, `{"need":1,"big":9007199254740993}`},
+		{"exact int64 exponent", `(:need 1 :big 9007199254740993e0)`, `{"need":1,"big":"9007199254740993"}`},
 		{"base64", `(:need 1 :blob "YQ==")`, `{"need":1,"blob":"YQ=="}`},
 		{"optional", `(:need 1 :optional null)`, `{"need":1}`},
 		{"duplicate", `(:need 1 "need" 2)`, ""},

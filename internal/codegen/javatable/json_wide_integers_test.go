@@ -39,7 +39,7 @@ table Keys
 
 // TestJavaJsonWideIntegersAreStrings holds testdata/wire/json-integers/
 // through the Java writer and reader. A kind wider than 32 bits is written as
-// a JSON string of decimal digits and reads as a string or a number. Every
+// a JSON string of decimal digits and reads only as a string. Every
 // integer takes an integer token only — no fraction, no exponent, no negative
 // zero — and a value past the range refuses. The verdict is the contract; no
 // reason is compared.
@@ -52,6 +52,24 @@ func TestJavaJsonWideIntegersAreStrings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the vectors' manifest: %v", err)
 	}
+	numberTokens, err := os.ReadFile(filepath.Join(dir, "NUMBER-TOKEN.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	numberNames := map[string]bool{}
+	for line := range strings.SplitSeq(string(numberTokens), "\n") {
+		if line != "" && !strings.HasPrefix(line, "#") {
+			fields := strings.Split(line, "\t")
+			if len(fields) != 5 {
+				t.Fatalf("NUMBER-TOKEN.tsv: malformed row %q", line)
+			}
+			numberNames[fields[0]] = true
+		}
+	}
+	if len(numberNames) != 13 {
+		t.Fatalf("NUMBER-TOKEN.tsv: got %d rows, want 13", len(numberNames))
+	}
+	manifest = append(append(manifest, '\n'), numberTokens...)
 	canonical, err := os.ReadFile(filepath.Join(dir, "canonical.read.json"))
 	if err != nil {
 		t.Fatalf("the canonical text: %v", err)
@@ -187,6 +205,7 @@ public final class WideIntegerProbe {
             line.append(",\"refused\":").append(r.refused);
             line.append(",\"damaged\":").append(r.damaged);
             line.append(",\"nullValue\":").append(v == null);
+            line.append(",\"reason\":\"").append(r.reason == null ? "" : r.reason).append("\"");
             if (ok) {
                 line.append(",\"small\":").append(v.small);
                 line.append(",\"wide\":").append(v.wide);
@@ -250,6 +269,7 @@ public final class WideIntegerProbe {
 		Refused   bool
 		Damaged   bool
 		NullValue bool
+		Reason    string
 		Small     int32
 		Wide      int64
 		UWide     string
@@ -296,6 +316,9 @@ public final class WideIntegerProbe {
 					t.Errorf("%s: Java wrote a different canonical text\nJava:\n%s\nwant:\n%s", r.name, text, canonical)
 				}
 			case "refused":
+				if numberNames[r.name] && (!res.Refused || !strings.HasPrefix(res.Reason, "kind_mismatch")) {
+					t.Errorf("%s: wanted kind_mismatch, got %s", r.name, lines[i])
+				}
 				if res.OK || !res.NullValue {
 					t.Fatalf("%s: Java accepted a vector the corpus refuses: %s", r.name, lines[i])
 				}

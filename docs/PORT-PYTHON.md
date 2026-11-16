@@ -272,7 +272,7 @@ per unit, named for the unit's package:
 
 | file | what it is |
 |---|---|
-| `compiler/target_python.go` | the target, behind the `schema_leg_python` build tag until the packet surface has claims; the shared refusal chain, then the emitters |
+| `compiler/target_python.go` | the built-in target; the shared refusal chain, then the emitters |
 | `compiler/carries_python.go` | the carried constructs, registered once from `pythonCarried`; a later layer adds `var _ = carryPython(<construct>)` in its own file |
 | `internal/codegen/python` | the type surface's emitter (`Generate`), the identifier rules (`CheckNames`) and, from the packet layer, its codec |
 | `internal/codegen/python/runtime/_schema/` | the runtime, embedded and emitted verbatim: the errors, and serialize.py vendored by sha256 (`runtime/SERIALIZE_PIN`, `make vendor-serialize-python`) |
@@ -290,18 +290,49 @@ generated class per table and per map entry, each with its descriptor
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
   each `_schema/kind_<kind>.py` beside it registers a kind this cut carries
-  (today `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_table.py` and
-  `kind_pointer.py`; the directory is the list). A later card adds its module
-  and one registration line in it, never an edit to the body walk; `kinds.py`
-  imports every `kind_*.py` itself, so no other file names a new module.
-  `kind_unsupported.py` is the named placeholder for a construct whose
-  descriptor exists but whose codec has not landed; a read or write that
-  reaches it refuses by name.
+  (today `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_optional.py`,
+  `kind_table.py` and `kind_pointer.py`; the directory is the list). A later
+  card adds its module and one registration line in it, never an edit to the
+  body walk; `kinds.py` imports every `kind_*.py` itself, so no other file
+  names a new module. A kind that wraps another names the wrapped codec in the
+  descriptor's `inner`. `kind_unsupported.py` is the named placeholder for a
+  construct whose descriptor exists but whose codec has not landed; a read or
+  write that reaches it refuses by name.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
   `LoadReport` on success only. `Measure` runs the same walk into a counting
-  sink, so measure and save agree by construction.
+  sink, so measure and save agree by construction. A by-value table writes its
+  own field id before its body's ids, so a nested table's id table is the
+  reference's first-use order and a read-then-write is its bytes.
+- **Optional fields are presence.** `?T` is carried over the base kinds (bool,
+  bits, the full-width integers and by-value tables), at every depth: `None` is
+  absent and writes no field, and an absent value owns no node, because the
+  save's numbering follows an optional's edges only when its value is present.
+  A present value ALWAYS rides, its default included, through the inner kind
+  the descriptor names; a read sets the field only when it rode and leaves it
+  `None` otherwise, so "absent" and "present and default" stay two values.
+  `?T` over a VARIABLE closure (a by-value T that holds a `*T`, SPEC-TABLES
+  §2.3's optional-variable-closure) is carried and registered at the compiler
+  (`compiler/carries_python_optional.go`): T's pointers are numbered only when
+  T is present, so a node one present T and another field both name rides
+  once, and a T made absent while it still holds a pointer writes no stale
+  node.
+- **Optional arrays are the array framing behind presence.** `?[N]T`,
+  `?[..N]T` and `?[Min..N]T` over bool, the integers, bits and by-value tables
+  (the by-value `?[N]T` of a T that holds a pointer included) are carried by
+  `kind_optional.py`, with `inner` "array" and the element's own descriptor in
+  `elem`: an absent array (`None`) writes no field; a present list ALWAYS rides
+  as the kind-14 body (element kind, count, elements), a counted array at count
+  zero and a fixed array whole, so "present and empty" and "absent" stay two
+  values. A read refuses a foreign element kind (`kind_mismatch`), a count past
+  the bound (`count_over_bound`) and a damaged body (`wire_damaged`), and pads
+  a shorter fixed array with the element's defaults; a write refuses a value
+  that is not a list, a fixed array of the wrong length, a count outside
+  [Min, N] and an invalid element, by its path (`pairs[0].a`). The target
+  joins the optional-array carriers (`compiler/tablesoptionalarrays.go`). An
+  optional array of an element kind this cut does not carry keeps
+  `inner` "unsupported" and refuses by name.
 - **The shape is measured.** A table whose fields are all bools and integers
   gets the straight-line generated save/load pair, unrolled with each field
   descriptor bound to a local; every table, and every construct a later card
@@ -327,7 +358,9 @@ generated class per table and per map entry, each with its descriptor
 
   - `*string`: carried ([the table blobs](port-python/table-blobs.md))
 
-  - `?T`: refused
+  - `?T` over the base kinds, over a variable closure included: carried
+
+  - `?[N]T` and `?[..N]T` over the base kinds: carried
 
   - `[]T`: carried ([the table unbounded arrays](port-python/table-unbounded.md))
 
@@ -515,7 +548,7 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - types by value: carried
 
-  - unions: carried
+  - unions: carried ([the packet unions](port-python/packet-unions.md))
 
   - `if`/`else` branches: carried
 
@@ -528,9 +561,9 @@ the core stands against the P4 row; the rules of this page are unchanged.
   - `bits`: carried
     ([the packet ranged integers and bits](port-python/packet-ranged-bits.md))
 
-  - `string`: refused
+  - `string`: carried ([the packet text kinds](port-python/packet-text.md))
 
-  - `bytes`: refused
+  - `bytes`: carried ([the packet text kinds](port-python/packet-text.md))
 
   - fixed `[N]T` and counted `[A..B]T` arrays of a carried element kind:
     carried ([the packet arrays](port-python/packet-arrays.md)); an array of
@@ -538,11 +571,11 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - a keyed `[E]T` array and a list `[]T`: refused
 
-  - `const`: refused
+  - `const`: carried ([the packet layout](port-python/packet-layout.md))
 
-  - `reserved`: refused
+  - `reserved`: carried ([the packet layout](port-python/packet-layout.md))
 
-  - `align`: refused
+  - `align`: carried ([the packet layout](port-python/packet-layout.md))
 
   - raw `uint128` and ranged `int128`: carried
     ([the packet int128](port-python/packet-int128.md))
@@ -556,12 +589,15 @@ the core stands against the P4 row; the rules of this page are unchanged.
   attribute; a union arm may not be named `type`, `read`, `write`, `load`,
   `save` or `descriptor`, the members the generated class defines, or export
   `None_`, `Max` or `NAMES` on `<Union>Type`.
-- **The golden harness reads single-root pins.** A C++-pinned packet golden
-  that is one value with one root type is read and written back; the
-  multi-root concatenations (`clauses`, `joins`, `degenerate`) and the table
-  wire's pins are listed as skipped with the reason. Every packet root whose
-  kinds are all carried is read from its pin and must write back byte for
-  byte; a root blocked by an uncarried kind names that kind.
+- **The golden harness covers the packet corpus pins.** `TestPythonPacketClose`
+  inventories and reads and writes back the single-root and default pins and the multi-root
+  `clauses`, `joins`, and `degenerate` pins under both pinned interpreters.
+  The framed concatenations are checked slice by slice, and `degenerate` is
+  checked through one shared bit stream. The table-wire pin belongs to the
+  table gates. `python-packet-analyzer` checks the complete example,
+  ludicrous, benchmark and defaults generated packages and their runtimes
+  with strict mypy. Each gate has a planted-fault control.
+
 
 ## THE PACKET CORE BENCH
 

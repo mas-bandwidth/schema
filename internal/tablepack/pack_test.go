@@ -325,6 +325,65 @@ func TestHostileValueCorpus(t *testing.T) {
 	}
 }
 
+// TestHostileNumberTokenCorpus holds the engine's verdict on the separate
+// wide-number-token corpus as each language reader adopts the rule.
+func TestHostileNumberTokenCorpus(t *testing.T) {
+	t.Parallel()
+	const manifestPath = "../../testdata/conformance/tables/JSON-HOSTILE-NUMBER-TOKEN.txt"
+	manifest, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := compiler.New()
+	units := map[string]*ir.Unit{}
+	cases := 0
+	for line := range strings.SplitSeq(string(manifest), "\n") {
+		row := strings.Fields(line)
+		if len(row) == 0 || strings.HasPrefix(row[0], "#") {
+			continue
+		}
+		switch row[0] {
+		case "unit":
+			if len(row) < 3 {
+				t.Fatalf("invalid unit row: %q", line)
+			}
+			args := make([]string, 0, len(row)-2)
+			for _, p := range row[2:] {
+				args = append(args, "../../"+p)
+			}
+			paths, err := compiler.GatherPaths(args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, err := c.Load(paths)
+			if err != nil {
+				t.Fatal(err)
+			}
+			units[row[1]] = u
+		case "json-hostile":
+			if len(row) != 6 || row[5] != "refused" {
+				t.Fatalf("invalid row: %q", line)
+			}
+			u := units[row[2]]
+			if u == nil {
+				t.Fatalf("%s: unknown unit %s", row[1], row[2])
+			}
+			cases++
+			t.Run(row[1], func(t *testing.T) {
+				_, _, report, err := c.Pack(u, row[3], "../../"+row[4])
+				if err == nil || !report.Refused {
+					t.Fatalf("packed when refusal required: report=%+v err=%v", report, err)
+				}
+			})
+		default:
+			t.Fatalf("invalid row: %q", line)
+		}
+	}
+	if cases != 13 {
+		t.Fatalf("expected 13 number-token cases, got %d", cases)
+	}
+}
+
 // §17.3: `unpack` -> `pack` is byte-stable into a directory that ALREADY holds
 // a tree, which is the only directory the verb is ever pointed at. An absent
 // `?T` and a guarded-out field write no file, so a stale one left standing

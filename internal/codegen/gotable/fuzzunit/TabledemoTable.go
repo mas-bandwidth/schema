@@ -28,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xaf3c2a0488047dc2)
-const _ = uint64(0xaf3c2a0488047dc2 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xd4231158f15ca524)
+const _ = uint64(0xd4231158f15ca524 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -173,6 +173,7 @@ const tableFixedConst = goruntime.TableFixedConst
 const tableFixedWidenF = goruntime.TableFixedWidenF
 const tableFixedBool = goruntime.TableFixedBool
 const tableFixedTag = goruntime.TableFixedTag
+const tableFixedSlack = goruntime.TableFixedSlack
 
 const tableFixedTextUTF8 = goruntime.TableFixedTextUTF8
 const tableFixedTextBytes = goruntime.TableFixedTextBytes
@@ -265,6 +266,12 @@ func tableFixedTextRefusal(a0 []TableFixedEntry, a1 int32, a2 []byte) string {
 	return goruntime.TableFixedTextRefusal(a0, a1, a2)
 }
 
+func tableFixedAllZero(a0 []byte) bool { return goruntime.TableFixedAllZero(a0) }
+
+func tableFixedDeadSpan(a0 []byte, a1, a2 uint32) ([2]uint32, bool) {
+	return goruntime.TableFixedDeadSpan(a0, a1, a2)
+}
+
 func tableFixedDead(a0 [][2]uint32, a1 uint32) bool { return goruntime.TableFixedDead(a0, a1) }
 
 type tableFixedLayoutEntry = goruntime.TableFixedLayoutEntry
@@ -290,6 +297,10 @@ func tableFixedTagBytes(a0 tableFixedLayoutView, a1 int32) uint32 {
 func tableFixedSrcEnd(a0 TableFixedEntry) uint64 { return goruntime.TableFixedSrcEnd(a0) }
 
 const tableFixedRemapMax = goruntime.TableFixedRemapMax
+
+func tableFixedChildrenNamed(a0 tableFixedLayoutView, a1 int32, a2 tableFixedLayoutView, a3 int32) bool {
+	return goruntime.TableFixedChildrenNamed(a0, a1, a2, a3)
+}
 
 type tableFixedHole = goruntime.TableFixedHole
 
@@ -682,11 +693,11 @@ type TableFieldInfo struct {
 	Counted            bool  // a <Name>Count/<Name>Length int32 companion exists
 	Optional           bool  // a ?T field: a <Name>Present bool decides whether it rides
 
-	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
-	Offset        uint32 // unsafe.Offsetof the storage member
-	ElemSize      uint32 // unsafe.Sizeof the member (element size for arrays)
-	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
-	PresentOffset uint32 // unsafe.Offsetof the Present companion, or 0xffffffff
+	ArrayMin, ArrayBound int32  // counted minimum; capacity / string max length; 0 otherwise
+	Offset               uint32 // unsafe.Offsetof the storage member
+	ElemSize             uint32 // unsafe.Sizeof the member (element size for arrays)
+	CountOffset          uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
+	PresentOffset        uint32 // unsafe.Offsetof the Present companion, or 0xffffffff
 
 	FracBits         uint8 // fixed-point binary scale
 	WideRange        bool
@@ -2228,7 +2239,8 @@ type tableFixedCompiler struct {
 	chainAt   uint32
 	chainLaid bool
 	report    *TableReport
-	// unlawful is a writer field whose kind moved off every ladder: no plan
+	// unlawful is a removed writer field, arm or variant, a narrowed span,
+	// or a kind moved off every ladder: no plan
 	// is laid, and a file under the entry's hash refuses layout_malformed
 	// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4).
 	unlawful bool
@@ -2315,12 +2327,13 @@ func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 
 	return at
 }
 
-// census is whether THIS entry is the first time the writer's field is seen:
-// an array's element subtree is compiled once per element and the unknown
-// count is ONCE PER FIELD PER ENDPOINT (§5.4), so only element 0 censuses.
 func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
+	if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
+		c.unlawful = true
+		return
+	}
 	myChild := mi + 1
 	for range me.Children {
 		mc := tableFixedEntryAt(mine, myChild)
@@ -2336,23 +2349,6 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 			theirChild += tableFixedSubtree(theirs, theirChild)
 		}
 		myChild += tableFixedSubtree(mine, myChild)
-	}
-	tcAt := ti + 1
-	for range te.Children {
-		tc := tableFixedEntryAt(theirs, tcAt)
-		named := false
-		mcAt := mi + 1
-		for range me.Children {
-			if tableFixedEntryAt(mine, mcAt).ID == tc.ID {
-				named = true
-				break
-			}
-			mcAt += tableFixedSubtree(mine, mcAt)
-		}
-		if !named && census && c.report != nil {
-			c.report.Unknown++
-		}
-		tcAt += tableFixedSubtree(theirs, tcAt)
 	}
 }
 
@@ -2401,12 +2397,22 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		if d.Counted != 0 {
 			head = 4
 		}
+		// A required count word past the writer's field reaches beyond its
+		// record; refuse before subtracting the head from an unsigned size.
+		if te.Size < head {
+			c.tooLarge = true
+			return
+		}
 		var theirN, myN uint32
 		if tel.Size != 0 {
 			theirN = (te.Size - head) / tel.Size
 		}
 		if mel.Size != 0 {
 			myN = (me.Size - head) / mel.Size
+		}
+		if theirN > myN {
+			c.unlawful = true
+			return
 		}
 		theirBase := theirAt + head
 		n := theirN
@@ -2424,11 +2430,20 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
 		}
 	case 16:
+		if !tableFixedChildrenNamed(theirs, ti+1, mine, mi+1) {
+			c.unlawful = true
+			return
+		}
 		tkey := tableFixedEntryAt(theirs, ti+1)
 		mkey := tableFixedEntryAt(mine, mi+1)
 		tel := ti + 1 + tableFixedSubtree(theirs, ti+1)
 		mel := mi + 1 + tableFixedSubtree(mine, mi+1)
 		tee := tableFixedEntryAt(theirs, tel)
+		mee := tableFixedEntryAt(mine, mel)
+		if te.Size/tee.Size > me.Size/mee.Size {
+			c.unlawful = true
+			return
+		}
 		for k := range mkey.Children {
 			keyID := tableFixedEntryAt(mine, mi+2+int32(k)).ID
 			for j := range tkey.Children {
@@ -2440,20 +2455,16 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			}
 		}
 	case 15:
+		if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
+			c.unlawful = true
+			return
+		}
 		theirTag := tableFixedTagBytes(theirs, ti)
 		myTag := tableFixedTagBytes(mine, mi)
-		// THE TAG'S "NONE" GOES DOWN FIRST AND UNGUARDED, and it is pushed
-		// BEFORE c.argW is retuned below so it is stamped at the OUTER width:
-		// None answers to the OUTER tag (bill §12.7). Every tag value below is
-		// written under THEIR tag's guard, so a record naming an arm this build
-		// does not have — or a tag past the writer's arm set entirely — landed
-		// no tag at all from the plan and was answered by the prefill. That
-		// answer was right and silent: DstSize carries THE WRITER'S ARM COUNT
-		// for this one entry, and the read loop counts a clamp for a raw tag
-		// past that set, so the compiled plan counts what the identity plan's
-		// decode bound counts (schema#1254, §5.4, §5.8 row 12). Entries apply in
-		// push order, so the arm that matches overwrites this one and it stands
-		// when none does.
+		// None goes down first, guarded only by the outer arm. Each matched
+		// writer arm then overwrites it with the reader's ordinal. A missing
+		// writer arm makes the lineage unlawful above; a tag outside the
+		// writer's set refuses in the check pass, before any record lands.
 		none := TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Guard: guard, Op: tableFixedConst, Arg: arg}
 		if te.Children > 0 && te.Children <= 255 {
 			none.DstSize = uint8(te.Children)
@@ -2466,6 +2477,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		if theirTag >= 1 && theirTag <= 8 {
 			c.argW = uint8(theirTag)
 		}
+		span := te.Size - theirTag
 		myArm := mi + 1
 		for k := range me.Children {
 			ma := tableFixedEntryAt(mine, myArm)
@@ -2483,6 +2495,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 					c.chainLaid = false
 					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: uint64(j + 1)})
 					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, uint64(j+1), census)
+					if ta.Size < span {
+						// THE BYTES PAST A NARROWER TAKEN ARM ARE DEAD.
+						tableFixedPush(c, TableFixedEntry{Src: theirAt + theirTag + ta.Size, Size: span - ta.Size, Guard: theirAt, Op: tableFixedSlack})
+					}
 					c.chain = c.chain[:len(c.chain)-1]
 					c.chainAt, c.chainLaid = savedAt, savedLaid
 					break
@@ -2491,12 +2507,27 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			}
 			myArm += tableFixedSubtree(mine, myArm)
 		}
+		// TAG 0 NAMES NO ARM: the whole widest arm's span is dead
+		// (mas-bandwidth/schema docs/rulings.json fixed-dead-bytes-are-zero; mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+		// §3.1, §4.5).
+		if span > 0 {
+			savedAt, savedLaid := c.chainAt, c.chainLaid
+			c.chain = append(c.chain, TableFixedGuardLink{Guard: theirAt, Arg: 0, ArgW: c.argW})
+			c.chainLaid = false
+			tableFixedPush(c, TableFixedEntry{Src: theirAt + theirTag, Size: span, Guard: theirAt, Op: tableFixedSlack})
+			c.chain = c.chain[:len(c.chain)-1]
+			c.chainAt, c.chainLaid = savedAt, savedLaid
+		}
 		c.argW = savedW
 	case 30:
 		// A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts widened
 		// (§5.2 EMIT kind 30, §5.4). Only a SAME-WIDTH ordinal takes the remap
 		// table.
 		if te.Size < me.Size {
+			if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
+				c.unlawful = true
+				return
+			}
 			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard,
 				Op: tableFixedWiden, Arg: arg, DstSize: uint8(me.Size)})
 			return
@@ -2509,6 +2540,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		n := te.Children
 		if n > tableFixedRemapMax {
 			c.overflow = true
+			return
+		}
+		if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
+			c.unlawful = true
 			return
 		}
 		m := make([]uint16, n)
@@ -2527,6 +2562,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		e.Aux = tableFixedLayTable(c, m, int32(n))
 		tableFixedPush(c, e)
 	case 12:
+		if te.Size > me.Size {
+			c.unlawful = true
+			return
+		}
 		units := me.Size - 4
 		units = min(units, te.Size-4)
 		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: units, Aux: auxAt, Guard: guard, Op: tableFixedText, Arg: arg, Meta: d.Meta})
