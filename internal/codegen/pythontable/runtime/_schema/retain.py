@@ -460,3 +460,41 @@ def capture_file(cls: type[Any], wire: memoryview, retain: TableRetain) -> tuple
 
     body(wire[1:_body_end(wire)], cls.descriptor, 1, ())
     return counts[0], counts[1]
+
+
+def emit_record(retain: TableRetain, identity: int, kind: int, resolved: memoryview, known: frozenset[int], ctx: Any, writer: Any) -> bool:
+    """Place one record atomically, or return False when its ids do not fit.
+
+    `ctx` is the normal save context. The caller initializes the fixed id
+    slots at the start of a measure or save and counts False as one loss.
+    """
+    previous_ids = len(ctx.ids)
+    previous_retained = retain.id_used
+
+    def intern(value: int) -> int:
+        existing = ctx.refs.get(value)
+        if existing is not None:
+            return int(existing)
+        if value not in known:
+            if retain.id_used >= len(retain.ids):
+                raise Capacity()
+            retain.ids[retain.id_used] = (value, len(ctx.ids) + 1)
+            retain.id_used += 1
+        return int(ctx.idref(value))
+
+    try:
+        field_ref = intern(identity)
+        measure_payload(kind, resolved, intern)
+    except Capacity:
+        while len(ctx.ids) > previous_ids:
+            value = ctx.ids.pop()
+            del ctx.refs[value]
+        retain.id_used = previous_retained
+        return False
+    writer.varint(field_ref)
+    writer.byte(kind)
+    reader = Reader(resolved, 0, len(resolved), [])
+    _out_payload(reader, writer, kind, 0, intern, False)
+    if reader.pos != reader.end:
+        raise Refused("wire_damaged", "bytes left after a resolved record")
+    return True

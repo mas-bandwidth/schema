@@ -115,6 +115,21 @@ small=TableRetain(bytearray(22), [])
 assert not small.capture(1, (), 0xabc, 13, memoryview(bytes([4,1,30,2,0])), ids)
 assert small.used==0 and list(small.records())==[]
 keep.reset(); assert keep.used==0 and keep.id_used==0 and list(keep.records())==[]
+from probe._schema.retain import emit_record
+from probe._schema.save import Ctx, Writer
+keep=TableRetain(bytearray(128), [None]*2)
+assert keep.capture(1, (), 0xabc, 30, memoryview(bytes([1])), ids)
+node,steps,field,kind,payload=next(keep.records())
+ctx=Ctx(); output=bytearray(); writer=Writer(output)
+assert emit_record(keep,field,kind,payload,frozenset(),ctx,writer)
+assert bytes(output)==bytes([1,30,2]) and ctx.ids==[0xabc,ids[0]]
+assert keep.id_used==2 and keep.ids==[(0xabc,1),(ids[0],2)]
+short=TableRetain(bytearray(128), [None])
+assert short.capture(1, (), 0xabc, 30, memoryview(bytes([1])), ids)
+_,_,field,kind,payload=next(short.records())
+ctx=Ctx(); output=bytearray(); writer=Writer(output)
+assert not emit_record(short,field,kind,payload,frozenset(),ctx,writer)
+assert ctx.ids==[] and ctx.refs=={} and short.id_used==0 and output==bytearray()
 print('resolved')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
