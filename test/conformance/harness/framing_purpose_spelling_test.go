@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -294,5 +296,109 @@ func TestNoncanonicalVariablePurposeShapes(t *testing.T) {
 	}
 	if seen != 9 {
 		t.Errorf("variable corpus has %d rows, want 9", seen)
+	}
+}
+
+// messageOneShapes walks the known three-bit vocabulary of One.schema; each
+// integer payload is eight bits and an empty union has a zero arm reference.
+func messageOneShapes(data []byte) (map[string]bool, error) {
+	if len(data) < 2 || data[0] != ir.TableWireMessageForm {
+		return nil, fmt.Errorf("not a message batch")
+	}
+	r := newStrictBitReader(data[1:])
+	n, ok := r.get(8)
+	if !ok || n != 0 {
+		return nil, fmt.Errorf("not a one-body batch")
+	}
+	shapes := map[string]bool{}
+	last := uint64(0)
+	for {
+		ref, ok := r.get(3)
+		if !ok {
+			return nil, fmt.Errorf("truncated field reference")
+		}
+		if ref == 0 {
+			break
+		}
+		if ref < last {
+			shapes["fields-out-of-order"] = true
+		}
+		last = ref
+		switch ref {
+		case 1, 2:
+			value, ok := r.get(8)
+			if !ok {
+				return nil, fmt.Errorf("truncated integer")
+			}
+			if ref == 1 && value == 7 {
+				shapes["field-at-default"] = true
+			}
+		case 3:
+			arm, ok := r.get(3)
+			if !ok {
+				return nil, fmt.Errorf("truncated union")
+			}
+			if arm == 0 {
+				shapes["union-arm-zero"] = true
+			} else {
+				return nil, fmt.Errorf("unsupported arm")
+			}
+		default:
+			return nil, fmt.Errorf("unexpected field reference %d", ref)
+		}
+	}
+	if !r.align() || r.off != r.n {
+		return nil, fmt.Errorf("bad padding")
+	}
+	return shapes, nil
+}
+
+func TestMessageNoncanonicalPurposeShapes(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(conformanceRoot(t), "testdata/wire/message-one-encoding")
+	for _, tc := range []struct{ name, shape string }{{"canonical.bin", ""}, {"explicit-default.bin", "field-at-default"}, {"fields-reordered.bin", "fields-out-of-order"}, {"union-none.bin", "union-arm-zero"}} {
+		data, err := os.ReadFile(filepath.Join(dir, tc.name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		shapes, err := messageOneShapes(data)
+		if err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+			continue
+		}
+		if tc.shape == "" {
+			if len(shapes) != 0 {
+				t.Errorf("%s: got %v", tc.name, shapes)
+			}
+			continue
+		}
+		if len(shapes) != 1 || !shapes[tc.shape] {
+			t.Errorf("%s: got %v, want only %s", tc.name, shapes, tc.shape)
+		}
+	}
+}
+
+func TestMessageFieldOrderVectorPinned(t *testing.T) {
+	t.Parallel()
+	body := &bitw{}
+	body.put(2, 3)
+	body.put(5, 8)
+	body.put(1, 3)
+	body.put(8, 8)
+	body.put(0, 3)
+	want := batchOf(body)
+	path := filepath.Join(conformanceRoot(t), "testdata/wire/message-one-encoding/fields-reordered.bin")
+	if os.Getenv("FRAMING_WRITE") == "1" {
+		if err := os.WriteFile(path, want, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Error("field-order vector differs from its bit generator")
 	}
 }
