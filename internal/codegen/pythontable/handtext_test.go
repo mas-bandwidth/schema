@@ -645,3 +645,116 @@ print('ok')
 		}
 	}
 }
+
+func TestPythonHandtextUnionBlobs(t *testing.T) {
+	t.Parallel()
+	const schema = `package probe
+union Reach {
+ text *string
+ blob *bytes
+}
+table Root {
+ reach Reach
+}`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from probe import Root
+from probe._schema.textform_scan import TextError
+text = Root.from_text_form(b'(:reach (:text "hello"))')
+assert text.value.reach.text == 'hello'
+assert Root.load_text(text.value.save_text()).reach.text == 'hello'
+blob = Root.from_text_form(b'(:reach (:blob "AP8="))')
+assert blob.value.reach.blob == b'\x00\xff'
+assert Root.load_text(blob.value.save_text()).reach.blob == b'\x00\xff'
+try:
+    Root.from_text_form(b'(:reach (:blob "AP9="))')
+except TextError as e:
+    assert e.reason == 'text_encoding'
+else:
+    raise AssertionError('noncanonical union blob')
+print('ok')
+`
+	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+		if got := string(run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})); got != "ok\n" {
+			t.Fatalf("union blobs: %s", got)
+		}
+	}
+}
+
+func TestPythonHandtextUnionBlobsNegativeControl(t *testing.T) {
+	t.Parallel()
+	const schema = `package probe
+union Reach { blob *bytes }
+table Root { reach Reach }
+`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "probe/_schema/textform.py"
+	source := string(files[path])
+	const anchor = "if base64.b64encode(decoded).decode() != node.value:"
+	if strings.Count(source, anchor) != 1 {
+		t.Fatal("union blob control anchor missing")
+	}
+	files[path] = []byte(strings.Replace(source, anchor, "if False:", 1))
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from probe import Root
+from probe._schema.textform_scan import TextError
+try:
+    Root.from_text_form(b'(:reach (:blob "AP9="))')
+except TextError as e:
+    assert e.reason == 'text_encoding', 'HANDTEXT_UNION_BLOB_CONTROL'
+else:
+    raise AssertionError('HANDTEXT_UNION_BLOB_CONTROL')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err == nil || !strings.Contains(stderr, "HANDTEXT_UNION_BLOB_CONTROL") {
+			t.Fatalf("union blob control: %v %s", err, stderr)
+		}
+	}
+}
+
+func TestPythonHandtextWireCarrierCRCNegativeControl(t *testing.T) {
+	t.Parallel()
+	unit := loadUnit(t, `package crcprobe
+table Root | integrity = "crc32c" { n int32 }
+`)
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "crcprobe/_schema/integrity.py"
+	source := string(files[path])
+	const anchor = `if int.from_bytes(view[-4:], "little") != crc32c(body):`
+	if strings.Count(source, anchor) != 1 {
+		t.Fatal("CRC control anchor missing")
+	}
+	files[path] = []byte(strings.Replace(source, anchor, "if False:", 1))
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `import base64
+from crcprobe import Root, Refused
+v = Root(); v.n = 7
+wire = base64.b64decode(v.save_text())
+text = base64.b64encode(wire[:-1] + bytes([wire[-1] ^ 1])).decode('ascii')
+try:
+    Root.load_text(text)
+except Refused:
+    pass
+else:
+    raise AssertionError('HANDTEXT_CARRIER_CRC_CONTROL')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err == nil || !strings.Contains(stderr, "HANDTEXT_CARRIER_CRC_CONTROL") {
+			t.Fatalf("CRC control: %v %s", err, stderr)
+		}
+	}
+}
