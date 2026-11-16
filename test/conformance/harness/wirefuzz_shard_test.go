@@ -34,7 +34,7 @@ func TestWireFuzzShardExactUnion(t *testing.T) {
 			}
 			for _, shards := range []int{2, 3, 7} {
 				seen := 0
-				for shard := 0; shard < shards; shard++ {
+				for shard := range shards {
 					got := run(shard, shards)
 					var want []string
 					for i, item := range all {
