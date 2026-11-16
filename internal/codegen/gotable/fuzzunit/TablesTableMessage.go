@@ -157,12 +157,6 @@ func RootConfigLoadMessageBody(r *TableMessageReader, value *RootConfig) bool {
 func tableMessageBodyRootConfig(r *TableMessageReader, value *RootConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RootConfigReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -522,12 +516,6 @@ func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) boo
 func tableMessageBodyWeaponConfig(r *TableMessageReader, value *WeaponConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	WeaponConfigReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -1147,12 +1135,6 @@ func LoadoutConfigLoadMessageBody(r *TableMessageReader, value *LoadoutConfig) b
 func tableMessageBodyLoadoutConfig(r *TableMessageReader, value *LoadoutConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	LoadoutConfigReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -1794,12 +1776,6 @@ func ProfileConfigLoadMessageBody(r *TableMessageReader, value *ProfileConfig) b
 func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	ProfileConfigReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -2572,12 +2548,6 @@ func AttachmentLoadMessageBody(r *TableMessageReader, value *AttachmentRow) bool
 func tableMessageBodyAttachment(r *TableMessageReader, value *AttachmentRow, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	AttachmentReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -2743,12 +2713,6 @@ func BuffLoadMessageBody(r *TableMessageReader, value *BuffRow) bool {
 func tableMessageBodyBuff(r *TableMessageReader, value *BuffRow, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	BuffReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -2855,12 +2819,6 @@ func DebuffLoadMessageBody(r *TableMessageReader, value *DebuffRow) bool {
 func tableMessageBodyDebuff(r *TableMessageReader, value *DebuffRow, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	DebuffReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
