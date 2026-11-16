@@ -989,7 +989,7 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 			classes = append(classes, st.Name)
 			names = append(names, st.Name)
 			for _, f := range st.Fields {
-				if f.KeyEnum != "" {
+				if st.IsTable && f.KeyEnum != "" {
 					keyed := keyedClassName(st.Name, f)
 					classes = append(classes, keyed)
 					names = append(names, keyed)
