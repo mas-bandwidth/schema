@@ -574,7 +574,6 @@ func init() {
 	pythonFixedSetups["field-evolution"] = "rows[1].b = 100\nrows[1].c = 200"
 	pythonFixedSetups["plan-execution"] = "rows[1].a = 10\nrows[1].sub.p = 30\nrows[1].sub.q = 40\nrows[1].xs = [50, 60]"
 	pythonFixedSetups["interoperability"] = "rows[1].a = 42\nrows[1].s = 'test'"
-	pythonFixedSetups["file-envelope"] = "rows[1].x = 10\nrows[1].y = 20"
 }
 
 // TestPythonFixedProofEvolutionValues compares each selected row with a live
