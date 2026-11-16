@@ -283,6 +283,7 @@ func TestPythonFixedProofEvolutionHostileEnvelope(t *testing.T) {
 	add("layout-overrun", "layout_malformed", badLen)
 	add("layout-unknown", "layout_unknown", edit(8, oracle[8]^1))
 	add("layout-mismatch", "layout_malformed", edit(20, oracle[20]^1))
+	add("record-empty", "truncated", bytes.Clone(oracle[:start]))
 	for n := 1; n < 18; n++ {
 		add(fmt.Sprintf("record-short-%d", n), "truncated", bytes.Clone(oracle[:start+n]))
 	}
