@@ -105,7 +105,11 @@ func TestBlockBuildAndCookWriteJava(t *testing.T) {
 	}
 	t.Run("cook_refusal_invalid_value", func(t *testing.T) {
 		t.Parallel()
-		cookRefusal(t, readCookManifest(t))
+		cookRefusal(t, readCookManifest(t), false)
+	})
+	t.Run("cook_refusal_debug_negative_control", func(t *testing.T) {
+		t.Parallel()
+		cookRefusal(t, readCookManifest(t), true)
 	})
 }
 
@@ -423,20 +427,43 @@ func cookGoldenUnit(t *testing.T, m cookManifest, u cookWriteUnit) {
 // measures -1, cookMeasureReason answers "invalid_value", and cookFrom refuses
 // in both orders without writing a byte. The value is graph_tree's Scene with
 // one Layer past the declared bound of `layers [..MaxLayers]Layer`.
-func cookRefusal(t *testing.T, m cookManifest) {
+func cookRefusal(t *testing.T, m cookManifest, planted bool) {
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	javac, javaBin := javaTools(t)
-	dir := compileCookUnit(t, javac, cookUnitFiles(t, "../../../tables/pointers"), "graphdemo",
+	files := cookUnitFiles(t, "../../../tables/pointers")
+	if planted {
+		source := string(files["TableCookWrite.java"])
+		// Discovery and layout/store both protect the same count. Remove
+		// both from the copied artifact so the remaining check cannot mask
+		// the plant; ordinary generated writers retain both assertions.
+		for _, anchor := range []string{
+			"assert used >= 0 && used <= f.arrayBound && (f.countOffset < 0 || length(source) >= used);",
+			"assert used >= 0 && used <= f.arrayBound && (f.countOffset < 0 || length(v) >= used);",
+		} {
+			if strings.Count(source, anchor) != 1 {
+				t.Fatal("cook count assertion anchor changed")
+			}
+			source = strings.Replace(source, anchor, "/* planted: count assertion removed */", 1)
+		}
+		files["TableCookWrite.java"] = []byte(source)
+	}
+	dir := compileCookUnit(t, javac, files, "graphdemo",
 		map[string]string{"CookRefusalDriver": cookRefusalDriver})
 	cmd := exec.Command(javaBin, "-ea", "-cp", dir, "CookRefusalDriver",
 		filepath.Join("..", "..", "..", m.instance["graph_tree"][2]))
 	out, err := cmd.CombinedOutput()
+	if planted {
+		if err == nil || !strings.Contains(string(out), "cookMeasure did not assert on an invalid layers count") {
+			t.Fatalf("NEGATIVE CONTROL FAILED: missing cook count assertion was not detected by name: %v\n%s", err, out)
+		}
+		return
+	}
 	if err != nil {
 		t.Fatalf("java cook refusal: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "refused invalid_value layers") {
+	if !strings.Contains(string(out), "asserted invalid layers") {
 		t.Fatalf("the refusal driver did not reach the bound check:\n%s", out)
 	}
 }
@@ -494,6 +521,11 @@ import java.nio.file.Path;
 import java.util.Arrays;
 
 public final class CookRefusalDriver {
+    private static void expectAssertion(String surface, Runnable call) {
+        try { call.run(); }
+        catch (AssertionError expected) { return; }
+        throw new AssertionError(surface + " did not assert on an invalid layers count");
+    }
     public static void main(String[] args) throws Exception {
         graphdemo.TableVariable.Report report = new graphdemo.TableVariable.Report();
         graphdemo.SceneVariable.Value value = graphdemo.SceneVariable.load(Files.readAllBytes(Path.of(args[0])), report);
@@ -506,18 +538,19 @@ public final class CookRefusalDriver {
         }
         if (bound < 1) throw new AssertionError("no layers bound in the descriptors");
         while (value.layers.size() <= bound) value.layers.add(new graphdemo.LayerVariable.Value());
-        long n = graphdemo.SceneCook.cookMeasure(value);
-        graphdemo.SceneCook.MeasureReason reason = graphdemo.SceneCook.cookMeasureReason(value);
-        if (n != -1 || reason.bytes() != -1 || !reason.reason().equals("invalid_value")) {
-            throw new AssertionError("layers past the bound measured " + n + " " + reason);
-        }
+        // Java's writer checks are assertions (SPEC §5.1), and this
+        // driver runs with -ea. No release-build refusal is promised here.
+        expectAssertion("cookMeasure", () -> graphdemo.SceneCook.cookMeasure(value));
+        expectAssertion("cookMeasureReason", () -> graphdemo.SceneCook.cookMeasureReason(value));
         byte[] out = new byte[(int) valid * 2];
         Arrays.fill(out, (byte) 0x5a);
         for (int order = 1; order <= 2; order++) {
-            if (graphdemo.SceneCook.cookFrom(value, out, order)) throw new AssertionError("order " + order + " accepted");
+            final int byteOrder = order;
+            expectAssertion("cookFrom order " + order,
+                    () -> graphdemo.SceneCook.cookFrom(value, out, byteOrder));
         }
         for (byte b : out) if (b != (byte) 0x5a) throw new AssertionError("refusal wrote bytes");
-        System.out.println("refused invalid_value layers " + value.layers.size() + " > " + bound);
+        System.out.println("asserted invalid layers " + value.layers.size() + " > " + bound);
     }
 }
 `
