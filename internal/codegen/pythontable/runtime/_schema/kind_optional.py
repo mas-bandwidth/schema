@@ -72,6 +72,11 @@ def _write_element(w: Any, elem: FieldDesc, item: Any, ctx: Any) -> None:
     if elem.codec == "int":
         w.raw(int(item).to_bytes(kind_int._width(elem), "little", signed=elem.lo < 0))
         return
+    if elem.codec == "enum":
+        from .kind_enum import _Enum
+
+        _Enum().write_element(w, elem, item, ctx)
+        return
     from .save import write_body
 
     body = bytearray()

@@ -1601,7 +1601,7 @@ func innerCodecOf(f *ir.Field) string {
 	}
 	if f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted {
 		switch optionalElemCodecOf(f) {
-		case "bool", "int", "table":
+		case "bool", "int", "table", "enum":
 			return "array"
 		}
 		return "unsupported"
@@ -1633,7 +1633,7 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 	switch codec {
 	case "bool":
 		def = "False"
-	case "int":
+	case "int", "enum":
 		def = "0"
 	}
 	fmt.Fprintf(b, "            elem=FieldDesc(\n")
@@ -1644,6 +1644,10 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                lo=%s,\n", lo)
 	fmt.Fprintf(b, "                hi=%s,\n", hi)
 	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
+	fmt.Fprintf(b, "                variant_ids=%s,\n", variantIds(f))
+	if dep := deprecatedOrdinals(f); dep != "" {
+		fmt.Fprintf(b, "                deprecated=%s,\n", dep)
+	}
 	fmt.Fprintf(b, "                default=%s,\n", def)
 	fmt.Fprintf(b, "            ),\n")
 }
