@@ -8842,6 +8842,16 @@ diagnostic name, which is not normative and is never compared:
   widened fields stay lawful and read as today. The JSON form is not changed here: a
   JSON read accepts any field order (§16.2), and this rule is the binary
   forms' alone.
+  **The default, null-pointer and arm-zero cases depend on the declaration.**
+  They refuse only where this reader can establish that the field is
+  non-required and not a present optional. On the variable form, required fields
+  are written whatever they hold (§2.3, §22.2), including a null pointer and a
+  `None` union, so those values read. An unknown field from a newer variable-form
+  writer may be required; the reader does not apply these declaration-dependent
+  refusals to it. The message form admits fixed tables only, which cannot declare
+  `required` (§2.3, §3.3). A substituted unknown or deprecated variant is
+  evolution rather than a stored default.
+  The wire-only framing, graph and first-use checks still apply to every field.
 - **A NON-FINITE FLOAT — `non_finite_float`** (§3.3), and **ONE BLOB NAMED
   FROM TWO SLOTS — `blob_shared`** (§2.5). Neither is a value a writer emits.
 - **A COUNT PAST THE STORAGE CAP — `count_over_extent_cap`** (§2.9).

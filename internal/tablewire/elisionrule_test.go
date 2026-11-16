@@ -374,3 +374,124 @@ func TestMessageReadAllowsSubstitutedDefaults(t *testing.T) {
 		}
 	}
 }
+
+// Required fields ride even at None, null and a scalar default (§2.3,
+// §22.2). An older reader cannot establish whether an unknown field is
+// required, so those spellings remain lawful unknown-field evolution.
+func TestReadAllowsRequiredAndUnknownDefaults(t *testing.T) {
+	t.Parallel()
+	writer := covModel(t, `package requireddefaults
+union Choice { item uint8 }
+table Node { n uint8 }
+table Root {
+    tick uint8
+    choice Choice | required
+    link *Node | required
+    zero uint8 | required
+}
+`)
+	older := covModel(t, "package requireddefaults\ntable Root {tick uint8}\n")
+	value := writer.New(writer.Lookup("Root"))
+	tick, _ := value.FieldByKey("tick")
+	tick.Cell.U = 1
+	wire, err := Encode(writer, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []*tabletext.Model{writer, older} {
+		for _, retain := range []bool{false, true} {
+			var report tabletext.Report
+			back := model.New(model.Lookup("Root"))
+			var ok bool
+			if retain {
+				ok, err = DecodeRetain(model, back, wire, &Retain{Capacity: 1024, IdCapacity: 64}, &report)
+			} else {
+				ok, err = Decode(model, back, wire, &report)
+			}
+			want := 0
+			if model == older {
+				want = 3
+			}
+			if !ok || err != nil || report.Unknown != want {
+				t.Errorf("required defaults older=%v retaining=%v: ok=%v err=%v report=%+v", model == older, retain, ok, err, report)
+			}
+		}
+	}
+}
+
+// Fixed-only message declarations cannot be required (§2.3, §3.3). Thus an
+// unknown union field's None is decidably noncanonical too. None remains
+// lawful as an array element and as a nested union arm's value.
+func TestMessageReadRefusesUnknownUnionNoneFields(t *testing.T) {
+	t.Parallel()
+	writer := covModel(t, `package messageunion
+union Choice { item uint8 }
+union Outer { inner Choice }
+fixed table Child { choice Choice }
+fixed table Root {
+    tick uint8
+    choice Choice
+    choices [..2]Choice
+    outer Outer
+    kid Child
+}
+`)
+	older := covModel(t, "package messageunion\nfixed table Root {tick uint8}\n")
+	var vocabulary Vocabulary
+	if err := vocabulary.AnnounceRead(Announce(writer.Unit), &tabletext.Report{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{`{"tick":1,"choice":{"item":5}}`, `{"tick":1,"choices":[{}]}`, `{"tick":1,"outer":{"inner":{}}}`} {
+		wire, err := EncodeMessage(writer, covPlace(t, writer, "Root", text))
+		if err != nil {
+			t.Fatal(err)
+		}
+		v := vocabulary
+		var report tabletext.Report
+		if ok, err := DecodeMessage(older, older.New(older.Lookup("Root")), wire, &v, &report); !ok || err != nil || report.Unknown != 1 {
+			t.Errorf("lawful unknown union position %s refused: %v %+v", text, err, report)
+		}
+	}
+	for _, nested := range []bool{false, true} {
+		value := covPlace(t, writer, "Root", `{"tick":1}`)
+		e := &bitEncoder{m: writer, slots: MessageVocabularySlots(writer.Unit), refBits: vocabulary.RefBits()}
+		w := &bitWriter{}
+		w.put(0, 8)
+		tick, _ := value.FieldByKey("tick")
+		if err := encodeBitField(e, w, tick); err != nil {
+			t.Fatal(err)
+		}
+		if nested {
+			kid, _ := value.FieldByKey("kid")
+			e.ref(w, ir.TableFieldEntry(kid.Def))
+		}
+		choice, _ := value.FieldByKey("choice")
+		e.ref(w, ir.TableFieldEntry(choice.Def))
+		w.put(0, e.refBits) // None stored at a union FIELD
+		if nested {
+			w.put(0, e.refBits) // Child terminator
+		}
+		w.put(0, e.refBits)
+		w.align()
+		wire := append([]byte{ir.TableWireMessageForm}, w.b...)
+		for _, batch := range []bool{false, true} {
+			v := vocabulary
+			back := older.New(older.Lookup("Root"))
+			var report tabletext.Report
+			var ok bool
+			var err error
+			if batch {
+				_, ok, err = DecodeMessages(older, []*tabletext.Instance{back}, wire, &v, &report)
+			} else {
+				ok, err = DecodeMessage(older, back, wire, &v, &report)
+			}
+			if ok || err == nil || !report.Refused {
+				t.Errorf("unknown union None field nested=%v batch=%v read: %v %+v", nested, batch, err, report)
+			}
+			landed, _ := back.FieldByKey("tick")
+			if landed.Cell.U != 0 {
+				t.Errorf("refused union None field delivered an earlier value: %d", landed.Cell.U)
+			}
+		}
+	}
+}

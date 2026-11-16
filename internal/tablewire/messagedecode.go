@@ -363,7 +363,7 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 				return false
 			}
 			d.report.Unknown++
-			if !d.skip(entry, 0) {
+			if !d.skipField(entry, 0) {
 				d.damage()
 				return false
 			}
@@ -397,7 +397,7 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 			// carries the sender's, which is exactly what makes a body from
 			// another build the ordinary case this wire exists for.
 			d.refuse(ReasonKindMismatch)
-			if !d.skip(entry, 0) {
+			if !d.skipField(entry, 0) {
 				d.damage()
 				return false
 			}
@@ -1118,6 +1118,17 @@ func (d *bitDecoder) rangedFloat(v float64, f *ir.Field) float64 {
 // skippable on a body with no kind byte, and it is one walk over every table,
 // because a shape says everything a skipper needs.
 func (d *bitDecoder) skip(entry ir.TableVocabularyEntry, depth int) bool {
+	return d.skipAt(entry, depth, false)
+}
+
+// A message field cannot be required: the form admits fixed tables only.
+// None therefore elides at every union FIELD, including an unknown field.
+// Array elements and nested union-arm values keep their positional None.
+func (d *bitDecoder) skipField(entry ir.TableVocabularyEntry, depth int) bool {
+	return d.skipAt(entry, depth, true)
+}
+
+func (d *bitDecoder) skipAt(entry ir.TableVocabularyEntry, depth int, field bool) bool {
 	if depth > 128 {
 		return false
 	}
@@ -1146,6 +1157,10 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry, depth int) bool {
 			return false
 		}
 		if ref == 0 {
+			if field {
+				d.damage()
+				return false
+			}
 			return true
 		}
 		arm, named := d.arm(ref)
@@ -1337,7 +1352,7 @@ func (d *bitDecoder) skipBody(depth int) bool {
 			return true
 		}
 		entry, named := d.bodyEntry(ref, seen)
-		if !named || !d.skip(entry, depth) {
+		if !named || !d.skipField(entry, depth) {
 			return false
 		}
 	}
