@@ -727,7 +727,7 @@ func TestLuauFixedProofGroupDNegativeControl(t *testing.T) {
 				t.Fatal("the planted writer still saves the reference's bytes: the byte gate proves nothing")
 			}
 			if err := verifyInCpp(p.saved); err == nil {
-				t.Fatal("the C++ verifier accepted the planted writer's file")
+				t.Fatal("the C++ equality verifier accepted the planted writer's file")
 			}
 		})
 	}
