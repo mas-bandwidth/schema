@@ -938,6 +938,36 @@ print('ok')
 	}
 }
 
+func TestPythonJsonDeclaredForms(t *testing.T) {
+	t.Parallel()
+	const schema = `package jsonforms
+ table Hidden | forms = "wire" { value int32 }
+ table Visible | forms = "wire,json" { value int32 }
+ table Normal { value int32 }`
+	unit := loadUnit(t, schema)
+	unit.Tables["Hidden"].Fields[0].Name = "from_json"
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from jsonforms import Hidden, Visible, Normal
+h = Hidden()
+assert h.from_json == 0 and not hasattr(Hidden, 'to_json')
+assert Visible.from_json('{"value":7}').value == 7
+assert Normal.from_json('{"value":8}').value == 8
+print('ok')
+`
+	inputs := map[string][]byte{"main.py": []byte(probe)}
+	if got := string(pyrun.Run(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("current: %q", got)
+	}
+	if got := string(pyrun.RunFloor(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("floor: %q", got)
+	}
+}
+
 func TestPythonJsonSharedNodesThroughUnion(t *testing.T) {
 	t.Parallel()
 	const schema = `package jsonuniongraph

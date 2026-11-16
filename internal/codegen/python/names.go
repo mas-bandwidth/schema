@@ -78,7 +78,7 @@ func CheckNames(u *ir.Unit) error {
 				return err
 			}
 			for _, field := range t.Fields {
-				if generatedTableJSONMembers[field.Name] {
+				if t.CarriesForm("json") && generatedTableJSONMembers[field.Name] {
 					return fmt.Errorf("python: %s.schema: %s's field %s is the name of a generated JSON method; rename the field", f.Base, t.Name, field.Name)
 				}
 			}

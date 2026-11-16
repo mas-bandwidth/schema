@@ -629,25 +629,29 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	}
 	b.WriteString("\n    def measure(self) -> int:\n")
 	b.WriteString("        return measure_table(self)\n")
-	b.WriteString("\n    @classmethod\n")
-	b.WriteString("    def from_json(cls, text: str, report: LoadReport | None = None) -> Self:\n")
-	if scalarOnly(st) {
-		fmt.Fprintf(b, "        return _s_from_json(cls, text, report, _s_json_fill_%s)\n", name)
-	} else {
-		b.WriteString("        return _s_from_json(cls, text, report)\n")
-	}
-	b.WriteString("\n    def to_json(self) -> str:\n")
-	if scalarOnly(st) {
-		fmt.Fprintf(b, "        return _s_json_write_%s(self)\n\n\n", name)
-	} else {
-		b.WriteString("        return _s_to_json(self)\n\n\n")
+	if st.CarriesForm("json") {
+		b.WriteString("\n    @classmethod\n")
+		b.WriteString("    def from_json(cls, text: str, report: LoadReport | None = None) -> Self:\n")
+		if scalarOnly(st) {
+			fmt.Fprintf(b, "        return _s_from_json(cls, text, report, _s_json_fill_%s)\n", name)
+		} else {
+			b.WriteString("        return _s_from_json(cls, text, report)\n")
+		}
+		b.WriteString("\n    def to_json(self) -> str:\n")
+		if scalarOnly(st) {
+			fmt.Fprintf(b, "        return _s_json_write_%s(self)\n\n\n", name)
+		} else {
+			b.WriteString("        return _s_to_json(self)\n\n\n")
+		}
 	}
 	emitTableDescriptor(b, u, st, false)
 	if fast {
 		emitFastStraightLine(b, st, variable, guards)
 	} else if scalarOnly(st) {
 		emitStraightLine(b, st)
-		emitStraightLineJSON(b, st)
+		if st.CarriesForm("json") {
+			emitStraightLineJSON(b, st)
+		}
 	}
 	b.WriteString("\n")
 }
