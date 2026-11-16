@@ -29,7 +29,8 @@ table Integers
 
 // TestRustJsonWideIntegersAreStrings holds every manifest row of
 // testdata/wire/json-integers/ through the Rust writer and reader: a wide
-// integer is written as a STRING of decimal digits and reads only as a string; every integer field takes an integer token only — no fraction, no
+// integer is written as a STRING of decimal digits and reads only as a string;
+// every integer field takes an integer token only — no fraction, no
 // exponent, no negative zero — and its range is tested on the exact value
 // (docs/SPEC-TABLES.md §16.2, §16.14 W10 and W11).
 func TestRustJsonWideIntegersAreStrings(t *testing.T) {

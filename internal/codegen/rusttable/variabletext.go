@@ -1892,7 +1892,7 @@ func wideRaw(f *ir.Field, x string) string {
 
 // emitTextReadWide emits the read of a WIDE value — a 128-bit integer or a
 // fixed(I, F) — into dst (docs/SPEC-TABLES.md §16.2): the exact raw integer
-// from any number token (Jr::read_wide), then the field's declared range on
+// from the kind's required JSON token (Jr::read_wide), then the declared range on
 // the RAW scale, or, with none declared, the storage's own, each counted
 // held.
 func emitTextReadWide(b *strings.Builder, f *ir.Field, dst, in string) {
