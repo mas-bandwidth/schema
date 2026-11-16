@@ -137,6 +137,11 @@ assert ctx.idref(0x200)==3
 keep.add_retained_id(0xdef,4)
 trailer=bytearray(); ctx.write_ids(Writer(trailer))
 assert trailer==b''.join(v.to_bytes(8,'little') for v in (0x100,0xabc,0x200,0xdef,4))
+bound=TableRetain(bytearray(128), bytearray(24*2)); ctx=RetainCtx(bound)
+for i in range(4096): ctx.idref(i+1)
+output=bytearray()
+assert not emit_record(bound,0xabc000,4,memoryview(bytes([1,2,3,4])),frozenset(),ctx,Writer(output))
+assert bound.id_used==0 and len(ctx.ids)==4096 and not output
 print('resolved')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
@@ -318,6 +323,15 @@ for i in range(1000): assert ids.retained_id(i+10)==i+1
 ids.truncate_ids(500)
 for i in range(500): assert ids.retained_id(i+10)==i+1
 assert ids.retained_id(510)==0 and ids.id_used==500
+import random
+order=list(range(1000)); random.Random(17).shuffle(order)
+ids=TableRetain(bytearray(),bytearray(24*1000))
+for i,key in enumerate(order): ids.add_retained_id(key+10,i+1)
+assert ids._id_height(ids.id_root) <= 20
+for i,key in enumerate(order): assert ids.retained_id(key+10)==i+1
+ids.truncate_ids(500)
+for i,key in enumerate(order): assert ids.retained_id(key+10)==(i+1 if i<500 else 0)
+assert ids._id_height(ids.id_root) <= 20
 print('path-index')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
