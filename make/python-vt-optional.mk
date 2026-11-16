@@ -16,7 +16,8 @@
 # and the carry gate must go red by name, with Compiler.Generate refusing the
 # construct.
 .PHONY: python-vt-optional python-vt-optional-negative-control python-vt-optional-carries-negative-control
-test-python: python-vt-optional python-vt-optional-negative-control python-vt-optional-carries-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-optional
+python-ci-vt-optional: python-vt-optional python-vt-optional-negative-control python-vt-optional-carries-negative-control
 
 python-vt-optional:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run '^(TestPythonVtOptional|TestPythonVtOptionalArrays)$$' ./internal/codegen/pythontable/ -count=1

@@ -141,7 +141,7 @@ listed case that passes fails the leg until its line is removed.
   writes the defaults the tool now zeroes). Real fix: every cook writer zeroes
   the dead slots, and the Go case runs again.
   The same slug relaxes the ten cook-write cases (the five rows, both orders)
-  of the conformance legs cpp, go, elixir and goose
+  of the conformance legs cpp, go and goose
   in `test/conformance/relaxed.txt`: each still writes
   the element defaults into dead counted slots (CI full 43656719730). C, JS
   (its ten cases pass and are gated again, 2026-11-15) and the tool are
@@ -231,6 +231,7 @@ Relaxed on 2026-11-15 to get the fast lane green on `main` after a day of
 landings with no gate; each site carries `RELAXED 2026-11-15 (get main
 green)` and its slug.
 
+<<<<<<< HEAD
 - `relax/dart-announce-refuses-nested-element`:
   `internal/codegen/darttable` TestDartAnnounceShapesAsTheEngine drops the
   cases nested_array_wellformed and keyed_array_of_keyed_array. The engine
@@ -251,6 +252,8 @@ green)` and its slug.
   other disagreement is still compared. Real fix: the generated Go fixed read
   refuses non-zero dead bytes (internal/codegen/gotable/fixedform.go,
   tables/goruntime), the fuzzunit tree is regenerated, and the hold goes.
+=======
+>>>>>>> f73f6cf561aef1c3ed01dd843e2317f30431362b
 
 ## Proof cells
 

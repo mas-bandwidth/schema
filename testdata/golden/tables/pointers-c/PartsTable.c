@@ -371,20 +371,19 @@ static SCHEMA_UNUSED char graphdemo_table_json_element_shape( const graphdemo_ta
     return 'n';
 }
 
-/* A wide integer declares the number shape and READS a string or a number
-   (§16.2); every other shape is exact. */
+/* Wide numeric fields take only strings (§16.2); other shapes stay exact. */
 static SCHEMA_UNUSED int graphdemo_table_json_shape_accepts( const graphdemo_table_field_info_t * f, char got )
 {
     char want = graphdemo_table_json_shape( f );
-    if ( got == want ) { return 1; }
-    return want == 'n' && got == 's' && graphdemo_table_json_kind_wide_integer( f->kind );
+    if ( want == 'n' && graphdemo_table_json_kind_wide_integer( f->kind ) ) { return got == 's'; }
+    return got == want;
 }
 
 static SCHEMA_UNUSED int graphdemo_table_json_element_shape_accepts( const graphdemo_table_field_info_t * f, char got )
 {
     char want = graphdemo_table_json_element_shape( f );
-    if ( got == want ) { return 1; }
-    return want == 'n' && got == 's' && graphdemo_table_json_kind_wide_integer( f->kind );
+    if ( want == 'n' && graphdemo_table_json_kind_wide_integer( f->kind ) ) { return got == 's'; }
+    return got == want;
 }
 
 /* A guarded group rides only when its guard reads true — the wire's own
@@ -2487,9 +2486,15 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
         graphdemo_table_json_set_raw( storage, f->elem_size, (uint64_t) nanos );
         return 1;
     }
-    if ( graphdemo_table_json_kind_wide_integer( f->kind ) && graphdemo_table_json_peek( in ) == '"' )
+    if ( graphdemo_table_json_kind_wide_integer( f->kind ) )
     {
-        /* a wide integer reads as a string OR a number, the same digits (§16.2) */
+        /* Wide numeric fields take only the writer's string form (§16.2). */
+        if ( graphdemo_table_json_peek( in ) != '"' )
+        {
+            in->report->refused = 1;
+            in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            return graphdemo_table_json_skip_value( in, depth + 1 );
+        }
         int32_t text_length = 0;
         if ( !graphdemo_table_json_scan_text( in, textbuf, (int32_t) sizeof( textbuf ) - 1, &text_length ) ) { return 0; }
         if ( in->report->refused ) { return 1; }

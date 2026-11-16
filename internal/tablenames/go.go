@@ -5,6 +5,10 @@ const Go Backend = 1 << 3
 
 func init() {
 	define(Go,
+		Name{Name: "tableFixedAllZero", What: "fixed-record dead-byte validation"},
+		Name{Name: "tableFixedChildrenNamed", What: "fixed-record lawful lineage validation"},
+		Name{Name: "tableFixedDeadSpan", What: "fixed-record dead-byte validation"},
+		Name{Name: "tableFixedSlack", What: "fixed-record inactive union span validation"},
 		Name{Name: "tableJSONUnknownRepeat", What: "repeated decoded unknown JSON key refusal"},
 		Name{Name: "tableRetainArmLevels", What: "retained union nesting validation"},
 		Name{Name: "tableRetainFrameLevels", What: "retained framing nesting validation"},
@@ -356,7 +360,11 @@ func init() {
 		Name{Name: "tableJSONReadNullAsEmpty", What: "the null-as-empty option's read (docs/SPEC-TABLES.md §16.2)"},
 		Name{Name: "tableJSONBytes", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJSONCount", What: "one step of the text form's generic walk (§16)"},
+<<<<<<< HEAD
 		Name{Name: "tableJSONCountInContract", What: "a counted field's companion inside the declared contract (docs/SPEC-TABLES.md §16.2)"},
+=======
+		Name{Name: "tableJSONCountInContract", What: "the text writer's count and length bounds (§16.3)"},
+>>>>>>> f73f6cf561aef1c3ed01dd843e2317f30431362b
 		Name{Name: "tableJSONElementShape", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJSONEncodeUTF8", What: "one step of the text form's generic walk (§16)"},
 		Name{Name: "tableJSONFinite", What: "one step of the text form's generic walk (§16)"},

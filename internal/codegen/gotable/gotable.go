@@ -1058,7 +1058,7 @@ type TableFieldInfo struct {
 	Counted  bool   // a <Name>Count/<Name>Length int32 companion exists
 	Optional bool   // a ?T field: a <Name>Present bool decides whether it rides
 
-	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
+	ArrayMin, ArrayBound int32 // counted minimum; capacity / string max length; 0 otherwise
 	Offset        uint32 // unsafe.Offsetof the storage member
 	ElemSize      uint32 // unsafe.Sizeof the member (element size for arrays)
 	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
