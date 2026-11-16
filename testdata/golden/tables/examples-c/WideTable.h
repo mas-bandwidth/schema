@@ -6132,6 +6132,9 @@ static SCHEMA_UNUSED int64_t tabledemo_wide_blob_save_messages(const tabledemo_w
 static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_wide_blob_t * value)
 {
  uint8_t seen[512];
+ int same_build=r->vocabulary->build_version==SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE;
+ int32_t last_field_ord=0;
+ (void)last_field_ord;
  tabledemo_wide_blob_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
@@ -6145,9 +6148,10 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body(tabledemo_table_m
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x39f7fcec8fcb623d): {
- int same_shape=r->vocabulary->build_version==SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE && entry->own_slot==101;
+ int same_shape=same_build && entry->own_slot==101;
+ if(same_shape && 1<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=1;
  int32_t unknown_before=r->report->unknown;
- (void)same_shape;
  (void)unknown_before;
  if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,12)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
@@ -6178,9 +6182,10 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body(tabledemo_table_m
  break;
  }
  case UINT64_C(0xcfb8a9d063b5e9e5): {
- int same_shape=r->vocabulary->build_version==SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE && entry->own_slot==102;
+ int same_shape=same_build && entry->own_slot==102;
+ if(same_shape && 2<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=2;
  int32_t unknown_before=r->report->unknown;
- (void)same_shape;
  (void)unknown_before;
  if(!(entry->kind==14 && entry->elem_kind==6)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,14)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
@@ -6206,9 +6211,10 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body(tabledemo_table_m
  break;
  }
  case UINT64_C(0xe3b1ca6a3b48dddc): {
- int same_shape=r->vocabulary->build_version==SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE && entry->own_slot==103;
+ int same_shape=same_build && entry->own_slot==103;
+ if(same_shape && 3<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=3;
  int32_t unknown_before=r->report->unknown;
- (void)same_shape;
  (void)unknown_before;
  if(!(entry->kind==14 && entry->elem_kind==7)){if(entry->kind==14 && tabledemo_table_kind_widens(entry->elem_kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
@@ -6246,7 +6252,8 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body(tabledemo_table_m
  }
  break;
  }
- default:r->report->unknown++;
+ default:if(same_build && entry->own_slot!=0)goto damaged;
+ r->report->unknown++;
  if(!tabledemo_table_message_skip(r,entry))goto damaged;
  break;
  } }

@@ -412,12 +412,15 @@ func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n", g.api(st.Name, "load_message_body"), st.Name)
-	g.pf(" uint8_t seen[512];%s(value);memset(seen,0,sizeof(seen));for(;;){const TableMessageEntry * entry;int64_t ref;\n if(!table_message_ref(r,&entry,0))goto damaged;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;ref=entry-r->vocabulary->entries+1;if(ref<1||ref>4096)goto damaged;if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));switch(entry->id){\n", g.api(st.Name, "reset"))
-	for _, f := range st.Fields {
+	g.pf(" uint8_t seen[512];int same_build=r->vocabulary->build_version==%s;int32_t last_field_ord=0;(void)last_field_ord;%s(value);memset(seen,0,sizeof(seen));for(;;){const TableMessageEntry * entry;int64_t ref;\n if(!table_message_ref(r,&entry,0))goto damaged;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;ref=entry-r->vocabulary->entries+1;if(ref<1||ref>4096)goto damaged;if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));switch(entry->id){\n", buildVersionName(g.unit.Package), g.api(st.Name, "reset"))
+	for fi, f := range st.Fields {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableFieldWireId(f))
+		// §3.3(b) proves order only for this record's exact compiled entry
+		// at its own build. Another writer may reorder or add fields.
+		mine := ir.TableFieldEntry(f)
+		g.pf(" int same_shape=same_build && entry->own_slot==%d;\n if(same_shape && %d<=last_field_ord)goto damaged;if(same_shape)last_field_ord=%d;\n", g.messageSlot(mine), fi+1, fi+1)
 		if !f.Required && !f.Type.Optional {
-			mine := ir.TableFieldEntry(f)
-			g.pf(" int same_shape=r->vocabulary->build_version==%s && entry->own_slot==%d;int32_t unknown_before=r->report->unknown;(void)same_shape;(void)unknown_before;\n", buildVersionName(g.unit.Package), g.messageSlot(mine))
+			g.pf(" int32_t unknown_before=r->report->unknown;(void)unknown_before;\n")
 			if ir.TableWireScalarKind(f) == tkTable && f.Array == ir.ArrayNone {
 				g.pf(" TableBitReader original=r->bits;uint64_t first_ref=0;if(same_shape && !table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;\n")
 			}
@@ -460,7 +463,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		}
 		g.pf(" break;}\n")
 	}
-	g.pf("%s", " default:r->report->unknown++;if(!table_message_skip(r,entry))goto damaged;break;\n } }\n damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;\n}\n")
+	g.pf("%s", " default:if(same_build && entry->own_slot!=0)goto damaged;r->report->unknown++;if(!table_message_skip(r,entry))goto damaged;break;\n } }\n damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;\n}\n")
 	g.emitFixedMessageRead(st)
 }
 

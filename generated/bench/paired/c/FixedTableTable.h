@@ -4007,6 +4007,9 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_save_messages(const bench_fixed_t
 static SCHEMA_UNUSED int bench_fixed_table_load_message_body(bench_table_message_reader_t * r,bench_fixed_table_t * value)
 {
  uint8_t seen[512];
+ int same_build=r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE;
+ int32_t last_field_ord=0;
+ (void)last_field_ord;
  bench_fixed_table_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const bench_table_message_entry_t * entry;
@@ -4020,9 +4023,10 @@ static SCHEMA_UNUSED int bench_fixed_table_load_message_body(bench_table_message
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x7ce4fd9430e80cea): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE && entry->own_slot==28;
+ int same_shape=same_build && entry->own_slot==28;
+ if(same_shape && 1<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=1;
  int32_t unknown_before=r->report->unknown;
- (void)same_shape;
  (void)unknown_before;
  bench_table_bit_reader_t original=r->bits;
  uint64_t first_ref=0;
@@ -4036,7 +4040,8 @@ static SCHEMA_UNUSED int bench_fixed_table_load_message_body(bench_table_message
  if(same_shape && first_ref==0)goto damaged;
  break;
  }
- default:r->report->unknown++;
+ default:if(same_build && entry->own_slot!=0)goto damaged;
+ r->report->unknown++;
  if(!bench_table_message_skip(r,entry))goto damaged;
  break;
  } }
