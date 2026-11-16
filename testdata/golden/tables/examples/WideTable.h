@@ -12208,8 +12208,9 @@ inline bool WideBlobCookBody( uint8_t * at, const WideBlob & value, TableByteOrd
     table_cook_put( at + 70004, (uint64_t) (uint32_t) value.label_length, 4, order );
     table_cook_bytes( at + 70008, value.payload, value.payload_length, 70000 );
     table_cook_put( at + 140008, (uint64_t) (uint32_t) value.payload_length, 4, order );
-    // all 70000 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 70000; i++ )
+    // 70000 slots of storage, value.samples_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.samples_count; i++ )
     {
         table_cook_put( at + 140012 + i * 2, (uint64_t) value.samples[i], 2, order );
     }
