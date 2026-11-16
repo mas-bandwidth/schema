@@ -415,12 +415,24 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	g.pf(" uint8_t seen[512];%s(value);memset(seen,0,sizeof(seen));for(;;){const TableMessageEntry * entry;int64_t ref;\n if(!table_message_ref(r,&entry,0))goto damaged;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;ref=entry-r->vocabulary->entries+1;if(ref<1||ref>4096)goto damaged;if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));switch(entry->id){\n", g.api(st.Name, "reset"))
 	for _, f := range st.Fields {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableFieldWireId(f))
+		if !f.Required && !f.Type.Optional {
+			mine := ir.TableFieldEntry(f)
+			g.pf(" int same_shape=r->vocabulary->build_version==%s && entry->kind==%d && entry->elem_kind==%d;int32_t unknown_before=r->report->unknown;\n", buildVersionName(g.unit.Package), mine.Kind, mine.Shape.Elem)
+		}
 		g.messageAccept(f, ir.TableFieldEntry(f), " ")
 		dst, count := "value->"+f.Name, "value->"+f.Name+"_count"
 		if f.Array == ir.ArrayNone {
 			count = "value->" + f.Name + "_length"
 		}
 		g.messageReadValue(f, dst, count, "entry", " ")
+		if !f.Required && !f.Type.Optional {
+			// A substituted unknown value is evolution, not evidence of the
+			// sender's default. Positional array/union payloads do not reach
+			// this field-only check (§3.3(a)).
+			g.pf(" if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {\n TableBitWriter default_writer=table_bit_writer(NULL,INT64_MAX);TableBitWriter * w=&default_writer;(void)w;\n")
+			condition, _ := g.messageFieldPresence(f, dst)
+			g.pf(" if(!(%s))goto damaged;\n }\n", condition)
+		}
 		if f.Type.Optional {
 			g.pf(" %s_present=1;\n", dst)
 		}
