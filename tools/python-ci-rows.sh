@@ -24,7 +24,7 @@ while IFS= read -r package; do
   # above. Keeping the monolithic parent in an automatic package shard would
   # still hit the two-minute limit. New test names remain auto-discovered.
   case "$package" in */internal/codegen/pythontable)
-    names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofShapes$/d; /^TestPythonFixedProofShapesText$/d; /^TestPythonFixedProofShapesArrayBounds$/d; /^TestPythonFixedProofShapesNegativeControl$/d') ;;
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofShapes$/d; /^TestPythonFixedProofShapesText$/d; /^TestPythonFixedProofShapesArrayBounds$/d; /^TestPythonFixedProofShapesNegativeControl$/d; /^TestPythonFixedProofValues$/d; /^TestPythonFixedProofValuesNegativeControl$/d; /^TestPythonFixedProofValuesTypes$/d; /^TestPythonFixedProofValuesReadRules$/d; /^TestPythonFixedProofValuesFloatBounds$/d; /^TestPythonFixedProofUnionsOptionals$/d') ;;
   esac
   if [ -z "$names" ]; then
     jq -cn --arg name "$package (compile)" --arg package "$package" --argjson corpus "$corpus" '{name:$name,target:"",package:$package,test:"",corpus:$corpus}' >> "$rows"
