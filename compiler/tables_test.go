@@ -762,7 +762,10 @@ table NativeRoot
 func TestViewNameAuditScopes(t *testing.T) {
 	t.Parallel()
 	claimed := tablenames.Claimed()
-	if !tablenames.Registered("parse") || slices.Contains(claimed, "parse") {
+	if !tablenames.Registered("TableEnums") || slices.Contains(claimed, "TableEnums") {
+		t.Fatal("the scoped Rust table module must not be a unit-level claim")
+	}
+	if tablenames.Registered("parse") && slices.Contains(claimed, "parse") {
 		t.Fatal("the scoped Python parse helper must not be a unit-level claim")
 	}
 	if !slices.Contains(claimed, "TableTypeInfo") || !tablenames.InEveryUnit("TableTypeInfo") {
