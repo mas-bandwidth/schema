@@ -215,4 +215,4 @@ if [ "$mode" = block ]; then
     [ "$rows" = "block_pitch " ] || { cat "$out/log"; echo "block control turned red on '$rows', want the block_pitch row" >&2; exit 1; }
 fi
 grep "^$red " "$out/log"
-echo "Dart $mode negative control: the emitter sabotage ($sabotage) is detected by dart / $red alone"
+echo "Dart $mode negative control: the emitter sabotage ($sabotage) is detected by dart / $red"
