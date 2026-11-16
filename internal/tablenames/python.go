@@ -15,6 +15,7 @@ const Python Backend = 1 << 13
 
 func init() {
 	define(Python,
+		Name{Name: "BlobRef", What: "an explicit shared byte or string blob node", Scoped: true},
 		Name{Name: "Refused", What: "the read refusal every generated package re-exports", Scoped: true},
 		Name{Name: "InvalidValue", What: "the write refusal every generated package re-exports", Scoped: true},
 		Name{Name: "LoadReport", What: "the counters a successful load fills", Scoped: true},
@@ -54,6 +55,9 @@ func init() {
 		Name{Name: "write_body", What: "write one nested body over the descriptors", Scoped: true},
 		Name{Name: "_widens", What: "array element widening predicate", Scoped: true},
 		Name{Name: "_read_widened", What: "array element widening reader", Scoped: true},
+		Name{Name: "crc32c", What: "CRC-32C of a file body", Scoped: true},
+		Name{Name: "seal_crc", What: "append a root file checksum", Scoped: true},
+		Name{Name: "open_crc", What: "verify and remove a root file checksum", Scoped: true},
 		Name{Name: "kinds", What: "the field-kind dispatch table", Scoped: true},
 		Name{Name: "FieldKind", What: "the field codec protocol", Scoped: true},
 		Name{Name: "FORM", What: "the variable form's form byte (1)", Scoped: true},
