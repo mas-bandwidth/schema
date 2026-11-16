@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,6 +16,86 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
+
+// TestPythonWireFuzzCIPartition requires each real make support target for
+// every interpreter, execution mode and arm, without reducing its roster.
+func TestPythonWireFuzzCIPartition(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "make wire-fuzz support partition")
+	root, err := pyrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(target string) []string {
+		t.Helper()
+		cmd := exec.Command("make", "-s", target)
+		cmd.Dir = root
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("make %s: %v\n%s", target, err, out)
+		}
+		return strings.Fields(string(out))
+	}
+	rows, support := run("python-wirefuzz-ci-list"), run("python-ci-support-list")
+	if issue := wireFuzzPartitionIssue(rows, support); issue != "" {
+		t.Fatal(issue)
+	}
+}
+
+func wireFuzzPartitionIssue(rows, support []string) string {
+	if len(rows) != 12 {
+		return fmt.Sprintf("wire-fuzz partition has %d rows, want 12", len(rows))
+	}
+	for _, pin := range []string{"current", "floor"} {
+		for _, mode := range []string{"normal", "dev"} {
+			for _, arm := range []string{"plain", "mixed", "retain"} {
+				row := "python-wirefuzz-" + pin + "-" + mode + "-" + arm
+				if !slices.Contains(rows, row) || !slices.Contains(support, row) {
+					return "missing wire-fuzz support row " + row
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// TestPythonWireFuzzCIPartitionNegativeControl removes an arm from a copy of
+// the actual make fragment and requires the partition check to name the gap.
+func TestPythonWireFuzzCIPartitionNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "make wire-fuzz support partition control")
+	root, err := pyrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := os.ReadFile(filepath.Join(root, "make/python-wirefuzz.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchor := "foreach arm,plain mixed retain,"
+	if strings.Count(string(src), anchor) != 2 {
+		t.Fatal("wire-fuzz partition control anchor changed")
+	}
+	planted := strings.ReplaceAll(string(src), anchor, "foreach arm,plain mixed,")
+	planted += "\npython-ci-support-list:\n\t@printf '%s\\n' $(PYTHON_CI_SUPPORT_GROUPS)\n"
+	file := filepath.Join(t.TempDir(), "Makefile")
+	if err := os.WriteFile(file, []byte(planted), 0644); err != nil {
+		t.Fatal(err)
+	}
+	run := func(target string) []string {
+		t.Helper()
+		cmd := exec.Command("make", "-s", "-f", file, target)
+		cmd.Dir = root
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("planted make %s: %v\n%s", target, err, out)
+		}
+		return strings.Fields(string(out))
+	}
+	if issue := wireFuzzPartitionIssue(run("python-wirefuzz-ci-list"), run("python-ci-support-list")); issue != "wire-fuzz partition has 8 rows, want 12" {
+		t.Fatalf("partition fault escaped: %q", issue)
+	}
+}
 
 func TestPythonWireFuzzFileDispatch(t *testing.T) {
 	t.Parallel()
