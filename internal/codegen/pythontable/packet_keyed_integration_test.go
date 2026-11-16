@@ -1,6 +1,8 @@
 package pythontable
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -55,6 +57,145 @@ func TestPythonHostedPacketKeyedNegativeControl(t *testing.T) {
 		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + "import tabledemo\n")})
 		if err == nil || !strings.Contains(stderr, "ScoreBoardPerTeam") {
 			t.Fatalf("keyed export sabotage did not fail by name: %v\n%s", err, stderr)
+		}
+	}
+}
+
+func pythonHostedPacketKeyedTableFiles(t *testing.T) (map[string][]byte, map[string][]byte) {
+	t.Helper()
+	schema := strings.Replace(packetKeyedSchema, "board Board", "board Board\n direct [Slot]int32", 1)
+	u := loadUnit(t, schema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs := map[string][]byte{}
+	for name, text := range map[string]string{
+		"full":    `{"board":{"per_slot":{"Alpha":7,"Beta":11}}}`,
+		"partial": `{"board":{"per_slot":{"Alpha":7}}}`,
+		"empty":   `{}`,
+	} {
+		inputs[name] = pyKeyedEngineWire(t, u, "Holder", text)
+	}
+	return files, inputs
+}
+
+func TestPythonHostedPacketKeyedTableWire(t *testing.T) {
+	t.Parallel()
+	files, inputs := pythonHostedPacketKeyedTableFiles(t)
+	probe := pyrun.ImportPrelude + `from packetkeyed import Holder, InvalidValue
+for name,expected in [('full',[7,11]),('partial',[7,0]),('empty',[0,0])]:
+ with open(name,'rb') as f:wire=f.read()
+ v=Holder.load(wire)
+ assert type(v.board.per_slot) is list and v.board.per_slot==expected
+ assert hasattr(v.direct,'_values')
+ assert v.save()==wire
+assert Holder().save()==wire
+for bad in ([1],[1,2,3],[-2147483649,0]):
+ v=Holder();v.board.per_slot=bad
+ try:v.save()
+ except InvalidValue:pass
+ else:raise AssertionError('packet keyed table validation')
+v=Holder();v.direct=[0,0]
+try:v.save()
+except InvalidValue:pass
+else:raise AssertionError('table keyed wrapper validation')
+print('ok')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		inputs["main.py"] = []byte(probe)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", inputs)
+		if err != nil || strings.TrimSpace(out) != "ok" {
+			t.Fatalf("packet keyed table-wire: %v\n%s\n%s", err, out, stderr)
+		}
+		if output, err := pyrun.Analyze(t, dir, "packetkeyed"); err != nil {
+			t.Fatalf("packet keyed strict mypy: %v\n%s", err, output)
+		}
+	}
+}
+
+func TestPythonHostedPacketKeyedTableWireNegativeControl(t *testing.T) {
+	t.Parallel()
+	files, inputs := pythonHostedPacketKeyedTableFiles(t)
+	name := "packetkeyed/Core.py"
+	const anchor = "keyed_list=True,"
+	if strings.Count(string(files[name]), anchor) != 1 {
+		t.Fatal("keyed representation control lost its anchor")
+	}
+	files[name] = []byte(strings.Replace(string(files[name]), anchor, "keyed_list=False,", 1))
+	probe := pyrun.ImportPrelude + `from packetkeyed import Holder
+with open('full','rb') as f:wire=f.read()
+try:Holder.load(wire)
+except AttributeError:raise SystemExit('hosted_keyed_table_control')
+raise AssertionError('keyed representation sabotage was not detected')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		inputs["main.py"] = []byte(probe)
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", inputs)
+		if err == nil || !strings.Contains(stderr, "hosted_keyed_table_control") {
+			t.Fatalf("keyed representation sabotage did not fail by name: %v\n%s", err, stderr)
+		}
+	}
+}
+
+func pythonHostedPacketKeyedModuleFiles(t *testing.T) map[string][]byte {
+	t.Helper()
+	dir := t.TempDir()
+	for name, source := range map[string]string{"Core.schema": packetKeyedSchema, "BoardPerSlot.schema": "package packetkeyed\ntype Extra { x uint8 }\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(source), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, err := Generate(loadUnitPaths(t, dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+func TestPythonHostedPacketKeyedModule(t *testing.T) {
+	t.Parallel()
+	files := pythonHostedPacketKeyedModuleFiles(t)
+	probe := pyrun.ImportPrelude + `import types, packetkeyed
+from packetkeyed import BoardPerSlot, Extra
+assert isinstance(BoardPerSlot,types.ModuleType) and BoardPerSlot.Extra is Extra
+assert 'BoardPerSlot' in packetkeyed.__all__
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err != nil {
+			t.Fatalf("packet module export: %v\n%s\n%s", err, out, stderr)
+		}
+		if output, err := pyrun.Analyze(t, dir, "packetkeyed"); err != nil {
+			t.Fatalf("packet module strict mypy: %v\n%s", err, output)
+		}
+	}
+}
+
+func TestPythonHostedPacketKeyedModuleNegativeControl(t *testing.T) {
+	t.Parallel()
+	files := pythonHostedPacketKeyedModuleFiles(t)
+	name := "packetkeyed/__init__.py"
+	const anchor = "    \"BoardPerSlot\",\n"
+	if strings.Count(string(files[name]), anchor) != 1 {
+		t.Fatal("packet module export control lost its anchor")
+	}
+	files[name] = []byte(strings.Replace(string(files[name]), anchor, "", 1))
+	probe := pyrun.ImportPrelude + `import packetkeyed
+if 'BoardPerSlot' not in packetkeyed.__all__: raise SystemExit('hosted_keyed_module_control')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err == nil || !strings.Contains(stderr, "hosted_keyed_module_control") {
+			t.Fatalf("packet module sabotage did not fail by name: %v\n%s", err, stderr)
 		}
 	}
 }
