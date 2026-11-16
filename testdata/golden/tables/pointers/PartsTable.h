@@ -9269,7 +9269,6 @@ inline int64_t StampSave( const Stamp & value, uint8_t * buffer, int64_t capacit
 GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
 {
     StampReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9309,12 +9308,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
         {
             case 0x56d7ab194448a4f3ull: // tag
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9344,11 +9337,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 8 )
                 {
@@ -9364,12 +9352,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
             }
             case 0x823b8a195ce2133cull: // seq
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -9383,11 +9365,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 0 )
                         {
                             decoded_v = 0;
@@ -9421,11 +9398,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 0 )
                 {
                     decoded_v = 0;
@@ -9806,6 +9778,7 @@ inline bool StampLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -9962,7 +9935,6 @@ inline int64_t ColourSave( const Colour & value, uint8_t * buffer, int64_t capac
 GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
 {
     ColourReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10002,12 +9974,6 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
         {
             case 0xaf63ef4c86020cd5ull: // r
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10027,22 +9993,11 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.r = decoded_v;
                 break;
             }
             case 0xaf63da4c8601e926ull: // g
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10062,22 +10017,11 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.g = decoded_v;
                 break;
             }
             case 0xaf63df4c8601f1a5ull: // b
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10097,11 +10041,6 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.b = decoded_v;
                 break;
             }
@@ -10798,7 +10737,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value,
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10838,12 +10776,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value,
         {
             case 0x56d7ab194448a4f3ull: // tag
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10873,11 +10805,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value,
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 8 )
                 {
@@ -10893,12 +10820,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value,
             }
             case 0x823b8a195ce2133cull: // seq
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -10912,11 +10833,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value,
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 0 )
                         {
                             decoded_v = 0;
@@ -10950,11 +10866,6 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value,
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 0 )
                 {
                     decoded_v = 0;
@@ -11024,7 +10935,6 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & valu
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11064,12 +10974,6 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & valu
         {
             case 0xaf63ef4c86020cd5ull: // r
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11089,22 +10993,11 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & valu
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.r = decoded_v;
                 break;
             }
             case 0xaf63da4c8601e926ull: // g
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11124,22 +11017,11 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & valu
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.g = decoded_v;
                 break;
             }
             case 0xaf63df4c8601f1a5ull: // b
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11159,11 +11041,6 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & valu
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.b = decoded_v;
                 break;
             }

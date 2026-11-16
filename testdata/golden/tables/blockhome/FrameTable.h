@@ -6131,7 +6131,6 @@ inline int64_t PartRowSave( const PartRow & value, uint8_t * buffer, int64_t cap
 BLOCKHOME_TABLE_INLINE bool PartRowLoadBody( TableReader & r, PartRow & value )
 {
     PartRowReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -6171,12 +6170,6 @@ BLOCKHOME_TABLE_INLINE bool PartRowLoadBody( TableReader & r, PartRow & value )
         {
             case 0xd19988b67e699194ull: // armor
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -6192,11 +6185,6 @@ BLOCKHOME_TABLE_INLINE bool PartRowLoadBody( TableReader & r, PartRow & value )
                 }
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
                 {
                     r.report->damaged = true;
                     return false;
@@ -6215,12 +6203,6 @@ BLOCKHOME_TABLE_INLINE bool PartRowLoadBody( TableReader & r, PartRow & value )
             }
             case 0x40dbb648c0cd44aaull: // gunner
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -6240,11 +6222,6 @@ BLOCKHOME_TABLE_INLINE bool PartRowLoadBody( TableReader & r, PartRow & value )
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     GunnerSettingsLoadBody( sub, value.gunner );
@@ -6259,12 +6236,6 @@ BLOCKHOME_TABLE_INLINE bool PartRowLoadBody( TableReader & r, PartRow & value )
             }
             case 0x04d6206b33415104ull: // part_id
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -6278,11 +6249,6 @@ BLOCKHOME_TABLE_INLINE bool PartRowLoadBody( TableReader & r, PartRow & value )
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.part_id = decoded_v;
                         r.report->widened++;
                         break;
@@ -6304,22 +6270,11 @@ BLOCKHOME_TABLE_INLINE bool PartRowLoadBody( TableReader & r, PartRow & value )
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.part_id = decoded_v;
                 break;
             }
             case 0x6a771618f6fe31d1ull: // slot
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -6339,11 +6294,6 @@ BLOCKHOME_TABLE_INLINE bool PartRowLoadBody( TableReader & r, PartRow & value )
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.slot = decoded_v;
                 break;
             }
@@ -6788,6 +6738,7 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -6975,7 +6926,6 @@ inline int64_t PartFrameSave( const PartFrame & value, uint8_t * buffer, int64_t
 BLOCKHOME_TABLE_INLINE bool PartFrameLoadBody( TableReader & r, PartFrame & value )
 {
     PartFrameReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -7015,12 +6965,6 @@ BLOCKHOME_TABLE_INLINE bool PartFrameLoadBody( TableReader & r, PartFrame & valu
         {
             case 0xbb62c62c9808ea37ull: // version
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -7034,11 +6978,6 @@ BLOCKHOME_TABLE_INLINE bool PartFrameLoadBody( TableReader & r, PartFrame & valu
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.version = decoded_v;
                         r.report->widened++;
                         break;
@@ -7060,22 +6999,11 @@ BLOCKHOME_TABLE_INLINE bool PartFrameLoadBody( TableReader & r, PartFrame & valu
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.version = decoded_v;
                 break;
             }
             case 0x0c519da7a1f958c5ull: // parts
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7126,11 +7054,6 @@ BLOCKHOME_TABLE_INLINE bool PartFrameLoadBody( TableReader & r, PartFrame & valu
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 32 )
                         {
@@ -7519,6 +7442,7 @@ inline bool PartFrameLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {

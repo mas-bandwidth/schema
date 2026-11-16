@@ -1446,9 +1446,10 @@ func TableFixedRoots(u *Unit) []*Struct {
 // larger than it is one no conforming reader will decode — which makes emitting
 // a writer for it a way to produce bytes nobody can read.
 //
-// A FIXED TABLE PAST THE CEILING KEEPS FORM 1, WHICH §3.4 GUARANTEES IT NEVER
-// LOST, AND [TableFixedRecordBounds] NAMES IT. It is not a refusal, and the
-// reason is the difference between the CLASS and the FORM that §3.4 insists on
+// A DECLARED FIXED TABLE PAST THE CEILING HAS NO FILE FORM: its file save
+// refuses and its read refuses form 1 (§3.4). A merely derived table keeps
+// form 1. [TableFixedRecordBounds] names either table without refusing the
+// compile. The reason is the difference between the CLASS and the FORM that §3.4 insists on
 // everywhere else: the keyword declares the CLASS — a by-value storage, a cook,
 // a block form, no arena edge anywhere in the closure — and the record ceiling
 // is the FORM's. A 7.5 MB render frame (§12.1) and §2.8's `WideBlob` are
@@ -1494,8 +1495,9 @@ func TableFixedFormRoots(u *Unit) []*Struct {
 //     design rule and a rule nobody is told about is not a rule.
 //   - 65536 is the WIRE's CEILING. Past it the table DOES NOT CARRY THE FIXED
 //     FORM at all — no conforming reader would decode such a record (§3.4) — and
-//     the compiler says so by name. It keeps form 1, which it never lost. This
-//     is not a refusal of the unit: §12.1's render frame is a legitimate
+//     the compiler says so by name. A declared fixed table has no file form;
+//     a merely derived table keeps form 1. This is not a refusal of the unit:
+//     §12.1's render frame is a legitimate
 //     fixed table of megabytes that was never a form-3 table, and refusing the
 //     unit over a form it does not use would be refusing the wrong thing.
 //
@@ -1508,8 +1510,9 @@ func TableFixedFormRoots(u *Unit) []*Struct {
 // project's flag.
 //
 // THE 65536 IS THE FORM'S BOUND AND NOT THE CLASS'S, so past it the table is
-// NAMED and keeps form 1 rather than failing the compile — even though the
-// keyword declared it. That is the one place the keyword's *"if we add any
+// NAMED rather than failing the compile. A declared fixed table has no file
+// form; its fixed CLASS still supplies storage, a cook and a block form.
+// That is the one place the keyword's *"if we add any
 // feature that stops it from being fixed, it is a compile error"* does not
 // reach, and the reason is that a 7.5 MB record does not stop the table being
 // fixed. §12.1's render frame and §2.8's `WideBlob` are DECLARED `fixed table`
@@ -1531,9 +1534,13 @@ func TableFixedRecordBounds(u *Unit, limit int64) (warnings []string, errs []err
 		}
 		switch {
 		case n > TableFixedRecordMaxBytes:
+			fileForm := "it keeps form 1"
+			if st.FixedDeclared {
+				fileForm = "it has NO FILE FORM: its file save refuses and its read refuses form 1; the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)"
+			}
 			warnings = append(warnings, fmt.Sprintf(
-				"table %s: a fixed table's record body is %d bytes, past the %d-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it keeps form 1, and the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)",
-				st.Name, n, TableFixedRecordMaxBytes))
+				"table %s: a fixed table's record body is %d bytes, past the %d-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; %s",
+				st.Name, n, TableFixedRecordMaxBytes, fileForm))
 		case n > TableFixedRecordWarnBytes:
 			warnings = append(warnings, fmt.Sprintf(
 				"table %s: a fixed table's record body is %d bytes, past the %d-byte advisory bound (docs/SPEC-TABLES.md §3.4) — every read and write copies all of it and zero-fills the slack, and fixed tables are for small things; the fixed form stops being emitted at %d",
@@ -2121,6 +2128,9 @@ func TableFixedJSRefusal(st *Struct) string {
 		return "its closure carries a construct the fixed class refuses — a pointer, a map, an unbounded array or a guarded branch (docs/SPEC-TABLES.md §3.4)"
 	}
 	if TableFixedTypeBytes(st) > TableFixedRecordMaxBytes {
+		if st.FixedDeclared {
+			return "its record body is past §3.4's 65536-byte ceiling, so no conforming reader would decode a record that size — it has NO FILE FORM; the fixed class keeps its by-value storage, cook and block form (docs/SPEC-TABLES.md §3.4)"
+		}
 		return "its record body is past §3.4's 65536-byte ceiling, so no conforming reader would decode a record that size — it keeps form 1 (docs/SPEC-TABLES.md §3.4)"
 	}
 	return ""

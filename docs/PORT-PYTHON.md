@@ -352,6 +352,10 @@ generated class per table and per map entry, each with its descriptor
 
   - the full-width integers (8 to 128 bits): carried
 
+  - bits, ranged integers, floats, enums, flags, strings, byte buffers and
+    fixed `[N]T` and counted `[..N]T` arrays of them: carried
+    ([the fixed class](port-python/table-fixed-class.md))
+
   - by-value tables: carried
 
   - `*T` pointers to tables: carried
@@ -607,7 +611,8 @@ the core stands against the P4 row; the rules of this page are unchanged.
     carried ([the packet arrays](port-python/packet-arrays.md)); an array of
     an uncarried element is refused by its element's kind
 
-  - a keyed `[E]T` array and a list `[]T`: refused
+  - a keyed `[E]T` array: carried as the positional `[E.Max]T` packet wire; its value remains a plain list when the packet is held by value in a table, whose slots use the table wire's keyed encoding
+  - a list `[]T`: refused
 
   - `const`: carried ([the packet layout](port-python/packet-layout.md))
 

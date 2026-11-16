@@ -5441,6 +5441,9 @@ defmodule Bench.Table do
       {:out_of_range, name} ->
         {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
 
+      :json_kind_mismatch ->
+        {:error, :kind_mismatch, Map.put(empty_report(), :reason, "kind_mismatch")}
+
       :wire_damaged ->
         {:error, :malformed, empty_report()}
     after
@@ -6271,10 +6274,24 @@ defmodule Bench.Table do
     end
   end
 
+  # Wide integer fields admit the decimal string form only (§16.2). Keep
+  # flags and timestamps on their own named representations.
+  defp json_read_field(%{t: :int, width: width} = f, raw, _report)
+       when width > 4 and not is_map_key(f, :timestamp) and not is_map_key(f, :flags) and
+              (is_integer(raw) or is_float(raw)) do
+    throw(:json_kind_mismatch)
+  end
+
+  defp json_read_field(%{t: :int, width: width} = f, {tag, _}, _report)
+       when width > 4 and not is_map_key(f, :timestamp) and not is_map_key(f, :flags) and
+              tag in [:decimal, :bigint] do
+    throw(:json_kind_mismatch)
+  end
+
   # a JSON number with a fraction or an exponent arrives as its decimal text
   # (json_number below): a fixed-point field reads that text exactly (§3,
   # §4.12), every other field reads it as the double it spells (§16.2).
-  # A wide integer reads its STRING form with the same rule as its number form
+  # A wide integer reads its STRING form with the integer-token rule
   # (docs/SPEC-TABLES.md §16.2): the digits and an optional minus, no fraction,
   # no exponent, not -0. A narrow integer is a number only, so a string there
   # is the wrong shape. A fixed kind wider than 32 bits reads its exact decimal
@@ -6888,6 +6905,19 @@ defmodule Bench.Table do
     json_skip_value(raw)
     value = if f.text_optional, do: nil, else: ""
     {%{"value" => value}, throw(:wire_damaged)}
+  end
+
+  # The same string-only rule applies to every array and keyed element.
+  defp json_read_list_elem(%{elem_kind: kind} = f, raw, _report)
+       when kind in [5, 9, 18, 19, 23, 24, 28, 29] and
+              not is_map_key(f, :elem_flags) and (is_integer(raw) or is_float(raw)) do
+    throw(:json_kind_mismatch)
+  end
+
+  defp json_read_list_elem(%{elem_kind: kind} = f, {tag, _}, _report)
+       when kind in [5, 9, 18, 19, 23, 24, 28, 29] and
+              not is_map_key(f, :elem_flags) and tag in [:decimal, :bigint] do
+    throw(:json_kind_mismatch)
   end
 
   # an integer element takes an INTEGER token only: a fraction, an exponent or

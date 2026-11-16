@@ -11142,7 +11142,6 @@ inline int64_t PhotoSave( const Photo & value, uint8_t * buffer, int64_t capacit
 LISTDEMO_TABLE_INLINE bool PhotoLoadBody( TableReader & r, Photo & value )
 {
     PhotoReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11182,12 +11181,6 @@ LISTDEMO_TABLE_INLINE bool PhotoLoadBody( TableReader & r, Photo & value )
         {
             case 0xdbdacd932fd1e9bfull: // width
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -11201,11 +11194,6 @@ LISTDEMO_TABLE_INLINE bool PhotoLoadBody( TableReader & r, Photo & value )
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.width = decoded_v;
                         r.report->widened++;
                         break;
@@ -11227,22 +11215,11 @@ LISTDEMO_TABLE_INLINE bool PhotoLoadBody( TableReader & r, Photo & value )
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.width = decoded_v;
                 break;
             }
             case 0x17720bf67d347222ull: // height
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -11256,11 +11233,6 @@ LISTDEMO_TABLE_INLINE bool PhotoLoadBody( TableReader & r, Photo & value )
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.height = decoded_v;
                         r.report->widened++;
                         break;
@@ -11282,11 +11254,6 @@ LISTDEMO_TABLE_INLINE bool PhotoLoadBody( TableReader & r, Photo & value )
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.height = decoded_v;
                 break;
             }
@@ -11647,6 +11614,7 @@ inline bool PhotoLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -11856,7 +11824,6 @@ inline bool AlbumLoadBody( TableReader & r, const TableNodeMap & nodes, Album & 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     AlbumReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11896,12 +11863,6 @@ inline bool AlbumLoadBody( TableReader & r, const TableNodeMap & nodes, Album & 
         {
             case 0x40b1d94aff3ab130ull: // photos
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11949,11 +11910,6 @@ inline bool AlbumLoadBody( TableReader & r, const TableNodeMap & nodes, Album & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range
                         // cannot fire on it. A count above the int32 storage cap is the
                         // fill's refusal, and it moves no counter, the widening included.
@@ -12022,12 +11978,6 @@ inline bool AlbumLoadBody( TableReader & r, const TableNodeMap & nodes, Album & 
             }
             case 0xaa19a78e404dea20ull: // cover
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12047,11 +11997,6 @@ inline bool AlbumLoadBody( TableReader & r, const TableNodeMap & nodes, Album & 
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
-                    {
-                        r.report->damaged = true;
-                        return false;
-                    }
-                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -14128,7 +14073,6 @@ LISTDEMO_TABLE_INLINE bool PhotoLoadBodyRetain( TableReader & r, Photo & value, 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14168,12 +14112,6 @@ LISTDEMO_TABLE_INLINE bool PhotoLoadBodyRetain( TableReader & r, Photo & value, 
         {
             case 0xdbdacd932fd1e9bfull: // width
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -14187,11 +14125,6 @@ LISTDEMO_TABLE_INLINE bool PhotoLoadBodyRetain( TableReader & r, Photo & value, 
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.width = decoded_v;
                         r.report->widened++;
                         break;
@@ -14213,22 +14146,11 @@ LISTDEMO_TABLE_INLINE bool PhotoLoadBodyRetain( TableReader & r, Photo & value, 
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.width = decoded_v;
                 break;
             }
             case 0x17720bf67d347222ull: // height
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -14242,11 +14164,6 @@ LISTDEMO_TABLE_INLINE bool PhotoLoadBodyRetain( TableReader & r, Photo & value, 
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.height = decoded_v;
                         r.report->widened++;
                         break;
@@ -14268,11 +14185,6 @@ LISTDEMO_TABLE_INLINE bool PhotoLoadBodyRetain( TableReader & r, Photo & value, 
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.height = decoded_v;
                 break;
             }
@@ -14404,7 +14316,6 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14444,12 +14355,6 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
         {
             case 0x40b1d94aff3ab130ull: // photos
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14497,11 +14402,6 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range
                         // cannot fire on it. A count above the int32 storage cap is the
                         // fill's refusal, and it moves no counter, the widening included.
@@ -14570,12 +14470,6 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
             }
             case 0xaa19a78e404dea20ull: // cover
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14595,11 +14489,6 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
-                    {
-                        r.report->damaged = true;
-                        return false;
-                    }
-                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;

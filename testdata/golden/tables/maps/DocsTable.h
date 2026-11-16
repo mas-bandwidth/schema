@@ -11471,7 +11471,6 @@ inline bool DocsPagesEntryLoadBody( TableReader & r, const TableNodeMap & nodes,
     (void) nodes;
     if ( nodes.refused ) { return false; }
     DocsPagesEntryReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11511,12 +11510,6 @@ inline bool DocsPagesEntryLoadBody( TableReader & r, const TableNodeMap & nodes,
         {
             case 0x3dc94a19365b10ecull: // key
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11546,11 +11539,6 @@ inline bool DocsPagesEntryLoadBody( TableReader & r, const TableNodeMap & nodes,
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 8 )
                 {
@@ -11566,12 +11554,6 @@ inline bool DocsPagesEntryLoadBody( TableReader & r, const TableNodeMap & nodes,
             }
             case 0x7ce4fd9430e80ceaull: // value
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11591,11 +11573,6 @@ inline bool DocsPagesEntryLoadBody( TableReader & r, const TableNodeMap & nodes,
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
-                    {
-                        r.report->damaged = true;
-                        return false;
-                    }
-                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -11724,7 +11701,6 @@ inline bool DocsLoadBody( TableReader & r, const TableNodeMap & nodes, Docs & va
     (void) nodes;
     if ( nodes.refused ) { return false; }
     DocsReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11764,12 +11740,6 @@ inline bool DocsLoadBody( TableReader & r, const TableNodeMap & nodes, Docs & va
         {
             case 0xab01daa76a48769full: // pages
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11816,11 +11786,6 @@ inline bool DocsLoadBody( TableReader & r, const TableNodeMap & nodes, Docs & va
                         r.report->refuse_reason = kind_mismatch;
                         r.offset = body_end;
                         break;
-                    }
-                    if ( count == 0 )
-                    {
-                        r.report->damaged = true;
-                        return false;
                     }
                     TableMapFill<DocsPagesEntry> fill = TableMapFillBegin( nodes, value.pages, count );
                     if ( fill.refused )
@@ -11928,12 +11893,6 @@ inline bool DocsLoadBody( TableReader & r, const TableNodeMap & nodes, Docs & va
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -11947,11 +11906,6 @@ inline bool DocsLoadBody( TableReader & r, const TableNodeMap & nodes, Docs & va
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -11973,11 +11927,6 @@ inline bool DocsLoadBody( TableReader & r, const TableNodeMap & nodes, Docs & va
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }
@@ -13703,7 +13652,6 @@ inline bool DocsPagesEntryLoadBodyRetain( TableReader & r, const TableNodeMap & 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13743,12 +13691,6 @@ inline bool DocsPagesEntryLoadBodyRetain( TableReader & r, const TableNodeMap & 
         {
             case 0x3dc94a19365b10ecull: // key
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -13778,11 +13720,6 @@ inline bool DocsPagesEntryLoadBodyRetain( TableReader & r, const TableNodeMap & 
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 8 )
                 {
@@ -13798,12 +13735,6 @@ inline bool DocsPagesEntryLoadBodyRetain( TableReader & r, const TableNodeMap & 
             }
             case 0x7ce4fd9430e80ceaull: // value
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -13823,11 +13754,6 @@ inline bool DocsPagesEntryLoadBodyRetain( TableReader & r, const TableNodeMap & 
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
-                    {
-                        r.report->damaged = true;
-                        return false;
-                    }
-                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -13963,7 +13889,6 @@ inline bool DocsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Doc
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14003,12 +13928,6 @@ inline bool DocsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Doc
         {
             case 0xab01daa76a48769full: // pages
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14055,11 +13974,6 @@ inline bool DocsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Doc
                         r.report->refuse_reason = kind_mismatch;
                         r.offset = body_end;
                         break;
-                    }
-                    if ( count == 0 )
-                    {
-                        r.report->damaged = true;
-                        return false;
                     }
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
@@ -14170,12 +14084,6 @@ inline bool DocsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Doc
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -14189,11 +14097,6 @@ inline bool DocsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Doc
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -14215,11 +14118,6 @@ inline bool DocsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Doc
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }

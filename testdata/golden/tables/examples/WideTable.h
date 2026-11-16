@@ -10776,7 +10776,6 @@ inline int64_t WideBlobSave( const WideBlob & value, uint8_t * buffer, int64_t c
 TABLEDEMO_TABLE_INLINE bool WideBlobLoadBody( TableReader & r, WideBlob & value )
 {
     WideBlobReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10816,12 +10815,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBody( TableReader & r, WideBlob & value 
         {
             case 0x39f7fcec8fcb623dull: // label
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10851,11 +10844,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBody( TableReader & r, WideBlob & value 
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 70000 )
                 {
@@ -10871,12 +10859,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBody( TableReader & r, WideBlob & value 
             }
             case 0xcfb8a9d063b5e9e5ull: // payload
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10926,11 +10908,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBody( TableReader & r, WideBlob & value 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 70000 )
                         {
@@ -10963,12 +10940,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBody( TableReader & r, WideBlob & value 
             }
             case 0xe3b1ca6a3b48dddcull: // samples
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11019,11 +10990,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBody( TableReader & r, WideBlob & value 
                             r.offset = body_end;
                             break;
                         }
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t widened_keep = count;
                         if ( widened_keep > 70000 )
                         {
@@ -11054,11 +11020,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBody( TableReader & r, WideBlob & value 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 70000 )
                         {
@@ -11587,6 +11548,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -11777,7 +11739,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBodyRetain( TableReader & r, WideBlob & 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11817,12 +11778,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBodyRetain( TableReader & r, WideBlob & 
         {
             case 0x39f7fcec8fcb623dull: // label
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11852,11 +11807,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBodyRetain( TableReader & r, WideBlob & 
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 70000 )
                 {
@@ -11872,12 +11822,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBodyRetain( TableReader & r, WideBlob & 
             }
             case 0xcfb8a9d063b5e9e5ull: // payload
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11927,11 +11871,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBodyRetain( TableReader & r, WideBlob & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 70000 )
                         {
@@ -11964,12 +11903,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBodyRetain( TableReader & r, WideBlob & 
             }
             case 0xe3b1ca6a3b48dddcull: // samples
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12020,11 +11953,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBodyRetain( TableReader & r, WideBlob & 
                             r.offset = body_end;
                             break;
                         }
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t widened_keep = count;
                         if ( widened_keep > 70000 )
                         {
@@ -12055,11 +11983,6 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBodyRetain( TableReader & r, WideBlob & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 70000 )
                         {

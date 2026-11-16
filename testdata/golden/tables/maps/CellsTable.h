@@ -11442,7 +11442,6 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntrySaveBody( TableWriter & w, TableIds & id
 MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBody( TableReader & r, CellsRowsEntry & value )
 {
     CellsRowsEntryReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11482,12 +11481,6 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBody( TableReader & r, CellsRowsEntr
         {
             case 0x3dc94a19365b10ecull: // key
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11517,11 +11510,6 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBody( TableReader & r, CellsRowsEntr
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 8 )
                 {
@@ -11537,12 +11525,6 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBody( TableReader & r, CellsRowsEntr
             }
             case 0x7ce4fd9430e80ceaull: // value
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11615,16 +11597,6 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBody( TableReader & r, CellsRowsEntr
                             widened_decoded = widened_i + 1;
                         }
                         (void) widened_decoded;
-                        if ( counted_ok && count == 3 && !r.report->damaged && !r.report->refused )
-                        {
-                            bool any_non_default = false;
-                            for ( int32_t chk_i = 0; chk_i < 3; chk_i++ ) { if ( value.value[chk_i] != 0 ) { any_non_default = true; break; } }
-                            if ( !any_non_default )
-                            {
-                                r.report->damaged = true;
-                                return false;
-                            }
-                        }
                     }
                     else
                     {
@@ -11640,7 +11612,6 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBody( TableReader & r, CellsRowsEntr
                         // the following fields' bytes are never fabricated into
                         // elements
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                        bool any_non_default = false;
                         for ( uint64_t i = 0; i < keep; i++ )
                         {
                             if ( !sub.has( 4 ) )
@@ -11650,12 +11621,6 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBody( TableReader & r, CellsRowsEntr
                             }
                             int32_t decoded_v = int32_t( sub.get32() );
                             value.value[(int32_t) i] = decoded_v;
-                            if ( value.value[(int32_t) i] != 0 ) { any_non_default = true; }
-                        }
-                        if ( counted_ok && count == 3 && !r.report->damaged && !r.report->refused && !any_non_default )
-                        {
-                            r.report->damaged = true;
-                            return false;
                         }
                     }
                 }
@@ -11773,7 +11738,6 @@ inline bool CellsLoadBody( TableReader & r, const TableNodeMap & nodes, Cells & 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     CellsReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11813,12 +11777,6 @@ inline bool CellsLoadBody( TableReader & r, const TableNodeMap & nodes, Cells & 
         {
             case 0xa3a7061ff10a8138ull: // rows
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11865,11 +11823,6 @@ inline bool CellsLoadBody( TableReader & r, const TableNodeMap & nodes, Cells & 
                         r.report->refuse_reason = kind_mismatch;
                         r.offset = body_end;
                         break;
-                    }
-                    if ( count == 0 )
-                    {
-                        r.report->damaged = true;
-                        return false;
                     }
                     TableMapFill<CellsRowsEntry> fill = TableMapFillBegin( nodes, value.rows, count );
                     if ( fill.refused )
@@ -11976,12 +11929,6 @@ inline bool CellsLoadBody( TableReader & r, const TableNodeMap & nodes, Cells & 
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -11995,11 +11942,6 @@ inline bool CellsLoadBody( TableReader & r, const TableNodeMap & nodes, Cells & 
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -12021,11 +11963,6 @@ inline bool CellsLoadBody( TableReader & r, const TableNodeMap & nodes, Cells & 
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }
@@ -13484,7 +13421,6 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBodyRetain( TableReader & r, CellsRo
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13524,12 +13460,6 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBodyRetain( TableReader & r, CellsRo
         {
             case 0x3dc94a19365b10ecull: // key
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -13559,11 +13489,6 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBodyRetain( TableReader & r, CellsRo
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 8 )
                 {
@@ -13579,12 +13504,6 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBodyRetain( TableReader & r, CellsRo
             }
             case 0x7ce4fd9430e80ceaull: // value
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -13657,16 +13576,6 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBodyRetain( TableReader & r, CellsRo
                             widened_decoded = widened_i + 1;
                         }
                         (void) widened_decoded;
-                        if ( counted_ok && count == 3 && !r.report->damaged && !r.report->refused )
-                        {
-                            bool any_non_default = false;
-                            for ( int32_t chk_i = 0; chk_i < 3; chk_i++ ) { if ( value.value[chk_i] != 0 ) { any_non_default = true; break; } }
-                            if ( !any_non_default )
-                            {
-                                r.report->damaged = true;
-                                return false;
-                            }
-                        }
                     }
                     else
                     {
@@ -13682,7 +13591,6 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBodyRetain( TableReader & r, CellsRo
                         // the following fields' bytes are never fabricated into
                         // elements
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                        bool any_non_default = false;
                         for ( uint64_t i = 0; i < keep; i++ )
                         {
                             if ( !sub.has( 4 ) )
@@ -13692,12 +13600,6 @@ MAPDEMO_TABLE_INLINE bool CellsRowsEntryLoadBodyRetain( TableReader & r, CellsRo
                             }
                             int32_t decoded_v = int32_t( sub.get32() );
                             value.value[(int32_t) i] = decoded_v;
-                            if ( value.value[(int32_t) i] != 0 ) { any_non_default = true; }
-                        }
-                        if ( counted_ok && count == 3 && !r.report->damaged && !r.report->refused && !any_non_default )
-                        {
-                            r.report->damaged = true;
-                            return false;
                         }
                     }
                 }
@@ -13822,7 +13724,6 @@ inline bool CellsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ce
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13862,12 +13763,6 @@ inline bool CellsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ce
         {
             case 0xa3a7061ff10a8138ull: // rows
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -13914,11 +13809,6 @@ inline bool CellsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ce
                         r.report->refuse_reason = kind_mismatch;
                         r.offset = body_end;
                         break;
-                    }
-                    if ( count == 0 )
-                    {
-                        r.report->damaged = true;
-                        return false;
                     }
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
@@ -14028,12 +13918,6 @@ inline bool CellsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ce
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -14047,11 +13931,6 @@ inline bool CellsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ce
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -14073,11 +13952,6 @@ inline bool CellsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ce
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }

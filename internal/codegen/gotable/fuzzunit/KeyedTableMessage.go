@@ -102,13 +102,8 @@ func TeamConfigMeasureMessages(values []*TeamConfig, report *TableReport) int64 
 	return 2 + w.Bits/8
 }
 func TeamConfigSaveMessages(values []*TeamConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	need := TeamConfigMeasureMessages(values, report)
+	if need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -135,9 +130,8 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 	TeamConfigReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -160,7 +154,7 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 		switch entry.ID {
 		case 0xceec99e2d65db674:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -216,7 +210,7 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 			}
 		case 0xbca0dab1c7a00ccf:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -263,6 +257,10 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -364,13 +362,8 @@ func GunnerConfigMeasureMessages(values []*GunnerConfig, report *TableReport) in
 	return 2 + w.Bits/8
 }
 func GunnerConfigSaveMessages(values []*GunnerConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	need := GunnerConfigMeasureMessages(values, report)
+	if need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -397,9 +390,8 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 	GunnerConfigReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -422,7 +414,7 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 		switch entry.ID {
 		case 0xb75aa3662201646a:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -474,7 +466,7 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 			}
 		case 0xa6bf719a4602b0bc:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -522,6 +514,10 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -635,13 +631,8 @@ func TurretConfigMeasureMessages(values []*TurretConfig, report *TableReport) in
 	return 2 + w.Bits/8
 }
 func TurretConfigSaveMessages(values []*TurretConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	need := TurretConfigMeasureMessages(values, report)
+	if need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -668,9 +659,8 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 	TurretConfigReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -693,7 +683,7 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 		switch entry.ID {
 		case 0x7f6308be8ab37fc0:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -745,7 +735,7 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 			}
 		case 0xdc2cbe6953343d48:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -797,7 +787,7 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 			}
 		case 0x40dbb648c0cd44aa:
 			{
-				if order >= 2 {
+				if exact && order >= 2 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -820,6 +810,10 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -976,13 +970,8 @@ func HullConfigMeasureMessages(values []*HullConfig, report *TableReport) int64 
 	return 2 + w.Bits/8
 }
 func HullConfigSaveMessages(values []*HullConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	need := HullConfigMeasureMessages(values, report)
+	if need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -1009,9 +998,8 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 	HullConfigReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1034,7 +1022,7 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 		switch entry.ID {
 		case 0x7f69d4b5288ba9cf:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1086,7 +1074,7 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 			}
 		case 0x1f3757a2ce7b0ab1:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1138,7 +1126,7 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 			}
 		case 0x84f8260bc283608c:
 			{
-				if order >= 2 {
+				if exact && order >= 2 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1190,7 +1178,7 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
-							if int(key) <= lastKey {
+							if exact && int(key) <= lastKey {
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
@@ -1219,6 +1207,10 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1418,13 +1410,8 @@ func KeyedConfigMeasureMessages(values []*KeyedConfig, report *TableReport) int6
 	return 2 + w.Bits/8
 }
 func KeyedConfigSaveMessages(values []*KeyedConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	need := KeyedConfigMeasureMessages(values, report)
+	if need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -1451,9 +1438,8 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 	KeyedConfigReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1476,7 +1462,7 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 		switch entry.ID {
 		case 0xbaaeb048a5a8fa6d:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1528,7 +1514,7 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
-							if int(key) <= lastKey {
+							if exact && int(key) <= lastKey {
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
@@ -1558,7 +1544,7 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 			}
 		case 0xce0ac3c25694d8ff:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1610,7 +1596,7 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
-							if int(key) <= lastKey {
+							if exact && int(key) <= lastKey {
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
@@ -1640,7 +1626,7 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 			}
 		case 0x01986b0b27400fb2:
 			{
-				if order >= 2 {
+				if exact && order >= 2 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1669,6 +1655,10 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1762,9 +1752,8 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 	ScoreBoardReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1787,7 +1776,7 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 		switch entry.ID {
 		case 0xf10fad739a0e1660:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1839,7 +1828,7 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
-							if int(key) <= lastKey {
+							if exact && int(key) <= lastKey {
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
@@ -1894,6 +1883,10 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")

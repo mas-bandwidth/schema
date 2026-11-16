@@ -9373,7 +9373,6 @@ inline int64_t TallySave( const Tally & value, uint8_t * buffer, int64_t capacit
 GRAPHDEMO_TABLE_INLINE bool TallyLoadBody( TableReader & r, Tally & value )
 {
     TallyReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9413,12 +9412,6 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBody( TableReader & r, Tally & value )
         {
             case 0x732dfbcc9b0cf0bbull: // hits
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -9432,11 +9425,6 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBody( TableReader & r, Tally & value )
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 0 )
                         {
                             decoded_v = 0;
@@ -9470,11 +9458,6 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBody( TableReader & r, Tally & value )
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 0 )
                 {
                     decoded_v = 0;
@@ -9785,6 +9768,7 @@ inline bool TallyLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -9951,7 +9935,6 @@ inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker 
 {
     (void) nodes;
     MarkerReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9991,12 +9974,6 @@ inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker 
         {
             case 0x39f7fcec8fcb623dull: // label
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10026,11 +10003,6 @@ inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker 
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 8 )
                 {
@@ -10046,12 +10018,6 @@ inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker 
             }
             case 0x3bf8fbbad1587cddull: // note
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10071,11 +10037,6 @@ inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker 
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
-                    {
-                        r.report->damaged = true;
-                        return false;
-                    }
-                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -11817,7 +11778,6 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBodyRetain( TableReader & r, Tally & value,
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11857,12 +11817,6 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBodyRetain( TableReader & r, Tally & value,
         {
             case 0x732dfbcc9b0cf0bbull: // hits
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -11876,11 +11830,6 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBodyRetain( TableReader & r, Tally & value,
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 0 )
                         {
                             decoded_v = 0;
@@ -11914,11 +11863,6 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBodyRetain( TableReader & r, Tally & value,
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 0 )
                 {
                     decoded_v = 0;
@@ -12017,7 +11961,6 @@ inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, M
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12057,12 +12000,6 @@ inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, M
         {
             case 0x39f7fcec8fcb623dull: // label
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12092,11 +12029,6 @@ inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, M
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 8 )
                 {
@@ -12112,12 +12044,6 @@ inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, M
             }
             case 0x3bf8fbbad1587cddull: // note
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12137,11 +12063,6 @@ inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, M
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
-                    {
-                        r.report->damaged = true;
-                        return false;
-                    }
-                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;

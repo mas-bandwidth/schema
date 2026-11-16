@@ -11487,7 +11487,6 @@ inline bool TrailsStepsEntryLoadBody( TableReader & r, const TableNodeMap & node
     (void) nodes;
     if ( nodes.refused ) { return false; }
     TrailsStepsEntryReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11527,12 +11526,6 @@ inline bool TrailsStepsEntryLoadBody( TableReader & r, const TableNodeMap & node
         {
             case 0x3dc94a19365b10ecull: // key
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -11546,11 +11539,6 @@ inline bool TrailsStepsEntryLoadBody( TableReader & r, const TableNodeMap & node
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.key = decoded_v;
                         break;
                     }
@@ -11571,22 +11559,11 @@ inline bool TrailsStepsEntryLoadBody( TableReader & r, const TableNodeMap & node
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.key = decoded_v;
                 break;
             }
             case 0x7ce4fd9430e80ceaull: // value
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11634,11 +11611,6 @@ inline bool TrailsStepsEntryLoadBody( TableReader & r, const TableNodeMap & node
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range
                         // cannot fire on it. A count above the int32 storage cap is the
                         // fill's refusal, and it moves no counter, the widening included.
@@ -11825,7 +11797,6 @@ inline bool TrailsLoadBody( TableReader & r, const TableNodeMap & nodes, Trails 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     TrailsReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11865,12 +11836,6 @@ inline bool TrailsLoadBody( TableReader & r, const TableNodeMap & nodes, Trails 
         {
             case 0x124250ad5a5b6d14ull: // steps
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11917,11 +11882,6 @@ inline bool TrailsLoadBody( TableReader & r, const TableNodeMap & nodes, Trails 
                         r.report->refuse_reason = kind_mismatch;
                         r.offset = body_end;
                         break;
-                    }
-                    if ( count == 0 )
-                    {
-                        r.report->damaged = true;
-                        return false;
                     }
                     TableMapFill<TrailsStepsEntry> fill = TableMapFillBegin( nodes, value.steps, count );
                     if ( fill.refused )
@@ -12027,12 +11987,6 @@ inline bool TrailsLoadBody( TableReader & r, const TableNodeMap & nodes, Trails 
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -12046,11 +12000,6 @@ inline bool TrailsLoadBody( TableReader & r, const TableNodeMap & nodes, Trails 
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -12072,11 +12021,6 @@ inline bool TrailsLoadBody( TableReader & r, const TableNodeMap & nodes, Trails 
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }
@@ -13903,7 +13847,6 @@ inline bool TrailsStepsEntryLoadBodyRetain( TableReader & r, const TableNodeMap 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13943,12 +13886,6 @@ inline bool TrailsStepsEntryLoadBodyRetain( TableReader & r, const TableNodeMap 
         {
             case 0x3dc94a19365b10ecull: // key
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -13962,11 +13899,6 @@ inline bool TrailsStepsEntryLoadBodyRetain( TableReader & r, const TableNodeMap 
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.key = decoded_v;
                         break;
                     }
@@ -13987,22 +13919,11 @@ inline bool TrailsStepsEntryLoadBodyRetain( TableReader & r, const TableNodeMap 
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.key = decoded_v;
                 break;
             }
             case 0x7ce4fd9430e80ceaull: // value
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14050,11 +13971,6 @@ inline bool TrailsStepsEntryLoadBodyRetain( TableReader & r, const TableNodeMap 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range
                         // cannot fire on it. A count above the int32 storage cap is the
                         // fill's refusal, and it moves no counter, the widening included.
@@ -14248,7 +14164,6 @@ inline bool TrailsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, T
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14288,12 +14203,6 @@ inline bool TrailsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, T
         {
             case 0x124250ad5a5b6d14ull: // steps
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14340,11 +14249,6 @@ inline bool TrailsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, T
                         r.report->refuse_reason = kind_mismatch;
                         r.offset = body_end;
                         break;
-                    }
-                    if ( count == 0 )
-                    {
-                        r.report->damaged = true;
-                        return false;
                     }
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
@@ -14453,12 +14357,6 @@ inline bool TrailsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, T
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -14472,11 +14370,6 @@ inline bool TrailsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, T
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -14498,11 +14391,6 @@ inline bool TrailsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, T
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }

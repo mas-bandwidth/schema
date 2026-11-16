@@ -10282,7 +10282,6 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
     (void) nodes;
     if ( nodes.refused ) { return false; }
     TwigReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10322,12 +10321,6 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
         {
             case 0x2d4c068f5f889287ull: // inner
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10347,11 +10340,9 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                     r.report->damaged = true;
                     return false;
                 }
-                if ( arm_ref == 0 )
+                if ( arm_ref == 0 ) { value.inner.type = InnerType::None; } // empty: the reference is the whole payload
+                else
                 {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( arm_ref > (uint64_t) r.ids->count )
                 {
                     r.report->damaged = true;
@@ -10450,6 +10441,7 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                     }
                 }
                 r.offset += (int64_t) body_len;
+                }
                 break;
             }
             case 0xffffffffffffffffull:
@@ -10677,7 +10669,6 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
     (void) nodes;
     if ( nodes.refused ) { return false; }
     NestReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10717,12 +10708,6 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
         {
             case 0x30e6ed678f5e1bd4ull: // outer
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10742,11 +10727,9 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                     r.report->damaged = true;
                     return false;
                 }
-                if ( arm_ref == 0 )
+                if ( arm_ref == 0 ) { value.outer.type = OuterType::None; } // empty: the reference is the whole payload
+                else
                 {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( arm_ref > (uint64_t) r.ids->count )
                 {
                     r.report->damaged = true;
@@ -10938,16 +10921,11 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                     }
                 }
                 r.offset += (int64_t) body_len;
+                }
                 break;
             }
             case 0xd94c56ef0798d723ull: // tail
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10994,11 +10972,6 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                             r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
-                        }
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
                         }
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range
                         // cannot fire on it. A count above the int32 storage cap is the
@@ -11064,11 +11037,6 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range
                         // cannot fire on it. A count above the int32 storage cap is the
                         // fill's refusal, and it moves no counter, the widening included.
@@ -13987,7 +13955,6 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14027,12 +13994,6 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
         {
             case 0x2d4c068f5f889287ull: // inner
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14053,11 +14014,9 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                     r.report->damaged = true;
                     return false;
                 }
-                if ( arm_ref == 0 )
+                if ( arm_ref == 0 ) { value.inner.type = InnerType::None; } // empty: the reference is the whole payload
+                else
                 {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( arm_ref > (uint64_t) r.ids->count )
                 {
                     r.report->damaged = true;
@@ -14156,6 +14115,7 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                     }
                 }
                 r.offset += (int64_t) body_len;
+                }
                 break;
             }
             case 0xffffffffffffffffull:
@@ -14390,7 +14350,6 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14430,12 +14389,6 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
         {
             case 0x30e6ed678f5e1bd4ull: // outer
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14456,11 +14409,9 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                     r.report->damaged = true;
                     return false;
                 }
-                if ( arm_ref == 0 )
+                if ( arm_ref == 0 ) { value.outer.type = OuterType::None; } // empty: the reference is the whole payload
+                else
                 {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( arm_ref > (uint64_t) r.ids->count )
                 {
                     r.report->damaged = true;
@@ -14652,16 +14603,11 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                     }
                 }
                 r.offset += (int64_t) body_len;
+                }
                 break;
             }
             case 0xd94c56ef0798d723ull: // tail
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14708,11 +14654,6 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                             r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
-                        }
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
                         }
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range
                         // cannot fire on it. A count above the int32 storage cap is the
@@ -14778,11 +14719,6 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range
                         // cannot fire on it. A count above the int32 storage cap is the
                         // fill's refusal, and it moves no counter, the widening included.

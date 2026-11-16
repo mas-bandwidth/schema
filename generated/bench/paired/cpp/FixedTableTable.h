@@ -6761,7 +6761,6 @@ inline int64_t FixedTableSave( const FixedTable & value, uint8_t * buffer, int64
 BENCH_TABLE_INLINE bool FixedTableLoadBody( TableReader & r, FixedTable & value )
 {
     FixedTableReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -6801,12 +6800,6 @@ BENCH_TABLE_INLINE bool FixedTableLoadBody( TableReader & r, FixedTable & value 
         {
             case 0x7ce4fd9430e80ceaull: // value
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -6822,11 +6815,6 @@ BENCH_TABLE_INLINE bool FixedTableLoadBody( TableReader & r, FixedTable & value 
                 }
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
                 {
                     r.report->damaged = true;
                     return false;
@@ -7086,6 +7074,7 @@ inline bool FixedTableLoadMessageBody( TableBitReader & r, const TableVocabulary
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
