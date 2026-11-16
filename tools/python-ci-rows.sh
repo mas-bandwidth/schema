@@ -13,7 +13,7 @@ trap 'rm -f "$rows" "$packages"' EXIT HUP INT TERM
 : > "$rows"
 make -s python-ci-support-list | while IFS= read -r target; do
   corpus=false
-  case "$target" in python-fixed-*|python-retain|python-retain-negative-control) corpus=true ;; esac
+  case "$target" in python-fixed-*|python-retain|python-retain-negative-control|python-reflection-ci-corpus) corpus=true ;; esac
   jq -cn --arg name "$target" --arg target "$target" --argjson corpus "$corpus" '{name:$name,target:$target,package:"",test:"",corpus:$corpus}' >> "$rows"
 done
 go list -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... > "$packages"
@@ -26,7 +26,7 @@ while IFS= read -r package; do
   # Keeping a monolithic parent in an automatic package shard would
   # still hit the two-minute limit. New test names remain auto-discovered.
   case "$package" in */internal/codegen/pythontable)
-    names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofShapes$/d; /^TestPythonFixedProofShapesText$/d; /^TestPythonFixedProofShapesArrayBounds$/d; /^TestPythonFixedProofShapesNegativeControl$/d; /^TestPythonFixedProofValues$/d; /^TestPythonFixedProofValuesNegativeControl$/d; /^TestPythonFixedProofValuesTypes$/d; /^TestPythonFixedProofValuesReadRules$/d; /^TestPythonFixedProofValuesFloatBounds$/d; /^TestPythonFixedProofUnionsOptionals$/d; /^TestPythonReflectionStrictTypes$/d') ;;
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofShapes$/d; /^TestPythonFixedProofShapesText$/d; /^TestPythonFixedProofShapesArrayBounds$/d; /^TestPythonFixedProofShapesNegativeControl$/d; /^TestPythonFixedProofValues$/d; /^TestPythonFixedProofValuesNegativeControl$/d; /^TestPythonFixedProofValuesTypes$/d; /^TestPythonFixedProofValuesReadRules$/d; /^TestPythonFixedProofValuesFloatBounds$/d; /^TestPythonFixedProofUnionsOptionals$/d; /^TestPythonReflectionStrictTypes$/d; /^TestPythonReflectionCorpus$/d; /^TestPythonReflectionLayout$/d') ;;
   esac
   skip=
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
@@ -39,8 +39,8 @@ while IFS= read -r package; do
       echo "invalid reflection corpus unit names" >&2; exit 1
     fi
     part=0
-    while [ "$part" -lt 8 ]; do
-      selected=$(printf '%s\n' "$reflection_units" | awk -v part="$part" '(NR-1)%8 == part' | paste -sd '|' -)
+    while [ "$part" -lt 12 ]; do
+      selected=$(printf '%s\n' "$reflection_units" | awk -v part="$part" '(NR-1)%12 == part' | paste -sd '|' -)
       if [ -n "$selected" ]; then
         jq -cn --arg name "python-reflection-strict-types-$part" --arg package "$package" --arg test "^TestPythonReflectionStrictTypes$/^($selected)$" --argjson corpus "$corpus" '{name:$name,target:"",package:$package,test:$test,corpus:$corpus}' >> "$rows"
       fi

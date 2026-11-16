@@ -38,8 +38,8 @@ func TestPythonReflectionCISelection(t *testing.T) {
 		term := strings.TrimSuffix(strings.TrimPrefix(pattern, "^("), ")$")
 		named = append(named, strings.Split(term, "|")...)
 	}
-	if len(patterns) != 8 {
-		t.Fatalf("got %d strict rows, want 8", len(patterns))
+	if len(patterns) != 12 {
+		t.Fatalf("got %d strict rows, want 12", len(patterns))
 	}
 	units := reflectionUnits(t)
 	allowed := map[string]bool{}
