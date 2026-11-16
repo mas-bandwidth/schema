@@ -26,23 +26,29 @@ func TestTwoRefusalsFirstNamesTheReadC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var body strings.Builder
-	body.WriteString(`
+	for _, group := range []struct {
+		name, schema string
+		count        int
+	}{
+		{"float", twoRefusalsSchema, 2}, {"float_reversed", "package probe\n table Root { values []int32\n f float32 }\n", 1},
+	} {
+		var body strings.Builder
+		body.WriteString(`
 #define name(r) ((r) == SCHEMA_TABLE_REFUSE_OK ? "ok" : (r) == SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT ? "non_finite_float" : (r) == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP ? "count_over_extent_cap" : "other")
 #define reason_name(r) ((int)(r) == (int)SCHEMA_TABLE_NON_FINITE_FLOAT ? "non_finite_float" : (int)(r) == (int)SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP ? "count_over_extent_cap" : "other")
 `)
-	want := map[string]string{}
-	for line := range strings.SplitSeq(string(data), "\n") {
-		f := strings.Split(line, "\t")
-		if len(f) != 6 || f[1] != "float" {
-			continue
-		}
-		wire, err := hex.DecodeString(f[2])
-		if err != nil {
-			t.Fatal(err)
-		}
-		want[f[0]] = f[3]
-		fmt.Fprintf(&body, `
+		want := map[string]string{}
+		for line := range strings.SplitSeq(string(data), "\n") {
+			f := strings.Split(line, "\t")
+			if len(f) != 6 || f[1] != group.name {
+				continue
+			}
+			wire, err := hex.DecodeString(f[2])
+			if err != nil {
+				t.Fatal(err)
+			}
+			want[f[0]] = f[3]
+			fmt.Fprintf(&body, `
     {
         static const uint8_t wire[] = { %s };
         RootBuilder builder;
@@ -58,26 +64,27 @@ func TestTwoRefusalsFirstNamesTheReadC(t *testing.T) {
         root_builder_shutdown(&builder);
     }
 `, cBytes(wire), f[0], f[0])
-	}
-	if len(want) != 3 {
-		t.Fatalf("%d float rows, want 3", len(want))
-	}
-	out, err := runCCountRefusalProbe(t, unitFrom(t, twoRefusalsSchema), body.String())
-	if err != nil {
-		t.Fatalf("two-refusals probe: %v\n%s", err, out)
-	}
-	seen := 0
-	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
-		f := strings.Fields(line)
-		if len(f) != 3 {
-			t.Fatalf("probe line %q", line)
 		}
-		seen++
-		if f[2] != want[f[0]] {
-			t.Errorf("%s %s: %s, the pin %s", f[0], f[1], f[2], want[f[0]])
+		if len(want) != group.count {
+			t.Fatalf("%s: %d rows, want %d", group.name, len(want), group.count)
 		}
-	}
-	if seen != 6 {
-		t.Fatalf("%d probe lines, want 6:\n%s", seen, out)
+		out, err := runCCountRefusalProbe(t, unitFrom(t, group.schema), body.String())
+		if err != nil {
+			t.Fatalf("two-refusals probe: %v\n%s", err, out)
+		}
+		seen := 0
+		for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+			f := strings.Fields(line)
+			if len(f) != 3 {
+				t.Fatalf("probe line %q", line)
+			}
+			seen++
+			if f[2] != want[f[0]] {
+				t.Errorf("%s %s: %s, the pin %s", f[0], f[1], f[2], want[f[0]])
+			}
+		}
+		if seen != 2*group.count {
+			t.Fatalf("%d probe lines, want %d:\n%s", seen, 2*group.count, out)
+		}
 	}
 }

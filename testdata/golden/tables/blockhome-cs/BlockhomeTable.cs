@@ -833,7 +833,7 @@ namespace Blockhome
 
             // THE WIDE KINDS' JSON FORM (docs/SPEC-TABLES.md §16.2, §16.14 W10): an
             // integer-shaped kind whose storage is wider than 32 bits is written as a
-            // STRING of decimal digits and reads as a string or a number — int64,
+            // STRING of decimal digits and reads only as a string — int64,
             // uint64, int128, uint128, and the 64- and 128-bit fixed-point kinds.
             static bool TableWideJson(TableFieldInfo f)
             {
@@ -865,11 +865,10 @@ namespace Blockhome
                 return true;
             }
 
-            // a wide integer declares 'N' and takes a string or a number; every other
-            // shape is exact
+            // a wide integer declares 'N' and takes a string; every other shape is exact
             static bool TableShapeMatches(char want, char got)
             {
-                return want == got || (want == 'N' && (got == 's' || got == 'n'));
+                return want == got || (want == 'N' && got == 's');
             }
 
             static char Shape(TableFieldInfo f)
@@ -2656,8 +2655,9 @@ namespace Blockhome
                 }
                 if (TableWideJson(f) && Peek(text, ref input) == '"')
                 {
-                    // a wide integer reads as a string OR a number (§16.2); the string
-                    // holds the same digits, judged by the same integer-token rule
+                    // Wide values read from strings (§16.2), with the same
+                    // integer-token rule applied to their contents. Map keys pass their
+                    // already-decoded string body as numeric text below.
                     if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
                     Span<char> wideToken = stackalloc char[MaxNumber];
                     if (body.Length <= wideToken.Length)
@@ -5067,6 +5067,7 @@ namespace Blockhome
             {
                 long at = record + f.NativeOffset;
                 if (f.Optional) { w.Put(record + f.NativePresentOffset, f.GetPresent(value) ? 1u : 0u, 1); }
+                if (f.Optional && !f.GetPresent(value)) { return true; }
                 int live = f.Counted ? f.GetCount(value) : f.IsArray ? f.ArrayBound : 1;
                 System.Diagnostics.Debug.Assert(live >= 0 && (!f.Counted || live <= f.ArrayBound));
                 if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
@@ -5078,7 +5079,7 @@ namespace Blockhome
                 }
                 if (f.Kind == 12 && !f.TextList)
                 { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }
-                int count = f.IsArray ? f.Dynamic ? live : f.ArrayBound : 1;
+                int count = f.IsArray ? live : 1;
                 if (f.GetBuffer != null)
                 { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }
                 if (f.Dynamic)
@@ -5168,6 +5169,7 @@ namespace Blockhome
             { foreach (TableFieldInfo f in type.Fields) { if (!NativeExtentSize(value, f, ref at)) { return false; } } return true; }
             static bool NativeExtentSize(object value, TableFieldInfo f, ref long at)
             {
+                if (f.Optional && !f.GetPresent(value)) { return true; }
                 if (f.Unbounded) { int length = f.GetCount(value); System.Diagnostics.Debug.Assert(length >= 0 && length <= f.GetBuffer(value).Length); if (length > 0) { at = Align(at, 8) + Align(9L + length, 8); } return true; }
                 if (f.Dynamic)
                 {

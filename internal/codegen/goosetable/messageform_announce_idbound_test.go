@@ -5,8 +5,9 @@ package goosetable
 // every MESSAGE-FORM connection golden with its id table grown to exactly 4096
 // distinct entries, to 4097, and to 4096 with one repeat, read by
 // announce_read and held to the Go reference (tablewire.Vocabulary.AnnounceRead)
-// verdict for verdict. The appended entries are named by no reference, so the
-// 4096 table announces as the golden does, and the other two are malformed.
+// verdict for verdict. Each appended entry is first used by an unknown scalar
+// header field, so the 4096 case isolates the bound rather than unused IDs.
+// The other two are malformed.
 // The control widens the Goose bound by one and requires exactly the 4097
 // cases red.
 //
@@ -31,9 +32,8 @@ import (
 // VARIABLE table's vocabulary.
 const nonMessageFormConn = "map_conn.bin"
 
-// announceGrown is an announcement whose id table is padded to n entries with
-// ids it does not carry (splitmix64 of a counter); a repeat makes the last
-// entry the first's.
+// announceGrown adds unknown u8 header fields (value 1), each naming one new
+// ID in first-use order. A repeat makes the last trailer entry the first's.
 func announceGrown(t *testing.T, golden []byte, n int, repeat bool) []byte {
 	t.Helper()
 	k := int(binary.LittleEndian.Uint64(golden[len(golden)-8:]))
@@ -41,7 +41,12 @@ func announceGrown(t *testing.T, golden []byte, n int, repeat bool) []byte {
 	for i := range k {
 		have[binary.LittleEndian.Uint64(golden[len(golden)-8-8*(k-i):])] = true
 	}
-	out := slices.Clone(golden[:len(golden)-8])
+	first := len(golden) - 8 - 8*k
+	if first < 1 || golden[first-1] != 0 {
+		t.Fatal("announcement root terminator missing")
+	}
+	body := slices.Clone(golden[:first-1])
+	ids := slices.Clone(golden[first : len(golden)-8])
 	for x := uint64(1); k < n; x++ {
 		z := x * 0x9E3779B97F4A7C15
 		z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9
@@ -51,13 +56,16 @@ func announceGrown(t *testing.T, golden []byte, n int, repeat bool) []byte {
 			continue
 		}
 		have[z] = true
-		out = binary.LittleEndian.AppendUint64(out, z)
+		body = binary.AppendUvarint(body, uint64(k+1))
+		body = append(body, 6, 1) // kind u8, nondefault value
+		ids = binary.LittleEndian.AppendUint64(ids, z)
 		k++
 	}
 	if repeat {
-		first := len(out) - 8*n
-		copy(out[len(out)-8:], out[first:first+8])
+		copy(ids[len(ids)-8:], ids[:8])
 	}
+	out := append(body, 0)
+	out = append(out, ids...)
 	return binary.LittleEndian.AppendUint64(out, uint64(n))
 }
 

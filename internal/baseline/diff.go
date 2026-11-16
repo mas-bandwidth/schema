@@ -97,7 +97,7 @@ const (
 	// the new one can STAND IN for the old (see substitutable).
 	RuleRefs
 	// RuleGain — ADDING the token is a refusal, removing it passes: the fact
-	// is a promise records must keep (`| required`, docs/SPEC-TABLES.md §2.3).
+	// is a compatibility break (`| required` or `?T`, docs/SPEC-TABLES.md §18.2).
 	RuleGain
 )
 
@@ -134,8 +134,8 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// declared total warns and a raised or removed one passes
 	"total": RuleShrink,
 	"was":   RulePass, // `was` is the rename that PRESERVES identity — that is its whole job
-	// PRESENCE IS RECORDED AND JUDGED ON NOTHING: T, ?T and *T are one
-	// framing, so a field moving between them moves no byte (§3.1, §18.1)
+	// Variable T and ?T share framing; presence changes are absorbed both
+	// ways, including explicit defaults (§2.3, §4, §18.2).
 	"optional": RulePass,
 	// `| required` ADDED to a shipped field: old records never wrote it and a
 	// newer reader refuses them as missing_required. Removed, the writer just

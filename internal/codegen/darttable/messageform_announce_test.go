@@ -512,6 +512,9 @@ func TestDartAnnounceIdTableCountNegativeControl(t *testing.T) {
 			if err == nil {
 				t.Fatalf("%s unexpectedly passed:\n%s", tc.name, out)
 			}
+			if !strings.Contains(out, "Bad state: ") {
+				t.Fatalf("%s did not reach a probe assertion:\n%s", tc.name, out)
+			}
 		})
 	}
 }
@@ -525,7 +528,25 @@ func fnv32a(b []byte) uint32 {
 	return h
 }
 
+// paddedAnnouncementTrailer adds one ordinary unknown table whose uint8 fields
+// use every further trailer ID in order. This isolates the trailer-count guard
+// from the announcement root's field-reference width. An empty seed leaves
+// the prefix alone for the deliberately unterminated oversized-count case.
 func paddedAnnouncementTrailer(prefix []byte, baseIDs []uint64, totalCount int) []byte {
+	if len(baseIDs) != 0 {
+		var inner []byte
+		for ref := len(baseIDs) + 2; ref <= totalCount; ref++ {
+			inner = append(inner, lebBytes(uint64(ref))...)
+			inner = append(inner, ir.TableKindU8, 1)
+		}
+		inner = append(inner, 0)
+		body := append([]byte(nil), prefix[:len(prefix)-1]...)
+		body = append(body, lebBytes(uint64(len(baseIDs)+1))...)
+		body = append(body, ir.TableKindTable)
+		body = append(body, lebBytes(uint64(len(inner)))...)
+		body = append(body, inner...)
+		prefix = append(body, 0)
+	}
 	out := make([]byte, 0, len(prefix)+totalCount*8+8)
 	out = append(out, prefix...)
 	used := make(map[uint64]struct{}, totalCount)
@@ -620,6 +641,28 @@ func runDartAnnounceIdTableCount(t *testing.T, runtimeSrc string) (string, error
   }
 
   Uint8List paddedTrailer(Uint8List prefix, List<int> seedIds, int totalCount) {
+    if (seedIds.isNotEmpty) {
+      void putLeb(List<int> out, int v) {
+        while (v >= 0x80) {
+          out.add((v & 0x7f) | 0x80);
+          v >>= 7;
+        }
+        out.add(v);
+      }
+      final inner = <int>[];
+      for (var ref = seedIds.length + 2; ref <= totalCount; ref++) {
+        putLeb(inner, ref);
+        inner.addAll(<int>[6, 1]); // uint8 field, value 1
+      }
+      inner.add(0);
+      final body = prefix.sublist(0, prefix.length - 1).toList();
+      putLeb(body, seedIds.length + 1);
+      body.add(13); // unknown by-value table
+      putLeb(body, inner.length);
+      body.addAll(inner);
+      body.add(0);
+      prefix = Uint8List.fromList(body);
+    }
     final out = Uint8List(prefix.length + totalCount * 8 + 8);
     out.setRange(0, prefix.length, prefix);
     final view = ByteData.sublistView(out);

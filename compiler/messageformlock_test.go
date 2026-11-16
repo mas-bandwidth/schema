@@ -53,7 +53,7 @@ var messageFormLockVariable = []string{"varleaf", "varroot", "varplain"}
 // messageFormLockNoForm are the targets that carry no message form at all
 // (docs/SPEC-TABLES.md §3.3, "WHERE THE FORM IS CARRIED"), so their output is
 // not required to name the fixed root's batch.
-var messageFormLockNoForm = map[string]bool{"goose": true}
+var messageFormLockNoForm = map[string]bool{"goose": true, "python": true}
 
 // variableMessageViolations names every line of one target's output that puts
 // a variable table beside the message form.
@@ -133,8 +133,8 @@ func generateMessageFormLock(t *testing.T) (map[string]map[string][]byte, []stri
 		targets = append(targets, target)
 	}
 	sort.Strings(targets)
-	if len(targets) != 15 {
-		t.Fatalf("%d backends generated (%v); the lock holds all fifteen", len(targets), targets)
+	if len(targets) != 16 {
+		t.Fatalf("%d backends generated (%v); the lock holds all sixteen", len(targets), targets)
 	}
 	return out, targets
 }
