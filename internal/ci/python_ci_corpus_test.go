@@ -183,7 +183,7 @@ func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 			}
 		}
 		if strings.HasSuffix(row.Package, "/internal/codegen/pythontable") {
-			for _, name := range []string{"TestPythonFixedProofShapes", "TestPythonFixedProofShapesText", "TestPythonFixedProofShapesArrayBounds", "TestPythonFixedProofShapesNegativeControl"} {
+			for _, name := range []string{"TestPythonFixedProofShapes", "TestPythonFixedProofShapesText", "TestPythonFixedProofShapesArrayBounds", "TestPythonFixedProofShapesNegativeControl", "TestPythonFixedProofValues", "TestPythonFixedProofValuesNegativeControl", "TestPythonFixedProofValuesTypes", "TestPythonFixedProofValuesReadRules", "TestPythonFixedProofValuesFloatBounds", "TestPythonFixedProofUnionsOptionals"} {
 				matched, err := regexp.MatchString("^"+row.Test+"$", name)
 				if err != nil || matched {
 					t.Errorf("delegated shape test %s reintroduced in package shard %+v: %v", name, row, err)
