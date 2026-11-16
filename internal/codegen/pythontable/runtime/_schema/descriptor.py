@@ -135,10 +135,6 @@ class FieldDesc:
         fmax: float = 0.0,
         float_range: bool = False,
         keyed_list: bool = False,
-        f32: bool = False,
-        fmin: float = 0.0,
-        fmax: float = 0.0,
-        float_range: bool = False,
     ) -> None:
         self.name = name
         self.field_id = field_id

@@ -12,10 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-<<<<<<< HEAD
-=======
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
->>>>>>> b211ab8d446b0928cf37acb3ad30dfb74b85ddf7
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -284,10 +281,7 @@ func TestPythonVtFixedClassBuildVersion(t *testing.T) {
 		files, err := Generate(u)
 		if err != nil {
 			refused++
-<<<<<<< HEAD
-=======
 			t.Errorf("unit %s refused: %v", unit.key, err)
->>>>>>> b211ab8d446b0928cf37acb3ad30dfb74b85ddf7
 			continue
 		}
 		init := string(files[filepath.ToSlash(filepath.Join(u.Package, "__init__.py"))])
@@ -370,8 +364,6 @@ func loadManifestUnit(repo string, paths []string) (*ir.Unit, error) {
 	}
 	return u, nil
 }
-<<<<<<< HEAD
-=======
 
 // TestPythonVtFixedClassBuildVersionImports checks the exported version after
 // importing every generated table corpus package under both interpreter pins.
@@ -440,4 +432,3 @@ func TestPythonVtFixedClassBuildVersionImportsNegativeControl(t *testing.T) {
 		}
 	}
 }
->>>>>>> b211ab8d446b0928cf37acb3ad30dfb74b85ddf7

@@ -62,8 +62,6 @@ in nanoseconds per operation:
 The check costs the save under 5% on this host (the loads, which it does not
 touch, moved by up to 3% in the same runs, which is the noise), and the
 generated save stays the faster shape on both pins, so the pair is kept.
-<<<<<<< HEAD
-=======
 
 A separate Linux x86-64 run compared the same scalar shape on the fixed-class
 integration and its base. The table lists base / integration nanoseconds per
@@ -77,4 +75,3 @@ operation from `TestPythonTableCoreShapeBench`; each cell is the best of five
 
 The generated save remained faster on both pins. The load results were close;
 these measurements do not establish a general load-speed advantage.
->>>>>>> b211ab8d446b0928cf37acb3ad30dfb74b85ddf7
