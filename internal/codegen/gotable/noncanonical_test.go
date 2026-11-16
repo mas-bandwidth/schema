@@ -13,7 +13,7 @@ import (
 // docs/rulings.json reads-refuse-non-canonical): every manifest row of
 // testdata/wire/non-canonical/MANIFEST.tsv is read through every read entry
 // the leg has for its form, and each entry holds the row's VERDICT. A
-// canonical row reads, and the value it read re-saves to the same bytes; every
+// read row re-saves to canonical bytes (which differ for a lawful field reorder); every
 // other row is refused. A variable-form row goes through the region load, the
 // builder load, the strict read, the retaining load and the load measure; a
 // message-form row through the message load under the unit's announcement. The
@@ -61,7 +61,11 @@ func TestGoReadsRefuseNonCanonical(t *testing.T) {
 			t.Errorf("MANIFEST.tsv:%d: form %q has no read entry in its unit", i+1, cols[1])
 			continue
 		}
-		u.rows = append(u.rows, fmt.Sprintf("{name: %q, path: %q, form: %q, read: %v, resave: %v, wireAlone: %v},", cols[0], path, cols[1], cols[3] == "read", cols[3] == "read", nonCanonicalWireAlone[cols[2]]))
+		canonical := ""
+		if cols[0] == "variable-fields-out-of-order.bin" {
+			canonical = filepath.Join(vectors, "variable-canonical.bin")
+		}
+		u.rows = append(u.rows, fmt.Sprintf("{name: %q, path: %q, form: %q, canonicalPath: %q, read: %v, resave: %v, wireAlone: %v},", cols[0], path, cols[1], canonical, cols[3] == "read", cols[3] == "read", nonCanonicalWireAlone[cols[2]]))
 		rows++
 	}
 	if rows == 0 {
@@ -124,12 +128,12 @@ type nonCanonicalUnit struct {
 // variable root is root, or a stub that fails for a unit that has none.
 func nonCanonicalVariable(root string) string {
 	if root == "" {
-		return `func readVariable(t *testing.T, name string, wire []byte, want, wireAlone, resave bool) { t.Errorf("%s: this unit has no variable root", name) }`
+		return `func readVariable(t *testing.T, name string, wire, expected []byte, want, wireAlone, resave bool) { t.Errorf("%s: this unit has no variable root", name) }`
 	}
 	return strings.ReplaceAll(nonCanonicalVariableRead, "ROOT", root)
 }
 
-const nonCanonicalVariableRead = `func readVariable(t *testing.T, name string, wire []byte, want, wireAlone, again bool) {
+const nonCanonicalVariableRead = `func readVariable(t *testing.T, name string, wire, expected []byte, want, wireAlone, again bool) {
 	// the measure answers the wire's verdict: it sizes a canonical file and
 	// refuses one whose id table or node table no writer produces
 	n := ROOTLoadMeasure(wire)
@@ -150,8 +154,8 @@ const nonCanonicalVariableRead = `func readVariable(t *testing.T, name string, w
 			return
 		}
 		out := make([]byte, m)
-		if save(out) != m || !bytes.Equal(out, wire) {
-			t.Errorf("%s: %s: the value read re-saves to %x, not the file's %x", name, entry, out, wire)
+		if save(out) != m || !bytes.Equal(out, expected) {
+			t.Errorf("%s: %s: the value read re-saves to %x, not the canonical %x", name, entry, out, expected)
 		}
 	}
 	verdict := func(entry string, read bool) {
@@ -202,7 +206,7 @@ import (
 )
 
 type row struct {
-	name, path, form, wire  string
+	name, path, form, wire, canonicalPath string
 	read, resave, wireAlone bool
 	other                   bool // under another build's announcement of the same shape
 }
@@ -278,7 +282,11 @@ func TestReadsRefuseNonCanonical(t *testing.T) {
 		}
 		switch r.form {
 		case "variable":
-			readVariable(t, r.name, wire, r.read, r.wireAlone, r.resave)
+			expected := wire
+			if r.canonicalPath != "" {
+				expected = readFile(t, r.canonicalPath)
+			}
+			readVariable(t, r.name, wire, expected, r.read, r.wireAlone, r.resave)
 		case "message":
 			readMessage(t, r.name, wire, r.read, r.resave, r.other)
 		case "announcement":
