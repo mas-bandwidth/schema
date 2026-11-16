@@ -329,22 +329,18 @@ def _collect_edges(
         if not field.guard_holds(value):
             continue
         current = getattr(value, field.name)
-<<<<<<< HEAD
         codec = field.codec
-        if codec == "string_blob" or codec == "bytes_blob":
-=======
-        if field.codec == "optional":
+        if codec == "optional":
             if current is None:
                 continue
             if field.inner == "table":
-                _collect(current, ctx, blobs)
+                yield current, (path, field.name, _NO_SUB), False, blobs
             elif field.inner == "array" and field.elem is not None and field.elem.codec == "table":
                 # A present array's elements own their edges, in slot order;
                 # an absent one owns none (docs/SPEC-TABLES.md §2.3).
-                for item in current:
-                    _collect(item, ctx, blobs)
-        elif field.codec == "string_blob" or field.codec == "bytes_blob":
->>>>>>> 10023e91eef1ca26edb15be0f44d0244d7a035cc
+                for index, item in enumerate(current):
+                    yield item, (path, field.name, index), False, blobs
+        elif codec == "string_blob" or codec == "bytes_blob":
             if current is None:
                 continue
             body = kind_blob._encode(field, current, _path(desc.name, field.name))

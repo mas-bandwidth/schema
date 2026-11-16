@@ -302,27 +302,6 @@ generated class per table and per map entry, each with its descriptor
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
   `LoadReport` on success only. `Measure` runs the same walk into a counting
-<<<<<<< HEAD
-  sink, so measure and save agree by construction.
-- **The shape is measured.** A table whose fields are all carried kinds and
-  that holds no map gets the straight-line generated root save/load pair,
-  unrolled with each field descriptor and codec bound to a local and any
-  field-guard condition emitted inline; nested bodies, node records, a table
-  holding a map and a table holding an uncarried placeholder keep the
-  descriptor walk over `_schema/kinds.py`. The two shapes run on the same
-  table, under both pinned interpreters, in `TestPythonTableCoreShapeBench`
-  (internal/codegen/pythontable), and on pointer arrays and guards in
-  `TestPythonVtPointerArraysShapeBench`
-  ([the table pointer arrays](port-python/table-pointer-arrays.md)). The
-  straight-line save is kept: measured at the merge with the rest of the
-  Python leg, it saves in 45,397 ns/op against the descriptor walk's 46,859
-  under 3.15.2 and in 44,984 against 46,382 under 3.11.18. The generated load
-  for these tables is the runtime's whole-file read (`load_table`), the same
-  read the descriptor walk uses, because the merged reader owns the pointer
-  graph and the non-finite and unknown-record checks; the bench measures that
-  by construction (39,150 against 38,709 on 3.15.2, 44,369 against 43,513 on
-  3.11.18).
-=======
   sink, so measure and save agree by construction. A by-value table writes its
   own field id before its body's ids, so a nested table's id table is the
   reference's first-use order and a read-then-write is its bytes.
@@ -354,15 +333,24 @@ generated class per table and per map entry, each with its descriptor
   joins the optional-array carriers (`compiler/tablesoptionalarrays.go`). An
   optional array of an element kind this cut does not carry keeps
   `inner` "unsupported" and refuses by name.
-- **The shape is measured.** A table whose fields are all bools and integers
-  gets the straight-line generated save/load pair, unrolled with each field
-  descriptor bound to a local; every table, and every construct a later card
-  adds, keeps the descriptor walk over `_schema/kinds.py`. The two shapes run
-  on the same table, under both pinned interpreters, in
-  `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
-  straight-line pair is kept: its save is faster on both pins, and its load is
-  faster on the floor.
->>>>>>> 10023e91eef1ca26edb15be0f44d0244d7a035cc
+- **The shape is measured.** A table whose fields are all carried kinds and
+  that holds no map gets the straight-line generated root save/load pair,
+  unrolled with each field descriptor and codec bound to a local and any
+  field-guard condition emitted inline; nested bodies, node records, a table
+  holding a map and a table holding an uncarried placeholder keep the
+  descriptor walk over `_schema/kinds.py`. The two shapes run on the same
+  table, under both pinned interpreters, in `TestPythonTableCoreShapeBench`
+  (internal/codegen/pythontable), and on pointer arrays and guards in
+  `TestPythonVtPointerArraysShapeBench`
+  ([the table pointer arrays](port-python/table-pointer-arrays.md)). The
+  straight-line save is kept: measured at the merge with the rest of the
+  Python leg, it saves in 45,397 ns/op against the descriptor walk's 46,859
+  under 3.15.2 and in 44,984 against 46,382 under 3.11.18. The generated load
+  for these tables is the runtime's whole-file read (`load_table`), the same
+  read the descriptor walk uses, because the merged reader owns the pointer
+  graph and the non-finite and unknown-record checks; the bench measures that
+  by construction (39,150 against 38,709 on 3.15.2, 44,369 against 43,513 on
+  3.11.18).
 - **Scope.** For both the fixed and the variable class, the runtime carries
   each construct marked carried below. One marked refused has a descriptor in
   this cut and refuses by name through `kind_unsupported.py` until its card

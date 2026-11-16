@@ -678,7 +678,6 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
 		}
 		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
-<<<<<<< HEAD
 		if mode := arrayMode(f); mode != "" {
 			fmt.Fprintf(b, "            array_mode=%s,\n", strconv.Quote(mode))
 		}
@@ -687,10 +686,9 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		}
 		if gterms := guards[f.Name]; len(gterms) > 0 {
 			fmt.Fprintf(b, "            guards=%s,\n", formatGuardTuple(gterms))
-=======
+		}
 		if innerCodecOf(f) == "array" {
 			emitOptionalArrayElem(b, f)
->>>>>>> 10023e91eef1ca26edb15be0f44d0244d7a035cc
 		}
 		if codecOf(f) == "keyed" {
 			emitKeyedDesc(b, f)
