@@ -1,6 +1,6 @@
-0x053437b68833108f
+0xeea05d355656bd16
 schema-build-version 5
-protocol 6d2d6698510c00fa
+protocol b5d73ebb1b2a682d
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record ArmorConfig sizeof=40 alignof=8

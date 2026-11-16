@@ -188,7 +188,7 @@ type TableMixed struct {
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
 // announcement carries before the first body so an endpoint's build is knowable.
-const BuildVersion uint64 = 0xd15cf2df295a7569
+const BuildVersion uint64 = 0x9859b8059782ac26
 
 // TableReport is the table-wire read report (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5).
 // A read RETURNS the whole value or REFUSES the whole load: Err is nil on a read
@@ -9371,7 +9371,7 @@ func TableEntityFixedBounds(value *TableEntity) bool {
 
 const TableEntityFixedBodyBytes = 51
 const TableEntityFixedRecordBytes = 8 + TableEntityFixedBodyBytes
-const TableEntityFixedHash = 0x45d64db53ce7ac1f
+const TableEntityFixedHash = 0x5eac483826ba8dad
 
 var TableEntityFixedLayout = []byte{
 	0x1e, 0x00, 0x00, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72, 0x61, 0x31, 0x0d, 0x33, 0x00, 0x00,
@@ -9446,7 +9446,7 @@ var TableEntityFixedPlan = tableFixedBuildPlan(TableEntityFixedLeaves, 14)
 
 var TableEntityFixedKnown = []TableFixedKnownLayout{
 	{
-		Hash:        0x45d64db53ce7ac1f,
+		Hash:        0x5eac483826ba8dad,
 		LayoutBytes: 514,
 		Record:      59,
 		Layout: []byte{
@@ -9717,7 +9717,7 @@ func TableStatFixedBounds(value *TableStat) bool {
 
 const TableStatFixedBodyBytes = 8
 const TableStatFixedRecordBytes = 8 + TableStatFixedBodyBytes
-const TableStatFixedHash = 0x1cdc2a66a7601422
+const TableStatFixedHash = 0x085b325df6d7f019
 
 var TableStatFixedLayout = []byte{
 	0x03, 0x00, 0x00, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x0d, 0x08, 0x00, 0x00,
@@ -9736,7 +9736,7 @@ var TableStatFixedPlan = tableFixedBuildPlan(TableStatFixedLeaves, 2)
 
 var TableStatFixedKnown = []TableFixedKnownLayout{
 	{
-		Hash:        0x1cdc2a66a7601422,
+		Hash:        0x085b325df6d7f019,
 		LayoutBytes: 55,
 		Record:      16,
 		Layout: []byte{
@@ -9978,7 +9978,7 @@ func TableMixedFixedBounds(value *TableMixed) bool {
 
 const TableMixedFixedBodyBytes = 1224
 const TableMixedFixedRecordBytes = 8 + TableMixedFixedBodyBytes
-const TableMixedFixedHash = 0x301b55c58e640302
+const TableMixedFixedHash = 0xd9aba5d49eb0840c
 
 var TableMixedFixedLayout = []byte{
 	0x4b, 0x00, 0x00, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x0d, 0xc8, 0x04, 0x00,
@@ -10145,7 +10145,7 @@ var TableMixedFixedPlan = tableFixedBuildPlan(TableMixedFixedLeaves, 314)
 
 var TableMixedFixedKnown = []TableFixedKnownLayout{
 	{
-		Hash:        0x301b55c58e640302,
+		Hash:        0xd9aba5d49eb0840c,
 		LayoutBytes: 1279,
 		Record:      1232,
 		Layout: []byte{

@@ -21,14 +21,14 @@ public final class TableVocabulary {
                 (byte) 0x01,
                 (byte) 0x01,
                 (byte) 0x09,
-                (byte) 0x52,
-                (byte) 0xa8,
-                (byte) 0xbf,
-                (byte) 0x78,
-                (byte) 0x93,
-                (byte) 0x55,
-                (byte) 0xd3,
-                (byte) 0x41,
+                (byte) 0xe7,
+                (byte) 0x98,
+                (byte) 0x62,
+                (byte) 0x58,
+                (byte) 0x14,
+                (byte) 0x3f,
+                (byte) 0xd9,
+                (byte) 0x8c,
                 (byte) 0x02,
                 (byte) 0x0e,
                 (byte) 0xcf,
@@ -909,7 +909,7 @@ public final class TableVocabulary {
 
     // THE UNIT'S OWN BUILD VERSION is the fact a strict announcement compares
     // the endpoint's against (docs/SPEC-TABLES.md §3.3).
-    private static final long tableBuildVersion = 0x41d3559378bfa852L;
+    private static final long tableBuildVersion = 0x8cd93f14586298e7L;
 
     public static int announceMeasure() {
         return tableAnnouncement.length;

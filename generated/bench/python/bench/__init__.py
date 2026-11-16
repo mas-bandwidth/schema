@@ -19,7 +19,7 @@ from .Bench import MixedEvent
 from .Bench import MixedEventType
 from .Bench import BenchMixed
 
-PROTOCOL_ID: Final = 0xc93127c82f083edf
+PROTOCOL_ID: Final = 0xc52a41defad6ebb0
 
 __all__ = [
     "Bench",

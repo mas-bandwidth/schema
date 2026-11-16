@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0xf35accd0582cdd84
+# package example — protocol id 0x2bf51af687ac0abd
 #
 # The Elixir wire path: byte-granular 32-bit-group packing and 40/56-bit
 # read windows (every intermediate a BEAM small integer), single
@@ -41,7 +41,7 @@ defmodule Example.Constants do
   sides at the same id speak identical bits; there is no other versioning.
   """
   @spec protocol_id() :: non_neg_integer()
-  def protocol_id, do: 0xF35ACCD0582CDD84
+  def protocol_id, do: 0x2BF51AF687AC0ABD
 
   @doc "The constant PositionUnits."
   @spec position_units() :: integer()

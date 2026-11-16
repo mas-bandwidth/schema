@@ -288,7 +288,7 @@ func FixedTableFixedBounds(value *FixedTable) bool {
 
 const FixedTableFixedBodyBytes = 1236
 const FixedTableFixedRecordBytes = 8 + FixedTableFixedBodyBytes
-const FixedTableFixedHash = 0x5f1320927e9ad910
+const FixedTableFixedHash = 0xcde672e9249dd5e0
 
 var FixedTableFixedLayout = []byte{
 	0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,
@@ -455,7 +455,7 @@ var FixedTableFixedPlan = tableFixedBuildPlan(FixedTableFixedLeaves, 313)
 
 var FixedTableFixedKnown = []TableFixedKnownLayout{
 	{
-		Hash:        0x5f1320927e9ad910,
+		Hash:        0xcde672e9249dd5e0,
 		LayoutBytes: 1279,
 		Record:      1244,
 		Layout: []byte{

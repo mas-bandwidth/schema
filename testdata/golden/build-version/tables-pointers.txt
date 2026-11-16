@@ -1,6 +1,6 @@
-0xfdaabe4726d81d5c
+0x94350cb170d59f7e
 schema-build-version 5
-protocol 36ff4b4cd88bf37a
+protocol ef0260949bdd7a2b
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record Album sizeof=88 alignof=8

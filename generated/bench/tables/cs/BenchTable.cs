@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0x0926221bcb6f475f
+// package benchtable — protocol id 0x4c9383ebe3cde248
 //
 // Wire functions return bool — the C++-style early-out. A READ-side schema
 // validation failure (a wrong wire constant, nonzero reserved bits, an
@@ -116,7 +116,7 @@ namespace Benchtable
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0x0926221bcb6f475f;
+        public const ulong ProtocolId = 0x4c9383ebe3cde248;
 
         public const TableWeapon TableWeaponMax = (TableWeapon)15; // the exported extent (SPEC §4.2)
 

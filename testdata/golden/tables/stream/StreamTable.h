@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package streamdemo — protocol id 0xa60c7b6d0c1c10a4 (packets only: tables version by field id, not by protocol id)
+// package streamdemo — protocol id 0xc73983c90ff6fcf6 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2427,14 +2427,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x9a,
-    0x78,
-    0xd4,
-    0xeb,
-    0x43,
-    0x1c,
     0x88,
-    0x3f,
+    0x17,
+    0xc7,
+    0x43,
+    0x57,
+    0x92,
+    0x22,
+    0x7e,
     0x02,
     0x0e,
     0x0c,
@@ -8682,7 +8682,7 @@ namespace streamdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x3f881c43ebd4789aull;
+static const uint64_t BuildVersion = 0x7e22925743c71788ull;
 
 } // namespace streamdemo
 
@@ -10965,7 +10965,7 @@ inline bool HeaderFixedClamp( Header & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t HeaderFixedBodyBytes = 20;
 constexpr int64_t HeaderFixedRecordBytes = 8 + HeaderFixedBodyBytes; // the hash and the body
-constexpr uint64_t HeaderFixedHash = 0xaaf88cbc7745c547ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t HeaderFixedHash = 0xc52f4a5e5c2a93b4ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 2 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -11027,9 +11027,10 @@ constexpr int32_t HeaderFixedCoverCount = 2;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t HeaderFixedLineage[] = {
-    0xaaf88cbc7745c547ull, // identity
+    0xaaf88cbc7745c547ull, // lock
+    0xc52f4a5e5c2a93b4ull, // identity
 };
-constexpr int32_t HeaderFixedLineageCount = 1;
+constexpr int32_t HeaderFixedLineageCount = 2;
 constexpr int32_t HeaderFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t HeaderFixedFloorLive = HeaderFixedFloor;
@@ -11041,14 +11042,21 @@ constexpr uint8_t HeaderFixedKnown0Layout[] = {
     0x00, 0x01, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x14, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t HeaderFixedKnown1Layout[] = {
+    0x02, 0x00, 0x00, 0x00, 0x40, 0xab, 0xcf, 0xf0, 0xc3, 0x3f, 0xd8, 0x75, 0x0d, 0x14, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x14, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout HeaderFixedKnown[] = {
-    { 0xaaf88cbc7745c547ull, HeaderFixedKnown0Layout, 38, 28 }, // identity
+    { 0xaaf88cbc7745c547ull, HeaderFixedKnown0Layout, 38, 28 }, // lock
+    { 0xc52f4a5e5c2a93b4ull, HeaderFixedKnown1Layout, 38, 28 }, // identity
 };
 
 constexpr const TableFixedKnownRange * HeaderFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t HeaderFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t HeaderFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —

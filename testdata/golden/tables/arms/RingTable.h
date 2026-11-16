@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package armdemo — protocol id 0x727cea182a6959a7 (packets only: tables version by field id, not by protocol id)
+// package armdemo — protocol id 0x2e08b132138189b9 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2442,14 +2442,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0xa2,
-    0x6e,
+    0x9a,
     0xa0,
-    0x9d,
-    0x34,
-    0x84,
-    0x21,
-    0x6a,
+    0xfd,
+    0x8c,
+    0xb8,
+    0x19,
+    0xec,
+    0xed,
     0x02,
     0x0e,
     0x16,
@@ -9677,7 +9677,7 @@ namespace armdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x6a2184349da06ea2ull;
+static const uint64_t BuildVersion = 0xedec19b88cfda09aull;
 
 } // namespace armdemo
 
@@ -12469,7 +12469,7 @@ inline void NodeFixedWriteBody( uint8_t * b, const Node & value )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t NodeFixedBodyBytes = 4;
 constexpr int64_t NodeFixedRecordBytes = 8 + NodeFixedBodyBytes; // the hash and the body
-constexpr uint64_t NodeFixedHash = 0x79d3bdf48b9c6647ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t NodeFixedHash = 0xe1e62115aa92bcb4ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 2 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -12530,9 +12530,10 @@ constexpr int32_t NodeFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t NodeFixedLineage[] = {
-    0x79d3bdf48b9c6647ull, // identity
+    0x79d3bdf48b9c6647ull, // lock
+    0xe1e62115aa92bcb4ull, // identity
 };
-constexpr int32_t NodeFixedLineageCount = 1;
+constexpr int32_t NodeFixedLineageCount = 2;
 constexpr int32_t NodeFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t NodeFixedFloorLive = NodeFixedFloor;
@@ -12544,14 +12545,21 @@ constexpr uint8_t NodeFixedKnown0Layout[] = {
     0x00, 0x01, 0x00, 0x00, 0x00, 0x09, 0x06, 0x02, 0x86, 0x4c, 0xeb, 0x63, 0xaf, 0x04, 0x04, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t NodeFixedKnown1Layout[] = {
+    0x02, 0x00, 0x00, 0x00, 0x8d, 0xb6, 0xf6, 0xd2, 0xc6, 0x1c, 0xbd, 0x66, 0x0d, 0x04, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x09, 0x06, 0x02, 0x86, 0x4c, 0xeb, 0x63, 0xaf, 0x04, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout NodeFixedKnown[] = {
-    { 0x79d3bdf48b9c6647ull, NodeFixedKnown0Layout, 38, 12 }, // identity
+    { 0x79d3bdf48b9c6647ull, NodeFixedKnown0Layout, 38, 12 }, // lock
+    { 0xe1e62115aa92bcb4ull, NodeFixedKnown1Layout, 38, 12 }, // identity
 };
 
 constexpr const TableFixedKnownRange * NodeFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t NodeFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t NodeFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —

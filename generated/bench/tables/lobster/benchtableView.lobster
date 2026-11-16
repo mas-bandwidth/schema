@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0x0926221bcb6f475f — the Lobster unit registry (docs/PORT-LOBSTER.md)
+// package benchtable — protocol id 0x4c9383ebe3cde248 — the Lobster unit registry (docs/PORT-LOBSTER.md)
 
 import .descriptors
 import .BenchTableTable

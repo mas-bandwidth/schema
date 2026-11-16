@@ -162,7 +162,7 @@ const realworld_unit_view_info_t * schema_realworld_unit_view_(void)
     static const realworld_view_type_t types[] = {
         { "RealPacket", "RealWorld.schema", 0, &schema_realworld_real_packet_info_, REALWORLD_TABLE_DOC_NONE, 0, NULL },
     };
-    static const realworld_unit_view_info_t info = { "realworld", 0x1922430092518648ull,
+    static const realworld_unit_view_info_t info = { "realworld", 0xcc9644116a3dac22ull,
         1, types,
         0, NULL,
         1, enums,

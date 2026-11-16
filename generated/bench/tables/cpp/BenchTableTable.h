@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0x0926221bcb6f475f (packets only: tables version by field id, not by protocol id)
+// package benchtable — protocol id 0x4c9383ebe3cde248 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2420,14 +2420,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x69,
-    0x75,
-    0x5a,
-    0x29,
-    0xdf,
-    0xf2,
-    0x5c,
-    0xd1,
+    0x26,
+    0xac,
+    0x82,
+    0x97,
+    0x05,
+    0xb8,
+    0x59,
+    0x98,
     0x02,
     0x0e,
     0xbf,
@@ -6396,7 +6396,7 @@ namespace benchtable {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xd15cf2df295a7569ull;
+static const uint64_t BuildVersion = 0x9859b8059782ac26ull;
 
 } // namespace benchtable
 
@@ -18693,7 +18693,7 @@ inline bool TableEntityFixedClamp( TableEntity & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t TableEntityFixedBodyBytes = 51;
 constexpr int64_t TableEntityFixedRecordBytes = 8 + TableEntityFixedBodyBytes; // the hash and the body
-constexpr uint64_t TableEntityFixedHash = 0x45d64db53ce7ac1full; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t TableEntityFixedHash = 0x5eac483826ba8dadull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 30 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -18881,7 +18881,7 @@ constexpr int32_t TableEntityFixedCoverCount = 2;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t TableEntityFixedLineage[] = {
-    0x45d64db53ce7ac1full, // identity
+    0x5eac483826ba8dadull, // identity
 };
 constexpr int32_t TableEntityFixedLineageCount = 1;
 constexpr int32_t TableEntityFixedFloor = 0;
@@ -18926,7 +18926,7 @@ constexpr uint8_t TableEntityFixedKnown0Layout[] = {
     0x00, 0x00,
 };
 constexpr TableFixedKnownLayout TableEntityFixedKnown[] = {
-    { 0x45d64db53ce7ac1full, TableEntityFixedKnown0Layout, 514, 59 }, // identity
+    { 0x5eac483826ba8dadull, TableEntityFixedKnown0Layout, 514, 59 }, // identity
 };
 
 constexpr TableFixedKnownRange TableEntityFixedKnown0Ranges[] = {
@@ -19311,7 +19311,7 @@ inline bool TableStatFixedClamp( TableStat & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t TableStatFixedBodyBytes = 8;
 constexpr int64_t TableStatFixedRecordBytes = 8 + TableStatFixedBodyBytes; // the hash and the body
-constexpr uint64_t TableStatFixedHash = 0x1cdc2a66a7601422ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t TableStatFixedHash = 0x085b325df6d7f019ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 3 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -19377,7 +19377,7 @@ constexpr int32_t TableStatFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t TableStatFixedLineage[] = {
-    0x1cdc2a66a7601422ull, // identity
+    0x085b325df6d7f019ull, // identity
 };
 constexpr int32_t TableStatFixedLineageCount = 1;
 constexpr int32_t TableStatFixedFloor = 0;
@@ -19393,7 +19393,7 @@ constexpr uint8_t TableStatFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 constexpr TableFixedKnownLayout TableStatFixedKnown[] = {
-    { 0x1cdc2a66a7601422ull, TableStatFixedKnown0Layout, 55, 16 }, // identity
+    { 0x085b325df6d7f019ull, TableStatFixedKnown0Layout, 55, 16 }, // identity
 };
 
 constexpr TableFixedKnownRange TableStatFixedKnown0Ranges[] = {
@@ -19772,7 +19772,7 @@ inline bool TableMixedFixedClamp( TableMixed & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t TableMixedFixedBodyBytes = 1224;
 constexpr int64_t TableMixedFixedRecordBytes = 8 + TableMixedFixedBodyBytes; // the hash and the body
-constexpr uint64_t TableMixedFixedHash = 0x301b55c58e640302ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t TableMixedFixedHash = 0xd9aba5d49eb0840cull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -20451,7 +20451,7 @@ constexpr int32_t TableMixedFixedCoverCount = 23;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t TableMixedFixedLineage[] = {
-    0x301b55c58e640302ull, // identity
+    0xd9aba5d49eb0840cull, // identity
 };
 constexpr int32_t TableMixedFixedLineageCount = 1;
 constexpr int32_t TableMixedFixedFloor = 0;
@@ -20543,7 +20543,7 @@ constexpr uint8_t TableMixedFixedKnown0Layout[] = {
     0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 constexpr TableFixedKnownLayout TableMixedFixedKnown[] = {
-    { 0x301b55c58e640302ull, TableMixedFixedKnown0Layout, 1279, 1232 }, // identity
+    { 0xd9aba5d49eb0840cull, TableMixedFixedKnown0Layout, 1279, 1232 }, // identity
 };
 
 constexpr TableFixedKnownRange TableMixedFixedKnown0Ranges[] = {

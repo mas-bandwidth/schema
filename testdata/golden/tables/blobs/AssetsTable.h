@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package blobdemo — protocol id 0xa844824278770488 (packets only: tables version by field id, not by protocol id)
+// package blobdemo — protocol id 0x63cdb90af7653def (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2392,14 +2392,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x95,
-    0xd0,
-    0x95,
-    0x81,
-    0x1b,
-    0xe1,
-    0x4c,
-    0x3d,
+    0x2d,
+    0x1f,
+    0xd7,
+    0xc8,
+    0xcf,
+    0x82,
+    0xcb,
+    0x64,
     0x02,
     0x0e,
     0x02,
@@ -8646,7 +8646,7 @@ namespace blobdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x3d4ce11b8195d095ull;
+static const uint64_t BuildVersion = 0x64cb82cfc8d71f2dull;
 
 } // namespace blobdemo
 

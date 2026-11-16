@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package graphdemo — protocol id 0x36ff4b4cd88bf37a (packets only: tables version by field id, not by protocol id)
+// package graphdemo — protocol id 0xef0260949bdd7a2b (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2400,14 +2400,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x5c,
-    0x1d,
-    0xd8,
-    0x26,
-    0x47,
-    0xbe,
-    0xaa,
-    0xfd,
+    0x7e,
+    0x9f,
+    0xd5,
+    0x70,
+    0xb1,
+    0x0c,
+    0x35,
+    0x94,
     0x02,
     0x0e,
     0x46,
@@ -8852,7 +8852,7 @@ namespace graphdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xfdaabe4726d81d5cull;
+static const uint64_t BuildVersion = 0x94350cb170d59f7eull;
 
 } // namespace graphdemo
 
@@ -10327,7 +10327,7 @@ inline bool StampFixedClamp( Stamp & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t StampFixedBodyBytes = 16;
 constexpr int64_t StampFixedRecordBytes = 8 + StampFixedBodyBytes; // the hash and the body
-constexpr uint64_t StampFixedHash = 0x2b467a2ee937ea73ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t StampFixedHash = 0x3d7dedc0769c4360ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 3 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -10394,9 +10394,10 @@ constexpr int32_t StampFixedCoverCount = 2;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t StampFixedLineage[] = {
-    0x2b467a2ee937ea73ull, // identity
+    0x2b467a2ee937ea73ull, // lock
+    0x3d7dedc0769c4360ull, // identity
 };
-constexpr int32_t StampFixedLineageCount = 1;
+constexpr int32_t StampFixedLineageCount = 2;
 constexpr int32_t StampFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t StampFixedFloorLive = StampFixedFloor;
@@ -10409,14 +10410,22 @@ constexpr uint8_t StampFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x13, 0xe2, 0x5c, 0x19, 0x8a, 0x3b, 0x82, 0x04, 0x04,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t StampFixedKnown1Layout[] = {
+    0x03, 0x00, 0x00, 0x00, 0xa4, 0x93, 0xdb, 0xb7, 0x13, 0x91, 0x3b, 0xae, 0x0d, 0x10, 0x00, 0x00,
+    0x00, 0x02, 0x00, 0x00, 0x00, 0xf3, 0xa4, 0x48, 0x44, 0x19, 0xab, 0xd7, 0x56, 0x0c, 0x0c, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x13, 0xe2, 0x5c, 0x19, 0x8a, 0x3b, 0x82, 0x04, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout StampFixedKnown[] = {
-    { 0x2b467a2ee937ea73ull, StampFixedKnown0Layout, 55, 24 }, // identity
+    { 0x2b467a2ee937ea73ull, StampFixedKnown0Layout, 55, 24 }, // lock
+    { 0x3d7dedc0769c4360ull, StampFixedKnown1Layout, 55, 24 }, // identity
 };
 
 constexpr const TableFixedKnownRange * StampFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t StampFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t StampFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —

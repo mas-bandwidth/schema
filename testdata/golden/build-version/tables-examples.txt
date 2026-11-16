@@ -1,6 +1,6 @@
-0x93ff58e3111cb4d4
+0x9526b48751c3f1ce
 schema-build-version 5
-protocol ba7b344f28584d33
+protocol 5c9bc5717146f630
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record ArchiveConfig sizeof=1488 alignof=8

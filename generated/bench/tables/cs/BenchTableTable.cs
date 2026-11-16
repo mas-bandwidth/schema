@@ -9752,7 +9752,7 @@ namespace Benchtable
 
         public const long TableEntityFixedBodyBytes = 51;
         public const long TableEntityFixedRecordBytes = 8 + TableEntityFixedBodyBytes;
-        public const ulong TableEntityFixedHash = 0x45d64db53ce7ac1ful;
+        public const ulong TableEntityFixedHash = 0x5eac483826ba8dadul;
 
         public static readonly byte[] TableEntityFixedLayout = new byte[] {
             0x1e, 0x00, 0x00, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72, 0x61, 0x31, 0x0d, 0x33, 0x00, 0x00,
@@ -10191,7 +10191,7 @@ namespace Benchtable
             0x00, 0x00,
         };
         public static readonly TableFixedKnownLayout[] TableEntityFixedKnown = new TableFixedKnownLayout[] {
-            new TableFixedKnownLayout(0x45d64db53ce7ac1ful, TableEntityFixedLayout0, 59),
+            new TableFixedKnownLayout(0x5eac483826ba8dadul, TableEntityFixedLayout0, 59),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -10479,7 +10479,7 @@ namespace Benchtable
 
         public const long TableStatFixedBodyBytes = 8;
         public const long TableStatFixedRecordBytes = 8 + TableStatFixedBodyBytes;
-        public const ulong TableStatFixedHash = 0x1cdc2a66a7601422ul;
+        public const ulong TableStatFixedHash = 0x085b325df6d7f019ul;
 
         public static readonly byte[] TableStatFixedLayout = new byte[] {
             0x03, 0x00, 0x00, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x0d, 0x08, 0x00, 0x00,
@@ -10785,7 +10785,7 @@ namespace Benchtable
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
         public static readonly TableFixedKnownLayout[] TableStatFixedKnown = new TableFixedKnownLayout[] {
-            new TableFixedKnownLayout(0x1cdc2a66a7601422ul, TableStatFixedLayout0, 16),
+            new TableFixedKnownLayout(0x085b325df6d7f019ul, TableStatFixedLayout0, 16),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -11073,7 +11073,7 @@ namespace Benchtable
 
         public const long TableMixedFixedBodyBytes = 1224;
         public const long TableMixedFixedRecordBytes = 8 + TableMixedFixedBodyBytes;
-        public const ulong TableMixedFixedHash = 0x301b55c58e640302ul;
+        public const ulong TableMixedFixedHash = 0xd9aba5d49eb0840cul;
 
         public static readonly byte[] TableMixedFixedLayout = new byte[] {
             0x4b, 0x00, 0x00, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x0d, 0xc8, 0x04, 0x00,
@@ -12843,7 +12843,7 @@ namespace Benchtable
             0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
         public static readonly TableFixedKnownLayout[] TableMixedFixedKnown = new TableFixedKnownLayout[] {
-            new TableFixedKnownLayout(0x301b55c58e640302ul, TableMixedFixedLayout0, 1232),
+            new TableFixedKnownLayout(0xd9aba5d49eb0840cul, TableMixedFixedLayout0, 1232),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
