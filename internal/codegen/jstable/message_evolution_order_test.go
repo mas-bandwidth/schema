@@ -45,7 +45,6 @@ fixed table Root { }
 fixed table Other { b int32 }`, `{"b":9}`, `true`},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			old := unitFrom(t, c.writer)

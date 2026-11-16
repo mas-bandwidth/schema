@@ -40,7 +40,6 @@ union Pick { n Child }
 		{"reordered", "a int32\n b int32", "b int32\n a int32", `{"a":7,"b":9}`},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			old := unitFrom(t, prefix+"table Root {\n"+c.oldField+"\n}\n")
