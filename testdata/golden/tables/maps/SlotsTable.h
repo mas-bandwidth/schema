@@ -11545,7 +11545,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntrySaveBody( TableWriter & w, TableIds & i
 MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEntry & value )
 {
     SlotsSeatsEntryReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11585,12 +11584,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
         {
             case 0x3dc94a19365b10ecull: // key
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -11604,11 +11597,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.key = decoded_v;
                         break;
                     }
@@ -11629,22 +11617,11 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.key = decoded_v;
                 break;
             }
             case 0x7ce4fd9430e80ceaull: // value
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 16 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -11691,11 +11668,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                             r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
-                        }
-                        if ( count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
                         }
                         r.report->widened++; // ONE count for the field, every slot at the wire kind's width
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
@@ -11765,11 +11737,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                     }
                     else
                     {
-                        if ( count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         int32_t last_key_slot = 0;
                         for ( uint64_t i = 0; i < count; i++ )
@@ -11949,7 +11916,6 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     SlotsReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -11989,12 +11955,6 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
         {
             case 0x7f6548303072b061ull: // seats
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12041,11 +12001,6 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
                         r.report->refuse_reason = kind_mismatch;
                         r.offset = body_end;
                         break;
-                    }
-                    if ( count == 0 )
-                    {
-                        r.report->damaged = true;
-                        return false;
                     }
                     TableMapFill<SlotsSeatsEntry> fill = TableMapFillBegin( nodes, value.seats, count );
                     if ( fill.refused )
@@ -12150,12 +12105,6 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -12169,11 +12118,6 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -12195,11 +12139,6 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }
@@ -13677,7 +13616,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13717,12 +13655,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
         {
             case 0x3dc94a19365b10ecull: // key
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -13736,11 +13668,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.key = decoded_v;
                         break;
                     }
@@ -13761,22 +13688,11 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.key = decoded_v;
                 break;
             }
             case 0x7ce4fd9430e80ceaull: // value
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 16 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -13823,11 +13739,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                             r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
-                        }
-                        if ( count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
                         }
                         r.report->widened++; // ONE count for the field, every slot at the wire kind's width
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
@@ -13897,11 +13808,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                     }
                     else
                     {
-                        if ( count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         int32_t last_key_slot = 0;
                         for ( uint64_t i = 0; i < count; i++ )
@@ -14088,7 +13994,6 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14128,12 +14033,6 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
         {
             case 0x7f6548303072b061ull: // seats
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -14180,11 +14079,6 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
                         r.report->refuse_reason = kind_mismatch;
                         r.offset = body_end;
                         break;
-                    }
-                    if ( count == 0 )
-                    {
-                        r.report->damaged = true;
-                        return false;
                     }
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
@@ -14292,12 +14186,6 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
             }
             case 0xbf82010f6f71eae9ull: // past
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -14311,11 +14199,6 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.past = decoded_v;
                         r.report->widened++;
                         break;
@@ -14337,11 +14220,6 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.past = decoded_v;
                 break;
             }

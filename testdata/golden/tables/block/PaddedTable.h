@@ -7010,7 +7010,6 @@ inline int64_t PaddedRowSave( const PaddedRow & value, uint8_t * buffer, int64_t
 BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & value )
 {
     PaddedRowReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -7050,12 +7049,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
         {
             case 0x56d7ab194448a4f3ull: // tag
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7075,22 +7068,11 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.tag = decoded_v;
                 break;
             }
             case 0x7ce4fd9430e80ceaull: // value
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 11 )
                 {
                     if ( TableKindWidens( kind, 11 ) )
@@ -7105,16 +7087,7 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else
-                            {
-                                const double decoded_d = (double) table_bits_to_float( widened_bits );
-                                if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                                {
-                                    r.report->damaged = true;
-                                    return false;
-                                }
-                                value.value = decoded_d;
-                            }
+                            else { value.value = (double) table_bits_to_float( widened_bits ); }
                         }
                         r.report->widened++;
                         break;
@@ -7138,27 +7111,12 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else
-                    {
-                        const double decoded_d = table_bits_to_double( decoded_bits );
-                        if ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
-                        value.value = decoded_d;
-                    }
+                    else { value.value = table_bits_to_double( decoded_bits ); }
                 }
                 break;
             }
             case 0xd5f2d079088c0b17ull: // flag
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 1 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7180,18 +7138,12 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                 { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
                     r.report->damaged = true;
-                    } else if ( bool_byte == 0 ) { r.report->damaged = true; return false; } value.flag = bool_byte != 0;
+                    } value.flag = bool_byte != 0;
                 }
                 break;
             }
             case 0x08b72e07b55c3ac0ull: // id
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -7205,11 +7157,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.id = decoded_v;
                         r.report->widened++;
                         break;
@@ -7231,22 +7178,11 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.id = decoded_v;
                 break;
             }
             case 0x39f7fcec8fcb623dull: // label
             {
-                if ( 5 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 5;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7276,11 +7212,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                     r.offset += (int64_t) len;
                     break;
                 }
-                if ( len == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 uint64_t keep = len;
                 if ( keep > 15 )
                 {
@@ -7296,12 +7227,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
             }
             case 0xe68c2e6bb1ee5646ull: // slots
             {
-                if ( 6 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 6;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7374,16 +7299,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                             widened_decoded = widened_i + 1;
                         }
                         (void) widened_decoded;
-                        if ( counted_ok && count == 4 && !r.report->damaged && !r.report->refused )
-                        {
-                            bool any_non_default = false;
-                            for ( int32_t chk_i = 0; chk_i < 4; chk_i++ ) { if ( value.slots[chk_i] != 0 ) { any_non_default = true; break; } }
-                            if ( !any_non_default )
-                            {
-                                r.report->damaged = true;
-                                return false;
-                            }
-                        }
                     }
                     else
                     {
@@ -7399,7 +7314,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                         // the following fields' bytes are never fabricated into
                         // elements
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                        bool any_non_default = false;
                         for ( uint64_t i = 0; i < keep; i++ )
                         {
                             if ( !sub.has( 2 ) )
@@ -7409,12 +7323,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                             }
                             uint16_t decoded_v = uint16_t( sub.get16() );
                             value.slots[(int32_t) i] = decoded_v;
-                            if ( value.slots[(int32_t) i] != 0 ) { any_non_default = true; }
-                        }
-                        if ( counted_ok && count == 4 && !r.report->damaged && !r.report->refused && !any_non_default )
-                        {
-                            r.report->damaged = true;
-                            return false;
                         }
                     }
                 }
@@ -7423,12 +7331,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
             }
             case 0xbaaeb048a5a8fa6dull: // teams
             {
-                if ( 7 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 7;
                 if ( kind != 16 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -7473,11 +7375,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                         r.report->refuse_reason = kind_mismatch;
                         r.offset = body_end;
                         break;
-                    }
-                    if ( count == 0 )
-                    {
-                        r.report->damaged = true;
-                        return false;
                     }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     int32_t last_key_slot = 0;
@@ -7548,12 +7445,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
             }
             case 0x77976c7416517c63ull: // counter
             {
-                if ( 8 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 8;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -8540,6 +8431,7 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -8753,7 +8645,6 @@ inline int64_t PaddedFrameSave( const PaddedFrame & value, uint8_t * buffer, int
 BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & value )
 {
     PaddedFrameReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -8793,12 +8684,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
         {
             case 0xeddcb72b15486e77ull: // marker
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -8818,22 +8703,11 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.marker = decoded_v;
                 break;
             }
             case 0xee7ba9ad45c64144ull: // stamp
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 9 )
                 {
                     if ( TableKindWidens( kind, 9 ) )
@@ -8847,11 +8721,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         value.stamp = decoded_v;
                         r.report->widened++;
                         break;
@@ -8873,22 +8742,11 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 value.stamp = decoded_v;
                 break;
             }
             case 0xa3a7061ff10a8138ull: // rows
             {
-                if ( 3 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 3;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -8939,11 +8797,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 64 )
                         {
@@ -8989,12 +8842,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
             }
             case 0xc573b39bc29148caull: // blob
             {
-                if ( 4 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 4;
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9044,11 +8891,6 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
                     }
                     else
                     {
-                        if ( counted_ok && count == 0 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         uint64_t keep = count;
                         if ( keep > 12 )
                         {
@@ -9553,6 +9395,7 @@ inline bool PaddedFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
