@@ -643,14 +643,15 @@ defmodule Driver do
     instances =
       Map.new(rows(rows, "instance"), fn [name | rest] -> {name, rest} end)
 
-    for [name | _] <- rows(rows, "cook-write") do
+    for row <- rows(rows, "cook-write") do
+      [name, input, source, alias_name] = row
+
       case Map.get(instances, name) do
         [unit, root, wire | _] ->
-          cook_one(table_module(unit), root, wire, outdir, name)
+          cook_one(table_module(unit), root, wire, input, source, alias_name, outdir, name)
 
         _ ->
-          write_absent(outdir, name)
-          write_absent(outdir, name <> "-be")
+          raise "unknown cook-write instance #{name}"
       end
     end
   end
@@ -946,18 +947,28 @@ defmodule Driver do
   # cook-write (docs/SPEC-TABLES.md §7.6): load the instance, measure, refuse a
   # short buffer, then write both byte orders. A unit with no cook writer
   # writes <case>.absent rather than a wrong byte.
-  defp cook_one(nil, _root, _wire, outdir, name) do
+  defp cook_one(nil, _root, _wire, _input, _source, _alias_name, outdir, name) do
     write_absent(outdir, name)
     write_absent(outdir, name <> "-be")
   end
 
-  defp cook_one(mod, root, wire, outdir, name) do
+  defp cook_one(mod, root, wire, input, source, alias_name, outdir, name) do
     if not function_exported?(mod, :cook_from, 4) do
       write_absent(outdir, name)
       write_absent(outdir, name <> "-be")
     else
-      case mod.load(root, File.read!(wire)) do
+      value_result =
+        if input == "-" do
+          if source != "-" or alias_name != "-", do: raise("share requires JSON input")
+          mod.load(root, File.read!(wire))
+        else
+          mod.from_json(root, File.read!(input))
+        end
+
+      case value_result do
         {:ok, value, report} ->
+          value = cook_share(value, source, alias_name)
+
           if damaged?(report) do
             write_absent(outdir, name)
             write_absent(outdir, name <> "-be")
@@ -990,6 +1001,24 @@ defmodule Driver do
       end
     end
   end
+
+  # Elixir binaries carry values, not object identity. The explicit sharing
+  # marker denotes the second slot naming the first blob to the cook writer.
+  defp cook_share(value, "-", "-"), do: value
+
+  defp cook_share({root, nodes}, source, alias_name)
+       when is_map(root) and source != "-" and alias_name != "-" and source != alias_name do
+    source_value = Map.fetch!(root, source)
+    alias_value = Map.fetch!(root, alias_name)
+
+    unless is_binary(source_value) and is_binary(alias_value) do
+      raise "cook share requires populated blob slots"
+    end
+
+    {Map.put(root, alias_name, {:blob_shared, source_value}), nodes}
+  end
+
+  defp cook_share(_value, _source, _alias_name), do: raise("invalid cook share recipe")
 
   defp answer_load_save(mod, root, wire, outdir, name) do
     case mod do
