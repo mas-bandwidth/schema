@@ -84,7 +84,16 @@ def measure_table(value: Any) -> int:
     return _encode(value, Writer(None))
 
 
+def _check_root(value: Any) -> None:
+    """Refuse a root that is not exactly a generated class: a subclass could
+    carry another descriptor or __eq__, and neither may change the bytes."""
+    cls = descriptor.by_name(value.descriptor.name)
+    if cls is None or type(value) is not cls:
+        raise InvalidValue("", f"not a {value.descriptor.name}")
+
+
 def _encode(value: Any, writer: Writer) -> int:
+    _check_root(value)
     _validate(value, value.descriptor, "", set())
     ctx = Ctx()
     ctx.indices[id(value)] = 1
@@ -135,12 +144,12 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
             if current is None:
                 continue
             target = descriptor.by_name(field.target)
-            if target is None or not isinstance(current, target):
+            if target is None or type(current) is not target:
                 raise InvalidValue(where, f"not a {field.target} or None")
             _validate(current, current.descriptor, where, seen)
         elif field.codec == "table":
             target = descriptor.by_name(field.target)
-            if target is None or not isinstance(current, target):
+            if target is None or type(current) is not target:
                 raise InvalidValue(where, f"not a {field.target}")
             _validate(current, current.descriptor, where, seen)
         elif field.codec == "array":
@@ -155,7 +164,7 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
                 cell = f"{where}[{i}]"
                 if element.codec == "table":
                     target = descriptor.by_name(element.target)
-                    if target is None or not isinstance(item, target):
+                    if target is None or type(item) is not target:
                         raise InvalidValue(cell, f"not a {element.target}")
                     _validate(item, item.descriptor, cell, seen)
                 else:

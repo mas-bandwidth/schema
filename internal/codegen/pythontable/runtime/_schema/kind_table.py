@@ -21,7 +21,9 @@ def _target(fd: FieldDesc) -> type[Any]:
 
 class _Table:
     def validate(self, fd: FieldDesc, value: Any, path: str) -> None:
-        if not isinstance(value, _target(fd)):
+        # EXACTLY the generated class: a subclass could carry another
+        # descriptor or __eq__, and neither may change what is written.
+        if type(value) is not _target(fd):
             raise InvalidValue(path, f"not a {fd.target}")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
