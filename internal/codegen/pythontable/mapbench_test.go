@@ -1,6 +1,7 @@
 package pythontable
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -33,6 +34,25 @@ table Root
 // shapes write the same bytes and the load reads them back.
 //
 // Functional (python pins): run with SCHEMA_SLOW=1.
+func mapBenchPinSelected(selector, name string) bool {
+	return selector == "" || selector == name
+}
+
+func TestPythonMapBenchPinPlan(t *testing.T) {
+	for _, name := range []string{"current", "floor"} {
+		if !mapBenchPinSelected("", name) || !mapBenchPinSelected(name, name) {
+			t.Fatalf("pin %s is missing", name)
+		}
+		other := "floor"
+		if name == "floor" {
+			other = "current"
+		}
+		if mapBenchPinSelected(other, name) {
+			t.Fatalf("pin %s selected twice", name)
+		}
+	}
+}
+
 func TestPythonMapShapeBench(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Python interpreters (it times the emitted table runtime)")
@@ -122,11 +142,19 @@ print("pointer_load", round(run(lambda: Root.load(pointer_data)), 1))
 print("OK")
 `
 	keys := []string{"scalar_save_direct", "scalar_save_walk", "pointer_save_direct", "pointer_save_walk", "scalar_load", "pointer_load"}
-	for name, pin := range map[string]string{
-		"python-3.15.2":  pyrun.Interpreter(t),
-		"python-3.11.18": pyrun.Floor(t),
+	selector := os.Getenv("PYTHON_MAP_BENCH_PIN")
+	if selector != "" && selector != "current" && selector != "floor" {
+		t.Fatalf("invalid PYTHON_MAP_BENCH_PIN %q", selector)
+	}
+	for _, pin := range []struct{ selector, name, path string }{
+		{"current", "python-3.15.2", pyrun.Interpreter(t)},
+		{"floor", "python-3.11.18", pyrun.Floor(t)},
 	} {
-		stdout, stderr, runErr := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if !mapBenchPinSelected(selector, pin.selector) {
+			continue
+		}
+		name := pin.name
+		stdout, stderr, runErr := pyrun.Try(t, pin.path, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
 		if runErr != nil || !strings.Contains(stdout, "OK\n") {
 			t.Fatalf("%s did not finish: %v\n%s%s", name, runErr, stdout, stderr)
 		}

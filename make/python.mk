@@ -22,6 +22,7 @@ test-python: python-ci-support
 PYTHON_CI_SUPPORT_GROUPS += python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted python-ci-compiler-coverage
 PYTHON_PACKET_CORE_SHARDS := $(addprefix python-ci-packet-core-,0 1 2 3 4 5 6 7)
 PYTHON_CI_SUPPORT_GROUPS += $(PYTHON_PACKET_CORE_SHARDS) python-ci-packet-core-coverage
+PYTHON_CI_SUPPORT_GROUPS += python-ci-map-bench-current python-ci-map-bench-floor python-ci-map-bench-coverage
 python-ci-support: $(PYTHON_CI_SUPPORT_GROUPS)
 .PHONY: python-ci-support-list
 python-ci-support-list:
@@ -175,3 +176,8 @@ $(PYTHON_PACKET_CORE_SHARDS): python-ci-packet-core-%:
 .PHONY: python-ci-packet-core-coverage
 python-ci-packet-core-coverage:
 	SCHEMA_SLOW=1 go test -count=1 -run '^TestPythonPacketCoreCIPlan$$' ./internal/ci/
+.PHONY: python-ci-map-bench-current python-ci-map-bench-floor python-ci-map-bench-coverage
+python-ci-map-bench-current python-ci-map-bench-floor: python-ci-map-bench-%:
+	SCHEMA_SLOW=1 PYTHON_MAP_BENCH_PIN=$* go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMapShapeBench$$' ./internal/codegen/pythontable/
+python-ci-map-bench-coverage:
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestPythonMapBenchCIPlan$$' ./internal/ci/

@@ -55,6 +55,11 @@ while IFS= read -r package; do
   fi
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
     printf '%s\n' "$names" | grep -qx TestPythonVtFixedClassBuildVersionImports || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }
+    printf '%s\n' "$names" | grep -qx TestPythonMapShapeBench || { echo "missing TestPythonMapShapeBench" >&2; exit 1; }
+    for target in python-ci-map-bench-current python-ci-map-bench-floor; do
+      [ "$(printf '%s\n' "$supports" | grep -cx "$target")" -eq 1 ] || { echo "missing or duplicate support row $target" >&2; exit 1; }
+    done
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonMapShapeBench$/d')
     skip=TestPythonVtFixedClassBuildVersionImports
     units=$(awk '$1 == "unit" { print $2 }' testdata/conformance/tables/MANIFEST.txt)
     [ -n "$units" ] || { echo "missing table corpus units" >&2; exit 1; }
