@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // pruneUnreferencedDeclarations drops private package declarations that the
@@ -431,4 +432,41 @@ func pruneImports(specs []ast.Spec, referenced map[string]bool) []ast.Spec {
 		}
 	}
 	return kept
+}
+
+// generateForms is the whole output, and the optional form each file belongs
+// to (0 for the core).
+func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, map[string]Form, error) {
+	return generateFormsMode(u, lineage, s, true)
+}
+
+// generateFormsUnpruned builds the unit's files without pruning, for a caller
+// that transforms them first and prunes the result.
+func generateFormsUnpruned(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, map[string]Form, error) {
+	if err := refuseUndeclaredSurface(u, s); err != nil {
+		return nil, nil, err
+	}
+	return generateFormsMode(u, lineage, s, false)
+}
+
+// finishGoForms respells Go's initialisms and, when asked, drops the private
+// declarations the unit's API cannot reach.
+func finishGoForms(u *ir.Unit, out map[string][]byte, forms map[string]Form, prune bool) (map[string][]byte, map[string]Form, error) {
+	if err := goname.RespellFiles(out); err != nil {
+		return nil, nil, err
+	}
+	if !prune {
+		return out, forms, nil
+	}
+	pruned, err := pruneUnreferencedDeclarations(out, schemaAPIEntries(u, out))
+	if err != nil {
+		return nil, nil, err
+	}
+	return pruned, forms, nil
+}
+
+// pruneGoSurface drops the private declarations an emitted surface cannot
+// reach.
+func pruneGoSurface(u *ir.Unit, out map[string][]byte) (map[string][]byte, error) {
+	return pruneUnreferencedDeclarations(out, schemaAPIEntries(goEscapeTables(u), out))
 }
