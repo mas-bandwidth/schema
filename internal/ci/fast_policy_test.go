@@ -2,6 +2,7 @@ package ci
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,6 +24,9 @@ func TestCIFastPolicyJobCoverage(t *testing.T) {
 		"        run: go test ./internal/ci/",
 		"        run: bash -n bench/run.sh",
 		"  ci-policy:\n",
+		"    needs: ci-policy\n",
+		"always() && !cancelled() && ",
+		"          if [ \"$POLICY_RESULT\" != success ]; then\n",
 	} {
 		if !strings.Contains(wf, needle) {
 			t.Fatalf("missing mutation target %q", needle)
@@ -37,8 +41,21 @@ func fastPolicyErrors(wf string) []string {
 	jobs := yamlJobs(wf)
 	lint, policy := jobs["lint-fast"], jobs["ci-policy"]
 	var errs []string
-	if lint == "" || policy == "" || jobIfCondition(wf, "ci-policy") != jobIfCondition(wf, "lint-fast") {
-		errs = append(errs, "policy job must have the same admission as lint-fast")
+	const statusPrefix = "always() && !cancelled() && "
+	if lint == "" || policy == "" || jobIfCondition(wf, "lint-fast") != statusPrefix+jobIfCondition(wf, "ci-policy") {
+		errs = append(errs, "policy and lint jobs must have the same admission, with status-aware lint")
+	}
+	const gate = `      - name: require CI policy success
+        env:
+          POLICY_RESULT: ${{ needs.ci-policy.result }}
+        run: |
+          if [ "$POLICY_RESULT" != success ]; then
+            echo "::error::CI policy result: $POLICY_RESULT"
+            exit 1
+          fi
+`
+	if !strings.Contains(lint, "    needs: ci-policy\n") || strings.Count(lint, gate) != 1 {
+		errs = append(errs, "lint-fast must depend on and enforce the policy result")
 	}
 	for _, command := range []string{"run: make slow-gate-scan", "run: go test ./internal/ci/", "run: bash -n bench/run.sh"} {
 		if strings.Count(policy, command) != 1 || strings.Contains(lint, command) {
@@ -51,4 +68,21 @@ func fastPolicyErrors(wf string) []string {
 		}
 	}
 	return errs
+}
+
+// The shell gate must accept only a successful dependency, including when the
+// policy job was skipped or cancelled rather than reporting an ordinary failure.
+func TestCIFastPolicyResultGate(t *testing.T) {
+	const script = `if [ "$POLICY_RESULT" != success ]; then
+  echo "::error::CI policy result: $POLICY_RESULT"
+  exit 1
+fi`
+	for _, result := range []string{"success", "failure", "skipped", "cancelled", ""} {
+		cmd := exec.Command("bash", "-e", "-c", script)
+		cmd.Env = append(os.Environ(), "POLICY_RESULT="+result)
+		err := cmd.Run()
+		if (err == nil) != (result == "success") {
+			t.Errorf("policy result %q: unexpected shell result %v", result, err)
+		}
+	}
 }

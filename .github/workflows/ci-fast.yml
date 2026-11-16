@@ -470,7 +470,8 @@ jobs:
   # NOT here: each downloads and compiles a tool of its own, which is a minute
   # this lane does not have, and they run in ci-full.yml.
   lint-fast:
-    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: ci-policy
+    if: always() && !cancelled() && startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 60-142 s with a warm cache; hosted adds setup-go, the cache restore
     # and modernize's first compile
@@ -480,6 +481,15 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # A skipped or failed policy job must fail the existing required check.
+      - name: require CI policy success
+        env:
+          POLICY_RESULT: ${{ needs.ci-policy.result }}
+        run: |
+          if [ "$POLICY_RESULT" != success ]; then
+            echo "::error::CI policy result: $POLICY_RESULT"
+            exit 1
+          fi
       # the gate runs hosted, so setup-go always runs here; the guard keeps the
       # step correct on a fleet runner too
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
