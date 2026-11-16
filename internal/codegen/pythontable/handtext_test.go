@@ -190,6 +190,9 @@ print('ok')
 			t.Fatalf("wire-only runtime: %q", got)
 		}
 	}
+	if out, err := pyrun.Analyze(t, dir, "probe"); err != nil {
+		t.Fatalf("wire-only mypy: %v\n%s", err, out)
+	}
 }
 
 func TestPythonHandtextSurfaceNegativeControl(t *testing.T) {
