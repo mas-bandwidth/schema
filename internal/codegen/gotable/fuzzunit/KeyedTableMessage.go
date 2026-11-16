@@ -133,12 +133,6 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TeamConfigReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -401,12 +395,6 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	GunnerConfigReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -678,12 +666,6 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TurretConfigReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -1025,12 +1007,6 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	HullConfigReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -1473,12 +1449,6 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	KeyedConfigReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -1795,12 +1765,6 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	ScoreBoardReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {

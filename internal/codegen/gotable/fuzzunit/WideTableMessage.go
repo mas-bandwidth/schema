@@ -154,12 +154,6 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	WideBlobReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {

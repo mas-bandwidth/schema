@@ -146,12 +146,6 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 func tableMessageBodyGunnerSettings(r *TableMessageReader, value *GunnerSettings, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	GunnerSettingsReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -535,12 +529,6 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	ShipEntryReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -1026,12 +1014,6 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	GlobalSettingsReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
@@ -1520,12 +1502,6 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	PackConfigReset(value)
-<<<<<<< HEAD
-	order := -1
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
->>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
