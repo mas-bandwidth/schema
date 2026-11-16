@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,6 +31,9 @@ func TestFramingRootFieldsInDeclarationOrder(t *testing.T) {
 		"nested_terminator_early": true, "nested_ref_above_count_inside": true, "nested_terminator_missing": true,
 		"nested_damage_midway": true, "array_L0_inert": true, "array_L1_inert": true, "keyed_L1_inert": true,
 		"union_arm_L_not_width": true, "union_body_arm_terminator_early": true, "union_void_arm_L_nonzero": true,
+		"array_header_crosses_L_bounded": true, "array_header_crosses_L_kind_mismatch": true,
+		"keyed_header_crosses_L": true, "keyed_header_crosses_L_kind_mismatch": true,
+		"array_header_crosses_L_foreign_kind": true, "keyed_header_crosses_L_foreign_kind": true,
 		"node_index_above_count": true, "nested_repeat_id": true, "array_L0_short": true, "array_L1_short": true, "keyed_L1_short": true,
 	}
 	for _, v := range append(append([]framingVector{}, framingVectors...), noWriterVectors...) {
@@ -78,4 +82,28 @@ func TestFramingRootFieldsInDeclarationOrder(t *testing.T) {
 		t.Errorf("%s: expected framing vector is missing", name)
 	}
 
+}
+
+// TestCrossedHeadersKeepTheirBoundary checks that the continued count still
+// crosses its two-byte L and is above the bounded count after reordering.
+func TestCrossedHeadersKeepTheirBoundary(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	for _, tc := range []struct {
+		name          string
+		kind, element byte
+	}{
+		{"array_header_crosses_L_bounded", 14, 30}, {"array_header_crosses_L_kind_mismatch", 14, 4},
+		{"array_header_crosses_L_foreign_kind", 14, 4}, {"keyed_header_crosses_L", 16, 4},
+		{"keyed_header_crosses_L_kind_mismatch", 16, 30}, {"keyed_header_crosses_L_foreign_kind", 16, 30},
+	} {
+		data, err := os.ReadFile(filepath.Join(root, framingDir, tc.name+".bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		marker := []byte{tc.kind, 2, tc.element, 0x82, 0x02}
+		if bytes.Count(data, marker) != 1 {
+			t.Errorf("%s: crossed header or count moved", tc.name)
+		}
+	}
 }

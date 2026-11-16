@@ -454,12 +454,13 @@ var framingVectors = []framingVector{
 	// `past`): count = 2 + 2·128 = 258, the elements bounded by L cover none,
 	// and the parent resumes at that byte.
 	{name: "array_header_crosses_L_unbounded", unit: "listdemo", root: "Ints", ids: []string{"values", "after"}, body: cat(b(1, 14, 2, 4, 0x82, 2, 4), i32(42), b(0))},
-	// H3, H5, H6: the same on a bounded array: count = 2 + 1·128 = 130, past
-	// the bound of 4, so clamped counts too.
-	{name: "array_header_crosses_L_bounded", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 2, 30, 0x82), gradeSilver, b(0))},
+	// H3, H5, H6: the same on a bounded array. The next field is an
+	// unknown ID already used as an enum variant, so the count crosses L and
+	// is 2 + 2·128 = 258, past the bound of 4.
+	{name: "array_header_crosses_L_bounded", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 2, 30, 0x82), b(2, 6, 1, 0))},
 	// H3, H4: the crossed header under a foreign element kind is a kind
 	// mismatch and nothing else.
-	{name: "array_header_crosses_L_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 2, 4, 0x82), gradeSilver, b(0))},
+	{name: "array_header_crosses_L_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 2, 4, 0x82), b(2, 6, 1, 0))},
 	// H4: the element kind inside L.
 	{name: "array_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 3, 4, 1, 2, 0)},
 	// F10 at a count: `80 00`.
@@ -503,11 +504,11 @@ var framingVectors = []framingVector{
 	{name: "map_header_crosses_L_dart_mutant", unit: "listdemo", root: "Army", raw: mustHex("01010e580d022a020e200d020e030602040d0705041401000000000e030609040d0705045a0000000000060432000000002a020e020e830603040d0705041500000000000e030608040d0705045b0000000000060433000000000704080000000026a9020c9b014878424f4f300d39841cec105b36094ac93dea0ce83094fde47c74a279448ee2e5b1861b638ebaadbc90e9ea716f0f0182bf0700000000000000")},
 
 	// ---------------------------------------------------------------- E. enum-keyed arrays
-	// H3, H5 at kind 16: count = 2 + 1·128 = 130 over no triple bytes.
-	{name: "keyed_header_crosses_L", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 2, 4, 0x82), gradeSilver, b(0))},
+	// H3, H5 at kind 16: count = 2 + 2·128 = 258 over no triple bytes.
+	{name: "keyed_header_crosses_L", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(10, 16, 2, 4, 0x82), b(2, 6, 1, 0))},
 	// H3, H4 at kind 16 (the class Java, Luau and Squirrel get wrong): element
 	// kind 30 where int32 is declared.
-	{name: "keyed_header_crosses_L_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 2, 30, 0x82), gradeSilver, b(0))},
+	{name: "keyed_header_crosses_L_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(10, 16, 2, 30, 0x82), b(2, 6, 1, 0))},
 	// H7: a key reference of 0 after one landed slot.
 	{name: "keyed_key_zero", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 14, 4, 2, 2, 4), i32(7), b(0, 4), i32(0), b(0))},
 	// §3.2: a key this reader cannot name skips by its L and counts unknown;
