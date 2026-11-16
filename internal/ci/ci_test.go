@@ -956,7 +956,7 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 		if ev.PlanRows != "" {
 			return ev.PlanRows, nil
 		}
-		for _, pkg := range strings.Fields(ev.PlanPkgs) {
+		for pkg := range strings.FieldsSeq(ev.PlanPkgs) {
 			if pkg == "./internal/codegen/gotable" || pkg == "./..." {
 				return `[{"make":"tables-go-fixedform"}]`, nil
 			}
@@ -1386,6 +1386,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:vuln",
 		"ci-fast.yml:block-gate",
 		"ci-fast.yml:ci-policy",
+		"ci-fast.yml:go-fixed-corpus",
 		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:lang-lint",
 		"ci-fast.yml:leg-gate",
