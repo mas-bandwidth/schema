@@ -1047,3 +1047,117 @@ func TestFixedRootPointerArmRefusals(t *testing.T) {
 		}
 	}
 }
+
+// TestUnknownNodeFixedReaderPin leaves the malformed node record at the end
+// of the root rather than adding a second node-placement spelling.
+func TestUnknownNodeFixedReaderPin(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	m, err := ReadManifest(filepath.Join(root, defaultManifest), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Units {
+		for j, p := range m.Units[i].Paths {
+			if !filepath.IsAbs(p) {
+				m.Units[i].Paths[j] = filepath.Join(root, p)
+			}
+		}
+	}
+	units := newUnits(m)
+	var v *framingVector
+	for i := range framingVectors {
+		if framingVectors[i].name == "node_unknown_to_fixed_reader" {
+			v = &framingVectors[i]
+			break
+		}
+	}
+	if v == nil {
+		t.Fatal("missing node fixture builder")
+	}
+	wire, err := v.bytes(units)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, framingDir, v.name+".bin")
+	if os.Getenv("FRAMING_WRITE") == "1" {
+		if err := os.WriteFile(path, wire, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, wire) {
+		t.Fatal("unknown node fixture differs from its builder")
+	}
+}
+
+// TestCollectionKindMismatchPins keeps complete payloads under foreign element
+// kinds, so framing damage cannot mask the intended kind mismatches.
+func TestCollectionKindMismatchPins(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	m, err := ReadManifest(filepath.Join(root, defaultManifest), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Units {
+		for j, p := range m.Units[i].Paths {
+			if !filepath.IsAbs(p) {
+				m.Units[i].Paths[j] = filepath.Join(root, p)
+			}
+		}
+	}
+	units := newUnits(m)
+	for _, name := range []string{"array_elem_kind_mismatch", "keyed_elem_kind_mismatch"} {
+		var v *framingVector
+		for i := range framingVectors {
+			if framingVectors[i].name == name {
+				v = &framingVectors[i]
+				break
+			}
+		}
+		if v == nil {
+			t.Fatalf("missing %s", name)
+		}
+		wire, err := v.bytes(units)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(root, framingDir, name+".bin")
+		if os.Getenv("FRAMING_WRITE") == "1" {
+			if err := os.WriteFile(path, wire, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, wire) {
+			t.Errorf("%s differs from builder", name)
+		}
+		u, err := framingVariableUnit(m, "tblr1", "Cfg")
+		if err != nil {
+			t.Fatal(err)
+		}
+		sh, e := damageAwareFileSpellings(u, u.Tables["Cfg"], wire)
+		if e != nil || len(sh) > 0 {
+			t.Errorf("%s: shapes=%v err=%v", name, sh, e)
+		}
+		fault, e := damageAwareIDTableFault(wire)
+		if e != nil || fault != "" {
+			t.Errorf("%s: ID fault=%s err=%v", name, fault, e)
+		}
+		model := tabletext.NewModel(u)
+		var report tabletext.Report
+		ok, err := tablewire.Decode(model, model.New(u.Tables["Cfg"]), wire, &report)
+		if ok || err == nil || !strings.Contains(err.Error(), "kind_mismatch") {
+			t.Errorf("%s: ok=%v err=%v report=%+v", name, ok, err, report)
+		}
+	}
+}

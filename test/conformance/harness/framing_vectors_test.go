@@ -462,7 +462,7 @@ var framingVectors = []framingVector{
 	// mismatch and nothing else.
 	{name: "array_header_crosses_L_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 2, 4, 0x82), b(2, 6, 1, 0))},
 	// H4: the element kind inside L.
-	{name: "array_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 3, 4, 1, 2, 0)},
+	{name: "array_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 6, 4, 1, 2, 0, 0, 0, 0)},
 	// F10 at a count: `80 00`.
 	{name: "array_count_non_canonical", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 4, 30, 0x81, 0, 2, 0)},
 	// H3 at the end of the buffer: a count that cannot complete even in the
@@ -521,7 +521,7 @@ var framingVectors = []framingVector{
 	// L6 at kind 16: two complete triples inside L, the count saying one.
 	{name: "keyed_slots_past_count", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 14, 4, 1, 2, 4), i32(7), b(3, 4), i32(3), b(0))},
 	// H4 at kind 16, inside L.
-	{name: "keyed_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 8, 30, 1, 2, 4), i32(7), b(0))},
+	{name: "keyed_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(10, 16, 5, 30, 1, 2, 1, 3, 0)},
 	// H2 at kind 16.
 	{name: "keyed_L1_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(10, 16, 1, 4), b(0))},
 
@@ -591,7 +591,7 @@ var framingVectors = []framingVector{
 	// manifest on this file's held rule.
 	{name: "node_chain_200000", unit: "graphdemo", root: "Scene", ids: sceneListNodeIds, body: listNodeChain(200000), held: true},
 	// T6: a reader that cannot name the reserved id counts one unknown.
-	{name: "node_unknown_to_fixed_reader", unit: "tblr1", root: "Cfg", ids: append(append([]string{}, cfgIds...), "node-table"), body: cat(b(17, 12, 3, 1, 0, 0), gradeSilver, b(0))},
+	{name: "node_unknown_to_fixed_reader", unit: "tblr1", root: "Cfg", ids: append(append([]string{}, cfgIds...), "node-table"), body: cat(gradeSilver, b(17, 12, 3, 1, 0, 0), b(0))},
 	// L4 at the node-table field: its L past the root body.
 	{name: "node_table_L_past_body", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, b(4, 12, 99, 1), listNodeRecord(2), b(0))},
 	// §3.1, §3.3, §5: a node record whose TYPE reference resolves to one of

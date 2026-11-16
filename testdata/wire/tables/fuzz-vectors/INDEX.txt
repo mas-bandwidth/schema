@@ -69,9 +69,8 @@ pointer_orphan_cycle graphdemo Scene  testdata/wire/tables/fuzz-vectors/pointer_
 # engine, each of which parts the leg from the oracle on this vector's name.
 message_ill_formed_text backenddemo StorePurchase testdata/wire/tables/fuzz-vectors/message_ill_formed_text.bin message
 
-# A list's wire elements widen while its region uses the declared width.
-# Before schema#713, C++ LoadMeasure omitted this extent, then Load reported
-# a valid widening as malformed. The shared report row also checks counters.
+# A mutated list element kind leaves bytes past its element count. The strict
+# reader refuses this damaged frame; separate clean controls exercise widening.
 list_scalar_widen listdemo Save testdata/wire/tables/fuzz-vectors/list_scalar_widen.bin
 
 # placements count 2147483648: both storage paths refuse without a malformed event.
@@ -90,7 +89,8 @@ map_repeat_mismatch mapdemo Crews testdata/wire/tables/fuzz-vectors/map_repeat_m
 # empties photos and marks damage. The builder path refuses its partial value.
 list_count_cross_length listdemo Album testdata/wire/tables/fuzz-vectors/list_count_cross_length.bin
 
-# Flags accept unsigned scalar widening in positional collections (#717).
+# The mutated flags-array element kind leaves trailing payload bytes and is
+# refused as damage; clean flags widening is a separate control.
 list_flags_widen listdemo Mixed testdata/wire/tables/fuzz-vectors/list_flags_widen.bin
 
 # A truncated message bytes payload fails before any length clamp is counted.
@@ -270,7 +270,8 @@ retain_nested_union_arm messagedemo ToolMessage testdata/wire/tables/fuzz-vector
 # A known numeric union arm widens identically in plain and retaining reads.
 retain_union_arm_widen messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/retain_union_arm_widen.bin
 
-# A keyed scalar element kind widens once and preserves every named slot.
+# This keyed element mutation leaves bytes inside a framed payload and is
+# refused as damage; clean keyed widening is a separate control.
 keyed_element_widen tabledemo KeyedConfig testdata/wire/tables/fuzz-vectors/keyed_element_widen.bin
 inert_byte_array_header streamdemo Feed testdata/wire/tables/fuzz-vectors/inert_byte_array_header.bin
 blob_field_replaced blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_field_replaced.bin
