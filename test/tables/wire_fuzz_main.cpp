@@ -438,6 +438,7 @@ static const Codec codecs[] = {
     VARIABLE( "tblw1", tblw1, Fleet ),
     VARIABLE( "tblw2", tblw2, Fleet ),
     VARIABLE( "widelist", widelistdemo, Wide ),
+    VARIABLE( "messagedemo", messagedemo, ToolEnvelope ),
     VARIABLE( "featurewitnesses", featurewitnesses, Root ),
     VARIABLE( "featurewitnesses", featurewitnesses, ArrayRoot ),
     // and the same roots under the MESSAGE form (docs/SPEC-TABLES.md §3.3),
@@ -479,6 +480,7 @@ static const Codec codecs[] = {
     RETAIN( "tblw1", tblw1, Fleet ),
     RETAIN( "tblw2", tblw2, Fleet ),
     RETAIN( "widelist", widelistdemo, Wide ),
+    RETAIN( "messagedemo", messagedemo, ToolEnvelope ),
     RETAIN( "featurewitnesses", featurewitnesses, Root ),
     RETAIN( "featurewitnesses", featurewitnesses, ArrayRoot ),
 };
