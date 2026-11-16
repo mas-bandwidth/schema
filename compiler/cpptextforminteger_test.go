@@ -18,6 +18,7 @@ func TestCPPTextFormIntegralNumbersFunctional(t *testing.T) {
 	const schema = `package probe
 table Root {
  small int32
+ limited int32 | min = -10, max = 10
  wide int64
  huge uint128
  values map[int32]int32
@@ -40,7 +41,7 @@ table Root {
 #include "ProbeTable.h"
 using namespace probe;
 int main() {
- const char *cases[] = {"(:small 2e0 :wide 2.0 :huge 20e-1 :values ((2e0 3)))", "(:small 2.1)", "(:small 1e999999999999999999999)", "(:values ((2 1) (20e-1 2)))", "(:values ((true 1)))", "(:small -0.0)", "(:wide -9223372036854775808 :huge 340282366920938463463374607431768211455)", "(:wide 9223372036854775808)", "(:small 0e999999999999999999999)", "(:values ((2.1 1)))", "(:wide -9223372036854775809)", "(:huge 340282366920938463463374607431768211456)", "(:values ((2147483648 1)))", "(:small 1e-999999999999999999)", "(:values ((-0.0 1) (0 2)))"};
+ const char *cases[] = {"(:small 2e0 :wide 2.0 :huge 20e-1 :values ((2e0 3)))", "(:small 2.1)", "(:small 1e999999999999999999999)", "(:values ((2 1) (20e-1 2)))", "(:values ((true 1)))", "(:small -0.0)", "(:wide -9223372036854775808 :huge 340282366920938463463374607431768211455)", "(:wide 9223372036854775808)", "(:small 0e999999999999999999999)", "(:values ((2.1 1)))", "(:wide -9223372036854775809)", "(:huge 340282366920938463463374607431768211456)", "(:values ((2147483648 1)))", "(:small 1e-999999999999999999)", "(:values ((-0.0 1) (0 2)))", "(:limited 11e0)"};
  for (const char *text : cases) {
   RootBuilder b; const char *reason = nullptr;
   if (!RootLoadTextForm(text,(int64_t)std::strlen(text),b,&reason)) {std::printf("REFUSE:%s\n",reason ? reason : "?"); continue;}
@@ -68,10 +69,10 @@ int main() {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(lines) != 15 {
+	if len(lines) != 16 {
 		t.Fatalf("results: %s", out)
 	}
-	want := []string{"", "REFUSE:text_kind_mismatch", "REFUSE:text_bound", "REFUSE:text_duplicate_key", "REFUSE:text_kind_mismatch", "", "", "REFUSE:text_bound", "", "REFUSE:text_kind_mismatch", "REFUSE:text_bound", "REFUSE:text_bound", "REFUSE:text_bound", "REFUSE:text_kind_mismatch", "REFUSE:text_duplicate_key"}
+	want := []string{"", "REFUSE:text_kind_mismatch", "REFUSE:text_bound", "REFUSE:text_duplicate_key", "REFUSE:text_kind_mismatch", "", "", "REFUSE:text_bound", "", "REFUSE:text_kind_mismatch", "REFUSE:text_bound", "REFUSE:text_bound", "REFUSE:text_bound", "REFUSE:text_kind_mismatch", "REFUSE:text_duplicate_key", "REFUSE:text_bound"}
 	for i, expected := range want {
 		if expected != "" && lines[i] != expected {
 			t.Errorf("case %d: got %s want %s", i, lines[i], expected)
