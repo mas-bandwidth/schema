@@ -620,15 +620,40 @@ const (
 )
 
 var pointerArrayProofPhases = []string{"functional", "deep", "typing"}
+var pointerArrayDeepPins = []string{"current", "floor"}
 
 func TestPythonVtPointerArrays(t *testing.T) {
 	t.Parallel()
-	for _, phase := range pointerArrayProofPhases {
-		t.Run(phase, func(t *testing.T) { testPythonVtPointerArraysPhase(t, phase) })
+	phase := os.Getenv("SCHEMA_PYTHON_POINTER_ARRAY_PHASE")
+	if phase == "" {
+		// The ordinary full test keeps the original single-process proof and typing.
+		testPythonVtPointerArraysPhase(t, "", "")
+		return
+	}
+	known := false
+	for _, name := range pointerArrayProofPhases {
+		known = known || phase == name
+	}
+	if !known {
+		t.Fatalf("unknown pointer proof phase %q", phase)
+	}
+	ran := false
+	t.Run(phase, func(t *testing.T) {
+		if phase == "deep" {
+			for _, pin := range pointerArrayDeepPins {
+				t.Run(pin, func(t *testing.T) { ran = true; testPythonVtPointerArraysPhase(t, phase, pin) })
+			}
+		} else {
+			ran = true
+			testPythonVtPointerArraysPhase(t, phase, "")
+		}
+	})
+	if !ran {
+		t.Fatal("pointer proof selector matched no phase")
 	}
 }
 
-func testPythonVtPointerArraysPhase(t *testing.T, phase string) {
+func testPythonVtPointerArraysPhase(t *testing.T, phase, deepPin string) {
 
 	u := loadNamedUnit(t, "PtrArr.schema", pointerArraysSchema)
 	rootSt := u.Tables["Root"]
@@ -934,23 +959,48 @@ table Guarded
 	}
 
 	if phase != "typing" {
-		probe := pyrun.ImportPrelude + pointerArraysPhaseProbe(t, phase)
+		source := pointerArraysProbePy
+		if phase != "" {
+			source = pointerArraysPhaseProbe(t, phase)
+		}
+		probe := pyrun.ImportPrelude + source
 		inputs := map[string][]byte{
 			"cases.txt": []byte(manifest.String()),
 			"probe.py":  []byte(probe),
 		}
 
-		gotCurrent := string(pyrun.Run(t, dir, "probe.py", inputs))
-		gotFloor := string(pyrun.RunFloor(t, dir, "probe.py", inputs))
-		if gotCurrent != gotFloor {
-			t.Fatalf("pinned interpreters disagree:\ncurrent:\n%s\nfloor:\n%s", gotCurrent, gotFloor)
-		}
-		if !strings.Contains(gotCurrent, "POINTER_ARRAY_"+phase+"_CHECKS_OK\n") {
-			t.Fatalf("probe did not finish cleanly:\n%s", gotCurrent)
-		}
+		if phase == "deep" {
+			runner := pyrun.Run
+			switch deepPin {
+			case "current":
+			case "floor":
+				runner = pyrun.RunFloor
+			default:
+				t.Fatalf("unknown deep proof pin %q", deepPin)
+			}
+			// Each pin must emit the same canonical complete-proof answer. This
+			// preserves the old cross-pin equality check when CI runs them apart.
+			got := string(runner(t, dir, "probe.py", inputs))
+			if got != "POINTER_ARRAY_deep_CHECKS_OK\n" {
+				t.Fatalf("deep %s did not finish: %s", deepPin, got)
+			}
+		} else {
+			gotCurrent := string(pyrun.Run(t, dir, "probe.py", inputs))
+			gotFloor := string(pyrun.RunFloor(t, dir, "probe.py", inputs))
+			if gotCurrent != gotFloor {
+				t.Fatalf("pinned interpreters disagree:\ncurrent:\n%s\nfloor:\n%s", gotCurrent, gotFloor)
+			}
+			marker := "ALL_POINTER_ARRAY_CHECKS_OK\n"
+			if phase != "" {
+				marker = "POINTER_ARRAY_" + phase + "_CHECKS_OK\n"
+			}
+			if !strings.Contains(gotCurrent, marker) {
+				t.Fatalf("probe did not finish cleanly:\n%s", gotCurrent)
+			}
 
+		}
 	}
-	if phase == "typing" {
+	if phase == "" || phase == "typing" {
 		for _, pkg := range []string{"ptrarr", "ptrarr/_schema", "evo", "listdemo", "tblg1"} {
 			if out, err := pyrun.Analyze(t, dir, pkg); err != nil {
 				t.Fatalf("mypy --strict on %s failed:\n%s", pkg, out)

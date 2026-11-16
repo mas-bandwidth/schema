@@ -47,6 +47,10 @@ func pythonCaseBudgetCheck(array, pointer, makefile, planner []byte) error {
 	if err != nil {
 		return err
 	}
+	pins, err := readValues(pointer, "pointerArrayDeepPins")
+	if err != nil {
+		return err
+	}
 	literal := func(n ast.Expr) (string, error) {
 		v, ok := n.(*ast.BasicLit)
 		if !ok || v.Kind != token.STRING {
@@ -75,14 +79,27 @@ func pythonCaseBudgetCheck(array, pointer, makefile, planner []byte) error {
 		if e != nil {
 			return e
 		}
-		want = append(want, "TestPythonVtPointerArrays/"+phase)
+		if phase == "deep" {
+			if len(pins[0].Elts) == 0 {
+				return fmt.Errorf("empty deep proof pins")
+			}
+			for _, p := range pins[0].Elts {
+				pin, e := literal(p)
+				if e != nil {
+					return e
+				}
+				want = append(want, "TestPythonVtPointerArrays/deep/"+pin)
+			}
+		} else {
+			want = append(want, "TestPythonVtPointerArrays/"+phase)
+		}
 	}
 	if len(cases[0].Elts) == 0 || len(phases[0].Elts) == 0 {
 		return fmt.Errorf("empty proof cases")
 	}
-	recipes := regexp.MustCompile(`-run '([^']+)'`).FindAllSubmatch(makefile, -1)
-	if len(recipes) != 6 {
-		return fmt.Errorf("case recipes=%d, want 6 bounded groups", len(recipes))
+	recipes := regexp.MustCompile(`(?m)^\t[^\n]*-run '([^']+)'[^\n]*$`).FindAllSubmatch(makefile, -1)
+	if len(recipes) != 7 {
+		return fmt.Errorf("case recipes=%d, want 7 bounded groups", len(recipes))
 	}
 	used := make([]int, len(recipes))
 	for _, name := range want {
@@ -102,6 +119,9 @@ func pythonCaseBudgetCheck(array, pointer, makefile, planner []byte) error {
 				good = good && ok
 			}
 			if good {
+				if parts[0] == "TestPythonVtPointerArrays" && !strings.Contains(string(r[0]), "SCHEMA_PYTHON_POINTER_ARRAY_PHASE="+parts[1]+" ") {
+					return fmt.Errorf("pointer case %s has a mismatched phase selector", name)
+				}
 				matches++
 				used[i]++
 			}
@@ -147,6 +167,8 @@ func TestPythonCaseBudgetCoverage(t *testing.T) {
 	}{
 		{"missing-case", []byte(strings.Replace(string(makefile), "int8_to_int16|", "", 1)), planner, "selected 0 times"},
 		{"duplicate-case", []byte(strings.Replace(string(makefile), "(int64_to_int128|", "(int8_to_int16|int64_to_int128|", 1)), planner, "selected 2 times"},
+		{"phase-selector", []byte(strings.Replace(string(makefile), "SCHEMA_PYTHON_POINTER_ARRAY_PHASE=typing", "SCHEMA_PYTHON_POINTER_ARRAY_PHASE=deep", 1)), planner, "mismatched phase selector"},
+		{"missing-deep-pin", []byte(strings.Replace(string(makefile), "/floor$$'", "/missing$$'", 1)), planner, "selected 0 times"},
 		{"monolith", makefile, []byte(strings.Replace(string(planner), "/^TestPythonArrayWidening$/d", "", 1)), "must be delegated"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
