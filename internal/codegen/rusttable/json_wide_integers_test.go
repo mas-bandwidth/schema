@@ -161,6 +161,7 @@ func TestRustJsonWideIntegerPositions(t *testing.T) {
 			bounds = " | min = -10, max = 10"
 		}
 		fmt.Fprintf(&schema, "union Pick%d { value %s%s }\ntable Probe%d { plain %s%s\n array [..2]%s%s\n optional ?%s%s\n choice Pick%d\n keyed [Key]%s%s\n", i, kind, bounds, i, kind, bounds, kind, bounds, kind, bounds, i, kind, bounds)
+		// Fixed-point fields require bounds, which the schema disallows on maps.
 		if bounds == "" {
 			fmt.Fprintf(&schema, " entries map[uint32]%s\n", kind)
 		}
