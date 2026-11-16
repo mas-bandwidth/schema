@@ -436,9 +436,13 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 			// reader's default. Such payloads provide no default-value proof.
 			mine := ir.TableFieldEntry(f)
 			quantized := mine.Shape.Packing == ir.TableMessageQuantized || (mine.Shape.Inner != nil && mine.Shape.Inner.Packing == ir.TableMessageQuantized)
+			flags, isFlags := f.Type.Ref.(*ir.Flags)
+			flagsProjection := isFlags && flags.WireBits < 64
 			kind := ir.TableWireScalarKind(f)
 			switch {
-			case quantized:
+			case quantized || flagsProjection:
+				// §22.6 also deliberately drops a flags mask's storage bits
+				// above its wire width. Those held bits can make it ride.
 			case kind == tkTable && f.Array == ir.ArrayNone:
 				// An empty original body is proof; a projected all-default
 				// object may instead contain fields of another announced shape.

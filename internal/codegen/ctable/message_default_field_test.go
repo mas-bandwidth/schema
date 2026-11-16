@@ -5,12 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // The qualification witness carries LoginRequest.region=None explicitly.
@@ -247,4 +248,68 @@ int main(void){TableMessageEntry entries[kTableMessageEntriesHere];TableVocabula
 			runCGenerated(t, own, source, "-DNDEBUG", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-sanitize-recover=all")
 		})
 	}
+}
+
+// §22.6 intentionally drops flags bits above the writer's width. Those held
+// bits can make a field ride even though its decoded mask is the default.
+func TestCMessageFlagsDefaultProjection(t *testing.T) {
+	const schema = `package probe
+ flags Features { One, Two }
+ enum Key { First, Second }
+ fixed table Node { mask Features }
+ fixed table Root {
+ direct Features
+ fixeds [2]Features
+ keyed [Key]Features
+ child Node
+ }
+ `
+	const source = `#include "ProbeTable.h"
+#include <stdio.h>
+#define CHECK(x) do{if(!(x)){fprintf(stderr,"line %d: %s\n",__LINE__,#x);return 1;}}while(0)
+int main(void){
+ TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary v=table_vocabulary(entries,kTableMessageEntriesHere);TableReport report={0};
+ CHECK(announce_read(&v,kTableAnnounce,kTableAnnounceBytes,&report));
+ int failed=0;for(int field=0;field<4;field++){
+ Root value;root_reset(&value);uint64_t high=UINT64_C(1)<<40;
+ if(field==0)value.direct=high;
+ if(field==1)value.fixeds[0]=high;
+ if(field==2)value.keyed[0]=high;
+ if(field==3)value.child.mask=high;
+ uint8_t wire[128];int64_t n=root_save_messages(&value,1,wire,sizeof(wire),&report),count=1;
+ if(!(n>0 && root_load_messages(&value,&count,&v,wire,n,&report))){fprintf(stderr,"flags field %d rejected after writer saved %lld bytes\n",field,(long long)n);failed=1;continue;}
+ CHECK(count==1 && !report.refused && value.direct==0 && value.fixeds[0]==0 && value.keyed[0]==0 && value.child.mask==0);
+ }
+ return failed;
+}`
+	for _, profile := range []struct {
+		name  string
+		flags []string
+	}{
+		{"normal", nil}, {"release", []string{"-DNDEBUG"}}, {"sanitized", []string{"-DNDEBUG", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-sanitize-recover=all"}},
+	} {
+		t.Run(profile.name, func(t *testing.T) { runCGenerated(t, schema, source, profile.flags...) })
+	}
+}
+
+func TestCMessageFullWidthFlagsDefaultProof(t *testing.T) {
+	var names []string
+	for i := 0; i < 64; i++ {
+		names = append(names, fmt.Sprintf("Bit%d", i))
+	}
+	schema := "package probe\nflags Features { " + strings.Join(names, ",") + " }\nfixed table Root { mask Features }\n"
+	const source = `#include "ProbeTable.h"
+#include <stdio.h>
+#define CHECK(x) do{if(!(x)){fprintf(stderr,"line %d: %s\n",__LINE__,#x);return 1;}}while(0)
+int main(void){TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary v=table_vocabulary(entries,kTableMessageEntriesHere);TableReport report={0};Root value;uint8_t wire[128];int64_t count=1;
+ CHECK(announce_read(&v,kTableAnnounce,kTableAnnounceBytes,&report));
+ root_reset(&value);value.mask=UINT64_C(1)<<63;
+ int64_t n=root_save_messages(&value,1,wire,sizeof(wire),&report);
+ CHECK(n>0 && root_load_messages(&value,&count,&v,wire,n,&report) && value.mask==(UINT64_C(1)<<63));
+ TableBitWriter w=table_bit_writer(wire,sizeof(wire));table_bit_put(&w,2,8);table_bit_put(&w,0,8);table_bit_put(&w,1,kTableMessageRefBitsHere);table_bit_put(&w,0,64);table_bit_put(&w,0,kTableMessageRefBitsHere);table_bit_align_write(&w);count=1;
+ CHECK(!root_load_messages(&value,&count,&v,wire,w.bits/8,&report));
+ CHECK(count==0 && report.refused && report.refuse_reason==SCHEMA_TABLE_REFUSE_WIRE_DAMAGED);
+ return 0;}`
+	runCGenerated(t, schema, source)
+	runCGenerated(t, schema, source, "-DNDEBUG", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-sanitize-recover=all")
 }
