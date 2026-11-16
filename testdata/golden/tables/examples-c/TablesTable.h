@@ -3787,11 +3787,16 @@ static SCHEMA_UNUSED int tabledemo_table_node_scan_open( tabledemo_table_node_sc
             scan->present = 1;
             if ( kind != 12 || !tabledemo_table_reader_span(fields,&scan->payload) )
             { scan->damaged = 1; return 0; }
+            /* The numbering is the root's final field (SPEC-TABLES §3.1).
+               Only the root terminator may follow its complete payload. */
+            if ( !tabledemo_table_reader_leb(fields,&ref) || ref != 0 || fields->offset != fields->size )
+            { scan->damaged = 1; return 0; }
+            break;
         }
         else if ( !tabledemo_table_reader_skip(fields,kind) ) { break; }
     }
     if ( !scan->present ) { return 0; }
-    if ( !tabledemo_table_reader_leb(&scan->payload,&scan->declared) ) { scan->damaged = 1; return 0; }
+    if ( !tabledemo_table_reader_leb(&scan->payload,&scan->declared) || scan->declared == 0 ) { scan->damaged = 1; return 0; }
     return 1;
 }
 
@@ -7367,6 +7372,8 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_message_body(tabledemo_ta
   return 1;
   }
   tabledemo_table_bit_put(w,23,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert(((uint64_t)(value->perks) >> 3) == 0);
+  /* message flags domain, debug only (§5.1) */
   tabledemo_table_bit_put(w,(uint64_t)(value->perks)-UINT64_C(0),3);
  }
  }

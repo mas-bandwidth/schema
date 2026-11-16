@@ -8169,6 +8169,7 @@ inline int64_t TableEntityMeasureMessageBody( int64_t at, const TableEntity & va
     if ( value.damage != 0 )
     {
         bits += kTableMessageRefBitsHere;
+        schema_assert( ( uint64_t( value.damage ) >> 8 ) == 0 ); // message flags domain, debug only (§5.1)
         bits += 8;
     }
     if ( value.moving != false )
@@ -8254,6 +8255,7 @@ inline bool TableEntitySaveMessageBody( TableBitWriter & w, const TableEntity & 
     if ( value.damage != 0 )
     {
         w.put( 14, kTableMessageRefBitsHere );
+        schema_assert( ( uint64_t( value.damage ) >> 8 ) == 0 ); // message flags domain, debug only (§5.1)
         w.put( (uint64_t) ( value.damage ), 8 );
     }
     if ( value.moving != false )

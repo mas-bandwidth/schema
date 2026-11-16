@@ -38,6 +38,11 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 		return
 	}
 	bits := ir.TableMessageValueBits(kind, shape)
+	if _, flags := f.Type.Ref.(*ir.Flags); flags && bits < 64 {
+		// Message masks must fit their announced width. File and cook
+		// masks still carry every storage bit; this check is debug only.
+		g.pf("%sschema_assert(((uint64_t)(%s) >> %d) == 0); /* message flags domain, debug only (§5.1) */\n", ind, expr, bits)
+	}
 	switch int(kind) {
 	case tkBool:
 		g.pf("%stable_bit_put(w,%s ? 1 : 0,1);\n", ind, expr)
