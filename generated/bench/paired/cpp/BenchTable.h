@@ -18644,14 +18644,16 @@ inline bool BenchMixedCookBody( uint8_t * at, const BenchMixed & value, TableByt
     table_cook_put( at + 40, (uint64_t) value.world_time, 8, order );
     table_cook_put( at + 48, (uint64_t) value.frame_tick, 8, order );
     table_cook_put( at + 56, (uint64_t) value.server_time, 4, order );
-    // all 8 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 8; i++ )
+    // 8 slots of storage, value.entities_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.entities_count; i++ )
     {
         if ( !MixedEntityCookBody( at + 64 + i * 64, value.entities[i], order ) ) { return false; }
     }
     table_cook_put( at + 576, (uint64_t) (uint32_t) value.entities_count, 4, order );
-    // all 80 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 80; i++ )
+    // 80 slots of storage, value.stats_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.stats_count; i++ )
     {
         if ( !MixedStatCookBody( at + 580 + i * 8, value.stats[i], order ) ) { return false; }
     }

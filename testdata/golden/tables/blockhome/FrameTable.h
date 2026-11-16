@@ -11918,8 +11918,9 @@ inline bool PartRowCookBody( uint8_t * at, const PartRow & value, TableByteOrder
 inline bool PartFrameCookBody( uint8_t * at, const PartFrame & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.version, 8, order );
-    // all 32 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 32; i++ )
+    // 32 slots of storage, value.parts_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.parts_count >= 0 && value.parts_count <= 32 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.parts_count; i++ )
     {
         if ( !PartRowCookBody( at + 8 + i * 352, value.parts[i], order ) ) { return false; }
     }
