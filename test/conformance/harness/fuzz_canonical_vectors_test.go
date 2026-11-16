@@ -648,3 +648,87 @@ func TestNegativeZeroListPin(t *testing.T) {
 		t.Fatalf("negative-zero fixed point: accepted=%v err=%v got=%x", answer.accepted, err, answer.encoded)
 	}
 }
+
+// TestListDamagedChildPins separates a duplicate field in one element from a
+// non-finite float in a later element, keeping a valid sibling in each case.
+func TestListDamagedChildPins(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	value := func(bits int32) []byte { return cat(b(2, 10), i32(bits)) }
+	duplicate := cat(value(0x3f800000), value(0x40000000), b(0))
+	finite := cat(value(0x40000000), b(0))
+	nan := cat(value(0x7fc00000), b(0))
+	for _, tc := range []struct {
+		name          string
+		first, second []byte
+	}{{"list_damaged_child_reads_on", duplicate, finite}, {"list_nan_child", finite, nan}} {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := cat(b(13, 2), leb(uint64(len(tc.first))), tc.first, leb(uint64(len(tc.second))), tc.second)
+			v := framingVector{ids: []string{"placements", "x"}, body: cat(b(1, 14), leb(uint64(len(payload))), payload, b(0))}
+			wire, err := v.bytes(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors", tc.name+".bin")
+			if os.Getenv("FRAMING_WRITE") == "1" {
+				if err := os.WriteFile(path, wire, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, wire) {
+				t.Fatal("child fixture differs from its builder")
+			}
+		})
+	}
+}
+
+func TestListDamagedChildBoundary(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	m, err := ReadManifest(filepath.Join(root, defaultManifest), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Units {
+		for j, p := range m.Units[i].Paths {
+			if !filepath.IsAbs(p) {
+				m.Units[i].Paths[j] = filepath.Join(root, p)
+			}
+		}
+	}
+	units := newUnits(m)
+	u, err := units.get("listdemo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := u.Tables["Save"]
+	for _, tc := range []struct{ name, reason string }{{"list_damaged_child_reads_on", "the same field id twice"}, {"list_nan_child", "non_finite_float"}} {
+		wire, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/fuzz-vectors", tc.name+".bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fault := framingTableFault(framingVector{}, wire); fault != "" {
+			t.Errorf("%s: %s", tc.name, fault)
+		}
+		for _, shapes := range []map[string]bool{rootStructuralSpellings(st, wire), rootStoredDefaults(st, wire), nestedStructuralSpellings(u, st, wire), nestedStoredDefaults(u, st, wire)} {
+			if len(shapes) > 0 {
+				t.Errorf("%s: %v", tc.name, shapes)
+			}
+		}
+		wr, err := newWireRoot(units, "listdemo", "Save", false, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var report tabletext.Report
+		store := tablewire.Retain{Capacity: 65536, IdCapacity: 1024}
+		ok, err := tablewire.DecodeRetain(wr.model, wr.model.New(wr.def), wire, &store, &report)
+		if ok || err == nil || !strings.Contains(err.Error(), tc.reason) {
+			t.Errorf("%s: ok=%v err=%v report=%+v", tc.name, ok, err, report)
+		}
+	}
+}
