@@ -23,10 +23,18 @@ const requiredForm1Schema = `package req
 fixed table Leaf { n int32 }
 table Child { n int32 | required }
 enum Slot { A, B }
+enum Grade { A, B }
+flags Perm { Read, Write }
 union Choice { x int32 }
 table Root {
  number int32 | required
  flag bool | required
+ ratio float32 | required
+ precise float64 | required
+ grade Grade | required
+ perms Perm | required
+ floats [2]float32 | required
+ grades [..2]Grade | required
  text string(8) | required
  data bytes(8) | required
  items []int32 | required
